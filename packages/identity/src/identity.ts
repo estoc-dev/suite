@@ -21,8 +21,10 @@ export interface Identity {
  */
 export function verify(identity: Identity, digest: Uint8Array, signature: Uint8Array): boolean {
   const { curve, message } = schemes[identity.scheme];
+  const { publicKey } = identity;
   return (
-    curve.isPublicKey(identity.publicKey) &&
-    curve.verify(signature, message(signingText(digest), identity.publicKey), identity.publicKey)
+    publicKey.length === curve.publicKeyLength &&
+    signature.length === 64 &&
+    curve.verify(signature, message(signingText(digest), publicKey), publicKey)
   );
 }

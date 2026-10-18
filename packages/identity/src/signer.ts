@@ -25,7 +25,9 @@ export class SoftwareSigner implements Signer {
   }
 
   static fromSecretKey(scheme: Scheme, secretKey: Uint8Array): SoftwareSigner {
-    const owned = secretKey.slice();
+    // Not `slice()`: on a Node Buffer it returns a view of the same memory,
+    // and clearing the caller's key would clear this one too.
+    const owned = new Uint8Array(secretKey);
     return new SoftwareSigner(scheme, schemes[scheme].curve.publicKeyOf(owned), owned);
   }
 

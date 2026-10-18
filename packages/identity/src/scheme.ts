@@ -18,48 +18,33 @@ import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 export type Scheme = "ed25519" | "eip191" | "solana-offchain";
 
 interface Curve {
-  isPublicKey(bytes: Uint8Array): boolean;
+  readonly publicKeyLength: number;
   publicKeyOf(secretKey: Uint8Array): Uint8Array;
   sign(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
+  /** Takes a 64-byte signature and a key of `publicKeyLength` bytes. */
   verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
 }
 
 // Verification is strict so that one signing act has one valid encoding:
 // signatures are stored and hashed as bytes, and a second encoding of the
-// same signature would give the same act a second hash.
+// same signature would give the same act a second hash. Strict Ed25519 also
+// refuses small-order keys, which admit signatures that verify for many
+// messages, so their holder could later deny which one was signed.
 const ed25519Curve: Curve = {
-  isPublicKey(bytes) {
-    if (bytes.length !== 32) return false;
-    try {
-      // A small-order key admits signatures that verify for many messages,
-      // so its holder could later deny which one was signed.
-      return !ed25519.Point.fromBytes(bytes, false).isSmallOrder();
-    } catch {
-      return false;
-    }
-  },
+  publicKeyLength: 32,
   publicKeyOf: (secretKey) => ed25519.getPublicKey(secretKey),
   sign: (message, secretKey) => ed25519.sign(message, secretKey),
   verify: (signature, message, publicKey) =>
-    signature.length === 64 && ed25519.verify(signature, message, publicKey, { zip215: false }),
+    ed25519.verify(signature, message, publicKey, { zip215: false }),
 };
 
 // Signatures are compact `r || s` without the recovery byte: the identity
 // already holds the key, and the byte would be one more thing to vary.
 const secp256k1Curve: Curve = {
-  isPublicKey(bytes) {
-    if (bytes.length !== 33) return false;
-    try {
-      secp256k1.Point.fromBytes(bytes);
-      return true;
-    } catch {
-      return false;
-    }
-  },
+  publicKeyLength: 33,
   publicKeyOf: (secretKey) => secp256k1.getPublicKey(secretKey, true),
   sign: (message, secretKey) => secp256k1.sign(message, secretKey, { prehash: false }),
   verify: (signature, message, publicKey) =>
-    signature.length === 64 &&
     secp256k1.verify(signature, message, publicKey, { prehash: false, lowS: true }),
 };
 

@@ -41,6 +41,17 @@ test("an identity still verifies after structuredClone", async () => {
   expect(verify(structuredClone(ed25519Signer.identity), digest, signature)).toBe(true);
 });
 
+test.each(["ed25519", "eip191", "solana-offchain"] as const)(
+  "%s: a signer made from a Buffer keeps signing for its key after the caller clears the Buffer",
+  async (scheme) => {
+    const secretKey = Buffer.from(new Uint8Array(32).fill(1));
+    const signer = SoftwareSigner.fromSecretKey(scheme, secretKey);
+    const identity = signer.identity;
+    secretKey.fill(0);
+    expect(verify(identity, digest, await signer.sign(digest))).toBe(true);
+  },
+);
+
 test("a signer keeps signing for its key after the caller changes the identity it handed out", async () => {
   const handedOut = ed25519Signer.identity;
   handedOut.publicKey[0]! ^= 1;

@@ -17,7 +17,7 @@ const secrets: Record<Scheme, Uint8Array> = {
   "solana-offchain": ed25519Secret,
 };
 
-describe.each(["ed25519", "eip191", "solana-offchain"] as const)("a %s identity", (scheme) => {
+describe.each(["ed25519", "eip191", "solana-offchain"] as const)("an identity signing in %s", (scheme) => {
   const signer = SoftwareSigner.fromSecretKey(scheme, secrets[scheme]);
   const other = SoftwareSigner.fromSecretKey(scheme, secrets[scheme].map((byte) => byte ^ 0x5a));
 

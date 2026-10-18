@@ -1,65 +1,48 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, it } from "vitest";
-import { Identity } from "../src/index.ts";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { describe, expect, it, test } from "vitest";
+import { SoftwareSigner, verify, type Identity } from "../src/index.ts";
 
-const ed25519Key = hexToBytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664");
-const secp256k1Key = hexToBytes("038318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed75");
+const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
+const ed25519Signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+const secp256k1Signer = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(1));
 
-describe("Identity.from", () => {
-  it("takes a 32-byte Ed25519 key for ed25519 and solana-offchain", () => {
-    expect(Identity.from("ed25519", ed25519Key).scheme).toBe("ed25519");
-    expect(Identity.from("solana-offchain", ed25519Key).scheme).toBe("solana-offchain");
+describe("an identity whose key is not in its scheme's form", () => {
+  it("verifies nothing with an uncompressed secp256k1 key", async () => {
+    const compressed = secp256k1Signer.identity.publicKey;
+    const uncompressed = secp256k1.Point.fromBytes(compressed).toBytes(false);
+    const identity: Identity = { scheme: "eip191", publicKey: uncompressed };
+    expect(verify(identity, digest, await secp256k1Signer.sign(digest))).toBe(false);
   });
 
-  it("takes a 33-byte compressed secp256k1 key for eip191", () => {
-    expect(Identity.from("eip191", secp256k1Key).publicKey).toEqual(secp256k1Key);
+  it("verifies nothing with a key of the length another scheme uses", async () => {
+    const identity: Identity = { scheme: "ed25519", publicKey: secp256k1Signer.identity.publicKey };
+    expect(verify(identity, digest, await ed25519Signer.sign(digest))).toBe(false);
   });
 
-  it("refuses a key of the length another scheme uses", () => {
-    expect(() => Identity.from("ed25519", secp256k1Key)).toThrow(TypeError);
-    expect(() => Identity.from("eip191", ed25519Key)).toThrow(TypeError);
+  it("verifies nothing, without throwing, with bytes that are not a point on the curve", () => {
+    const signature = new Uint8Array(64).fill(1);
+    const offCurve: Identity[] = [
+      { scheme: "ed25519", publicKey: Uint8Array.of(2, ...new Uint8Array(31)) },
+      { scheme: "ed25519", publicKey: new Uint8Array(32).fill(0xff) },
+      { scheme: "eip191", publicKey: Uint8Array.of(0x02, ...new Uint8Array(32).fill(0xff)) },
+    ];
+    for (const identity of offCurve) expect(verify(identity, digest, signature)).toBe(false);
   });
 
-  it("refuses an uncompressed secp256k1 key", () => {
-    const uncompressed = hexToBytes(
-      "048318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed75" +
-        "3547f11ca8696646f2f3acb08e31016afac23e630c5d11f59f61fef57b0d2aa5",
-    );
-    expect(() => Identity.from("eip191", uncompressed)).toThrow(TypeError);
-  });
-
-  it("refuses bytes that are not a point on the curve", () => {
-    expect(() => Identity.from("eip191", Uint8Array.of(0x02, ...new Uint8Array(32).fill(0xff)))).toThrow(
-      TypeError,
-    );
-    expect(() => Identity.from("ed25519", Uint8Array.of(2, ...new Uint8Array(31)))).toThrow(TypeError);
-  });
-
-  it("refuses an Ed25519 encoding whose y is not reduced", () => {
-    expect(() => Identity.from("ed25519", new Uint8Array(32).fill(0xff))).toThrow(TypeError);
-  });
-
-  it("refuses an Ed25519 key of small order", () => {
+  it("verifies nothing with an Ed25519 key of small order", () => {
     const neutral = Uint8Array.of(1, ...new Uint8Array(31));
-    expect(() => Identity.from("ed25519", neutral)).toThrow(TypeError);
-  });
-
-  it("keeps its key when the caller later changes the bytes it passed", () => {
-    const bytes = ed25519Key.slice();
-    const identity = Identity.from("ed25519", bytes);
-    bytes[0]! ^= 1;
-    expect(identity.publicKey).toEqual(ed25519Key);
+    const anyMessage = Uint8Array.of(...neutral, ...new Uint8Array(32));
+    expect(verify({ scheme: "ed25519", publicKey: neutral }, digest, anyMessage)).toBe(false);
   });
 });
 
-describe("an identity", () => {
-  it("equals one with the same scheme and key", () => {
-    expect(Identity.from("ed25519", ed25519Key).equals(Identity.from("ed25519", ed25519Key))).toBe(true);
-  });
+test("an identity still verifies after structuredClone", async () => {
+  const signature = await ed25519Signer.sign(digest);
+  expect(verify(structuredClone(ed25519Signer.identity), digest, signature)).toBe(true);
+});
 
-  it("differs from one with the same key under another scheme", () => {
-    expect(Identity.from("ed25519", ed25519Key).equals(Identity.from("solana-offchain", ed25519Key))).toBe(
-      false,
-    );
-  });
+test("a signer keeps signing for its key after the caller changes the identity it handed out", async () => {
+  const handedOut = ed25519Signer.identity;
+  handedOut.publicKey[0]! ^= 1;
+  expect(verify(ed25519Signer.identity, digest, await ed25519Signer.sign(digest))).toBe(true);
 });

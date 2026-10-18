@@ -44,9 +44,8 @@ const ed25519Curve: Curve = {
     signature.length === 64 && ed25519.verify(signature, message, publicKey, { zip215: false }),
 };
 
-// Keys are compressed so each key has one encoding to compare. Signatures
-// are compact `r || s` without the recovery byte: the identity already
-// holds the key, and the byte would be one more thing to vary.
+// Signatures are compact `r || s` without the recovery byte: the identity
+// already holds the key, and the byte would be one more thing to vary.
 const secp256k1Curve: Curve = {
   isPublicKey(bytes) {
     if (bytes.length !== 33) return false;

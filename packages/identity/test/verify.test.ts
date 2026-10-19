@@ -62,9 +62,9 @@ test("an eip191 identity rejects the high-s twin of its signature", async () => 
 });
 
 describe("signingText", () => {
-  it("names an Estoc document by its digest in hex", () => {
+  it("names an Estoc object by its digest in hex", () => {
     expect(signingText(digest)).toBe(
-      "Estoc Document (sha256:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)",
+      "Estoc Object (sha256:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)",
     );
   });
 
@@ -82,8 +82,8 @@ describe("signatures from chain tooling", () => {
       publicKey: hexToBytes("038318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed75"),
     };
     const withRecovery = hexToBytes(
-      "413ea7b7099a6b06c70dc15263bfa309e1ac30a1d537e2a10b4eacd89026d9da" +
-        "1d2227ae4e8305a42a4c172a2ed839e55ad73ebbde1e85e3c3c99a3ff741aab71c",
+      "7353fdd23682d467c65384d4b9ada99f95935b3141effd9f26ef678ea3d1e202" +
+        "0ab4520877c1872689d150dfd1e79cd60b1f5672e4dcca56aa5ed8f8f07217fe1c",
     );
     const signature = withRecovery.subarray(0, 64);
     expect(verify(identity, digest, signature)).toBe(true);
@@ -96,8 +96,8 @@ describe("signatures from chain tooling", () => {
       publicKey: hexToBytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"),
     };
     const signature = hexToBytes(
-      "b817caa75ba07218f678852c2dd785290e4216c59e5411966894b71341a0f95c" +
-        "31fefa01ff854bf59dcb4fdc15cbec839661029f7025c8ae2aad15d4394ec000",
+      "650916577c3e960ff47a8c156caf5363a4c0241a0e82a95086e2f42922cec46f" +
+        "c13c2a6ba57311be775ef5c88deb02a521754a06d241f50c20a71721fa06a600",
     );
     expect(verify(identity, digest, signature)).toBe(true);
     expect(await SoftwareSigner.fromSecretKey("solana-offchain", ed25519Secret).sign(digest)).toEqual(signature);

@@ -3,15 +3,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./default-validator": "./src/default-validator.ts"
   },
   "scripts": {
     "typecheck": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
     "@estoc/identity": "workspace:*",
+    "@hyperjump/browser": "1.6.0",
+    "@hyperjump/json-schema": "1.18.0",
     "@noble/hashes": "^2.4.0",
     "canonicalize": "^5.1.0"
   },

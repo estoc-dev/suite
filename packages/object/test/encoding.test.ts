@@ -1,7 +1,8 @@
 import { describe, expect, it, test } from "vitest";
-import { decodeObject, defaultValidator, encodeObject, encodeSchema } from "../src/index.ts";
+import { defaultValidator } from "../src/default-validator.ts";
+import { decodeObject, encodeObject, encodeSchema } from "../src/index.ts";
 
-const anything = encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
+const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const objectText = (data: string) => `{"data":${data},"schema":"${anything.link}"}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);

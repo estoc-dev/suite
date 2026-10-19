@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
-import { decodeObject, decodeSchema, defaultValidator, encodeObject, encodeSchema, type Json } from "../src/index.ts";
+import { defaultValidator } from "../src/default-validator.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, type Json } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
-const anything = encodeSchema({ $schema: DRAFT }, defaultValidator);
-const login = encodeSchema(
+const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+const login = await encodeSchema(
   {
     $schema: DRAFT,
     type: "object",
@@ -68,8 +69,8 @@ test("a schema's bytes are not an object", () => {
   expect(() => decodeObject(login.bytes, anything)).toThrow();
 });
 
-test("an object read with a schema decoded from the same bytes keeps its link", () => {
+test("an object read with a schema decoded from the same bytes keeps its link", async () => {
   const object = encodeObject(login, greeting);
-  const schema = decodeSchema(login.bytes, defaultValidator);
+  const schema = await decodeSchema(login.bytes, defaultValidator);
   expect(decodeObject(object.bytes, schema).link).toBe(object.link);
 });

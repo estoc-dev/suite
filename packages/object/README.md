@@ -39,9 +39,10 @@ written to any other, so an application does not mistake another schema's
 object for one of its own. The same value under two schemas is two objects.
 
 ```ts
-import { decodeObject, defaultValidator, encodeObject, encodeSchema } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
 
-const login = encodeSchema(
+const login = await encodeSchema(
   {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object",
@@ -58,7 +59,8 @@ decodeObject(object.bytes, login).link === object.link;
 ## Validators
 
 Whether a value fits a schema is the validator's call. A validator compiles a
-schema once, when the schema is read, and the schema keeps the result. Every
+schema once, when the schema is read, and the schema keeps the result, so
+reading a schema returns a promise and reading an object does not. Every
 validator works offline and keeps to three rules:
 
 - A `$ref` it cannot resolve within the schema or the builtin schemas fails
@@ -71,18 +73,34 @@ expression dialect `pattern` uses, is the validator's own. A signature
 commits to bytes, so a stricter validator can replace another without any
 blob changing.
 
-`defaultValidator` wraps
-[`@cfworker/json-schema`](https://www.npmjs.com/package/@cfworker/json-schema),
+`defaultValidator`, from `@estoc/object/default-validator`, wraps
+[`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
 which interprets schemas instead of generating code and so runs under a
-strict content security policy. It takes draft 2020-12 only and asserts
-`format`. A schema without `$id` can reference its own parts by fragment
-(`#/$defs/name`) and other schemas by absolute URL. Nothing is fetched, so an
-absolute URL resolves only to a builtin schema or to a part of the schema
-itself.
+strict content security policy. It takes draft 2020-12 only, in the schema
+and in any schema resource inside it. A schema without `$id` can reference
+its own parts by fragment (`#/$defs/name`) and other schemas by absolute URL.
+Nothing is fetched, so an absolute URL resolves only to a builtin schema or
+to a part of the schema itself, and not to the draft's meta-schemas either.
+It asserts the formats hyperjump's lite set knows (dates, times and
+durations, email, IP addresses, URIs and IRIs, UUIDs, URI templates, JSON
+pointers and regular expressions) and passes the rest.
 
-A `pattern` can backtrack exponentially. Validating a schema someone else
-wrote, as a viewer of arbitrary objects does, belongs in a worker with a time
-limit; an application that reads objects with schemas it pins is not exposed.
+hyperjump keeps one schema registry and one configuration for a JavaScript
+realm. Importing the default validator turns off hyperjump's fetching over
+http, https and file URLs and turns on format assertion for the realm, and
+the default validator compiles one schema at a time so that schemas do not
+see each other in the registry. Code in the same realm that configures
+hyperjump otherwise, or adds formats to it, changes the default validator's
+answers; such an application is better off with a validator of its own.
+
+A `pattern` can backtrack exponentially in the length of the string it
+tests. Pinning a schema keeps out patterns someone else wrote, but not data
+that sets off one of the application's own: under a pinned `^(a+)+$`, about
+thirty characters stall validation for seconds. Validate untrusted objects in
+a worker with a time limit, unless the schema's patterns and the length of
+the strings they test have been reviewed to keep validation cheap. A viewer
+of arbitrary objects, which also runs schemas someone else wrote, needs the
+worker in any case.
 
 ## Builtin schemas
 

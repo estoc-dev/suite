@@ -25,8 +25,8 @@ export type Check = (data: Json) => readonly string[];
  * - A dialect it does not support fails compilation.
  */
 export interface SchemaValidator {
-  /** Throws when the schema cannot be compiled. */
-  compile(schema: JsonSchema, builtins: ReadonlyMap<string, JsonSchema>): Check;
+  /** Rejects when the schema cannot be compiled. */
+  compile(schema: JsonSchema, builtins: ReadonlyMap<string, JsonSchema>): Promise<Check>;
 }
 
 /** A JSON Schema as a blob, compiled by the validator it was read with. */
@@ -49,16 +49,16 @@ export class Schema {
   }
 }
 
-export function decodeSchema(bytes: Uint8Array, validator: SchemaValidator): Schema {
+export async function decodeSchema(bytes: Uint8Array, validator: SchemaValidator): Promise<Schema> {
   const decoded = decodeJson(bytes);
   const { value } = decoded;
   if (!isJsonObject(value) || typeof value.$schema !== "string") {
     throw new Error("a schema is a JSON object naming its dialect in $schema");
   }
   const schema = value as JsonSchema;
-  return new Schema(schema, decoded.bytes, decoded.link, validator.compile(schema, builtins));
+  return new Schema(schema, decoded.bytes, decoded.link, await validator.compile(schema, builtins));
 }
 
-export function encodeSchema(schema: JsonSchema, validator: SchemaValidator): Schema {
+export async function encodeSchema(schema: JsonSchema, validator: SchemaValidator): Promise<Schema> {
   return decodeSchema(encodeJson(schema), validator);
 }

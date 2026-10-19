@@ -74,3 +74,10 @@ export const schemes: Readonly<Record<Scheme, Framing>> = {
       concatBytes(SOLANA_SIGNING_DOMAIN, Uint8Array.of(1, 1), publicKey, utf8ToBytes(text)),
   },
 };
+
+/** The length in bytes of a public key in each scheme. */
+export const publicKeyLengths: Readonly<Record<Scheme, number>> = {
+  ed25519: schemes.ed25519.curve.publicKeyLength,
+  eip191: schemes.eip191.curve.publicKeyLength,
+  "solana-offchain": schemes["solana-offchain"].curve.publicKeyLength,
+};

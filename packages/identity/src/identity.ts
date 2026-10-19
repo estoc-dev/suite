@@ -5,7 +5,7 @@ import { signingText } from "./signing-text.ts";
  * Something that signs, as others see it: a public key and the scheme it
  * signs in. Two identities are the same when both are; one key under two
  * schemes is two identities. An identity holds one key for good; acting
- * through other keys is for documents it signs to grant.
+ * through other keys is for objects it signs to grant.
  *
  * Ed25519 keys are 32 bytes; secp256k1 keys are 33 bytes, compressed, so
  * that each key has one form to compare.

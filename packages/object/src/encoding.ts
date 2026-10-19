@@ -1,5 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import canonicalize from "canonicalize";
 
 export type Json = null | boolean | number | string | readonly Json[] | JsonObject;
@@ -15,6 +15,19 @@ declare const target: unique symbol;
  * digits. `T` is what the blob decodes to.
  */
 export type Link<T> = `sha256:${string}` & { readonly [target]?: T };
+
+/** What a link looks like, as a pattern that a JSON Schema can use as well. */
+export const LINK_PATTERN = "^sha256:[0-9a-f]{64}$";
+const linkText = new RegExp(LINK_PATTERN);
+
+export function isLink(value: unknown): value is Link<never> {
+  return typeof value === "string" && linkText.test(value);
+}
+
+/** The SHA-256 digest that a link names. */
+export function digestOf(link: Link<unknown>): Uint8Array {
+  return hexToBytes(link.slice("sha256:".length));
+}
 
 export interface Decoded {
   readonly value: Json;

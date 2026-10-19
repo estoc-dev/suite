@@ -1,4 +1,5 @@
 import { publicKeyLengths } from "@estoc/identity";
+import { LINK_PATTERN } from "./encoding.ts";
 import type { JsonSchema } from "./schema.ts";
 
 export const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
@@ -20,7 +21,7 @@ const identity: JsonSchema = {
 const link: JsonSchema = {
   $schema: DRAFT_2020_12,
   type: "string",
-  pattern: "^sha256:[0-9a-f]{64}$",
+  pattern: LINK_PATTERN,
 };
 
 /**

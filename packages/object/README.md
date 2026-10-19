@@ -6,8 +6,9 @@ means comes from its schema, and who has to sign is up to the application
 that reads it.
 
 ```
-Schema   a JSON Schema document: a JSON object naming its dialect in $schema
-Object   {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
+Schema     a JSON Schema document: a JSON object naming its dialect in $schema
+Object     {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
+Signature  {"identity": <identity>, "object": "sha256:<the Object's link>", "signature": <hex>}
 ```
 
 ## Encoding
@@ -27,7 +28,7 @@ Object   {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
   amounts as strings when they have to be exact.
 - Blobs carry no type tag or version. A reader knows which kind it expects,
   and the kinds cannot pass for one another: an object has exactly its two
-  fields, and a schema has `$schema`.
+  fields, a signature its three, and a schema has `$schema`.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 
@@ -55,6 +56,37 @@ const login = await encodeSchema(
 const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 decodeObject(object.bytes, login).link === object.link;
 ```
+
+## Signatures
+
+A signature says one thing: this identity stands behind this object. It
+carries no role and no time. Who has to sign, and what makes a login or a
+contract hold, is for the application that reads the object, by the schema
+it pins; anyone can sign an object, whether the object names them or not.
+Each signature is a blob of its own, collected and passed on apart from the
+others over the same object.
+
+The identity is in the JSON form of `@estoc/identity`, the object is named
+by its link, and the signature is in lowercase hex. Reading a signature
+verifies it, and needs only the signature, since the digest it signs is in
+the link. A server that handed out a nonce can build the login object
+itself and take back only the signature:
+
+```ts
+import { SoftwareSigner } from "@estoc/identity";
+import { decodeSignature, sign } from "@estoc/object";
+
+const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
+
+const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
+const read = decodeSignature(signature.bytes);
+read.object === expected.link; // read.identity has logged in
+```
+
+One identity can sign one object more than once, as a wallet need not sign
+deterministically, and each of those signatures reads. Finding the
+signatures over an object takes an index by the link they name, so hand an
+object over together with its signatures.
 
 ## Validators
 

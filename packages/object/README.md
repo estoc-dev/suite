@@ -80,7 +80,7 @@ const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", sec
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 const read = decodeSignature(signature.bytes);
-read.object === expected.link; // read.identity has logged in
+const user = read.object === expected.link ? read.identity : undefined;
 ```
 
 One identity can sign one object more than once, as a wallet need not sign

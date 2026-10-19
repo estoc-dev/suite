@@ -32,7 +32,8 @@ export function encodeJson(value: Json): Uint8Array {
   return utf8ToBytes(text);
 }
 
-// The decoder keeps a byte order mark so that the comparison below sees it.
+// A decoder left to its defaults strips a leading byte order mark, and the
+// bytes would then pass as canonical; kept, it fails to parse as JSON.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /**

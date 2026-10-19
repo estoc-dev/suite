@@ -1,0 +1,92 @@
+# @estoc/object
+
+A JSON value written to a JSON Schema, encoded so that a value has one byte
+string and one link. An identity signs an object's link; what the value
+means comes from its schema, and who has to sign is up to the application
+that reads it.
+
+```
+Schema   a JSON Schema document: a JSON object naming its dialect in $schema
+Object   {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
+```
+
+## Encoding
+
+- A blob is the JCS ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
+  encoding of a JSON value, in UTF-8. Its link is `sha256:` followed by the
+  SHA-256 of those bytes in lowercase hex.
+- Decoding is strict: the bytes must be exactly the JCS encoding of the value
+  they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
+  or repeated, needless escapes, and numbers not written the shortest way
+  (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
+  refuses lone surrogates, NaN and Infinity. There are no further rules on
+  the JSON.
+- Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
+  `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
+  magnitude are exact in every language; write larger integers and decimal
+  amounts as strings when they have to be exact.
+- Blobs carry no type tag or version. A reader knows which kind it expects,
+  and the kinds cannot pass for one another: an object has exactly its two
+  fields, and a schema has `$schema`.
+- Encoding goes through the same checks as decoding, so what is encoded here
+  decodes again with the same validator.
+
+## Objects
+
+An object holds exactly `data` and `schema`, and its data has to fit the
+schema. Reading one takes the schema the reader expects and refuses an object
+written to any other, so an application does not mistake another schema's
+object for one of its own. The same value under two schemas is two objects.
+
+```ts
+import { decodeObject, defaultValidator, encodeObject, encodeSchema } from "@estoc/object";
+
+const login = encodeSchema(
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { audience: { type: "string" }, nonce: { type: "string" } },
+    required: ["audience", "nonce"],
+    additionalProperties: false,
+  },
+  defaultValidator,
+);
+const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
+decodeObject(object.bytes, login).link === object.link;
+```
+
+## Validators
+
+Whether a value fits a schema is the validator's call. A validator compiles a
+schema once, when the schema is read, and the schema keeps the result. Every
+validator works offline and keeps to three rules:
+
+- A `$ref` it cannot resolve within the schema or the builtin schemas fails
+  compilation, rather than the validation that happens to reach it.
+- The same schema and value give the same answer every time.
+- A dialect it does not support fails compilation.
+
+Anything else, such as whether `format` is asserted or which regular
+expression dialect `pattern` uses, is the validator's own. A signature
+commits to bytes, so a stricter validator can replace another without any
+blob changing.
+
+`defaultValidator` wraps
+[`@cfworker/json-schema`](https://www.npmjs.com/package/@cfworker/json-schema),
+which interprets schemas instead of generating code and so runs under a
+strict content security policy. It takes draft 2020-12 only and asserts
+`format`. A schema without `$id` can reference its own parts by fragment
+(`#/$defs/name`) and other schemas by absolute URL. Nothing is fetched, so an
+absolute URL resolves only to a builtin schema or to a part of the schema
+itself.
+
+A `pattern` can backtrack exponentially. Validating a schema someone else
+wrote, as a viewer of arbitrary objects does, belongs in a worker with a time
+limit; an application that reads objects with schemas it pins is not exposed.
+
+## Builtin schemas
+
+- `https://estoc.dev/schema/identity`: an identity in the JSON form of
+  `@estoc/identity`, `{"publicKey": <lowercase hex>, "scheme": <scheme>}`,
+  with the key at its scheme's length.
+- `https://estoc.dev/schema/link`: `sha256:` and 64 lowercase hex digits.

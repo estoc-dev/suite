@@ -1,0 +1,23 @@
+{
+  "name": "@estoc/object",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@estoc/identity": "workspace:*",
+    "@noble/hashes": "^2.4.0",
+    "canonicalize": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "~5.8.0",
+    "vitest": "^3.2.7"
+  }
+}

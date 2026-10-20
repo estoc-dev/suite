@@ -1,3 +1,4 @@
+import { equalBytes } from "@noble/curves/utils.js";
 import { schemes, type Scheme } from "./scheme.ts";
 import { signingText } from "./signing-text.ts";
 
@@ -27,4 +28,8 @@ export function verify(identity: Identity, digest: Uint8Array, signature: Uint8A
     signature.length === 64 &&
     curve.verify(signature, message(signingText(digest), publicKey), publicKey)
   );
+}
+
+export function sameIdentity(a: Identity, b: Identity): boolean {
+  return a.scheme === b.scheme && equalBytes(a.publicKey, b.publicKey);
 }

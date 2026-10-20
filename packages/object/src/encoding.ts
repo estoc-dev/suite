@@ -24,6 +24,10 @@ export function isLink(value: unknown): value is Link<never> {
   return typeof value === "string" && linkText.test(value);
 }
 
+export function linkOf(bytes: Uint8Array): Link<never> {
+  return `sha256:${bytesToHex(sha256(bytes))}` as const;
+}
+
 /** The SHA-256 digest that a link names. */
 export function digestOf(link: Link<unknown>): Uint8Array {
   return hexToBytes(link.slice("sha256:".length));
@@ -60,5 +64,5 @@ export function decodeJson(bytes: Uint8Array): Decoded {
   const value = JSON.parse(text) as Json;
   if (canonicalize(value) !== text) throw new Error("not in the canonical JSON form of RFC 8785");
   const owned = utf8ToBytes(text);
-  return { value, bytes: owned, link: `sha256:${bytesToHex(sha256(owned))}` as const };
+  return { value, bytes: owned, link: linkOf(owned) };
 }

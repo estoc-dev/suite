@@ -1,6 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { describe, expect, it, test } from "vitest";
-import { SoftwareSigner, verify, type Identity } from "../src/index.ts";
+import { sameIdentity, SoftwareSigner, verify, type Identity } from "../src/index.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const ed25519Signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
@@ -56,4 +56,20 @@ test("a signer keeps signing for its key after the caller changes the identity i
   const handedOut = ed25519Signer.identity;
   handedOut.publicKey[0]! ^= 1;
   expect(verify(ed25519Signer.identity, digest, await ed25519Signer.sign(digest))).toBe(true);
+});
+
+describe("sameIdentity", () => {
+  it("holds for the same key in the same scheme, held in different arrays", () => {
+    expect(sameIdentity(ed25519Signer.identity, structuredClone(ed25519Signer.identity))).toBe(true);
+  });
+
+  it("does not hold for the same key in another scheme", () => {
+    const solana = SoftwareSigner.fromSecretKey("solana-offchain", new Uint8Array(32).fill(1));
+    expect(sameIdentity(ed25519Signer.identity, solana.identity)).toBe(false);
+  });
+
+  it("does not hold for another key in the same scheme", () => {
+    const other = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2));
+    expect(sameIdentity(ed25519Signer.identity, other.identity)).toBe(false);
+  });
 });

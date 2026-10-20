@@ -56,15 +56,15 @@ export class Mailbox {
 }
 
 /**
- * Reads the mailbox that is a message's entry, with the transport whose
- * schema it is written to, and binds it once: the key, the transport and
- * the end. Refuses a mailbox that has ended by the clock.
+ * Reads the bytes of a mailbox with the transport whose schema it is written
+ * to, and binds it once: the key, the transport and the end. Refuses a
+ * mailbox that has ended by the clock.
  */
-export async function readMailbox(message: Message, { transports, clock = () => new Date() }: Options): Promise<Mailbox> {
-  const named = schemaOf(message.entry);
+export async function mailboxFrom(bytes: Uint8Array, { transports, clock = () => new Date() }: Options): Promise<Mailbox> {
+  const named = schemaOf(bytes);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);
-  const { data } = decodeObject(message.entry, transport.schema);
+  const { data } = decodeObject(bytes, transport.schema);
   // A transport may write its schema by hand, so the fields every mailbox
   // has are checked here and not left to it.
   if (typeof data !== "object" || data === null || Array.isArray(data)) throw new Error("a mailbox is a JSON object");

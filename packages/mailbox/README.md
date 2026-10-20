@@ -2,9 +2,9 @@
 
 A mailbox is where messages to someone can be sent. It is an object of
 `@estoc/object` naming the key that messages to it are sealed to and where
-a transport takes them. Holding a mailbox is enough to send: reading one
-gives a `Mailbox` that can `send`, and the sender does not deal with keys,
-encryption or transports.
+a transport takes them. Holding a mailbox is enough to send: `mailboxFrom`
+turns its bytes into a `Mailbox` that can `send`, and the sender does not
+deal with keys, encryption or transports.
 
 ```
 Mailbox  {"key": <x25519 public key>, "until"?: <RFC 3339 date-time>, <the transport's fields>…}
@@ -44,17 +44,17 @@ out a new one before it ends.
 ### The receiving side
 
 The receiver keeps 32 random secret bytes, makes a `MailboxKey` from them,
-and writes its public key into the mailbox. A mailbox is handed out as a
-Message whose entry is the mailbox itself, by hand or in a QR code:
+and writes its public key into the mailbox. It hands out the mailbox's
+bytes as it sees fit: by hand or in a QR code, alone or with the signature
+of whoever stands behind the mailbox.
 
 ```ts
 import { encodeObject } from "@estoc/object";
-import { encodeMessage, MailboxKey } from "@estoc/mailbox";
+import { MailboxKey } from "@estoc/mailbox";
 import { hex } from "@scure/base";
 
 const key = await MailboxKey.fromSecretKey(secretKey);
 const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: queueName, until: "2026-11-20T00:00:00Z" });
-const handedOut = encodeMessage({ entry: mailbox.bytes, blobs: [] });
 ```
 
 `open` takes the sealed bytes that a transport received and gives back the
@@ -70,18 +70,20 @@ const message = await key.open(sealed);
 ## Sending
 
 ```ts
-import { decodeMessage, readMailbox } from "@estoc/mailbox";
+import { mailboxFrom } from "@estoc/mailbox";
 
-const mailbox = await readMailbox(decodeMessage(handedOut), { transports: [transport] });
+const mailbox = await mailboxFrom(handedOut, { transports: [transport] });
 await mailbox.send({ entry: signature.bytes, blobs: [object.bytes] });
 ```
 
-`readMailbox` picks the transport whose schema the mailbox is written to,
-and refuses a mailbox of any transport it was not given. It checks `key`
-and `until` itself rather than trusting a transport's schema to, refuses a
-mailbox that has ended by the clock, and binds the key and the transport
-once. The `Mailbox` it returns shows neither, only `send`. The clock is the
-system's unless `clock` is given.
+`mailboxFrom` takes the bytes of a mailbox alone; who stands behind it is
+for the sender to read first, when that matters. It picks the transport
+whose schema the mailbox is written to, and refuses a mailbox of any
+transport it was not given. It checks `key` and `until` itself rather than
+trusting a transport's schema to, refuses a mailbox that has ended by the
+clock, and binds the key and the transport once. The `Mailbox` it returns
+shows neither, only `send`. The clock is the system's unless `clock` is
+given.
 
 `send` looks at `until` again by the clock at each send, and refuses once
 the mailbox has ended. Otherwise it encodes the message, seals it to the
@@ -101,8 +103,7 @@ encoding of `{"blobs": […], "entry": …}`, each blob in unpadded base64url
 ([RFC 4648 §5](https://www.rfc-editor.org/rfc/rfc4648#section-5)), carried
 as its bytes. The order of the blobs means nothing and a repeated blob is
 harmless. `decodeMessage` refuses any other encoding. Base64url rather than
-hex keeps a mailbox handed out with what it leads to small enough for a QR
-code.
+hex keeps a message a third smaller.
 
 ## Sealing
 

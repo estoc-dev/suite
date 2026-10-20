@@ -2,7 +2,7 @@ import { identityFromJson, identityToJson, sameIdentity, SoftwareSigner, type Id
 import { decodeObject, decodeSignature, encodeObject, encodeSchema, linkOf, sign, type EncodedObject, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MailboxKey, readMailbox, type Message } from "../src/index.ts";
+import { MailboxKey, mailboxFrom, type Message } from "../src/index.ts";
 import { MemoryNetwork, type Faults } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes. A message names
@@ -31,8 +31,7 @@ function readSigned({ entry, blobs }: Message, schema: Schema): { identity: Iden
 async function receiver(network: MemoryNetwork, fill: number, until?: string) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
-  const mailbox: Message = { entry: queue.mailbox(key.publicKey, until).bytes, blobs: [] };
-  return { mailbox, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
+  return { mailbox: queue.mailbox(key.publicKey, until).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
 }
 
 const chat = await encodeSchema(
@@ -64,9 +63,9 @@ describe("a chat line", () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sent = await signed(line, alice);
-    await (await readMailbox(atBob.mailbox, { transports: [network.transport] })).send(sent);
+    await (await mailboxFrom(atBob.mailbox, { transports: [network.transport] })).send(sent);
     const [received] = await atBob.take();
-    await (await readMailbox(atCarol.mailbox, { transports: [network.transport] })).send(received!);
+    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(received!);
     const [passed] = await atCarol.take();
     return { sent, received: received!, passed: passed! };
   };
@@ -106,9 +105,9 @@ describe("a one-time invitation", () => {
   const invite = async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const inviter = await receiver(network, 14, "2026-10-20T13:00:00Z");
-    const link = linkOf(inviter.mailbox.entry);
+    const link = linkOf(inviter.mailbox);
     const answer = async (guest: SoftwareSigner, at: Date) => {
-      const mailbox = await readMailbox(inviter.mailbox, { transports: [network.transport], clock: () => at });
+      const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport], clock: () => at });
       await mailbox.send(await signed(encodeObject(join, { invitation: link }), guest));
     };
     let used = false;
@@ -197,7 +196,7 @@ describe("a sale sent to a registry", () => {
   const withRegistry = async (faults: Faults) => {
     const network = await MemoryNetwork.create(defaultValidator, faults);
     const registry = await receiver(network, 15);
-    const mailbox = await readMailbox(registry.mailbox, { transports: [network.transport] });
+    const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
     return { send: async (party: SoftwareSigner) => mailbox.send(await signed(terms, party)), take: registry.take };
   };
 

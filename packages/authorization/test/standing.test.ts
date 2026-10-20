@@ -25,8 +25,7 @@ const hotToDeputy = await authorizations.authorize(deputy.identity, hot);
 
 const parts = ({ object, signature }: Signed) => [object.bytes, signature.bytes];
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-// Reads the entry's signature, with its object and the blobs of `given` to look up.
-const read = (entry: Signed, given: readonly Signed[] = [], at = now, link: Link<EncodedObject> = target.link) =>
+const readEntry = (entry: Signed, given: readonly Signed[] = [], at = now, link: Link<EncodedObject> = target.link) =>
   authorizations.readStanding(link, entry.signature.bytes, byLink([entry.object.bytes, ...given.flatMap(parts)]), at);
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
   identity: principal.identity,
@@ -45,21 +44,21 @@ describe("a standing", () => {
 
   it("through a proxy that a key signs is the wallet's that authorized the key", async () => {
     const proxy = await authorizations.proxy(target.link, [rootToHot], hot);
-    expect(read(proxy, [rootToHot])).toEqual(way(root, hot));
+    expect(readEntry(proxy, [rootToHot])).toEqual(way(root, hot));
   });
 
   it("passes along a chain of authorizations", async () => {
     const proxy = await authorizations.proxy(target.link, [rootToHot, hotToDeputy], deputy);
-    expect(read(proxy, [rootToHot, hotToDeputy])).toEqual(way(root, hot, deputy));
+    expect(readEntry(proxy, [rootToHot, hotToDeputy])).toEqual(way(root, hot, deputy));
   });
 
   it("by an agent's direct signature is the agent's own, as a witness's is", async () => {
-    expect(read(await signed(target, hot), [rootToHot])).toEqual(way(hot));
+    expect(readEntry(await signed(target, hot), [rootToHot])).toEqual(way(hot));
   });
 
   it("is not read from a signature over another object", async () => {
     const entry = await signed(other, root);
-    expect(() => read(entry)).toThrow(/is not written to/);
+    expect(() => readEntry(entry)).toThrow(/is not written to/);
   });
 });
 
@@ -68,41 +67,41 @@ describe("a proxy", () => {
     const proxy = await authorizations.proxy(target.link, [rootToHot], hot);
     for (const by of [root, deputy]) {
       const entry = await signed(proxy.object, by);
-      expect(() => read(entry, [rootToHot])).toThrow(/signed by the last agent/);
+      expect(() => readEntry(entry, [rootToHot])).toThrow(/signed by the last agent/);
     }
   });
 
   it("counts for no one when its chain does not connect", async () => {
     const strangerToDeputy = await authorizations.authorize(deputy.identity, stranger);
     const proxy = await unchecked([rootToHot, strangerToDeputy], deputy);
-    expect(() => read(proxy, [rootToHot, strangerToDeputy])).toThrow(/signed by the agent of the one before it/);
+    expect(() => readEntry(proxy, [rootToHot, strangerToDeputy])).toThrow(/signed by the agent of the one before it/);
   });
 
   it("counts for no one when its chain holds a signature over another schema's object of the same shape", async () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const delegation = await signed(encodeObject(lookalike, { agent: identityToJson(hot.identity) }), root);
     const proxy = await unchecked([delegation], hot);
-    expect(() => read(proxy, [delegation])).toThrow(/is not written to/);
+    expect(() => readEntry(proxy, [delegation])).toThrow(/is not written to/);
   });
 
   it("counts for no one when its chain holds a proxy", async () => {
     const inner = await authorizations.proxy(other.link, [rootToHot], hot);
     const proxy = await unchecked([inner], hot);
-    expect(() => read(proxy, [rootToHot, inner])).toThrow(/is not written to/);
+    expect(() => readEntry(proxy, [rootToHot, inner])).toThrow(/is not written to/);
   });
 
   it("counts for no one when its agent signs it only through another proxy", async () => {
     const proxy = encodeObject(proxySchemaRead, { chain: [rootToHot.signature.link], target: target.link });
     const overProxy = await authorizations.proxy(proxy.link, [hotToDeputy], deputy);
     const given = [rootToHot, hotToDeputy];
-    expect(read(overProxy, given, now, proxy.link)).toEqual(way(hot, deputy));
-    expect(() => read(overProxy, given)).toThrow(/the proxy is for/);
+    expect(readEntry(overProxy, given, now, proxy.link)).toEqual(way(hot, deputy));
+    expect(() => readEntry(overProxy, given)).toThrow(/the proxy is for/);
   });
 
   it("counts on its target and on no other object", async () => {
     const proxy = await authorizations.proxy(other.link, [rootToHot], hot);
-    expect(() => read(proxy, [rootToHot])).toThrow(/the proxy is for/);
-    expect(read(proxy, [rootToHot], now, other.link)).toEqual(way(root, hot));
+    expect(() => readEntry(proxy, [rootToHot])).toThrow(/the proxy is for/);
+    expect(readEntry(proxy, [rootToHot], now, other.link)).toEqual(way(root, hot));
   });
 
   it.each([0, 1])("counts for no one once authorization %i of its chain has ended", async (ended) => {
@@ -110,20 +109,19 @@ describe("a proxy", () => {
     const first = await authorizations.authorize(hot.identity, root, until(0));
     const second = await authorizations.authorize(deputy.identity, hot, until(1));
     const proxy = await authorizations.proxy(target.link, [first, second], deputy);
-    expect(() => read(proxy, [first, second])).toThrow(/ended at 2026-10-20T11:59:59Z/);
+    expect(() => readEntry(proxy, [first, second])).toThrow(/ended at 2026-10-20T11:59:59Z/);
   });
 });
 
 describe("an authorization with an end", () => {
-  // A reading, at a given time, of a proxy through an authorization that ends at `until`.
-  const through = async (until: string) => {
+  const readThroughUntil = async (until: string) => {
     const grant = await authorizations.authorize(hot.identity, root, until);
     const proxy = await authorizations.proxy(target.link, [grant], hot);
-    return (at: Date) => read(proxy, [grant], at);
+    return (at: Date) => readEntry(proxy, [grant], at);
   };
 
   it("counts while the reader's clock is before its end, and not from its end on", async () => {
-    const readAt = await through("2026-10-20T12:00:01Z");
+    const readAt = await readThroughUntil("2026-10-20T12:00:01Z");
     expect(readAt(new Date("2026-10-20T12:00:00Z"))).toEqual(way(root, hot));
     expect(readAt(new Date("2026-10-20T12:00:00.999Z"))).toEqual(way(root, hot));
     expect(() => readAt(new Date("2026-10-20T12:00:01Z"))).toThrow(/ended at/);
@@ -132,8 +130,8 @@ describe("an authorization with an end", () => {
 
   it("is compared as an instant, not as text, when written with an offset", async () => {
     // At 12:00:00Z, both ends sort later as text; only the first is later in time.
-    expect((await through("2026-10-20T20:00:01+08:00"))(now)).toEqual(way(root, hot));
-    const ended = await through("2026-10-20T19:59:59+08:00");
+    expect((await readThroughUntil("2026-10-20T20:00:01+08:00"))(now)).toEqual(way(root, hot));
+    const ended = await readThroughUntil("2026-10-20T19:59:59+08:00");
     expect(() => ended(now)).toThrow(/ended at/);
   });
 
@@ -142,13 +140,13 @@ describe("an authorization with an end", () => {
     const [blindAuthorization, blindProxy] = await Promise.all(
       [authorizationSchema, proxySchema].map((schema) => encodeSchema(schema, formatBlind)),
     );
-    const through = async (until: string) => {
+    const blindReadThroughUntil = async (until: string) => {
       const grant = await signed(encodeObject(blindAuthorization!, { agent: identityToJson(hot.identity), until }), root);
       const proxy = await signed(encodeObject(blindProxy!, { chain: [grant.signature.link], target: target.link }), hot);
       return () => blind.readStanding(target.link, proxy.signature.bytes, byLink([...parts(grant), proxy.object.bytes]), now);
     };
-    expect((await through("2027-01-01T00:00:00Z"))()).toEqual(way(root, hot));
-    expect(await through("2027-01-01")).toThrow(RangeError);
+    expect((await blindReadThroughUntil("2027-01-01T00:00:00Z"))()).toEqual(way(root, hot));
+    expect(await blindReadThroughUntil("2027-01-01")).toThrow(RangeError);
   });
 });
 

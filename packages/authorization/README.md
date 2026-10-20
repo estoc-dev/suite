@@ -130,8 +130,13 @@ wrong bytes from a store make the reading fail, and do not make it read
 another standing. Blobs the entry does not lead to are not read.
 
 ```ts
-// The browser key sends its signature over the Proxy as the entry, with the Proxy and the authorization.
-const blobs = new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
+import { linkOf } from "@estoc/object";
+
+// The browser key sends its signature over the Proxy as the entry, with the blobs it leads to.
+const entry = proxy.signature.bytes;
+const sent = [proxy.object.bytes, received.signature.bytes, received.object.bytes];
+// The server files those blobs by link, and reads the entry against the login object it expects.
+const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
 authorizations.readStanding(login.link, entry, blobs, new Date());
 // { identity: wallet.identity, agents: [browserKey.identity] }
 ```

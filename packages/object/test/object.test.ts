@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, type Json } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, schemaOf, type Json } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -18,6 +18,14 @@ const login = await encodeSchema(
   defaultValidator,
 );
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
+const malformed: [string, string][] = [
+  ["without data", `{"schema":"${anything.link}"}`],
+  ["without a schema", '{"data":1}'],
+  ["with a field besides data and schema", `{"data":1,"note":"x","schema":"${anything.link}"}`],
+  ["whose schema is not a link", '{"data":1,"schema":"login"}'],
+  ["whose schema is the schema itself", `{"data":1,"schema":{"$schema":"${DRAFT}"}}`],
+  ["that is an array", `[1,"${anything.link}"]`],
+];
 
 describe("an object", () => {
   it.each<[string, Json]>([
@@ -53,15 +61,19 @@ describe("an object", () => {
     expect(() => decodeObject(encodeObject(login, greeting).bytes, anything)).toThrow();
   });
 
-  it.each([
-    ["without data", `{"schema":"${anything.link}"}`],
-    ["without a schema", '{"data":1}'],
-    ["with a field besides data and schema", `{"data":1,"note":"x","schema":"${anything.link}"}`],
-    ["whose schema is not a link", '{"data":1,"schema":"login"}'],
-    ["whose schema is the schema itself", `{"data":1,"schema":{"$schema":"${DRAFT}"}}`],
-    ["that is an array", `[1,"${anything.link}"]`],
-  ])("is refused %s", (_, text) => {
+  it.each(malformed)("is refused %s", (_, text) => {
     expect(() => decodeObject(utf8(text), anything)).toThrow();
+  });
+});
+
+describe("the schema an object names", () => {
+  it("is read without the schema, whether or not the data fits it", () => {
+    expect(schemaOf(encodeObject(login, greeting).bytes)).toBe(login.link);
+    expect(schemaOf(utf8(`{"data":1,"schema":"${login.link}"}`))).toBe(login.link);
+  });
+
+  it.each(malformed)("is not read from an object %s", (_, text) => {
+    expect(() => schemaOf(utf8(text))).toThrow();
   });
 });
 

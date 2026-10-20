@@ -1,0 +1,24 @@
+{
+  "name": "@estoc/mailbox",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@estoc/object": "workspace:*",
+    "@hpke/core": "1.9.0",
+    "@scure/base": "^2.4.0",
+    "temporal-polyfill": "^1.0.6"
+  },
+  "devDependencies": {
+    "@estoc/identity": "workspace:*",
+    "@types/node": "^26.6.2",
+    "typescript": "~5.8.0",
+    "vitest": "^3.2.7"
+  }
+}

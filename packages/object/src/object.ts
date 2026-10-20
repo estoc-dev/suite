@@ -1,4 +1,4 @@
-import { decodeJson, encodeJson, isJsonObject, type Json, type Link } from "./encoding.ts";
+import { decodeJson, encodeJson, isJsonObject, isLink, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -20,11 +20,7 @@ export interface EncodedObject {
  */
 export function decodeObject(bytes: Uint8Array, schema: Schema): EncodedObject {
   const decoded = decodeJson(bytes);
-  const { value } = decoded;
-  if (!isJsonObject(value) || Object.keys(value).sort().join() !== "data,schema") {
-    throw new Error("an object has the fields data and schema");
-  }
-  const { data, schema: named } = value as { data: Json; schema: Json };
+  const { data, schema: named } = fieldsOf(decoded.value);
   if (named !== schema.link) throw new Error(`the object is not written to ${schema.link}`);
   const problems = schema.validate(data);
   if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
@@ -33,4 +29,22 @@ export function decodeObject(bytes: Uint8Array, schema: Schema): EncodedObject {
 
 export function encodeObject(schema: Schema, data: Json): EncodedObject {
   return decodeObject(encodeJson({ data, schema: schema.link }), schema);
+}
+
+/**
+ * The link of the schema an object names, read before the object is: a
+ * reader that takes objects of several schemas picks by it which schema to
+ * read the object with.
+ */
+export function schemaOf(bytes: Uint8Array): Link<Schema> {
+  const { schema } = fieldsOf(decodeJson(bytes).value);
+  if (!isLink(schema)) throw new Error("an object names its schema by link");
+  return schema;
+}
+
+function fieldsOf(value: Json): { readonly data: Json; readonly schema: Json } {
+  if (!isJsonObject(value) || Object.keys(value).sort().join() !== "data,schema") {
+    throw new Error("an object has the fields data and schema");
+  }
+  return value as { data: Json; schema: Json };
 }

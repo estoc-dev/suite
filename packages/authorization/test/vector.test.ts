@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, type EncodedObject, type Link } from "@estoc/object";
+import { encodeSchema, linkOf, type EncodedObject, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/index.ts";
@@ -62,8 +62,8 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
     const read = authorizations.readAuthorization(utf8(grantText), utf8(authorizationText));
     expect(read.authorizer).toEqual(root.identity);
     expect(read.agent).toEqual(hot.identity);
-    const evidence = authorizations.evidenceFrom([authorizationText, grantText, proxyText, proxySignatureText].map(utf8));
-    const standing = authorizations.standingBehind(target, evidence, new Date("2026-12-31T23:59:59Z"));
-    expect(standing).toEqual([{ identity: root.identity, agents: [hot.identity] }]);
+    const blobs = new Map<string, Uint8Array>([authorizationText, grantText, proxyText].map((text) => [linkOf(utf8(text)), utf8(text)]));
+    const standing = authorizations.readStanding(target, utf8(proxySignatureText), blobs, new Date("2026-12-31T23:59:59Z"));
+    expect(standing).toEqual({ identity: root.identity, agents: [hot.identity] });
   });
 });

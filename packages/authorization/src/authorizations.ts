@@ -41,15 +41,9 @@ export interface Standing {
   readonly agents: readonly Identity[];
 }
 
-/**
- * Where a reading finds blobs: a store and its index, neither of which is
- * part of the format. The index only offers candidates and the reading
- * checks each one, so an index that offers too much changes nothing.
- */
-export interface Evidence {
-  blob(link: Link<unknown>): Uint8Array | undefined;
-  signaturesOver(link: Link<EncodedObject>): Iterable<Signature>;
-  proxiesFor(link: Link<EncodedObject>): Iterable<EncodedObject>;
+/** Blobs by their links: a Map, or a store that holds blobs by content. */
+export interface Blobs {
+  get(link: Link<unknown>): Uint8Array | undefined;
 }
 
 type AuthorizationData = { readonly agent: IdentityJson; readonly until?: string };
@@ -91,88 +85,37 @@ export class Authorizations {
    * reader counts no other proxy, so no other is signed.
    */
   async proxy(target: Link<EncodedObject>, chain: readonly Authorization[], signer: Signer): Promise<Signed> {
-    const last = chain.at(-1);
-    if (last === undefined) throw new Error("a proxy names at least one authorization");
-    if (!connects(chain)) throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
-    if (!sameIdentity(last.agent, signer.identity)) throw new Error("a proxy is signed by the last agent in its chain");
+    checkChain(chain, signer.identity);
     const object = encodeObject(this.#proxy, { target, chain: chain.map(({ signature }) => signature.link) });
     return { object, signature: await sign(object, signer) };
   }
 
   /**
-   * Evidence held in memory: every blob by its link, signatures by the
-   * object they are over, and proxies by their target. A blob that is
-   * neither a signature nor a proxy is kept by its link alone.
+   * Reads how an identity stands behind `target` by one signature, `entry`,
+   * at the reader's clock `now`. An entry over `target` is its signer's own;
+   * an entry over a Proxy for `target` is the chain's first authorizer's,
+   * through the chain's agents. The blobs the entry leads to are looked up in
+   * `blobs` by link, and nothing else there is read. Throws when the entry
+   * does not stand anyone behind `target`, saying why.
    */
-  evidenceFrom(blobs: Iterable<Uint8Array>): Evidence {
-    const byLink = new Map<string, Uint8Array>();
-    const signatures = new Map<string, Signature[]>();
-    const proxies = new Map<string, EncodedObject[]>();
-    for (const blob of blobs) {
-      const bytes = new Uint8Array(blob);
-      const link = linkOf(bytes);
-      if (byLink.has(link)) continue;
-      byLink.set(link, bytes);
-      const signature = attempt(() => decodeSignature(bytes));
-      if (signature !== undefined) append(signatures, signature.object, signature);
-      const proxy = attempt(() => decodeObject(bytes, this.#proxy));
-      if (proxy !== undefined) append(proxies, (proxy.data as ProxyData).target, proxy);
-    }
-    return {
-      blob: (link) => byLink.get(link),
-      signaturesOver: (link) => signatures.get(link) ?? [],
-      proxiesFor: (link) => proxies.get(link) ?? [],
-    };
-  }
-
-  /**
-   * Every way an identity stands behind `target` by the reader's clock
-   * `now`, each listed once. A way that misses a blob, or has one that does
-   * not read, is left out and the others still count; at the same `now`,
-   * more evidence only adds to the list.
-   */
-  standingBehind(target: Link<EncodedObject>, evidence: Evidence, now: Date): Standing[] {
-    const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
-    const standings: Standing[] = [];
-    const add = (standing: Standing) => {
-      if (!standings.some((other) => sameStanding(other, standing))) standings.push(standing);
-    };
-    for (const identity of signersOf(target, evidence)) add({ identity, agents: [] });
-    for (const proxy of evidence.proxiesFor(target)) {
-      const standing = this.#standingThrough(proxy, target, evidence, instant);
-      if (standing !== undefined) add(standing);
-    }
-    return standings;
-  }
-
-  #standingThrough(
-    proxy: EncodedObject,
-    target: Link<EncodedObject>,
-    evidence: Evidence,
-    now: Temporal.Instant,
-  ): Standing | undefined {
-    if (proxy.schema.link !== this.#proxy.link) return undefined;
+  readStanding(target: Link<EncodedObject>, entry: Uint8Array, blobs: Blobs, now: Date): Standing {
+    const signature = decodeSignature(entry);
+    if (signature.object === target) return { identity: signature.identity, agents: [] };
+    const proxy = decodeObject(blobAt(blobs, signature.object), this.#proxy);
     const { target: named, chain: links } = proxy.data as ProxyData;
-    if (named !== target) return undefined;
-    const chain: Authorization[] = [];
-    for (const link of links) {
-      const authorization = this.#authorizationAt(link, evidence);
-      if (authorization === undefined || !inForce(authorization, now)) return undefined;
-      chain.push(authorization);
-    }
-    const [first] = chain;
-    const last = chain.at(-1);
-    if (first === undefined || last === undefined || !connects(chain)) return undefined;
-    if (!signersOf(proxy.link, evidence).some((identity) => sameIdentity(identity, last.agent))) return undefined;
-    return { identity: first.authorizer, agents: chain.map(({ agent }) => agent) };
-  }
-
-  #authorizationAt(link: Link<Signature>, evidence: Evidence): Authorization | undefined {
-    const signatureBytes = evidence.blob(link);
-    const signature = signatureBytes && attempt(() => decodeSignature(signatureBytes));
-    if (signature?.link !== link) return undefined;
-    const objectBytes = evidence.blob(signature.object);
-    return objectBytes && attempt(() => this.#authorizationFrom(signature, objectBytes));
+    if (named !== target) throw new Error(`the proxy is for ${named}, not ${target}`);
+    const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
+    const chain = links.map((link) => {
+      const granted = decodeSignature(blobAt(blobs, link));
+      const authorization = this.#authorizationFrom(granted, blobAt(blobs, granted.object));
+      const until = endOf(authorization.object);
+      if (until !== undefined && Temporal.Instant.compare(instant, until) >= 0) {
+        throw new Error(`the authorization ${link} ended at ${until}`);
+      }
+      return authorization;
+    });
+    checkChain(chain, signature.identity);
+    return { identity: chain[0].authorizer, agents: chain.map(({ agent }) => agent) };
   }
 
   #authorizationFrom(signature: Signature, bytes: Uint8Array): Authorization {
@@ -201,37 +144,21 @@ function authorizationOf(object: EncodedObject, signature: Signature): Authoriza
   return { object, signature, authorizer: signature.identity, agent: identityFromJson(agent) };
 }
 
-function inForce(authorization: Authorization, now: Temporal.Instant): boolean {
-  const until = endOf(authorization.object);
-  return until === undefined || Temporal.Instant.compare(now, until) < 0;
-}
-
-function connects(chain: readonly Authorization[]): boolean {
-  return chain.every((authorization, i) => i === 0 || sameIdentity(chain[i - 1]!.agent, authorization.authorizer));
-}
-
-function signersOf(link: Link<EncodedObject>, evidence: Evidence): Identity[] {
-  return [...evidence.signaturesOver(link)].filter(({ object }) => object === link).map(({ identity }) => identity);
-}
-
-function sameStanding(a: Standing, b: Standing): boolean {
-  return (
-    sameIdentity(a.identity, b.identity) &&
-    a.agents.length === b.agents.length &&
-    a.agents.every((agent, i) => sameIdentity(agent, b.agents[i]!))
-  );
-}
-
-function attempt<T>(read: () => T): T | undefined {
-  try {
-    return read();
-  } catch {
-    return undefined;
+function checkChain(
+  chain: readonly Authorization[],
+  signer: Identity,
+): asserts chain is readonly [Authorization, ...Authorization[]] {
+  const last = chain.at(-1);
+  if (last === undefined) throw new Error("a proxy names at least one authorization");
+  if (!chain.every((authorization, i) => i === 0 || sameIdentity(chain[i - 1]!.agent, authorization.authorizer))) {
+    throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
   }
+  if (!sameIdentity(last.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
 }
 
-function append<T>(index: Map<string, T[]>, key: string, value: T): void {
-  const values = index.get(key);
-  if (values === undefined) index.set(key, [value]);
-  else values.push(value);
+function blobAt(blobs: Blobs, link: Link<unknown>): Uint8Array {
+  const bytes = blobs.get(link);
+  if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+  if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);
+  return bytes;
 }

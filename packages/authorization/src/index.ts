@@ -2,7 +2,7 @@ export {
   loadAuthorizations,
   type Authorization,
   type Authorizations,
-  type Evidence,
+  type Blobs,
   type Signed,
   type Standing,
 } from "./authorizations.ts";

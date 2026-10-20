@@ -3,8 +3,9 @@
 One identity lets another act for it, offline. It signs an Authorization
 naming its agent. When the agent stands behind an object for it, the agent
 does not sign that object: it signs a Proxy, which names the object and the
-chain of authorizations it acts through. A reader then finds everyone who
-stands behind an object, by their own signature or through agents.
+chain of authorizations it acts through. A reader takes one signature and
+the blobs it leads to, and reads who stands behind the object by it, and
+through which agents.
 
 ```
 Authorization  {"agent": <identity>, "until"?: <RFC 3339 date-time>}, signed by the authorizer
@@ -65,7 +66,7 @@ record is the application's state, not part of the format.
 ## Proxies
 
 A Proxy says that the last agent in `chain` stands behind `target` for the
-first authorizer in `chain`. Each entry of `chain` is the link of a
+first authorizer in `chain`. Each item of `chain` is the link of a
 signature over an Authorization, starting with the principal's, and each
 authorization after the first is signed by the agent of the one before. The
 chain names signatures rather than Authorization objects because anyone can
@@ -94,44 +95,48 @@ chain, and the reader checks each step without guessing.
 
 ## Reading
 
-`standingBehind(target, evidence, now)` lists every way an identity stands
-behind `target`. An identity P stands behind an object T when there is
+`readStanding(target, entry, blobs, now)` reads how an identity stands
+behind `target` by one signature, `entry`:
 
-- P's signature over T, or
-- a Proxy whose target is T, where
-  - every entry of the chain reads as a signature over an Authorization,
-  - the first entry is signed by P,
-  - the agent of each entry signed the next one,
-  - the last agent signed the Proxy, and
+- an entry over `target` is its signer's own;
+- an entry over a Proxy whose target is `target` is the first authorizer's
+  in the chain, when
+  - every link in the chain leads to a signature over an Authorization,
+  - the agent of each authorization signed the next one,
+  - the last agent is the one who signed the Proxy, and
   - every `until` in the chain is after `now`.
 
-Each way comes back as the principal and its agents in order, with no
-agents for a direct signature, and is listed once. The entries of a chain
-and the signature over a Proxy have to be direct signatures, so a proxy
-cannot sit in a chain, and a Proxy cannot itself be signed through another.
-Authorizing others lengthens the chain within one Proxy, and the reading
-does not recurse. A chain has no length limit: whether to accept agents,
-and how many, is up to the application, as is who has to stand behind an
-object for it to hold.
+The result is the principal and its agents in order, with no agents for a
+direct signature. An entry that stands no one behind `target` throws,
+saying why, such as which authorization has ended.
 
-A missing blob, or one that does not read, leaves out the way that needed it
-and no other; the reading itself does not fail. With no revocation, more
-evidence at the same `now` only adds ways.
+The signatures a chain links to, and the entry itself, are direct signatures,
+so a proxy cannot sit in a chain, and a Proxy cannot itself be signed
+through another. Authorizing others lengthens the chain within one Proxy,
+and the reading does not recurse. A chain has no length limit: whether to
+accept agents, and how many, is up to the application, as is who has to
+stand behind an object for it to hold.
 
 Two identities are the same when their schemes and their public key bytes
 are, as `sameIdentity` in `@estoc/identity` compares them.
 
-### Evidence
+### Blobs
 
-Finding the signatures and proxies over an object takes an index, which
-belongs to a store and not to the format. A reading takes any `Evidence`
-and checks what it offers, so an index that offers too much changes
-nothing. `evidenceFrom` builds one in memory from a set of blobs: every blob
-by its link, signatures by the object they are over, and proxies by their
-target. A blob that is neither is kept by its link alone.
+Every link from the entry points inward, to the Proxy, its chain and the
+authorizations, so the reading only looks blobs up by link. `blobs` is
+anything with `get(link)`: a `Map`, or a store that holds blobs by content.
+The reading checks that each blob it gets has the link it asked for, so
+wrong bytes from a store make the reading fail, and do not make it read
+another standing. Blobs the entry does not lead to are not read.
 
 ```ts
-const evidence = authorizations.evidenceFrom(blobs);
-authorizations.standingBehind(login.link, evidence, new Date());
-// [{ identity: wallet.identity, agents: [browserKey.identity] }]
+// The browser key sends its signature over the Proxy as the entry, with the Proxy and the authorization.
+const blobs = new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
+authorizations.readStanding(login.link, entry, blobs, new Date());
+// { identity: wallet.identity, agents: [browserKey.identity] }
 ```
+
+To find everyone who stands behind an object, the application reads each entry
+it holds. Finding those entries in a store takes an index from objects to
+the signatures over them and to the proxies for them; that index belongs
+to the store, and an entry it offers wrongly only fails to read.

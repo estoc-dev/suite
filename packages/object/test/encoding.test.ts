@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeObject, encodeSchema } from "../src/index.ts";
+import { decodeObject, encodeObject, encodeSchema, linkOf } from "../src/index.ts";
 
 const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -58,4 +59,11 @@ test("a string is written as UTF-8 and reads back", () => {
 
 test("a lone surrogate cannot be encoded", () => {
   expect(() => encodeObject(anything, "\ud800")).toThrow();
+});
+
+test("any bytes, JSON or not, are linked by their SHA-256, as a decoded blob is", () => {
+  const bytes = utf8("not JSON");
+  expect(linkOf(bytes)).toBe(`sha256:${createHash("sha256").update(bytes).digest("hex")}`);
+  const object = encodeObject(anything, "hello");
+  expect(linkOf(object.bytes)).toBe(object.link);
 });

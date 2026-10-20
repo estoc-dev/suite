@@ -31,6 +31,8 @@ Signature  {"identity": <identity>, "object": "sha256:<the Object's link>", "sig
   fields, a signature its three, and a schema has `$schema`.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
+- `encodeJson` and `decodeJson` are this encoding on its own, for formats
+  built on it that are not objects.
 
 ## Objects
 
@@ -56,6 +58,10 @@ const login = await encodeSchema(
 const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 decodeObject(object.bytes, login).link === object.link;
 ```
+
+A reader that takes objects of several schemas, such as one per kind of
+mailbox, reads the link of the schema an object names with `schemaOf`, picks
+the schema it holds under that link, and reads the object with it.
 
 ## Signatures
 

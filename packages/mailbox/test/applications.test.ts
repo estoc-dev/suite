@@ -19,7 +19,6 @@ const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Messag
   blobs: [object.bytes],
 });
 
-// The entry's signature and the object it signs, found among the blobs.
 function readSigned({ entry, blobs }: Message, schema: Schema): { identity: Identity; object: EncodedObject } {
   const signature = decodeSignature(entry);
   const object = blobs.find((bytes) => linkOf(bytes) === signature.object);
@@ -27,7 +26,6 @@ function readSigned({ entry, blobs }: Message, schema: Schema): { identity: Iden
   return { identity: signature.identity, object: decodeObject(object, schema) };
 }
 
-// Someone who receives at a mailbox on a network and hands it out.
 async function receiver(network: MemoryNetwork, fill: number, until?: string) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
@@ -133,7 +131,7 @@ describe("a one-time invitation", () => {
     expect(await letIn()).toEqual([]);
   });
 
-  it("takes no answer from its end on", async () => {
+  it("cannot be answered from its end on, by the guest's clock", async () => {
     const { answer, letIn } = await invite();
     await expect(answer(dave, new Date("2026-10-20T13:00:00Z"))).rejects.toThrow(/ended at/);
     expect(await letIn()).toEqual([]);

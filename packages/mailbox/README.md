@@ -120,8 +120,9 @@ to end is the same whatever carries it.
 ## Who sent a message
 
 Base mode seals to the receiver's key alone, so the sealed bytes do not say
-who sealed them, and neither the transport nor anyone passing them on learns
-the sender or the content.
+who sealed them, and only the receiver's key opens them. A transport can
+still learn who hands it sealed bytes, from the connection or from the
+credentials it asks for.
 
 A signature does not say who sent a message either. Anyone can pass on what
 someone else signed, and passing on a signed contract is ordinary use; the
@@ -131,8 +132,9 @@ chat, writes the recipient into its own object, as `to`, so that it is
 signed with the content.
 
 Authenticated modes, such as HPKE's auth mode or DIDComm's authcrypt, are
-not used: they need the sender to hold an x25519 key the receiver knows,
-so a sender would have to be reachable before it could send.
+not used: they need the sender to hold an x25519 key that the receiver
+already knows, which a sender that has only been handed a mailbox does not
+have.
 
 ## Transports
 

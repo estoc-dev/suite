@@ -48,7 +48,6 @@ export class MailboxKey {
     return this.#publicKey.slice();
   }
 
-  /** Opens bytes sealed to this key, and reads the message inside. */
   async open(sealed: Uint8Array): Promise<Message> {
     const { encSize } = suite.kem;
     let plaintext: ArrayBuffer;

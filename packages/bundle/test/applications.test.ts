@@ -27,7 +27,7 @@ const schemaFor = (title: string, properties: JsonObject) =>
     { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
     defaultValidator,
   );
-const handOver = (root: EncodedObject, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
+const handOver = (root: EncodedObject | Signature, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
 
 function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
   const bytes = bundle.get(link);
@@ -76,21 +76,18 @@ describe("a card", () => {
 });
 
 const chat = await schemaFor("Chat message", { text: { type: "string" } });
-const signedEnvelope = await schemaFor("Signed", { signature: LINK });
 
-// A chat message travels as an envelope naming the signature over it.
 function readMessage(bundle: Bundle) {
-  const { signature } = decodeObject(bundle.root, signedEnvelope).data as { signature: Link<Signature> };
-  const read = decodeSignature(blobAt(bundle, signature));
+  const read = decodeSignature(bundle.root);
   return { from: read.identity, message: decodeObject(blobAt(bundle, read.object), chat).data };
 }
 
 describe("a chat message", () => {
-  it("reads through the signature its envelope names as the message from its signer", async () => {
+  it("reads through the signature at its root as the message from its signer", async () => {
     const alice = signer("ed25519", 1);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await sign(message, alice);
-    const bundle = handOver(encodeObject(signedEnvelope, { signature: signature.link }), [signature.bytes, message.bytes]);
+    const bundle = handOver(signature, [message.bytes]);
     expect(readMessage(bundle)).toEqual({ from: alice.identity, message: { text: "See you at noon." } });
   });
 });
@@ -100,7 +97,9 @@ const standingEnvelope = await schemaFor("Stood behind", { message: LINK, signat
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through
-// agents. The bundle is the blobs that the reading follows that signature into.
+// agents. Reading the standing takes the message as well as the signature, so
+// the envelope names both. The bundle is the blobs that the reading follows
+// that signature into.
 function readSent(bundle: Bundle, now: Date) {
   const named = decodeObject(bundle.root, standingEnvelope).data as { message: Link<EncodedObject>; signature: Link<Signature> };
   const { identity, agents } = authorizations.readStanding(named.message, blobAt(bundle, named.signature), bundle, now);

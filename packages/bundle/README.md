@@ -16,9 +16,9 @@ from a zip. `writeBundle` gives the map back.
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
 
-const files = writeBundle(envelope, [signature.bytes, message.bytes]);
+const files = writeBundle(signature, [message.bytes]);
 const bundle = readBundle(files);
-bundle.link;              // envelope.link
+bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
 ```
 
@@ -28,7 +28,9 @@ A bundle has a root, and the root is an object, so a reader knows what a
 bundle is by the root's schema. Loose files packed together would leave it
 guessing. `index.json` has to be the canonical JSON of an object, with
 exactly the fields `data` and `schema`. An `index.json` formatted by hand,
-or one that holds a signature or a schema, makes the whole bundle refused.
+or one that holds a schema, makes the whole bundle refused. A signature is
+an object too, so it can be the root, with what it is over carried in the
+bundle.
 
 `index.json` is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is
@@ -71,14 +73,13 @@ could not read even the root of a card carrying a signature in it, and one
 bad signature that nothing refers to would refuse the whole bundle.
 
 A reader starts at the root, reads it with the schema it expects, and
-follows its links with `get`. To carry signed content, the root refers to
-signatures over it: a card lists the signatures over what it holds, and a
-chat message travels as an envelope naming the signature over it. The
-reader goes through each signature to the object it is over.
+follows its links with `get`. To carry signed content, the root is the
+signature over it, or refers to signatures: a chat message travels with the
+signature over it as the root, and a card lists the signatures over what it
+holds. The reader goes through each signature to the object it is over.
 
 ```ts
-const { signature } = decodeObject(bundle.root, envelopeSchema).data as { signature: Link<Signature> };
-const signed = decodeSignature(bundle.get(signature)!);
+const signed = decodeSignature(bundle.root);
 const message = decodeObject(bundle.get(signed.object)!, chatSchema);
 // signed.identity stands behind message
 ```
@@ -101,7 +102,7 @@ unzips a zip back into the map that `readBundle` takes. Both use zip.js and
 return promises.
 
 ```ts
-const zip = await zipBundle(writeBundle(envelope, [signature.bytes, message.bytes]));
+const zip = await zipBundle(writeBundle(signature, [message.bytes]));
 const bundle = readBundle(await unzipBundle(zip));
 ```
 

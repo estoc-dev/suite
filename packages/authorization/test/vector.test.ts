@@ -16,22 +16,24 @@ const authorizationText =
   '"schema":"sha256:78173732851c348dd4dcab9768328653e3a92f416159f336b02766d9867dd81f"}';
 const authorizationLink = "sha256:7a77b58552a16e631f818f01a02747125fd9c54c14af690f3b324f013eea33c9";
 const grantText =
-  '{"identity":{"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"},' +
+  '{"data":{"identity":{"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"},' +
   '"object":"sha256:7a77b58552a16e631f818f01a02747125fd9c54c14af690f3b324f013eea33c9",' +
   '"signature":"2138fbed8b264acc50c9b8175f6ed47386bc4edb1edf82c4abcc33dbbc61f602' +
-  '5545f9cffaeb786e65c77d3d4eefbd1a1c9391df8e1b406c8cc3587f840e770b"}';
-const grantLink = "sha256:8dea40d7b0904663cca604ccaa3bb5c00a4856ed0734c7cfa3196a9f80399de2";
+  '5545f9cffaeb786e65c77d3d4eefbd1a1c9391df8e1b406c8cc3587f840e770b"},' +
+  '"schema":"sha256:6d956bb1d013b40941c5a82d604106f8c2766ec7a24dfdcd1bec60af3c97bd6e"}';
+const grantLink = "sha256:b86151926e96cb6de25cf879181c883a8d97dbf43eee127d278d6fc472e24bc6";
 const proxyText =
-  '{"data":{"chain":["sha256:8dea40d7b0904663cca604ccaa3bb5c00a4856ed0734c7cfa3196a9f80399de2"],' +
+  '{"data":{"chain":["sha256:b86151926e96cb6de25cf879181c883a8d97dbf43eee127d278d6fc472e24bc6"],' +
   '"target":"sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80"},' +
   '"schema":"sha256:253128d1e4d26cf058819c2ed8fd533b955d036f270116c9f3307c88d91527a7"}';
-const proxyLink = "sha256:0b420580c9e72c13349be35eb676ecddcf45efb021edfc502d23f6352ba88c53";
+const proxyLink = "sha256:285550488cc69fc1ef1370d8e6116b1a9d439f8cd9895185671223d1e6ef5520";
 const proxySignatureText =
-  '{"identity":{"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","scheme":"ed25519"},' +
-  '"object":"sha256:0b420580c9e72c13349be35eb676ecddcf45efb021edfc502d23f6352ba88c53",' +
-  '"signature":"9d40a94ffc2b783c46d64ddd77283d86bb3615e725c2c6c4bd10b89a8a8186b7' +
-  'f776a14584ca7bf0e76adfe5accaee810dea27d82e529d55b720dec102c17404"}';
-const proxySignatureLink = "sha256:4e64222715f20ff20c046b4230ff49e0bbb282937cf213c76f77c83445877704";
+  '{"data":{"identity":{"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","scheme":"ed25519"},' +
+  '"object":"sha256:285550488cc69fc1ef1370d8e6116b1a9d439f8cd9895185671223d1e6ef5520",' +
+  '"signature":"5f6780d0811f5ebafe2f0a36a01080194a3cc861c5d2fcd37d7d915c7113032e' +
+  'ada7c395891298324d6bb064ff887477ccd0c90f8135147c29f1fc9405f53103"},' +
+  '"schema":"sha256:6d956bb1d013b40941c5a82d604106f8c2766ec7a24dfdcd1bec60af3c97bd6e"}';
+const proxySignatureLink = "sha256:5bc26c320fafdc78239e94e1e0cc7deb5f40267fef092a436aa1730bff57fd5e";
 
 // The login object of the vector in @estoc/object.
 const target: Link<EncodedObject> = "sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80";

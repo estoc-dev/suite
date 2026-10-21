@@ -8,7 +8,8 @@ that reads it.
 ```
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
 Object     {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
-Signature  {"identity": <identity>, "object": "sha256:<the Object's link>", "signature": <hex>}
+Signature  an Object written to the signature schema, with the data
+           {"identity": <identity>, "object": "sha256:<the Object's link>", "signature": <hex>}
 ```
 
 ## Encoding
@@ -28,10 +29,12 @@ Signature  {"identity": <identity>, "object": "sha256:<the Object's link>", "sig
   amounts as strings when they have to be exact.
 - Blobs carry no type tag or version. A reader knows which kind it expects,
   and the kinds cannot pass for one another: an object has exactly its two
-  fields, a signature its three, and a schema has `$schema`.
+  fields, and a schema has `$schema`. A signature is an object, and like any
+  object it cannot pass for one of another schema.
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob decodes to, so the compiler refuses the
-  bytes of a signature handed to `decodeObject`. The type is a label, not a
+  bytes of a signature handed to `decodeObject` rather than to
+  `decodeSignature`, which verifies them. The type is a label, not a
   check: bytes read from a file or the network pass as any `Bytes<T>`, and
   decoding them is what checks them.
 - Encoding goes through the same checks as decoding, so what is encoded here
@@ -77,11 +80,17 @@ it pins; anyone can sign an object, whether the object names them or not.
 Each signature is a blob of its own, collected and passed on apart from the
 others over the same object.
 
-The identity is in the JSON form of `@estoc/identity`, the object is named
-by its link, and the signature is in lowercase hex. Reading a signature
-verifies it, and needs only the signature, since the digest it signs is in
-the link. A server that handed out a nonce can build the login object
-itself and take back only the signature:
+A signature is itself an object, written to `signatureSchema`, so a format
+that holds an object can hold a signature. Its identity is in the JSON form of
+`@estoc/identity`, the object it is over is named by its link, and the
+signature is in lowercase hex. `decodeSignature` reads one without a
+validator: it checks the fields itself and verifies the signature, which
+needs only the signature, since the digest it signs is in the link. Reading
+a signature with `decodeObject` and the signature schema, as a viewer of
+arbitrary objects would, reads its fields without verifying it.
+
+A server that handed out a nonce can build the login object itself and take
+back only the signature:
 
 ```ts
 import { SoftwareSigner } from "@estoc/identity";

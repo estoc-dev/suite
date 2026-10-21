@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeObject, encodeSchema, reading, View, type JsonObject, type Link } from "../src/index.ts";
+import { encodeObject, encodeSchema, linkSchema, reading, View, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -50,7 +50,7 @@ describe("a view", () => {
 });
 
 // A reply names the note it answers by link, and reads with that note.
-const replySchema = await schemaOf({ to: { $ref: "https://estoc.dev/schema/link" }, text: { type: "string" } });
+const replySchema = await schemaOf({ to: linkSchema, text: { type: "string" } });
 
 interface Reply {
   readonly to: Note;

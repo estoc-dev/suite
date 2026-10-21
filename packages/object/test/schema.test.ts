@@ -5,12 +5,12 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
+  linkSchema,
   type JsonSchema,
   type SchemaValidator,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const LINK = "https://estoc.dev/schema/link";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const lenient: SchemaValidator = { compile: async () => () => [] };
 
@@ -95,11 +95,9 @@ describe("the default validator", () => {
     await expect(compile({ $schema: DRAFT, $ref: "name.json" })).rejects.toThrow();
   });
 
-  it("refuses a schema that takes the $id of a builtin or of the meta-schema", async () => {
-    await expect(compile({ $schema: DRAFT, $id: LINK, type: "string" })).rejects.toThrow();
-    for (const $id of [LINK, DRAFT]) {
-      await expect(compile({ $schema: DRAFT, $ref: $id, $defs: { own: { $id, type: "number" } } })).rejects.toThrow();
-    }
+  it("refuses a schema that takes the $id of the meta-schema", async () => {
+    await expect(compile({ $schema: DRAFT, $id: DRAFT, type: "string" })).rejects.toThrow();
+    await expect(compile({ $schema: DRAFT, $ref: DRAFT, $defs: { own: { $id: DRAFT, type: "number" } } })).rejects.toThrow();
   });
 
   it("follows a $ref by the keyword alone, whatever other members name", async () => {
@@ -189,7 +187,7 @@ const contract = await encodeSchema(
   {
     $schema: DRAFT,
     type: "object",
-    properties: { terms: { $ref: LINK } },
+    properties: { terms: linkSchema },
     required: ["terms"],
     additionalProperties: false,
   },
@@ -197,7 +195,7 @@ const contract = await encodeSchema(
 );
 const terms = contract.link;
 
-describe("the builtin link schema", () => {
+describe("linkSchema", () => {
   it("takes a link", () => {
     expect(contract.validate({ terms })).toEqual([]);
   });
@@ -209,20 +207,14 @@ describe("the builtin link schema", () => {
   });
 });
 
-const offered: string[] = [];
 const evenOnly: SchemaValidator = {
-  async compile(_, builtins) {
-    offered.push(...builtins.keys());
+  async compile() {
     return (data) => (typeof data === "number" && data % 2 !== 0 ? ["odd"] : []);
   },
 };
 const even = await encodeSchema({ $schema: "https://example.com/even" }, evenOnly);
 
 describe("a validator other than the default", () => {
-  it("is offered the builtin schemas", () => {
-    expect(offered).toEqual([LINK]);
-  });
-
   it("decides what an object may hold, when encoding and when decoding", async () => {
     expect(encodeObject(even, 2).data).toBe(2);
     expect(() => encodeObject(even, 3)).toThrow();

@@ -20,8 +20,8 @@ const signatureText =
   '"object":"sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80",' +
   '"signature":"597af40ffd741eaf60009f405797ac722591b9f2f63966055722a409412bd00d' +
   '0ecfa9ae9d9c0e158301fe20a0b6aefdf25a6078117e4d524493212271b12608"},' +
-  '"schema":"sha256:8f7d89a00e6e281562fa88c0632f6e350b68fe09fdd6f14edcb61e697a9ef777"}';
-const signatureLink = "sha256:80fe9ed9ebd14b98e20c4feb0e14f9fd673b5d38f0df591430736b59b6158884";
+  '"schema":"sha256:05b7d8cb16217903e90fbbae01bd0fdf157d10a9829fb22f2729c2e836495506"}';
+const signatureLink = "sha256:b52314ccf85e50c4f7376d5adb825397c6b5961af5a58017857cd3cda577dacb";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);

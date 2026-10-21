@@ -70,6 +70,13 @@ const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "
 decodeObject(object.bytes, login).link === object.link;
 ```
 
+A schema holds all that its data is checked against. A `$ref` reaches the
+schema's own parts and nothing elsewhere, so the link of a schema fixes what
+its objects may hold, and no one changes that later by changing what a URL
+names. Where the data holds a link, the schema writes out what a link looks
+like: `linkSchema` is `{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}`,
+to place there.
+
 `decodeObject` leaves the data as JSON. A program reads objects as values
 of its own through a view.
 
@@ -205,8 +212,9 @@ schema once, when the schema is read, and the schema keeps the result, so
 reading a schema returns a promise and reading an object does not. Every
 validator works offline and keeps to three rules:
 
-- A `$ref` it cannot resolve within the schema or the builtin schemas fails
-  compilation, rather than the validation that happens to reach it.
+- A `$ref` to anything outside the schema fails compilation, rather than the
+  validation that happens to reach it. A `$ref` in a place the dialect
+  ignores, such as under `then` without `if`, has no effect.
 - The same schema and value give the same answer every time.
 - A dialect it does not support fails compilation.
 
@@ -220,9 +228,9 @@ blob changing.
 which interprets schemas instead of generating code and so runs under a
 strict content security policy. It takes draft 2020-12 only, in the schema
 and in any schema resource inside it. A schema without `$id` can reference
-its own parts by fragment (`#/$defs/name`) and other schemas by absolute URL.
-Nothing is fetched, so an absolute URL resolves only to a builtin schema or
-to a part of the schema itself, and not to the draft's meta-schemas either.
+its own parts by fragment (`#/$defs/name`), and a schema resource inside it
+by its `$id`. Nothing is fetched, so a URL resolves only to a part of the
+schema itself, and not to the draft's meta-schemas either.
 It asserts the formats hyperjump's lite set knows (dates, times and
 durations, email, IP addresses, URIs and IRIs, UUIDs, URI templates, JSON
 pointers and regular expressions) and passes the rest.
@@ -243,7 +251,3 @@ a worker with a time limit, unless the schema's patterns and the length of
 the strings they test have been reviewed to keep validation cheap. A viewer
 of arbitrary objects, which also runs schemas someone else wrote, needs the
 worker in any case.
-
-## Builtin schemas
-
-- `https://estoc.dev/schema/link`: `sha256:` and 64 lowercase hex digits.

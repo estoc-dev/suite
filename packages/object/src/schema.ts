@@ -29,7 +29,8 @@ export type Check = (data: Json) => readonly string[];
  *
  * - A `$ref` to anything outside the schema fails compilation, rather than
  *   the validation that reaches it, so that the link of a schema fixes all
- *   that its data is checked against.
+ *   that its data is checked against. A `$ref` in a place the dialect
+ *   ignores, such as under `then` without `if`, has no effect.
  * - The same schema and value give the same answer every time.
  * - A dialect it does not support fails compilation.
  */

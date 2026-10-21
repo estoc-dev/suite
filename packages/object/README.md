@@ -213,7 +213,8 @@ reading a schema returns a promise and reading an object does not. Every
 validator works offline and keeps to three rules:
 
 - A `$ref` to anything outside the schema fails compilation, rather than the
-  validation that happens to reach it.
+  validation that happens to reach it. A `$ref` in a place the dialect
+  ignores, such as under `then` without `if`, has no effect.
 - The same schema and value give the same answer every time.
 - A dialect it does not support fails compilation.
 

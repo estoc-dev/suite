@@ -27,7 +27,6 @@ const schemaFor = (title: string, properties: JsonObject) =>
     { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
     defaultValidator,
   );
-// What the sender writes and the reader receives as files.
 const handOver = (root: EncodedObject, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
 
 function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {

@@ -93,11 +93,15 @@ describe("a bundle", () => {
     expect(bundle.get(root.link)).toEqual(root.bytes);
   });
 
-  it("keeps the bytes it checked when the given arrays change afterwards", () => {
-    const files = filesOf(root.bytes.slice(), hello.bytes.slice());
+  it.each<[string, (bytes: Uint8Array) => Uint8Array]>([
+    ["arrays", (bytes) => bytes.slice()],
+    ["Node Buffers", (bytes) => Buffer.from(bytes)],
+  ])("keeps the bytes it checked when the given %s change afterwards", (_, given) => {
+    const files = filesOf(given(root.bytes), given(signature.bytes), given(hello.bytes));
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    expect(bundle.get(hello.link)).toEqual(hello.bytes);
+    const signed = decodeSignature(bundle.get(signature.link)!);
+    expect(bundle.get(signed.object)).toEqual(hello.bytes);
   });
 });

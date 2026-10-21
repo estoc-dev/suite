@@ -18,8 +18,9 @@ export class Bundle {
     const index = files.get(ROOT);
     if (index === undefined) throw new Error(`a bundle has an ${ROOT}`);
     // Each blob is copied before it is hashed, so that what was checked is
-    // what is kept, whatever happens to the given arrays afterwards.
-    this.root = index.slice();
+    // what is kept, whatever happens to the given arrays afterwards. A file
+    // read in Node is a Buffer, whose `slice` shares memory instead of copying.
+    this.root = new Uint8Array(index);
     try {
       schemaOf(this.root);
     } catch (cause) {
@@ -32,7 +33,7 @@ export class Bundle {
       // adds, or a name that no link turns into.
       const hex = BLOB.exec(path)?.[1];
       if (hex === undefined) continue;
-      const blob = bytes.slice();
+      const blob = new Uint8Array(bytes);
       const link = linkOf(blob);
       if (link !== `sha256:${hex}`) throw new Error(`${path} holds the blob ${link}`);
       this.#blobs.set(link, blob);

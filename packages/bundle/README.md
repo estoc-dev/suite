@@ -71,10 +71,10 @@ could not read even the root of a card carrying a signature in it, and one
 bad signature that nothing refers to would refuse the whole bundle.
 
 A reader starts at the root, reads it with the schema it expects, and
-follows its links with `get`. To be signed, the root refers to signatures:
-a card lists the signatures over what it holds, and a chat message travels
-as an envelope naming the signature over it. The reader goes through each
-signature to the object it is over.
+follows its links with `get`. To carry signed content, the root refers to
+signatures over it: a card lists the signatures over what it holds, and a
+chat message travels as an envelope naming the signature over it. The
+reader goes through each signature to the object it is over.
 
 ```ts
 const { signature } = decodeObject(bundle.root, envelopeSchema).data as { signature: Link<Signature> };

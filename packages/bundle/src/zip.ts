@@ -1,63 +1,99 @@
-import { Unzip, UnzipInflate, unzipSync, zipSync } from "fflate";
+import {
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipReader,
+  ZipWriter,
+  type CreateReadableOptions,
+} from "@zip.js/zip.js/index-native.js";
 import { BLOB, ROOT } from "./bundle.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 
 /**
  * Zips the files of a bundle as they are, `index.json` at the top of the zip.
- * Every entry is dated 1980-01-01, the earliest date a zip can hold, so that a
- * zip does not tell when or in which time zone it was made. The date is in
- * local time, which is what a zip records.
+ * Every entry is dated 1980-02-01, so that a zip does not tell when or in which
+ * time zone it was made. The date is in local time, which is what a zip
+ * records. The earliest date a zip can hold is a month before, and zip.js
+ * raises a date below it to it as it stood in the time zone zip.js was loaded
+ * in; a month is clear of that in any time zone.
  */
-export function zipBundle(files: ReadonlyMap<string, Uint8Array>): Uint8Array {
-  return zipSync(Object.fromEntries(files), { mtime: new Date(1980, 0, 1) });
+export async function zipBundle(files: ReadonlyMap<string, Uint8Array>): Promise<Uint8Array> {
+  const zip = new ZipWriter(new Uint8ArrayWriter(), {
+    lastModDate: new Date(1980, 1, 1),
+    // An extended timestamp is in UTC, which a date in local time turns into
+    // the time zone.
+    extendedTimestamp: false,
+    // Each header gives the sizes of its entry, so that a reader going from
+    // header to header knows them before it unzips the entry.
+    dataDescriptor: false,
+    // The DEFLATE that zip.js carries, rather than the platform's, so that the
+    // same files zip to the same bytes in a browser and in Node.
+    useCompressionStream: false,
+    useWebWorkers: false,
+  });
+  for (const [path, bytes] of files) await zip.add(path, new Uint8ArrayReader(bytes));
+  return zip.close();
 }
 
 /**
  * Unzips the files of a bundle into memory: `index.json` and the blobs under
- * `blobs/sha256/`. Other entries are not unzipped, so a path such as `../` is
- * not written anywhere. Refuses the zip when its entries are not the ones its
- * directory lists, when it holds a path twice, or when it goes over `limits`:
- * 64 MiB unzipped and 10,000 entries unless given.
+ * `blobs/sha256/`, as the directory at the end of the zip lists them. Other
+ * entries are not unzipped, so a path such as `../` is not written anywhere.
+ * Refuses the zip when it holds a path twice, when an entry is not where or
+ * what the directory says, or when it goes over `limits`: 64 MiB unzipped and
+ * 10,000 entries unless given.
  */
-export function unzipBundle(
+export async function unzipBundle(
   zip: Uint8Array,
   limits: { readonly bytes?: number; readonly entries?: number } = {},
-): Map<string, Uint8Array> {
+): Promise<Map<string, Uint8Array>> {
   const { bytes = LIMITS.bytes, entries = LIMITS.entries } = limits;
-  // The directory at the end of a zip lists its entries, and a zip cut short
-  // has none. The entries are listed from it first, and unzipping them one
-  // after another has to come to exactly those.
-  const listed = new Set<string>();
-  unzipSync(zip, {
-    filter: ({ name }) => {
-      if (listed.has(name)) throw new Error(`the zip holds ${name} twice`);
-      listed.add(name);
-      if (listed.size > entries) throw new Error(`the zip has more than ${entries} entries`);
-      return false;
-    },
+  const abort = new AbortController();
+  const reader = new ZipReader(new InPieces(zip), {
+    // A damaged blob does not have the link its name says, but a damaged
+    // index.json can still be an object.
+    checkCrc32: true,
+    // Paths are matched exactly below, and an entry under any other path is
+    // passed over rather than refused.
+    filenameValidation: "tolerant",
+    signal: abort.signal,
+    useWebWorkers: false,
   });
   const files = new Map<string, Uint8Array>();
+  const paths = new Set<string>();
   let unzipped = 0;
-  const unzip = new Unzip((file) => {
-    if (!listed.delete(file.name)) throw new Error(`the zip holds ${file.name} more often than its directory lists it`);
-    if (file.name !== ROOT && !BLOB.test(file.name)) return;
+  for await (const entry of reader.getEntriesGenerator()) {
+    const path = entry.filename;
+    if (paths.has(path)) throw new Error(`the zip holds ${path} twice`);
+    paths.add(path);
+    if (paths.size > entries) throw new Error(`the zip has more than ${entries} entries`);
+    if (entry.directory || (path !== ROOT && !BLOB.test(path))) continue;
     const chunks: Uint8Array[] = [];
-    file.ondata = (error, chunk, final) => {
-      if (error) throw error;
-      // Counted as they come out, since the sizes a zip gives can be false.
-      unzipped += chunk.length;
-      if (unzipped > bytes) throw new Error(`the zip unzips to more than ${bytes} bytes`);
-      chunks.push(chunk);
-      if (final) files.set(file.name, joined(chunks));
-    };
-    file.start();
-  });
-  unzip.register(UnzipInflate);
-  unzip.push(zip, true);
-  const [missing] = listed;
-  if (missing !== undefined) throw new Error(`the zip does not hold ${missing}, which its directory lists`);
+    await entry.getData(
+      new WritableStream<Uint8Array>({
+        write(chunk) {
+          // Counted as they come out, since the sizes a zip gives can be false.
+          // Unzipping is aborted rather than the error thrown, which zip.js
+          // reports as a closed stream when it comes at the last chunk.
+          unzipped += chunk.length;
+          if (unzipped > bytes) abort.abort(new Error(`the zip unzips to more than ${bytes} bytes`));
+          abort.signal.throwIfAborted();
+          chunks.push(chunk);
+        },
+      }),
+    );
+    files.set(path, joined(chunks));
+  }
   return files;
+}
+
+// Hands an entry to be unzipped in pieces of 4 KiB rather than zip.js's
+// 256 KiB. DEFLATE makes at most about a thousand times its size, so a piece
+// unzips to a few MiB at most before what comes out is counted.
+class InPieces extends Uint8ArrayReader {
+  override createReadable(options?: CreateReadableOptions): ReadableStream<Uint8Array> {
+    return super.createReadable({ ...options, chunkSize: 4096 });
+  }
 }
 
 function joined(chunks: Uint8Array[]): Uint8Array {

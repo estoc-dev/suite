@@ -67,9 +67,9 @@ describe("a bundle whose root refers to a signature over a login object, carryin
     expect(text(bundle.get(objectLink))).toBe(objectText);
   });
 
-  it("unzips to those files from a zip that another tool made", () => {
+  it("unzips to those files from a zip that another tool made", async () => {
     const zip = new Uint8Array(readFileSync(new URL("stored-by-python.zip", import.meta.url)));
-    const unzipped = unzipBundle(zip);
+    const unzipped = await unzipBundle(zip);
     expect(new Map([...unzipped].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
     expect(readBundle(unzipped).link).toBe(rootLink);
   });

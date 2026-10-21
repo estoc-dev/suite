@@ -1,23 +1,28 @@
+import { constants, deflateRawSync } from "node:zlib";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { Zip, ZipPassThrough } from "fflate";
+import { Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js/index-native.js";
+import { Zip, ZipPassThrough, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
 
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
 const sizeOf = (files: ReadonlyMap<string, Uint8Array>) => [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
+const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
 const note = await encodeSchema(
   { $schema: "https://json-schema.org/draft/2020-12/schema", title: "Note", type: "string" },
   defaultValidator,
 );
 const root = encodeObject(note, "a note");
+const another = encodeObject(note, "another note");
 const text = new TextEncoder().encode("a blob");
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const files = writeBundle(root, [text, image]);
 const zeros = new Uint8Array(2 ** 20);
 
-// A zip as a tool that streams writes it, which lets a path come twice.
+// A zip as a tool that streams writes it, which lets a path come twice and
+// gives the sizes of an entry after its bytes.
 function streamed(entries: [string, Uint8Array][]): Uint8Array {
   const chunks: Uint8Array[] = [];
   const zip = new Zip((error, chunk) => {
@@ -30,10 +35,10 @@ function streamed(entries: [string, Uint8Array][]): Uint8Array {
     file.push(bytes, true);
   }
   zip.end();
-  return new Uint8Array(Buffer.concat(chunks));
+  return concat(...chunks);
 }
 
-// Where the directory of a zip with no comment starts.
+// The fixtures have no zip comment, so the end record is at the end.
 const directoryOf = (zip: Uint8Array) => new DataView(zip.buffer, zip.byteOffset).getUint32(zip.length - 6, true);
 
 // The zip of one entry, saying in both of its headers that the entry unzips
@@ -46,13 +51,53 @@ function claimingOneByte(zip: Uint8Array): Uint8Array {
   return claimed;
 }
 
-// The zip with the entries of another zip as its comment, which tools that
-// read the directory pass over.
+// The zip with the entries of another zip as its comment.
 function hiding(zip: Uint8Array, other: Uint8Array): Uint8Array {
   const entries = other.subarray(0, directoryOf(other));
-  const hidden = new Uint8Array(Buffer.concat([zip, entries]));
+  const hidden = concat(zip, entries);
   new DataView(hidden.buffer).setUint16(zip.length - 2, entries.length, true);
   return hidden;
+}
+
+// The zip of one entry, with the one entry of another zip before it, whose
+// header holds the entry as an extra field. A reader that goes from header to
+// header passes over the entry and comes to the other entry's bytes.
+function shadowed(zip: Uint8Array, other: Uint8Array): Uint8Array {
+  const directory = directoryOf(zip);
+  const entry = zip.subarray(0, directory);
+  const otherView = new DataView(other.buffer, other.byteOffset);
+  const nameEnd = 30 + otherView.getUint16(26, true);
+  const header = other.slice(0, nameEnd);
+  const bytes = other.subarray(nameEnd + otherView.getUint16(28, true), directoryOf(other));
+  const field = new Uint8Array(4);
+  new DataView(field.buffer).setUint16(0, 0xcafe, true);
+  new DataView(field.buffer).setUint16(2, entry.length, true);
+  new DataView(header.buffer).setUint16(28, field.length + entry.length, true);
+  const end = zip.slice(directory);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(42, header.length + field.length, true);
+  endView.setUint32(end.length - 6, header.length + field.length + entry.length + bytes.length, true);
+  return concat(header, field, entry, bytes, end);
+}
+
+// A zip of about 4 MiB whose blob unzips to 4 GiB of zeros, saying that it
+// unzips to `claimed` bytes. Each MiB after the first is the same DEFLATE
+// block, which repeats the zeros before it.
+async function zeroBomb(claimed: number): Promise<Uint8Array> {
+  const flush = { finishFlush: constants.Z_SYNC_FLUSH, level: 9 };
+  const first = deflateRawSync(zeros, flush);
+  const next = deflateRawSync(zeros, { ...flush, dictionary: zeros.subarray(0, 2 ** 15) });
+  const last = new Uint8Array([0x03, 0x00]);
+  const deflated = concat(first, ...Array<Uint8Array>(4095).fill(next), last);
+  const zip = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false });
+  await zip.add("index.json", new Uint8ArrayReader(root.bytes));
+  await zip.add(pathOf(zeros), new Uint8ArrayReader(deflated), {
+    passThrough: true,
+    compressionMethod: 8,
+    uncompressedSize: claimed,
+    signature: 0,
+  });
+  return zip.close();
 }
 
 describe("a zipped bundle", () => {
@@ -61,27 +106,27 @@ describe("a zipped bundle", () => {
     vi.unstubAllEnvs();
   });
 
-  it("unzips to its files and reads as the same bundle", () => {
-    const unzipped = unzipBundle(zipBundle(files));
+  it("unzips to its files and reads as the same bundle", async () => {
+    const unzipped = await unzipBundle(await zipBundle(files));
     expect(unzipped).toEqual(files);
     const bundle = readBundle(unzipped);
     expect(bundle.link).toBe(root.link);
     for (const blob of [root.bytes, text, image]) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 
-  it("is the same bytes whenever and wherever it is zipped", () => {
+  it("is the same bytes whenever and wherever it is zipped", async () => {
     const zipped = (now: string, zone: string) => {
-      vi.useFakeTimers({ now: new Date(now) });
+      vi.useFakeTimers({ now: new Date(now), toFake: ["Date"] });
       vi.stubEnv("TZ", zone);
       return zipBundle(files);
     };
-    const zip = zipped("2026-10-21T12:00:00Z", "UTC");
-    expect(zipped("2031-03-08T23:59:59Z", "Pacific/Kiritimati")).toEqual(zip);
-    expect(zipped("2031-03-08T23:59:59Z", "Pacific/Pago_Pago")).toEqual(zip);
+    const zip = await zipped("2026-10-21T12:00:00Z", "UTC");
+    expect(await zipped("2031-03-08T23:59:59Z", "Pacific/Auckland")).toEqual(zip);
+    expect(await zipped("2031-03-08T23:59:59Z", "Pacific/Pago_Pago")).toEqual(zip);
   });
 
-  it("unzips only index.json and the blobs under blobs/sha256/", () => {
-    const zip = zipBundle(
+  it("unzips only index.json and the blobs under blobs/sha256/", async () => {
+    const zip = await zipBundle(
       new Map([
         ...files,
         ["../escape", image],
@@ -91,52 +136,90 @@ describe("a zipped bundle", () => {
         ["__MACOSX/._index.json", zeros],
       ]),
     );
-    expect(unzipBundle(zip, { bytes: sizeOf(files) })).toEqual(files);
+    expect(await unzipBundle(zip, { bytes: sizeOf(files) })).toEqual(files);
   });
 
-  it("unzips with its files in a folder as no bundle", () => {
-    const zip = zipBundle(new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])));
-    expect(unzipBundle(zip).size).toBe(0);
-    expect(() => readBundle(unzipBundle(zip))).toThrow();
+  it("unzips with its files in a folder as no bundle", async () => {
+    const zip = await zipBundle(new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])));
+    const unzipped = await unzipBundle(zip);
+    expect(unzipped.size).toBe(0);
+    expect(() => readBundle(unzipped)).toThrow();
   });
 
-  it("is refused when it unzips to more bytes than its limit, whatever sizes it gives", () => {
-    const zip = zipBundle(new Map([[pathOf(zeros), zeros]]));
-    expect(zip.length).toBeLessThan(2 ** 12);
-    expect(() => unzipBundle(zip, { bytes: zeros.length - 1 })).toThrow(/more than/);
-    const claimed = claimingOneByte(zip);
-    expect(() => unzipBundle(claimed, { bytes: zeros.length - 1 })).toThrow(/more than/);
-    expect(linkOf(unzipBundle(claimed).get(pathOf(zeros))!)).toBe(linkOf(zeros));
+  it("unzips a blob that is itself a zip, from a zip written as a stream", async () => {
+    const nested = writeBundle(root, [await zipBundle(files)]);
+    expect(await unzipBundle(streamed([...nested]))).toEqual(nested);
   });
 
-  it("is refused when it has more entries than its limit", () => {
-    const zip = zipBundle(files);
-    expect(() => unzipBundle(zip, { entries: files.size - 1 })).toThrow(/more than/);
-    expect(unzipBundle(zip, { entries: files.size })).toEqual(files);
+  it("unzips the entries its directory lists, whatever its comment holds", async () => {
+    const zip = hiding(await zipBundle(files), await zipBundle(new Map([["index.json", another.bytes]])));
+    expect(await unzipBundle(zip)).toEqual(files);
   });
 
-  it("is refused when it holds a path twice", () => {
+  it("unzips the entry its directory lists, where a reader going from header to header finds another", async () => {
+    const listed = new Map([["index.json", root.bytes]]);
+    const zip = shadowed(await zipBundle(listed), await zipBundle(new Map([["index.json", another.bytes]])));
+    expect(await unzipBundle(zip)).toEqual(listed);
+  });
+
+  it("is refused when it unzips to more bytes than its limit", async () => {
+    const zip = await zipBundle(new Map([[pathOf(zeros), zeros]]));
+    await expect(unzipBundle(zip, { bytes: zeros.length - 1 })).rejects.toThrow(/more than/);
+    const unzipped = await unzipBundle(zip, { bytes: zeros.length });
+    expect(linkOf(unzipped.get(pathOf(zeros))!)).toBe(linkOf(zeros));
+  });
+
+  it("is refused at its limit when it unzips to a thousand times its size, whatever size it gives", async () => {
+    for (const zip of [await zeroBomb(2 ** 32), await zeroBomb(1)]) {
+      expect(zip.length).toBeLessThan(5 * 2 ** 20);
+      await expect(unzipBundle(zip, { bytes: 2 ** 10 })).rejects.toThrow();
+      await expect(unzipBundle(zip)).rejects.toThrow();
+    }
+  });
+
+  it("is refused when an entry does not unzip to the size it gives", async () => {
+    const zip = claimingOneByte(await zipBundle(new Map([[pathOf(zeros), zeros]])));
+    await expect(unzipBundle(zip)).rejects.toThrow();
+  });
+
+  it("is refused when it has more entries than its limit", async () => {
+    const zip = await zipBundle(files);
+    await expect(unzipBundle(zip, { entries: files.size - 1 })).rejects.toThrow(/more than/);
+    expect(await unzipBundle(zip, { entries: files.size })).toEqual(files);
+  });
+
+  it("unzips with as many entries as its limit allows", { timeout: 20_000 }, async () => {
+    const blobs = Array.from({ length: 9_999 }, (_, i) => new TextEncoder().encode(`blob ${i}`));
+    // fflate zips this many entries several times faster.
+    const zip = zipSync(Object.fromEntries(writeBundle(root, blobs)));
+    const bundle = readBundle(await unzipBundle(zip));
+    for (const blob of blobs) expect(bundle.get(linkOf(blob))).toEqual(blob);
+  });
+
+  it("is refused when it holds a path twice", async () => {
     const entries = [...files];
-    expect(unzipBundle(streamed(entries))).toEqual(files);
-    expect(() => unzipBundle(streamed([...entries, [pathOf(text), text]]))).toThrow(/twice/);
-    expect(() => unzipBundle(streamed([...entries, ["index.json", image]]))).toThrow(/twice/);
+    expect(await unzipBundle(streamed(entries))).toEqual(files);
+    await expect(unzipBundle(streamed([...entries, [pathOf(text), text]]))).rejects.toThrow(/twice/);
+    await expect(unzipBundle(streamed([...entries, ["index.json", image]]))).rejects.toThrow(/twice/);
   });
 
-  it("is refused when it is cut short anywhere", () => {
-    const zip = zipBundle(files);
-    for (let end = 0; end < zip.length; end++) expect(() => unzipBundle(zip.subarray(0, end))).toThrow();
+  it("is refused when it is cut short anywhere", async () => {
+    const zip = await zipBundle(files);
+    for (let end = 0; end < zip.length; end++) await expect(unzipBundle(zip.subarray(0, end))).rejects.toThrow();
   });
 
-  it("is refused when the header of an entry its directory lists is damaged", () => {
-    const damaged = zipBundle(files);
-    const second = Buffer.from(damaged).indexOf(Buffer.from("PK\x03\x04", "latin1"), 1);
+  it("is refused when the header of an entry its directory lists is damaged", async () => {
+    const damaged = await zipBundle(files);
+    const second = Buffer.from(damaged).indexOf("PK\x03\x04", 1, "latin1");
     damaged[second + 3] = 0x05;
-    expect(() => unzipBundle(damaged)).toThrow(/directory/);
+    await expect(unzipBundle(damaged)).rejects.toThrow();
   });
 
-  it("is refused when it holds an entry that its directory does not list", () => {
-    const another = encodeObject(note, "another note");
-    const zip = hiding(zipBundle(files), zipBundle(new Map([["index.json", another.bytes]])));
-    expect(() => unzipBundle(zip)).toThrow(/directory/);
+  it("is refused when its index.json is damaged into another object", async () => {
+    const stored = zipSync(Object.fromEntries(files), { level: 0 });
+    const damaged = stored.slice();
+    damaged[Buffer.from(stored).indexOf("a note") + 2] = "b".charCodeAt(0);
+    expect(await unzipBundle(stored)).toEqual(files);
+    await expect(unzipBundle(damaged)).rejects.toThrow();
   });
 });

@@ -97,20 +97,23 @@ not say which signatures are over an object, nor list the blobs it holds.
 ## Zip
 
 To move a bundle as one file, `zipBundle` zips its files, and `unzipBundle`
-unzips a zip back into the map that `readBundle` takes.
+unzips a zip back into the map that `readBundle` takes. Both use zip.js and
+return promises.
 
 ```ts
-const zip = zipBundle(writeBundle(envelope, [signature.bytes, message.bytes]));
-const bundle = readBundle(unzipBundle(zip));
+const zip = await zipBundle(writeBundle(envelope, [signature.bytes, message.bytes]));
+const bundle = readBundle(await unzipBundle(zip));
 ```
 
 The entries start at the bundle's root: `index.json` is at the top of the
 zip, not in a folder. A zip with the bundle in a folder unzips to no
-`index.json`, and reading it is refused. Any compression and any order of
-entries reads. `zipBundle` dates every entry 1980-01-01, the earliest date a
-zip can hold. A zip records local time, so a real date would tell when the
-zip was made and, from that, in which time zone. The same files in the same
-order zip to the same bytes.
+`index.json`, and reading it is refused. Entries stored as they are or
+compressed with DEFLATE read, in any order. `zipBundle` dates every entry
+1980-02-01. A zip records local time, so a real date would tell when the zip
+was made and, from that, in which time zone. The date is a month after the
+earliest a zip can hold, so that no conversion between time zones takes it
+below that. The same files in the same order zip to the same bytes, in a
+browser and in Node.
 
 Unzipping holds what comes out in memory and writes nothing. Only
 `index.json` and the blobs under `blobs/sha256/` are unzipped, so the map
@@ -119,14 +122,18 @@ that folder: an entry such as `../escape`, `.DS_Store` or one under
 `__MACOSX/` is not unzipped.
 
 A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
-10,000 entries, unless the caller gives others. The bytes are counted as
-they come out, since the sizes a zip gives for its entries can be false, and
-at the limit unzipping stops and the whole zip is refused. A zip that holds
-a path twice is refused as well, since two tools could each take a
-different one.
+10,000 entries, unless the caller gives others. An entry is unzipped as it is
+read, a few KiB at a time, and the bytes are counted as they come out, since
+the sizes a zip gives for its entries can be false. At the limit unzipping
+stops and the whole zip is refused, as it is when an entry does not unzip to
+the size or the CRC the zip gives. A zip that holds a path twice is refused
+as well, since two tools could each take a different one.
 
 The directory at the end of a zip lists its entries, and it is what most
-tools read. `unzipBundle` lists the entries from it, unzips them one after
-another, and refuses the zip unless the two agree. A zip cut short has no
-directory, a damaged header loses an entry, and an entry hidden where the
-directory does not point is one that other tools would not see.
+tools read. `unzipBundle` unzips the entries it lists, each from where the
+directory says it starts, and refuses the zip when the header there is
+missing or does not agree with the directory. Bytes anywhere else are not
+entries, even when they look like one: those of a blob that is itself a zip,
+or of the zip's comment. A reader that goes from header to header instead can
+come to entries the directory does not list, and read another bundle from
+the same zip.

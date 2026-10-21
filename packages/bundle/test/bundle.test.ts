@@ -10,8 +10,10 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const hexOf = (bytes: Uint8Array) => linkOf(bytes).slice("sha256:".length);
 const filesOf = (root: Uint8Array, ...blobs: Uint8Array[]) =>
   new Map([["index.json", root], ...blobs.map((blob) => [`blobs/sha256/${hexOf(blob)}`, blob] as const)]);
-const rewritten = (bytes: Uint8Array, change: (fields: JsonObject) => JsonObject) =>
-  encodeJson(change(JSON.parse(new TextDecoder().decode(bytes)) as JsonObject));
+const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) => {
+  const { data, schema } = JSON.parse(new TextDecoder().decode(bytes)) as { data: JsonObject; schema: string };
+  return encodeJson({ data: change(data), schema });
+};
 
 const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" }, defaultValidator);
 const links = await encodeSchema(
@@ -40,7 +42,7 @@ describe("a bundle", () => {
     expect([signature.link, hello.link].map((link) => bundle.get(link))).toEqual([signature.bytes, hello.bytes]);
   });
 
-  it("gives a signature back as bytes that do not read as an object", () => {
+  it("gives a signature back as bytes that do not read as an object of another schema", () => {
     const bundle = readBundle(writeBundle(root, [signature.bytes]));
     // @ts-expect-error: refused at compile time too
     expect(() => decodeObject(bundle.get(linkOf(signature.bytes))!, note)).toThrow();
@@ -49,12 +51,19 @@ describe("a bundle", () => {
   it.each<[string, () => Map<string, Uint8Array>]>([
     ["no index.json", () => new Map([...filesOf(root.bytes, hello.bytes)].filter(([path]) => path !== "index.json"))],
     ["an index.json formatted by hand", () => filesOf(utf8(JSON.stringify({ data: "hello", schema: note.link }, null, 2)))],
-    ["an index.json that is a signature", () => filesOf(signature.bytes, hello.bytes)],
     ["an index.json that is a schema", () => filesOf(note.bytes)],
     ["an index.json that is not JSON", () => filesOf(image)],
     ["a blob that does not have the link its name says", () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]])],
   ])("is refused with %s", (_, files) => {
     expect(() => readBundle(files())).toThrow();
+  });
+
+  it("reads with a signature as its root, which leads to the object it is over", () => {
+    const bundle = readBundle(writeBundle(signature, [hello.bytes]));
+    expect(bundle.link).toBe(signature.link);
+    const signed = decodeSignature(bundle.root);
+    expect(signed.identity).toEqual(alice.identity);
+    expect(decodeObject(bundle.get(signed.object)!, note).data).toBe("hello");
   });
 
   it("reads with a signature that does not verify or whose scheme is unknown, as bytes", () => {

@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type EncodedObject, type Link } from "@estoc/object";
+import { linkOf, schemaOf, type Bytes, type EncodedObject, type Link, type Signature } from "@estoc/object";
 
 export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
@@ -10,7 +10,11 @@ export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
  * else about the blobs is read, signatures included.
  */
 export class Bundle {
-  readonly root: Bytes<EncodedObject>;
+  /**
+   * `index.json`: an object of any schema, a signature included, so its bytes
+   * carry no label and read as either.
+   */
+  readonly root: Uint8Array;
   readonly link: Link<EncodedObject>;
   readonly #blobs = new Map<string, Uint8Array>();
 
@@ -60,7 +64,7 @@ export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
 }
 
 /** The files of a bundle with `root` as its `index.json`, carrying `blobs`. */
-export function writeBundle(root: EncodedObject, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
+export function writeBundle(root: EncodedObject | Signature, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);
   for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);
   return files;

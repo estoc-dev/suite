@@ -42,7 +42,7 @@ export function schemaOf(bytes: Bytes<EncodedObject>): Link<Schema> {
   return schema;
 }
 
-function fieldsOf(value: Json): { readonly data: Json; readonly schema: Json } {
+export function fieldsOf(value: Json): { readonly data: Json; readonly schema: Json } {
   if (!isJsonObject(value) || Object.keys(value).sort().join() !== "data,schema") {
     throw new Error("an object has the fields data and schema");
   }

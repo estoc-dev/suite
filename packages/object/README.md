@@ -255,4 +255,3 @@ One identity can sign one object more than once, as a wallet need not sign
 deterministically, and each of those signatures reads. Finding the
 signatures over an object takes an index by the link they name, so hand an
 object over together with its signatures.
-

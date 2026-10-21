@@ -32,12 +32,12 @@ schema it takes.
   whatever reads it: a reader knows what it expects, and picking a type by
   a registry would be guessing.
 - Each schema reads straight into the current type, with no chain from one
-  version to the next. When the type changes, each reading changes with it,
-  and the compiler points to every one.
-- Reading does not write again. A value keeps the link of the object it was
-  read from, so the signatures over that object still apply to it. Read and
-  written to another schema, the same content would be a new object that no
-  one has signed.
+  version to the next. When the type changes, the compiler points to each
+  reading that no longer fits it.
+- Reading does not write again. A value can keep the link of the object it
+  was read from, so the signatures over that object still apply to it. Read
+  and written to another schema, the same content would be a new object that
+  no one has signed.
 - Which schemas stand for a type is the reader's to say, in its view, and
   not anything a schema says of itself.
 

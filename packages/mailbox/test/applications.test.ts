@@ -1,9 +1,9 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
   decodeObject,
-  encodeIdentity,
   encodeObject,
   encodeSchema,
+  identities,
   linkOf,
   linkSchema,
   sign,
@@ -85,17 +85,17 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passed).toEqual(sent);
-    expect(readChat(passed, encodeIdentity(carol.identity))).toEqual({
-      author: encodeIdentity(alice.identity),
+    expect(readChat(passed, identities.encode(carol.identity))).toEqual({
+      author: identities.encode(alice.identity),
       text: "lunch at noon?",
       forReader: undefined,
     });
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const { received, passed } = await passOn(encodeObject(chat, { to: encodeIdentity(bob.identity).link, text: "lunch at noon?" }));
-    expect(readChat(received, encodeIdentity(bob.identity)).forReader).toBe(true);
-    expect(readChat(passed, encodeIdentity(carol.identity)).forReader).toBe(false);
+    const { received, passed } = await passOn(encodeObject(chat, { to: identities.encode(bob.identity).link, text: "lunch at noon?" }));
+    expect(readChat(received, identities.encode(bob.identity)).forReader).toBe(true);
+    expect(readChat(passed, identities.encode(carol.identity)).forReader).toBe(false);
   });
 });
 
@@ -144,7 +144,7 @@ describe("a one-time invitation", () => {
     const { answer, letIn } = await invite();
     await answer(dave, now);
     await answer(erin, now);
-    expect(await letIn()).toEqual([encodeIdentity(dave.identity)]);
+    expect(await letIn()).toEqual([identities.encode(dave.identity)]);
     await answer(erin, now);
     expect(await letIn()).toEqual([]);
   });
@@ -204,8 +204,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer("eip191", 6);
   const seller = signer("solana-offchain", 7);
   const terms = encodeObject(sale, {
-    buyer: encodeIdentity(buyer.identity).link,
-    seller: encodeIdentity(seller.identity).link,
+    buyer: identities.encode(buyer.identity).link,
+    seller: identities.encode(seller.identity).link,
     goods: "one bicycle",
     price: "120.00 CAD",
   });

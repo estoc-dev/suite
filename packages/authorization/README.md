@@ -34,7 +34,9 @@ need not agree to be named; until it signs a proxy, the authorization counts
 for nothing.
 
 ```ts
-const grant = await authorizations.authorize(browserKey.identity, wallet, "2026-10-21T12:00:00Z");
+import { Temporal } from "temporal-polyfill";
+
+const grant = await authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
 // The agent receives the signature and the blobs it leads to:
 // grant.signature.bytes, grant.object.bytes, and the identity objects of both,
 // grant.signature.identity.bytes and grant.object.agent.bytes.
@@ -51,15 +53,21 @@ in `blobs` by link, as `readStanding` does.
 
 `until` is an RFC 3339 `date-time`. A reader takes it as the instant that
 `Temporal.Instant.from` reads, and the authorization holds while the
-reader's clock is strictly before that instant. One instant can be written
-several ways, with an offset or with fractional seconds; each way is
-another object with the same meaning. Without `until`, an authorization
-does not end.
+reader's clock is strictly before that instant. Without `until`, an
+authorization does not end.
+
+`authorize` takes the end as a `Temporal.Instant` and writes it in UTC, as
+its `toString` does, so one instant gives one object. Another application
+can write the same instant other ways, with an offset or with trailing
+zeros in its fractional seconds; each way is another object with the same
+meaning, and each reads.
 
 Whether `format` is asserted is the validator's business. An `until` that a
 validator lets through but that does not read as an instant, such as a date
-alone, is refused by `authorize` and `readAuthorization`, and a chain that
-holds it counts for nothing.
+alone, is refused by `readAuthorization`, and a chain that holds it counts
+for nothing. An instant past the year 9999 has no RFC 3339 form, and a
+validator that asserts `format` refuses it in `authorize`, before the signer
+is asked.
 
 There is no revocation. Offline, a revocation may not arrive in time, and if
 one more blob could undo an authorization, no reading would be settled. To

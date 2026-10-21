@@ -1,7 +1,8 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeIdentity, encodeObject, encodeSchema, linkOf, schemaOf, sign, type Json } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, identities, linkOf, schemaOf, sign, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { describe, expect, it } from "vitest";
+import { Temporal } from "temporal-polyfill";
+import { describe, expect, it, vi } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Signed } from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 
@@ -17,30 +18,42 @@ const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
-const agent = encodeIdentity(hot.identity).link;
+const agent = identities.encode(hot.identity).link;
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([object.bytes, object.agent.bytes, signature.identity.bytes]);
-const identities = [root, hot, deputy].map(({ identity }) => encodeIdentity(identity).bytes);
-const given = (...blobs: Uint8Array[]) => byLink([...identities, ...blobs]);
+const identityBytes = [root, hot, deputy].map(({ identity }) => identities.encode(identity).bytes);
+const given = (...blobs: Uint8Array[]) => byLink([...identityBytes, ...blobs]);
 
 describe("an authorization", () => {
   it.each([
-    ["without an end", undefined, undefined],
-    ["until an instant in UTC", "2027-01-01T00:00:00Z", "2027-01-01T00:00:00Z"],
-    ["until an instant written with an offset and fractional seconds", "2027-01-01T08:00:00.25+08:00", "2027-01-01T00:00:00.25Z"],
-  ])("%s reads back from its blobs", async (_, until, instant) => {
-    const signed = await authorizations.authorize(hot.identity, root, until);
+    ["without an end", undefined],
+    ["until an instant", "2027-01-01T00:00:00Z"],
+    ["until an instant with fractional seconds", "2027-01-01T00:00:00.25Z"],
+  ])("%s reads back from its blobs", async (_, until) => {
+    const signed = await authorizations.authorize(hot.identity, root, until === undefined ? undefined : Temporal.Instant.from(until));
     const read = authorizations.readAuthorization(signed.signature.bytes, blobsOf(signed));
-    expect(read.signature.identity).toEqual(encodeIdentity(root.identity));
-    expect(read.object.agent).toEqual(encodeIdentity(hot.identity));
-    expect(read.object.until?.toString()).toBe(instant);
+    expect(read.signature.identity).toEqual(identities.encode(root.identity));
+    expect(read.object.agent).toEqual(identities.encode(hot.identity));
+    expect(read.object.until?.toString()).toBe(until);
     expect(read.object.link).toBe(signed.object.link);
     expect(read.signature.link).toBe(signed.signature.link);
   });
 
+  it("is written with its end in UTC, whatever offset the instant was given with", async () => {
+    const signed = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T08:00:00+08:00"));
+    const bytes: Uint8Array = signed.object.bytes;
+    expect(decodeObject(bytes, authorization).data).toEqual({ agent, until: "2027-01-01T00:00:00Z" });
+  });
+
+  it("is not signed with an end past the year 9999, which RFC 3339 does not write", async () => {
+    const asked = vi.fn((digest: Uint8Array) => root.sign(digest));
+    const until = Temporal.Instant.from("+010000-01-01T00:00:00Z");
+    await expect(authorizations.authorize(hot.identity, { identity: root.identity, sign: asked }, until)).rejects.toThrow(/does not fit/);
+    expect(asked).not.toHaveBeenCalled();
+  });
+
   it("is refused with an end that does not read as an instant, even by a validator that lets it through", async () => {
     const blind = await loadAuthorizations(formatBlind);
-    await expect(blind.authorize(hot.identity, root, "2027-01-01")).rejects.toThrow();
     const object = encodeObject(await encodeSchema(authorizationSchema, formatBlind), { agent, until: "2027-01-01" });
     const signature = await sign(object, root);
     expect(() => blind.readAuthorization(signature.bytes, given(object.bytes))).toThrow();
@@ -105,7 +118,7 @@ describe("proxy", () => {
     expect(signed.object.chain).toEqual([toHot.signature.link, toDeputy.signature.link]);
     expect(signed.object.target).toBe(target.link);
     expect(schemaOf(signed.object.bytes)).toBe(proxy.link);
-    expect(signed.signature.identity).toEqual(encodeIdentity(deputy.identity));
+    expect(signed.signature.identity).toEqual(identities.encode(deputy.identity));
   });
 
   it("refuses an empty chain", async () => {

@@ -2,9 +2,9 @@ import { loadAuthorizations } from "@estoc/authorization";
 import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
   decodeObject,
-  encodeIdentity,
   encodeObject,
   encodeSchema,
+  identities,
   linkSchema,
   reading,
   sign,
@@ -78,14 +78,14 @@ describe("a card", () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(card, { mailbox: byMailbox.link, name: byName.link });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(readCard(bundle)).toEqual({ identity: encodeIdentity(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(contact, { displayName: byName.link, inbox: byMailbox.link });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(readCard(bundle)).toEqual({ identity: encodeIdentity(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
   });
 
   it("with its name signed by someone else reads as no one's card", async () => {
@@ -110,7 +110,7 @@ describe("a chat message", () => {
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await sign(message, alice);
     const bundle = handOver(signature, [message.bytes, signature.identity.bytes]);
-    expect(readMessage(bundle)).toEqual({ from: encodeIdentity(alice.identity), message: { text: "See you at noon." } });
+    expect(readMessage(bundle)).toEqual({ from: identities.encode(alice.identity), message: { text: "See you at noon." } });
   });
 });
 
@@ -136,11 +136,11 @@ describe("a chat message sent through a device key", () => {
     const grant = await authorizations.authorize(deviceKey.identity, wallet);
     const proxy = await authorizations.proxy(message.link, [grant], deviceKey);
     const root = encodeObject(standingEnvelope, { message: message.link, signature: proxy.signature.link });
-    const identities = [grant.signature.identity.bytes, grant.object.agent.bytes];
-    const blobs = [message.bytes, proxy.object.bytes, proxy.signature.bytes, grant.object.bytes, grant.signature.bytes, ...identities];
+    const identityBytes = [grant.signature.identity.bytes, grant.object.agent.bytes];
+    const blobs = [message.bytes, proxy.object.bytes, proxy.signature.bytes, grant.object.bytes, grant.signature.bytes, ...identityBytes];
     expect(readSent(handOver(root, blobs), new Date())).toEqual({
-      from: encodeIdentity(wallet.identity),
-      through: [encodeIdentity(deviceKey.identity)],
+      from: identities.encode(wallet.identity),
+      through: [identities.encode(deviceKey.identity)],
       message: { text: "See you at noon." },
     });
   });

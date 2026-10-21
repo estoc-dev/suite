@@ -24,11 +24,14 @@ export function decodeObject(bytes: Bytes<EncodedObject>, schema: Schema): Encod
 }
 
 export function encodeObject(schema: Schema, data: Json): EncodedObject {
-  return viewOf(schema).encode(schema.link, data);
+  return viewOf(schema).encode(data);
 }
 
-function viewOf(schema: Schema): View<EncodedObject> {
-  return new View([reading(schema, (data, object) => ({ schema, data, ...object }))]);
+function viewOf(schema: Schema): View<EncodedObject, Json> {
+  return new View<EncodedObject, Json>([reading(schema, (data, object) => ({ schema, data, ...object }))], {
+    schema: schema.link,
+    write: (data) => data,
+  });
 }
 
 /**

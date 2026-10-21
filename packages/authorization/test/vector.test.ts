@@ -1,6 +1,7 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeIdentity, encodeSchema, linkOf, type EncodedObject, type Link } from "@estoc/object";
+import { encodeSchema, identities, linkOf, type EncodedObject, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/index.ts";
 
@@ -51,7 +52,7 @@ const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const grant = await authorizations.authorize(hot.identity, root, "2027-01-01T00:00:00Z");
+const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
 const proxy = await authorizations.proxy(target, [grant], hot);
 
 describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its agent signs", () => {
@@ -74,9 +75,9 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
     const texts = [rootIdentityText, hotIdentityText, authorizationText, grantText, proxyText];
     const blobs = new Map<string, Uint8Array>(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
     const read = authorizations.readAuthorization(utf8(grantText), blobs);
-    expect(read.signature.identity).toEqual(encodeIdentity(root.identity));
-    expect(read.object.agent).toEqual(encodeIdentity(hot.identity));
+    expect(read.signature.identity).toEqual(identities.encode(root.identity));
+    expect(read.object.agent).toEqual(identities.encode(hot.identity));
     const standing = authorizations.readStanding(target, utf8(proxySignatureText), blobs, new Date("2026-12-31T23:59:59Z"));
-    expect(standing).toEqual({ identity: encodeIdentity(root.identity), agents: [encodeIdentity(hot.identity)] });
+    expect(standing).toEqual({ identity: identities.encode(root.identity), agents: [identities.encode(hot.identity)] });
   });
 });

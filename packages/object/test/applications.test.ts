@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
-  encodeIdentity,
   encodeObject,
   encodeSchema,
+  identities,
   linkOf,
   linkSchema,
   sign,
@@ -70,7 +70,7 @@ describe("a login", () => {
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
-    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(encodeIdentity(user.identity));
+    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.identity));
   });
 
   it("for another nonce or audience logs no one in", async () => {
@@ -140,8 +140,8 @@ const buyer = signer("eip191", 1);
 const seller = signer("ed25519", 2);
 const witness = signer("solana-offchain", 3);
 const terms = encodeObject(sale, {
-  buyer: encodeIdentity(buyer.identity).link,
-  seller: encodeIdentity(seller.identity).link,
+  buyer: identities.encode(buyer.identity).link,
+  seller: identities.encode(seller.identity).link,
   goods: "one bicycle",
   price: "120.00 CAD",
 });
@@ -162,7 +162,7 @@ describe("a sale", () => {
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
     const witnessed = await sign(terms, witness);
     const received = receive([...(await signedBy([terms, buyer])), witnessed]);
-    expect(signersOf(terms.link, received)).toContainEqual(encodeIdentity(witness.identity));
+    expect(signersOf(terms.link, received)).toContainEqual(identities.encode(witness.identity));
     expect(saleInForce(terms.link, received)).toBeUndefined();
   });
 });

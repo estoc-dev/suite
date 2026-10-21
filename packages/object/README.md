@@ -14,6 +14,12 @@ Signature  an Object written to the signature schema, with the data
            {"identity": "sha256:<the Identity's link>", "object": "sha256:<the Object's link>", "signature": <hex>}
 ```
 
+The encoding, objects, schemas and validators are the substrate that every
+application shares. Views are how a program reads objects as values of its
+own types. Identities and signatures are two views, kept in this package
+because the packages built on it sign and name identities; another
+application can read the same objects without them.
+
 ## Encoding
 
 - A blob is the JCS ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
@@ -77,14 +83,59 @@ names. Where the data holds a link, the schema writes out what a link looks
 like: `linkSchema` is `{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}`,
 to place there.
 
-`decodeObject` leaves the data as JSON. A program reads objects as values
-of its own through a view.
+## Validators
+
+Whether a value fits a schema is the validator's call. A validator compiles a
+schema once, when the schema is read, and the schema keeps the result, so
+reading a schema returns a promise and reading an object does not. Every
+validator works offline and keeps to three rules:
+
+- A `$ref` to anything outside the schema fails compilation, rather than the
+  validation that happens to reach it. A `$ref` in a place the dialect
+  ignores, such as under `then` without `if`, has no effect.
+- The same schema and value give the same answer every time.
+- A dialect it does not support fails compilation.
+
+Anything else, such as whether `format` is asserted or which regular
+expression dialect `pattern` uses, is the validator's own. A signature
+commits to bytes, so a stricter validator can replace another without any
+blob changing.
+
+`defaultValidator`, from `@estoc/object/default-validator`, wraps
+[`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
+which interprets schemas instead of generating code and so runs under a
+strict content security policy. It takes draft 2020-12 only, in the schema
+and in any schema resource inside it. A schema without `$id` can reference
+its own parts by fragment (`#/$defs/name`), and a schema resource inside it
+by its `$id`. Nothing is fetched, so a URL resolves only to a part of the
+schema itself, and not to the draft's meta-schemas either.
+It asserts the formats hyperjump's lite set knows (dates, times and
+durations, email, IP addresses, URIs and IRIs, UUIDs, URI templates, JSON
+pointers and regular expressions) and passes the rest.
+
+hyperjump keeps one schema registry and one configuration for a JavaScript
+realm. Importing the default validator turns off hyperjump's fetching over
+http, https and file URLs and turns on format assertion for the realm, and
+the default validator compiles one schema at a time so that schemas do not
+see each other in the registry. Code in the same realm that configures
+hyperjump otherwise, or adds formats to it, changes the default validator's
+answers; such an application is better off with a validator of its own.
+
+A `pattern` can backtrack exponentially in the length of the string it
+tests. Pinning a schema keeps out patterns someone else wrote, but not data
+that sets off one of the application's own: under a pinned `^(a+)+$`, about
+thirty characters stall validation for seconds. Validate untrusted objects in
+a worker with a time limit, unless the schema's patterns and the length of
+the strings they test have been reviewed to keep validation cheap. A viewer
+of arbitrary objects, which also runs schemas someone else wrote, needs the
+worker in any case.
 
 ## Views
 
-An object is data: anyone can write one to any schema, and nothing about it
-belongs to the program that reads it. A program has types of its own, and a
-`View` is where objects from outside become values of them. It holds one
+`decodeObject` leaves the data as JSON. An object is data: anyone can write
+one to any schema, and nothing about it belongs to the program that reads
+it. A program has types of its own, and a `View` is where objects from
+outside become values of them. It holds one
 `Reading` for each schema it takes, and reads an object by the reading of
 the schema the object is written to; an object of any other schema is
 refused. `reading` makes one that validates the data against the schema
@@ -204,50 +255,3 @@ One identity can sign one object more than once, as a wallet need not sign
 deterministically, and each of those signatures reads. Finding the
 signatures over an object takes an index by the link they name, so hand an
 object over together with its signatures.
-
-## Validators
-
-Whether a value fits a schema is the validator's call. A validator compiles a
-schema once, when the schema is read, and the schema keeps the result, so
-reading a schema returns a promise and reading an object does not. Every
-validator works offline and keeps to three rules:
-
-- A `$ref` to anything outside the schema fails compilation, rather than the
-  validation that happens to reach it. A `$ref` in a place the dialect
-  ignores, such as under `then` without `if`, has no effect.
-- The same schema and value give the same answer every time.
-- A dialect it does not support fails compilation.
-
-Anything else, such as whether `format` is asserted or which regular
-expression dialect `pattern` uses, is the validator's own. A signature
-commits to bytes, so a stricter validator can replace another without any
-blob changing.
-
-`defaultValidator`, from `@estoc/object/default-validator`, wraps
-[`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
-which interprets schemas instead of generating code and so runs under a
-strict content security policy. It takes draft 2020-12 only, in the schema
-and in any schema resource inside it. A schema without `$id` can reference
-its own parts by fragment (`#/$defs/name`), and a schema resource inside it
-by its `$id`. Nothing is fetched, so a URL resolves only to a part of the
-schema itself, and not to the draft's meta-schemas either.
-It asserts the formats hyperjump's lite set knows (dates, times and
-durations, email, IP addresses, URIs and IRIs, UUIDs, URI templates, JSON
-pointers and regular expressions) and passes the rest.
-
-hyperjump keeps one schema registry and one configuration for a JavaScript
-realm. Importing the default validator turns off hyperjump's fetching over
-http, https and file URLs and turns on format assertion for the realm, and
-the default validator compiles one schema at a time so that schemas do not
-see each other in the registry. Code in the same realm that configures
-hyperjump otherwise, or adds formats to it, changes the default validator's
-answers; such an application is better off with a validator of its own.
-
-A `pattern` can backtrack exponentially in the length of the string it
-tests. Pinning a schema keeps out patterns someone else wrote, but not data
-that sets off one of the application's own: under a pinned `^(a+)+$`, about
-thirty characters stall validation for seconds. Validate untrusted objects in
-a worker with a time limit, unless the schema's patterns and the length of
-the strings they test have been reviewed to keep validation cheap. A viewer
-of arbitrary objects, which also runs schemas someone else wrote, needs the
-worker in any case.

@@ -73,7 +73,10 @@ describe("sign", () => {
 
 test("a signature's bytes are not an object, nor an object's a signature", async () => {
   const signature = await sign(hello, signer("ed25519"));
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(signature.bytes, note)).toThrow();
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeSignature(hello.bytes)).toThrow();
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeSignature(note.bytes)).toThrow();
 });

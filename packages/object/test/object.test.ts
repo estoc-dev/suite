@@ -78,6 +78,7 @@ describe("the schema an object names", () => {
 });
 
 test("a schema's bytes are not an object", () => {
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(login.bytes, anything)).toThrow();
 });
 

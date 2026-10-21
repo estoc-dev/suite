@@ -1,4 +1,4 @@
-import { decodeJson, encodeJson, isJsonObject, isLink, type Json, type Link } from "./encoding.ts";
+import { decodeJson, encodeJson, isJsonObject, isLink, type Bytes, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -9,7 +9,7 @@ import type { Schema } from "./schema.ts";
 export interface EncodedObject {
   readonly schema: Schema;
   readonly data: Json;
-  readonly bytes: Uint8Array;
+  readonly bytes: Bytes<EncodedObject>;
   readonly link: Link<EncodedObject>;
 }
 
@@ -18,7 +18,7 @@ export interface EncodedObject {
  * expects, so an object written to any other is refused instead of read as
  * one of these.
  */
-export function decodeObject(bytes: Uint8Array, schema: Schema): EncodedObject {
+export function decodeObject(bytes: Bytes<EncodedObject>, schema: Schema): EncodedObject {
   const decoded = decodeJson(bytes);
   const { data, schema: named } = fieldsOf(decoded.value);
   if (named !== schema.link) throw new Error(`the object is not written to ${schema.link}`);
@@ -36,7 +36,7 @@ export function encodeObject(schema: Schema, data: Json): EncodedObject {
  * reader that takes objects of several schemas picks by it which schema to
  * read the object with.
  */
-export function schemaOf(bytes: Uint8Array): Link<Schema> {
+export function schemaOf(bytes: Bytes<EncodedObject>): Link<Schema> {
   const { schema } = fieldsOf(decodeJson(bytes).value);
   if (!isLink(schema)) throw new Error("an object names its schema by link");
   return schema;

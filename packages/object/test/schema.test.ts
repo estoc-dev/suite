@@ -39,6 +39,7 @@ describe("decodeSchema", () => {
 
   it("refuses the bytes of an object", async () => {
     const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+    // @ts-expect-error: refused at compile time too
     await expect(decodeSchema(encodeObject(anything, { $schema: DRAFT }).bytes, defaultValidator)).rejects.toThrow();
   });
 });

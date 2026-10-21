@@ -2,10 +2,12 @@ import { loadAuthorizations } from "@estoc/authorization";
 import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
   decodeObject,
-  decodeSignature,
   encodeObject,
   encodeSchema,
+  reading,
   sign,
+  signatures,
+  View,
   type EncodedObject,
   type JsonObject,
   type Link,
@@ -36,15 +38,27 @@ function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
 }
 
 const card = await schemaFor("Card", { mailbox: LINK, name: LINK });
+const contact = await schemaFor("Contact", { displayName: LINK, inbox: LINK });
 const mailbox = await schemaFor("Mailbox", { url: { type: "string", format: "uri" } });
 const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" }, defaultValidator);
 
 // A card lists the signatures of the one identity it is for: over a mailbox
-// that reaches it, and over the name it goes by.
+// that reaches it, and over the name it goes by. Another application writes
+// the same to a schema of its own, a contact, which reads as a card too.
+type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
+
+const cards = new View<Card>([
+  reading(card, (data) => data as Card),
+  reading(contact, (data) => {
+    const { displayName, inbox } = data as { displayName: Link<Signature>; inbox: Link<Signature> };
+    return { mailbox: inbox, name: displayName };
+  }),
+]);
+
 function readCard(bundle: Bundle) {
-  const signatures = decodeObject(bundle.root, card).data as { mailbox: Link<Signature>; name: Link<Signature> };
-  const reachedAt = decodeSignature(blobAt(bundle, signatures.mailbox));
-  const goesBy = decodeSignature(blobAt(bundle, signatures.name));
+  const listed = cards.decode(bundle.root);
+  const reachedAt = signatures.decode(blobAt(bundle, listed.mailbox));
+  const goesBy = signatures.decode(blobAt(bundle, listed.name));
   if (!sameIdentity(reachedAt.identity, goesBy.identity)) throw new Error("a card is signed by the one identity it is for");
   return {
     identity: reachedAt.identity,
@@ -66,6 +80,13 @@ describe("a card", () => {
     expect(readCard(bundle)).toEqual({ identity: alice.identity, mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
   });
 
+  it("written by another application to its own schema reads as the same card", async () => {
+    const [byMailbox, byName] = await signed;
+    const root = encodeObject(contact, { displayName: byName.link, inbox: byMailbox.link });
+    const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes]);
+    expect(readCard(bundle)).toEqual({ identity: alice.identity, mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+  });
+
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await signed;
     const byOther = await sign(called, signer("eip191", 2));
@@ -78,7 +99,7 @@ describe("a card", () => {
 const chat = await schemaFor("Chat message", { text: { type: "string" } });
 
 function readMessage(bundle: Bundle) {
-  const read = decodeSignature(bundle.root);
+  const read = signatures.decode(bundle.root);
   return { from: read.identity, message: decodeObject(blobAt(bundle, read.object), chat).data };
 }
 

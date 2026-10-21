@@ -64,7 +64,7 @@ blobs, look at a clock, or check a schema. A signature under `blobs/` is
 bytes, as an image is, so one that does not verify, or whose scheme the
 reader does not know, is read all the same.
 
-Signatures are verified where they are used: `decodeSignature` in
+Signatures are verified where they are used: `signatures` in
 `@estoc/object` and `readStanding` in `@estoc/authorization` verify what
 they read. Verifying once on the way in and trusting it afterwards is what
 a store does with what it keeps. If reading a bundle verified signatures, it
@@ -72,14 +72,14 @@ would have to know every identity scheme: a reader that predates a scheme
 could not read even the root of a card carrying a signature in it, and one
 bad signature that nothing refers to would refuse the whole bundle.
 
-A reader starts at the root, reads it with the schema it expects, and
-follows its links with `get`. To carry signed content, the root is the
+A reader starts at the root, reads it through a view of the schemas it
+expects, and follows its links with `get`. To carry signed content, the root is the
 signature over it, or refers to signatures: a chat message travels with the
 signature over it as the root, and a card lists the signatures over what it
 holds. The reader goes through each signature to the object it is over.
 
 ```ts
-const signed = decodeSignature(bundle.root);
+const signed = signatures.decode(bundle.root);
 const message = decodeObject(bundle.get(signed.object)!, chatSchema);
 // signed.identity stands behind message
 ```

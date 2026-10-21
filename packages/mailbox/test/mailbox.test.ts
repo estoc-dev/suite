@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { decodeSignature, encodeObject, encodeSchema, sign, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, sign, signatures, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -27,7 +27,7 @@ describe("a mailbox", () => {
     expect(more).toEqual([]);
     const opened = await bob.open(sealed!);
     expect(opened).toEqual(message);
-    expect(decodeSignature(opened.entry).identity).toEqual(alice.identity);
+    expect(signatures.decode(opened.entry).identity).toEqual(alice.identity);
   });
 
   it("sends while the clock at each send is before its end", async () => {

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { decodeSignature } from "@estoc/object";
+import { signatures } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 
@@ -28,7 +28,7 @@ const files = new Map([
 
 describe("a bundle whose root is a signature over a login object, carrying the object", () => {
   it("writes to fixed files", () => {
-    const written = writeBundle(decodeSignature(utf8(signatureText)), [utf8(objectText)]);
+    const written = writeBundle(signatures.decode(utf8(signatureText)), [utf8(objectText)]);
     expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
   });
 

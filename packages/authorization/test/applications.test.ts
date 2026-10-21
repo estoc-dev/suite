@@ -1,5 +1,16 @@
-import { identityFromJson, identityToJson, sameIdentity, SoftwareSigner, type Identity, type IdentityJson, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, linkOf, sign, type EncodedObject } from "@estoc/object";
+import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import {
+  decodeObject,
+  encodeIdentity,
+  encodeObject,
+  encodeSchema,
+  linkOf,
+  sign,
+  type EncodedObject,
+  type IdentityObject,
+  type Link,
+  type Signature,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { loadAuthorizations, type Signed } from "../src/index.ts";
@@ -10,7 +21,9 @@ import { loadAuthorizations, type Signed } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) => signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes]);
+// An object, the signature over it and the object of the identity that signed.
+const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) =>
+  signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes, signature.identity.bytes]);
 const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
 const directly = async (object: EncodedObject, by: SoftwareSigner): Promise<Signed<EncodedObject>> => ({ object, signature: await sign(object, by) });
 
@@ -31,7 +44,7 @@ const login = await encodeSchema(
 // The server builds the login object from its audience and the nonce it
 // handed out, and takes back one signature with the blobs it leads to. It
 // accepts one agent at most: a key that the user's wallet authorized.
-function loggedIn(audience: string, nonce: string, entry: Uint8Array, received: readonly Uint8Array[], now: Date): Identity {
+function loggedIn(audience: string, nonce: string, entry: Uint8Array, received: readonly Uint8Array[], now: Date): IdentityObject {
   const expected = encodeObject(login, { audience, nonce });
   const { identity, agents } = authorizations.readStanding(expected.link, entry, byLink(received), now);
   if (agents.length > 1) throw new Error("this server accepts one agent at most");
@@ -48,7 +61,7 @@ describe("a login", () => {
     loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.bytes, blobs(await forADay, entry), at);
 
   it("through a key the wallet authorized for a day logs in the wallet", async () => {
-    expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(wallet.identity);
+    expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(encodeIdentity(wallet.identity));
   });
 
   it("through that key logs no one in once the day is over", async () => {
@@ -56,13 +69,14 @@ describe("a login", () => {
   });
 
   it("signed by the key directly logs in the key, not the wallet", async () => {
-    expect(await logIn(await directly(object, browserKey), new Date("2026-10-20T12:00:00Z"))).toEqual(browserKey.identity);
+    expect(await logIn(await directly(object, browserKey), new Date("2026-10-20T12:00:00Z"))).toEqual(encodeIdentity(browserKey.identity));
   });
 });
 
+// A sale names its parties by the links of their identity objects.
 type Sale = {
-  readonly buyer: IdentityJson;
-  readonly seller: IdentityJson;
+  readonly buyer: Link<IdentityObject>;
+  readonly seller: Link<IdentityObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -73,8 +87,8 @@ const sale = await encodeSchema(
     title: "Sale",
     type: "object",
     properties: {
-      buyer: { $ref: "https://estoc.dev/schema/identity" },
-      seller: { $ref: "https://estoc.dev/schema/identity" },
+      buyer: { $ref: "https://estoc.dev/schema/link" },
+      seller: { $ref: "https://estoc.dev/schema/link" },
       goods: { type: "string" },
       price: { type: "string", pattern: "^[0-9]+\\.[0-9]{2} [A-Z]{3}$" },
     },
@@ -98,7 +112,7 @@ function saleInForce(bytes: Uint8Array, entries: readonly Uint8Array[], received
     }
   });
   const { buyer, seller } = terms.data as Sale;
-  const behind = (party: IdentityJson) => standing.some(({ identity }) => sameIdentity(identity, identityFromJson(party)));
+  const behind = (party: Link<IdentityObject>) => standing.some(({ identity }) => identity.link === party);
   return behind(buyer) && behind(seller) ? (terms.data as Sale) : undefined;
 }
 
@@ -108,22 +122,23 @@ describe("a sale", () => {
   const seller = signer("solana-offchain", 3);
   const now = new Date("2026-10-20T12:00:00Z");
   const terms = encodeObject(sale, {
-    buyer: identityToJson(buyer.identity),
-    seller: identityToJson(seller.identity),
+    buyer: encodeIdentity(buyer.identity).link,
+    seller: encodeIdentity(seller.identity).link,
     goods: "one bicycle",
     price: "120.00 CAD",
   });
   const toBroker = authorizations.authorize(broker.identity, buyer);
+  const entriesOf = (...signed: { readonly signature: Signature }[]) => signed.map(({ signature }) => signature.bytes);
 
   it("is in force once its seller signs it and its buyer signs it through a broker", async () => {
     const grant = await toBroker;
     const proxy = await authorizations.proxy(terms.link, [grant], broker);
-    const entries = [(await directly(terms, seller)).signature.bytes, proxy.signature.bytes];
-    expect(saleInForce(terms.bytes, entries, blobs(grant, proxy), now)).toEqual(terms.data);
+    const bySeller = await directly(terms, seller);
+    expect(saleInForce(terms.bytes, entriesOf(bySeller, proxy), blobs(bySeller, grant, proxy), now)).toEqual(terms.data);
   });
 
   it("is not in force when the broker signs it in its own name, as a witness would", async () => {
-    const entries = [(await directly(terms, seller)).signature.bytes, (await directly(terms, broker)).signature.bytes];
-    expect(saleInForce(terms.bytes, entries, blobs(await toBroker), now)).toBeUndefined();
+    const [bySeller, byBroker] = await Promise.all([directly(terms, seller), directly(terms, broker)]);
+    expect(saleInForce(terms.bytes, entriesOf(bySeller, byBroker), blobs(bySeller, byBroker, await toBroker), now)).toBeUndefined();
   });
 });

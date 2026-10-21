@@ -1,5 +1,18 @@
-import { identityFromJson, identityToJson, sameIdentity, SoftwareSigner, type Identity, type IdentityJson, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, linkOf, sign, signatures, type Bytes, type EncodedObject, type Schema } from "@estoc/object";
+import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import {
+  decodeObject,
+  encodeIdentity,
+  encodeObject,
+  encodeSchema,
+  linkOf,
+  sign,
+  signatures,
+  type Bytes,
+  type EncodedObject,
+  type IdentityObject,
+  type Link,
+  type Schema,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Message } from "../src/index.ts";
@@ -14,13 +27,13 @@ import { MemoryNetwork, type Faults } from "./memory-network.ts";
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const now = new Date("2026-10-20T12:00:00Z");
-const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Message> => ({
-  entry: (await sign(object, by)).bytes,
-  blobs: [object.bytes],
-});
+const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Message> => {
+  const signature = await sign(object, by);
+  return { entry: signature.bytes, blobs: [object.bytes, signature.identity.bytes] };
+};
 
-function readSigned({ entry, blobs }: Message, schema: Schema): { identity: Identity; object: EncodedObject } {
-  const signature = signatures.decode(entry);
+function readSigned({ entry, blobs }: Message, schema: Schema): { identity: IdentityObject; object: EncodedObject } {
+  const signature = signatures.decode(entry, new Map(blobs.map((bytes) => [linkOf(bytes), bytes])));
   const object = blobs.find((bytes): bytes is Bytes<EncodedObject> => linkOf(bytes) === signature.object);
   if (object === undefined) throw new Error(`no blob is given for ${signature.object}`);
   return { identity: signature.identity, object: decodeObject(object, schema) };
@@ -37,19 +50,19 @@ const chat = await encodeSchema(
     $schema: DRAFT,
     title: "Chat",
     type: "object",
-    properties: { to: { $ref: "https://estoc.dev/schema/identity" }, text: { type: "string" } },
+    properties: { to: { $ref: "https://estoc.dev/schema/link" }, text: { type: "string" } },
     required: ["text"],
     additionalProperties: false,
   },
   defaultValidator,
 );
 
-// What a chat shows of a line: who wrote it and, when the line says whom it
-// is for, whether that is the reader.
-function readChat(message: Message, reader: Identity) {
+// What a chat shows of a line: who wrote it and, when the line names whom it
+// is for by the link of an identity object, whether that is the reader.
+function readChat(message: Message, reader: IdentityObject) {
   const { identity, object } = readSigned(message, chat);
-  const { text, to } = object.data as { text: string; to?: IdentityJson };
-  return { author: identity, text, forReader: to === undefined ? undefined : sameIdentity(identityFromJson(to), reader) };
+  const { text, to } = object.data as { text: string; to?: Link<IdentityObject> };
+  return { author: identity, text, forReader: to === undefined ? undefined : to === reader.link };
 }
 
 describe("a chat line", () => {
@@ -71,13 +84,17 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passed).toEqual(sent);
-    expect(readChat(passed, carol.identity)).toEqual({ author: alice.identity, text: "lunch at noon?", forReader: undefined });
+    expect(readChat(passed, encodeIdentity(carol.identity))).toEqual({
+      author: encodeIdentity(alice.identity),
+      text: "lunch at noon?",
+      forReader: undefined,
+    });
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const { received, passed } = await passOn(encodeObject(chat, { to: identityToJson(bob.identity), text: "lunch at noon?" }));
-    expect(readChat(received, bob.identity).forReader).toBe(true);
-    expect(readChat(passed, carol.identity).forReader).toBe(false);
+    const { received, passed } = await passOn(encodeObject(chat, { to: encodeIdentity(bob.identity).link, text: "lunch at noon?" }));
+    expect(readChat(received, encodeIdentity(bob.identity)).forReader).toBe(true);
+    expect(readChat(passed, encodeIdentity(carol.identity)).forReader).toBe(false);
   });
 });
 
@@ -110,7 +127,7 @@ describe("a one-time invitation", () => {
     };
     let used = false;
     const letIn = async () => {
-      const admitted: Identity[] = [];
+      const admitted: IdentityObject[] = [];
       for (const message of await inviter.take()) {
         const { identity, object } = readSigned(message, join);
         if (used || (object.data as { invitation: string }).invitation !== link) continue;
@@ -126,7 +143,7 @@ describe("a one-time invitation", () => {
     const { answer, letIn } = await invite();
     await answer(dave, now);
     await answer(erin, now);
-    expect(await letIn()).toEqual([dave.identity]);
+    expect(await letIn()).toEqual([encodeIdentity(dave.identity)]);
     await answer(erin, now);
     expect(await letIn()).toEqual([]);
   });
@@ -138,9 +155,10 @@ describe("a one-time invitation", () => {
   });
 });
 
+// A sale names its parties by the links of their identity objects.
 type Sale = {
-  readonly buyer: IdentityJson;
-  readonly seller: IdentityJson;
+  readonly buyer: Link<IdentityObject>;
+  readonly seller: Link<IdentityObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -151,8 +169,8 @@ const sale = await encodeSchema(
     title: "Sale",
     type: "object",
     properties: {
-      buyer: { $ref: "https://estoc.dev/schema/identity" },
-      seller: { $ref: "https://estoc.dev/schema/identity" },
+      buyer: { $ref: "https://estoc.dev/schema/link" },
+      seller: { $ref: "https://estoc.dev/schema/link" },
       goods: { type: "string" },
       price: { type: "string", pattern: "^[0-9]+\\.[0-9]{2} [A-Z]{3}$" },
     },
@@ -167,15 +185,15 @@ const sale = await encodeSchema(
 // mailbox, and the registry reads all it has received, in whatever order
 // and as many times as it arrived.
 function salesInForce(received: readonly Message[]): Sale[] {
-  const signers = new Map<string, { terms: Sale; identities: Identity[] }>();
+  const signers = new Map<string, { terms: Sale; identities: IdentityObject[] }>();
   for (const message of received) {
     const { identity, object } = readSigned(message, sale);
     const record = signers.get(object.link) ?? { terms: object.data as Sale, identities: [] };
     record.identities.push(identity);
     signers.set(object.link, record);
   }
-  const signedBy = (identities: Identity[]) => (party: IdentityJson) =>
-    identities.some((identity) => sameIdentity(identity, identityFromJson(party)));
+  const signedBy = (identities: IdentityObject[]) => (party: Link<IdentityObject>) =>
+    identities.some((identity) => identity.link === party);
   return [...signers.values()]
     .filter(({ terms, identities }) => [terms.buyer, terms.seller].every(signedBy(identities)))
     .map(({ terms }) => terms);
@@ -185,8 +203,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer("eip191", 6);
   const seller = signer("solana-offchain", 7);
   const terms = encodeObject(sale, {
-    buyer: identityToJson(buyer.identity),
-    seller: identityToJson(seller.identity),
+    buyer: encodeIdentity(buyer.identity).link,
+    seller: encodeIdentity(seller.identity).link,
     goods: "one bicycle",
     price: "120.00 CAD",
   });

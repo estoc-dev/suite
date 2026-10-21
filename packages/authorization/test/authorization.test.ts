@@ -1,5 +1,5 @@
-import { identityToJson, SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, schemaOf, sign, type Json } from "@estoc/object";
+import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import { encodeIdentity, encodeObject, encodeSchema, linkOf, schemaOf, sign, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Signed } from "../src/index.ts";
@@ -17,9 +17,12 @@ const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
-const agent = identityToJson(hot.identity);
-// Bytes that come from elsewhere carry no label.
-const received = (bytes: Uint8Array): Uint8Array => bytes;
+const agent = encodeIdentity(hot.identity).link;
+const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
+// The blobs an authorization leads to: itself and the objects of both identities.
+const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([object.bytes, object.agent.bytes, signature.identity.bytes]);
+const identities = [root, hot, deputy].map(({ identity }) => encodeIdentity(identity).bytes);
+const given = (...blobs: Uint8Array[]) => byLink([...identities, ...blobs]);
 
 describe("an authorization", () => {
   it.each([
@@ -28,9 +31,9 @@ describe("an authorization", () => {
     ["until an instant written with an offset and fractional seconds", "2027-01-01T08:00:00.25+08:00", "2027-01-01T00:00:00.25Z"],
   ])("%s reads back from its blobs", async (_, until, instant) => {
     const signed = await authorizations.authorize(hot.identity, root, until);
-    const read = authorizations.readAuthorization(signed.signature.bytes, signed.object.bytes);
-    expect(read.signature.identity).toEqual(root.identity);
-    expect(read.object.agent).toEqual(hot.identity);
+    const read = authorizations.readAuthorization(signed.signature.bytes, blobsOf(signed));
+    expect(read.signature.identity).toEqual(encodeIdentity(root.identity));
+    expect(read.object.agent).toEqual(encodeIdentity(hot.identity));
     expect(read.object.until?.toString()).toBe(instant);
     expect(read.object.link).toBe(signed.object.link);
     expect(read.signature.link).toBe(signed.signature.link);
@@ -41,20 +44,26 @@ describe("an authorization", () => {
     await expect(blind.authorize(hot.identity, root, "2027-01-01")).rejects.toThrow();
     const object = encodeObject(await encodeSchema(authorizationSchema, formatBlind), { agent, until: "2027-01-01" });
     const signature = await sign(object, root);
-    expect(() => blind.readAuthorization(signature.bytes, received(object.bytes))).toThrow();
+    expect(() => blind.readAuthorization(signature.bytes, given(object.bytes))).toThrow();
   });
 
-  it("is refused when its signature is over another object", async () => {
+  it("is refused when the blob given for its object is another authorization", async () => {
     const first = await authorizations.authorize(hot.identity, root);
     const second = await authorizations.authorize(deputy.identity, root);
-    expect(() => authorizations.readAuthorization(first.signature.bytes, second.object.bytes)).toThrow();
+    const blobs = given().set(first.object.link, second.object.bytes);
+    expect(() => authorizations.readAuthorization(first.signature.bytes, blobs)).toThrow(/is another blob/);
+  });
+
+  it("is not read without the object of its agent", async () => {
+    const signed = await authorizations.authorize(stranger.identity, root);
+    expect(() => authorizations.readAuthorization(signed.signature.bytes, given(signed.object.bytes))).toThrow(/no blob is given/);
   });
 
   it("is refused when its object is written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const object = encodeObject(lookalike, { agent });
     const signature = await sign(object, root);
-    expect(() => authorizations.readAuthorization(signature.bytes, received(object.bytes))).toThrow(/not read here/);
+    expect(() => authorizations.readAuthorization(signature.bytes, given(object.bytes))).toThrow(/not read here/);
   });
 });
 
@@ -64,7 +73,8 @@ describe("the authorization schema", () => {
     ["an end without an offset", { agent, until: "2027-01-01T00:00:00" }],
     ["a field besides agent and until", { agent, scope: "all" }],
     ["no agent", { until: "2027-01-01T00:00:00Z" }],
-    ["an agent that is not an identity", { agent: { ...agent, publicKey: "00" } }],
+    ["an agent that is not a link", { agent: "hot" }],
+    ["an agent written in place of the link to it", { agent: { publicKey: "00", scheme: "ed25519" } }],
   ])("refuses %s", (_, data) => {
     expect(() => encodeObject(authorization, data)).toThrow();
   });
@@ -96,7 +106,7 @@ describe("proxy", () => {
     expect(signed.object.chain).toEqual([toHot.signature.link, toDeputy.signature.link]);
     expect(signed.object.target).toBe(target.link);
     expect(schemaOf(signed.object.bytes)).toBe(proxy.link);
-    expect(signed.signature.identity).toEqual(deputy.identity);
+    expect(signed.signature.identity).toEqual(encodeIdentity(deputy.identity));
   });
 
   it("refuses an empty chain", async () => {

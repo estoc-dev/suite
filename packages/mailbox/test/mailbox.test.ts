@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, sign, signatures, type Json } from "@estoc/object";
+import { encodeIdentity, encodeObject, encodeSchema, linkOf, sign, signatures, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -15,7 +15,8 @@ const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const note = await encodeSchema({ $schema: DRAFT, type: "string" }, defaultValidator);
 const hello = encodeObject(note, "hello, Bob");
-const message = { entry: (await sign(hello, alice)).bytes, blobs: [hello.bytes] };
+const signature = await sign(hello, alice);
+const message = { entry: signature.bytes, blobs: [hello.bytes, signature.identity.bytes] };
 
 describe("a mailbox", () => {
   it("carries a message to the queue it names, sealed so that its key opens it", async () => {
@@ -27,7 +28,8 @@ describe("a mailbox", () => {
     expect(more).toEqual([]);
     const opened = await bob.open(sealed!);
     expect(opened).toEqual(message);
-    expect(signatures.decode(opened.entry).identity).toEqual(alice.identity);
+    const blobs = new Map(opened.blobs.map((bytes) => [linkOf(bytes), bytes]));
+    expect(signatures.decode(opened.entry, blobs).identity).toEqual(encodeIdentity(alice.identity));
   });
 
   it("sends while the clock at each send is before its end", async () => {

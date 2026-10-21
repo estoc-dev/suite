@@ -1,5 +1,12 @@
-import { decodeJson, encodeJson, isJsonObject, isLink, type Bytes, type Json, type Link } from "./encoding.ts";
+import { decodeJson, encodeJson, isJsonObject, isLink, linkOf, type Bytes, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
+
+/** Blobs by their links: a Map, a bundle, or a store that holds blobs by content. */
+export interface Blobs {
+  get(link: Link<unknown>): Uint8Array | undefined;
+}
+
+const noBlobs: Blobs = { get: () => undefined };
 
 /**
  * One way of reading the objects written to one schema: their data, and the
@@ -7,8 +14,11 @@ import type { Schema } from "./schema.ts";
  */
 export interface Reading<T> {
   readonly schema: Link<Schema>;
-  /** Throws when the data does not read as a `T`. */
-  read(data: Json, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }): T;
+  /**
+   * Throws when the data does not read as a `T`. A reading that follows a
+   * link in the data looks the blob up in `blobs`.
+   */
+  read(data: Json, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }, blobs: Blobs): T;
 }
 
 /**
@@ -30,18 +40,34 @@ export class View<T> {
     this.#readings = bySchema;
   }
 
-  decode(bytes: Bytes<T>): T {
+  /**
+   * Reads an object. `blobs` holds the blobs that its reading follows links
+   * to, and a reading that follows one not given there fails.
+   */
+  decode(bytes: Bytes<T>, blobs: Blobs = noBlobs): T {
     const decoded = decodeJson(bytes);
     const { data, schema } = fieldsOf(decoded.value);
     if (!isLink(schema)) throw new Error("an object names its schema by link");
     const reading = this.#readings.get(schema);
     if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
-    return reading.read(data, { bytes: decoded.bytes, link: decoded.link });
+    return reading.read(data, { bytes: decoded.bytes, link: decoded.link }, blobs);
+  }
+
+  /**
+   * Reads the object that `link` names, from `blobs`. A blob given for the
+   * link that has another link is refused, as a wrong blob from a store
+   * would be.
+   */
+  follow(link: Link<T>, blobs: Blobs): T {
+    const bytes = blobs.get(link);
+    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+    if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);
+    return this.decode(bytes, blobs);
   }
 
   /** Writes `data` to `schema` as an object, and reads it as `decode` would. */
-  encode(schema: Link<Schema>, data: Json): T {
-    return this.decode(encodeJson({ data, schema }));
+  encode(schema: Link<Schema>, data: Json, blobs: Blobs = noBlobs): T {
+    return this.decode(encodeJson({ data, schema }), blobs);
   }
 }
 
@@ -49,10 +75,10 @@ export class View<T> {
 export function reading<T>(schema: Schema, read: Reading<T>["read"]): Reading<T> {
   return {
     schema: schema.link,
-    read(data, object) {
+    read(data, object, blobs) {
       const problems = schema.validate(data);
       if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
-      return read(data, object);
+      return read(data, object, blobs);
     },
   };
 }

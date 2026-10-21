@@ -73,7 +73,7 @@ const message = await key.open(sealed);
 import { mailboxFrom } from "@estoc/mailbox";
 
 const mailbox = await mailboxFrom(handedOut, { transports: [transport] });
-await mailbox.send({ entry: signature.bytes, blobs: [object.bytes] });
+await mailbox.send({ entry: signature.bytes, blobs: [object.bytes, signature.identity.bytes] });
 ```
 
 `mailboxFrom` takes the bytes of a mailbox alone; who stands behind it is

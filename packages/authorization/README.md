@@ -8,13 +8,14 @@ the blobs it leads to, and reads who stands behind the object by it, and
 through which agents.
 
 ```
-Authorization  {"agent": <identity>, "until"?: <RFC 3339 date-time>}, signed by the authorizer
+Authorization  {"agent": <identity link>, "until"?: <RFC 3339 date-time>}, signed by the authorizer
 Proxy          {"chain": [<signature link>, …], "target": <object link>}, signed by the last agent
 ```
 
 Both are objects of `@estoc/object`, written to two fixed draft 2020-12
 schemas, `authorizationSchema` and `proxySchema`, and signed as any object
-is. The schemas are compiled once, by the validator the application picks:
+is. An Authorization names its agent by the link of the agent's identity
+object, as a signature names its signer. The schemas are compiled once, by the validator the application picks:
 
 ```ts
 import { loadAuthorizations } from "@estoc/authorization";
@@ -34,13 +35,17 @@ for nothing.
 
 ```ts
 const grant = await authorizations.authorize(browserKey.identity, wallet, "2026-10-21T12:00:00Z");
-// The agent receives grant.signature.bytes and grant.object.bytes, and reads them back:
-const received = authorizations.readAuthorization(signatureBytes, objectBytes);
+// The agent receives the signature and the blobs it leads to:
+// grant.signature.bytes, grant.object.bytes, and the identity objects of both,
+// grant.signature.identity.bytes and grant.object.agent.bytes.
+const received = authorizations.readAuthorization(signatureBytes, blobs);
 ```
 
 Both give a `Signed<Authorization>`: the `Authorization` as read, its `agent`
-an identity and its `until` a `Temporal.Instant` when there is one, and the
-`signature` over it, whose identity is the authorizer.
+the agent's identity object and its `until` a `Temporal.Instant` when there
+is one, and the `signature` over it, whose identity is the authorizer.
+`readAuthorization` takes the signature and looks up the blobs it leads to
+in `blobs` by link, as `readStanding` does.
 
 ### The end of an authorization
 
@@ -113,8 +118,8 @@ behind `target` by one signature, `entry`:
   - the last agent is the one who signed the Proxy, and
   - every `until` in the chain is after `now`.
 
-The result is the principal and its agents in order, with no agents for a
-direct signature. An entry that stands no one behind `target` throws,
+The result is the principal and its agents in order, as their identity
+objects, with no agents for a direct signature. An entry that stands no one behind `target` throws,
 saying why, such as which authorization has ended.
 
 The signatures a chain links to, and the entry itself, are direct signatures,
@@ -129,23 +134,25 @@ are, as `sameIdentity` in `@estoc/identity` compares them.
 
 ### Blobs
 
-Every link from the entry points inward, to the Proxy, its chain and the
-authorizations, so the reading only looks blobs up by link. `blobs` is
-anything with `get(link)`: a `Map`, or a store that holds blobs by content.
-The reading checks that each blob it gets has the link it asked for, so
-wrong bytes from a store make the reading fail, and do not make it read
-another standing. Blobs the entry does not lead to are not read.
+Every link from the entry points inward, to the Proxy, its chain, the
+authorizations and the identity objects of their signers and agents, so the
+reading only looks blobs up by link. `blobs` is anything with `get(link)`: a
+`Map`, a bundle, or a store that holds blobs by content. The reading checks
+that each blob it gets has the link it asked for, so wrong bytes from a
+store make the reading fail, and do not make it read another standing.
+Blobs the entry does not lead to are not read.
 
 ```ts
 import { linkOf } from "@estoc/object";
 
 // The browser key sends its signature over the Proxy as the entry, with the blobs it leads to.
 const entry = proxy.signature.bytes;
-const sent = [proxy.object.bytes, received.signature.bytes, received.object.bytes];
+const identities = [proxy.signature.identity.bytes, received.signature.identity.bytes];
+const sent = [proxy.object.bytes, received.signature.bytes, received.object.bytes, ...identities];
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
 authorizations.readStanding(login.link, entry, blobs, new Date());
-// { identity: wallet.identity, agents: [browserKey.identity] }
+// { identity: <the wallet's identity object>, agents: [<the browser key's>] }
 ```
 
 To find everyone who stands behind an object, the application reads each entry

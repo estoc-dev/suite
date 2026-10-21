@@ -123,17 +123,25 @@ that folder: an entry such as `../escape`, `.DS_Store` or one under
 
 A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
 10,000 entries, unless the caller gives others. An entry is unzipped as it is
-read, a few KiB at a time, and the bytes are counted as they come out, since
-the sizes a zip gives for its entries can be false. At the limit unzipping
-stops and the whole zip is refused, as it is when an entry does not unzip to
-the size or the CRC the zip gives. A zip that holds a path twice is refused
-as well, since two tools could each take a different one.
+read, 4 KiB at a time, and the bytes are counted as they come out, since the
+sizes a zip gives for its entries can be false. DEFLATE makes at most about a
+thousand times its size, so a few MiB at most come out before the count stops
+them. Other methods can make far more, so `index.json` or a blob compressed
+with one, such as Deflate64, is refused rather than unzipped. At the limit
+unzipping stops and the whole zip is refused, as it is when an entry does not
+unzip to the size or the CRC the zip gives. A zip that holds a path twice is
+refused as well, since two tools could each take a different one.
+
+zip.js takes the size of the pieces it unzips from a setting shared by all of
+zip.js in the program. `unzipBundle` sets it to 4 KiB each time it runs, so
+other uses of zip.js in the same program work in pieces of that size too.
+What they zip and unzip stays the same, at a small cost in speed.
 
 The directory at the end of a zip lists its entries, and it is what most
-tools read. `unzipBundle` unzips the entries it lists, each from where the
-directory says it starts, and refuses the zip when the header there is
-missing or does not agree with the directory. Bytes anywhere else are not
-entries, even when they look like one: those of a blob that is itself a zip,
-or of the zip's comment. A reader that goes from header to header instead can
-come to entries the directory does not list, and read another bundle from
-the same zip.
+tools read. `unzipBundle` unzips the entries it lists under the paths of a
+bundle, each from where the directory says it starts, and refuses the zip
+when the header there is missing or gives another method, size or CRC. Bytes
+anywhere else are not entries, even when they look like one: those of a blob
+that is itself a zip, or of the zip's comment. A reader that goes from header
+to header instead can come to entries the directory does not list, and read
+another bundle from the same zip.

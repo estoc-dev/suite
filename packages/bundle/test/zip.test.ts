@@ -1,8 +1,14 @@
 import { constants, deflateRawSync } from "node:zlib";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js/index-native.js";
-import { Zip, ZipPassThrough, zipSync } from "fflate";
+import {
+  configure,
+  resetConfiguration,
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipWriter,
+} from "@zip.js/zip.js/index-native.js";
+import { Inflate, Zip, ZipPassThrough, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
 
@@ -51,6 +57,23 @@ function claimingOneByte(zip: Uint8Array): Uint8Array {
   return claimed;
 }
 
+// The zip with the entry under `path` compressed with `method`, as both of its
+// headers say.
+function compressedWith(zip: Uint8Array, path: string, method: number): Uint8Array {
+  const patched = zip.slice();
+  const view = new DataView(patched.buffer);
+  let at = directoryOf(zip);
+  for (let i = 0; i < view.getUint16(zip.length - 12, true); i++) {
+    const nameLength = view.getUint16(at + 28, true);
+    if (Buffer.from(patched.subarray(at + 46, at + 46 + nameLength)).toString() === path) {
+      view.setUint16(at + 10, method, true);
+      view.setUint16(view.getUint32(at + 42, true) + 8, method, true);
+    }
+    at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true);
+  }
+  return patched;
+}
+
 // The zip with the entries of another zip as its comment.
 function hiding(zip: Uint8Array, other: Uint8Array): Uint8Array {
   const entries = other.subarray(0, directoryOf(other));
@@ -80,15 +103,15 @@ function shadowed(zip: Uint8Array, other: Uint8Array): Uint8Array {
   return concat(header, field, entry, bytes, end);
 }
 
-// A zip of about 4 MiB whose blob unzips to 4 GiB of zeros, saying that it
-// unzips to `claimed` bytes. Each MiB after the first is the same DEFLATE
-// block, which repeats the zeros before it.
-async function zeroBomb(claimed: number): Promise<Uint8Array> {
+// A zip whose blob unzips to `mib` MiB of zeros, 4 GiB unless given, saying
+// that it unzips to `claimed` bytes. Each MiB after the first is the same
+// DEFLATE block of about a KiB, which repeats the zeros before it.
+async function zeroBomb(claimed: number, mib = 4096): Promise<Uint8Array> {
   const flush = { finishFlush: constants.Z_SYNC_FLUSH, level: 9 };
   const first = deflateRawSync(zeros, flush);
   const next = deflateRawSync(zeros, { ...flush, dictionary: zeros.subarray(0, 2 ** 15) });
   const last = new Uint8Array([0x03, 0x00]);
-  const deflated = concat(first, ...Array<Uint8Array>(4095).fill(next), last);
+  const deflated = concat(first, ...Array<Uint8Array>(mib - 1).fill(next), last);
   const zip = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false });
   await zip.add("index.json", new Uint8ArrayReader(root.bytes));
   await zip.add(pathOf(zeros), new Uint8ArrayReader(deflated), {
@@ -100,10 +123,35 @@ async function zeroBomb(claimed: number): Promise<Uint8Array> {
   return zip.close();
 }
 
+// A DEFLATE that unzips each piece it is handed whole, as the one zip.js
+// carries does, and counts what it makes.
+class Whole extends TransformStream<Uint8Array, Uint8Array> {
+  static made = 0;
+
+  constructor() {
+    let inflate: Inflate;
+    super({
+      start(controller) {
+        inflate = new Inflate((data) => {
+          Whole.made += data.length;
+          controller.enqueue(data);
+        });
+      },
+      transform(chunk) {
+        inflate.push(chunk);
+      },
+      flush() {
+        inflate.push(new Uint8Array(), true);
+      },
+    });
+  }
+}
+
 describe("a zipped bundle", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    resetConfiguration();
   });
 
   it("unzips to its files and reads as the same bundle", async () => {
@@ -175,6 +223,21 @@ describe("a zipped bundle", () => {
       await expect(unzipBundle(zip, { bytes: 2 ** 10 })).rejects.toThrow();
       await expect(unzipBundle(zip)).rejects.toThrow();
     }
+  });
+
+  it("is refused at its limit with a few MiB unzipped, where each piece is unzipped whole", async () => {
+    configure({ useCompressionStream: false, DecompressionStreamFallback: Whole });
+    await expect(unzipBundle(await zeroBomb(2 ** 26, 64), { bytes: 2 ** 10 })).rejects.toThrow(/more than/);
+    expect(Whole.made).toBeLessThan(32 * 2 ** 20);
+  });
+
+  it("is refused when its index.json or a blob is compressed other than with DEFLATE", async () => {
+    const zip = await zipBundle(new Map([...files, [".DS_Store", text]]));
+    // The DEFLATE that zipped these few bytes is also Deflate64, method 9,
+    // which unzips them the same.
+    expect(await unzipBundle(compressedWith(zip, ".DS_Store", 9))).toEqual(files);
+    await expect(unzipBundle(compressedWith(zip, pathOf(text), 9))).rejects.toThrow(/DEFLATE/);
+    await expect(unzipBundle(compressedWith(zip, "index.json", 9))).rejects.toThrow(/DEFLATE/);
   });
 
   it("is refused when an entry does not unzip to the size it gives", async () => {

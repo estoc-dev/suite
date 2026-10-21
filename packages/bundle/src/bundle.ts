@@ -1,0 +1,62 @@
+import { linkOf, schemaOf, type EncodedObject, type Link } from "@estoc/object";
+
+const ROOT = "index.json";
+const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
+
+/**
+ * An object, the root, and blobs carried with it, held by link. Holding one
+ * means its files were checked: `index.json` is an object in canonical JSON,
+ * and every blob under `blobs/sha256/` has the link its name says. Nothing
+ * else about the blobs is read, signatures included.
+ */
+export class Bundle {
+  readonly root: Uint8Array;
+  readonly link: Link<EncodedObject>;
+  readonly #blobs = new Map<string, Uint8Array>();
+
+  constructor(files: ReadonlyMap<string, Uint8Array>) {
+    const index = files.get(ROOT);
+    if (index === undefined) throw new Error(`a bundle has an ${ROOT}`);
+    // Each blob is copied before it is hashed, so that what was checked is
+    // what is kept, whatever happens to the given arrays afterwards.
+    this.root = index.slice();
+    try {
+      schemaOf(this.root);
+    } catch (cause) {
+      throw new Error(`${ROOT} is not an object in canonical JSON`, { cause });
+    }
+    this.link = linkOf(this.root);
+    this.#blobs.set(this.link, this.root);
+    for (const [path, bytes] of files) {
+      // Any other path is not a blob: a directory entry, a file an archiver
+      // adds, or a name that no link turns into.
+      const hex = BLOB.exec(path)?.[1];
+      if (hex === undefined) continue;
+      const blob = bytes.slice();
+      const link = linkOf(blob);
+      if (link !== `sha256:${hex}`) throw new Error(`${path} holds the blob ${link}`);
+      this.#blobs.set(link, blob);
+    }
+  }
+
+  /** The root, or a blob under `blobs/sha256/`, by its link. */
+  get(link: Link<unknown>): Uint8Array | undefined {
+    return this.#blobs.get(link);
+  }
+}
+
+/**
+ * Reads a bundle from its files by path: a folder read into memory, or a zip
+ * unpacked. Refuses it when `index.json` is missing or is not an object, or
+ * when a blob does not have the link its name says.
+ */
+export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
+  return new Bundle(files);
+}
+
+/** The files of a bundle with `root` as its `index.json`, carrying `blobs`. */
+export function writeBundle(root: EncodedObject, blobs: Iterable<Uint8Array>): Map<string, Uint8Array> {
+  const files = new Map([[ROOT, root.bytes]]);
+  for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);
+  return files;
+}

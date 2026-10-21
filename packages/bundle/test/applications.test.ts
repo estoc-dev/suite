@@ -5,6 +5,7 @@ import {
   encodeIdentity,
   encodeObject,
   encodeSchema,
+  linkSchema,
   reading,
   sign,
   signatures,
@@ -23,7 +24,6 @@ import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
 // the ones their names say, and the signatures are verified where they are read.
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const LINK = { $ref: "https://estoc.dev/schema/link" };
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const schemaFor = (title: string, properties: JsonObject) =>
   encodeSchema(
@@ -38,8 +38,8 @@ function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
   return bytes;
 }
 
-const card = await schemaFor("Card", { mailbox: LINK, name: LINK });
-const contact = await schemaFor("Contact", { displayName: LINK, inbox: LINK });
+const card = await schemaFor("Card", { mailbox: linkSchema, name: linkSchema });
+const contact = await schemaFor("Contact", { displayName: linkSchema, inbox: linkSchema });
 const mailbox = await schemaFor("Mailbox", { url: { type: "string", format: "uri" } });
 const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" }, defaultValidator);
 
@@ -115,7 +115,7 @@ describe("a chat message", () => {
 });
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const standingEnvelope = await schemaFor("Stood behind", { message: LINK, signature: LINK });
+const standingEnvelope = await schemaFor("Stood behind", { message: linkSchema, signature: linkSchema });
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through

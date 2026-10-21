@@ -1,8 +1,7 @@
 import { publicKeyLengths, type Identity, type Scheme } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { DRAFT_2020_12 } from "./builtins.ts";
 import { encodeJson, HEX, isJsonObject, linkOf, type Bytes, type Link } from "./encoding.ts";
-import type { JsonSchema, Schema } from "./schema.ts";
+import { DRAFT_2020_12, type JsonSchema, type Schema } from "./schema.ts";
 import { View } from "./view.ts";
 
 /**

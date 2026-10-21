@@ -1,9 +1,8 @@
 import { verify, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { DRAFT_2020_12 } from "./builtins.ts";
 import { digestOf, encodeJson, HEX, isJsonObject, isLink, linkOf, type Bytes, type Link } from "./encoding.ts";
 import { encodeIdentity, identities, type IdentityObject } from "./identity.ts";
-import type { JsonSchema, Schema } from "./schema.ts";
+import { DRAFT_2020_12, linkSchema, type JsonSchema, type Schema } from "./schema.ts";
 import { View } from "./view.ts";
 
 /**
@@ -17,8 +16,8 @@ export const signatureSchema: JsonSchema = {
   title: "Signature",
   type: "object",
   properties: {
-    identity: { $ref: "https://estoc.dev/schema/link" },
-    object: { $ref: "https://estoc.dev/schema/link" },
+    identity: linkSchema,
+    object: linkSchema,
     signature: { type: "string", pattern: HEX.source },
   },
   required: ["identity", "object", "signature"],

@@ -1,4 +1,4 @@
-import type { JsonSchema } from "@estoc/object";
+import { linkSchema, type JsonSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
@@ -11,7 +11,7 @@ export const authorizationSchema: JsonSchema = {
   title: "Authorization",
   type: "object",
   properties: {
-    agent: { $ref: "https://estoc.dev/schema/link" },
+    agent: linkSchema,
     until: { type: "string", format: "date-time" },
   },
   required: ["agent"],
@@ -28,8 +28,8 @@ export const proxySchema: JsonSchema = {
   title: "Proxy",
   type: "object",
   properties: {
-    target: { $ref: "https://estoc.dev/schema/link" },
-    chain: { type: "array", items: { $ref: "https://estoc.dev/schema/link" }, minItems: 1 },
+    target: linkSchema,
+    chain: { type: "array", items: linkSchema, minItems: 1 },
   },
   required: ["target", "chain"],
   additionalProperties: false,

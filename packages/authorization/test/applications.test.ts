@@ -5,6 +5,7 @@ import {
   encodeObject,
   encodeSchema,
   linkOf,
+  linkSchema,
   sign,
   type EncodedObject,
   type IdentityObject,
@@ -86,8 +87,8 @@ const sale = await encodeSchema(
     title: "Sale",
     type: "object",
     properties: {
-      buyer: { $ref: "https://estoc.dev/schema/link" },
-      seller: { $ref: "https://estoc.dev/schema/link" },
+      buyer: linkSchema,
+      seller: linkSchema,
       goods: { type: "string" },
       price: { type: "string", pattern: "^[0-9]+\\.[0-9]{2} [A-Z]{3}$" },
     },

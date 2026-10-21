@@ -8,6 +8,7 @@ import {
   encodeObject,
   encodeSchema,
   linkOf,
+  linkSchema,
   sign,
   signatures,
   type JsonObject,
@@ -28,7 +29,7 @@ const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) 
 
 const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" }, defaultValidator);
 const links = await encodeSchema(
-  { $schema: DRAFT, title: "Links", type: "array", items: { $ref: "https://estoc.dev/schema/link" } },
+  { $schema: DRAFT, title: "Links", type: "array", items: linkSchema },
   defaultValidator,
 );
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));

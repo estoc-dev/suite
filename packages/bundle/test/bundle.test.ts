@@ -62,6 +62,7 @@ describe("a bundle", () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes]));
     expect(bundle.link).toBe(signature.link);
     const signed = decodeSignature(bundle.root);
+    expect(decodeSignature(bundle.get(bundle.link)!)).toEqual(signed);
     expect(signed.identity).toEqual(alice.identity);
     expect(decodeObject(bundle.get(signed.object)!, note).data).toBe("hello");
   });

@@ -11,11 +11,11 @@ export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
  */
 export class Bundle {
   /**
-   * `index.json`: an object of any schema, a signature included, so its bytes
-   * carry no label and read as either.
+   * `index.json`: an object of any schema, a signature included, so neither its
+   * bytes nor its link carry a label, and they read as either.
    */
   readonly root: Uint8Array;
-  readonly link: Link<EncodedObject>;
+  readonly link: Link<never>;
   readonly #blobs = new Map<string, Uint8Array>();
 
   constructor(files: ReadonlyMap<string, Uint8Array>) {

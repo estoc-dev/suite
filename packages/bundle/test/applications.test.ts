@@ -77,7 +77,6 @@ describe("a card", () => {
 
 const chat = await schemaFor("Chat message", { text: { type: "string" } });
 
-// A chat message travels with the signature over it as the root.
 function readMessage(bundle: Bundle) {
   const read = decodeSignature(bundle.root);
   return { from: read.identity, message: decodeObject(blobAt(bundle, read.object), chat).data };

@@ -1,5 +1,5 @@
 import { identityFromJson, identityToJson, sameIdentity, SoftwareSigner, type Identity, type IdentityJson, type Scheme } from "@estoc/identity";
-import { decodeObject, decodeSignature, encodeObject, encodeSchema, linkOf, sign, type Bytes, type EncodedObject, type Schema } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, linkOf, sign, signatures, type Bytes, type EncodedObject, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Message } from "../src/index.ts";
@@ -20,7 +20,7 @@ const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Messag
 });
 
 function readSigned({ entry, blobs }: Message, schema: Schema): { identity: Identity; object: EncodedObject } {
-  const signature = decodeSignature(entry);
+  const signature = signatures.decode(entry);
   const object = blobs.find((bytes): bytes is Bytes<EncodedObject> => linkOf(bytes) === signature.object);
   if (object === undefined) throw new Error(`no blob is given for ${signature.object}`);
   return { identity: signature.identity, object: decodeObject(object, schema) };

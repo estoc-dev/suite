@@ -32,11 +32,12 @@ Signature  an Object written to the signature schema, with the data
   fields, and a schema has `$schema`. A signature is an object, and like any
   object it cannot pass for one of another schema.
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
-  `Bytes<T>`, `T` being what the blob decodes to, so the compiler refuses the
+  `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
   bytes of a signature handed to `decodeObject` rather than to
-  `decodeSignature`, which verifies them. The type is a label, not a
-  check: bytes read from a file or the network pass as any `Bytes<T>`, and
-  decoding them is what checks them.
+  `signatures.decode`, which verifies them. A link to a blob of no known
+  kind, such as the object a signature is over, is a `Link<never>`, and
+  reads as any. The type is a label, not a check: bytes read from a file or
+  the network pass as any `Bytes<T>`, and decoding them is what checks them.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 - `encodeJson` and `decodeJson` are this encoding on its own, for formats
@@ -67,9 +68,52 @@ const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "
 decodeObject(object.bytes, login).link === object.link;
 ```
 
-A reader that takes objects of several schemas, such as one per kind of
-mailbox, reads the link of the schema an object names with `schemaOf`, picks
-the schema it holds under that link, and reads the object with it.
+`decodeObject` leaves the data as JSON. A program reads objects as values
+of its own through a view.
+
+## Views
+
+An object is data: anyone can write one to any schema, and nothing about it
+belongs to the program that reads it. A program has types of its own, and a
+`View` is where objects from outside become values of them. It holds one
+`Reading` for each schema it takes, and reads an object by the reading of
+the schema the object is written to; an object of any other schema is
+refused. `reading` makes one that validates the data against the schema
+before it turns it into the program's value.
+
+```ts
+import { reading, View, type Link } from "@estoc/object";
+
+interface Note {
+  readonly text: string;
+  readonly link: Link<Note>;
+}
+
+// A note was first written as {"text"}, and later as {"body", "language"}.
+const notes = new View<Note>([
+  reading(noteSchema, (data, { link }) => ({ text: (data as { text: string }).text, link })),
+  reading(noteWithLanguage, (data, { link }) => ({ text: (data as { body: string }).body, link })),
+]);
+const note = notes.decode(bytes);
+```
+
+A view with a single reading still draws the line: the shape of the data is
+known in the reading and nowhere else, and the rest of the program sees only
+its own type. A newer schema of the program's own, an older one, and
+another application's are alike to a view, each one more reading. Which
+schemas stand for a note is the reader's to say, in its view, and not
+anything an object or a schema says of itself.
+
+A reading turns an object into a value and does not write it again, so a
+value can keep the link of the object it was read from, and the signatures
+over that object still apply to it. Read as a value and written again to
+another schema, the same content would be another object, which no one has
+signed. `encode` writes data to one of the view's schemas and reads it back
+as `decode` would; turning a value back into data is left to each type.
+
+A reader that takes objects of several schemas but picks something other
+than a reading by them, such as a transport for each kind of mailbox, reads
+the link of the schema an object names with `schemaOf`.
 
 ## Signatures
 
@@ -83,23 +127,25 @@ others over the same object.
 A signature is itself an object, written to `signatureSchema`, so a format
 that holds an object can hold a signature. Its identity is in the JSON form of
 `@estoc/identity`, the object it is over is named by its link, and the
-signature is in lowercase hex. `decodeSignature` reads one without a
-validator: it checks the fields itself and verifies the signature, which
-needs only the signature, since the digest it signs is in the link. Reading
-a signature with `decodeObject` and the signature schema, as a viewer of
-arbitrary objects would, reads its fields without verifying it.
+signature is in lowercase hex. `signatures` is the view this package reads
+them with, with one reading. It needs no validator: it checks the fields
+itself and verifies the signature, which needs only the signature, since the
+digest it signs is in the link. Reading a signature with `decodeObject` and
+the signature schema, as a viewer of arbitrary objects would, reads its
+fields without verifying it. `sign` signs the link of an object, so it takes
+anything that has one, such as a value read through a view.
 
 A server that handed out a nonce can build the login object itself and take
 back only the signature:
 
 ```ts
 import { SoftwareSigner } from "@estoc/identity";
-import { decodeSignature, sign } from "@estoc/object";
+import { sign, signatures } from "@estoc/object";
 
 const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const read = decodeSignature(signature.bytes);
+const read = signatures.decode(signature.bytes);
 const user = read.object === expected.link ? read.identity : undefined;
 ```
 

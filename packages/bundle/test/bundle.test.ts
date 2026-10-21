@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { loadAuthorizations } from "@estoc/authorization";
 import { identityToJson, SoftwareSigner } from "@estoc/identity";
-import { decodeObject, decodeSignature, encodeJson, encodeObject, encodeSchema, linkOf, sign, type JsonObject } from "@estoc/object";
+import { decodeObject, encodeJson, encodeObject, encodeSchema, linkOf, sign, signatures, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
@@ -61,10 +62,19 @@ describe("a bundle", () => {
   it("reads with a signature as its root, which leads to the object it is over", () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes]));
     expect(bundle.link).toBe(signature.link);
-    const signed = decodeSignature(bundle.root);
-    expect(decodeSignature(bundle.get(bundle.link)!)).toEqual(signed);
+    const signed = signatures.decode(bundle.root);
+    expect(signatures.decode(bundle.get(bundle.link)!)).toEqual(signed);
     expect(signed.identity).toEqual(alice.identity);
     expect(decodeObject(bundle.get(signed.object)!, note).data).toBe("hello");
+  });
+
+  it("takes as its root an object in the type a view read it into, and writes it as it was signed", async () => {
+    const authorizations = await loadAuthorizations(defaultValidator);
+    const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
+    const grant = await authorizations.authorize(agent.identity, alice);
+    const bundle = readBundle(writeBundle(grant.object, [grant.signature.bytes]));
+    expect(bundle.link).toBe(grant.object.link);
+    expect(authorizations.readAuthorization(bundle.get(grant.signature.link)!, bundle.root)).toEqual(grant);
   });
 
   it("reads with a signature that does not verify or whose scheme is unknown, as bytes", () => {
@@ -75,7 +85,7 @@ describe("a bundle", () => {
     const { publicKey } = identityToJson(alice.identity);
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { publicKey, scheme: "a-later-scheme" } }));
     for (const blob of [changed, unknown]) {
-      expect(() => decodeSignature(blob)).toThrow();
+      expect(() => signatures.decode(blob)).toThrow();
       expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
   });
@@ -122,7 +132,7 @@ describe("a bundle", () => {
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    const signed = decodeSignature(bundle.get(signature.link)!);
+    const signed = signatures.decode(bundle.get(signature.link)!);
     expect(bundle.get(signed.object)).toEqual(hello.bytes);
   });
 });

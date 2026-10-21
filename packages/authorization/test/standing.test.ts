@@ -1,5 +1,5 @@
 import { identityToJson, SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, linkOf, sign, type EncodedObject, type Link } from "@estoc/object";
+import { encodeObject, encodeSchema, linkOf, sign, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema, type Signed, type Standing } from "../src/index.ts";
@@ -23,17 +23,22 @@ const now = new Date("2026-10-20T12:00:00Z");
 const rootToHot = await authorizations.authorize(hot.identity, root);
 const hotToDeputy = await authorizations.authorize(deputy.identity, hot);
 
-const parts = ({ object, signature }: Signed) => [object.bytes, signature.bytes];
+type AnySigned = Signed<{ readonly bytes: Uint8Array; readonly link: Link<unknown> }>;
+
+const parts = ({ object, signature }: AnySigned) => [object.bytes, signature.bytes];
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-const readEntry = (entry: Signed, given: readonly Signed[] = [], at = now, link: Link<EncodedObject> = target.link) =>
+const readEntry = (entry: AnySigned, given: readonly AnySigned[] = [], at = now, link: Link<unknown> = target.link) =>
   authorizations.readStanding(link, entry.signature.bytes, byLink([entry.object.bytes, ...given.flatMap(parts)]), at);
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
   identity: principal.identity,
   agents: agents.map(({ identity }) => identity),
 });
-const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Signed> => ({ object, signature: await sign(object, by) });
+const signed = async <T extends { readonly link: Link<unknown> }>(object: T, by: SoftwareSigner): Promise<Signed<T>> => ({
+  object,
+  signature: await sign(object, by),
+});
 // A proxy written without the checks that `proxy` makes, as anyone could write one.
-const unchecked = (chain: readonly Signed[], by: SoftwareSigner, link: Link<EncodedObject> = target.link) =>
+const unchecked = (chain: readonly AnySigned[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
   signed(encodeObject(proxySchemaRead, { chain: chain.map(({ signature }) => signature.link), target: link }), by);
 
 describe("a standing", () => {
@@ -58,7 +63,7 @@ describe("a standing", () => {
 
   it("is not read from a signature over another object", async () => {
     const entry = await signed(other, root);
-    expect(() => readEntry(entry)).toThrow(/is not written to/);
+    expect(() => readEntry(entry)).toThrow(/not read here/);
   });
 });
 
@@ -81,13 +86,13 @@ describe("a proxy", () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const delegation = await signed(encodeObject(lookalike, { agent: identityToJson(hot.identity) }), root);
     const proxy = await unchecked([delegation], hot);
-    expect(() => readEntry(proxy, [delegation])).toThrow(/is not written to/);
+    expect(() => readEntry(proxy, [delegation])).toThrow(/not read here/);
   });
 
   it("counts for no one when its chain holds a proxy", async () => {
     const inner = await authorizations.proxy(other.link, [rootToHot], hot);
     const proxy = await unchecked([inner], hot);
-    expect(() => readEntry(proxy, [rootToHot, inner])).toThrow(/is not written to/);
+    expect(() => readEntry(proxy, [rootToHot, inner])).toThrow(/not read here/);
   });
 
   it("counts for no one when its agent signs it only through another proxy", async () => {

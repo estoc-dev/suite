@@ -4,11 +4,11 @@ import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type JsonObject } from "../src/encoding.ts";
 import {
   decodeObject,
-  decodeSignature,
   encodeObject,
   encodeSchema,
   linkOf,
   sign,
+  signatures,
   signatureSchema,
   type Signature,
 } from "../src/index.ts";
@@ -30,7 +30,7 @@ describe("a signature", () => {
   it.each(schemes)("by a %s identity reads back with its identity and object", async (scheme) => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
-    const read = decodeSignature(signature.bytes);
+    const read = signatures.decode(signature.bytes);
     expect(read.identity).toEqual(by.identity);
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
@@ -41,20 +41,20 @@ describe("a signature", () => {
     const signature = await sign(hello, signer("ed25519"));
     const hex = fields(signature).signature as string;
     const changed = `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}`;
-    expect(() => decodeSignature(rewritten(signature, { signature: changed }))).toThrow();
+    expect(() => signatures.decode(rewritten(signature, { signature: changed }))).toThrow();
   });
 
   it("is refused when it names another identity, even the same key in another scheme", async () => {
     const signature = await sign(hello, signer("ed25519"));
     const { publicKey } = identityToJson(signer("ed25519").identity);
     for (const identity of [identityToJson(signer("ed25519", 2).identity), { publicKey, scheme: "solana-offchain" }]) {
-      expect(() => decodeSignature(rewritten(signature, { identity }))).toThrow();
+      expect(() => signatures.decode(rewritten(signature, { identity }))).toThrow();
     }
   });
 
   it("is refused when it names another object", async () => {
     const signature = await sign(hello, signer("eip191"));
-    expect(() => decodeSignature(rewritten(signature, { object: goodbye.link }))).toThrow();
+    expect(() => signatures.decode(rewritten(signature, { object: goodbye.link }))).toThrow();
   });
 
   it.each<[string, (fields: JsonObject) => JsonObject]>([
@@ -65,7 +65,7 @@ describe("a signature", () => {
     ["an object that is not a link", (f) => ({ ...f, object: "hello" })],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => decodeSignature(written(signature, change(fields(signature))))).toThrow();
+    expect(() => signatures.decode(written(signature, change(fields(signature))))).toThrow();
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
@@ -74,12 +74,12 @@ describe("a signature", () => {
     ["with its fields bare, outside data", (signature) => encodeJson(fields(signature))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => decodeSignature(change(signature))).toThrow();
+    expect(() => signatures.decode(change(signature))).toThrow();
   });
 
   it("is refused in any but the canonical form", async () => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => decodeSignature(utf8(JSON.stringify(parsed(signature), null, 1)))).toThrow();
+    expect(() => signatures.decode(utf8(JSON.stringify(parsed(signature), null, 1)))).toThrow();
   });
 
   it("reads as an object written to the signature schema, which does not verify it", async () => {
@@ -92,7 +92,7 @@ describe("a signature", () => {
     }
     const unverified = rewritten(await sign(hello, signer("ed25519")), { object: goodbye.link });
     expect(decodeObject(unverified, schema).data).toMatchObject({ object: goodbye.link });
-    expect(() => decodeSignature(unverified)).toThrow();
+    expect(() => signatures.decode(unverified)).toThrow();
   });
 });
 
@@ -108,9 +108,9 @@ test("a signature's bytes do not read as an object of another schema, nor an obj
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(signature.bytes, note)).toThrow();
   // @ts-expect-error: refused at compile time too
-  expect(() => decodeSignature(hello.bytes)).toThrow();
+  expect(() => signatures.decode(hello.bytes)).toThrow();
   // @ts-expect-error: refused at compile time too
-  expect(() => decodeSignature(note.bytes)).toThrow();
+  expect(() => signatures.decode(note.bytes)).toThrow();
 });
 
 test("the bytes of objects and signatures are linked together, each to its own link", async () => {

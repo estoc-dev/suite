@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type EncodedObject, type Link, type Signature } from "@estoc/object";
+import { linkOf, schemaOf, type Bytes, type Link } from "@estoc/object";
 
 export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
@@ -63,8 +63,12 @@ export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
   return new Bundle(files);
 }
 
-/** The files of a bundle with `root` as its `index.json`, carrying `blobs`. */
-export function writeBundle(root: EncodedObject | Signature, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
+/**
+ * The files of a bundle with `root` as its `index.json`, carrying `blobs`.
+ * `root` is an object in whatever type a view read it into, and its bytes are
+ * what is written.
+ */
+export function writeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);
   for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);
   return files;

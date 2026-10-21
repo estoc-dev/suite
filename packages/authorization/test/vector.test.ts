@@ -62,8 +62,8 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
 
   it("read from those bytes as the root standing behind the target through the agent", () => {
     const read = authorizations.readAuthorization(utf8(grantText), utf8(authorizationText));
-    expect(read.authorizer).toEqual(root.identity);
-    expect(read.agent).toEqual(hot.identity);
+    expect(read.signature.identity).toEqual(root.identity);
+    expect(read.object.agent).toEqual(hot.identity);
     const blobs = new Map<string, Uint8Array>([authorizationText, grantText, proxyText].map((text) => [linkOf(utf8(text)), utf8(text)]));
     const standing = authorizations.readStanding(target, utf8(proxySignatureText), blobs, new Date("2026-12-31T23:59:59Z"));
     expect(standing).toEqual({ identity: root.identity, agents: [hot.identity] });

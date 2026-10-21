@@ -1,8 +1,8 @@
 import { identityToJson, SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, sign, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, schemaOf, sign, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization } from "../src/index.ts";
+import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Signed } from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -18,18 +18,20 @@ const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 const agent = identityToJson(hot.identity);
+// Bytes that come from elsewhere carry no label.
+const received = (bytes: Uint8Array): Uint8Array => bytes;
 
 describe("an authorization", () => {
   it.each([
-    ["without an end", undefined],
-    ["until an instant in UTC", "2027-01-01T00:00:00Z"],
-    ["until an instant written with an offset and fractional seconds", "2027-01-01T08:00:00.25+08:00"],
-  ])("%s reads back from its blobs", async (_, until) => {
+    ["without an end", undefined, undefined],
+    ["until an instant in UTC", "2027-01-01T00:00:00Z", "2027-01-01T00:00:00Z"],
+    ["until an instant written with an offset and fractional seconds", "2027-01-01T08:00:00.25+08:00", "2027-01-01T00:00:00.25Z"],
+  ])("%s reads back from its blobs", async (_, until, instant) => {
     const signed = await authorizations.authorize(hot.identity, root, until);
     const read = authorizations.readAuthorization(signed.signature.bytes, signed.object.bytes);
-    expect(read.authorizer).toEqual(root.identity);
-    expect(read.agent).toEqual(hot.identity);
-    expect(read.object.data).toEqual(until === undefined ? { agent } : { agent, until });
+    expect(read.signature.identity).toEqual(root.identity);
+    expect(read.object.agent).toEqual(hot.identity);
+    expect(read.object.until?.toString()).toBe(instant);
     expect(read.object.link).toBe(signed.object.link);
     expect(read.signature.link).toBe(signed.signature.link);
   });
@@ -39,7 +41,7 @@ describe("an authorization", () => {
     await expect(blind.authorize(hot.identity, root, "2027-01-01")).rejects.toThrow();
     const object = encodeObject(await encodeSchema(authorizationSchema, formatBlind), { agent, until: "2027-01-01" });
     const signature = await sign(object, root);
-    expect(() => blind.readAuthorization(signature.bytes, object.bytes)).toThrow();
+    expect(() => blind.readAuthorization(signature.bytes, received(object.bytes))).toThrow();
   });
 
   it("is refused when its signature is over another object", async () => {
@@ -52,7 +54,7 @@ describe("an authorization", () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const object = encodeObject(lookalike, { agent });
     const signature = await sign(object, root);
-    expect(() => authorizations.readAuthorization(signature.bytes, object.bytes)).toThrow();
+    expect(() => authorizations.readAuthorization(signature.bytes, received(object.bytes))).toThrow(/not read here/);
   });
 });
 
@@ -91,8 +93,9 @@ describe("proxy", () => {
   it("signs a proxy over the chain's signatures, in order", async () => {
     const [toHot, toDeputy] = await grants;
     const signed = await authorizations.proxy(target.link, [toHot, toDeputy], deputy);
-    expect(signed.object.data).toEqual({ chain: [toHot.signature.link, toDeputy.signature.link], target: target.link });
-    expect(signed.object.schema.link).toBe(proxy.link);
+    expect(signed.object.chain).toEqual([toHot.signature.link, toDeputy.signature.link]);
+    expect(signed.object.target).toBe(target.link);
+    expect(schemaOf(signed.object.bytes)).toBe(proxy.link);
     expect(signed.signature.identity).toEqual(deputy.identity);
   });
 
@@ -107,7 +110,7 @@ describe("proxy", () => {
 
   it("refuses a signer other than the chain's last agent", async () => {
     const [toHot, toDeputy] = await grants;
-    const chains: [Authorization[], SoftwareSigner][] = [
+    const chains: [Signed<Authorization>[], SoftwareSigner][] = [
       [[toHot], root],
       [[toHot], deputy],
       [[toHot, toDeputy], hot],

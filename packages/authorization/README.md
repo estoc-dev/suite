@@ -38,6 +38,10 @@ const grant = await authorizations.authorize(browserKey.identity, wallet, "2026-
 const received = authorizations.readAuthorization(signatureBytes, objectBytes);
 ```
 
+Both give a `Signed<Authorization>`: the `Authorization` as read, its `agent`
+an identity and its `until` a `Temporal.Instant` when there is one, and the
+`signature` over it, whose identity is the authorizer.
+
 ### The end of an authorization
 
 `until` is an RFC 3339 `date-time`. A reader takes it as the instant that
@@ -77,6 +81,9 @@ is only named, so a reader does not need its bytes.
 ```ts
 const proxy = await authorizations.proxy(login.link, [received], browserKey);
 ```
+
+It gives a `Signed<Proxy>`: the Proxy as read, its `target` and `chain` as
+links, and the agent's signature over it.
 
 `proxy` refuses a chain that does not connect, or that does not end at the
 signer, since no reader would count that proxy. It does not look at a

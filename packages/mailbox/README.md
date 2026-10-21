@@ -61,7 +61,7 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 Message inside. It refuses bytes that do not open with its key and
 plaintext that is not a Message. It does not read who stands behind the
 entry: the receiver does that, against the object it expects, with
-`decodeSignature` or `readStanding`.
+`signatures.decode` or `readStanding`.
 
 ```ts
 const message = await key.open(sealed);

@@ -10,9 +10,9 @@ import { loadAuthorizations, type Signed } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const blobs = (...signed: Signed[]) => signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes]);
+const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) => signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes]);
 const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
-const directly = async (object: EncodedObject, by: SoftwareSigner): Promise<Signed> => ({ object, signature: await sign(object, by) });
+const directly = async (object: EncodedObject, by: SoftwareSigner): Promise<Signed<EncodedObject>> => ({ object, signature: await sign(object, by) });
 
 const authorizations = await loadAuthorizations(defaultValidator);
 
@@ -44,7 +44,7 @@ describe("a login", () => {
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
   const forADay = authorizations.authorize(browserKey.identity, wallet, "2026-10-21T12:00:00Z");
   const throughKey = forADay.then((grant) => authorizations.proxy(object.link, [grant], browserKey));
-  const logIn = async (entry: Signed, at: Date) =>
+  const logIn = async (entry: Signed<{ readonly bytes: Uint8Array }>, at: Date) =>
     loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.bytes, blobs(await forADay, entry), at);
 
   it("through a key the wallet authorized for a day logs in the wallet", async () => {

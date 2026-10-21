@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
-  decodeSignature,
   encodeObject,
   encodeSchema,
   sign,
+  signatures,
   type EncodedObject,
   type Link,
 } from "../src/index.ts";
@@ -30,7 +30,7 @@ interface Received {
 
 const signersOf = (link: Link<EncodedObject>, received: Received) =>
   received.signatures
-    .map(decodeSignature)
+    .map((bytes) => signatures.decode(bytes))
     .filter((signature) => signature.object === link)
     .map((signature) => signature.identity);
 
@@ -50,7 +50,7 @@ const login = await encodeSchema(
 // object itself and needs only the signature back.
 function loggedIn(audience: string, nonce: string, signature: Uint8Array): Identity | undefined {
   const expected = encodeObject(login, { audience, nonce });
-  const read = decodeSignature(signature);
+  const read = signatures.decode(signature);
   return read.object === expected.link ? read.identity : undefined;
 }
 
@@ -135,37 +135,37 @@ const terms = encodeObject(sale, {
 });
 const confirmation = encodeObject(delivery, { sale: terms.link });
 const objects = new Map([terms, confirmation].map((object) => [object.link, object.bytes] as const));
-const signatures = async (...pairs: [EncodedObject, SoftwareSigner][]) =>
+const signedBy = async (...pairs: [EncodedObject, SoftwareSigner][]) =>
   (await Promise.all(pairs.map(([object, by]) => sign(object, by)))).map((signature) => signature.bytes);
 
 describe("a sale", () => {
   it("is in force only once its buyer and its seller have both signed it", async () => {
-    expect(saleInForce(terms.link, { objects, signatures: await signatures([terms, buyer]) })).toBeUndefined();
-    const both = await signatures([terms, buyer], [terms, seller]);
+    expect(saleInForce(terms.link, { objects, signatures: await signedBy([terms, buyer]) })).toBeUndefined();
+    const both = await signedBy([terms, buyer], [terms, seller]);
     expect(saleInForce(terms.link, { objects, signatures: both })).toEqual(terms.data);
   });
 
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
     const witnessed = await sign(terms, witness);
-    expect(decodeSignature(witnessed.bytes).identity).toEqual(witness.identity);
-    const received = { objects, signatures: [...(await signatures([terms, buyer])), witnessed.bytes] };
+    expect(signatures.decode(witnessed.bytes).identity).toEqual(witness.identity);
+    const received = { objects, signatures: [...(await signedBy([terms, buyer])), witnessed.bytes] };
     expect(saleInForce(terms.link, received)).toBeUndefined();
   });
 });
 
 describe("a delivery", () => {
   it("is confirmed when the buyer of a sale in force signs for it", async () => {
-    const received = { objects, signatures: await signatures([terms, buyer], [terms, seller], [confirmation, buyer]) };
+    const received = { objects, signatures: await signedBy([terms, buyer], [terms, seller], [confirmation, buyer]) };
     expect(deliveryConfirmed(confirmation.link, received)).toBe(true);
   });
 
   it("is not confirmed when only the seller signs for it", async () => {
-    const received = { objects, signatures: await signatures([terms, buyer], [terms, seller], [confirmation, seller]) };
+    const received = { objects, signatures: await signedBy([terms, buyer], [terms, seller], [confirmation, seller]) };
     expect(deliveryConfirmed(confirmation.link, received)).toBe(false);
   });
 
   it("is not confirmed while the sale is not in force", async () => {
-    const received = { objects, signatures: await signatures([terms, buyer], [confirmation, buyer]) };
+    const received = { objects, signatures: await signedBy([terms, buyer], [confirmation, buyer]) };
     expect(deliveryConfirmed(confirmation.link, received)).toBe(false);
   });
 });

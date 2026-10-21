@@ -1,7 +1,7 @@
 import { SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, decodeSignature, encodeObject, encodeSchema, sign, signatureSchema } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, sign, signatures, signatureSchema } from "../src/index.ts";
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
@@ -46,9 +46,9 @@ const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", new
 
 describe("a login schema, an object written to it and an Ed25519 signature over that", () => {
   it("encode to fixed bytes and links, the signature written to the signature schema", async () => {
-    const signatures = await encodeSchema(signatureSchema, defaultValidator);
-    expect(new TextDecoder().decode(signatures.bytes)).toBe(signatureSchemaText);
-    expect(signatures.link).toBe(signatureSchemaLink);
+    const schemaOfSignatures = await encodeSchema(signatureSchema, defaultValidator);
+    expect(new TextDecoder().decode(schemaOfSignatures.bytes)).toBe(signatureSchemaText);
+    expect(schemaOfSignatures.link).toBe(signatureSchemaLink);
     expect(new TextDecoder().decode(schema.bytes)).toBe(schemaText);
     expect(schema.link).toBe(schemaLink);
     expect(new TextDecoder().decode(object.bytes)).toBe(objectText);
@@ -61,6 +61,6 @@ describe("a login schema, an object written to it and an Ed25519 signature over 
     const read = await decodeSchema(new TextEncoder().encode(schemaText), defaultValidator);
     expect(read.link).toBe(schemaLink);
     expect(decodeObject(new TextEncoder().encode(objectText), read).link).toBe(objectLink);
-    expect(decodeSignature(new TextEncoder().encode(signatureText)).link).toBe(signatureLink);
+    expect(signatures.decode(new TextEncoder().encode(signatureText)).link).toBe(signatureLink);
   });
 });

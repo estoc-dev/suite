@@ -1,4 +1,4 @@
-import { decodeJson, encodeJson, isJsonObject, isLink, linkOf, type Bytes, type Json, type Link } from "./encoding.ts";
+import { decodeJson, encodeJson, isJsonObject, isLink, type Bytes, type Decoded, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
 
 /** Blobs by their links: a Map, a bundle, or a store that holds blobs by content. */
@@ -45,12 +45,7 @@ export class View<T> {
    * to, and a reading that follows one not given there fails.
    */
   decode(bytes: Bytes<T>, blobs: Blobs = noBlobs): T {
-    const decoded = decodeJson(bytes);
-    const { data, schema } = fieldsOf(decoded.value);
-    if (!isLink(schema)) throw new Error("an object names its schema by link");
-    const reading = this.#readings.get(schema);
-    if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
-    return reading.read(data, { bytes: decoded.bytes, link: decoded.link }, blobs);
+    return this.#read(decodeJson(bytes), blobs);
   }
 
   /**
@@ -61,13 +56,22 @@ export class View<T> {
   follow(link: Link<T>, blobs: Blobs): T {
     const bytes = blobs.get(link);
     if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
-    if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);
-    return this.decode(bytes, blobs);
+    const decoded = decodeJson(bytes);
+    if (decoded.link !== link) throw new Error(`the blob given for ${link} is another blob`);
+    return this.#read(decoded, blobs);
   }
 
   /** Writes `data` to `schema` as an object, and reads it as `decode` would. */
   encode(schema: Link<Schema>, data: Json, blobs: Blobs = noBlobs): T {
     return this.decode(encodeJson({ data, schema }), blobs);
+  }
+
+  #read({ value, bytes, link }: Decoded, blobs: Blobs): T {
+    const { data, schema } = fieldsOf(value);
+    if (!isLink(schema)) throw new Error("an object names its schema by link");
+    const reading = this.#readings.get(schema);
+    if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
+    return reading.read(data, { bytes, link }, blobs);
   }
 }
 

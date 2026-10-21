@@ -19,7 +19,6 @@ const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 const agent = encodeIdentity(hot.identity).link;
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-// The blobs an authorization leads to: itself and the objects of both identities.
 const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([object.bytes, object.agent.bytes, signature.identity.bytes]);
 const identities = [root, hot, deputy].map(({ identity }) => encodeIdentity(identity).bytes);
 const given = (...blobs: Uint8Array[]) => byLink([...identities, ...blobs]);

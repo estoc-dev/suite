@@ -21,7 +21,6 @@ import { loadAuthorizations, type Signed } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-// An object, the signature over it and the object of the identity that signed.
 const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) =>
   signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes, signature.identity.bytes]);
 const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));

@@ -39,26 +39,25 @@ export interface IdentityObject extends Identity {
  * Reads identities in the schemes that `@estoc/identity` knows, with the key
  * in lowercase hex at its scheme's length, so that each identity has one
  * object and one link. An identity in another scheme is refused, though its
- * object fits the schema.
+ * object fits the schema. `encode` writes an identity as its object.
  */
-export const identities = new View<IdentityObject>([
-  {
-    schema: IDENTITY,
-    read(data, { bytes, link }) {
-      if (!isJsonObject(data) || Object.keys(data).sort().join() !== "publicKey,scheme") {
-        throw new Error("an identity has the fields publicKey and scheme");
-      }
-      const { publicKey, scheme } = data;
-      if (typeof scheme !== "string" || !Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${String(scheme)}`);
-      const length = publicKeyLengths[scheme as Scheme];
-      if (typeof publicKey !== "string" || publicKey.length !== 2 * length || !HEX.test(publicKey)) {
-        throw new Error(`a ${scheme} public key is ${length} bytes in lowercase hex`);
-      }
-      return { scheme: scheme as Scheme, publicKey: hexToBytes(publicKey), bytes, link };
+export const identities = new View<IdentityObject, Identity>(
+  [
+    {
+      schema: IDENTITY,
+      read(data, { bytes, link }) {
+        if (!isJsonObject(data) || Object.keys(data).sort().join() !== "publicKey,scheme") {
+          throw new Error("an identity has the fields publicKey and scheme");
+        }
+        const { publicKey, scheme } = data;
+        if (typeof scheme !== "string" || !Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${String(scheme)}`);
+        const length = publicKeyLengths[scheme as Scheme];
+        if (typeof publicKey !== "string" || publicKey.length !== 2 * length || !HEX.test(publicKey)) {
+          throw new Error(`a ${scheme} public key is ${length} bytes in lowercase hex`);
+        }
+        return { scheme: scheme as Scheme, publicKey: hexToBytes(publicKey), bytes, link };
+      },
     },
-  },
-]);
-
-export function encodeIdentity(identity: Identity): IdentityObject {
-  return identities.encode(IDENTITY, { publicKey: bytesToHex(identity.publicKey), scheme: identity.scheme });
-}
+  ],
+  { schema: IDENTITY, write: ({ publicKey, scheme }) => ({ publicKey: bytesToHex(publicKey), scheme }) },
+);

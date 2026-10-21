@@ -1,9 +1,9 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
   decodeObject,
-  encodeIdentity,
   encodeObject,
   encodeSchema,
+  identities,
   linkOf,
   linkSchema,
   sign,
@@ -13,6 +13,7 @@ import {
   type Signature,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 import { loadAuthorizations, type Signed } from "../src/index.ts";
 
@@ -55,13 +56,13 @@ describe("a login", () => {
   const wallet = signer("eip191", 1);
   const browserKey = signer("ed25519", 2);
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-  const forADay = authorizations.authorize(browserKey.identity, wallet, "2026-10-21T12:00:00Z");
+  const forADay = authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
   const throughKey = forADay.then((grant) => authorizations.proxy(object.link, [grant], browserKey));
   const logIn = async (entry: Signed<{ readonly bytes: Uint8Array }>, at: Date) =>
     loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.bytes, blobs(await forADay, entry), at);
 
   it("through a key the wallet authorized for a day logs in the wallet", async () => {
-    expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(encodeIdentity(wallet.identity));
+    expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(wallet.identity));
   });
 
   it("through that key logs no one in once the day is over", async () => {
@@ -69,7 +70,7 @@ describe("a login", () => {
   });
 
   it("signed by the key directly logs in the key, not the wallet", async () => {
-    expect(await logIn(await directly(object, browserKey), new Date("2026-10-20T12:00:00Z"))).toEqual(encodeIdentity(browserKey.identity));
+    expect(await logIn(await directly(object, browserKey), new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(browserKey.identity));
   });
 });
 
@@ -122,8 +123,8 @@ describe("a sale", () => {
   const seller = signer("solana-offchain", 3);
   const now = new Date("2026-10-20T12:00:00Z");
   const terms = encodeObject(sale, {
-    buyer: encodeIdentity(buyer.identity).link,
-    seller: encodeIdentity(seller.identity).link,
+    buyer: identities.encode(buyer.identity).link,
+    seller: identities.encode(seller.identity).link,
     goods: "one bicycle",
     price: "120.00 CAD",
   });

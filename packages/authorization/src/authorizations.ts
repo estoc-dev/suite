@@ -1,6 +1,5 @@
 import { sameIdentity, type Identity, type Signer } from "@estoc/identity";
 import {
-  encodeIdentity,
   encodeSchema,
   identities,
   reading,
@@ -63,46 +62,44 @@ type ProxyData = { readonly target: Link<never>; readonly chain: readonly Link<S
 
 /** Authorizations and proxies, read and written with the schemas compiled once by one validator. */
 export class Authorizations {
-  readonly #authorizationSchema: Link<Schema>;
-  readonly #proxySchema: Link<Schema>;
-  readonly #authorizations: View<Authorization>;
-  readonly #proxies: View<Proxy>;
+  readonly #authorizations: View<Authorization, Pick<Authorization, "agent" | "until">>;
+  readonly #proxies: View<Proxy, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
 
   constructor(authorization: Schema, proxy: Schema) {
-    this.#authorizationSchema = authorization.link;
-    this.#proxySchema = proxy.link;
-    this.#authorizations = new View([
-      reading(authorization, (data, object, blobs) => {
-        const { agent, until } = data as AuthorizationData;
-        // Whether a validator asserts `format` is its own business, so an
-        // `until` can reach here that Temporal does not read as an instant.
-        // Such an authorization counts for no one, and is refused rather than
-        // signed or read.
-        const end = until === undefined ? undefined : Temporal.Instant.from(until);
-        return { agent: identities.follow(agent, blobs), until: end, ...object };
-      }),
-    ]);
-    this.#proxies = new View([
-      reading(proxy, (data, object) => {
-        const { target, chain } = data as ProxyData;
-        return { target, chain, ...object };
-      }),
-    ]);
+    this.#authorizations = new View(
+      [
+        reading(authorization, (data, object, blobs) => {
+          const { agent, until } = data as AuthorizationData;
+          // Whether a validator asserts `format` is its own business, so an
+          // `until` can reach here that Temporal does not read as an instant.
+          // Such an authorization counts for no one, and is refused.
+          const end = until === undefined ? undefined : Temporal.Instant.from(until);
+          return { agent: identities.follow(agent, blobs), until: end, ...object };
+        }),
+      ],
+      {
+        schema: authorization.link,
+        write: ({ agent, until }) => (until === undefined ? { agent: agent.link } : { agent: agent.link, until: until.toString() }),
+      },
+    );
+    this.#proxies = new View(
+      [
+        reading(proxy, (data, object) => {
+          const { target, chain } = data as ProxyData;
+          return { target, chain, ...object };
+        }),
+      ],
+      { schema: proxy.link, write: ({ target, chain }) => ({ target, chain }) },
+    );
   }
 
-  /**
-   * Signs an authorization that lets `agent` act for the signer, until the
-   * RFC 3339 `date-time` `until` if one is given.
-   */
-  async authorize(agent: Identity, signer: Signer, until?: string): Promise<Signed<Authorization>> {
-    const named = encodeIdentity(agent);
-    // An `until` that does not read is refused here, before the signer is
+  /** Signs an authorization that lets `agent` act for the signer, until the instant `until` if one is given. */
+  async authorize(agent: Identity, signer: Signer, until?: Temporal.Instant): Promise<Signed<Authorization>> {
+    const named = identities.encode(agent);
+    // An instant past the year 9999 has no RFC 3339 `date-time`, so a
+    // validator that asserts `format` refuses it here, before the signer is
     // asked, which may be a wallet prompting its holder.
-    const object = this.#authorizations.encode(
-      this.#authorizationSchema,
-      until === undefined ? { agent: named.link } : { agent: named.link, until },
-      new Map([[named.link, named.bytes]]),
-    );
+    const object = this.#authorizations.encode({ agent: named, until }, new Map([[named.link, named.bytes]]));
     return { object, signature: await sign(object, signer) };
   }
 
@@ -122,7 +119,7 @@ export class Authorizations {
    */
   async proxy(target: Link<unknown>, chain: readonly Signed<Authorization>[], signer: Signer): Promise<Signed<Proxy>> {
     checkChain(chain, signer.identity);
-    const object = this.#proxies.encode(this.#proxySchema, { target, chain: chain.map(({ signature }) => signature.link) });
+    const object = this.#proxies.encode({ target, chain: chain.map(({ signature }) => signature.link) });
     return { object, signature: await sign(object, signer) };
   }
 

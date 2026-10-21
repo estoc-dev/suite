@@ -135,30 +135,45 @@ worker in any case.
 `decodeObject` leaves the data as JSON. An object is data: anyone can write
 one to any schema, and nothing about it belongs to the program that reads
 it. A program has types of its own, and a `View` is where objects from
-outside become values of them. It holds one
-`Reading` for each schema it takes, and reads an object by the reading of
-the schema the object is written to; an object of any other schema is
+outside become values of them, and values of them become objects. It holds
+one `Reading` for each schema it takes, and reads an object by the reading
+of the schema the object is written to; an object of any other schema is
 refused. `reading` makes one that validates the data against the schema
-before it turns it into the program's value.
+before it turns it into the program's value. A view that writes also holds
+a `Writing`: the schema it writes to, which is one of those it reads, and
+how a value becomes data of that schema. It reads objects of every schema
+it has a reading of, and writes to one, the schema the program writes now.
 
 ```ts
 import { reading, View, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
+  readonly language: string | undefined;
   readonly link: Link<Note>;
 }
 
-// A note was first written as {"text"}, and later as {"body", "language"}.
-const notes = new View<Note>([
-  reading(noteSchema, (data, { link }) => ({ text: (data as { text: string }).text, link })),
-  reading(noteWithLanguage, (data, { link }) => ({ text: (data as { body: string }).body, link })),
-]);
+// A note was first written as {"text"}, and is now written as {"body", "language"}.
+const notes = new View<Note, { readonly text: string; readonly language: string }>(
+  [
+    reading(noteSchema, (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link })),
+    reading(noteWithLanguage, (data, { link }) => {
+      const { body, language } = data as { body: string; language: string };
+      return { text: body, language, link };
+    }),
+  ],
+  { schema: noteWithLanguage.link, write: ({ text, language }) => ({ body: text, language }) },
+);
 const note = notes.decode(bytes);
+const written = notes.encode({ text: "hello", language: "en" });
 ```
 
+`encode` writes a value by the writing and reads the object back as
+`decode` would, so a value that would not read is refused, and what a view
+writes, it reads. A view without a writing writes nothing.
+
 A view with a single reading still draws the line: the shape of the data is
-known in the reading and nowhere else, and the rest of the program sees only
+known in the view and nowhere else, and the rest of the program sees only
 its own type. A newer schema of the program's own, an older one, and
 another application's are alike to a view, each one more reading. Which
 schemas stand for a note is the reader's to say, in its view, and not
@@ -168,8 +183,7 @@ A reading turns an object into a value and does not write it again, so a
 value can keep the link of the object it was read from, and the signatures
 over that object still apply to it. Read as a value and written again to
 another schema, the same content would be another object, which no one has
-signed. `encode` writes data to one of the view's schemas and reads it back
-as `decode` would; turning a value back into data is left to each type.
+signed.
 
 A reading can follow the links in its data to the objects they name. It
 gets the blobs that were given to `decode`, anything with `get(link)` such
@@ -207,11 +221,12 @@ in each, is for whoever reads identities. An identity in a scheme added
 later is written to the same schema, so identities already written keep
 their links.
 
-`identities` is the view this package reads them with. It takes the schemes
-that `@estoc/identity` knows, with the key at its scheme's length, so that
-each identity has one object and one link, and it refuses an identity in
-any other scheme, though its object fits the schema. `encodeIdentity`
-writes an identity as its object.
+`identities` is the view this package reads and writes them with. It takes
+the schemes that `@estoc/identity` knows, with the key at its scheme's
+length, so that each identity has one object and one link, and it refuses
+an identity in any other scheme, though its object fits the schema.
+`identities.encode` writes an identity as its object, and refuses one it
+would not read, such as one whose key is not its scheme's length.
 
 ## Signatures
 
@@ -225,7 +240,7 @@ others over the same object.
 A signature is itself an object, written to `signatureSchema`, so a format
 that holds an object can hold a signature. It names its identity and the
 object it is over by their links, and the signature is in lowercase hex.
-`signatures` is the view this package reads them with, with one reading. It
+`signatures` is the view this package reads and writes them with. It
 needs no validator: it checks the fields itself, reads the identity from
 its object through `identities`, and verifies the signature. So reading a
 signature takes the blob of its identity's object, but not that of the
@@ -234,7 +249,9 @@ signature with `decodeObject` and the signature schema, as a viewer of
 arbitrary objects would, reads its fields without verifying it. `sign`
 signs the link of an object, so it takes anything that has one, such as a
 value read through a view. The signature it gives has the signer's identity
-object as `identity`, whose bytes go along with the signature.
+object as `identity`, whose bytes go along with the signature. It writes the
+signature through `signatures`, so a signer whose signature does not verify
+is refused.
 
 A server that handed out a nonce can build the login object itself and take
 back only the signature, with the identity's object:

@@ -1,7 +1,7 @@
 import { verify, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { digestOf, encodeJson, HEX, isJsonObject, isLink, linkOf, type Bytes, type Link } from "./encoding.ts";
-import { encodeIdentity, identities, type IdentityObject } from "./identity.ts";
+import { identities, type IdentityObject } from "./identity.ts";
 import { DRAFT_2020_12, linkSchema, type JsonSchema, type Schema } from "./schema.ts";
 import { View } from "./view.ts";
 
@@ -49,25 +49,36 @@ export interface Signature {
  * names. The identity is read from its object in the blobs given, through
  * `identities`. One identity can sign one object many times, since a wallet
  * need not sign deterministically, and each of those signatures reads.
+ * `encode` writes a signature that has been made, and refuses one that does
+ * not verify.
  */
-export const signatures = new View<Signature>([
+export const signatures = new View<
+  Signature,
+  { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
+>(
+  [
+    {
+      schema: SIGNATURE,
+      read(data, { bytes, link }, blobs) {
+        if (!isJsonObject(data) || Object.keys(data).sort().join() !== "identity,object,signature") {
+          throw new Error("a signature has the fields identity, object and signature");
+        }
+        const { identity: signer, object, signature: hex } = data;
+        if (!isLink(signer)) throw new Error("a signature names its identity by link");
+        if (!isLink(object)) throw new Error("a signature names its object by link");
+        if (typeof hex !== "string" || !HEX.test(hex)) throw new Error("a signature is lowercase hex");
+        const identity = identities.follow(signer, blobs);
+        const signature = hexToBytes(hex);
+        if (!verify(identity, digestOf(object), signature)) throw new Error(`the signature does not verify for ${object}`);
+        return { identity, object, signature, bytes, link };
+      },
+    },
+  ],
   {
     schema: SIGNATURE,
-    read(data, { bytes, link }, blobs) {
-      if (!isJsonObject(data) || Object.keys(data).sort().join() !== "identity,object,signature") {
-        throw new Error("a signature has the fields identity, object and signature");
-      }
-      const { identity: signer, object, signature: hex } = data;
-      if (!isLink(signer)) throw new Error("a signature names its identity by link");
-      if (!isLink(object)) throw new Error("a signature names its object by link");
-      if (typeof hex !== "string" || !HEX.test(hex)) throw new Error("a signature is lowercase hex");
-      const identity = identities.follow(signer, blobs);
-      const signature = hexToBytes(hex);
-      if (!verify(identity, digestOf(object), signature)) throw new Error(`the signature does not verify for ${object}`);
-      return { identity, object, signature, bytes, link };
-    },
+    write: ({ identity, object, signature }) => ({ identity: identity.link, object, signature: bytesToHex(signature) }),
   },
-]);
+);
 
 /**
  * Signs the link of an object, and so the object, whatever it is read as.
@@ -75,8 +86,7 @@ export const signatures = new View<Signature>([
  * whose bytes go along with it.
  */
 export async function sign(object: { readonly link: Link<unknown> }, signer: Signer): Promise<Signature> {
-  const identity = encodeIdentity(signer.identity);
+  const identity = identities.encode(signer.identity);
   const signature = await signer.sign(digestOf(object.link));
-  const data = { identity: identity.link, object: object.link, signature: bytesToHex(signature) };
-  return signatures.encode(SIGNATURE, data, new Map([[identity.link, identity.bytes]]));
+  return signatures.encode({ identity, object: object.link, signature }, new Map([[identity.link, identity.bytes]]));
 }

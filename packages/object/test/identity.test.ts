@@ -3,7 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type Json } from "../src/encoding.ts";
-import { decodeObject, encodeIdentity, encodeSchema, identities, identitySchema, linkOf } from "../src/index.ts";
+import { decodeObject, encodeSchema, identities, identitySchema, linkOf } from "../src/index.ts";
 
 const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
@@ -14,12 +14,16 @@ const written = (data: Json) => encodeJson({ data, schema: linkOf(encodeJson(ide
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)("in %s reads back from its object as the same identity", (scheme) => {
     const identity = SoftwareSigner.fromSecretKey(scheme, secretKey).identity;
-    const object = encodeIdentity(identity);
+    const object = identities.encode(identity);
     // Without its label, as bytes read from a file or the network have none.
     const bytes: Uint8Array = object.bytes;
     const read = identities.decode(bytes);
     expect(sameIdentity(read, identity)).toBe(true);
     expect(read.link).toBe(object.link);
+  });
+
+  it("is not written with a key of another length than its scheme's", () => {
+    expect(() => identities.encode({ scheme: "ed25519", publicKey: new Uint8Array(33) })).toThrow(/32 bytes/);
   });
 
   it("in a scheme this package does not know fits the identity schema, and does not read", async () => {

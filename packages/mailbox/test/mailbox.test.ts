@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeIdentity, encodeObject, encodeSchema, linkOf, sign, signatures, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, identities, linkOf, sign, signatures, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -29,7 +29,7 @@ describe("a mailbox", () => {
     const opened = await bob.open(sealed!);
     expect(opened).toEqual(message);
     const blobs = new Map(opened.blobs.map((bytes) => [linkOf(bytes), bytes]));
-    expect(signatures.decode(opened.entry, blobs).identity).toEqual(encodeIdentity(alice.identity));
+    expect(signatures.decode(opened.entry, blobs).identity).toEqual(identities.encode(alice.identity));
   });
 
   it("sends while the clock at each send is before its end", async () => {

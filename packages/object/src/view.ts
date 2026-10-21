@@ -22,22 +22,39 @@ export interface Reading<T> {
 }
 
 /**
- * Reads objects as `T`, each by the reading of the schema it is written to,
- * and refuses objects written to any other. The readings are where an object
- * from outside becomes a value of the program, and the only place that knows
- * the shape of its data: an object written to an older schema, or to another
- * application's, reads as a `T` once there is a reading of that schema.
+ * How a view writes values of `V`: as objects of `schema`, with the data that
+ * `write` gives for a value. A view reads objects of every schema it has a
+ * reading of, and writes to one of them, the one the program writes now.
  */
-export class View<T> {
-  readonly #readings: ReadonlyMap<Link<Schema>, Reading<T>>;
+export interface Writing<V> {
+  readonly schema: Link<Schema>;
+  write(value: V): Json;
+}
 
-  constructor(readings: Iterable<Reading<T>>) {
+/**
+ * Reads objects as `T`, each by the reading of the schema it is written to,
+ * and refuses objects written to any other; with a writing, it also writes
+ * values of `V` as objects. The readings and the writing are where objects
+ * become values of the program and values become objects, and the only
+ * places that know the shape of the data: an object written to an older
+ * schema, or to another application's, reads as a `T` once there is a
+ * reading of that schema.
+ */
+export class View<T, V = never> {
+  readonly #readings: ReadonlyMap<Link<Schema>, Reading<T>>;
+  readonly #writing: Writing<V> | undefined;
+
+  constructor(readings: Iterable<Reading<T>>, writing?: Writing<V>) {
     const bySchema = new Map<Link<Schema>, Reading<T>>();
     for (const reading of readings) {
       if (bySchema.has(reading.schema)) throw new Error(`two readings of ${reading.schema}`);
       bySchema.set(reading.schema, reading);
     }
+    if (writing !== undefined && !bySchema.has(writing.schema)) {
+      throw new Error(`the view writes to ${writing.schema}, which it does not read`);
+    }
     this.#readings = bySchema;
+    this.#writing = writing;
   }
 
   /**
@@ -61,9 +78,14 @@ export class View<T> {
     return this.#read(decoded, blobs);
   }
 
-  /** Writes `data` to `schema` as an object, and reads it as `decode` would. */
-  encode(schema: Link<Schema>, data: Json, blobs: Blobs = noBlobs): T {
-    return this.decode(encodeJson({ data, schema }), blobs);
+  /**
+   * Writes `value` as an object by the view's writing, and reads the object
+   * as `decode` would, so a value that would not read is refused. `blobs`
+   * holds the blobs that its reading follows links to.
+   */
+  encode(value: V, blobs: Blobs = noBlobs): T {
+    if (this.#writing === undefined) throw new Error("the view writes nothing");
+    return this.decode(encodeJson({ data: this.#writing.write(value), schema: this.#writing.schema }), blobs);
   }
 
   #read({ value, bytes, link }: Decoded, blobs: Blobs): T {

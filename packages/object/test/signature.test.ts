@@ -4,9 +4,9 @@ import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type JsonObject } from "../src/encoding.ts";
 import {
   decodeObject,
-  encodeIdentity,
   encodeObject,
   encodeSchema,
+  identities,
   linkOf,
   sign,
   signatures,
@@ -35,7 +35,7 @@ describe("a signature", () => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
     const read = signatures.decode(signature.bytes, identityOf(signature));
-    expect(read.identity).toEqual(encodeIdentity(by.identity));
+    expect(read.identity).toEqual(identities.encode(by.identity));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -51,7 +51,7 @@ describe("a signature", () => {
   it("is refused when it names another identity, even the same key in another scheme", async () => {
     const signature = await sign(hello, signer("ed25519"));
     const { publicKey } = signer("ed25519").identity;
-    for (const other of [encodeIdentity(signer("ed25519", 2).identity), encodeIdentity({ publicKey, scheme: "solana-offchain" })]) {
+    for (const other of [identities.encode(signer("ed25519", 2).identity), identities.encode({ publicKey, scheme: "solana-offchain" })]) {
       expect(() => signatures.decode(rewritten(signature, { identity: other.link }), byLink(other))).toThrow(/does not verify/);
     }
   });
@@ -72,7 +72,7 @@ describe("a signature", () => {
     ["a field besides identity, object and signature", (f) => ({ ...f, role: "buyer" })],
     ["no signature", ({ signature: _, ...f }) => f],
     ["an object that is not a link", (f) => ({ ...f, object: "hello" })],
-    ["its identity written in place of the link to it", (f) => ({ ...f, identity: dataOf(encodeIdentity(signer("ed25519").identity)) })],
+    ["its identity written in place of the link to it", (f) => ({ ...f, identity: dataOf(identities.encode(signer("ed25519").identity)) })],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
     expect(() => signatures.decode(written(signature, change(dataOf(signature))), identityOf(signature))).toThrow();

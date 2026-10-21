@@ -3,10 +3,10 @@ import { loadAuthorizations } from "@estoc/authorization";
 import { SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
-  encodeIdentity,
   encodeJson,
   encodeObject,
   encodeSchema,
+  identities,
   linkOf,
   linkSchema,
   sign,
@@ -75,7 +75,7 @@ describe("a bundle", () => {
     expect(bundle.link).toBe(signature.link);
     const signed = signatures.decode(bundle.root, bundle);
     expect(signatures.decode(bundle.get(bundle.link)!, bundle)).toEqual(signed);
-    expect(signed.identity).toEqual(encodeIdentity(alice.identity));
+    expect(signed.identity).toEqual(identities.encode(alice.identity));
     expect(decodeObject(bundle.get(signed.object)!, note).data).toBe("hello");
   });
 
@@ -95,9 +95,9 @@ describe("a bundle", () => {
     });
     const later = rewritten(signature.identity.bytes, (fields) => ({ ...fields, scheme: "a-later-scheme" }));
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: linkOf(later) }));
-    const identities = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
+    const identityBytes = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
-      expect(() => signatures.decode(blob, identities)).toThrow();
+      expect(() => signatures.decode(blob, identityBytes)).toThrow();
       expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
   });

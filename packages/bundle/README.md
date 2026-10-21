@@ -133,9 +133,14 @@ unzip to the size or the CRC the zip gives. A zip that holds a path twice is
 refused as well, since two tools could each take a different one.
 
 zip.js takes the size of the pieces it unzips from a setting shared by all of
-zip.js in the program. `unzipBundle` sets it to 4 KiB each time it runs, so
-other uses of zip.js in the same program work in pieces of that size too.
-What they zip and unzip stays the same, at a small cost in speed.
+zip.js in the program, and reads it for each entry. `unzipBundle` sets it to
+4 KiB each time it starts, over whatever was set before, so other uses of
+zip.js in the same program work in pieces of that size too. What they zip and
+unzip stays the same, at a small cost in speed. While an unzip runs, other
+code in the program is expected not to set `chunkSize` or call
+`resetConfiguration()`: the entries still to come would be unzipped in pieces
+of the new size, and a larger size lets more come out of a piece before it is
+counted.
 
 The directory at the end of a zip lists its entries, and it is what most
 tools read. `unzipBundle` unzips the entries it lists under the paths of a

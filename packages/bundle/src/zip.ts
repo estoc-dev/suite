@@ -49,9 +49,10 @@ export async function unzipBundle(
   const { bytes = LIMITS.bytes, entries = LIMITS.entries } = limits;
   // zip.js hands an entry to be unzipped in pieces of this size, and DEFLATE
   // makes at most about a thousand times its size, so a piece unzips to a few
-  // MiB at most before what comes out is counted. The size is a setting of all
-  // of zip.js in the program, made again at each unzip so that a setting made
-  // elsewhere does not lift the bound.
+  // MiB at most before what comes out is counted. The size is a setting shared
+  // by all of zip.js in the program and read for each entry. It is made at the
+  // start of each unzip, over any made before, and holds as long as no other
+  // code changes it while the unzip runs.
   configure({ chunkSize: 4096 });
   const abort = new AbortController();
   const reader = new ZipReader(new Uint8ArrayReader(zip), {

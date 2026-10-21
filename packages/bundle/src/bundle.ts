@@ -41,7 +41,11 @@ export class Bundle {
   }
 
   /** The root, or a blob under `blobs/sha256/`, by its link. */
-  get<T>(link: Link<T>): Bytes<T> | undefined {
+  get<T>(link: Link<T>): Bytes<T> | undefined;
+  // For links of several kinds at once, as in an array of the links of objects
+  // and signatures: TypeScript infers `T` from one kind and refuses the others.
+  get(link: Link<unknown>): Bytes<unknown> | undefined;
+  get(link: Link<unknown>): Bytes<unknown> | undefined {
     return this.#blobs.get(link);
   }
 }

@@ -32,7 +32,11 @@ export function isLink(value: unknown): value is Link<never> {
   return typeof value === "string" && linkText.test(value);
 }
 
-export function linkOf<T = never>(bytes: Bytes<T>): Link<T> {
+export function linkOf<T = never>(bytes: Bytes<T>): Link<T>;
+// For bytes of several kinds at once, as in an array of objects and
+// signatures: TypeScript infers `T` from one kind and refuses the others.
+export function linkOf(bytes: Bytes<unknown>): Link<unknown>;
+export function linkOf(bytes: Uint8Array): Link<unknown> {
   return `sha256:${bytesToHex(sha256(bytes))}` as const;
 }
 

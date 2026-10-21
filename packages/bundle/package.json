@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@estoc/object": "workspace:*"
+    "@estoc/object": "workspace:*",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@estoc/authorization": "workspace:*",

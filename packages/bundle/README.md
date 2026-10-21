@@ -93,3 +93,40 @@ and the reader finds out when `get` gives `undefined`. Which blobs to carry
 is up to the application that writes the bundle. A blob the root does not
 lead to is kept and `get` returns it, but it means nothing: a bundle does
 not say which signatures are over an object, nor list the blobs it holds.
+
+## Zip
+
+To move a bundle as one file, `zipBundle` zips its files, and `unzipBundle`
+unzips a zip back into the map that `readBundle` takes.
+
+```ts
+const zip = zipBundle(writeBundle(envelope, [signature.bytes, message.bytes]));
+const bundle = readBundle(unzipBundle(zip));
+```
+
+The entries start at the bundle's root: `index.json` is at the top of the
+zip, not in a folder. A zip with the bundle in a folder unzips to no
+`index.json`, and reading it is refused. Any compression and any order of
+entries reads. `zipBundle` dates every entry 1980-01-01, the earliest date a
+zip can hold. A zip records local time, so a real date would tell when the
+zip was made and, from that, in which time zone. The same files in the same
+order zip to the same bytes.
+
+Unzipping holds what comes out in memory and writes nothing. Only
+`index.json` and the blobs under `blobs/sha256/` are unzipped, so the map
+has paths of only those two shapes, and saving it as a folder stays inside
+that folder: an entry such as `../escape`, `.DS_Store` or one under
+`__MACOSX/` is not unzipped.
+
+A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
+10,000 entries, unless the caller gives others. The bytes are counted as
+they come out, since the sizes a zip gives for its entries can be false, and
+at the limit unzipping stops and the whole zip is refused. A zip that holds
+a path twice is refused as well, since two tools could each take a
+different one.
+
+The directory at the end of a zip lists its entries, and it is what most
+tools read. `unzipBundle` lists the entries from it, unzips them one after
+another, and refuses the zip unless the two agree. A zip cut short has no
+directory, a damaged header loses an entry, and an entry hidden where the
+directory does not point is one that other tools would not see.

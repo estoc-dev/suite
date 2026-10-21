@@ -1,5 +1,5 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, identities, linkOf, sign, type Link } from "@estoc/object";
+import { encodeObject, encodeSchema, linkOf, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(sc
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
 const authorizations = await loadAuthorizations(defaultValidator);
+const { signatures } = authorizations;
+const { identities } = signatures;
 const authorizationSchemaRead = await encodeSchema(authorizationSchema, defaultValidator);
 const proxySchemaRead = await encodeSchema(proxySchema, defaultValidator);
 const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
@@ -40,7 +42,7 @@ const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing =
 });
 const signed = async <T extends { readonly link: Link<unknown> }>(object: T, by: SoftwareSigner): Promise<Signed<T>> => ({
   object,
-  signature: await sign(object, by),
+  signature: await signatures.sign(object, by),
 });
 // A proxy written without the checks that `proxy` makes, as anyone could write one.
 const unchecked = (chain: readonly AnySigned[], by: SoftwareSigner, link: Link<unknown> = target.link) =>

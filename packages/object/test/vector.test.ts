@@ -6,12 +6,13 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
-  identities,
   identitySchema,
-  sign,
-  signatures,
+  loadSignatures,
   signatureSchema,
 } from "../src/index.ts";
+
+const signatures = await loadSignatures(defaultValidator);
+const { identities } = signatures;
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
@@ -62,7 +63,7 @@ const schema = await encodeSchema(
   defaultValidator,
 );
 const object = encodeObject(schema, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)));
+const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)));
 
 describe("a login schema, an object written to it and an Ed25519 signature over that", () => {
   it("encode to fixed bytes and links, the signature written to the signature schema", async () => {

@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
-import { signatures } from "@estoc/object";
+import { loadSignatures } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
+
+const signatures = await loadSignatures(defaultValidator);
 
 // The login object, the signature over it and its signer's identity object
 // are the vector of @estoc/object. A change to the format changes them.

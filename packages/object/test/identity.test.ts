@@ -3,7 +3,9 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type Json } from "../src/encoding.ts";
-import { decodeObject, encodeSchema, identities, identitySchema, linkOf } from "../src/index.ts";
+import { decodeObject, encodeSchema, identitySchema, linkOf, loadSignatures } from "../src/index.ts";
+
+const { identities } = await loadSignatures(defaultValidator);
 
 const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);

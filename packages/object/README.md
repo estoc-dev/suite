@@ -138,14 +138,15 @@ it. A program has types of its own, and a `View` is where objects from
 outside become values of them, and values of them become objects. It holds
 one `Reading` for each schema it takes, and reads an object by the reading
 of the schema the object is written to; an object of any other schema is
-refused. `reading` makes one that validates the data against the schema
-before it turns it into the program's value. A view that writes also holds
+refused. A reading holds its schema compiled, and the view checks the data
+against it before the reading turns it into the program's value, so the
+reading is left what the schema does not say. A view that writes also holds
 a `Writing`: the schema it writes to, which is one of those it reads, and
 how a value becomes data of that schema. It reads objects of every schema
 it has a reading of, and writes to one, the schema the program writes now.
 
 ```ts
-import { reading, View, type Link } from "@estoc/object";
+import { View, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
@@ -156,11 +157,14 @@ interface Note {
 // A note was first written as {"text"}, and is now written as {"body", "language"}.
 const notes = new View<Note, { readonly text: string; readonly language: string }>(
   [
-    reading(noteSchema, (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link })),
-    reading(noteWithLanguage, (data, { link }) => {
-      const { body, language } = data as { body: string; language: string };
-      return { text: body, language, link };
-    }),
+    { schema: noteSchema, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
+    {
+      schema: noteWithLanguage,
+      read: (data, { link }) => {
+        const { body, language } = data as { body: string; language: string };
+        return { text: body, language, link };
+      },
+    },
   ],
   { schema: noteWithLanguage.link, write: ({ text, language }) => ({ body: text, language }) },
 );
@@ -199,10 +203,13 @@ interface Reply {
 
 // A reply names the note it answers by link, and reads with that note.
 const replies = new View<Reply>([
-  reading(replySchema, (data, _, blobs) => {
-    const { to, text } = data as { to: Link<Note>; text: string };
-    return { to: notes.follow(to, blobs), text };
-  }),
+  {
+    schema: replySchema,
+    read: (data, _, blobs) => {
+      const { to, text } = data as { to: Link<Note>; text: string };
+      return { to: notes.follow(to, blobs), text };
+    },
+  },
 ]);
 const reply = replies.decode(bytes, blobs);
 ```
@@ -221,12 +228,13 @@ in each, is for whoever reads identities. An identity in a scheme added
 later is written to the same schema, so identities already written keep
 their links.
 
-`identities` is the view this package reads and writes them with. It takes
-the schemes that `@estoc/identity` knows, with the key at its scheme's
-length, so that each identity has one object and one link, and it refuses
-an identity in any other scheme, though its object fits the schema.
-`identities.encode` writes an identity as its object, and refuses one it
-would not read, such as one whose key is not its scheme's length.
+`identities` is the view this package reads and writes them with, and comes
+with the signatures below. It takes the schemes that `@estoc/identity`
+knows, with the key at its scheme's length, so that each identity has one
+object and one link, and it refuses an identity in any other scheme, though
+its object fits the schema. `identities.encode` writes an identity as its
+object, and refuses one it would not read, such as one whose key is not its
+scheme's length.
 
 ## Signatures
 
@@ -240,9 +248,12 @@ others over the same object.
 A signature is itself an object, written to `signatureSchema`, so a format
 that holds an object can hold a signature. It names its identity and the
 object it is over by their links, and the signature is in lowercase hex.
-`signatures` is the view this package reads and writes them with. It
-needs no validator: it checks the fields itself, reads the identity from
-its object through `identities`, and verifies the signature. So reading a
+`loadSignatures` compiles the identity and signature schemas with the
+validator the application picks, as any schema is, and gives the view this
+package reads and writes signatures with, which holds `identities` and
+`sign`. Reading a signature checks its data against the signature schema,
+reads its identity through `identities`, which checks the identity's object
+against the identity schema, and verifies the signature. So reading a
 signature takes the blob of its identity's object, but not that of the
 object signed, since the digest it signs is in the link. Reading a
 signature with `decodeObject` and the signature schema, as a viewer of
@@ -250,17 +261,20 @@ arbitrary objects would, reads its fields without verifying it. `sign`
 signs the link of an object, so it takes anything that has one, such as a
 value read through a view. The signature it gives has the signer's identity
 object as `identity`, whose bytes go along with the signature. It writes the
-signature through `signatures`, so a signer whose signature does not verify
-is refused.
+identity and the signature through their views before and after the signer
+signs, so a signer is not asked for a signature that would not read, and a
+signer whose signature does not verify is refused.
 
 A server that handed out a nonce can build the login object itself and take
 back only the signature, with the identity's object:
 
 ```ts
 import { SoftwareSigner } from "@estoc/identity";
-import { linkOf, sign, signatures } from "@estoc/object";
+import { linkOf, loadSignatures } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
 
-const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
+const signatures = await loadSignatures(defaultValidator);
+const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
 // The client sends signature.bytes and signature.identity.bytes.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });

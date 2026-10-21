@@ -1,15 +1,14 @@
-import { verify, type Signer } from "@estoc/identity";
+import { verify, type Identity, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { digestOf, encodeJson, HEX, isJsonObject, isLink, linkOf, type Bytes, type Link } from "./encoding.ts";
-import { identities, type IdentityObject } from "./identity.ts";
-import { DRAFT_2020_12, linkSchema, type JsonSchema, type Schema } from "./schema.ts";
+import { digestOf, HEX, type Bytes, type Link } from "./encoding.ts";
+import { identitySchema, identityView, type IdentityObject } from "./identity.ts";
+import { DRAFT_2020_12, encodeSchema, linkSchema, type JsonSchema, type Schema, type SchemaValidator } from "./schema.ts";
 import { View } from "./view.ts";
 
 /**
- * The schema every signature is written to. Reading a signature checks its
- * fields in code and verifies it, so no validator compiles this schema for
- * that. It is for a reader that reads a signature as an object, such as a
- * viewer, which then reads its fields without verifying it.
+ * The schema every signature is written to. A reader that reads a signature
+ * as an object of this schema, such as a viewer, reads its fields without
+ * verifying it.
  */
 export const signatureSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -23,8 +22,6 @@ export const signatureSchema: JsonSchema = {
   required: ["identity", "object", "signature"],
   additionalProperties: false,
 };
-
-const SIGNATURE: Link<Schema> = linkOf(encodeJson(signatureSchema));
 
 /**
  * An identity standing behind an object, as an object written to
@@ -44,6 +41,8 @@ export interface Signature {
   readonly link: Link<Signature>;
 }
 
+type SignatureData = { readonly identity: Link<IdentityObject>; readonly object: Link<never>; readonly signature: string };
+
 /**
  * Reads signatures, and refuses one unless its identity signed the object it
  * names. The identity is read from its object in the blobs given, through
@@ -52,41 +51,48 @@ export interface Signature {
  * `encode` writes a signature that has been made, and refuses one that does
  * not verify.
  */
-export const signatures = new View<
+export class Signatures extends View<
   Signature,
   { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
->(
-  [
-    {
-      schema: SIGNATURE,
-      read(data, { bytes, link }, blobs) {
-        if (!isJsonObject(data) || Object.keys(data).sort().join() !== "identity,object,signature") {
-          throw new Error("a signature has the fields identity, object and signature");
-        }
-        const { identity: signer, object, signature: hex } = data;
-        if (!isLink(signer)) throw new Error("a signature names its identity by link");
-        if (!isLink(object)) throw new Error("a signature names its object by link");
-        if (typeof hex !== "string" || !HEX.test(hex)) throw new Error("a signature is lowercase hex");
-        const identity = identities.follow(signer, blobs);
-        const signature = hexToBytes(hex);
-        if (!verify(identity, digestOf(object), signature)) throw new Error(`the signature does not verify for ${object}`);
-        return { identity, object, signature, bytes, link };
-      },
-    },
-  ],
-  {
-    schema: SIGNATURE,
-    write: ({ identity, object, signature }) => ({ identity: identity.link, object, signature: bytesToHex(signature) }),
-  },
-);
+> {
+  readonly identities: View<IdentityObject, Identity>;
 
-/**
- * Signs the link of an object, and so the object, whatever it is read as.
- * The signature names the signer's identity object, `signature.identity`,
- * whose bytes go along with it.
- */
-export async function sign(object: { readonly link: Link<unknown> }, signer: Signer): Promise<Signature> {
-  const identity = identities.encode(signer.identity);
-  const signature = await signer.sign(digestOf(object.link));
-  return signatures.encode({ identity, object: object.link, signature }, new Map([[identity.link, identity.bytes]]));
+  constructor(identity: Schema, signature: Schema) {
+    const identities = identityView(identity);
+    super(
+      [
+        {
+          schema: signature,
+          read(data, { bytes, link }, blobs) {
+            const fields = data as SignatureData;
+            const signer = identities.follow(fields.identity, blobs);
+            const value = hexToBytes(fields.signature);
+            if (!verify(signer, digestOf(fields.object), value)) throw new Error(`the signature does not verify for ${fields.object}`);
+            return { identity: signer, object: fields.object, signature: value, bytes, link };
+          },
+        },
+      ],
+      {
+        schema: signature.link,
+        write: ({ identity, object, signature }) => ({ identity: identity.link, object, signature: bytesToHex(signature) }),
+      },
+    );
+    this.identities = identities;
+  }
+
+  /**
+   * Signs the link of an object, and so the object, whatever it is read as.
+   * The signature names the signer's identity object, `signature.identity`,
+   * whose bytes go along with it.
+   */
+  async sign(object: { readonly link: Link<unknown> }, signer: Signer): Promise<Signature> {
+    const identity = this.identities.encode(signer.identity);
+    const signature = await signer.sign(digestOf(object.link));
+    return this.encode({ identity, object: object.link, signature }, new Map([[identity.link, identity.bytes]]));
+  }
+}
+
+/** Signatures and the identities they name, read and written with their schemas compiled by `validator`. */
+export async function loadSignatures(validator: SchemaValidator): Promise<Signatures> {
+  return new Signatures(await encodeSchema(identitySchema, validator), await encodeSchema(signatureSchema, validator));
 }

@@ -30,7 +30,9 @@ guessing. `index.json` has to be the canonical JSON of an object, with
 exactly the fields `data` and `schema`. An `index.json` formatted by hand,
 or one that holds a schema, makes the whole bundle refused. A signature is
 an object too, so it can be the root, with what it is over carried in the
-bundle.
+bundle. `writeBundle` takes the root in whatever type a view read it into,
+such as an `Authorization`, and writes its bytes, so the root is written as
+it was signed.
 
 `index.json` is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is

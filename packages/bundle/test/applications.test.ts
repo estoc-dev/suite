@@ -29,7 +29,7 @@ const schemaFor = (title: string, properties: JsonObject) =>
     { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
     defaultValidator,
   );
-const handOver = (root: EncodedObject | Signature, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
+const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
 
 function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
   const bytes = bundle.get(link);

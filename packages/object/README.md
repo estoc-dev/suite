@@ -8,8 +8,10 @@ that reads it.
 ```
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
 Object     {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
+Identity   an Object written to the identity schema, with the data
+           {"publicKey": <hex>, "scheme": <scheme>}
 Signature  an Object written to the signature schema, with the data
-           {"identity": <identity>, "object": "sha256:<the Object's link>", "signature": <hex>}
+           {"identity": "sha256:<the Identity's link>", "object": "sha256:<the Object's link>", "signature": <hex>}
 ```
 
 ## Encoding
@@ -111,9 +113,47 @@ another schema, the same content would be another object, which no one has
 signed. `encode` writes data to one of the view's schemas and reads it back
 as `decode` would; turning a value back into data is left to each type.
 
+A reading can follow the links in its data to the objects they name. It
+gets the blobs that were given to `decode`, anything with `get(link)` such
+as a `Map`, a bundle or a store, and reads a linked object with `follow` on
+the view of that object, which refuses a blob whose bytes have another
+link. A reading that follows a link fails without its blob.
+
+```ts
+interface Reply {
+  readonly to: Note;
+  readonly text: string;
+}
+
+// A reply names the note it answers by link, and reads with that note.
+const replies = new View<Reply>([
+  reading(replySchema, (data, _, blobs) => {
+    const { to, text } = data as { to: Link<Note>; text: string };
+    return { to: notes.follow(to, blobs), text };
+  }),
+]);
+const reply = replies.decode(bytes, blobs);
+```
+
 A reader that takes objects of several schemas but picks something other
 than a reading by them, such as a transport for each kind of mailbox, reads
 the link of the schema an object names with `schemaOf`.
+
+## Identities
+
+An identity of `@estoc/identity` is written as an object of
+`identitySchema`, and other objects name it by the link of that object. The
+schema holds the shape of an identity, a key in lowercase hex and the name
+of its scheme, and no more: which schemes there are, and how long a key is
+in each, is for whoever reads identities. An identity in a scheme added
+later is written to the same schema, so identities already written keep
+their links.
+
+`identities` is the view this package reads them with. It takes the schemes
+that `@estoc/identity` knows, with the key at its scheme's length, so that
+each identity has one object and one link, and it refuses an identity in
+any other scheme, though its object fits the schema. `encodeIdentity`
+writes an identity as its object.
 
 ## Signatures
 
@@ -125,27 +165,31 @@ Each signature is a blob of its own, collected and passed on apart from the
 others over the same object.
 
 A signature is itself an object, written to `signatureSchema`, so a format
-that holds an object can hold a signature. Its identity is in the JSON form of
-`@estoc/identity`, the object it is over is named by its link, and the
-signature is in lowercase hex. `signatures` is the view this package reads
-them with, with one reading. It needs no validator: it checks the fields
-itself and verifies the signature, which needs only the signature, since the
-digest it signs is in the link. Reading a signature with `decodeObject` and
-the signature schema, as a viewer of arbitrary objects would, reads its
-fields without verifying it. `sign` signs the link of an object, so it takes
-anything that has one, such as a value read through a view.
+that holds an object can hold a signature. It names its identity and the
+object it is over by their links, and the signature is in lowercase hex.
+`signatures` is the view this package reads them with, with one reading. It
+needs no validator: it checks the fields itself, reads the identity from
+its object through `identities`, and verifies the signature. So reading a
+signature takes the blob of its identity's object, but not that of the
+object signed, since the digest it signs is in the link. Reading a
+signature with `decodeObject` and the signature schema, as a viewer of
+arbitrary objects would, reads its fields without verifying it. `sign`
+signs the link of an object, so it takes anything that has one, such as a
+value read through a view. The signature it gives has the signer's identity
+object as `identity`, whose bytes go along with the signature.
 
 A server that handed out a nonce can build the login object itself and take
-back only the signature:
+back only the signature, with the identity's object:
 
 ```ts
 import { SoftwareSigner } from "@estoc/identity";
-import { sign, signatures } from "@estoc/object";
+import { linkOf, sign, signatures } from "@estoc/object";
 
 const signature = await sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
+// The client sends signature.bytes and signature.identity.bytes.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const read = signatures.decode(signature.bytes);
+const read = signatures.decode(signatureBytes, new Map([[linkOf(identityBytes), identityBytes]]));
 const user = read.object === expected.link ? read.identity : undefined;
 ```
 
@@ -202,7 +246,4 @@ worker in any case.
 
 ## Builtin schemas
 
-- `https://estoc.dev/schema/identity`: an identity in the JSON form of
-  `@estoc/identity`, `{"publicKey": <lowercase hex>, "scheme": <scheme>}`,
-  with the key at its scheme's length.
 - `https://estoc.dev/schema/link`: `sha256:` and 64 lowercase hex digits.

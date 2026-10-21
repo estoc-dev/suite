@@ -24,6 +24,9 @@ export type Link<T> = `sha256:${string}` & { readonly [target]?: T };
  */
 export type Bytes<T> = Uint8Array & { readonly [target]?: T };
 
+/** Bytes in lowercase hex, as a pattern that a JSON Schema can use as well. */
+export const HEX = /^(?:[0-9a-f]{2})*$/;
+
 /** What a link looks like, as a pattern that a JSON Schema can use as well. */
 export const LINK_PATTERN = "^sha256:[0-9a-f]{64}$";
 const linkText = new RegExp(LINK_PATTERN);

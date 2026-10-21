@@ -1,25 +1,29 @@
-import { identityToJson, SoftwareSigner, type Scheme, type Signer } from "@estoc/identity";
+import { SoftwareSigner, type Scheme, type Signer } from "@estoc/identity";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type JsonObject } from "../src/encoding.ts";
 import {
   decodeObject,
+  encodeIdentity,
   encodeObject,
   encodeSchema,
   linkOf,
   sign,
   signatures,
   signatureSchema,
+  type IdentityObject,
   type Signature,
 } from "../src/index.ts";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const parsed = (signature: Signature) =>
-  JSON.parse(new TextDecoder().decode(signature.bytes)) as { data: JsonObject; schema: string };
-const fields = (signature: Signature) => parsed(signature).data;
+const parsed = (object: { readonly bytes: Uint8Array }) =>
+  JSON.parse(new TextDecoder().decode(object.bytes)) as { data: JsonObject; schema: string };
+const dataOf = (object: { readonly bytes: Uint8Array }) => parsed(object).data;
 const written = (signature: Signature, data: JsonObject) => encodeJson({ data, schema: parsed(signature).schema });
-const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...fields(signature), ...change });
+const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
+const byLink = (...identities: IdentityObject[]) => new Map(identities.map(({ link, bytes }) => [link, bytes]));
+const identityOf = (signature: Signature) => byLink(signature.identity);
 
 const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
 const hello = encodeObject(note, "hello");
@@ -30,8 +34,8 @@ describe("a signature", () => {
   it.each(schemes)("by a %s identity reads back with its identity and object", async (scheme) => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
-    const read = signatures.decode(signature.bytes);
-    expect(read.identity).toEqual(by.identity);
+    const read = signatures.decode(signature.bytes, identityOf(signature));
+    expect(read.identity).toEqual(encodeIdentity(by.identity));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -39,22 +43,27 @@ describe("a signature", () => {
 
   it("is refused when its signature is changed", async () => {
     const signature = await sign(hello, signer("ed25519"));
-    const hex = fields(signature).signature as string;
+    const hex = dataOf(signature).signature as string;
     const changed = `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}`;
-    expect(() => signatures.decode(rewritten(signature, { signature: changed }))).toThrow();
+    expect(() => signatures.decode(rewritten(signature, { signature: changed }), identityOf(signature))).toThrow();
   });
 
   it("is refused when it names another identity, even the same key in another scheme", async () => {
     const signature = await sign(hello, signer("ed25519"));
-    const { publicKey } = identityToJson(signer("ed25519").identity);
-    for (const identity of [identityToJson(signer("ed25519", 2).identity), { publicKey, scheme: "solana-offchain" }]) {
-      expect(() => signatures.decode(rewritten(signature, { identity }))).toThrow();
+    const { publicKey } = signer("ed25519").identity;
+    for (const other of [encodeIdentity(signer("ed25519", 2).identity), encodeIdentity({ publicKey, scheme: "solana-offchain" })]) {
+      expect(() => signatures.decode(rewritten(signature, { identity: other.link }), byLink(other))).toThrow(/does not verify/);
     }
   });
 
   it("is refused when it names another object", async () => {
     const signature = await sign(hello, signer("eip191"));
-    expect(() => signatures.decode(rewritten(signature, { object: goodbye.link }))).toThrow();
+    expect(() => signatures.decode(rewritten(signature, { object: goodbye.link }), identityOf(signature))).toThrow();
+  });
+
+  it("is refused without the object of its identity", async () => {
+    const signature = await sign(hello, signer("ed25519"));
+    expect(() => signatures.decode(signature.bytes)).toThrow(/no blob is given/);
   });
 
   it.each<[string, (fields: JsonObject) => JsonObject]>([
@@ -63,23 +72,24 @@ describe("a signature", () => {
     ["a field besides identity, object and signature", (f) => ({ ...f, role: "buyer" })],
     ["no signature", ({ signature: _, ...f }) => f],
     ["an object that is not a link", (f) => ({ ...f, object: "hello" })],
+    ["its identity written in place of the link to it", (f) => ({ ...f, identity: dataOf(encodeIdentity(signer("ed25519").identity)) })],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => signatures.decode(written(signature, change(fields(signature))))).toThrow();
+    expect(() => signatures.decode(written(signature, change(dataOf(signature))), identityOf(signature))).toThrow();
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
-    ["written to another schema", (signature) => encodeJson({ data: fields(signature), schema: note.link })],
+    ["written to another schema", (signature) => encodeJson({ data: dataOf(signature), schema: note.link })],
     ["with a field besides data and schema", (signature) => encodeJson({ ...parsed(signature), role: "buyer" })],
-    ["with its fields bare, outside data", (signature) => encodeJson(fields(signature))],
+    ["with its fields bare, outside data", (signature) => encodeJson(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => signatures.decode(change(signature))).toThrow();
+    expect(() => signatures.decode(change(signature), identityOf(signature))).toThrow();
   });
 
   it("is refused in any but the canonical form", async () => {
     const signature = await sign(hello, signer("ed25519"));
-    expect(() => signatures.decode(utf8(JSON.stringify(parsed(signature), null, 1)))).toThrow();
+    expect(() => signatures.decode(utf8(JSON.stringify(parsed(signature), null, 1)), identityOf(signature))).toThrow();
   });
 
   it("reads as an object written to the signature schema, which does not verify it", async () => {
@@ -90,9 +100,10 @@ describe("a signature", () => {
       const bytes: Uint8Array = signature.bytes;
       expect(decodeObject(bytes, schema).link).toBe(signature.link);
     }
-    const unverified = rewritten(await sign(hello, signer("ed25519")), { object: goodbye.link });
+    const signature = await sign(hello, signer("ed25519"));
+    const unverified = rewritten(signature, { object: goodbye.link });
     expect(decodeObject(unverified, schema).data).toMatchObject({ object: goodbye.link });
-    expect(() => signatures.decode(unverified)).toThrow();
+    expect(() => signatures.decode(unverified, identityOf(signature))).toThrow(/does not verify/);
   });
 });
 

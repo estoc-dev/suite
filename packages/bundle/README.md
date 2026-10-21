@@ -16,7 +16,7 @@ from a zip. `writeBundle` gives the map back.
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
 
-const files = writeBundle(signature, [message.bytes]);
+const files = writeBundle(signature, [message.bytes, signature.identity.bytes]);
 const bundle = readBundle(files);
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
@@ -81,14 +81,15 @@ signature over it as the root, and a card lists the signatures over what it
 holds. The reader goes through each signature to the object it is over.
 
 ```ts
-const signed = signatures.decode(bundle.root);
+const signed = signatures.decode(bundle.root, bundle);
 const message = decodeObject(bundle.get(signed.object)!, chatSchema);
 // signed.identity stands behind message
 ```
 
-A `Bundle` has the `get` that `readStanding` takes its blobs by, so a
-signature made through agents is read against the bundle that carries the
-proxy and its chain.
+A `Bundle` has the `get` that views and `readStanding` take their blobs by,
+so a signature is read against the bundle that carries its identity's
+object, and a signature made through agents against the bundle that carries
+the proxy and its chain as well.
 
 A bundle need not be complete. A blob the root leads to may be left out,
 such as a document a contract names by hash that both parties already hold,
@@ -104,7 +105,7 @@ unzips a zip back into the map that `readBundle` takes. Both use zip.js and
 return promises.
 
 ```ts
-const zip = await zipBundle(writeBundle(signature, [message.bytes]));
+const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.identity.bytes]));
 const bundle = readBundle(await unzipBundle(zip));
 ```
 

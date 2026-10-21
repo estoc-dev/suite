@@ -1,4 +1,3 @@
-import { identityToJson, SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it, test, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
@@ -11,7 +10,6 @@ import {
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const IDENTITY = "https://estoc.dev/schema/identity";
 const LINK = "https://estoc.dev/schema/link";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const lenient: SchemaValidator = { compile: async () => () => [] };
@@ -98,7 +96,7 @@ describe("the default validator", () => {
   });
 
   it("refuses a schema that takes the $id of a builtin or of the meta-schema", async () => {
-    await expect(compile({ $schema: DRAFT, $id: IDENTITY, type: "string" })).rejects.toThrow();
+    await expect(compile({ $schema: DRAFT, $id: LINK, type: "string" })).rejects.toThrow();
     for (const $id of [LINK, DRAFT]) {
       await expect(compile({ $schema: DRAFT, $ref: $id, $defs: { own: { $id, type: "number" } } })).rejects.toThrow();
     }
@@ -191,36 +189,22 @@ const contract = await encodeSchema(
   {
     $schema: DRAFT,
     type: "object",
-    properties: { buyer: { $ref: IDENTITY }, terms: { $ref: LINK } },
-    required: ["buyer", "terms"],
+    properties: { terms: { $ref: LINK } },
+    required: ["terms"],
     additionalProperties: false,
   },
   defaultValidator,
 );
 const terms = contract.link;
 
-describe("the builtin schemas", () => {
-  it.each(["ed25519", "eip191", "solana-offchain"] as const)("take a %s identity in its JSON form", (scheme) => {
-    const buyer = identityToJson(SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(1)).identity);
-    expect(contract.validate({ buyer, terms })).toEqual([]);
+describe("the builtin link schema", () => {
+  it("takes a link", () => {
+    expect(contract.validate({ terms })).toEqual([]);
   });
 
-  it("refuse an identity that its JSON form would not read", () => {
-    const { publicKey } = identityToJson(SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)).identity);
-    for (const buyer of [
-      { publicKey, scheme: "eip191" },
-      { publicKey, scheme: "ed448" },
-      { publicKey: publicKey.toUpperCase(), scheme: "ed25519" },
-      { publicKey, scheme: "ed25519", role: "buyer" },
-    ]) {
-      expect(contract.validate({ buyer, terms })).not.toEqual([]);
-    }
-  });
-
-  it("refuse a link that is not sha256 and lowercase hex", () => {
-    const buyer = identityToJson(SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)).identity);
+  it("refuses a link that is not sha256 and lowercase hex", () => {
     for (const link of [terms.toUpperCase(), terms.slice(0, -1), terms.replace("sha256", "sha512")]) {
-      expect(contract.validate({ buyer, terms: link })).not.toEqual([]);
+      expect(contract.validate({ terms: link })).not.toEqual([]);
     }
   });
 });
@@ -236,7 +220,7 @@ const even = await encodeSchema({ $schema: "https://example.com/even" }, evenOnl
 
 describe("a validator other than the default", () => {
   it("is offered the builtin schemas", () => {
-    expect(offered).toEqual([IDENTITY, LINK]);
+    expect(offered).toEqual([LINK]);
   });
 
   it("decides what an object may hold, when encoding and when decoding", async () => {

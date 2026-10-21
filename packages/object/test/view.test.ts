@@ -49,6 +49,41 @@ describe("a view", () => {
   });
 });
 
+// A reply names the note it answers by link, and reads with that note.
+const replySchema = await schemaOf({ to: { $ref: "https://estoc.dev/schema/link" }, text: { type: "string" } });
+
+interface Reply {
+  readonly to: Note;
+  readonly text: string;
+}
+
+const replies = new View<Reply>([
+  reading(replySchema, (data, _, blobs) => {
+    const { to, text } = data as { to: Link<Note>; text: string };
+    return { to: notes.follow(to, blobs), text };
+  }),
+]);
+
+describe("a view whose reading follows a link", () => {
+  const note = encodeObject(first, { text: "lunch?" });
+  const other = encodeObject(first, { text: "dinner?" });
+  const reply = encodeObject(replySchema, { to: note.link, text: "yes" });
+
+  it("reads with the object that the link names, from the blobs given", () => {
+    const blobs = new Map([[note.link, received(note.bytes)]]);
+    expect(replies.decode(received(reply.bytes), blobs)).toEqual({ to: { text: "lunch?", link: note.link }, text: "yes" });
+  });
+
+  it("refuses an object whose link has no blob given", () => {
+    expect(() => replies.decode(received(reply.bytes))).toThrow(/no blob is given/);
+  });
+
+  it("refuses an object whose link is given another blob", () => {
+    const blobs = new Map([[note.link, received(other.bytes)]]);
+    expect(() => replies.decode(received(reply.bytes), blobs)).toThrow(/is another blob/);
+  });
+});
+
 describe("a reading of a schema", () => {
   it("refuses data that does not fit the schema before it is read", () => {
     const read = vi.fn(() => 1);

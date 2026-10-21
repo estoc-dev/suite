@@ -1,12 +1,15 @@
-import { identityFromJson, identityToJson, sameIdentity, type Identity, type IdentityJson, type Signer } from "@estoc/identity";
+import { sameIdentity, type Identity, type Signer } from "@estoc/identity";
 import {
+  encodeIdentity,
   encodeSchema,
-  linkOf,
+  identities,
   reading,
   sign,
   signatures,
   View,
+  type Blobs,
   type Bytes,
+  type IdentityObject,
   type Link,
   type Schema,
   type SchemaValidator,
@@ -21,7 +24,7 @@ import { authorizationSchema, proxySchema } from "./schemas.ts";
  * others included, while the reader's clock is before `until` if there is one.
  */
 export interface Authorization {
-  readonly agent: Identity;
+  readonly agent: IdentityObject;
   readonly until: Temporal.Instant | undefined;
   readonly bytes: Bytes<Authorization>;
   readonly link: Link<Authorization>;
@@ -51,16 +54,11 @@ export interface Signed<T> {
  * authorized to the one that signed the proxy.
  */
 export interface Standing {
-  readonly identity: Identity;
-  readonly agents: readonly Identity[];
+  readonly identity: IdentityObject;
+  readonly agents: readonly IdentityObject[];
 }
 
-/** Blobs by their links: a Map, or a store that holds blobs by content. */
-export interface Blobs {
-  get(link: Link<unknown>): Uint8Array | undefined;
-}
-
-type AuthorizationData = { readonly agent: IdentityJson; readonly until?: string };
+type AuthorizationData = { readonly agent: Link<IdentityObject>; readonly until?: string };
 type ProxyData = { readonly target: Link<never>; readonly chain: readonly Link<Signature>[] };
 
 /** Authorizations and proxies, read and written with the schemas compiled once by one validator. */
@@ -74,13 +72,14 @@ export class Authorizations {
     this.#authorizationSchema = authorization.link;
     this.#proxySchema = proxy.link;
     this.#authorizations = new View([
-      reading(authorization, (data, object) => {
+      reading(authorization, (data, object, blobs) => {
         const { agent, until } = data as AuthorizationData;
         // Whether a validator asserts `format` is its own business, so an
         // `until` can reach here that Temporal does not read as an instant.
         // Such an authorization counts for no one, and is refused rather than
         // signed or read.
-        return { agent: identityFromJson(agent), until: until === undefined ? undefined : Temporal.Instant.from(until), ...object };
+        const end = until === undefined ? undefined : Temporal.Instant.from(until);
+        return { agent: identities.follow(agent, blobs), until: end, ...object };
       }),
     ]);
     this.#proxies = new View([
@@ -96,18 +95,23 @@ export class Authorizations {
    * RFC 3339 `date-time` `until` if one is given.
    */
   async authorize(agent: Identity, signer: Signer, until?: string): Promise<Signed<Authorization>> {
+    const named = encodeIdentity(agent);
     // An `until` that does not read is refused here, before the signer is
     // asked, which may be a wallet prompting its holder.
     const object = this.#authorizations.encode(
       this.#authorizationSchema,
-      until === undefined ? { agent: identityToJson(agent) } : { agent: identityToJson(agent), until },
+      until === undefined ? { agent: named.link } : { agent: named.link, until },
+      new Map([[named.link, named.bytes]]),
     );
     return { object, signature: await sign(object, signer) };
   }
 
-  /** Reads an authorization from the blobs of its signature and its object. */
-  readAuthorization(signature: Bytes<Signature>, object: Bytes<Authorization>): Signed<Authorization> {
-    return signedOver(this.#authorizations.decode(object), signatures.decode(signature));
+  /**
+   * Reads an authorization by the signature over it, `entry`, from the blobs
+   * it leads to: the authorization and the objects of both identities.
+   */
+  readAuthorization(entry: Bytes<Signature>, blobs: Blobs): Signed<Authorization> {
+    return this.#signedAuthorization(signatures.decode(entry, blobs), blobs);
   }
 
   /**
@@ -131,14 +135,13 @@ export class Authorizations {
    * does not stand anyone behind `target`, saying why.
    */
   readStanding(target: Link<unknown>, entry: Bytes<Signature>, blobs: Blobs, now: Date): Standing {
-    const signature = signatures.decode(entry);
+    const signature = signatures.decode(entry, blobs);
     if (signature.object === target) return { identity: signature.identity, agents: [] };
-    const proxy = this.#proxies.decode(blobAt(blobs, signature.object));
+    const proxy = this.#proxies.follow(signature.object, blobs);
     if (proxy.target !== target) throw new Error(`the proxy is for ${proxy.target}, not ${target}`);
     const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
     const chain = proxy.chain.map((link) => {
-      const granted = signatures.decode(blobAt(blobs, link));
-      const authorization = signedOver(this.#authorizations.decode(blobAt(blobs, granted.object)), granted);
+      const authorization = this.#signedAuthorization(signatures.follow(link, blobs), blobs);
       const { until } = authorization.object;
       if (until !== undefined && Temporal.Instant.compare(instant, until) >= 0) {
         throw new Error(`the authorization ${link} ended at ${until}`);
@@ -148,17 +151,16 @@ export class Authorizations {
     checkChain(chain, signature.identity);
     return { identity: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
   }
+
+  #signedAuthorization(signature: Signature, blobs: Blobs): Signed<Authorization> {
+    return { object: this.#authorizations.follow(signature.object, blobs), signature };
+  }
 }
 
 export async function loadAuthorizations(validator: SchemaValidator): Promise<Authorizations> {
   const authorization = await encodeSchema(authorizationSchema, validator);
   const proxy = await encodeSchema(proxySchema, validator);
   return new Authorizations(authorization, proxy);
-}
-
-function signedOver<T extends { readonly link: Link<unknown> }>(object: T, signature: Signature): Signed<T> {
-  if (signature.object !== object.link) throw new Error(`the signature is over ${signature.object}, not ${object.link}`);
-  return { object, signature };
 }
 
 function checkChain(
@@ -171,11 +173,4 @@ function checkChain(
     throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
   }
   if (!sameIdentity(last.object.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
-}
-
-function blobAt<T>(blobs: Blobs, link: Link<T>): Bytes<T> {
-  const bytes = blobs.get(link);
-  if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
-  if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);
-  return bytes;
 }

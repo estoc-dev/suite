@@ -1,12 +1,15 @@
+import { readFileSync } from "node:fs";
 import { encodeObject, encodeSchema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { readBundle, writeBundle } from "../src/index.ts";
+import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 
 // The envelope's schema and the root were checked against Python's json
 // module with sorted keys and no whitespace, which writes these values as JCS
 // does, and its hashlib. The login object and the signature over it are the
 // vector of @estoc/object. A change to the format changes them.
+// stored-by-python.zip holds the same files as Python's zipfile writes them,
+// without compression and with index.json last.
 const envelopeText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"signature":{"$ref":"https://estoc.dev/schema/link"}},"required":["signature"],"title":"Signed","type":"object"}';
@@ -62,5 +65,12 @@ describe("a bundle whose root refers to a signature over a login object, carryin
     expect(text(bundle.get(rootLink))).toBe(rootText);
     expect(text(bundle.get(signatureLink))).toBe(signatureText);
     expect(text(bundle.get(objectLink))).toBe(objectText);
+  });
+
+  it("unzips to those files from a zip that another tool made", async () => {
+    const zip = new Uint8Array(readFileSync(new URL("stored-by-python.zip", import.meta.url)));
+    const unzipped = await unzipBundle(zip);
+    expect(new Map([...unzipped].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
+    expect(readBundle(unzipped).link).toBe(rootLink);
   });
 });

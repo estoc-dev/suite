@@ -10,12 +10,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@estoc/object": "workspace:*"
+    "@estoc/object": "workspace:*",
+    "@zip.js/zip.js": "^2.24.0"
   },
   "devDependencies": {
     "@estoc/authorization": "workspace:*",
     "@estoc/identity": "workspace:*",
     "@types/node": "^26.6.2",
+    "fflate": "^0.8.3",
     "typescript": "~5.8.0",
     "vitest": "^3.2.7"
   }

@@ -1,7 +1,7 @@
 import { linkOf, schemaOf, type EncodedObject, type Link } from "@estoc/object";
 
-const ROOT = "index.json";
-const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
+export const ROOT = "index.json";
+export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
 
 /**
  * An object, the root, and blobs carried with it, held by link. Holding one

@@ -93,3 +93,60 @@ and the reader finds out when `get` gives `undefined`. Which blobs to carry
 is up to the application that writes the bundle. A blob the root does not
 lead to is kept and `get` returns it, but it means nothing: a bundle does
 not say which signatures are over an object, nor list the blobs it holds.
+
+## Zip
+
+To move a bundle as one file, `zipBundle` zips its files, and `unzipBundle`
+unzips a zip back into the map that `readBundle` takes. Both use zip.js and
+return promises.
+
+```ts
+const zip = await zipBundle(writeBundle(envelope, [signature.bytes, message.bytes]));
+const bundle = readBundle(await unzipBundle(zip));
+```
+
+The entries start at the bundle's root: `index.json` is at the top of the
+zip, not in a folder. A zip with the bundle in a folder unzips to no
+`index.json`, and reading it is refused. Entries stored as they are or
+compressed with DEFLATE read, in any order. `zipBundle` dates every entry
+1980-02-01. A zip records local time, so a real date would tell when the zip
+was made and, from that, in which time zone. The date is a month after the
+earliest a zip can hold, so that no conversion between time zones takes it
+below that. The same files in the same order zip to the same bytes, in a
+browser and in Node.
+
+Unzipping holds what comes out in memory and writes nothing. Only
+`index.json` and the blobs under `blobs/sha256/` are unzipped, so the map
+has paths of only those two shapes, and saving it as a folder stays inside
+that folder: an entry such as `../escape`, `.DS_Store` or one under
+`__MACOSX/` is not unzipped.
+
+A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
+10,000 entries, unless the caller gives others. An entry is unzipped as it is
+read, 4 KiB at a time, and the bytes are counted as they come out, since the
+sizes a zip gives for its entries can be false. DEFLATE makes at most about a
+thousand times its size, so a few MiB at most come out before the count stops
+them. Other methods can make far more, so `index.json` or a blob compressed
+with one, such as Deflate64, is refused rather than unzipped. At the limit
+unzipping stops and the whole zip is refused, as it is when an entry does not
+unzip to the size or the CRC the zip gives. A zip that holds a path twice is
+refused as well, since two tools could each take a different one.
+
+zip.js takes the size of the pieces it unzips from a setting shared by all of
+zip.js in the program, and reads it for each entry. `unzipBundle` sets it to
+4 KiB each time it starts, over whatever was set before, so other uses of
+zip.js in the same program work in pieces of that size too. What they zip and
+unzip stays the same, at a small cost in speed. While an unzip runs, other
+code in the program is expected not to set `chunkSize` or call
+`resetConfiguration()`: the entries still to come would be unzipped in pieces
+of the new size, and a larger size lets more come out of a piece before it is
+counted.
+
+The directory at the end of a zip lists its entries, and it is what most
+tools read. `unzipBundle` unzips the entries it lists under the paths of a
+bundle, each from where the directory says it starts, and refuses the zip
+when the header there is missing or gives another method, size or CRC. Bytes
+anywhere else are not entries, even when they look like one: those of a blob
+that is itself a zip, or of the zip's comment. A reader that goes from header
+to header instead can come to entries the directory does not list, and read
+another bundle from the same zip.

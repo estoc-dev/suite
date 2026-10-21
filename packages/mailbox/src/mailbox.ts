@@ -1,4 +1,4 @@
-import { decodeObject, schemaOf, type Json, type JsonObject, type Schema } from "@estoc/object";
+import { decodeObject, schemaOf, type Bytes, type EncodedObject, type Json, type JsonObject, type Schema } from "@estoc/object";
 import { hex } from "@scure/base";
 // Temporal is not yet in every runtime this runs in, nor in the TypeScript lib.
 import { Temporal } from "temporal-polyfill";
@@ -60,7 +60,7 @@ export class Mailbox {
  * to, and binds it once: the key, the transport and the end. Refuses a
  * mailbox that has ended by the clock.
  */
-export async function mailboxFrom(bytes: Uint8Array, { transports, clock = () => new Date() }: Options): Promise<Mailbox> {
+export async function mailboxFrom(bytes: Bytes<EncodedObject>, { transports, clock = () => new Date() }: Options): Promise<Mailbox> {
   const named = schemaOf(bytes);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);

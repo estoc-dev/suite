@@ -1,5 +1,5 @@
 import { builtins } from "./builtins.ts";
-import { decodeJson, encodeJson, isJsonObject, type Json, type JsonObject, type Link } from "./encoding.ts";
+import { decodeJson, encodeJson, isJsonObject, type Bytes, type Json, type JsonObject, type Link } from "./encoding.ts";
 
 /**
  * A JSON Schema document. It names its dialect in `$schema` because the same
@@ -32,11 +32,11 @@ export interface SchemaValidator {
 /** A JSON Schema as a blob, compiled by the validator it was read with. */
 export class Schema {
   readonly value: JsonSchema;
-  readonly bytes: Uint8Array;
+  readonly bytes: Bytes<Schema>;
   readonly link: Link<Schema>;
   readonly #check: Check;
 
-  constructor(value: JsonSchema, bytes: Uint8Array, link: Link<Schema>, check: Check) {
+  constructor(value: JsonSchema, bytes: Bytes<Schema>, link: Link<Schema>, check: Check) {
     this.value = value;
     this.bytes = bytes;
     this.link = link;
@@ -49,7 +49,7 @@ export class Schema {
   }
 }
 
-export async function decodeSchema(bytes: Uint8Array, validator: SchemaValidator): Promise<Schema> {
+export async function decodeSchema(bytes: Bytes<Schema>, validator: SchemaValidator): Promise<Schema> {
   const decoded = decodeJson(bytes);
   const { value } = decoded;
   if (!isJsonObject(value) || typeof value.$schema !== "string") {

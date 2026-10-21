@@ -29,6 +29,11 @@ Signature  {"identity": <identity>, "object": "sha256:<the Object's link>", "sig
 - Blobs carry no type tag or version. A reader knows which kind it expects,
   and the kinds cannot pass for one another: an object has exactly its two
   fields, a signature its three, and a schema has `$schema`.
+- In TypeScript a link is a `Link<T>` and the bytes of a blob are a
+  `Bytes<T>`, `T` being what the blob decodes to, so the compiler refuses the
+  bytes of a signature handed to `decodeObject`. The type is a label, not a
+  check: bytes read from a file or the network pass as any `Bytes<T>`, and
+  decoding them is what checks them.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 - `encodeJson` and `decodeJson` are this encoding on its own, for formats

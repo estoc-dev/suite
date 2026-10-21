@@ -1,4 +1,4 @@
-import { decodeJson, encodeJson, type Json } from "@estoc/object";
+import { decodeJson, encodeJson, type Bytes, type Json, type Signature } from "@estoc/object";
 import { base64urlnopad } from "@scure/base";
 
 /**
@@ -7,8 +7,8 @@ import { base64urlnopad } from "@scure/base";
  * nowhere in it.
  */
 export interface Message {
-  readonly entry: Uint8Array;
-  readonly blobs: readonly Uint8Array[];
+  readonly entry: Bytes<Signature>;
+  readonly blobs: readonly Bytes<unknown>[];
 }
 
 /**

@@ -2,7 +2,7 @@ import { identityToJson, SoftwareSigner, type Scheme, type Signer } from "@estoc
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { encodeJson, type JsonObject } from "../src/encoding.ts";
-import { decodeObject, decodeSignature, encodeObject, encodeSchema, sign, type Signature } from "../src/index.ts";
+import { decodeObject, decodeSignature, encodeObject, encodeSchema, linkOf, sign, type Signature } from "../src/index.ts";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -73,7 +73,15 @@ describe("sign", () => {
 
 test("a signature's bytes are not an object, nor an object's a signature", async () => {
   const signature = await sign(hello, signer("ed25519"));
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(signature.bytes, note)).toThrow();
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeSignature(hello.bytes)).toThrow();
+  // @ts-expect-error: refused at compile time too
   expect(() => decodeSignature(note.bytes)).toThrow();
+});
+
+test("the bytes of objects and signatures are linked together, each to its own link", async () => {
+  const signature = await sign(hello, signer("ed25519"));
+  expect([hello.bytes, signature.bytes].map((bytes) => linkOf(bytes))).toEqual([hello.link, signature.link]);
 });

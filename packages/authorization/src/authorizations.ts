@@ -6,6 +6,7 @@ import {
   encodeSchema,
   linkOf,
   sign,
+  type Bytes,
   type EncodedObject,
   type Link,
   type Schema,
@@ -74,7 +75,7 @@ export class Authorizations {
   }
 
   /** Reads an authorization from the blobs of its signature and its object. */
-  readAuthorization(signature: Uint8Array, object: Uint8Array): Authorization {
+  readAuthorization(signature: Bytes<Signature>, object: Bytes<EncodedObject>): Authorization {
     return this.#authorizationFrom(decodeSignature(signature), object);
   }
 
@@ -98,7 +99,7 @@ export class Authorizations {
    * `blobs` by link, and nothing else there is read. Throws when the entry
    * does not stand anyone behind `target`, saying why.
    */
-  readStanding(target: Link<EncodedObject>, entry: Uint8Array, blobs: Blobs, now: Date): Standing {
+  readStanding(target: Link<EncodedObject>, entry: Bytes<Signature>, blobs: Blobs, now: Date): Standing {
     const signature = decodeSignature(entry);
     if (signature.object === target) return { identity: signature.identity, agents: [] };
     const proxy = decodeObject(blobAt(blobs, signature.object), this.#proxy);
@@ -118,7 +119,7 @@ export class Authorizations {
     return { identity: chain[0].authorizer, agents: chain.map(({ agent }) => agent) };
   }
 
-  #authorizationFrom(signature: Signature, bytes: Uint8Array): Authorization {
+  #authorizationFrom(signature: Signature, bytes: Bytes<EncodedObject>): Authorization {
     return authorizationOf(decodeObject(bytes, this.#authorization), signature);
   }
 }
@@ -156,7 +157,7 @@ function checkChain(
   if (!sameIdentity(last.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
 }
 
-function blobAt(blobs: Blobs, link: Link<unknown>): Uint8Array {
+function blobAt<T>(blobs: Blobs, link: Link<T>): Bytes<T> {
   const bytes = blobs.get(link);
   if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
   if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);

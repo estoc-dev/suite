@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { identityToJson, SoftwareSigner } from "@estoc/identity";
-import { decodeSignature, encodeJson, encodeObject, encodeSchema, linkOf, sign, type JsonObject } from "@estoc/object";
+import { decodeObject, decodeSignature, encodeJson, encodeObject, encodeSchema, linkOf, sign, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
@@ -33,6 +33,17 @@ describe("a bundle", () => {
     expect(bundle.root).toEqual(root.bytes);
     expect(bundle.link).toBe(root.link);
     for (const blob of [root.bytes, ...blobs]) expect(bundle.get(linkOf(blob))).toEqual(blob);
+  });
+
+  it("gives blobs of several kinds back by their links together", () => {
+    const bundle = readBundle(writeBundle(root, [signature.bytes, hello.bytes]));
+    expect([signature.link, hello.link].map((link) => bundle.get(link))).toEqual([signature.bytes, hello.bytes]);
+  });
+
+  it("gives a signature back as bytes that do not read as an object", () => {
+    const bundle = readBundle(writeBundle(root, [signature.bytes]));
+    // @ts-expect-error: refused at compile time too
+    expect(() => decodeObject(bundle.get(linkOf(signature.bytes))!, note)).toThrow();
   });
 
   it.each<[string, () => Map<string, Uint8Array>]>([

@@ -1,6 +1,6 @@
 import { identityFromJson, identityToJson, verify, type Identity, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { decodeJson, digestOf, encodeJson, isJsonObject, isLink, type Link } from "./encoding.ts";
+import { decodeJson, digestOf, encodeJson, isJsonObject, isLink, type Bytes, type Link } from "./encoding.ts";
 import type { EncodedObject } from "./object.ts";
 
 /**
@@ -15,7 +15,7 @@ export interface Signature {
   readonly identity: Identity;
   readonly object: Link<EncodedObject>;
   readonly signature: Uint8Array;
-  readonly bytes: Uint8Array;
+  readonly bytes: Bytes<Signature>;
   readonly link: Link<Signature>;
 }
 
@@ -24,7 +24,7 @@ export interface Signature {
  * names. One identity can sign one object many times, since a wallet need not
  * sign deterministically, and each of those signatures reads.
  */
-export function decodeSignature(bytes: Uint8Array): Signature {
+export function decodeSignature(bytes: Bytes<Signature>): Signature {
   const decoded = decodeJson(bytes);
   const { value } = decoded;
   if (!isJsonObject(value) || Object.keys(value).sort().join() !== "identity,object,signature") {

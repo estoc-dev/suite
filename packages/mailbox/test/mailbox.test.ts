@@ -1,10 +1,13 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, identities, linkOf, sign, signatures, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, linkOf, loadSignatures, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 import { MemoryNetwork } from "./memory-network.ts";
+
+const signatures = await loadSignatures(defaultValidator);
+const { identities } = signatures;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const now = new Date("2026-10-20T12:00:00Z");
@@ -15,7 +18,7 @@ const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const note = await encodeSchema({ $schema: DRAFT, type: "string" }, defaultValidator);
 const hello = encodeObject(note, "hello, Bob");
-const signature = await sign(hello, alice);
+const signature = await signatures.sign(hello, alice);
 const message = { entry: signature.bytes, blobs: [hello.bytes, signature.identity.bytes] };
 
 describe("a mailbox", () => {

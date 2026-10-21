@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, identities, linkOf, type EncodedObject, type Link } from "@estoc/object";
+import { encodeSchema, linkOf, type EncodedObject, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
@@ -52,6 +52,7 @@ const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
 const authorizations = await loadAuthorizations(defaultValidator);
+const { identities } = authorizations.signatures;
 const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
 const proxy = await authorizations.proxy(target, [grant], hot);
 

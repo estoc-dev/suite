@@ -1,6 +1,6 @@
 import { publicKeyLengths, type Identity, type Scheme } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { encodeJson, HEX, isJsonObject, linkOf, type Bytes, type Link } from "./encoding.ts";
+import { HEX, type Bytes, type Link } from "./encoding.ts";
 import { DRAFT_2020_12, type JsonSchema, type Schema } from "./schema.ts";
 import { View } from "./view.ts";
 
@@ -22,8 +22,6 @@ export const identitySchema: JsonSchema = {
   additionalProperties: false,
 };
 
-const IDENTITY: Link<Schema> = linkOf(encodeJson(identitySchema));
-
 /**
  * An identity of `@estoc/identity`, as an object written to
  * `identitySchema`: `{"data": {"publicKey": <lowercase hex>, "scheme":
@@ -36,28 +34,26 @@ export interface IdentityObject extends Identity {
 }
 
 /**
- * Reads identities in the schemes that `@estoc/identity` knows, with the key
- * in lowercase hex at its scheme's length, so that each identity has one
- * object and one link. An identity in another scheme is refused, though its
- * object fits the schema. `encode` writes an identity as its object.
+ * Reads identities, written to `schema`, in the schemes that
+ * `@estoc/identity` knows, with the key at its scheme's length, so that each
+ * identity has one object and one link. An identity in another scheme is
+ * refused, though its object fits the schema. `encode` writes an identity as
+ * its object.
  */
-export const identities = new View<IdentityObject, Identity>(
-  [
-    {
-      schema: IDENTITY,
-      read(data, { bytes, link }) {
-        if (!isJsonObject(data) || Object.keys(data).sort().join() !== "publicKey,scheme") {
-          throw new Error("an identity has the fields publicKey and scheme");
-        }
-        const { publicKey, scheme } = data;
-        if (typeof scheme !== "string" || !Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${String(scheme)}`);
-        const length = publicKeyLengths[scheme as Scheme];
-        if (typeof publicKey !== "string" || publicKey.length !== 2 * length || !HEX.test(publicKey)) {
-          throw new Error(`a ${scheme} public key is ${length} bytes in lowercase hex`);
-        }
-        return { scheme: scheme as Scheme, publicKey: hexToBytes(publicKey), bytes, link };
+export function identityView(schema: Schema): View<IdentityObject, Identity> {
+  return new View<IdentityObject, Identity>(
+    [
+      {
+        schema,
+        read(data, { bytes, link }) {
+          const { publicKey, scheme } = data as { readonly publicKey: string; readonly scheme: string };
+          if (!Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${scheme}`);
+          const length = publicKeyLengths[scheme as Scheme];
+          if (publicKey.length !== 2 * length) throw new Error(`a ${scheme} public key is ${length} bytes`);
+          return { scheme: scheme as Scheme, publicKey: hexToBytes(publicKey), bytes, link };
+        },
       },
-    },
-  ],
-  { schema: IDENTITY, write: ({ publicKey, scheme }) => ({ publicKey: bytesToHex(publicKey), scheme }) },
-);
+    ],
+    { schema: schema.link, write: ({ publicKey, scheme }) => ({ publicKey: bytesToHex(publicKey), scheme }) },
+  );
+}

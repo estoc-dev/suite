@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeJson, encodeObject, encodeSchema, linkSchema, reading, View, type JsonObject, type Link } from "../src/index.ts";
+import { encodeJson, encodeObject, encodeSchema, linkSchema, View, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -23,11 +23,14 @@ interface Note {
 // Notes of both schemas read, and new notes are written to the later one.
 const notes = new View<Note, { readonly text: string; readonly language: string }>(
   [
-    reading(first, (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link })),
-    reading(second, (data, { link }) => {
-      const { body, language } = data as { body: string; language: string };
-      return { text: body, language, link };
-    }),
+    { schema: first, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
+    {
+      schema: second,
+      read: (data, { link }) => {
+        const { body, language } = data as { body: string; language: string };
+        return { text: body, language, link };
+      },
+    },
   ],
   { schema: second.link, write: ({ text, language }) => ({ body: text, language }) },
 );
@@ -51,12 +54,18 @@ describe("a view", () => {
     expect(() => notes.decode(received(written.bytes))).toThrow(/not read here/);
   });
 
+  it("refuses an object whose data does not fit its schema, before its reading sees it", () => {
+    const read = vi.fn(() => 1);
+    expect(() => new View([{ schema: first, read }]).decode(encodeJson({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("refuses two readings of one schema", () => {
-    expect(() => new View([reading(first, () => 1), reading(first, () => 2)])).toThrow(/two readings/);
+    expect(() => new View([{ schema: first, read: () => 1 }, { schema: first, read: () => 2 }])).toThrow(/two readings/);
   });
 
   it("writes nothing without a writing", () => {
-    const readOnly = new View([reading(first, () => 1)]);
+    const readOnly = new View([{ schema: first, read: () => 1 }]);
     // @ts-expect-error: refused at compile time too
     expect(() => readOnly.encode(1)).toThrow(/writes nothing/);
   });
@@ -71,13 +80,13 @@ describe("a view that writes", () => {
 
   it("refuses a value whose data does not fit that schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    const misnamed = new View([reading(first, read)], { schema: first.link, write: (text: string) => ({ body: text }) });
+    const misnamed = new View([{ schema: first, read }], { schema: first.link, write: (text: string) => ({ body: text }) });
     expect(() => misnamed.encode("hello")).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
   });
 
   it("refuses a writing to a schema it has no reading of", () => {
-    expect(() => new View([reading(first, () => 1)], { schema: second.link, write: () => null })).toThrow(/does not read/);
+    expect(() => new View([{ schema: first, read: () => 1 }], { schema: second.link, write: () => null })).toThrow(/does not read/);
   });
 });
 
@@ -90,10 +99,13 @@ interface Reply {
 }
 
 const replies = new View<Reply>([
-  reading(replySchema, (data, _, blobs) => {
-    const { to, text } = data as { to: Link<Note>; text: string };
-    return { to: notes.follow(to, blobs), text };
-  }),
+  {
+    schema: replySchema,
+    read: (data, _, blobs) => {
+      const { to, text } = data as { to: Link<Note>; text: string };
+      return { to: notes.follow(to, blobs), text };
+    },
+  },
 ]);
 
 describe("a view whose reading follows a link", () => {
@@ -113,13 +125,5 @@ describe("a view whose reading follows a link", () => {
   it("refuses an object whose link is given another blob", () => {
     const blobs = new Map([[note.link, received(other.bytes)]]);
     expect(() => replies.decode(received(reply.bytes), blobs)).toThrow(/is another blob/);
-  });
-});
-
-describe("a reading of a schema", () => {
-  it("refuses data that does not fit the schema before it is read", () => {
-    const read = vi.fn(() => 1);
-    expect(() => new View([reading(first, read)]).decode(encodeJson({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
-    expect(read).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 import { decodeJson, isLink, type Bytes, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
-import { fieldsOf, reading, View } from "./view.ts";
+import { fieldsOf, View } from "./view.ts";
 
 /**
  * A JSON value bound to the schema it is written to, as one blob:
@@ -28,7 +28,7 @@ export function encodeObject(schema: Schema, data: Json): EncodedObject {
 }
 
 function viewOf(schema: Schema): View<EncodedObject, Json> {
-  return new View<EncodedObject, Json>([reading(schema, (data, object) => ({ schema, data, ...object }))], {
+  return new View<EncodedObject, Json>([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
     schema: schema.link,
     write: (data) => data,
   });

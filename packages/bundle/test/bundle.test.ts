@@ -6,16 +6,17 @@ import {
   encodeJson,
   encodeObject,
   encodeSchema,
-  identities,
   linkOf,
   linkSchema,
-  sign,
-  signatures,
+  loadSignatures,
   type JsonObject,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
+
+const signatures = await loadSignatures(defaultValidator);
+const { identities } = signatures;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -34,7 +35,7 @@ const links = await encodeSchema(
 );
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, "hello");
-const signature = await sign(hello, alice);
+const signature = await signatures.sign(hello, alice);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, [signature.link, hello.link, linkOf(image)]);
 

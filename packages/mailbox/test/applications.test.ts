@@ -3,11 +3,9 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  identities,
   linkOf,
   linkSchema,
-  sign,
-  signatures,
+  loadSignatures,
   type Bytes,
   type EncodedObject,
   type IdentityObject,
@@ -25,11 +23,14 @@ import { MemoryNetwork, type Faults } from "./memory-network.ts";
 // that needs to know whom a message was meant for writes that into the
 // object it signs.
 
+const signatures = await loadSignatures(defaultValidator);
+const { identities } = signatures;
+
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const now = new Date("2026-10-20T12:00:00Z");
 const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Message> => {
-  const signature = await sign(object, by);
+  const signature = await signatures.sign(object, by);
   return { entry: signature.bytes, blobs: [object.bytes, signature.identity.bytes] };
 };
 

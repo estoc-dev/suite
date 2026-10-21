@@ -26,7 +26,8 @@ The packages fall on the two sides of that line.
 
 A program has types of its own, such as `Signature` or `Authorization`, and
 reads objects into each through a `View`, which holds one reading for each
-schema it takes. A view that writes holds a writing as well, for the one
+schema it takes and checks each object against its schema before the
+reading sees it. A view that writes holds a writing as well, for the one
 schema the program writes its values to now.
 
 - A view goes with its type. There is no registry from every schema to

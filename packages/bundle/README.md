@@ -66,7 +66,7 @@ blobs, look at a clock, or check a schema. A signature under `blobs/` is
 bytes, as an image is, so one that does not verify, or whose scheme the
 reader does not know, is read all the same.
 
-Signatures are verified where they are used: `signatures` in
+Signatures are verified where they are used: the signatures of
 `@estoc/object` and `readStanding` in `@estoc/authorization` verify what
 they read. Verifying once on the way in and trusting it afterwards is what
 a store does with what it keeps. If reading a bundle verified signatures, it

@@ -15,13 +15,14 @@ Proxy          {"chain": [<signature link>, …], "target": <object link>}, sign
 Both are objects of `@estoc/object`, written to two fixed draft 2020-12
 schemas, `authorizationSchema` and `proxySchema`, and signed as any object
 is. An Authorization names its agent by the link of the agent's identity
-object, as a signature names its signer. The schemas are compiled once, by the validator the application picks:
+object, as a signature names its signer. The schemas are compiled once, by the validator the application picks, together with those of signatures and identities, and `authorizations.signatures` is the view it signs and reads signatures with:
 
 ```ts
 import { loadAuthorizations } from "@estoc/authorization";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const authorizations = await loadAuthorizations(defaultValidator);
+const { signatures } = authorizations;
 ```
 
 ## Authorizations

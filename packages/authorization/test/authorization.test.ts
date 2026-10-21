@@ -1,5 +1,5 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, identities, linkOf, schemaOf, sign, type Json } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, linkOf, schemaOf, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +9,8 @@ import { formatBlind } from "./format-blind.ts";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 
 const authorizations = await loadAuthorizations(defaultValidator);
+const { signatures } = authorizations;
+const { identities } = signatures;
 const authorization = await encodeSchema(authorizationSchema, defaultValidator);
 const proxy = await encodeSchema(proxySchema, defaultValidator);
 const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
@@ -55,7 +57,7 @@ describe("an authorization", () => {
   it("is refused with an end that does not read as an instant, even by a validator that lets it through", async () => {
     const blind = await loadAuthorizations(formatBlind);
     const object = encodeObject(await encodeSchema(authorizationSchema, formatBlind), { agent, until: "2027-01-01" });
-    const signature = await sign(object, root);
+    const signature = await signatures.sign(object, root);
     expect(() => blind.readAuthorization(signature.bytes, given(object.bytes))).toThrow();
   });
 
@@ -74,7 +76,7 @@ describe("an authorization", () => {
   it("is refused when its object is written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const object = encodeObject(lookalike, { agent });
-    const signature = await sign(object, root);
+    const signature = await signatures.sign(object, root);
     expect(() => authorizations.readAuthorization(signature.bytes, given(object.bytes))).toThrow(/not read here/);
   });
 });

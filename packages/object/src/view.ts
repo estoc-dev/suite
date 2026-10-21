@@ -10,10 +10,12 @@ const noBlobs: Blobs = { get: () => undefined };
 
 /**
  * One way of reading the objects written to one schema: their data, and the
- * bytes and link of the object, become a `T` of the program's own.
+ * bytes and link of the object, become a `T` of the program's own. The view
+ * checks the data against `schema` first, so `read` sees only data that fits
+ * it, and is left what the schema does not say.
  */
 export interface Reading<T> {
-  readonly schema: Link<Schema>;
+  readonly schema: Schema;
   /**
    * Throws when the data does not read as a `T`. A reading that follows a
    * link in the data looks the blob up in `blobs`.
@@ -33,12 +35,12 @@ export interface Writing<V> {
 
 /**
  * Reads objects as `T`, each by the reading of the schema it is written to,
- * and refuses objects written to any other; with a writing, it also writes
- * values of `V` as objects. The readings and the writing are where objects
- * become values of the program and values become objects, and the only
- * places that know the shape of the data: an object written to an older
- * schema, or to another application's, reads as a `T` once there is a
- * reading of that schema.
+ * and refuses objects written to any other or whose data does not fit their
+ * schema; with a writing, it also writes values of `V` as objects. The
+ * readings and the writing are where objects become values of the program
+ * and values become objects, and the only places that know the shape of the
+ * data: an object written to an older schema, or to another application's,
+ * reads as a `T` once there is a reading of that schema.
  */
 export class View<T, V = never> {
   readonly #readings: ReadonlyMap<Link<Schema>, Reading<T>>;
@@ -47,8 +49,8 @@ export class View<T, V = never> {
   constructor(readings: Iterable<Reading<T>>, writing?: Writing<V>) {
     const bySchema = new Map<Link<Schema>, Reading<T>>();
     for (const reading of readings) {
-      if (bySchema.has(reading.schema)) throw new Error(`two readings of ${reading.schema}`);
-      bySchema.set(reading.schema, reading);
+      if (bySchema.has(reading.schema.link)) throw new Error(`two readings of ${reading.schema.link}`);
+      bySchema.set(reading.schema.link, reading);
     }
     if (writing !== undefined && !bySchema.has(writing.schema)) {
       throw new Error(`the view writes to ${writing.schema}, which it does not read`);
@@ -93,20 +95,10 @@ export class View<T, V = never> {
     if (!isLink(schema)) throw new Error("an object names its schema by link");
     const reading = this.#readings.get(schema);
     if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
+    const problems = reading.schema.validate(data);
+    if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
     return reading.read(data, { bytes, link }, blobs);
   }
-}
-
-/** A reading that refuses data that does not fit `schema` before `read` sees it. */
-export function reading<T>(schema: Schema, read: Reading<T>["read"]): Reading<T> {
-  return {
-    schema: schema.link,
-    read(data, object, blobs) {
-      const problems = schema.validate(data);
-      if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
-      return read(data, object, blobs);
-    },
-  };
 }
 
 export function fieldsOf(value: Json): { readonly data: Json; readonly schema: Json } {

@@ -110,7 +110,10 @@ length depends on the sizes of the files alone.
 Anyone can seal to a mailbox's key, so `open` refuses a zip whose files
 come to more bytes than the zip itself. A zip without compression is larger
 than its files and is never refused for it, while a compressed one could
-otherwise unzip to far more than arrived.
+otherwise unzip to far more than arrived. `open` keeps the other limit of
+`unzipBundle`, 10,000 entries, so a bundle of more blobs is refused when it
+is opened, though `send` sends it: what a receiver takes is its own to
+limit, and a sender does not know it.
 
 ## Sealing
 

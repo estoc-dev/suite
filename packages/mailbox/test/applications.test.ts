@@ -155,7 +155,6 @@ describe("a one-time invitation", () => {
   });
 });
 
-// A sale names its parties by the links of their identity objects.
 type Sale = {
   readonly buyer: Link<IdentityObject>;
   readonly seller: Link<IdentityObject>;

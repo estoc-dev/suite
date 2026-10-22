@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeJson, encodeObject, encodeSchema, linkSchema, Semantics, type JsonObject, type Link } from "../src/index.ts";
+import { encodeObject, encodeSchema, json, linkSchema, Semantics, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -21,7 +21,7 @@ interface Note {
 }
 
 // Notes of both schemas read, and new notes are written to the later one.
-const notes = new Semantics<Note, { readonly text: string; readonly language: string }>(
+const notes: Semantics<Note, { readonly text: string; readonly language: string }> = new Semantics(
   [
     { schema: first, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -56,8 +56,12 @@ describe("a semantics", () => {
 
   it("refuses an object whose data does not fit its schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    expect(() => new Semantics([{ schema: first, read }]).decode(encodeJson({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
+    expect(() => new Semantics([{ schema: first, read }]).decode(json.encode({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
+  });
+
+  it("refuses to read no schema at all", () => {
+    expect(() => new Semantics([])).toThrow(/at least one schema/);
   });
 
   it("refuses two readings of one schema", () => {
@@ -98,7 +102,7 @@ interface Reply {
   readonly text: string;
 }
 
-const replies = new Semantics<Reply>([
+const replies: Semantics<Reply> = new Semantics([
   {
     schema: replySchema,
     read: (data, _, blobs) => {

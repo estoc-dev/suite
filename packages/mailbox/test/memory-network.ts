@@ -1,4 +1,4 @@
-import { encodeObject, encodeSchema, type EncodedObject, type JsonObject, type Schema, type SchemaValidator } from "@estoc/object";
+import { encodeObject, encodeSchema, type EncodedObject, type Json, type JsonObject, type JsonSchemaValidator, type Schema } from "@estoc/object";
 import { hex } from "@scure/base";
 import { mailboxSchema, type Transport } from "../src/index.ts";
 
@@ -16,7 +16,7 @@ export interface Faults {
 export interface Queue {
   readonly name: string;
   /** A mailbox at this queue, sealed to `key`. */
-  mailbox(key: Uint8Array): EncodedObject;
+  mailbox(key: Uint8Array): EncodedObject<Json>;
   /** The sealed messages that have arrived since the last take, which leave the queue. */
   take(): Uint8Array[];
 }
@@ -29,18 +29,18 @@ export interface Queue {
  */
 export class MemoryNetwork {
   readonly transport: Transport;
-  readonly #schema: Schema;
+  readonly #schema: Schema<Json>;
   readonly #faults: Faults;
   readonly #queues = new Map<string, Uint8Array[]>();
   #deliveries = 0;
 
-  private constructor(schema: Schema, faults: Faults) {
+  private constructor(schema: Schema<Json>, faults: Faults) {
     this.#schema = schema;
     this.#faults = faults;
     this.transport = { schema, deliver: async (mailbox, sealed) => this.#deliver(mailbox, sealed) };
   }
 
-  static async create(validator: SchemaValidator, faults: Faults = {}): Promise<MemoryNetwork> {
+  static async create(validator: JsonSchemaValidator, faults: Faults = {}): Promise<MemoryNetwork> {
     const schema = mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]);
     return new MemoryNetwork(await encodeSchema(schema, validator), faults);
   }

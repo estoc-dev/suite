@@ -6,9 +6,10 @@ import {
   type Blobs,
   type Bytes,
   type IdentityObject,
+  type Json,
+  type JsonSchemaValidator,
   type Link,
   type Schema,
-  type SchemaValidator,
   type Signature,
   type Signatures,
 } from "@estoc/object";
@@ -67,7 +68,7 @@ export class Authorizations {
   readonly #authorizations: Semantics<Authorization, Pick<Authorization, "agent" | "until">>;
   readonly #proxies: Semantics<Proxy, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
 
-  constructor(signatures: Signatures, authorization: Schema, proxy: Schema) {
+  constructor(signatures: Signatures, authorization: Schema<Json>, proxy: Schema<Json>) {
     this.signatures = signatures;
     this.#authorizations = new Semantics(
       [
@@ -163,7 +164,7 @@ export class Authorizations {
   }
 }
 
-export async function loadAuthorizations(validator: SchemaValidator): Promise<Authorizations> {
+export async function loadAuthorizations(validator: JsonSchemaValidator): Promise<Authorizations> {
   const signatures = await loadSignatures(validator);
   const authorization = await encodeSchema(authorizationSchema, validator);
   const proxy = await encodeSchema(proxySchema, validator);

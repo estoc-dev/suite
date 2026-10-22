@@ -152,7 +152,7 @@ A transport is a plugin:
 
 ```ts
 interface Transport {
-  readonly schema: Schema;
+  readonly schema: Schema<Json>;
   deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void>;
 }
 ```

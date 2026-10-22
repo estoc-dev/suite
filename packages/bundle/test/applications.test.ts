@@ -8,6 +8,7 @@ import {
   loadSignatures,
   Semantics,
   type EncodedObject,
+  type Json,
   type JsonObject,
   type Link,
   type Signature,
@@ -47,7 +48,7 @@ const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" 
 // the same to a schema of its own, a contact, which reads as a card too.
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
-const cards = new Semantics<Card>([
+const cards: Semantics<Card> = new Semantics([
   { schema: card, read: (data) => data as Card },
   {
     schema: contact,
@@ -125,7 +126,7 @@ const standingEnvelope = await schemaFor("Stood behind", { message: linkSchema, 
 // the envelope names both. The bundle is the blobs that the reading follows
 // that signature into.
 function readSent(bundle: Bundle, now: Date) {
-  const named = decodeObject(bundle.root, standingEnvelope).data as { message: Link<EncodedObject>; signature: Link<Signature> };
+  const named = decodeObject(bundle.root, standingEnvelope).data as { message: Link<EncodedObject<Json>>; signature: Link<Signature> };
   const { identity, agents } = authorizations.readStanding(named.message, blobAt(bundle, named.signature), bundle, now);
   return { from: identity, through: agents, message: decodeObject(blobAt(bundle, named.message), chat).data };
 }

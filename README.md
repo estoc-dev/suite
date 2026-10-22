@@ -7,22 +7,29 @@ DIDComm is one transport that can attach later, not the shape of the core.
 
 ## Data and semantics
 
-Estoc does not own the data it reads. An object is a JSON value written to
-a JSON Schema and named by the hash of its bytes. Anyone can write one, to
-any schema, and what it means is up to whoever reads it. Estoc is one
-reader among others, so an application written elsewhere stands where
-Estoc does: it can read Estoc's objects its own way, and Estoc reads its
-objects once it has a reading of their schema.
+Estoc does not own the data it reads. An object is data bound to the
+schema it is written to and named by the hash of its bytes. Anyone can
+write one, to any schema, and what it means is up to whoever reads it.
+Estoc is one reader among others, so an application written elsewhere
+stands where Estoc does: it can read Estoc's objects its own way, and
+Estoc reads its objects once it has a reading of their schema.
 
 The packages fall on the two sides of that line.
 
 - The substrate is how bytes become a value with a link and a schema, and
-  how blobs travel together: the encoding, objects, schemas and validators
+  how blobs travel together: the encodings, objects, schemas and validators
   of `@estoc/object`, and `@estoc/bundle`. Like JSON or zip, it has to be
   shared, and it gives no meaning and no reader an advantage.
 - Semantics are everything that carries meaning: identities, signatures,
   authorizations, mailboxes. Estoc writes them, and they do nothing that a
   semantics written elsewhere could not.
+
+Nor are objects tied to one encoding. Data is in an encoding and schemas
+in a language over it, here JSON and JSON Schema; deterministic CBOR with
+CDDL would serve as well, and `@estoc/object` depends on what such a pair
+provides rather than on JSON. What is written so far is JSON: the
+semantics Estoc writes, and the root of a bundle, which carries blobs of
+any encoding.
 
 A semantics is code, and Estoc at heart is a set of semantics that a
 computer can run.
@@ -55,8 +62,9 @@ past and reading another application's objects are the same work.
 
 - `@estoc/identity`: identities in their schemes, and signing and
   verifying with them. It knows keys, not JSON.
-- `@estoc/object`: the encoding, objects, schemas, validators and
-  semantics, and the semantics of identities and signatures.
+- `@estoc/object`: encodings and schema languages, objects, schemas,
+  validators and semantics; JSON and JSON Schema as the pair in use; and the
+  semantics of identities and signatures.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in.

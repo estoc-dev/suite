@@ -3,9 +3,9 @@ import { loadAuthorizations } from "@estoc/authorization";
 import { SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
-  encodeJson,
   encodeObject,
   encodeSchema,
+  json,
   linkOf,
   linkSchema,
   loadSignatures,
@@ -25,7 +25,7 @@ const filesOf = (root: Uint8Array, ...blobs: Uint8Array[]) =>
   new Map([["index.json", root], ...blobs.map((blob) => [`blobs/sha256/${hexOf(blob)}`, blob] as const)]);
 const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) => {
   const { data, schema } = JSON.parse(new TextDecoder().decode(bytes)) as { data: JsonObject; schema: string };
-  return encodeJson({ data: change(data), schema });
+  return json.encode({ data: change(data), schema });
 };
 
 const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" }, defaultValidator);

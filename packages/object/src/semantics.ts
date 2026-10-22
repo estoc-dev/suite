@@ -1,4 +1,5 @@
-import { decodeJson, encodeJson, isJsonObject, isLink, type Bytes, type Decoded, type Json, type Link } from "./encoding.ts";
+import { decodeBlob, type Decoded, type Encoding } from "./encoding.ts";
+import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
 /** Blobs by their links: a Map, a bundle, or a store that holds blobs by content. */
@@ -14,13 +15,13 @@ const noBlobs: Blobs = { get: () => undefined };
  * semantics checks the data against `schema` first, so `read` sees only data
  * that fits it, and is left what the schema does not say.
  */
-export interface Reading<T> {
-  readonly schema: Schema;
+export interface Reading<D, T> {
+  readonly schema: Schema<D>;
   /**
    * Throws when the data does not read as a `T`. A reading that follows a
    * link in the data looks the blob up in `blobs`.
    */
-  read(data: Json, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }, blobs: Blobs): T;
+  read(data: D, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }, blobs: Blobs): T;
 }
 
 /**
@@ -29,9 +30,9 @@ export interface Reading<T> {
  * schema it has a reading of, and writes to one of them, the one the program
  * writes now.
  */
-export interface Writing<V> {
-  readonly schema: Link<Schema>;
-  write(value: V): Json;
+export interface Writing<D, V> {
+  readonly schema: Link<Schema<D>>;
+  write(value: V): D;
 }
 
 /**
@@ -43,57 +44,69 @@ export interface Writing<V> {
  * data: an object written to an older schema, or to another application's,
  * reads as a `T` once there is a reading of that schema.
  */
-export class Semantics<T, V = never> {
-  readonly #readings: ReadonlyMap<Link<Schema>, Reading<T>>;
-  readonly #writing: Writing<V> | undefined;
-
-  constructor(readings: Iterable<Reading<T>>, writing?: Writing<V>) {
-    const bySchema = new Map<Link<Schema>, Reading<T>>();
-    for (const reading of readings) {
-      if (bySchema.has(reading.schema.link)) throw new Error(`two readings of ${reading.schema.link}`);
-      bySchema.set(reading.schema.link, reading);
-    }
-    if (writing !== undefined && !bySchema.has(writing.schema)) {
-      throw new Error(`the semantics writes to ${writing.schema}, which it does not read`);
-    }
-    this.#readings = bySchema;
-    this.#writing = writing;
-  }
-
+export interface Semantics<T, V = never> {
   /**
    * Reads an object. `blobs` holds the blobs that its reading follows links
    * to, and a reading that follows one not given there fails.
    */
-  decode(bytes: Bytes<T>, blobs: Blobs = noBlobs): T {
-    return this.#read(decodeJson(bytes), blobs);
-  }
-
+  decode(bytes: Bytes<T>, blobs?: Blobs): T;
   /**
    * Reads the object that `link` names, from `blobs`. A blob given for the
    * link that has another link is refused, as a wrong blob from a store
    * would be.
    */
-  follow(link: Link<T>, blobs: Blobs): T {
-    const bytes = blobs.get(link);
-    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
-    const decoded = decodeJson(bytes);
-    if (decoded.link !== link) throw new Error(`the blob given for ${link} is another blob`);
-    return this.#read(decoded, blobs);
-  }
-
+  follow(link: Link<T>, blobs: Blobs): T;
   /**
    * Writes `value` as an object by the writing, and reads the object as
    * `decode` would, so a value that would not read is refused. `blobs` holds
    * the blobs that its reading follows links to.
    */
-  encode(value: V, blobs: Blobs = noBlobs): T {
-    if (this.#writing === undefined) throw new Error("the semantics writes nothing");
-    return this.decode(encodeJson({ data: this.#writing.write(value), schema: this.#writing.schema }), blobs);
+  encode(value: V, blobs?: Blobs): T;
+}
+
+class SemanticsOf<D, T, V> implements Semantics<T, V> {
+  readonly #encoding: Encoding<D>;
+  readonly #readings: ReadonlyMap<Link<Schema<D>>, Reading<D, T>>;
+  readonly #writing: Writing<D, V> | undefined;
+
+  constructor(readings: Iterable<Reading<D, T>>, writing?: Writing<D, V>) {
+    let encoding: Encoding<D> | undefined;
+    const bySchema = new Map<Link<Schema<D>>, Reading<D, T>>();
+    for (const reading of readings) {
+      if (bySchema.has(reading.schema.link)) throw new Error(`two readings of ${reading.schema.link}`);
+      encoding ??= reading.schema.encoding;
+      if (reading.schema.encoding !== encoding) throw new Error("the schemas a semantics reads are of more than one encoding");
+      bySchema.set(reading.schema.link, reading);
+    }
+    if (encoding === undefined) throw new Error("a semantics reads at least one schema");
+    if (writing !== undefined && !bySchema.has(writing.schema)) {
+      throw new Error(`the semantics writes to ${writing.schema}, which it does not read`);
+    }
+    this.#encoding = encoding;
+    this.#readings = bySchema;
+    this.#writing = writing;
   }
 
-  #read({ value, bytes, link }: Decoded, blobs: Blobs): T {
-    const { data, schema } = fieldsOf(value);
-    if (!isLink(schema)) throw new Error("an object names its schema by link");
+  decode(bytes: Bytes<T>, blobs: Blobs = noBlobs): T {
+    return this.#read(decodeBlob(this.#encoding, bytes), blobs);
+  }
+
+  follow(link: Link<T>, blobs: Blobs): T {
+    const bytes = blobs.get(link);
+    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+    const decoded = decodeBlob(this.#encoding, bytes);
+    if (decoded.link !== link) throw new Error(`the blob given for ${link} is another blob`);
+    return this.#read(decoded, blobs);
+  }
+
+  encode(value: V, blobs: Blobs = noBlobs): T {
+    if (this.#writing === undefined) throw new Error("the semantics writes nothing");
+    const data = this.#writing.write(value);
+    return this.decode(this.#encoding.encode(this.#encoding.object(data, this.#writing.schema)), blobs);
+  }
+
+  #read({ value, bytes, link }: Decoded<D>, blobs: Blobs): T {
+    const { data, schema } = this.#encoding.fields(value);
     const reading = this.#readings.get(schema);
     if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
     const problems = reading.schema.validate(data);
@@ -102,9 +115,11 @@ export class Semantics<T, V = never> {
   }
 }
 
-export function fieldsOf(value: Json): { readonly data: Json; readonly schema: Json } {
-  if (!isJsonObject(value) || Object.keys(value).sort().join() !== "data,schema") {
-    throw new Error("an object has the fields data and schema");
-  }
-  return value as { data: Json; schema: Json };
-}
+/**
+ * Makes a semantics of its readings and its writing, whose schemas all have
+ * one encoding, the same `Encoding` object. `D`, the data of that encoding,
+ * ties the readings and the writing together while the semantics is made,
+ * and is not part of its type: a program holds a `Semantics<T, V>`, whatever
+ * the encoding.
+ */
+export const Semantics: new <D, T, V = never>(readings: Iterable<Reading<D, T>>, writing?: Writing<D, V>) => Semantics<T, V> = SemanticsOf;

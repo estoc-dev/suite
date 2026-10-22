@@ -1,34 +1,35 @@
-import { decodeJson, isLink, type Bytes, type Json, type Link } from "./encoding.ts";
+import type { Encoding } from "./encoding.ts";
+import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
-import { fieldsOf, Semantics } from "./semantics.ts";
+import { Semantics } from "./semantics.ts";
 
 /**
- * A JSON value bound to the schema it is written to, as one blob:
- * `{"data": <value>, "schema": <link to the schema>}`. The same value under
- * another schema is another object, with another link.
+ * Data bound to the schema it is written to, as one blob in the encoding of
+ * that schema. The same data under another schema is another object, with
+ * another link.
  */
-export interface EncodedObject {
-  readonly schema: Schema;
-  readonly data: Json;
-  readonly bytes: Bytes<EncodedObject>;
-  readonly link: Link<EncodedObject>;
+export interface EncodedObject<D> {
+  readonly schema: Schema<D>;
+  readonly data: D;
+  readonly bytes: Bytes<EncodedObject<D>>;
+  readonly link: Link<EncodedObject<D>>;
 }
 
 /**
- * Reads an object written to `schema`, its data left as JSON. The caller
- * names the schema it expects, so an object written to any other is refused
- * instead of read as one of these.
+ * Reads an object written to `schema`, its data left as the encoding reads
+ * it. The caller names the schema it expects, so an object written to any
+ * other is refused instead of read as one of these.
  */
-export function decodeObject(bytes: Bytes<EncodedObject>, schema: Schema): EncodedObject {
+export function decodeObject<D>(bytes: Bytes<EncodedObject<D>>, schema: Schema<D>): EncodedObject<D> {
   return semanticsOf(schema).decode(bytes);
 }
 
-export function encodeObject(schema: Schema, data: Json): EncodedObject {
+export function encodeObject<D>(schema: Schema<D>, data: D): EncodedObject<D> {
   return semanticsOf(schema).encode(data);
 }
 
-function semanticsOf(schema: Schema): Semantics<EncodedObject, Json> {
-  return new Semantics<EncodedObject, Json>([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
+function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, D> {
+  return new Semantics([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
     schema: schema.link,
     write: (data) => data,
   });
@@ -37,10 +38,9 @@ function semanticsOf(schema: Schema): Semantics<EncodedObject, Json> {
 /**
  * The link of the schema an object names, read before the object is: a
  * reader that takes objects of several schemas picks by it which schema to
- * read the object with.
+ * read the object with. With no schema yet to say so, the caller names the
+ * encoding of the object.
  */
-export function schemaOf(bytes: Bytes<unknown>): Link<Schema> {
-  const { schema } = fieldsOf(decodeJson(bytes).value);
-  if (!isLink(schema)) throw new Error("an object names its schema by link");
-  return schema;
+export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
+  return encoding.fields(encoding.decode(bytes)).schema;
 }

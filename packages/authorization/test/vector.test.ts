@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, linkOf, type EncodedObject, type Link } from "@estoc/object";
+import { encodeSchema, linkOf, type EncodedObject, type Json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
@@ -45,7 +45,7 @@ const rootIdentityText =
   '"schema":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}';
 
 // The login object of the vector in @estoc/object.
-const target: Link<EncodedObject> = "sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80";
+const target: Link<EncodedObject<Json>> = "sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80";
 const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hot = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2));
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);

@@ -5,20 +5,21 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
+  jsonSchema,
   linkSchema,
   type JsonSchema,
-  type SchemaValidator,
+  type JsonSchemaValidator,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const lenient: SchemaValidator = { compile: async () => () => [] };
+const lenient: JsonSchemaValidator = { language: jsonSchema, compile: async () => () => [] };
 
 describe("decodeSchema", () => {
   it("reads back what encodeSchema wrote", async () => {
     const schema = await encodeSchema({ $schema: DRAFT, type: "string", title: "Name" }, defaultValidator);
     const read = await decodeSchema(schema.bytes, defaultValidator);
-    expect(read.value).toEqual({ $schema: DRAFT, type: "string", title: "Name" });
+    expect(jsonSchema.decode(read.bytes)).toEqual({ $schema: DRAFT, type: "string", title: "Name" });
     expect(read.link).toBe(schema.link);
   });
 
@@ -207,7 +208,8 @@ describe("linkSchema", () => {
   });
 });
 
-const evenOnly: SchemaValidator = {
+const evenOnly: JsonSchemaValidator = {
+  language: jsonSchema,
   async compile() {
     return (data) => (typeof data === "number" && data % 2 !== 0 ? ["odd"] : []);
   },
@@ -224,7 +226,8 @@ describe("a validator other than the default", () => {
   });
 
   it("refusing to compile a schema leaves no schema", async () => {
-    const refusing: SchemaValidator = {
+    const refusing: JsonSchemaValidator = {
+      language: jsonSchema,
       async compile() {
         throw new Error("unsupported");
       },

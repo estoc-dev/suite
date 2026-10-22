@@ -1,16 +1,17 @@
 import { SoftwareSigner, type Scheme, type Signer } from "@estoc/identity";
 import { describe, expect, it, test, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeJson, type JsonObject } from "../src/encoding.ts";
 import {
   decodeObject,
   encodeObject,
   encodeSchema,
+  json,
   linkOf,
   loadSignatures,
   signatureSchema,
   type IdentityObject,
-  type SchemaValidator,
+  type JsonObject,
+  type JsonSchemaValidator,
   type Signature,
 } from "../src/index.ts";
 
@@ -22,7 +23,7 @@ const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme
 const parsed = (object: { readonly bytes: Uint8Array }) =>
   JSON.parse(new TextDecoder().decode(object.bytes)) as { data: JsonObject; schema: string };
 const dataOf = (object: { readonly bytes: Uint8Array }) => parsed(object).data;
-const written = (signature: Signature, data: JsonObject) => encodeJson({ data, schema: parsed(signature).schema });
+const written = (signature: Signature, data: JsonObject) => json.encode({ data, schema: parsed(signature).schema });
 const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
 const byLink = (...identities: IdentityObject[]) => new Map(identities.map(({ link, bytes }) => [link, bytes]));
 const identityOf = (signature: Signature) => byLink(signature.identity);
@@ -81,9 +82,9 @@ describe("a signature", () => {
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
-    ["written to another schema", (signature) => encodeJson({ data: dataOf(signature), schema: note.link })],
-    ["with a field besides data and schema", (signature) => encodeJson({ ...parsed(signature), role: "buyer" })],
-    ["with its fields bare, outside data", (signature) => encodeJson(dataOf(signature))],
+    ["written to another schema", (signature) => json.encode({ data: dataOf(signature), schema: note.link })],
+    ["with a field besides data and schema", (signature) => json.encode({ ...parsed(signature), role: "buyer" })],
+    ["with its fields bare, outside data", (signature) => json.encode(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await signatures.sign(hello, signer("ed25519"));
     expect(() => signatures.decode(change(signature), identityOf(signature))).toThrow();
@@ -118,7 +119,8 @@ describe("sign", () => {
 
 describe("signatures loaded with a validator", () => {
   // Answers as the default validator does, except that no identity fits.
-  const noIdentity: SchemaValidator = {
+  const noIdentity: JsonSchemaValidator = {
+    ...defaultValidator,
     compile: (schema) => (schema.title === "Identity" ? Promise.resolve(() => ["no identity fits"]) : defaultValidator.compile(schema)),
   };
 

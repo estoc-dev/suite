@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type Link } from "@estoc/object";
+import { json, linkOf, schemaOf, type Bytes, type Link } from "@estoc/object";
 
 export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
@@ -26,7 +26,7 @@ export class Bundle {
     // read in Node is a Buffer, whose `slice` shares memory instead of copying.
     this.root = new Uint8Array(index);
     try {
-      schemaOf(this.root);
+      schemaOf(this.root, json);
     } catch (cause) {
       throw new Error(`${ROOT} is not an object in canonical JSON`, { cause });
     }

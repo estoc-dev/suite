@@ -1,12 +1,12 @@
 import { writeBundle, zipBundle } from "@estoc/bundle";
-import { decodeObject, schemaOf, type Bytes, type EncodedObject, type Json, type JsonObject, type Schema } from "@estoc/object";
+import { decodeObject, json, schemaOf, type Bytes, type EncodedObject, type Json, type JsonObject, type Schema } from "@estoc/object";
 import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 
 /** One way of carrying sealed bytes to a mailbox, with the schema of its mailboxes. */
 export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
-  readonly schema: Schema;
+  readonly schema: Schema<Json>;
   /**
    * Hands sealed bytes on toward a mailbox whose data fits `schema`.
    * Resolving says only that they were handed on: nothing confirms that a
@@ -44,7 +44,7 @@ export class Mailbox {
     // The receiver reads the root as an object, so a root that is not one is
     // refused here rather than lost on the way.
     try {
-      schemaOf(root.bytes);
+      schemaOf(root.bytes, json);
     } catch (cause) {
       throw new Error("the root is not an object in canonical JSON", { cause });
     }
@@ -57,8 +57,8 @@ export class Mailbox {
  * Reads the bytes of a mailbox with the transport whose schema it is written
  * to, and binds it once to its key and that transport.
  */
-export async function mailboxFrom(bytes: Bytes<EncodedObject>, { transports }: Options): Promise<Mailbox> {
-  const named = schemaOf(bytes);
+export async function mailboxFrom(bytes: Bytes<EncodedObject<Json>>, { transports }: Options): Promise<Mailbox> {
+  const named = schemaOf(bytes, json);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);
   const { data } = decodeObject(bytes, transport.schema);

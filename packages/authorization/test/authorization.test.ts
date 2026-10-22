@@ -1,5 +1,5 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, linkOf, schemaOf, type Json } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, json, linkOf, schemaOf, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it, vi } from "vitest";
@@ -119,7 +119,7 @@ describe("proxy", () => {
     const signed = await authorizations.proxy(target.link, [toHot, toDeputy], deputy);
     expect(signed.object.chain).toEqual([toHot.signature.link, toDeputy.signature.link]);
     expect(signed.object.target).toBe(target.link);
-    expect(schemaOf(signed.object.bytes)).toBe(proxy.link);
+    expect(schemaOf(signed.object.bytes, json)).toBe(proxy.link);
     expect(signed.signature.identity).toEqual(identities.encode(deputy.identity));
   });
 

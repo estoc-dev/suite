@@ -1,4 +1,4 @@
-import { encodeSchema, type JsonObject, type SchemaValidator } from "@estoc/object";
+import { encodeSchema, type JsonObject, type JsonSchemaValidator } from "@estoc/object";
 import type { Transport } from "./mailbox.ts";
 import { mailboxSchema } from "./schema.ts";
 
@@ -12,7 +12,7 @@ const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0
  * sealed bytes to the mailbox's url, and a 2xx response means they were
  * handed on.
  */
-export async function loadHttpTransport(validator: SchemaValidator): Promise<Transport> {
+export async function loadHttpTransport(validator: JsonSchemaValidator): Promise<Transport> {
   const url = { type: "string", format: "uri", pattern: URL_PATTERN };
   return { schema: await encodeSchema(mailboxSchema("HTTP mailbox", { url }, ["url"]), validator), deliver };
 }

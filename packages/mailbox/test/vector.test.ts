@@ -1,4 +1,4 @@
-import { encodeSchema, json, linkOf } from "@estoc/object";
+import { encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
 import { describe, expect, it, test } from "vitest";
@@ -56,7 +56,7 @@ test("the HTTP mailbox schema encodes to fixed bytes and a fixed link", async ()
 });
 
 test("sealed bytes made elsewhere open with that key to a bundle of a root and a blob", async () => {
-  const bundle = await key.open(hex.decode(sealed), [json]);
+  const bundle = await key.open(hex.decode(sealed));
   expect(new TextDecoder().decode(bundle.root)).toBe(rootText);
   expect(bundle.link).toBe(rootLink);
   expect(bundle.get(linkOf(blob))).toEqual(blob);

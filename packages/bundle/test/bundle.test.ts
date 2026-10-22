@@ -61,21 +61,22 @@ const paired = pairs.encode(pairs.object("hello", note.link));
 describe("a bundle", () => {
   it("is written as index.json and one file per blob named by its link, and reads back the same", () => {
     const blobs = [signature.bytes, hello.bytes, image];
-    const files = writeBundle(root, blobs, json);
+    const files = writeBundle(root, blobs);
     expect([...files.keys()].sort()).toEqual(["index.json", ...blobs.map((blob) => `blobs/sha256/${hexOf(blob)}`)].sort());
-    const bundle = readBundle(files, [json]);
+    const bundle = readBundle(files);
+    expect(bundle.encoding).toBe(json);
     expect(bundle.root).toEqual(root.bytes);
     expect(bundle.link).toBe(root.link);
     for (const blob of [root.bytes, ...blobs]) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 
   it("gives blobs of several kinds back by their links together", () => {
-    const bundle = readBundle(writeBundle(root, [signature.bytes, hello.bytes], json), [json]);
+    const bundle = readBundle(writeBundle(root, [signature.bytes, hello.bytes]));
     expect([signature.link, hello.link].map((link) => bundle.get(link))).toEqual([signature.bytes, hello.bytes]);
   });
 
   it("gives a signature back as bytes that do not read as an object of another schema", () => {
-    const bundle = readBundle(writeBundle(root, [signature.bytes], json), [json]);
+    const bundle = readBundle(writeBundle(root, [signature.bytes]));
     // @ts-expect-error: refused at compile time too
     expect(() => decodeObject(bundle.get(linkOf(signature.bytes))!, note)).toThrow();
   });
@@ -89,7 +90,7 @@ describe("a bundle", () => {
     ["its root in an encoding it does not read", () => new Map([["index.pairs", paired]])],
     ["a blob that does not have the link its name says", () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]])],
   ])("is refused with %s", (_, files) => {
-    expect(() => readBundle(files(), [json])).toThrow();
+    expect(() => readBundle(files())).toThrow();
   });
 
   it("names its root by the encoding the root is in, and reads it in that encoding among those it is given", () => {
@@ -109,7 +110,7 @@ describe("a bundle", () => {
 
   it("is not written with a root that is not an object in the encoding it is said to be in", () => {
     expect(() => writeBundle(hello, [], pairs)).toThrow(/not an object in pairs/);
-    expect(() => writeBundle({ bytes: paired }, [], json)).toThrow(/not an object in json/);
+    expect(() => writeBundle({ bytes: paired }, [])).toThrow(/not an object in json/);
   });
 
   it("is not written in an encoding whose name cannot name a root", () => {
@@ -117,7 +118,7 @@ describe("a bundle", () => {
   });
 
   it("reads with a signature as its root, which leads to the object it is over and to its identity", () => {
-    const bundle = readBundle(writeBundle(signature, [hello.bytes, signature.identity.bytes], json), [json]);
+    const bundle = readBundle(writeBundle(signature, [hello.bytes, signature.identity.bytes]));
     expect(bundle.link).toBe(signature.link);
     const signed = signatures.decode(bundle.root, bundle);
     expect(signatures.decode(bundle.get(bundle.link)!, bundle)).toEqual(signed);
@@ -129,8 +130,7 @@ describe("a bundle", () => {
     const authorizations = await loadAuthorizations(defaultValidator);
     const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
     const grant = await authorizations.authorize(agent.identity, alice);
-    const blobs = [grant.signature.bytes, grant.object.agent.bytes, grant.signature.identity.bytes];
-    const bundle = readBundle(writeBundle(grant.object, blobs, json), [json]);
+    const bundle = readBundle(writeBundle(grant.object, [grant.signature.bytes, grant.object.agent.bytes, grant.signature.identity.bytes]));
     expect(bundle.link).toBe(grant.object.link);
     expect(authorizations.readAuthorization(bundle.get(grant.signature.link)!, bundle)).toEqual(grant);
   });
@@ -145,7 +145,7 @@ describe("a bundle", () => {
     const identityBytes = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       expect(() => signatures.decode(blob, identityBytes)).toThrow();
-      expect(readBundle(filesOf(root.bytes, blob), [json]).get(linkOf(blob))).toEqual(blob);
+      expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
   });
 
@@ -158,27 +158,27 @@ describe("a bundle", () => {
     [`blobs/sha256/${hexOf(hello.bytes).slice(1)}`, hello.bytes],
     [`blobs/sha512/${createHash("sha512").update(hello.bytes).digest("hex")}`, hello.bytes],
   ])("reads with %s as no blob", (path, bytes) => {
-    const bundle = readBundle(new Map([...filesOf(root.bytes), [path, bytes]]), [json]);
+    const bundle = readBundle(new Map([...filesOf(root.bytes), [path, bytes]]));
     expect(bundle.link).toBe(root.link);
     expect(bundle.get(linkOf(bytes))).toBeUndefined();
   });
 
   it("reads without blobs its root links to, which it does not get", () => {
-    const bundle = readBundle(filesOf(root.bytes, signature.bytes), [json]);
+    const bundle = readBundle(filesOf(root.bytes, signature.bytes));
     expect(bundle.get(signature.link)).toEqual(signature.bytes);
     expect(bundle.get(hello.link)).toBeUndefined();
     expect(bundle.get(linkOf(image))).toBeUndefined();
   });
 
   it("with only index.json is one object, and gets only that", () => {
-    const bundle = readBundle(filesOf(hello.bytes), [json]);
+    const bundle = readBundle(filesOf(hello.bytes));
     expect(bundle.link).toBe(hello.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
     expect(bundle.get(signature.link)).toBeUndefined();
   });
 
   it("reads the same with its root under blobs/ as well", () => {
-    const bundle = readBundle(filesOf(root.bytes, root.bytes, hello.bytes), [json]);
+    const bundle = readBundle(filesOf(root.bytes, root.bytes, hello.bytes));
     expect(bundle.link).toBe(root.link);
     expect(bundle.get(root.link)).toEqual(root.bytes);
   });
@@ -188,7 +188,7 @@ describe("a bundle", () => {
     ["Node Buffers", (bytes) => Buffer.from(bytes)],
   ])("keeps the bytes it checked when the given %s change afterwards", (_, given) => {
     const files = filesOf(given(root.bytes), given(signature.bytes), given(hello.bytes), given(signature.identity.bytes));
-    const bundle = readBundle(files, [json]);
+    const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
     const signed = signatures.decode(bundle.get(signature.link)!, bundle);

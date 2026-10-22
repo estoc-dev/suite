@@ -4,7 +4,6 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  json,
   linkOf,
   linkSchema,
   loadSignatures,
@@ -32,11 +31,11 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.sign(object, by);
-  await mailbox.send(signature, [object.bytes, signature.identity.bytes], json);
+  await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
   return signature;
 };
 
-function readSigned(bundle: Bundle<Json>, schema: Schema<Json>) {
+function readSigned(bundle: Bundle, schema: Schema<Json>) {
   const signature = signatures.decode(bundle.root, bundle);
   const object = bundle.get(signature.object);
   if (object === undefined) throw new Error(`the bundle does not carry ${signature.object}`);
@@ -46,7 +45,7 @@ function readSigned(bundle: Bundle<Json>, schema: Schema<Json>) {
 async function receiver(network: MemoryNetwork, fill: number) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
-  return { mailbox: queue.mailbox(key.publicKey).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed, [json]))) };
+  return { mailbox: queue.mailbox(key.publicKey).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
 }
 
 const chat = await encodeSchema(
@@ -63,7 +62,7 @@ const chat = await encodeSchema(
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by the link of an identity object, whether that is the reader.
-function readChat(bundle: Bundle<Json>, reader: IdentityObject) {
+function readChat(bundle: Bundle, reader: IdentityObject) {
   const { identity, object } = readSigned(bundle, chat);
   const { text, to } = object.data as { text: string; to?: Link<IdentityObject> };
   return { author: identity, text, forReader: to === undefined ? undefined : to === reader.link };
@@ -84,7 +83,7 @@ describe("a chat line", () => {
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
       read.identity.bytes,
-    ], json);
+    ]);
     const [passed] = await atCarol.take();
     return { sent, received: received!, passed: passed! };
   };
@@ -185,7 +184,7 @@ const sale = await encodeSchema(
 // it. Each party sends its own signature with the terms to the registry's
 // mailbox, and the registry reads all it has received, in whatever order
 // and as many times as it arrived.
-function salesInForce(received: readonly Bundle<Json>[]): Sale[] {
+function salesInForce(received: readonly Bundle[]): Sale[] {
   const signers = new Map<string, { terms: Sale; identities: IdentityObject[] }>();
   for (const bundle of received) {
     const { identity, object } = readSigned(bundle, sale);

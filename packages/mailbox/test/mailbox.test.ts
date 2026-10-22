@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, json, loadSignatures, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, loadSignatures, type Json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -23,10 +23,10 @@ describe("a mailbox", () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const handed = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, signature.identity.bytes], json);
+    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, signature.identity.bytes]);
     const [sealed, ...more] = queue.take();
     expect(more).toEqual([]);
-    const bundle = await bob.open(sealed!, [json]);
+    const bundle = await bob.open(sealed!);
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
     expect(signatures.decode(bundle.root, bundle).identity).toEqual(identities.encode(alice.identity));
@@ -35,8 +35,8 @@ describe("a mailbox", () => {
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await mailbox.send(hello, [new Uint8Array(4096)], json);
-    await mailbox.send(hello, [crypto.getRandomValues(new Uint8Array(4096))], json);
+    await mailbox.send(hello, [new Uint8Array(4096)]);
+    await mailbox.send(hello, [crypto.getRandomValues(new Uint8Array(4096))]);
     const [repeating, random] = queue.take();
     expect(repeating!.length).toBe(random!.length);
   });
@@ -44,14 +44,14 @@ describe("a mailbox", () => {
   it("refuses to send a root that is not an object, and sends nothing", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [], json)).rejects.toThrow(/not an object/);
+    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(/not an object/);
     expect(queue.take()).toEqual([]);
   });
 
   it("rejects a send to a queue that its network does not have", async () => {
     const elsewhere = await MemoryNetwork.create(defaultValidator);
     const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send(hello, [], json)).rejects.toThrow(/no queue is named/);
+    await expect(mailbox.send(hello, [])).rejects.toThrow(/no queue is named/);
   });
 });
 

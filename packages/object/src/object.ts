@@ -1,4 +1,6 @@
+import { defaultEncoding } from "./default-encoding.ts";
 import type { Encoding } from "./encoding.ts";
+import type { Json } from "./json.ts";
 import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 import { Semantics } from "./semantics.ts";
@@ -39,8 +41,14 @@ function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, D> {
  * The link of the schema an object names, read before the object is: a
  * reader that takes objects of several schemas picks by it which schema to
  * read the object with. With no schema yet to say so, the caller names the
- * encoding of the object.
+ * encoding of the object, or leaves it to `defaultEncoding`.
  */
-export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
+export function schemaOf(bytes: Bytes<unknown>): Link<Schema<Json>>;
+export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>>;
+export function schemaOf<D>(bytes: Bytes<unknown>, encoding?: Encoding<D>): Link<Schema<D>> | Link<Schema<Json>> {
+  return encoding === undefined ? schemaIn(bytes, defaultEncoding) : schemaIn(bytes, encoding);
+}
+
+function schemaIn<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
   return encoding.fields(encoding.decode(bytes)).schema;
 }

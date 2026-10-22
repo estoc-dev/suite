@@ -15,11 +15,10 @@ from a zip. `writeBundle` gives the map back.
 
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { json } from "@estoc/object";
 
-const files = writeBundle(signature, [message.bytes, signature.identity.bytes], json);
-const bundle = readBundle(files, [json]);
-bundle.encoding;          // json
+const files = writeBundle(signature, [message.bytes, signature.identity.bytes]);
+const bundle = readBundle(files);
+bundle.encoding;          // json, the default encoding
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
 ```
@@ -35,8 +34,10 @@ so the root's file name does: `index.` and the name of the encoding,
 `index.json` for JSON. It is what a reader goes by before it has read
 anything, so a bundle can reach a reader that did not know what it would
 hold. `readBundle` is given the encodings the reader reads, takes the one
-the file name gives, and hands it on as `bundle.encoding`. Only the root is
-labeled: the blobs it leads to are read by the semantics of the links that
+the file name gives, and hands it on as `bundle.encoding`. A reader that
+gives none reads `defaultEncoding` of `@estoc/object`, which is JSON, and so
+does a writer: `writeBundle(root, blobs)` writes `index.json`, and
+`writeBundle(root, blobs, encoding)` another. Only the root is labeled: the blobs it leads to are read by the semantics of the links that
 lead to them, as any blob is.
 
 A bundle with no root or with two is refused, and so is one whose root is
@@ -47,8 +48,7 @@ by hand, or one that holds a schema, makes the whole bundle refused.
 
 A signature is an object too, so it can be the root, with what it is over
 carried in the bundle. `writeBundle` takes the root in whatever type a
-semantics read it into, such as an `Authorization`, and the encoding it is
-in, and writes its bytes, so the root is written as it was signed. It
+semantics read it into, such as an `Authorization`, and writes its bytes, so the root is written as it was signed. It
 refuses a root that is not an object in that encoding, which no reader
 would take.
 
@@ -123,8 +123,8 @@ unzips a zip back into the map that `readBundle` takes. Both use zip.js and
 return promises.
 
 ```ts
-const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.identity.bytes], json));
-const bundle = readBundle(await unzipBundle(zip), [json]);
+const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.identity.bytes]));
+const bundle = readBundle(await unzipBundle(zip));
 ```
 
 `zipBundle` compresses with DEFLATE unless it is given `compress: false`,

@@ -48,7 +48,7 @@ it: reading or writing an object takes the schema and nothing more. The
 types tie them too: a language and its validators share the data type `D`
 of the encoding, and so do the readings of one semantics. `schemaOf`, which
 reads the link of the schema an object names before any schema is picked,
-is given the encoding.
+is given the encoding, or reads in `defaultEncoding`.
 
 An encoding is one object, shared by the languages over its data: a
 language over JSON names `json`. A semantics tells encodings apart as
@@ -73,7 +73,9 @@ translating old ones.
 ## JSON
 
 `json` is the encoding of this package, `jsonSchema` the schema language
-over it, and `defaultValidator` a validator of that language.
+over it, and `defaultValidator` a validator of that language. `json` is
+also `defaultEncoding`, read and written where no encoding is given, so it
+and `defaultValidator` are chosen together.
 
 - `json` writes a JSON value as its JCS
   ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.

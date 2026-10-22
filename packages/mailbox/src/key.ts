@@ -50,11 +50,14 @@ export class MailboxKey {
   }
 
   /**
-   * Opens sealed bytes to the bundle inside, whose root is in one of
-   * `encodings`. Refuses bytes that do not open with this key, and what
-   * opens but is not the zip of such a bundle.
+   * Opens sealed bytes to the bundle inside, whose root is read as
+   * `readBundle` reads it: in one of `encodings`, `defaultEncoding` unless
+   * given. Refuses bytes that do not open with this key, and what opens but
+   * is not the zip of such a bundle.
    */
-  async open<D>(sealed: Uint8Array, encodings: readonly Encoding<D>[]): Promise<Bundle<D>> {
+  open(sealed: Uint8Array): Promise<Bundle>;
+  open<D>(sealed: Uint8Array, encodings: readonly Encoding<D>[]): Promise<Bundle<D>>;
+  async open<D>(sealed: Uint8Array, encodings?: readonly Encoding<D>[]): Promise<Bundle<D> | Bundle> {
     const { encSize } = suite.kem;
     let plaintext: ArrayBuffer;
     try {
@@ -67,6 +70,7 @@ export class MailboxKey {
     // refuses no zip written that way, and keeps a compressed one from
     // unzipping to far more than arrived.
     const zip = new Uint8Array(plaintext);
-    return readBundle(await unzipBundle(zip, { bytes: zip.length }), encodings);
+    const files = await unzipBundle(zip, { bytes: zip.length });
+    return encodings === undefined ? readBundle(files) : readBundle(files, encodings);
   }
 }

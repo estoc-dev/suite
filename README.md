@@ -27,8 +27,9 @@ The packages fall on the two sides of that line.
 Nor are objects tied to one encoding. Data is in an encoding and schemas
 in a language over it, here JSON and JSON Schema; deterministic CBOR with
 CDDL would serve as well, and `@estoc/object` depends on what such a pair
-provides rather than on JSON. What Estoc writes so far is JSON. A bundle
-names the encoding of its root, and carries blobs of any encoding.
+provides rather than on JSON. What Estoc writes so far is JSON, the default
+encoding. A bundle names the encoding of its root, and carries blobs of any
+encoding.
 
 A semantics is code, and Estoc at heart is a set of semantics that a
 computer can run.

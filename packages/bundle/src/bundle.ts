@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type Encoding, type Link } from "@estoc/object";
+import { defaultEncoding, linkOf, schemaOf, type Bytes, type Encoding, type Json, type Link } from "@estoc/object";
 
 /** The root: `index.` and the name of the encoding it is in. */
 export const ROOT = /^index\.[a-z0-9]+$/;
@@ -10,7 +10,7 @@ export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
  * file name gives, and every blob under `blobs/sha256/` has the link its name
  * says. Nothing else about the blobs is read, signatures included.
  */
-export class Bundle<D> {
+export class Bundle<D = Json> {
   /**
    * An object of any schema, a signature included, so neither its bytes nor
    * its link carry a label, and they read as either.
@@ -59,21 +59,32 @@ export class Bundle<D> {
 
 /**
  * Reads a bundle from its files by path: a folder read into memory, or a zip
- * unpacked. Refuses it when it has no root or more than one, when the root
- * is in none of `encodings` or is not an object in its encoding, or when a
+ * unpacked. Its root is read in one of `encodings`, `defaultEncoding` unless
+ * given. Refuses it when it has no root or more than one, when the root is in
+ * none of those encodings or is not an object in its encoding, or when a
  * blob does not have the link its name says.
  */
-export function readBundle<D>(files: ReadonlyMap<string, Uint8Array>, encodings: readonly Encoding<D>[]): Bundle<D> {
-  return new Bundle(files, encodings);
+export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle;
+export function readBundle<D>(files: ReadonlyMap<string, Uint8Array>, encodings: readonly Encoding<D>[]): Bundle<D>;
+export function readBundle<D>(files: ReadonlyMap<string, Uint8Array>, encodings?: readonly Encoding<D>[]): Bundle<D> | Bundle {
+  return encodings === undefined ? new Bundle(files, [defaultEncoding]) : new Bundle(files, encodings);
 }
 
 /**
  * The files of a bundle with `root` as its root, carrying `blobs`. `root` is
- * an object in `encoding`, in whatever type a semantics read it into, and its
- * bytes are what is written. Refuses a root that is not an object in
- * `encoding`, which no reader would take.
+ * an object in `encoding`, `defaultEncoding` unless given, in whatever type a
+ * semantics read it into, and its bytes are what is written. Refuses a root
+ * that is not an object in that encoding, which no reader would take.
  */
 export function writeBundle<D>(
+  root: { readonly bytes: Bytes<unknown> },
+  blobs: Iterable<Bytes<unknown>>,
+  encoding?: Encoding<D>,
+): Map<string, Uint8Array> {
+  return encoding === undefined ? filesOf(root, blobs, defaultEncoding) : filesOf(root, blobs, encoding);
+}
+
+function filesOf<D>(
   root: { readonly bytes: Bytes<unknown> },
   blobs: Iterable<Bytes<unknown>>,
   encoding: Encoding<D>,

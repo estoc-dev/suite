@@ -46,11 +46,11 @@ export class Mailbox {
   }
 
   /**
-   * Sends the bundle of `root` in `encoding` and `blobs`, as `writeBundle`
-   * writes it: zipped without compression, sealed to the mailbox's key and
+   * Sends the bundle of `root` and `blobs`, as `writeBundle` writes it with
+   * `encoding`: zipped without compression, sealed to the mailbox's key and
    * handed to the transport.
    */
-  async send<D>(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>, encoding: Encoding<D>): Promise<void> {
+  async send<D>(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>, encoding?: Encoding<D>): Promise<void> {
     const zip = await zipBundle(writeBundle(root, blobs, encoding), { compress: false });
     await this.#transport.deliver(this.#data, await seal(this.#key, zip));
   }

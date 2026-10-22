@@ -49,6 +49,11 @@ of the encoding, and so do the readings of one semantics. `schemaOf`, which
 reads the link of the schema an object names before any schema is picked,
 is given the encoding.
 
+An encoding is one object, shared by the languages over its data: a
+language over JSON names `json`. A semantics tells encodings apart as
+objects, so it reads schemas of two languages together when both name the
+same encoding.
+
 Two encodings of the same content are two blobs with two links, and
 neither reads as the other, just as the same data under two schemas is two
 objects. Moving to another encoding means writing new objects, not
@@ -187,10 +192,10 @@ into the program's value, so the reading is left what the schema does not
 say. A semantics that writes also holds a `Writing`: the schema it writes
 to, which is one of those it reads, and how a value becomes data of that
 schema. It reads objects of every schema it has a reading of, and writes to
-one, the schema the program writes now. The schemas it reads are all of one
-encoding, whose data type ties the readings and the writing together while
-the semantics is made; the semantics itself is a `Semantics<T, V>`, whatever
-the encoding.
+one, the schema the program writes now. The schemas it reads all have one
+encoding, the same `Encoding` object, whose data type ties the readings and
+the writing together while the semantics is made; the semantics itself is a
+`Semantics<T, V>`, whatever the encoding.
 
 ```ts
 import { Semantics, type Link } from "@estoc/object";

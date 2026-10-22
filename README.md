@@ -24,10 +24,12 @@ The packages fall on the two sides of that line.
   authorizations, mailboxes. Estoc writes them, and they do nothing that a
   semantics written elsewhere could not.
 
-Nor is the substrate tied to one encoding. Data is in an encoding and
-schemas in a language over it, here JSON and JSON Schema; deterministic
-CBOR with CDDL would serve as well, and the code depends on what such a
-pair provides rather than on JSON.
+Nor are objects tied to one encoding. Data is in an encoding and schemas
+in a language over it, here JSON and JSON Schema; deterministic CBOR with
+CDDL would serve as well, and `@estoc/object` depends on what such a pair
+provides rather than on JSON. What is written so far is JSON: the
+semantics Estoc writes, and the root of a bundle, which carries blobs of
+any encoding.
 
 A semantics is code, and Estoc at heart is a set of semantics that a
 computer can run.

@@ -116,9 +116,10 @@ class SemanticsOf<D, T, V> implements Semantics<T, V> {
 }
 
 /**
- * Makes a semantics of its readings and its writing, whose schemas are all
- * of one encoding. `D`, the data of that encoding, ties the readings and the
- * writing together while the semantics is made, and is not part of its
- * type: a program holds a `Semantics<T, V>`, whatever the encoding.
+ * Makes a semantics of its readings and its writing, whose schemas all have
+ * one encoding, the same `Encoding` object. `D`, the data of that encoding,
+ * ties the readings and the writing together while the semantics is made,
+ * and is not part of its type: a program holds a `Semantics<T, V>`, whatever
+ * the encoding.
  */
 export const Semantics: new <D, T, V = never>(readings: Iterable<Reading<D, T>>, writing?: Writing<D, V>) => Semantics<T, V> = SemanticsOf;

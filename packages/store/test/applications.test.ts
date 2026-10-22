@@ -9,6 +9,7 @@ import {
   Semantics,
   signatureSchema,
   type Bytes,
+  type JsonLink,
   type JsonObject,
   type Link,
 } from "@estoc/object";
@@ -41,8 +42,8 @@ const notes: Semantics<Note, string> = new Semantics(
 type Received = { readonly bundle: Link<never>; readonly bytes: Bytes<Received>; readonly link: Link<Received> };
 const receivedSchema = await schemaFor("Received", { bundle: linkSchema });
 const receipts: Semantics<Received, Link<unknown>> = new Semantics(
-  [{ schema: receivedSchema, read: (data, object) => ({ bundle: (data as { bundle: Link<never> }).bundle, ...object }) }],
-  { schema: receivedSchema.link, write: (bundle) => ({ bundle }) },
+  [{ schema: receivedSchema, read: (data, object) => ({ bundle: (data as { bundle: JsonLink<never> }).bundle.$link, ...object }) }],
+  { schema: receivedSchema.link, write: (bundle) => ({ bundle: { $link: bundle } }) },
 );
 
 type Contact = { readonly name: string; readonly bytes: Bytes<Contact>; readonly link: Link<Contact> };

@@ -62,11 +62,7 @@ A batch is refused whole, too, when a blob in it leads to one that neither
 the batch nor the store holds: the schema of an object, or a blob its data
 links to. So a program writes the schemas it writes to before its objects,
 and a bundle is taken in only with all that its objects lead to, apart from
-what the receiver holds already. A blob leads to the links that its
-encoding finds in it, so with JSON a string that is a link as a whole has to
-be held, whether or not a reader follows it. Data that names a blob without
-carrying it, such as a commitment to a hash, writes the hash in another
-form.
+what the receiver holds already.
 
 Each blob goes in after the blobs it leads to, and before the links that
 list it, so a write cut short leaves at worst blobs that nothing lists,

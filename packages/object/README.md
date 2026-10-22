@@ -95,8 +95,10 @@ over it, and `defaultValidator` a validator of that language.
   it holds. Any other object with a `$link` member is refused, in writing
   and in reading, whether it holds something other than a link or a member
   beside it, so whatever has the mark of a link is one. That holds for
-  schemas as well, which are JSON too. In TypeScript a link in JSON data is
-  a `JsonLink<T>`, `{ $link: Link<T> }`.
+  schemas as well, which are JSON too. The links the encoding finds in a
+  value are the ones these objects hold, the schema an object names among
+  them, and no others. In TypeScript a link in JSON data is a
+  `JsonLink<T>`, `{ $link: Link<T> }`.
 - An object is the JSON object `{"data": <data>, "schema": <link>}`, with no
   other member, and a schema is a JSON object naming its dialect in
   `$schema`, written as JSON is.
@@ -104,10 +106,6 @@ over it, and `defaultValidator` a validator of that language.
   and the kinds cannot pass for one another: an object has exactly its two
   fields, and a schema has `$schema`. A signature is an object, and like any
   object it cannot pass for one of another schema.
-- A link in JSON is a string, and JSON marks it no other way, so the links
-  in a value are its strings, member names among them, that are links as a
-  whole. They include the schema an object names, and may include a string
-  that its readers do not take as a link.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
 

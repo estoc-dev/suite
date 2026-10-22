@@ -48,7 +48,7 @@ describe("a store", () => {
   it("lists what is written as mine, and not the blobs written with it", async () => {
     const store = await newStore();
     const image = utf8("an image");
-    const note = object({ text: "hello", image: linkOf(image) });
+    const note = object({ text: "hello", image: { $link: linkOf(image) } });
     await store.write({ mine: [note], blobs: [image] });
     expect(await listed(store)).toEqual([note.link]);
     expect(await store.get(linkOf(image))).toEqual(image);
@@ -84,7 +84,7 @@ describe("a store", () => {
   it("refuses a batch in which a blob leads to one that neither the batch nor the store holds, and keeps none of it", async () => {
     const store = await newStore();
     const image = utf8("an image");
-    const note = object({ text: "hello", image: linkOf(image) });
+    const note = object({ text: "hello", image: { $link: linkOf(image) } });
     const carried = object("carried");
     await expect(store.write({ mine: [note], blobs: [carried.bytes] })).rejects.toThrow(
       `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
@@ -100,9 +100,17 @@ describe("a store", () => {
     const store = await newStore();
     const image = utf8("an image");
     await store.write({ blobs: [image] });
-    const note = object({ text: "hello", image: linkOf(image) });
+    const note = object({ text: "hello", image: { $link: linkOf(image) } });
     await store.write({ mine: [note] });
     expect(await listed(store)).toEqual([note.link]);
+  });
+
+  it("takes a string that is a link as a whole as a string, and does not ask for the blob it names", async () => {
+    const store = await newStore();
+    const commitment = object({ hash: linkOf(utf8("a secret")) });
+    await store.write({ mine: [commitment] });
+    expect(await listed(store)).toEqual([commitment.link]);
+    expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual([commitment.link, anything.link].sort());
   });
 
   it("puts each blob in after the blobs it leads to, so that a write cut short leaves none without them", async () => {
@@ -116,8 +124,8 @@ describe("a store", () => {
       })(),
     );
     const image = utf8("an image");
-    const inner = object({ image: linkOf(image) });
-    const outer = object([inner.link]);
+    const inner = object({ image: { $link: linkOf(image) } });
+    const outer = object([{ $link: inner.link }]);
     await store.write({ mine: [outer], blobs: [inner.bytes, image] });
     expect(order).toEqual([linkOf(image), inner.link, outer.link]);
   });
@@ -138,8 +146,8 @@ describe("the closure of a blob", () => {
   it("holds the blob, the blobs it links to and theirs in turn, its schema among them", async () => {
     const store = await newStore();
     const image = utf8("an image");
-    const inner = object({ image: linkOf(image) });
-    const outer = object([inner.link]);
+    const inner = object({ image: { $link: linkOf(image) } });
+    const outer = object([{ $link: inner.link }]);
     await store.write({ mine: [outer], blobs: [inner.bytes, image] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, inner.link, linkOf(image), anything.link].sort());
@@ -150,10 +158,11 @@ describe("the closure of a blob", () => {
     const store = await newStore();
     const target = object("target");
     const text = utf8(`see ${target.link}`);
-    const indented = utf8(` ${JSON.stringify([target.link])}`);
-    const outer = object([linkOf(text), linkOf(indented)]);
+    const indented = utf8(` ${JSON.stringify([{ $link: target.link }])}`);
+    const outer = object([{ $link: linkOf(text) }, { $link: linkOf(indented) }]);
     await store.write({ mine: [outer], blobs: [text, indented, target.bytes] });
-    expect([...(await store.closure(outer.link)).keys()].sort()).toEqual([outer.link, linkOf(text), linkOf(indented), anything.link].sort());
+    const closure = await store.closure(outer.link);
+    expect([...closure.keys()].sort()).toEqual([outer.link, linkOf(text), linkOf(indented), anything.link].sort());
   });
 
   it("is empty for a link the store does not hold", async () => {

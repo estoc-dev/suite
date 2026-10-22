@@ -99,18 +99,21 @@ describe("the links in a JSON value", () => {
   const a = linkOf(utf8("a"));
   const b = linkOf(utf8("b"));
 
-  it("are the strings that are links as a whole, at any depth and as member names", () => {
-    const value = { list: [a, { nested: [b] }], [b]: "named by a link", count: 1, none: null };
+  it("are the ones its $link objects hold, at any depth", () => {
+    const value = { list: [{ $link: a }, { nested: [{ $link: b }] }], again: { $link: b }, count: 1, none: null };
     expect([...json.links(value)].sort()).toEqual([a, b, b].sort());
   });
 
   it("include the schema an object names", () => {
-    const object = encodeObject(anything, [a]);
+    const object = encodeObject(anything, [{ $link: a }]);
     expect([...json.links(json.decode(object.bytes))]).toEqual([a, anything.link]);
   });
 
-  it("leave out a string that only holds a link, or that is not one exactly", () => {
-    const value = [`see ${a}`, a.toUpperCase(), a.replace("sha256:", "sha512:"), a.slice(0, -1)];
-    expect([...json.links(value)]).toEqual([]);
+  it("leave out a string that is a link as a whole, as a member or as a member's name", () => {
+    expect([...json.links([a, { [a]: "named by a link", text: a }])]).toEqual([]);
+  });
+
+  it("are refused at an object with a $link member that is not a link", () => {
+    expect(() => [...json.links([{ $link: a, note: "x" }])]).toThrow(/\$link/);
   });
 });

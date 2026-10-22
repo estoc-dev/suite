@@ -35,7 +35,9 @@ application can read the same objects without them.
   and it needs no schema, so that the schema an object names can be read
   before the schema is. The encoding also writes an object, its data and
   the link of its schema, as one value, and refuses any other value as an
-  object.
+  object. And it finds the links in a value, so that what a blob leads to
+  can be gathered without a schema to read it by, as a store gathers what
+  it carries along with an object.
 - A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
   data of one encoding, which it names. A schema is a blob of its own, with
   one way of being written and a link.
@@ -102,6 +104,10 @@ over it, and `defaultValidator` a validator of that language.
   and the kinds cannot pass for one another: an object has exactly its two
   fields, and a schema has `$schema`. A signature is an object, and like any
   object it cannot pass for one of another schema.
+- A link in JSON is a string, and JSON marks it no other way, so the links
+  in a value are its strings, member names among them, that are links as a
+  whole. They include the schema an object names, and may include a string
+  that its readers do not take as a link.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
 

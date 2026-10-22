@@ -17,9 +17,10 @@ Estoc reads its objects once it has a reading of their schema.
 The packages fall on the two sides of that line.
 
 - The substrate is how bytes become a value with a link and a schema, and
-  how blobs travel together: the encodings, objects, schemas and validators
-  of `@estoc/object`, and `@estoc/bundle`. Like JSON or zip, it has to be
-  shared, and it gives no meaning and no reader an advantage.
+  how blobs travel together and are kept: the encodings, objects, schemas
+  and validators of `@estoc/object`, `@estoc/bundle` and `@estoc/store`.
+  Like JSON or zip, it has to be shared, and it gives no meaning and no
+  reader an advantage.
 - Semantics are everything that carries meaning: identities, signatures,
   authorizations, mailboxes. Estoc writes them, and they do nothing that a
   semantics written elsewhere could not.
@@ -70,6 +71,8 @@ past and reading another application's objects are the same work.
   object as the way in.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key.
+- `@estoc/store`: the objects a user writes, and the blobs that come with
+  them, kept on their device.
 
 ## Development
 

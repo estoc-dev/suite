@@ -73,4 +73,22 @@ export const json: Encoding<Json> = {
     if (!isJsonLink(schema)) throw new Error("an object names its schema by link");
     return { data, schema: schema.$link };
   },
+  links: linksIn,
 };
+
+/**
+ * Every string in the value that is a link as a whole, member names
+ * included: a link is a string, and JSON gives no other sign of one.
+ */
+function* linksIn(value: Json): Generator<Link<never>> {
+  if (typeof value === "string") {
+    if (isLink(value)) yield value;
+  } else if (isJsonObject(value)) {
+    for (const [name, member] of Object.entries(value)) {
+      if (isLink(name)) yield name;
+      yield* linksIn(member);
+    }
+  } else if (value !== null && typeof value === "object") {
+    for (const item of value) yield* linksIn(item);
+  }
+}

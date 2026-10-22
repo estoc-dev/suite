@@ -143,6 +143,28 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.6.5)
 
+  packages/store:
+    dependencies:
+      '@estoc/object':
+        specifier: workspace:*
+        version: link:../object
+    devDependencies:
+      '@estoc/bundle':
+        specifier: workspace:*
+        version: link:../bundle
+      '@estoc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.5
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.6.5)
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.2':

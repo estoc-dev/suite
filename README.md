@@ -70,7 +70,7 @@ past and reading another application's objects are the same work.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
-  receiver's key.
+  receiver's key, and the records in a store of what came in and went out.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
   them, kept on their device.
 

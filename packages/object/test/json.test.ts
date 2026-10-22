@@ -5,7 +5,7 @@ import { decodeObject, encodeObject, encodeSchema, linkOf } from "../src/index.t
 
 const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const objectText = (data: string) => `{"data":${data},"schema":"${anything.link}"}`;
+const objectText = (data: string) => `{"data":${data},"schema":{"$link":"${anything.link}"}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
 
 describe("strict decoding", () => {
@@ -14,9 +14,9 @@ describe("strict decoding", () => {
   });
 
   it.each([
-    ["whitespace between members", `{"data":1, "schema":"${anything.link}"}`],
+    ["whitespace between members", `{"data":1, "schema":{"$link":"${anything.link}"}}`],
     ["a trailing newline", `${objectText("1")}\n`],
-    ["keys out of order", `{"schema":"${anything.link}","data":1}`],
+    ["keys out of order", `{"schema":{"$link":"${anything.link}"},"data":1}`],
     ["a repeated key", objectText('{"a":1,"a":1}')],
     ["a number with a needless fraction", objectText("1.0")],
     ["a number with a needless exponent", objectText("1e2")],
@@ -38,6 +38,33 @@ describe("strict decoding", () => {
 
   it("refuses a byte order mark", () => {
     expect(() => decodeObject(Uint8Array.of(0xef, 0xbb, 0xbf, ...utf8(objectText("1"))), anything)).toThrow();
+  });
+});
+
+describe("an object with a $link member", () => {
+  const link = anything.link;
+
+  it("reads back as a link when it holds a link and nothing else, wherever it is", () => {
+    const data = { a: { $link: link }, b: [{ $link: link }] };
+    expect(decodeText(objectText(JSON.stringify(data))).data).toEqual(data);
+  });
+
+  it.each([
+    ["holds something other than a link", { $link: "hello" }],
+    ["holds a link in uppercase hex", { $link: `sha256:${link.slice(7).toUpperCase()}` }],
+    ["holds a number", { $link: 1 }],
+    ["holds a link and another member", { $link: link, note: "x" }],
+    ["holds a schema, as properties naming $link would", { $link: { type: "string" } }],
+  ])("is refused in writing and in reading when it %s, at any depth", (_, malformed) => {
+    for (const data of [malformed, { a: [malformed] }]) {
+      expect(() => encodeObject(anything, data)).toThrow(/\$link/);
+      expect(() => decodeText(objectText(JSON.stringify(data)))).toThrow(/\$link/);
+    }
+  });
+
+  it("is refused in a schema too", async () => {
+    const schema = { $schema: "https://json-schema.org/draft/2020-12/schema", properties: { $link: { type: "string" } } };
+    await expect(encodeSchema(schema, defaultValidator)).rejects.toThrow(/\$link/);
   });
 });
 

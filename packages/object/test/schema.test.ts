@@ -198,13 +198,18 @@ const terms = contract.link;
 
 describe("linkSchema", () => {
   it("takes a link", () => {
-    expect(contract.validate({ terms })).toEqual([]);
+    expect(contract.validate({ terms: { $link: terms } })).toEqual([]);
   });
 
   it("refuses a link that is not sha256 and lowercase hex", () => {
     for (const link of [terms.toUpperCase(), terms.slice(0, -1), terms.replace("sha256", "sha512")]) {
-      expect(contract.validate({ terms: link })).not.toEqual([]);
+      expect(contract.validate({ terms: { $link: link } })).not.toEqual([]);
     }
+  });
+
+  it("refuses a link written as a bare string, or with a member besides $link", () => {
+    expect(contract.validate({ terms })).not.toEqual([]);
+    expect(contract.validate({ terms: { $link: terms, note: "x" } })).not.toEqual([]);
   });
 });
 

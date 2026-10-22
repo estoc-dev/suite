@@ -8,7 +8,7 @@ import {
   type EncodedObject,
   type IdentityObject,
   type Json,
-  type Link,
+  type JsonLink,
   type Signature,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -77,8 +77,8 @@ describe("a login", () => {
 
 // A sale names its parties by the links of their identity objects.
 type Sale = {
-  readonly buyer: Link<IdentityObject>;
-  readonly seller: Link<IdentityObject>;
+  readonly buyer: JsonLink<IdentityObject>;
+  readonly seller: JsonLink<IdentityObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -114,7 +114,7 @@ function saleInForce(bytes: Uint8Array, entries: readonly Uint8Array[], received
     }
   });
   const { buyer, seller } = terms.data as Sale;
-  const behind = (party: Link<IdentityObject>) => standing.some(({ identity }) => identity.link === party);
+  const behind = (party: JsonLink<IdentityObject>) => standing.some(({ identity }) => identity.link === party.$link);
   return behind(buyer) && behind(seller) ? (terms.data as Sale) : undefined;
 }
 
@@ -124,8 +124,8 @@ describe("a sale", () => {
   const seller = signer("solana-offchain", 3);
   const now = new Date("2026-10-20T12:00:00Z");
   const terms = encodeObject(sale, {
-    buyer: identities.encode(buyer.identity).link,
-    seller: identities.encode(seller.identity).link,
+    buyer: { $link: identities.encode(buyer.identity).link },
+    seller: { $link: identities.encode(seller.identity).link },
     goods: "one bicycle",
     price: "120.00 CAD",
   });

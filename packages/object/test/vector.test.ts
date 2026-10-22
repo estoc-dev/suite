@@ -25,8 +25,8 @@ const schemaText =
 const schemaLink = "sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e";
 const objectText =
   '{"data":{"audience":"https://app.estoc.dev","nonce":"6f1c0a9e"},' +
-  '"schema":"sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e"}';
-const objectLink = "sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80";
+  '"schema":{"$link":"sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e"}}';
+const objectLink = "sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52";
 const identitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"publicKey":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},"scheme":{"type":"string"}},' +
@@ -34,22 +34,24 @@ const identitySchemaText =
 const identitySchemaLink = "sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1";
 const identityText =
   '{"data":{"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"},' +
-  '"schema":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}';
-const identityLink = "sha256:5a5b174f0d65db60322fdf504eaad099064bb0046a102ef013d6dd171fc8eecc";
+  '"schema":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}}';
+const identityLink = "sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53";
 const signatureSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"identity":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"object":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
   '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:05b7d8cb16217903e90fbbae01bd0fdf157d10a9829fb22f2729c2e836495506";
+const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
 const signatureText =
-  '{"data":{"identity":"sha256:5a5b174f0d65db60322fdf504eaad099064bb0046a102ef013d6dd171fc8eecc",' +
-  '"object":"sha256:65a66b9ddb1b8afe6fdc7d0c4ebef359b9c9657ce6712b82d1ba583dc159fb80",' +
-  '"signature":"597af40ffd741eaf60009f405797ac722591b9f2f63966055722a409412bd00d' +
-  '0ecfa9ae9d9c0e158301fe20a0b6aefdf25a6078117e4d524493212271b12608"},' +
-  '"schema":"sha256:05b7d8cb16217903e90fbbae01bd0fdf157d10a9829fb22f2729c2e836495506"}';
-const signatureLink = "sha256:b52314ccf85e50c4f7376d5adb825397c6b5961af5a58017857cd3cda577dacb";
+  '{"data":{"identity":{"$link":"sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53"},' +
+  '"object":{"$link":"sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52"},' +
+  '"signature":"bc44d93c9596131d6723e9c749b910648918af6a3cdb6e4c9e493f62be3b1edf' +
+  '84159319aa8ec050291690c57ef99ffb788d7c86d90fb3851bed43ce0d11aa02"},' +
+  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
+const signatureLink = "sha256:b6799e6f181e8d164164bef5e33aec18bf7cc8c7e152d58652c0d0b45ccacd5f";
 
 const schema = await encodeSchema(
   {

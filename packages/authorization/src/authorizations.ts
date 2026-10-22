@@ -7,6 +7,7 @@ import {
   type Bytes,
   type IdentityObject,
   type Json,
+  type JsonLink,
   type JsonSchemaValidator,
   type Link,
   type Schema,
@@ -56,8 +57,8 @@ export interface Standing {
   readonly agents: readonly IdentityObject[];
 }
 
-type AuthorizationData = { readonly agent: Link<IdentityObject>; readonly until?: string };
-type ProxyData = { readonly target: Link<never>; readonly chain: readonly Link<Signature>[] };
+type AuthorizationData = { readonly agent: JsonLink<IdentityObject>; readonly until?: string };
+type ProxyData = { readonly target: JsonLink<never>; readonly chain: readonly JsonLink<Signature>[] };
 
 /**
  * Authorizations and proxies, read and written with the schemas compiled
@@ -80,13 +81,16 @@ export class Authorizations {
             // `until` can reach here that Temporal does not read as an instant.
             // Such an authorization counts for no one, and is refused.
             const end = until === undefined ? undefined : Temporal.Instant.from(until);
-            return { agent: signatures.identities.follow(agent, blobs), until: end, ...object };
+            return { agent: signatures.identities.follow(agent.$link, blobs), until: end, ...object };
           },
         },
       ],
       {
         schema: authorization.link,
-        write: ({ agent, until }) => (until === undefined ? { agent: agent.link } : { agent: agent.link, until: until.toString() }),
+        write: ({ agent, until }) => {
+          const data = { agent: { $link: agent.link } };
+          return until === undefined ? data : { ...data, until: until.toString() };
+        },
       },
     );
     this.#proxies = new Semantics(
@@ -95,11 +99,11 @@ export class Authorizations {
           schema: proxy,
           read(data, object) {
             const { target, chain } = data as ProxyData;
-            return { target, chain, ...object };
+            return { target: target.$link, chain: chain.map(({ $link }) => $link), ...object };
           },
         },
       ],
-      { schema: proxy.link, write: ({ target, chain }) => ({ target, chain }) },
+      { schema: proxy.link, write: ({ target, chain }) => ({ target: { $link: target }, chain: chain.map((link) => ({ $link: link })) }) },
     );
   }
 

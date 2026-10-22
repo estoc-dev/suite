@@ -21,7 +21,7 @@ const { identities } = signatures;
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const parsed = (object: { readonly bytes: Uint8Array }) =>
-  JSON.parse(new TextDecoder().decode(object.bytes)) as { data: JsonObject; schema: string };
+  JSON.parse(new TextDecoder().decode(object.bytes)) as { data: JsonObject; schema: JsonObject };
 const dataOf = (object: { readonly bytes: Uint8Array }) => parsed(object).data;
 const written = (signature: Signature, data: JsonObject) => json.encode({ data, schema: parsed(signature).schema });
 const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
@@ -55,13 +55,13 @@ describe("a signature", () => {
     const signature = await signatures.sign(hello, signer("ed25519"));
     const { publicKey } = signer("ed25519").identity;
     for (const other of [identities.encode(signer("ed25519", 2).identity), identities.encode({ publicKey, scheme: "solana-offchain" })]) {
-      expect(() => signatures.decode(rewritten(signature, { identity: other.link }), byLink(other))).toThrow(/does not verify/);
+      expect(() => signatures.decode(rewritten(signature, { identity: { $link: other.link } }), byLink(other))).toThrow(/does not verify/);
     }
   });
 
   it("is refused when it names another object", async () => {
     const signature = await signatures.sign(hello, signer("eip191"));
-    expect(() => signatures.decode(rewritten(signature, { object: goodbye.link }), identityOf(signature))).toThrow();
+    expect(() => signatures.decode(rewritten(signature, { object: { $link: goodbye.link } }), identityOf(signature))).toThrow();
   });
 
   it("is refused without the object of its identity", async () => {
@@ -71,10 +71,11 @@ describe("a signature", () => {
 
   it.each<[string, (fields: JsonObject) => JsonObject]>([
     ["its signature in uppercase hex", (f) => ({ ...f, signature: (f.signature as string).toUpperCase() })],
-    ["its object's link in uppercase hex", (f) => ({ ...f, object: `sha256:${(f.object as string).slice(7).toUpperCase()}` })],
+    ["its object's link in uppercase hex", (f) => ({ ...f, object: { $link: `sha256:${hello.link.slice(7).toUpperCase()}` } })],
+    ["its object's link as a bare string", (f) => ({ ...f, object: hello.link })],
     ["a field besides identity, object and signature", (f) => ({ ...f, role: "buyer" })],
     ["no signature", ({ signature: _, ...f }) => f],
-    ["an object that is not a link", (f) => ({ ...f, object: "hello" })],
+    ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     ["its identity written in place of the link to it", (f) => ({ ...f, identity: dataOf(identities.encode(signer("ed25519").identity)) })],
   ])("is refused with %s", async (_, change) => {
     const signature = await signatures.sign(hello, signer("ed25519"));
@@ -82,7 +83,7 @@ describe("a signature", () => {
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
-    ["written to another schema", (signature) => json.encode({ data: dataOf(signature), schema: note.link })],
+    ["written to another schema", (signature) => json.encode({ data: dataOf(signature), schema: { $link: note.link } })],
     ["with a field besides data and schema", (signature) => json.encode({ ...parsed(signature), role: "buyer" })],
     ["with its fields bare, outside data", (signature) => json.encode(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
@@ -104,8 +105,8 @@ describe("a signature", () => {
       expect(decodeObject(bytes, schema).link).toBe(signature.link);
     }
     const signature = await signatures.sign(hello, signer("ed25519"));
-    const unverified = rewritten(signature, { object: goodbye.link });
-    expect(decodeObject(unverified, schema).data).toMatchObject({ object: goodbye.link });
+    const unverified = rewritten(signature, { object: { $link: goodbye.link } });
+    expect(decodeObject(unverified, schema).data).toMatchObject({ object: { $link: goodbye.link } });
     expect(() => signatures.decode(unverified, identityOf(signature))).toThrow(/does not verify/);
   });
 });

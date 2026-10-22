@@ -10,12 +10,13 @@ against what those two provide, and has one pair of them: JSON with JCS,
 and JSON Schema. In that pair:
 
 ```
+Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
-Object     {"data": <any JSON value>, "schema": "sha256:<the Schema's link>"}
+Object     {"data": <any JSON value>, "schema": <the Schema's link>}
 Identity   an Object written to the identity schema, with the data
            {"publicKey": <hex>, "scheme": <scheme>}
 Signature  an Object written to the signature schema, with the data
-           {"identity": "sha256:<the Identity's link>", "object": "sha256:<the Object's link>", "signature": <hex>}
+           {"identity": <the Identity's link>, "object": <the Object's link>, "signature": <hex>}
 ```
 
 The encodings, objects, schemas and validators are the substrate that every
@@ -80,12 +81,20 @@ over it, and `defaultValidator` a validator of that language.
   they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
   or repeated, needless escapes, and numbers not written the shortest way
   (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
-  refuses lone surrogates, NaN and Infinity. There are no further rules on
-  the JSON.
+  refuses lone surrogates, NaN and Infinity. Apart from the rule on `$link`
+  below, there are no further rules on the JSON.
 - Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
   `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
   magnitude are exact in every language; write larger integers and decimal
   amounts as strings when they have to be exact.
+- A link is the JSON object `{"$link": "sha256:<hex>"}`, with no other
+  member. JSON has no type for a link, so this marks one wherever a value
+  names a blob, as tag 42 does in CBOR, and a string is a string whatever
+  it holds. Any other object with a `$link` member is refused, in writing
+  and in reading, whether it holds something other than a link or a member
+  beside it, so whatever has the mark of a link is one. That holds for
+  schemas as well, which are JSON too. In TypeScript a link in JSON data is
+  a `JsonLink<T>`, `{ $link: Link<T> }`.
 - An object is the JSON object `{"data": <data>, "schema": <link>}`, with no
   other member, and a schema is a JSON object naming its dialect in
   `$schema`, written as JSON is.
@@ -126,9 +135,11 @@ A schema holds all that its data is checked against. In JSON Schema a `$ref`
 reaches the schema's own parts and nothing elsewhere, so the link of a
 schema fixes what its objects may hold, and no one changes that later by
 changing what a URL names. Where the data holds a link, the schema writes
-out what a link looks like:
-`linkSchema` is `{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}`,
-to place there.
+out what a link looks like: `linkSchema`, to place there, takes an object
+whose one member is `$link`, a string matching `^sha256:[0-9a-f]{64}$`. It
+names the member through `propertyNames` rather than `properties`, since
+`{"properties": {"$link": …}}` would itself be an object with a `$link`
+member that is not a link.
 
 ## Validators
 
@@ -198,7 +209,7 @@ the writing together while the semantics is made; the semantics itself is a
 `Semantics<T, V>`, whatever the encoding.
 
 ```ts
-import { Semantics, type Link } from "@estoc/object";
+import { Semantics, type JsonLink, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
@@ -258,8 +269,8 @@ const replies: Semantics<Reply> = new Semantics([
   {
     schema: replySchema,
     read: (data, _, blobs) => {
-      const { to, text } = data as { to: Link<Note>; text: string };
-      return { to: notes.follow(to, blobs), text };
+      const { to, text } = data as { to: JsonLink<Note>; text: string };
+      return { to: notes.follow(to.$link, blobs), text };
     },
   },
 ]);

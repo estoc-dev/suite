@@ -46,7 +46,7 @@ const signed = async <T extends { readonly link: Link<unknown> }>(object: T, by:
 });
 // A proxy written without the checks that `proxy` makes, as anyone could write one.
 const unchecked = (chain: readonly AnySigned[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
-  signed(encodeObject(proxySchemaRead, { chain: chain.map(({ signature }) => signature.link), target: link }), by);
+  signed(encodeObject(proxySchemaRead, { chain: chain.map(({ signature }) => ({ $link: signature.link })), target: { $link: link } }), by);
 
 describe("a standing", () => {
   it("by a direct signature is its signer's own, through no agents and with no blob but its signer's identity", async () => {
@@ -92,7 +92,7 @@ describe("a proxy", () => {
 
   it("counts for no one when its chain holds a signature over another schema's object of the same shape", async () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
-    const delegation = await signed(encodeObject(lookalike, { agent: identityOf(hot).link }), root);
+    const delegation = await signed(encodeObject(lookalike, { agent: { $link: identityOf(hot).link } }), root);
     const proxy = await unchecked([delegation], hot);
     expect(() => readEntry(proxy, [delegation])).toThrow(/not read here/);
   });
@@ -104,7 +104,7 @@ describe("a proxy", () => {
   });
 
   it("counts for no one when its agent signs it only through another proxy", async () => {
-    const proxy = encodeObject(proxySchemaRead, { chain: [rootToHot.signature.link], target: target.link });
+    const proxy = encodeObject(proxySchemaRead, { chain: [{ $link: rootToHot.signature.link }], target: { $link: target.link } });
     const overProxy = await authorizations.proxy(proxy.link, [hotToDeputy], deputy);
     const given = [rootToHot, hotToDeputy];
     expect(readEntry(overProxy, given, now, proxy.link)).toEqual(way(hot, deputy));
@@ -133,7 +133,7 @@ describe("an authorization with an end", () => {
   };
   // Written as another application could write it, with its end in any form RFC 3339 allows.
   const writtenUntil = async (until: string) => {
-    const grant = await signed(encodeObject(authorizationSchemaRead, { agent: identityOf(hot).link, until }), root);
+    const grant = await signed(encodeObject(authorizationSchemaRead, { agent: { $link: identityOf(hot).link }, until }), root);
     return authorizations.readAuthorization(grant.signature.bytes, byLink([...identityBytes, grant.object.bytes]));
   };
 
@@ -158,8 +158,11 @@ describe("an authorization with an end", () => {
       [authorizationSchema, proxySchema].map((schema) => encodeSchema(schema, formatBlind)),
     );
     const blindReadThroughUntil = async (until: string) => {
-      const grant = await signed(encodeObject(blindAuthorization!, { agent: identityOf(hot).link, until }), root);
-      const proxy = await signed(encodeObject(blindProxy!, { chain: [grant.signature.link], target: target.link }), hot);
+      const grant = await signed(encodeObject(blindAuthorization!, { agent: { $link: identityOf(hot).link }, until }), root);
+      const proxy = await signed(
+        encodeObject(blindProxy!, { chain: [{ $link: grant.signature.link }], target: { $link: target.link } }),
+        hot,
+      );
       const blobs = byLink([...identityBytes, ...parts(grant), proxy.object.bytes]);
       return () => blind.readStanding(target.link, proxy.signature.bytes, blobs, now);
     };

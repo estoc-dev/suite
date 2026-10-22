@@ -1,4 +1,4 @@
-import { readBundle, unzipBundle, type Bundle } from "@estoc/bundle";
+import { readBundle, unzipBundle, type Bundle, type BundleIn, type Encodings } from "@estoc/bundle";
 import type { Encoding } from "@estoc/object";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
@@ -51,12 +51,12 @@ export class MailboxKey {
 
   /**
    * Opens sealed bytes to the bundle inside, whose root is read as
-   * `readBundle` reads it: in one of `encodings`, `defaultEncoding` unless
-   * given. Refuses bytes that do not open with this key, and what opens but
-   * is not the zip of such a bundle.
+   * `readBundle` reads it: in one of `encodings`, which may be of different
+   * data types, `defaultEncoding` unless given. Refuses bytes that do not
+   * open with this key, and what opens but is not the zip of such a bundle.
    */
   open(sealed: Uint8Array): Promise<Bundle>;
-  open<D>(sealed: Uint8Array, encodings: readonly Encoding<D>[]): Promise<Bundle<D>>;
+  open<Ds extends readonly unknown[]>(sealed: Uint8Array, encodings: Encodings<Ds>): Promise<BundleIn<Ds>>;
   async open<D>(sealed: Uint8Array, encodings?: readonly Encoding<D>[]): Promise<Bundle<D> | Bundle> {
     const { encSize } = suite.kem;
     let plaintext: ArrayBuffer;

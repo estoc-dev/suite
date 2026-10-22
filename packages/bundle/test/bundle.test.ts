@@ -9,16 +9,16 @@ import {
   linkOf,
   linkSchema,
   loadSignatures,
-  schemaOf,
   type Encoding,
   type Json,
   type JsonObject,
   type Link,
   type Schema,
+  type SchemaValidator,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { readBundle, writeBundle } from "../src/index.ts";
+import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
@@ -33,17 +33,35 @@ const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) 
   return json.encode({ data: change(data), schema });
 };
 
-// An encoding of the same data as `json` that writes an object as the pair
-// of its schema's link and its data, so that its objects are not JSON's.
-const pairs: Encoding<Json> = {
-  name: "pairs",
+// An encoding of another data type than `json`'s: lists of strings, written
+// as JSON arrays. An object is its schema's link followed by its data, so its
+// objects are not JSON's, and a schema says how many strings the data has.
+type Strings = readonly string[];
+const strings: Encoding<Strings> = {
+  name: "strings",
   encode: (value) => json.encode(value),
-  decode: (bytes) => json.decode(bytes),
-  object: (data, schema) => [schema, data],
-  fields(value) {
-    if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string") throw new Error("an object is a pair");
-    return { data: value[1]!, schema: value[0] as Link<Schema<Json>> };
+  decode(bytes) {
+    const value = json.decode(bytes);
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error("not a list of strings");
+    return value as Strings;
   },
+  object: (data, schema) => [schema, ...data],
+  fields([schema, ...data]) {
+    if (schema === undefined) throw new Error("an object is its schema's link followed by its data");
+    return { data, schema: schema as Link<Schema<Strings>> };
+  },
+};
+const count: SchemaValidator<number, Strings> = {
+  language: {
+    encoding: strings,
+    encode: (count) => json.encode(count),
+    decode(bytes) {
+      const count = json.decode(bytes);
+      if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) throw new Error("not a count");
+      return count;
+    },
+  },
+  compile: async (count) => (data) => (data.length === count ? [] : [`${data.length} strings, not ${count}`]),
 };
 
 const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" }, defaultValidator);
@@ -56,7 +74,8 @@ const hello = encodeObject(note, "hello");
 const signature = await signatures.sign(hello, alice);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, [signature.link, hello.link, linkOf(image)]);
-const paired = pairs.encode(pairs.object("hello", note.link));
+const pair = await encodeSchema(2, count);
+const greeting = encodeObject(pair, ["hello", "world"]);
 
 describe("a bundle", () => {
   it("is written as index.json and one file per blob named by its link, and reads back the same", () => {
@@ -86,31 +105,32 @@ describe("a bundle", () => {
     ["an index.json formatted by hand", () => filesOf(utf8(JSON.stringify({ data: "hello", schema: note.link }, null, 2)))],
     ["an index.json that is a schema", () => filesOf(note.bytes)],
     ["an index.json that is not JSON", () => filesOf(image)],
-    ["an index.json that is an object in another encoding", () => filesOf(paired)],
-    ["its root in an encoding it does not read", () => new Map([["index.pairs", paired]])],
+    ["an index.json that is an object in another encoding", () => filesOf(greeting.bytes)],
+    ["its root in an encoding it does not read", () => new Map([["index.strings", greeting.bytes]])],
     ["a blob that does not have the link its name says", () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]])],
   ])("is refused with %s", (_, files) => {
     expect(() => readBundle(files())).toThrow();
   });
 
   it("names its root by the encoding the root is in, and reads it in that encoding among those it is given", () => {
-    const files = writeBundle({ bytes: paired }, [hello.bytes], pairs);
-    expect([...files.keys()].sort()).toEqual([`blobs/sha256/${hexOf(hello.bytes)}`, "index.pairs"]);
-    const bundle = readBundle(files, [json, pairs]);
-    expect(bundle.encoding).toBe(pairs);
-    expect(bundle.link).toBe(linkOf(paired));
-    expect(schemaOf(bundle.root, bundle.encoding)).toBe(note.link);
+    const files = writeBundle(greeting, [hello.bytes], strings);
+    expect([...files.keys()].sort()).toEqual([`blobs/sha256/${hexOf(hello.bytes)}`, "index.strings"]);
+    const bundle: Bundle<Json> | Bundle<Strings> = readBundle(files, [json, strings]);
+    expect(bundle.encoding).toBe(strings);
+    expect(bundle.link).toBe(greeting.link);
+    expect(decodeObject(bundle.root, pair)).toEqual(greeting);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
+    expect(readBundle(writeBundle(hello, []), [json, strings]).encoding).toBe(json);
   });
 
   it("is refused with two roots, each in an encoding it reads", () => {
-    const files = new Map([...filesOf(root.bytes), ["index.pairs", paired]]);
-    expect(() => readBundle(files, [json, pairs])).toThrow(/one root/);
+    const files = new Map([...filesOf(root.bytes), ["index.strings", greeting.bytes]]);
+    expect(() => readBundle(files, [json, strings])).toThrow(/one root/);
   });
 
   it("is not written with a root that is not an object in the encoding it is said to be in", () => {
-    expect(() => writeBundle(hello, [], pairs)).toThrow(/not an object in pairs/);
-    expect(() => writeBundle({ bytes: paired }, [])).toThrow(/not an object in json/);
+    expect(() => writeBundle(hello, [], strings)).toThrow(/not an object in strings/);
+    expect(() => writeBundle(greeting, [])).toThrow(/not an object in json/);
   });
 
   it("is not written in an encoding whose name cannot name a root", () => {

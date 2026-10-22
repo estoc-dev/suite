@@ -58,14 +58,25 @@ export class Bundle<D = Json> {
 }
 
 /**
+ * An encoding for each data type in `Ds`. An encoding both reads and writes
+ * its data type, so encodings of different data types have no common type,
+ * and a list of them is typed member by member.
+ */
+export type Encodings<Ds extends readonly unknown[]> = { readonly [K in keyof Ds]: Encoding<Ds[K]> };
+
+/** A bundle whose root is in the encoding of one of the data types in `Ds`. */
+export type BundleIn<Ds extends readonly unknown[]> = { [K in keyof Ds]: Bundle<Ds[K]> }[number];
+
+/**
  * Reads a bundle from its files by path: a folder read into memory, or a zip
- * unpacked. Its root is read in one of `encodings`, `defaultEncoding` unless
- * given. Refuses it when it has no root or more than one, when the root is in
- * none of those encodings or is not an object in its encoding, or when a
- * blob does not have the link its name says.
+ * unpacked. Its root is read in one of `encodings`, which may be of different
+ * data types, `defaultEncoding` unless given. Refuses it when it has no root
+ * or more than one, when the root is in none of those encodings or is not an
+ * object in its encoding, or when a blob does not have the link its name
+ * says.
  */
 export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle;
-export function readBundle<D>(files: ReadonlyMap<string, Uint8Array>, encodings: readonly Encoding<D>[]): Bundle<D>;
+export function readBundle<Ds extends readonly unknown[]>(files: ReadonlyMap<string, Uint8Array>, encodings: Encodings<Ds>): BundleIn<Ds>;
 export function readBundle<D>(files: ReadonlyMap<string, Uint8Array>, encodings?: readonly Encoding<D>[]): Bundle<D> | Bundle {
   return encodings === undefined ? new Bundle(files, [defaultEncoding]) : new Bundle(files, encodings);
 }

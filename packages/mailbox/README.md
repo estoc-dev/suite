@@ -60,9 +60,9 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 bundle inside, reading its root in the encodings it is given as
 `readBundle` does, the default encoding unless given. It refuses bytes that
 do not open with its key, and what opens but is not the zip of such a
-bundle. It does not read who stands behind
-the root: the receiver does that, against the object it expects, with
-`signatures.decode` or `readStanding` and the bundle as the blobs.
+bundle. It does not read who stands behind the root: the receiver does
+that, against the object it expects, with `signatures.decode` or
+`readStanding` and the bundle as the blobs.
 
 ```ts
 const bundle = await key.open(sealed);

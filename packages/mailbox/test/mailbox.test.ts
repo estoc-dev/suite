@@ -1,5 +1,17 @@
+import type { Bundle } from "@estoc/bundle";
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, loadSignatures, type Json } from "@estoc/object";
+import {
+  decodeObject,
+  encodeObject,
+  encodeSchema,
+  json,
+  loadSignatures,
+  type Encoding,
+  type Json,
+  type Link,
+  type Schema,
+  type SchemaValidator,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -18,6 +30,38 @@ const note = await encodeSchema({ $schema: DRAFT, type: "string" }, defaultValid
 const hello = encodeObject(note, "hello, Bob");
 const signature = await signatures.sign(hello, alice);
 
+// An encoding of another data type than `json`'s: lists of strings, written
+// as JSON arrays. An object is its schema's link followed by its data, and a
+// schema says how many strings the data has.
+type Strings = readonly string[];
+const strings: Encoding<Strings> = {
+  name: "strings",
+  encode: (value) => json.encode(value),
+  decode(bytes) {
+    const value = json.decode(bytes);
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error("not a list of strings");
+    return value as Strings;
+  },
+  object: (data, schema) => [schema, ...data],
+  fields([schema, ...data]) {
+    if (schema === undefined) throw new Error("an object is its schema's link followed by its data");
+    return { data, schema: schema as Link<Schema<Strings>> };
+  },
+};
+const count: SchemaValidator<number, Strings> = {
+  language: {
+    encoding: strings,
+    encode: (count) => json.encode(count),
+    decode(bytes) {
+      const count = json.decode(bytes);
+      if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) throw new Error("not a count");
+      return count;
+    },
+  },
+  compile: async (count) => (data) => (data.length === count ? [] : [`${data.length} strings, not ${count}`]),
+};
+const greeting = encodeObject(await encodeSchema(2, count), ["hello", "Bob"]);
+
 describe("a mailbox", () => {
   it("carries a bundle to the queue it names, sealed so that its key opens it", async () => {
     const queue = network.queue();
@@ -30,6 +74,17 @@ describe("a mailbox", () => {
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
     expect(signatures.decode(bundle.root, bundle).identity).toEqual(identities.encode(alice.identity));
+  });
+
+  it("carries a bundle whose root is in another encoding, which its key opens among the encodings it is given", async () => {
+    const queue = network.queue();
+    await (await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options)).send(greeting, [hello.bytes], strings);
+    const [sealed] = queue.take();
+    const bundle: Bundle<Json> | Bundle<Strings> = await bob.open(sealed!, [json, strings]);
+    expect(bundle.encoding).toBe(strings);
+    expect(decodeObject(bundle.root, greeting.schema)).toEqual(greeting);
+    expect(bundle.get(hello.link)).toEqual(hello.bytes);
+    await expect(bob.open(sealed!)).rejects.toThrow(/not read here/);
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {

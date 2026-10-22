@@ -181,7 +181,7 @@ describe("a zipped bundle", () => {
     expect(await zipped("2031-03-08T23:59:59Z", "Pacific/Pago_Pago")).toEqual(zip);
   });
 
-  it("unzips only index.json and the blobs under blobs/sha256/", async () => {
+  it("unzips only the root and the blobs under blobs/sha256/", async () => {
     const zip = await zipBundle(
       new Map([
         ...files,

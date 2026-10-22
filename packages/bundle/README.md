@@ -33,12 +33,14 @@ Neither the bytes of an object nor its link say which encoding it is in,
 so the root's file name does: `index.` and the name of the encoding,
 `index.json` for JSON. It is what a reader goes by before it has read
 anything, so a bundle can reach a reader that did not know what it would
-hold. `readBundle` is given the encodings the reader reads, takes the one
-the file name gives, and hands it on as `bundle.encoding`. A reader that
-gives none reads `defaultEncoding` of `@estoc/object`, which is JSON, and so
-does a writer: `writeBundle(root, blobs)` writes `index.json`, and
-`writeBundle(root, blobs, encoding)` another. Only the root is labeled: the blobs it leads to are read by the semantics of the links that
-lead to them, as any blob is.
+hold. `readBundle` is given the encodings the reader reads, of one data
+type or of several, takes the one the file name gives, and hands it on as
+`bundle.encoding`. Given JSON and an encoding of a data type `D`, it gives a
+`Bundle<Json> | Bundle<D>`. A reader that gives none reads
+`defaultEncoding` of `@estoc/object`, which is JSON, and so does a writer:
+`writeBundle(root, blobs)` writes `index.json`, and `writeBundle(root,
+blobs, encoding)` another. Only the root is labeled: the blobs it leads to
+are read by the semantics of the links that lead to them, as any blob is.
 
 A bundle with no root or with two is refused, and so is one whose root is
 in an encoding the reader was not given, or is not an object in the
@@ -48,9 +50,9 @@ by hand, or one that holds a schema, makes the whole bundle refused.
 
 A signature is an object too, so it can be the root, with what it is over
 carried in the bundle. `writeBundle` takes the root in whatever type a
-semantics read it into, such as an `Authorization`, and writes its bytes, so the root is written as it was signed. It
-refuses a root that is not an object in that encoding, which no reader
-would take.
+semantics read it into, such as an `Authorization`, and writes its bytes,
+so the root is written as it was signed. It refuses a root that is not an
+object in that encoding, which no reader would take.
 
 The root is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is

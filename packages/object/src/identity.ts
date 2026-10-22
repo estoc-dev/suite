@@ -42,8 +42,8 @@ export interface IdentityObject extends Identity {
  * refused, though its object fits the schema. `encode` writes an identity as
  * its object.
  */
-export function identitySemantics(schema: Schema<Json>): Semantics<IdentityObject, Json, Identity> {
-  return new Semantics<IdentityObject, Json, Identity>(
+export function identitySemantics(schema: Schema<Json>): Semantics<IdentityObject, Identity> {
+  return new Semantics(
     [
       {
         schema,

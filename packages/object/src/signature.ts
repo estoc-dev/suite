@@ -58,7 +58,7 @@ export class Signatures extends Semantics<
   Json,
   { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
 > {
-  readonly identities: Semantics<IdentityObject, Json, Identity>;
+  readonly identities: Semantics<IdentityObject, Identity>;
 
   constructor(identity: Schema<Json>, signature: Schema<Json>) {
     const identities = identitySemantics(identity);

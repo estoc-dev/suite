@@ -188,10 +188,12 @@ say. A semantics that writes also holds a `Writing`: the schema it writes
 to, which is one of those it reads, and how a value becomes data of that
 schema. It reads objects of every schema it has a reading of, and writes to
 one, the schema the program writes now. The schemas it reads are all of one
-encoding, whose data is its second type argument.
+encoding, whose data type ties the readings and the writing together while
+the semantics is made; the semantics itself is a `Semantics<T, V>`, whatever
+the encoding.
 
 ```ts
-import { Semantics, type Json, type Link } from "@estoc/object";
+import { Semantics, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
@@ -200,7 +202,7 @@ interface Note {
 }
 
 // A note was first written as {"text"}, and is now written as {"body", "language"}.
-const notes = new Semantics<Note, Json, { readonly text: string; readonly language: string }>(
+const notes: Semantics<Note, { readonly text: string; readonly language: string }> = new Semantics(
   [
     { schema: noteSchema, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -247,7 +249,7 @@ interface Reply {
 }
 
 // A reply names the note it answers by link, and reads with that note.
-const replies = new Semantics<Reply, Json>([
+const replies: Semantics<Reply> = new Semantics([
   {
     schema: replySchema,
     read: (data, _, blobs) => {

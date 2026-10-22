@@ -68,7 +68,7 @@ describe("an encoding other than JSON", () => {
   });
 
   it("is read by a semantics of its own, which refuses a JSON object", () => {
-    const greetings = new Semantics<string, Lines, string>([{ schema: pair, read: ([greeting, name]) => `${greeting}, ${name}` }], {
+    const greetings: Semantics<string, string> = new Semantics([{ schema: pair, read: ([greeting, name]) => `${greeting}, ${name}` }], {
       schema: pair.link,
       write: (name) => ["hello", name],
     });

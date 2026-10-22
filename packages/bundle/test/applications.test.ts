@@ -48,7 +48,7 @@ const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" 
 // the same to a schema of its own, a contact, which reads as a card too.
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
-const cards = new Semantics<Card, Json>([
+const cards: Semantics<Card> = new Semantics([
   { schema: card, read: (data) => data as Card },
   {
     schema: contact,

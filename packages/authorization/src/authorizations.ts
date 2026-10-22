@@ -65,8 +65,8 @@ type ProxyData = { readonly target: Link<never>; readonly chain: readonly Link<S
  */
 export class Authorizations {
   readonly signatures: Signatures;
-  readonly #authorizations: Semantics<Authorization, Json, Pick<Authorization, "agent" | "until">>;
-  readonly #proxies: Semantics<Proxy, Json, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
+  readonly #authorizations: Semantics<Authorization, Pick<Authorization, "agent" | "until">>;
+  readonly #proxies: Semantics<Proxy, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
 
   constructor(signatures: Signatures, authorization: Schema<Json>, proxy: Schema<Json>) {
     this.signatures = signatures;

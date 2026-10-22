@@ -28,8 +28,8 @@ export function encodeObject<D>(schema: Schema<D>, data: D): EncodedObject<D> {
   return semanticsOf(schema).encode(data);
 }
 
-function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, D, D> {
-  return new Semantics<EncodedObject<D>, D, D>([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
+function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, D> {
+  return new Semantics([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
     schema: schema.link,
     write: (data) => data,
   });

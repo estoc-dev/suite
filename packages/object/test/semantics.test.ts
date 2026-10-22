@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeObject, encodeSchema, json, linkSchema, Semantics, type Json, type JsonObject, type Link } from "../src/index.ts";
+import { encodeObject, encodeSchema, json, linkSchema, Semantics, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -21,7 +21,7 @@ interface Note {
 }
 
 // Notes of both schemas read, and new notes are written to the later one.
-const notes = new Semantics<Note, Json, { readonly text: string; readonly language: string }>(
+const notes: Semantics<Note, { readonly text: string; readonly language: string }> = new Semantics(
   [
     { schema: first, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -102,7 +102,7 @@ interface Reply {
   readonly text: string;
 }
 
-const replies = new Semantics<Reply, Json>([
+const replies: Semantics<Reply> = new Semantics([
   {
     schema: replySchema,
     read: (data, _, blobs) => {

@@ -42,10 +42,29 @@ export interface Writing<V, D> {
  * readings and the writing are where objects become values of the program
  * and values become objects, and the only places that know the shape of the
  * data: an object written to an older schema, or to another application's,
- * reads as a `T` once there is a reading of that schema. The schemas it
- * reads are all of one encoding, the one its objects are read in.
+ * reads as a `T` once there is a reading of that schema.
  */
-export class Semantics<T, D, V = never> {
+export interface Semantics<T, V = never> {
+  /**
+   * Reads an object. `blobs` holds the blobs that its reading follows links
+   * to, and a reading that follows one not given there fails.
+   */
+  decode(bytes: Bytes<T>, blobs?: Blobs): T;
+  /**
+   * Reads the object that `link` names, from `blobs`. A blob given for the
+   * link that has another link is refused, as a wrong blob from a store
+   * would be.
+   */
+  follow(link: Link<T>, blobs: Blobs): T;
+  /**
+   * Writes `value` as an object by the writing, and reads the object as
+   * `decode` would, so a value that would not read is refused. `blobs` holds
+   * the blobs that its reading follows links to.
+   */
+  encode(value: V, blobs?: Blobs): T;
+}
+
+class SemanticsOf<T, D, V> implements Semantics<T, V> {
   readonly #encoding: Encoding<D>;
   readonly #readings: ReadonlyMap<Link<Schema<D>>, Reading<T, D>>;
   readonly #writing: Writing<V, D> | undefined;
@@ -68,19 +87,10 @@ export class Semantics<T, D, V = never> {
     this.#writing = writing;
   }
 
-  /**
-   * Reads an object. `blobs` holds the blobs that its reading follows links
-   * to, and a reading that follows one not given there fails.
-   */
   decode(bytes: Bytes<T>, blobs: Blobs = noBlobs): T {
     return this.#read(decodeBlob(this.#encoding, bytes), blobs);
   }
 
-  /**
-   * Reads the object that `link` names, from `blobs`. A blob given for the
-   * link that has another link is refused, as a wrong blob from a store
-   * would be.
-   */
   follow(link: Link<T>, blobs: Blobs): T {
     const bytes = blobs.get(link);
     if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
@@ -89,11 +99,6 @@ export class Semantics<T, D, V = never> {
     return this.#read(decoded, blobs);
   }
 
-  /**
-   * Writes `value` as an object by the writing, and reads the object as
-   * `decode` would, so a value that would not read is refused. `blobs` holds
-   * the blobs that its reading follows links to.
-   */
   encode(value: V, blobs: Blobs = noBlobs): T {
     if (this.#writing === undefined) throw new Error("the semantics writes nothing");
     const data = this.#writing.write(value);
@@ -109,3 +114,11 @@ export class Semantics<T, D, V = never> {
     return reading.read(data, { bytes, link }, blobs);
   }
 }
+
+/**
+ * Makes a semantics of its readings and its writing, whose schemas are all
+ * of one encoding. `D`, the data of that encoding, ties the readings and the
+ * writing together while the semantics is made, and is not part of its
+ * type: a program holds a `Semantics<T, V>`, whatever the encoding.
+ */
+export const Semantics: new <T, D, V = never>(readings: Iterable<Reading<T, D>>, writing?: Writing<V, D>) => Semantics<T, V> = SemanticsOf;

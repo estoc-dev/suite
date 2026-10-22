@@ -64,7 +64,7 @@ export interface Semantics<T, V = never> {
   encode(value: V, blobs?: Blobs): T;
 }
 
-class SemanticsOf<T, D, V> implements Semantics<T, V> {
+class SemanticsOf<D, T, V> implements Semantics<T, V> {
   readonly #encoding: Encoding<D>;
   readonly #readings: ReadonlyMap<Link<Schema<D>>, Reading<T, D>>;
   readonly #writing: Writing<V, D> | undefined;
@@ -121,4 +121,4 @@ class SemanticsOf<T, D, V> implements Semantics<T, V> {
  * writing together while the semantics is made, and is not part of its
  * type: a program holds a `Semantics<T, V>`, whatever the encoding.
  */
-export const Semantics: new <T, D, V = never>(readings: Iterable<Reading<T, D>>, writing?: Writing<V, D>) => Semantics<T, V> = SemanticsOf;
+export const Semantics: new <D, T, V = never>(readings: Iterable<Reading<T, D>>, writing?: Writing<V, D>) => Semantics<T, V> = SemanticsOf;

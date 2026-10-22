@@ -54,8 +54,8 @@ type SignatureData = { readonly identity: Link<IdentityObject>; readonly object:
  * not verify.
  */
 export class Signatures extends Semantics<
-  Signature,
   Json,
+  Signature,
   { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
 > {
   readonly identities: Semantics<IdentityObject, Identity>;

@@ -26,15 +26,23 @@ function isJsonLink(value: Json): value is JsonLink<never> {
   return names.length === 1 && names[0] === "$link" && isLink(value.$link);
 }
 
-function checkLinks(value: Json): void {
+function* linksIn(value: Json): Generator<Link<never>> {
   if (isJsonObject(value)) {
-    if (Object.hasOwn(value, "$link") && !isJsonLink(value)) {
-      throw new Error('an object with a $link member is a link, {"$link": "sha256:<hex>"}, and holds nothing else');
+    if (Object.hasOwn(value, "$link")) {
+      if (!isJsonLink(value)) {
+        throw new Error('an object with a $link member is a link, {"$link": "sha256:<hex>"}, and holds nothing else');
+      }
+      yield value.$link;
+    } else {
+      for (const member of Object.values(value)) yield* linksIn(member);
     }
-    for (const member of Object.values(value)) checkLinks(member);
   } else if (value !== null && typeof value === "object") {
-    for (const item of value) checkLinks(item);
+    for (const item of value) yield* linksIn(item);
   }
+}
+
+function checkLinks(value: Json): void {
+  for (const _ of linksIn(value));
 }
 
 // A decoder left to its defaults strips a leading byte order mark, and the
@@ -73,4 +81,5 @@ export const json: Encoding<Json> = {
     if (!isJsonLink(schema)) throw new Error("an object names its schema by link");
     return { data, schema: schema.$link };
   },
+  links: linksIn,
 };

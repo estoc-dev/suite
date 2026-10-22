@@ -8,7 +8,6 @@ import {
   Semantics,
   type Encoding,
   type Link,
-  type Schema,
   type SchemaValidator,
 } from "../src/index.ts";
 
@@ -20,6 +19,7 @@ type Lines = readonly string[];
 // Kept, a byte order mark is part of the first line, so that bytes with one
 // do not read as the same value as bytes without.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const isLink = (line: string): line is Link<never> => /^sha256:[0-9a-f]{64}$/.test(line);
 
 const lines: Encoding<Lines> = {
   encode(value) {
@@ -33,9 +33,10 @@ const lines: Encoding<Lines> = {
   },
   object: (data, schema) => [schema, ...data],
   fields([schema, ...data]) {
-    if (schema === undefined || !/^sha256:[0-9a-f]{64}$/.test(schema)) throw new Error("an object names its schema by link");
-    return { data, schema: schema as Link<Schema<Lines>> };
+    if (schema === undefined || !isLink(schema)) throw new Error("an object names its schema by link");
+    return { data, schema };
   },
+  links: (value) => value.filter(isLink),
 };
 
 // A schema says how many lines the data has.

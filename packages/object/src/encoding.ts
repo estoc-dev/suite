@@ -21,6 +21,14 @@ export interface Encoding<D> {
   object(data: D, schema: Link<Schema<D>>): D;
   /** The data and the schema link of a value that `object` gives; throws for any other value. */
   fields(value: D): { readonly data: D; readonly schema: Link<Schema<D>> };
+  /**
+   * The links in a value, an object's schema included, so that what a blob
+   * leads to can be gathered without reading it through a schema. It may
+   * give more than the readers of the value follow, but leaves none out: a
+   * reader checks each blob it follows, and a blob left out would be missing
+   * when it is followed.
+   */
+  links(value: D): Iterable<Link<unknown>>;
 }
 
 export interface Decoded<T> {

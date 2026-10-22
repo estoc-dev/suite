@@ -35,7 +35,9 @@ application can read the same objects without them.
   and it needs no schema, so that the schema an object names can be read
   before the schema is. The encoding also writes an object, its data and
   the link of its schema, as one value, and refuses any other value as an
-  object.
+  object. And it finds the links in a value, so that what a blob leads to
+  can be gathered without a schema to read it by, as a store gathers what
+  it carries along with an object.
 - A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
   data of one encoding, which it names. A schema is a blob of its own, with
   one way of being written and a link.
@@ -93,8 +95,10 @@ over it, and `defaultValidator` a validator of that language.
   it holds. Any other object with a `$link` member is refused, in writing
   and in reading, whether it holds something other than a link or a member
   beside it, so whatever has the mark of a link is one. That holds for
-  schemas as well, which are JSON too. In TypeScript a link in JSON data is
-  a `JsonLink<T>`, `{ $link: Link<T> }`.
+  schemas as well, which are JSON too. The links the encoding finds in a
+  value are the ones these objects hold, the schema an object names among
+  them, and no others. In TypeScript a link in JSON data is a
+  `JsonLink<T>`, `{ $link: Link<T> }`.
 - An object is the JSON object `{"data": <data>, "schema": <link>}`, with no
   other member, and a schema is a JSON object naming its dialect in
   `$schema`, written as JSON is.

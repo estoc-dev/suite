@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeObject, encodeSchema, linkOf } from "../src/index.ts";
+import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
 
 const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -93,4 +93,27 @@ test("any bytes, JSON or not, are linked by their SHA-256, as a decoded blob is"
   expect(linkOf(bytes)).toBe(`sha256:${createHash("sha256").update(bytes).digest("hex")}`);
   const object = encodeObject(anything, "hello");
   expect(linkOf(object.bytes)).toBe(object.link);
+});
+
+describe("the links in a JSON value", () => {
+  const a = linkOf(utf8("a"));
+  const b = linkOf(utf8("b"));
+
+  it("are the ones its $link objects hold, at any depth", () => {
+    const value = { list: [{ $link: a }, { nested: [{ $link: b }] }], again: { $link: b }, count: 1, none: null };
+    expect([...json.links(value)].sort()).toEqual([a, b, b].sort());
+  });
+
+  it("include the schema an object names", () => {
+    const object = encodeObject(anything, [{ $link: a }]);
+    expect([...json.links(json.decode(object.bytes))]).toEqual([a, anything.link]);
+  });
+
+  it("leave out a string that is a link as a whole, as a member or as a member's name", () => {
+    expect([...json.links([a, { [a]: "named by a link", text: a }])]).toEqual([]);
+  });
+
+  it("are refused at an object with a $link member that is not a link", () => {
+    expect(() => [...json.links([{ $link: a, note: "x" }])]).toThrow(/\$link/);
+  });
 });

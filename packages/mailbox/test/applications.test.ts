@@ -1,3 +1,4 @@
+import type { Bundle } from "@estoc/bundle";
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
   decodeObject,
@@ -6,7 +7,6 @@ import {
   linkOf,
   linkSchema,
   loadSignatures,
-  type Bytes,
   type EncodedObject,
   type IdentityObject,
   type Link,
@@ -14,37 +14,37 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MailboxKey, mailboxFrom, type Message } from "../src/index.ts";
+import { MailboxKey, mailboxFrom, type Mailbox } from "../src/index.ts";
 import { MemoryNetwork, type Faults } from "./memory-network.ts";
 
-// Applications that send signed objects through mailboxes. A message names
-// no sender, and anyone can pass on what someone else signed: a receiver
-// reads who stands behind what it holds, not who sent it. An application
-// that needs to know whom a message was meant for writes that into the
-// object it signs.
+// Applications that send signed objects through mailboxes, each as a bundle
+// whose root is the signature over it. A message names no sender, and
+// anyone can pass on what someone else signed: a receiver reads who stands
+// behind what it holds, not who sent it. An application that needs to know
+// whom a message was meant for writes that into the object it signs.
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const now = new Date("2026-10-20T12:00:00Z");
-const signed = async (object: EncodedObject, by: SoftwareSigner): Promise<Message> => {
+const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
   const signature = await signatures.sign(object, by);
-  return { entry: signature.bytes, blobs: [object.bytes, signature.identity.bytes] };
+  await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
+  return signature;
 };
 
-function readSigned({ entry, blobs }: Message, schema: Schema): { identity: IdentityObject; object: EncodedObject } {
-  const signature = signatures.decode(entry, new Map(blobs.map((bytes) => [linkOf(bytes), bytes])));
-  const object = blobs.find((bytes): bytes is Bytes<EncodedObject> => linkOf(bytes) === signature.object);
-  if (object === undefined) throw new Error(`no blob is given for ${signature.object}`);
-  return { identity: signature.identity, object: decodeObject(object, schema) };
+function readSigned(bundle: Bundle, schema: Schema) {
+  const signature = signatures.decode(bundle.root, bundle);
+  const object = bundle.get(signature.object);
+  if (object === undefined) throw new Error(`the bundle does not carry ${signature.object}`);
+  return { signature, identity: signature.identity, object: decodeObject(object, schema) };
 }
 
-async function receiver(network: MemoryNetwork, fill: number, until?: string) {
+async function receiver(network: MemoryNetwork, fill: number) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
-  return { mailbox: queue.mailbox(key.publicKey, until).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
+  return { mailbox: queue.mailbox(key.publicKey).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
 }
 
 const chat = await encodeSchema(
@@ -61,8 +61,8 @@ const chat = await encodeSchema(
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by the link of an identity object, whether that is the reader.
-function readChat(message: Message, reader: IdentityObject) {
-  const { identity, object } = readSigned(message, chat);
+function readChat(bundle: Bundle, reader: IdentityObject) {
+  const { identity, object } = readSigned(bundle, chat);
   const { text, to } = object.data as { text: string; to?: Link<IdentityObject> };
   return { author: identity, text, forReader: to === undefined ? undefined : to === reader.link };
 }
@@ -75,17 +75,21 @@ describe("a chat line", () => {
   const passOn = async (line: EncodedObject) => {
     const network = await MemoryNetwork.create(defaultValidator);
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
-    const sent = await signed(line, alice);
-    await (await mailboxFrom(atBob.mailbox, { transports: [network.transport] })).send(sent);
+    const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
     const [received] = await atBob.take();
-    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(received!);
+    // Bob passes on what he read: the signature, with the line and the identity it names.
+    const read = readSigned(received!, chat);
+    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
+      read.object.bytes,
+      read.identity.bytes,
+    ]);
     const [passed] = await atCarol.take();
     return { sent, received: received!, passed: passed! };
   };
 
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
-    expect(passed).toEqual(sent);
+    expect(passed.link).toBe(sent.link);
     expect(readChat(passed, identities.encode(carol.identity))).toEqual({
       author: identities.encode(alice.identity),
       text: "lunch at noon?",
@@ -113,25 +117,25 @@ const join = await encodeSchema(
 );
 
 // Nobody signs the mailbox of a one-time invitation: it is handed out on its
-// own, and has a short end. Answering it once is the inviter's own record,
-// so the inviter lets in the first who answers and no one after.
+// own. Answering it once is the inviter's own record, so the inviter lets in
+// the first who answers and no one after.
 describe("a one-time invitation", () => {
   const dave = signer("ed25519", 4);
   const erin = signer("solana-offchain", 5);
 
   const invite = async () => {
     const network = await MemoryNetwork.create(defaultValidator);
-    const inviter = await receiver(network, 14, "2026-10-20T13:00:00Z");
+    const inviter = await receiver(network, 14);
     const link = linkOf(inviter.mailbox);
-    const answer = async (guest: SoftwareSigner, at: Date) => {
-      const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport], clock: () => at });
-      await mailbox.send(await signed(encodeObject(join, { invitation: link }), guest));
+    const answer = async (guest: SoftwareSigner) => {
+      const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport] });
+      await sendSigned(mailbox, encodeObject(join, { invitation: link }), guest);
     };
     let used = false;
     const letIn = async () => {
       const admitted: IdentityObject[] = [];
-      for (const message of await inviter.take()) {
-        const { identity, object } = readSigned(message, join);
+      for (const bundle of await inviter.take()) {
+        const { identity, object } = readSigned(bundle, join);
         if (used || (object.data as { invitation: string }).invitation !== link) continue;
         used = true;
         admitted.push(identity);
@@ -143,16 +147,10 @@ describe("a one-time invitation", () => {
 
   it("lets in the first who answers at its mailbox and no one after", async () => {
     const { answer, letIn } = await invite();
-    await answer(dave, now);
-    await answer(erin, now);
+    await answer(dave);
+    await answer(erin);
     expect(await letIn()).toEqual([identities.encode(dave.identity)]);
-    await answer(erin, now);
-    expect(await letIn()).toEqual([]);
-  });
-
-  it("cannot be answered from its end on, by the guest's clock", async () => {
-    const { answer, letIn } = await invite();
-    await expect(answer(dave, new Date("2026-10-20T13:00:00Z"))).rejects.toThrow(/ended at/);
+    await answer(erin);
     expect(await letIn()).toEqual([]);
   });
 });
@@ -186,10 +184,10 @@ const sale = await encodeSchema(
 // it. Each party sends its own signature with the terms to the registry's
 // mailbox, and the registry reads all it has received, in whatever order
 // and as many times as it arrived.
-function salesInForce(received: readonly Message[]): Sale[] {
+function salesInForce(received: readonly Bundle[]): Sale[] {
   const signers = new Map<string, { terms: Sale; identities: IdentityObject[] }>();
-  for (const message of received) {
-    const { identity, object } = readSigned(message, sale);
+  for (const bundle of received) {
+    const { identity, object } = readSigned(bundle, sale);
     const record = signers.get(object.link) ?? { terms: object.data as Sale, identities: [] };
     record.identities.push(identity);
     signers.set(object.link, record);
@@ -215,7 +213,7 @@ describe("a sale sent to a registry", () => {
     const network = await MemoryNetwork.create(defaultValidator, faults);
     const registry = await receiver(network, 15);
     const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
-    return { send: async (party: SoftwareSigner) => mailbox.send(await signed(terms, party)), take: registry.take };
+    return { send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party), take: registry.take };
   };
 
   it("is in force when every message arrives twice, the latest first", async () => {

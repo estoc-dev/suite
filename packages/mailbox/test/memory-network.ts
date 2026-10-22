@@ -15,8 +15,8 @@ export interface Faults {
 /** A queue on a memory network, under a name the network made up. */
 export interface Queue {
   readonly name: string;
-  /** A mailbox at this queue, sealed to `key`, until `until` if given. */
-  mailbox(key: Uint8Array, until?: string): EncodedObject;
+  /** A mailbox at this queue, sealed to `key`. */
+  mailbox(key: Uint8Array): EncodedObject;
   /** The sealed messages that have arrived since the last take, which leave the queue. */
   take(): Uint8Array[];
 }
@@ -51,8 +51,7 @@ export class MemoryNetwork {
     this.#queues.set(name, arrived);
     return {
       name,
-      mailbox: (key, until) =>
-        encodeObject(this.#schema, until === undefined ? { key: hex.encode(key), name } : { key: hex.encode(key), name, until }),
+      mailbox: (key) => encodeObject(this.#schema, { key: hex.encode(key), name }),
       take: () => {
         const taken = arrived.splice(0);
         return this.#faults.reversed ? taken.reverse() : taken;

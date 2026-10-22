@@ -109,6 +109,13 @@ const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.ide
 const bundle = readBundle(await unzipBundle(zip));
 ```
 
+`zipBundle` compresses with DEFLATE unless it is given `compress: false`,
+and then stores the files as they are. A zip that is encrypted afterwards,
+as a message to a mailbox is, is better stored: how far DEFLATE shrinks a
+file depends on what it holds, so when someone else writes part of a
+bundle, the length of the ciphertext can tell them whether their part
+repeats something secret elsewhere in it.
+
 The entries start at the bundle's root: `index.json` is at the top of the
 zip, not in a folder. A zip with the bundle in a folder unzips to no
 `index.json`, and reading it is refused. Entries stored as they are or

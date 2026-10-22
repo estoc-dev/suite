@@ -15,7 +15,7 @@ const noBlobs: Blobs = { get: () => undefined };
  * semantics checks the data against `schema` first, so `read` sees only data
  * that fits it, and is left what the schema does not say.
  */
-export interface Reading<T, D> {
+export interface Reading<D, T> {
   readonly schema: Schema<D>;
   /**
    * Throws when the data does not read as a `T`. A reading that follows a
@@ -30,7 +30,7 @@ export interface Reading<T, D> {
  * schema it has a reading of, and writes to one of them, the one the program
  * writes now.
  */
-export interface Writing<V, D> {
+export interface Writing<D, V> {
   readonly schema: Link<Schema<D>>;
   write(value: V): D;
 }
@@ -66,12 +66,12 @@ export interface Semantics<T, V = never> {
 
 class SemanticsOf<D, T, V> implements Semantics<T, V> {
   readonly #encoding: Encoding<D>;
-  readonly #readings: ReadonlyMap<Link<Schema<D>>, Reading<T, D>>;
-  readonly #writing: Writing<V, D> | undefined;
+  readonly #readings: ReadonlyMap<Link<Schema<D>>, Reading<D, T>>;
+  readonly #writing: Writing<D, V> | undefined;
 
-  constructor(readings: Iterable<Reading<T, D>>, writing?: Writing<V, D>) {
+  constructor(readings: Iterable<Reading<D, T>>, writing?: Writing<D, V>) {
     let encoding: Encoding<D> | undefined;
-    const bySchema = new Map<Link<Schema<D>>, Reading<T, D>>();
+    const bySchema = new Map<Link<Schema<D>>, Reading<D, T>>();
     for (const reading of readings) {
       if (bySchema.has(reading.schema.link)) throw new Error(`two readings of ${reading.schema.link}`);
       encoding ??= reading.schema.encoding;
@@ -121,4 +121,4 @@ class SemanticsOf<D, T, V> implements Semantics<T, V> {
  * writing together while the semantics is made, and is not part of its
  * type: a program holds a `Semantics<T, V>`, whatever the encoding.
  */
-export const Semantics: new <D, T, V = never>(readings: Iterable<Reading<T, D>>, writing?: Writing<V, D>) => Semantics<T, V> = SemanticsOf;
+export const Semantics: new <D, T, V = never>(readings: Iterable<Reading<D, T>>, writing?: Writing<D, V>) => Semantics<T, V> = SemanticsOf;

@@ -2,7 +2,7 @@ import { publicKeyLengths, type Identity, type Scheme } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { HEX, type Bytes, type Link } from "./encoding.ts";
 import { DRAFT_2020_12, type JsonSchema, type Schema } from "./schema.ts";
-import { View } from "./view.ts";
+import { Semantics } from "./semantics.ts";
 
 /**
  * The schema every identity is written to. It holds the shape of an
@@ -40,8 +40,8 @@ export interface IdentityObject extends Identity {
  * refused, though its object fits the schema. `encode` writes an identity as
  * its object.
  */
-export function identityView(schema: Schema): View<IdentityObject, Identity> {
-  return new View<IdentityObject, Identity>(
+export function identitySemantics(schema: Schema): Semantics<IdentityObject, Identity> {
+  return new Semantics<IdentityObject, Identity>(
     [
       {
         schema,

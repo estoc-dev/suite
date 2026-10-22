@@ -15,9 +15,9 @@ Signature  an Object written to the signature schema, with the data
 ```
 
 The encoding, objects, schemas and validators are the substrate that every
-application shares. Views are how a program reads objects as values of its
-own types. Identities and signatures are two views, kept in this package
-because the packages built on it sign and name identities; another
+application shares. Semantics are how a program reads objects as values of
+its own types. The semantics of identities and signatures are kept in this
+package because the packages built on it sign and name identities; another
 application can read the same objects without them.
 
 ## Encoding
@@ -130,23 +130,23 @@ the strings they test have been reviewed to keep validation cheap. A viewer
 of arbitrary objects, which also runs schemas someone else wrote, needs the
 worker in any case.
 
-## Views
+## Semantics
 
 `decodeObject` leaves the data as JSON. An object is data: anyone can write
 one to any schema, and nothing about it belongs to the program that reads
-it. A program has types of its own, and a `View` is where objects from
-outside become values of them, and values of them become objects. It holds
-one `Reading` for each schema it takes, and reads an object by the reading
-of the schema the object is written to; an object of any other schema is
-refused. A reading holds its schema compiled, and the view checks the data
-against it before the reading turns it into the program's value, so the
-reading is left what the schema does not say. A view that writes also holds
-a `Writing`: the schema it writes to, which is one of those it reads, and
-how a value becomes data of that schema. It reads objects of every schema
+it. A program has types of its own, and a `Semantics` is where objects
+from outside become values of them, and values of them become objects. It
+holds one `Reading` for each schema it takes, and reads an object by the
+reading of the schema the object is written to; an object of any other
+schema is refused. A reading holds its schema compiled, and the semantics
+checks the data against it before the reading turns it into the program's
+value, so the reading is left what the schema does not say. A semantics
+that writes also holds a `Writing`: the schema it writes to, which is one
+of those it reads, and how a value becomes data of that schema. It reads objects of every schema
 it has a reading of, and writes to one, the schema the program writes now.
 
 ```ts
-import { View, type Link } from "@estoc/object";
+import { Semantics, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
@@ -155,7 +155,7 @@ interface Note {
 }
 
 // A note was first written as {"text"}, and is now written as {"body", "language"}.
-const notes = new View<Note, { readonly text: string; readonly language: string }>(
+const notes = new Semantics<Note, { readonly text: string; readonly language: string }>(
   [
     { schema: noteSchema, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -173,15 +173,15 @@ const written = notes.encode({ text: "hello", language: "en" });
 ```
 
 `encode` writes a value by the writing and reads the object back as
-`decode` would, so a value that would not read is refused, and what a view
-writes, it reads. A view without a writing writes nothing.
+`decode` would, so a value that would not read is refused, and what a
+semantics writes, it reads. A semantics without a writing writes nothing.
 
-A view with a single reading still draws the line: the shape of the data is
-known in the view and nowhere else, and the rest of the program sees only
-its own type. A newer schema of the program's own, an older one, and
-another application's are alike to a view, each one more reading. Which
-schemas stand for a note is the reader's to say, in its view, and not
-anything an object or a schema says of itself.
+A semantics with a single reading still draws the line: the shape of the
+data is known in the semantics and nowhere else, and the rest of the
+program sees only its own type. A newer schema of the program's own, an
+older one, and another application's are alike to a semantics, each one
+more reading. Which schemas stand for a note is the reader's to say, in its
+semantics, and not anything an object or a schema says of itself.
 
 A reading turns an object into a value and does not write it again, so a
 value can keep the link of the object it was read from, and the signatures
@@ -192,7 +192,7 @@ signed.
 A reading can follow the links in its data to the objects they name. It
 gets the blobs that were given to `decode`, anything with `get(link)` such
 as a `Map`, a bundle or a store, and reads a linked object with `follow` on
-the view of that object, which refuses a blob whose bytes have another
+the semantics of that object, which refuses a blob whose bytes have another
 link. A reading that follows a link fails without its blob.
 
 ```ts
@@ -202,7 +202,7 @@ interface Reply {
 }
 
 // A reply names the note it answers by link, and reads with that note.
-const replies = new View<Reply>([
+const replies = new Semantics<Reply>([
   {
     schema: replySchema,
     read: (data, _, blobs) => {
@@ -228,7 +228,7 @@ in each, is for whoever reads identities. An identity in a scheme added
 later is written to the same schema, so identities already written keep
 their links.
 
-`identities` is the view this package reads and writes them with, and comes
+`identities` is the semantics this package reads and writes them with, and comes
 with the signatures below. It takes the schemes that `@estoc/identity`
 knows, with the key at its scheme's length, so that each identity has one
 object and one link, and it refuses an identity in any other scheme, though
@@ -249,21 +249,21 @@ A signature is itself an object, written to `signatureSchema`, so a format
 that holds an object can hold a signature. It names its identity and the
 object it is over by their links, and the signature is in lowercase hex.
 `loadSignatures` compiles the identity and signature schemas with the
-validator the application picks, as any schema is, and gives the view this
-package reads and writes signatures with, which holds `identities` and
+validator the application picks, as any schema is, and gives the semantics
+this package reads and writes signatures with, which holds `identities` and
 `sign`. Reading a signature checks its data against the signature schema,
 reads its identity through `identities`, which checks the identity's object
 against the identity schema, and verifies the signature. So reading a
 signature takes the blob of its identity's object, but not that of the
-object signed, since the digest it signs is in the link. Reading a
-signature with `decodeObject` and the signature schema, as a viewer of
-arbitrary objects would, reads its fields without verifying it. `sign`
-signs the link of an object, so it takes anything that has one, such as a
-value read through a view. The signature it gives has the signer's identity
-object as `identity`, whose bytes go along with the signature. It writes the
-identity and the signature through their views before and after the signer
-signs, so a signer is not asked for a signature that would not read, and a
-signer whose signature does not verify is refused.
+object signed, since the digest it signs is in the link. Reading a signature
+with `decodeObject` and the signature schema, as a viewer of arbitrary
+objects would, reads its fields without verifying it. `sign` signs the link
+of an object, so it takes anything that has one, such as a value read
+through a semantics. The signature it gives has the signer's identity object
+as `identity`, whose bytes go along with the signature. It writes the
+identity and the signature through their semantics before and after the
+signer signs, so a signer is not asked for a signature that would not read,
+and a signer whose signature does not verify is refused.
 
 A server that handed out a nonce can build the login object itself and take
 back only the signature, with the identity's object:

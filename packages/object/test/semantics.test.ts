@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeJson, encodeObject, encodeSchema, linkSchema, View, type JsonObject, type Link } from "../src/index.ts";
+import { encodeJson, encodeObject, encodeSchema, linkSchema, Semantics, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -21,7 +21,7 @@ interface Note {
 }
 
 // Notes of both schemas read, and new notes are written to the later one.
-const notes = new View<Note, { readonly text: string; readonly language: string }>(
+const notes = new Semantics<Note, { readonly text: string; readonly language: string }>(
   [
     { schema: first, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -38,7 +38,7 @@ const notes = new View<Note, { readonly text: string; readonly language: string 
 // Bytes that come from elsewhere carry no label.
 const received = (bytes: Uint8Array): Uint8Array => bytes;
 
-describe("a view", () => {
+describe("a semantics", () => {
   it("reads an object of each schema it has a reading of as the same type", () => {
     expect(notes.decode(received(encodeObject(first, { text: "hello" }).bytes)).text).toBe("hello");
     expect(notes.decode(received(encodeObject(second, { body: "hello", language: "en" }).bytes)).text).toBe("hello");
@@ -56,22 +56,22 @@ describe("a view", () => {
 
   it("refuses an object whose data does not fit its schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    expect(() => new View([{ schema: first, read }]).decode(encodeJson({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
+    expect(() => new Semantics([{ schema: first, read }]).decode(encodeJson({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
   });
 
   it("refuses two readings of one schema", () => {
-    expect(() => new View([{ schema: first, read: () => 1 }, { schema: first, read: () => 2 }])).toThrow(/two readings/);
+    expect(() => new Semantics([{ schema: first, read: () => 1 }, { schema: first, read: () => 2 }])).toThrow(/two readings/);
   });
 
   it("writes nothing without a writing", () => {
-    const readOnly = new View([{ schema: first, read: () => 1 }]);
+    const readOnly = new Semantics([{ schema: first, read: () => 1 }]);
     // @ts-expect-error: refused at compile time too
     expect(() => readOnly.encode(1)).toThrow(/writes nothing/);
   });
 });
 
-describe("a view that writes", () => {
+describe("a semantics that writes", () => {
   it("writes a value to the schema of its writing, as an object that reads back as the same value", () => {
     const note = notes.encode({ text: "hello", language: "en" });
     expect(note.link).toBe(encodeObject(second, { body: "hello", language: "en" }).link);
@@ -80,13 +80,13 @@ describe("a view that writes", () => {
 
   it("refuses a value whose data does not fit that schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    const misnamed = new View([{ schema: first, read }], { schema: first.link, write: (text: string) => ({ body: text }) });
+    const misnamed = new Semantics([{ schema: first, read }], { schema: first.link, write: (text: string) => ({ body: text }) });
     expect(() => misnamed.encode("hello")).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
   });
 
   it("refuses a writing to a schema it has no reading of", () => {
-    expect(() => new View([{ schema: first, read: () => 1 }], { schema: second.link, write: () => null })).toThrow(/does not read/);
+    expect(() => new Semantics([{ schema: first, read: () => 1 }], { schema: second.link, write: () => null })).toThrow(/does not read/);
   });
 });
 
@@ -98,7 +98,7 @@ interface Reply {
   readonly text: string;
 }
 
-const replies = new View<Reply>([
+const replies = new Semantics<Reply>([
   {
     schema: replySchema,
     read: (data, _, blobs) => {
@@ -108,7 +108,7 @@ const replies = new View<Reply>([
   },
 ]);
 
-describe("a view whose reading follows a link", () => {
+describe("a semantics whose reading follows a link", () => {
   const note = encodeObject(first, { text: "lunch?" });
   const other = encodeObject(first, { text: "dinner?" });
   const reply = encodeObject(replySchema, { to: note.link, text: "yes" });

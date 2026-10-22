@@ -6,7 +6,7 @@ import {
   encodeSchema,
   linkSchema,
   loadSignatures,
-  View,
+  Semantics,
   type EncodedObject,
   type JsonObject,
   type Link,
@@ -47,7 +47,7 @@ const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" 
 // the same to a schema of its own, a contact, which reads as a card too.
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
-const cards = new View<Card>([
+const cards = new Semantics<Card>([
   { schema: card, read: (data) => data as Card },
   {
     schema: contact,

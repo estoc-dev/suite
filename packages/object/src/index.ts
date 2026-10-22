@@ -3,4 +3,4 @@ export { identitySchema, type IdentityObject } from "./identity.ts";
 export { decodeObject, encodeObject, schemaOf, type EncodedObject } from "./object.ts";
 export { decodeSchema, encodeSchema, linkSchema, type Check, type JsonSchema, type Schema, type SchemaValidator } from "./schema.ts";
 export { loadSignatures, signatureSchema, type Signature, type Signatures } from "./signature.ts";
-export { View, type Blobs, type Reading, type Writing } from "./view.ts";
+export { Semantics, type Blobs, type Reading, type Writing } from "./semantics.ts";

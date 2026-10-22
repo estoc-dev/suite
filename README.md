@@ -5,7 +5,7 @@ device, data lives on the device, and documents are signed and verified
 there with no network. Reaching other people is a layer added on top:
 DIDComm is one transport that can attach later, not the shape of the core.
 
-## Data and views
+## Data and semantics
 
 Estoc does not own the data it reads. An object is a JSON value written to
 a JSON Schema and named by the hash of its bytes. Anyone can write one, to
@@ -20,17 +20,20 @@ The packages fall on the two sides of that line.
   how blobs travel together: the encoding, objects, schemas and validators
   of `@estoc/object`, and `@estoc/bundle`. Like JSON or zip, it has to be
   shared, and it gives no meaning and no reader an advantage.
-- Views are everything that carries meaning: identities, signatures,
+- Semantics are everything that carries meaning: identities, signatures,
   authorizations, mailboxes. Estoc writes them, and they do nothing that a
-  view written elsewhere could not.
+  semantics written elsewhere could not.
+
+A semantics is code, and Estoc at heart is a set of semantics that a
+computer can run.
 
 A program has types of its own, such as `Signature` or `Authorization`, and
-reads objects into each through a `View`, which holds one reading for each
-schema it takes and checks each object against its schema before the
-reading sees it. A view that writes holds a writing as well, for the one
-schema the program writes its values to now.
+reads objects into each through a `Semantics`, which holds one reading for
+each schema it takes and checks each object against its schema before the
+reading sees it. A semantics that writes holds a writing as well, for the
+one schema the program writes its values to now.
 
-- A view goes with its type. There is no registry from every schema to
+- A semantics goes with its type. There is no registry from every schema to
   whatever reads it: a reader knows what it expects, and picking a type by
   a registry would be guessing.
 - Each schema reads straight into the current type, with no chain from one
@@ -40,20 +43,20 @@ schema the program writes its values to now.
   was read from, so the signatures over that object still apply to it. Read
   and written to another schema, the same content would be a new object that
   no one has signed.
-- Which schemas stand for a type is the reader's to say, in its view, and
-  not anything a schema says of itself.
+- Which schemas stand for a type is the reader's to say, in its semantics,
+  and not anything a schema says of itself.
 
 A schema is named by its link, so a schema that changes is another schema.
 A program's own newer schema, its older one and another application's are
-then alike: each is one more reading in a view. Keeping up with one's own
+then alike: each is one more reading in a semantics. Keeping up with one's own
 past and reading another application's objects are the same work.
 
 ## Packages
 
 - `@estoc/identity`: identities in their schemes, and signing and
   verifying with them. It knows keys, not JSON.
-- `@estoc/object`: the encoding, objects, schemas, validators and views,
-  and the views of identities and signatures.
+- `@estoc/object`: the encoding, objects, schemas, validators and
+  semantics, and the semantics of identities and signatures.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in.

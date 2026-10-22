@@ -16,11 +16,14 @@ A store holds two things.
 - **What was written here**: the links of the objects the user wrote. It is
   the one thing in a store that is not a blob.
 
+And it holds every blob that a blob it holds leads to.
+
 ```ts
 import { json } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
+await store.write({ blobs: schemas });          // the schemas the program writes to
 const note = notes.encode("hello");
 const signature = await signatures.sign(note, signer);
 await store.write({ mine: [note, signature], blobs: [signature.identity.bytes] });
@@ -53,8 +56,21 @@ A write puts in a batch: objects written as the user's, under `mine`, and
 the blobs that go with them, under `blobs`. Each is copied and hashed as it
 comes in, so the store keeps blobs under the links it computed. What is
 written as mine has to be an object of the store's encoding, or the whole
-batch is refused. Blobs go in before the links that list them, so a write
-cut short leaves at worst blobs that nothing lists.
+batch is refused.
+
+A batch is refused whole, too, when a blob in it leads to one that neither
+the batch nor the store holds: the schema of an object, or a blob its data
+links to. So a program writes the schemas it writes to before its objects,
+and a bundle is taken in only with all that its objects lead to, apart from
+what the receiver holds already. A blob leads to the links that its
+encoding finds in it, so with JSON a string that is a link as a whole has to
+be held, whether or not a reader follows it. Data that names a blob without
+carrying it, such as a commitment to a hash, writes the hash in another
+form.
+
+Each blob goes in after the blobs it leads to, and before the links that
+list it, so a write cut short leaves at worst blobs that nothing lists,
+each with all it leads to.
 
 There is no transaction that reads and then writes. Two devices that each
 check that something is missing before writing it will both write it, and
@@ -64,11 +80,10 @@ written so that every device writes the same object, with the same link.
 ## Reading
 
 `closure(link)` gathers the blob that `link` names and every blob it leads
-to that the store holds. A blob leads to the links its encoding finds in it,
-the schema of an object among them, so an object leads to its schema when
-the store holds that. A blob of another encoding, such as an image, leads
-nowhere, and a blob the store does not hold is left out with whatever it
-would lead to. The closure of an object is what a bundle carrying it holds:
+to, all of which the store holds. A blob of the store's encoding leads to
+the links that the encoding finds in it, the schema of an object among
+them, and a blob of another encoding, such as an image, leads nowhere. The
+closure of an object is what a bundle carrying it holds:
 
 ```ts
 const files = writeBundle(signature, (await store.closure(signature.link)).values());

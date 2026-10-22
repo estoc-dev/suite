@@ -1,6 +1,17 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
 import { sameIdentity, SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, json, linkSchema, loadSignatures, Semantics, type Bytes, type JsonObject, type Link } from "@estoc/object";
+import {
+  encodeSchema,
+  identitySchema,
+  json,
+  linkSchema,
+  loadSignatures,
+  Semantics,
+  signatureSchema,
+  type Bytes,
+  type JsonObject,
+  type Link,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MemoryBackend, Store } from "../src/index.ts";
@@ -41,7 +52,25 @@ const contacts: Semantics<Contact, string> = new Semantics(
   { schema: contactSchema.link, write: (name) => ({ name }) },
 );
 
-const newStore = () => new Store(json, new MemoryBackend());
+// Both people run one application, whose store holds its schemas before
+// anything is written to it.
+const schemas = [
+  noteSchema,
+  receivedSchema,
+  contactSchema,
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
+];
+async function newStore(): Promise<Store> {
+  const store = new Store(json, new MemoryBackend());
+  await store.write({ blobs: schemas.map(({ bytes }) => bytes) });
+  return store;
+}
+
+async function listed(store: Store): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.mine()) links.push(link);
+  return links;
+}
 
 // Until a store has indexes, a reader goes through all that is listed and
 // keeps what reads as its type.
@@ -65,17 +94,15 @@ async function receive(store: Store, files: ReadonlyMap<string, Uint8Array>): Pr
 
 describe("a signed note", () => {
   it("travels as a bundle of its closure, and is read where it arrives through the record of receiving it", async () => {
-    const aliceStore = newStore();
+    const aliceStore = await newStore();
     const note = notes.encode("hello");
     const signature = await signatures.sign(note, alice);
     await aliceStore.write({ mine: [note, signature], blobs: [signature.identity.bytes] });
     const files = writeBundle(signature, (await aliceStore.closure(signature.link)).values());
 
-    const bobStore = newStore();
+    const bobStore = await newStore();
     const received = await receive(bobStore, files);
-    const listed: Link<unknown>[] = [];
-    for await (const link of bobStore.mine()) listed.push(link);
-    expect(listed).toEqual([received.link]);
+    expect(await listed(bobStore)).toEqual([received.link]);
 
     const [record] = await readListed(bobStore, receipts);
     const signed = await bobStore.read(signatures, record!.bundle);
@@ -84,9 +111,21 @@ describe("a signed note", () => {
   });
 });
 
+describe("a bundle that leaves out a blob its objects lead to", () => {
+  it("is refused, with the record of receiving it", async () => {
+    const bobStore = await newStore();
+    const note = notes.encode("hi Bob");
+    const signature = await signatures.sign(note, alice);
+    const files = writeBundle(signature, [signature.identity.bytes]);
+    await expect(receive(bobStore, files)).rejects.toThrow(`${signature.link} leads to ${note.link}`);
+    expect(await bobStore.get(signature.link)).toBeUndefined();
+    expect(await listed(bobStore)).toEqual([]);
+  });
+});
+
 describe("an object slipped into a bundle", () => {
   it("is not listed among the receiver's own, though it is of a schema the receiver writes", async () => {
-    const bobStore = newStore();
+    const bobStore = await newStore();
     await bobStore.write({ mine: [contacts.encode("Alice")] });
 
     const note = notes.encode("hi Bob");

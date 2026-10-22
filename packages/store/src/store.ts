@@ -8,11 +8,14 @@ import { linkOf, schemaOf, type Bytes, type Encoding, type Link, type Semantics 
 export interface Backend {
   /** The bytes put under `link`, or `undefined` when none were. */
   get(link: Link<unknown>): Promise<Uint8Array | undefined>;
+  /** Whether bytes were put under `link`. */
+  has(link: Link<unknown>): Promise<boolean>;
   /**
-   * Puts each blob under its link, and then adds `mine` to the list of what
-   * was written. A link is listed only once its blob is in, so a write cut
-   * short leaves blobs that nothing lists rather than a listed link with no
-   * blob.
+   * Puts each blob under its link, one after another in the order given,
+   * and then adds `mine` to the list of what was written. The store gives
+   * each blob after the blobs it leads to, and a link is listed only once
+   * its blob is in, so a write cut short leaves no blob without what it
+   * leads to and no listed link without its blob.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void>;
   /** The links listed by `put`, each once. */
@@ -39,7 +42,8 @@ export interface Batch {
  * kept by link, whoever wrote them, and got by link; they are not listed.
  * What is listed is what the user wrote, and anything else is reached by
  * following links from it, so an object that someone else slipped into a
- * bundle is read only as part of what it came with.
+ * bundle is read only as part of what it came with. A store holds every
+ * blob that a blob it holds leads to.
  */
 export interface Store {
   /** A blob by its link, written to the store as mine or not. */
@@ -49,17 +53,18 @@ export interface Store {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
    * Puts a batch in. Refuses the whole batch when something written as mine
-   * is not an object of the store's encoding.
+   * is not an object of the store's encoding, or when a blob in it leads to
+   * one that neither the batch nor the store holds: the schema of an object,
+   * or any other link in it.
    */
   write(batch: Batch): Promise<void>;
   /** The links of the objects written as mine, each once, in no particular order. */
   mine(): AsyncIterable<Link<never>>;
   /**
-   * The blob that `link` names and the blobs it leads to, as far as the store
-   * holds them: a blob of the store's encoding leads to the links that the
-   * encoding finds in it, the schema of an object included, and any other
-   * blob, such as an image, leads nowhere. A blob the store does not hold is
-   * left out, and so is what it would lead to.
+   * The blob that `link` names and every blob it leads to, or nothing when
+   * the store does not hold it. A blob of the store's encoding leads to the
+   * links that the encoding finds in it, the schema of an object included,
+   * and any other blob, such as an image, leads nowhere.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
   /** Reads the object that `link` names through `semantics`, with its closure as the blobs. */
@@ -84,10 +89,10 @@ class StoreOf<D> implements Store {
   async write({ mine = [], blobs = [] }: Batch): Promise<void> {
     // Each blob is copied before it is hashed, so that what is kept is what
     // was hashed, whatever happens to the given arrays afterwards.
-    const put = new Map<Link<unknown>, Uint8Array>();
+    const given = new Map<Link<unknown>, Uint8Array>();
     for (const blob of blobs) {
       const owned = new Uint8Array(blob);
-      put.set(linkOf(owned), owned);
+      given.set(linkOf(owned), owned);
     }
     const written: Link<never>[] = [];
     for (const { bytes } of mine) {
@@ -98,10 +103,10 @@ class StoreOf<D> implements Store {
       } catch (cause) {
         throw new Error(`${link} is written as mine but is not an object`, { cause });
       }
-      put.set(link, owned);
+      given.set(link, owned);
       written.push(link);
     }
-    await this.#backend.put(put, written);
+    await this.#backend.put(await this.#leavesFirst(given), written);
   }
 
   mine(): AsyncIterable<Link<never>> {
@@ -127,6 +132,42 @@ class StoreOf<D> implements Store {
 
   async read<T>(semantics: Semantics<T>, link: Link<T>): Promise<T> {
     return semantics.follow(link, await this.closure(link));
+  }
+
+  /**
+   * The blobs given, each after the given blobs it leads to. Throws when one
+   * leads to a blob that is neither given nor held. A held blob comes with
+   * all it leads to, so what it leads to is not looked at again.
+   */
+  async #leavesFirst(given: ReadonlyMap<Link<unknown>, Uint8Array>): Promise<Map<Link<unknown>, Uint8Array>> {
+    const ordered = new Map<Link<unknown>, Uint8Array>();
+    const held = new Set<Link<unknown>>();
+    const frame = (link: Link<unknown>, bytes: Uint8Array) => ({ link, bytes, links: this.#linksIn(bytes)[Symbol.iterator]() });
+    for (const [start, bytes] of given) {
+      if (ordered.has(start)) continue;
+      // A link is a hash of its blob, so no blob leads back to one on the path.
+      const path = [frame(start, bytes)];
+      while (path.length > 0) {
+        const top = path.at(-1)!;
+        const next = top.links.next();
+        if (next.done) {
+          ordered.set(top.link, top.bytes);
+          path.pop();
+          continue;
+        }
+        const linked = next.value;
+        if (ordered.has(linked) || held.has(linked)) continue;
+        const linkedBytes = given.get(linked);
+        if (linkedBytes !== undefined) {
+          path.push(frame(linked, linkedBytes));
+        } else if (await this.#backend.has(linked)) {
+          held.add(linked);
+        } else {
+          throw new Error(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
+        }
+      }
+    }
+    return ordered;
   }
 
   #linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {

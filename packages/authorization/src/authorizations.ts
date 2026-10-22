@@ -2,7 +2,7 @@ import { sameIdentity, type Identity, type Signer } from "@estoc/identity";
 import {
   encodeSchema,
   loadSignatures,
-  View,
+  Semantics,
   type Blobs,
   type Bytes,
   type IdentityObject,
@@ -64,12 +64,12 @@ type ProxyData = { readonly target: Link<never>; readonly chain: readonly Link<S
  */
 export class Authorizations {
   readonly signatures: Signatures;
-  readonly #authorizations: View<Authorization, Pick<Authorization, "agent" | "until">>;
-  readonly #proxies: View<Proxy, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
+  readonly #authorizations: Semantics<Authorization, Pick<Authorization, "agent" | "until">>;
+  readonly #proxies: Semantics<Proxy, { readonly target: Link<unknown>; readonly chain: readonly Link<Signature>[] }>;
 
   constructor(signatures: Signatures, authorization: Schema, proxy: Schema) {
     this.signatures = signatures;
-    this.#authorizations = new View(
+    this.#authorizations = new Semantics(
       [
         {
           schema: authorization,
@@ -88,7 +88,7 @@ export class Authorizations {
         write: ({ agent, until }) => (until === undefined ? { agent: agent.link } : { agent: agent.link, until: until.toString() }),
       },
     );
-    this.#proxies = new View(
+    this.#proxies = new Semantics(
       [
         {
           schema: proxy,

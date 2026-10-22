@@ -95,11 +95,11 @@ fresh puts a nonce in its object, as a login does.
 ## Messages
 
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
-blobs it leads to, which views and `readStanding` in `@estoc/authorization`
-take their blobs from. Nothing in it names the sender. It travels as the
-zip that `zipBundle` writes with `compress: false`, which holds the same
-files as a bundle handed over as a file, so a message can be kept as one
-and a bundle sent as a message.
+blobs it leads to, which semantics and `readStanding` in
+`@estoc/authorization` take their blobs from. Nothing in it names the
+sender. It travels as the zip that `zipBundle` writes with
+`compress: false`, which holds the same files as a bundle handed over as a
+file, so a message can be kept as one and a bundle sent as a message.
 
 The zip is not compressed because it is encrypted next. How far DEFLATE
 shrinks the files depends on what they hold, so when someone else writes

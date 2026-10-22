@@ -80,7 +80,7 @@ describe("a bundle", () => {
     expect(decodeObject(bundle.get(signed.object)!, note).data).toBe("hello");
   });
 
-  it("takes as its root an object in the type a view read it into, and writes it as it was signed", async () => {
+  it("takes as its root an object in the type a semantics read it into, and writes it as it was signed", async () => {
     const authorizations = await loadAuthorizations(defaultValidator);
     const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
     const grant = await authorizations.authorize(agent.identity, alice);

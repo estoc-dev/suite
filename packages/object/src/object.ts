@@ -1,6 +1,6 @@
 import { decodeJson, isLink, type Bytes, type Json, type Link } from "./encoding.ts";
 import type { Schema } from "./schema.ts";
-import { fieldsOf, View } from "./view.ts";
+import { fieldsOf, Semantics } from "./semantics.ts";
 
 /**
  * A JSON value bound to the schema it is written to, as one blob:
@@ -20,15 +20,15 @@ export interface EncodedObject {
  * instead of read as one of these.
  */
 export function decodeObject(bytes: Bytes<EncodedObject>, schema: Schema): EncodedObject {
-  return viewOf(schema).decode(bytes);
+  return semanticsOf(schema).decode(bytes);
 }
 
 export function encodeObject(schema: Schema, data: Json): EncodedObject {
-  return viewOf(schema).encode(data);
+  return semanticsOf(schema).encode(data);
 }
 
-function viewOf(schema: Schema): View<EncodedObject, Json> {
-  return new View<EncodedObject, Json>([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
+function semanticsOf(schema: Schema): Semantics<EncodedObject, Json> {
+  return new Semantics<EncodedObject, Json>([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
     schema: schema.link,
     write: (data) => data,
   });

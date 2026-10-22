@@ -1,9 +1,9 @@
 import { verify, type Identity, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { digestOf, HEX, type Bytes, type Link } from "./encoding.ts";
-import { identitySchema, identityView, type IdentityObject } from "./identity.ts";
+import { identitySchema, identitySemantics, type IdentityObject } from "./identity.ts";
 import { DRAFT_2020_12, encodeSchema, linkSchema, type JsonSchema, type Schema, type SchemaValidator } from "./schema.ts";
-import { View } from "./view.ts";
+import { Semantics } from "./semantics.ts";
 
 /**
  * The schema every signature is written to. A reader that reads a signature
@@ -51,14 +51,14 @@ type SignatureData = { readonly identity: Link<IdentityObject>; readonly object:
  * `encode` writes a signature that has been made, and refuses one that does
  * not verify.
  */
-export class Signatures extends View<
+export class Signatures extends Semantics<
   Signature,
   { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
 > {
-  readonly identities: View<IdentityObject, Identity>;
+  readonly identities: Semantics<IdentityObject, Identity>;
 
   constructor(identity: Schema, signature: Schema) {
-    const identities = identityView(identity);
+    const identities = identitySemantics(identity);
     super(
       [
         {

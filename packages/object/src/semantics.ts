@@ -10,9 +10,9 @@ const noBlobs: Blobs = { get: () => undefined };
 
 /**
  * One way of reading the objects written to one schema: their data, and the
- * bytes and link of the object, become a `T` of the program's own. The view
- * checks the data against `schema` first, so `read` sees only data that fits
- * it, and is left what the schema does not say.
+ * bytes and link of the object, become a `T` of the program's own. The
+ * semantics checks the data against `schema` first, so `read` sees only data
+ * that fits it, and is left what the schema does not say.
  */
 export interface Reading<T> {
   readonly schema: Schema;
@@ -24,9 +24,10 @@ export interface Reading<T> {
 }
 
 /**
- * How a view writes values of `V`: as objects of `schema`, with the data that
- * `write` gives for a value. A view reads objects of every schema it has a
- * reading of, and writes to one of them, the one the program writes now.
+ * How a semantics writes values of `V`: as objects of `schema`, with the
+ * data that `write` gives for a value. A semantics reads objects of every
+ * schema it has a reading of, and writes to one of them, the one the program
+ * writes now.
  */
 export interface Writing<V> {
   readonly schema: Link<Schema>;
@@ -42,7 +43,7 @@ export interface Writing<V> {
  * data: an object written to an older schema, or to another application's,
  * reads as a `T` once there is a reading of that schema.
  */
-export class View<T, V = never> {
+export class Semantics<T, V = never> {
   readonly #readings: ReadonlyMap<Link<Schema>, Reading<T>>;
   readonly #writing: Writing<V> | undefined;
 
@@ -53,7 +54,7 @@ export class View<T, V = never> {
       bySchema.set(reading.schema.link, reading);
     }
     if (writing !== undefined && !bySchema.has(writing.schema)) {
-      throw new Error(`the view writes to ${writing.schema}, which it does not read`);
+      throw new Error(`the semantics writes to ${writing.schema}, which it does not read`);
     }
     this.#readings = bySchema;
     this.#writing = writing;
@@ -81,12 +82,12 @@ export class View<T, V = never> {
   }
 
   /**
-   * Writes `value` as an object by the view's writing, and reads the object
-   * as `decode` would, so a value that would not read is refused. `blobs`
-   * holds the blobs that its reading follows links to.
+   * Writes `value` as an object by the writing, and reads the object as
+   * `decode` would, so a value that would not read is refused. `blobs` holds
+   * the blobs that its reading follows links to.
    */
   encode(value: V, blobs: Blobs = noBlobs): T {
-    if (this.#writing === undefined) throw new Error("the view writes nothing");
+    if (this.#writing === undefined) throw new Error("the semantics writes nothing");
     return this.decode(encodeJson({ data: this.#writing.write(value), schema: this.#writing.schema }), blobs);
   }
 

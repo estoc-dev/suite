@@ -26,7 +26,6 @@ async function deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void> {
     // A redirect would take the bytes to a url that the mailbox does not
     // name, and that need not be one a mailbox may name.
     redirect: "error",
-    // Nothing of the sender goes along that the sealed bytes leave out.
     credentials: "omit",
     referrerPolicy: "no-referrer",
   });

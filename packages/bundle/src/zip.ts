@@ -6,7 +6,7 @@ const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 const METHODS = [0, 8];
 
 /**
- * Zips the files of a bundle as they are, `index.json` at the top of the zip,
+ * Zips the files of a bundle as they are, the root at the top of the zip,
  * compressed with DEFLATE unless `compress` is false. Every entry is dated
  * 1980-02-01, so that a zip does not tell when or in which time zone it was
  * made. The date is in local time, which is what a zip records. The earliest
@@ -37,7 +37,7 @@ export async function zipBundle(
 }
 
 /**
- * Unzips the files of a bundle into memory: `index.json` and the blobs under
+ * Unzips the files of a bundle into memory: the root and the blobs under
  * `blobs/sha256/`, as the directory at the end of the zip lists them. Other
  * entries are not unzipped, so a path such as `../` is not written anywhere.
  * Refuses the zip when it holds a path twice, or when it goes over `limits`:
@@ -62,7 +62,7 @@ export async function unzipBundle(
   const abort = new AbortController();
   const reader = new ZipReader(new Uint8ArrayReader(zip), {
     // A damaged blob does not have the link its name says, but a damaged
-    // index.json can still be an object.
+    // root can still be an object.
     checkCrc32: true,
     // Paths are matched exactly below, and an entry under any other path is
     // passed over rather than refused.
@@ -78,7 +78,7 @@ export async function unzipBundle(
     if (paths.has(path)) throw new Error(`the zip holds ${path} twice`);
     paths.add(path);
     if (paths.size > entries) throw new Error(`the zip has more than ${entries} entries`);
-    if (entry.directory || (path !== ROOT && !BLOB.test(path))) continue;
+    if (entry.directory || (!ROOT.test(path) && !BLOB.test(path))) continue;
     // zip.js also unzips Deflate64, and any method registered with it, a piece
     // of which can make far more than a thousand times its size.
     if (!METHODS.includes(entry.compressionMethod)) throw new Error(`the zip compresses ${path} other than with DEFLATE`);

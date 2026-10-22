@@ -56,14 +56,15 @@ const key = await MailboxKey.fromSecretKey(secretKey);
 const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: queueName });
 ```
 
-`open` takes the sealed bytes that a transport received and gives back the
-bundle inside. It refuses bytes that do not open with its key, and what
-opens but is not the zip of a bundle. It does not read who stands behind
+`open` takes the sealed bytes that a transport received, and the encodings
+the receiver reads, and gives back the bundle inside. It refuses bytes that
+do not open with its key, and what opens but is not the zip of a bundle
+whose root is in one of those encodings. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.decode` or `readStanding` and the bundle as the blobs.
 
 ```ts
-const bundle = await key.open(sealed);
+const bundle = await key.open(sealed, [json]);
 const signature = signatures.decode(bundle.root, bundle);
 ```
 
@@ -73,7 +74,7 @@ const signature = signatures.decode(bundle.root, bundle);
 import { mailboxFrom } from "@estoc/mailbox";
 
 const mailbox = await mailboxFrom(handedOut, { transports: [transport] });
-await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
+await mailbox.send(signature, [object.bytes, signature.identity.bytes], json);
 ```
 
 `mailboxFrom` takes the bytes of a mailbox alone; who stands behind it is
@@ -83,8 +84,8 @@ transport it was not given. It checks `key` itself rather than trusting a
 transport's schema to, and binds the key and the transport once. The
 `Mailbox` it returns shows neither, only `send`.
 
-`send` takes a root and blobs as `writeBundle` does, and refuses a root
-that is not an object. It zips the bundle, seals the zip to the key and
+`send` takes a root, blobs and the encoding of the root as `writeBundle`
+does, and refuses a root that is not an object in that encoding. It zips the bundle, seals the zip to the key and
 hands the sealed bytes to the transport. It resolves once they are handed
 on. Nothing confirms that a message arrived and nothing is sent again: a
 message can be lost, arrive twice, or arrive out of order. That is

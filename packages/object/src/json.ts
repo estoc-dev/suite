@@ -25,6 +25,7 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
  * "schema": <link>}`, with no other member.
  */
 export const json: Encoding<Json> = {
+  name: "json",
   encode(value) {
     const text = canonicalize(value);
     if (text === undefined) throw new TypeError("not a JSON value");

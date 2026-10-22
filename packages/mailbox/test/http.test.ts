@@ -51,21 +51,21 @@ const take = () => requests.splice(0);
 
 describe("an HTTP mailbox", () => {
   it("takes a message to its url in a POST, sealed so that its key opens it", async () => {
-    await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, []);
+    await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, [], json);
     const [request, ...more] = take();
     expect(more).toEqual([]);
     expect(request).toMatchObject({ method: "POST", path: "/inbox", type: "application/octet-stream" });
-    expect((await bob.open(request!.body)).root).toEqual(hello.bytes);
+    expect((await bob.open(request!.body, [json])).root).toEqual(hello.bytes);
   });
 
   it("rejects a send that the server answers with other than 2xx", async () => {
     const mailbox = await mailboxAt(`http://127.0.0.1:${port}/full`);
-    await expect(mailbox.send(hello, [])).rejects.toThrow(/answered 503/);
+    await expect(mailbox.send(hello, [], json)).rejects.toThrow(/answered 503/);
   });
 
   it("rejects a send that the server redirects, and the message goes no further", async () => {
     const mailbox = await mailboxAt(`http://127.0.0.1:${port}/moved`);
-    await expect(mailbox.send(hello, [])).rejects.toThrow();
+    await expect(mailbox.send(hello, [], json)).rejects.toThrow();
     expect(take().map(({ path }) => path)).toEqual(["/moved"]);
   });
 
@@ -73,7 +73,7 @@ describe("an HTTP mailbox", () => {
     const gone = createServer();
     const closed = await listen(gone);
     await close(gone);
-    await expect((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, [])).rejects.toThrow();
+    await expect((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, [], json)).rejects.toThrow();
   });
 });
 

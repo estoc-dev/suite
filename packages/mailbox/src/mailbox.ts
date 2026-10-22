@@ -1,5 +1,15 @@
 import { writeBundle, zipBundle } from "@estoc/bundle";
-import { decodeObject, json, schemaOf, type Bytes, type EncodedObject, type Json, type JsonObject, type Schema } from "@estoc/object";
+import {
+  decodeObject,
+  json,
+  schemaOf,
+  type Bytes,
+  type EncodedObject,
+  type Encoding,
+  type Json,
+  type JsonObject,
+  type Schema,
+} from "@estoc/object";
 import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 
@@ -36,19 +46,12 @@ export class Mailbox {
   }
 
   /**
-   * Sends the bundle of `root` and `blobs`, as `writeBundle` writes it:
-   * zipped without compression, sealed to the mailbox's key and handed to
-   * the transport.
+   * Sends the bundle of `root` in `encoding` and `blobs`, as `writeBundle`
+   * writes it: zipped without compression, sealed to the mailbox's key and
+   * handed to the transport.
    */
-  async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
-    // The receiver reads the root as an object, so a root that is not one is
-    // refused here rather than lost on the way.
-    try {
-      schemaOf(root.bytes, json);
-    } catch (cause) {
-      throw new Error("the root is not an object in canonical JSON", { cause });
-    }
-    const zip = await zipBundle(writeBundle(root, blobs), { compress: false });
+  async send<D>(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>, encoding: Encoding<D>): Promise<void> {
+    const zip = await zipBundle(writeBundle(root, blobs, encoding), { compress: false });
     await this.#transport.deliver(this.#data, await seal(this.#key, zip));
   }
 }

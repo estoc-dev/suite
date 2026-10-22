@@ -22,6 +22,7 @@ type Lines = readonly string[];
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 const lines: Encoding<Lines> = {
+  name: "lines",
   encode(value) {
     if (value.some((line) => line.includes("\n"))) throw new Error("a line holds no newline");
     return new TextEncoder().encode(value.map((line) => `${line}\n`).join(""));

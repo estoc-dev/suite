@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { loadSignatures } from "@estoc/object";
+import { json, loadSignatures } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
@@ -37,12 +37,12 @@ const files = new Map([
 describe("a bundle whose root is a signature over a login object, carrying the object and the signer's identity", () => {
   it("writes to fixed files", () => {
     const signature = signatures.decode(utf8(signatureText), new Map([[identityLink, utf8(identityText)]]));
-    const written = writeBundle(signature, [utf8(objectText), signature.identity.bytes]);
+    const written = writeBundle(signature, [utf8(objectText), signature.identity.bytes], json);
     expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
   });
 
   it("reads from those files with the root's link, and gets each blob by its link", () => {
-    const bundle = readBundle(new Map([...files].map(([path, text]) => [path, utf8(text)])));
+    const bundle = readBundle(new Map([...files].map(([path, text]) => [path, utf8(text)])), [json]);
     expect(text(bundle.root)).toBe(signatureText);
     expect(bundle.link).toBe(signatureLink);
     expect(text(bundle.get(signatureLink))).toBe(signatureText);
@@ -54,6 +54,6 @@ describe("a bundle whose root is a signature over a login object, carrying the o
     const zip = new Uint8Array(readFileSync(new URL("stored-by-python.zip", import.meta.url)));
     const unzipped = await unzipBundle(zip);
     expect(new Map([...unzipped].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
-    expect(readBundle(unzipped).link).toBe(signatureLink);
+    expect(readBundle(unzipped, [json]).link).toBe(signatureLink);
   });
 });

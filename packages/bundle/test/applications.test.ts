@@ -4,6 +4,7 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
+  json,
   linkSchema,
   loadSignatures,
   Semantics,
@@ -28,11 +29,11 @@ const schemaFor = (title: string, properties: JsonObject) =>
     { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
     defaultValidator,
   );
-const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
+const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs, json), [json]);
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
 
-function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
+function blobAt(bundle: Bundle<Json>, link: Link<unknown>): Uint8Array {
   const bytes = bundle.get(link);
   if (bytes === undefined) throw new Error(`the bundle does not carry ${link}`);
   return bytes;
@@ -59,7 +60,7 @@ const cards: Semantics<Card> = new Semantics([
   },
 ]);
 
-function readCard(bundle: Bundle) {
+function readCard(bundle: Bundle<Json>) {
   const listed = cards.decode(bundle.root);
   const reachedAt = signatures.decode(blobAt(bundle, listed.mailbox), bundle);
   const goesBy = signatures.decode(blobAt(bundle, listed.name), bundle);
@@ -102,7 +103,7 @@ describe("a card", () => {
 
 const chat = await schemaFor("Chat message", { text: { type: "string" } });
 
-function readMessage(bundle: Bundle) {
+function readMessage(bundle: Bundle<Json>) {
   const read = signatures.decode(bundle.root, bundle);
   return { from: read.identity, message: decodeObject(blobAt(bundle, read.object), chat).data };
 }
@@ -125,7 +126,7 @@ const standingEnvelope = await schemaFor("Stood behind", { message: linkSchema, 
 // agents. Reading the standing takes the message as well as the signature, so
 // the envelope names both. The bundle is the blobs that the reading follows
 // that signature into.
-function readSent(bundle: Bundle, now: Date) {
+function readSent(bundle: Bundle<Json>, now: Date) {
   const named = decodeObject(bundle.root, standingEnvelope).data as { message: Link<EncodedObject<Json>>; signature: Link<Signature> };
   const { identity, agents } = authorizations.readStanding(named.message, blobAt(bundle, named.signature), bundle, now);
   return { from: identity, through: agents, message: decodeObject(blobAt(bundle, named.message), chat).data };

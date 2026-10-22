@@ -1,11 +1,11 @@
 # @estoc/bundle
 
 A bundle carries blobs together, with one object as the way in. It is a
-folder: `index.json` is that object, the root, and every other blob is
-filed under the hex of its SHA-256.
+folder: `index.<encoding>` is that object, the root, named by the encoding
+it is in, and every other blob is filed under the hex of its SHA-256.
 
 ```
-index.json           the root: the JCS bytes of an object of @estoc/object
+index.<encoding>     the root: an object of @estoc/object, such as index.json
 blobs/sha256/<hex>   another blob, <hex> the lowercase hex SHA-256 of its bytes
 ```
 
@@ -15,9 +15,11 @@ from a zip. `writeBundle` gives the map back.
 
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
+import { json } from "@estoc/object";
 
-const files = writeBundle(signature, [message.bytes, signature.identity.bytes]);
-const bundle = readBundle(files);
+const files = writeBundle(signature, [message.bytes, signature.identity.bytes], json);
+const bundle = readBundle(files, [json]);
+bundle.encoding;          // json
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
 ```
@@ -26,20 +28,36 @@ bundle.get(message.link); // message.bytes
 
 A bundle has a root, and the root is an object, so a reader knows what a
 bundle is by the root's schema. Loose files packed together would leave it
-guessing. `index.json` has to be the canonical JSON of an object, with
-exactly the fields `data` and `schema`. An `index.json` formatted by hand,
-or one that holds a schema, makes the whole bundle refused. A signature is
-an object too, so it can be the root, with what it is over carried in the
-bundle. `writeBundle` takes the root in whatever type a semantics read it
-into, such as an `Authorization`, and writes its bytes, so the root is
-written as it was signed.
+guessing.
 
-`index.json` is the object itself, not a pointer to it. So nothing in a
+Neither the bytes of an object nor its link say which encoding it is in,
+so the root's file name does: `index.` and the name of the encoding,
+`index.json` for JSON. It is what a reader goes by before it has read
+anything, so a bundle can reach a reader that did not know what it would
+hold. `readBundle` is given the encodings the reader reads, takes the one
+the file name gives, and hands it on as `bundle.encoding`. Only the root is
+labeled: the blobs it leads to are read by the semantics of the links that
+lead to them, as any blob is.
+
+A bundle with no root or with two is refused, and so is one whose root is
+in an encoding the reader was not given, or is not an object in the
+encoding its name gives. In JSON that is the canonical JSON of an object
+with exactly the fields `data` and `schema`, so an `index.json` formatted
+by hand, or one that holds a schema, makes the whole bundle refused.
+
+A signature is an object too, so it can be the root, with what it is over
+carried in the bundle. `writeBundle` takes the root in whatever type a
+semantics read it into, such as an `Authorization`, and the encoding it is
+in, and writes its bytes, so the root is written as it was signed. It
+refuses a root that is not an object in that encoding, which no reader
+would take.
+
+The root is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is
 written into the root, and the root has a link, so it can be referred to
 and signed. There is no version file and no metadata beside it.
 
-A bundle with only `index.json` is just an object, such as the mailbox of a
+A bundle with only its root is just an object, such as the mailbox of a
 one-time invitation.
 
 ## Blobs
@@ -105,8 +123,8 @@ unzips a zip back into the map that `readBundle` takes. Both use zip.js and
 return promises.
 
 ```ts
-const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.identity.bytes]));
-const bundle = readBundle(await unzipBundle(zip));
+const zip = await zipBundle(writeBundle(signature, [message.bytes, signature.identity.bytes], json));
+const bundle = readBundle(await unzipBundle(zip), [json]);
 ```
 
 `zipBundle` compresses with DEFLATE unless it is given `compress: false`,
@@ -116,28 +134,28 @@ file depends on what it holds, so when someone else writes part of a
 bundle, the length of the ciphertext can tell them whether their part
 repeats something secret elsewhere in it.
 
-The entries start at the bundle's root: `index.json` is at the top of the
-zip, not in a folder. A zip with the bundle in a folder unzips to no
-`index.json`, and reading it is refused. Entries stored as they are or
-compressed with DEFLATE read, in any order. `zipBundle` dates every entry
-1980-02-01. A zip records local time, so a real date would tell when the zip
-was made and, from that, in which time zone. The date is a month after the
-earliest a zip can hold, so that no conversion between time zones takes it
-below that. The same files in the same order zip to the same bytes, in a
-browser and in Node.
+The entries start at the bundle's root, which is at the top of the zip, not
+in a folder. A zip with the bundle in a folder unzips to no root, and
+reading it is refused. Entries stored as they are or compressed with
+DEFLATE read, in any order. `zipBundle` dates every entry 1980-02-01. A zip
+records local time, so a real date would tell when the zip was made and,
+from that, in which time zone. The date is a month after the earliest a zip
+can hold, so that no conversion between time zones takes it below that. The
+same files in the same order zip to the same bytes, in a browser and in
+Node.
 
-Unzipping holds what comes out in memory and writes nothing. Only
-`index.json` and the blobs under `blobs/sha256/` are unzipped, so the map
-has paths of only those two shapes, and saving it as a folder stays inside
-that folder: an entry such as `../escape`, `.DS_Store` or one under
-`__MACOSX/` is not unzipped.
+Unzipping holds what comes out in memory and writes nothing. Only the root,
+`index.` and a name of lowercase letters and digits, and the blobs under
+`blobs/sha256/` are unzipped, so the map has paths of only those two
+shapes, and saving it as a folder stays inside that folder: an entry such
+as `../escape`, `.DS_Store` or one under `__MACOSX/` is not unzipped.
 
 A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
 10,000 entries, unless the caller gives others. An entry is unzipped as it is
 read, 4 KiB at a time, and the bytes are counted as they come out, since the
 sizes a zip gives for its entries can be false. DEFLATE makes at most about a
 thousand times its size, so a few MiB at most come out before the count stops
-them. Other methods can make far more, so `index.json` or a blob compressed
+them. Other methods can make far more, so a root or a blob compressed
 with one, such as Deflate64, is refused rather than unzipped. At the limit
 unzipping stops and the whole zip is refused, as it is when an entry does not
 unzip to the size or the CRC the zip gives. A zip that holds a path twice is

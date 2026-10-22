@@ -34,7 +34,8 @@ application can read the same objects without them.
   and it needs no schema, so that the schema an object names can be read
   before the schema is. The encoding also writes an object, its data and
   the link of its schema, as one value, and refuses any other value as an
-  object.
+  object. Its name, such as `json`, labels data in it where a reader has
+  nothing else to go by, as the root of a bundle is labeled.
 - A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
   data of one encoding, which it names. A schema is a blob of its own, with
   one way of being written and a link.

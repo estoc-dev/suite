@@ -1,5 +1,5 @@
 import { constants, deflateRawSync } from "node:zlib";
-import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
+import { encodeObject, encodeSchema, json, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import {
   configure,
@@ -24,7 +24,7 @@ const root = encodeObject(note, "a note");
 const another = encodeObject(note, "another note");
 const text = new TextEncoder().encode("a blob");
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const files = writeBundle(root, [text, image]);
+const files = writeBundle(root, [text, image], json);
 const zeros = new Uint8Array(2 ** 20);
 
 // A zip as a tool that streams writes it, which lets a path come twice and
@@ -157,13 +157,13 @@ describe("a zipped bundle", () => {
   it("unzips to its files and reads as the same bundle", async () => {
     const unzipped = await unzipBundle(await zipBundle(files));
     expect(unzipped).toEqual(files);
-    const bundle = readBundle(unzipped);
+    const bundle = readBundle(unzipped, [json]);
     expect(bundle.link).toBe(root.link);
     for (const blob of [root.bytes, text, image]) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 
   it("without compression holds its files as they are, and unzips to them", async () => {
-    const large = writeBundle(root, [zeros]);
+    const large = writeBundle(root, [zeros], json);
     const stored = await zipBundle(large, { compress: false });
     expect(stored.length).toBeGreaterThan(sizeOf(large));
     expect((await zipBundle(large)).length).toBeLessThan(sizeOf(large));
@@ -199,11 +199,11 @@ describe("a zipped bundle", () => {
     const zip = await zipBundle(new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])));
     const unzipped = await unzipBundle(zip);
     expect(unzipped.size).toBe(0);
-    expect(() => readBundle(unzipped)).toThrow();
+    expect(() => readBundle(unzipped, [json])).toThrow();
   });
 
   it("unzips a blob that is itself a zip, from a zip written as a stream", async () => {
-    const nested = writeBundle(root, [await zipBundle(files)]);
+    const nested = writeBundle(root, [await zipBundle(files)], json);
     expect(await unzipBundle(streamed([...nested]))).toEqual(nested);
   });
 
@@ -262,8 +262,8 @@ describe("a zipped bundle", () => {
   it("unzips with as many entries as its limit allows", { timeout: 20_000 }, async () => {
     const blobs = Array.from({ length: 9_999 }, (_, i) => new TextEncoder().encode(`blob ${i}`));
     // fflate zips this many entries several times faster.
-    const zip = zipSync(Object.fromEntries(writeBundle(root, blobs)));
-    const bundle = readBundle(await unzipBundle(zip));
+    const zip = zipSync(Object.fromEntries(writeBundle(root, blobs, json)));
+    const bundle = readBundle(await unzipBundle(zip), [json]);
     for (const blob of blobs) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 

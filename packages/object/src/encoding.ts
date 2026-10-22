@@ -8,6 +8,12 @@ import type { Schema } from "./schema.ts";
  * links, and neither reads as the other.
  */
 export interface Encoding<D> {
+  /**
+   * A name of lowercase letters and digits, such as `json`, that labels data
+   * in this encoding where a reader has nothing else to go by, as the end of
+   * a file name does.
+   */
+  readonly name: string;
   /** Throws for a value the encoding cannot write. */
   encode(value: D): Uint8Array;
   /**

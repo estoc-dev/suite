@@ -6,7 +6,10 @@ import { linkOf, schemaOf, type Bytes, type Encoding, type Link, type Semantics 
  * is given them; the store hashes and decodes.
  */
 export interface Backend {
-  /** The bytes put under `link`, or `undefined` when none were. */
+  /**
+   * The bytes put under `link`, in an array the caller may change without
+   * changing what is kept, or `undefined` when none were.
+   */
   get(link: Link<unknown>): Promise<Uint8Array | undefined>;
   /** Whether bytes were put under `link`. */
   has(link: Link<unknown>): Promise<boolean>;
@@ -43,8 +46,9 @@ export interface Batch {
  * kept by link, whoever wrote them, and got by link; they are not listed.
  * What is listed is what the user wrote, and anything else is reached by
  * following links from it, so an object that someone else slipped into a
- * bundle is read only as part of what it came with. A store holds the
- * objects written as mine and every blob they lead to, and no other blobs.
+ * bundle is read only as part of what it came with. Every blob a store holds
+ * comes with all that it leads to, and a write adds only the blobs that what
+ * it writes as mine leads to.
  */
 export interface Store {
   /** A blob by its link, written to the store as mine or not. */
@@ -190,6 +194,8 @@ class StoreOf<D> implements Store {
 /**
  * Makes a store that keeps its blobs and its list in `backend`, and finds
  * the links in a blob by `encoding`. The encoding is the one of the objects
- * written as mine; blobs of any other encoding are kept, and lead nowhere.
+ * written as mine, and a blob of any other encoding leads nowhere. A
+ * backend is to be used with one encoding throughout, since the store takes
+ * a blob it holds to come with all that the encoding finds it leads to.
  */
 export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = StoreOf;

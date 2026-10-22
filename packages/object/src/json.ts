@@ -26,7 +26,6 @@ function isJsonLink(value: Json): value is JsonLink<never> {
   return names.length === 1 && names[0] === "$link" && isLink(value.$link);
 }
 
-/** The links in a value; throws at an object with a `$link` member that is not a link. */
 function* linksIn(value: Json): Generator<Link<never>> {
   if (isJsonObject(value)) {
     if (Object.hasOwn(value, "$link")) {

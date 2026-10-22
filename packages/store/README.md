@@ -16,8 +16,8 @@ A store holds two things.
 - **What was written here**: the links of the objects the user wrote. It is
   the one thing in a store that is not a blob.
 
-Its blobs are the objects written here and every blob they lead to, and no
-others.
+Every blob it holds comes with all that it leads to, and a write adds only
+the blobs that what it writes here leads to.
 
 ```ts
 import { json } from "@estoc/object";

@@ -6,7 +6,6 @@ export class MemoryBackend implements Backend {
   readonly #blobs = new Map<Link<unknown>, Uint8Array>();
   readonly #mine = new Set<Link<never>>();
 
-  // A copy, since the bytes a store gives out are the caller's to change.
   async get(link: Link<unknown>): Promise<Uint8Array | undefined> {
     const bytes = this.#blobs.get(link);
     return bytes && new Uint8Array(bytes);

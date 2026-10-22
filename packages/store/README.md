@@ -16,17 +16,18 @@ A store holds two things.
 - **What was written here**: the links of the objects the user wrote. It is
   the one thing in a store that is not a blob.
 
-And it holds every blob that a blob it holds leads to.
+Its blobs are the objects written here and every blob they lead to, and no
+others.
 
 ```ts
 import { json } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
-await store.write({ blobs: schemas });          // the schemas the program writes to
 const note = notes.encode("hello");
 const signature = await signatures.sign(note, signer);
-await store.write({ mine: [note, signature], blobs: [signature.identity.bytes] });
+// `schemas` are all that the program writes to; the store keeps those named here.
+await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, ...schemas] });
 
 for await (const link of store.mine()) …;       // note.link, signature.link
 await store.read(signatures, signature.link);   // the signature, verified
@@ -58,11 +59,17 @@ comes in, so the store keeps blobs under the links it computed. What is
 written as mine has to be an object of the store's encoding, or the whole
 batch is refused.
 
-A batch is refused whole, too, when a blob in it leads to one that neither
-the batch nor the store holds: the schema of an object, or a blob its data
-links to. So a program writes the schemas it writes to before its objects,
-and a bundle is taken in only with all that its objects lead to, apart from
-what the receiver holds already.
+Of the blobs, it keeps those that what is written as mine leads to, and
+drops the rest. Nothing listed would reach them, so they could only wait to
+be collected. A program can then give the schemas it writes to with every
+write, and a bundle can carry blobs that its root does not lead to, without
+either leaving anything behind.
+
+A batch is refused whole, too, when what is written as mine leads to a blob
+that neither the batch nor the store holds: the schema of an object, or a
+blob its data links to. So the schemas of objects come with them unless the
+store holds them already, and a bundle is taken in only with all that its
+objects lead to, apart from what the receiver holds already.
 
 Each blob goes in after the blobs it leads to, and before the links that
 list it, so a write cut short leaves at worst blobs that nothing lists,

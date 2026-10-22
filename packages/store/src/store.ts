@@ -32,7 +32,8 @@ export interface Batch {
   /**
    * Blobs that come with them and are not listed: what the objects link to,
    * or the blobs of a bundle received along with an object that records
-   * receiving it.
+   * receiving it. Only those that something written as mine leads to are
+   * kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
@@ -42,8 +43,8 @@ export interface Batch {
  * kept by link, whoever wrote them, and got by link; they are not listed.
  * What is listed is what the user wrote, and anything else is reached by
  * following links from it, so an object that someone else slipped into a
- * bundle is read only as part of what it came with. A store holds every
- * blob that a blob it holds leads to.
+ * bundle is read only as part of what it came with. A store holds the
+ * objects written as mine and every blob they lead to, and no other blobs.
  */
 export interface Store {
   /** A blob by its link, written to the store as mine or not. */
@@ -52,10 +53,11 @@ export interface Store {
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * Puts a batch in. Refuses the whole batch when something written as mine
-   * is not an object of the store's encoding, or when a blob in it leads to
-   * one that neither the batch nor the store holds: the schema of an object,
-   * or any other link in it.
+   * Puts in what the batch writes as mine and the blobs it leads to, and
+   * drops the other blobs. Refuses the whole batch when something written as
+   * mine is not an object of the store's encoding, or when it leads to a blob
+   * that neither the batch nor the store holds: the schema of an object, or
+   * any other link in it.
    */
   write(batch: Batch): Promise<void>;
   /** The links of the objects written as mine, each once, in no particular order. */
@@ -106,7 +108,7 @@ class StoreOf<D> implements Store {
       given.set(link, owned);
       written.push(link);
     }
-    await this.#backend.put(await this.#leavesFirst(given), written);
+    await this.#backend.put(await this.#leavesFirst(written, given), written);
   }
 
   mine(): AsyncIterable<Link<never>> {
@@ -135,18 +137,22 @@ class StoreOf<D> implements Store {
   }
 
   /**
-   * The blobs given, each after the given blobs it leads to. Throws when one
-   * leads to a blob that is neither given nor held. A held blob comes with
-   * all it leads to, so what it leads to is not looked at again.
+   * `mine` and the given blobs it leads to, each after the given blobs it
+   * leads to. Throws when one leads to a blob that is neither given nor held.
+   * A held blob comes with all it leads to, so what it leads to is not looked
+   * at again.
    */
-  async #leavesFirst(given: ReadonlyMap<Link<unknown>, Uint8Array>): Promise<Map<Link<unknown>, Uint8Array>> {
+  async #leavesFirst(
+    mine: readonly Link<unknown>[],
+    given: ReadonlyMap<Link<unknown>, Uint8Array>,
+  ): Promise<Map<Link<unknown>, Uint8Array>> {
     const ordered = new Map<Link<unknown>, Uint8Array>();
     const held = new Set<Link<unknown>>();
     const frame = (link: Link<unknown>, bytes: Uint8Array) => ({ link, bytes, links: this.#linksIn(bytes)[Symbol.iterator]() });
-    for (const [start, bytes] of given) {
+    for (const start of mine) {
       if (ordered.has(start)) continue;
       // A link is a hash of its blob, so no blob leads back to one on the path.
-      const path = [frame(start, bytes)];
+      const path = [frame(start, given.get(start)!)];
       while (path.length > 0) {
         const top = path.at(-1)!;
         const next = top.links.next();

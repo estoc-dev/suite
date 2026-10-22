@@ -1,0 +1,27 @@
+{
+  "name": "@estoc/http-test-mailbox",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "http-test-mailbox": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@estoc/bundle": "workspace:*",
+    "@estoc/mailbox": "workspace:*",
+    "@estoc/object": "workspace:*",
+    "@scure/base": "^2.4.0"
+  },
+  "devDependencies": {
+    "@estoc/identity": "workspace:*",
+    "@types/node": "^26.6.2",
+    "typescript": "~5.8.0",
+    "vitest": "^3.2.7"
+  }
+}

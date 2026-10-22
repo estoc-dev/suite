@@ -135,6 +135,13 @@ describe("a bundle", () => {
     const bundle = readBundle(filesOf(root.bytes, root.bytes, hello.bytes));
     expect(bundle.link).toBe(root.link);
     expect(bundle.get(root.link)).toEqual(root.bytes);
+    expect([...bundle.blobs()]).toEqual([hello.bytes]);
+  });
+
+  it("gives back the blobs it carries, from which it is written again as it was", () => {
+    const files = writeBundle(root, [signature.bytes, hello.bytes, image]);
+    const bundle = readBundle(files);
+    expect(writeBundle({ bytes: bundle.root }, bundle.blobs())).toEqual(files);
   });
 
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([

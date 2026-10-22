@@ -191,8 +191,9 @@ would take the bytes to a url the mailbox does not name. No cookies or
 other credentials and no referrer go with the request.
 
 The receiving side is whatever serves the url, and this package ships
-none. It passes the body of each POST to `MailboxKey.open` and answers 2xx
-once it has kept the bytes. Anyone can post to it, so it limits how large a
-body it takes. One that browsers send to answers their CORS preflight for a
+none; `@estoc/http-test-mailbox` is one for a single machine. It answers
+2xx once it has kept the bytes, and they reach `MailboxKey.open` in the
+end, whether the server holds the key or keeps them for the receiver to
+fetch. Anyone can post to it, so it limits how large a body it takes. One that browsers send to answers their CORS preflight for a
 POST with `Content-Type: application/octet-stream`, since browsers ask
 before sending that type to another origin.

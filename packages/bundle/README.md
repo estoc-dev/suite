@@ -95,8 +95,17 @@ A bundle need not be complete. A blob the root leads to may be left out,
 such as a document a contract names by hash that both parties already hold,
 and the reader finds out when `get` gives `undefined`. Which blobs to carry
 is up to the application that writes the bundle. A blob the root does not
-lead to is kept and `get` returns it, but it means nothing: a bundle does
-not say which signatures are over an object, nor list the blobs it holds.
+lead to is kept and `get` returns it, but it means nothing: nothing in a
+bundle says which signatures are over an object, and no file lists the
+blobs it holds.
+
+To keep a bundle that has arrived, such as a message, `blobs` gives the
+blobs carried besides the root, each once, and `writeBundle` writes the
+bundle again from the root and them.
+
+```ts
+const files = writeBundle({ bytes: bundle.root }, bundle.blobs());
+```
 
 ## Zip
 

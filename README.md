@@ -70,6 +70,8 @@ past and reading another application's objects are the same work.
   object as the way in.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key.
+- `@estoc/http-test-mailbox`: a server of HTTP mailboxes on one machine,
+  with commands to receive and send, for trying mailboxes out.
 
 ## Development
 

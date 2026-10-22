@@ -52,6 +52,11 @@ export class Bundle {
   get(link: Link<unknown>): Bytes<unknown> | undefined {
     return this.#blobs.get(link);
   }
+
+  /** The blobs carried with the root, each once, so that `writeBundle` writes the bundle again. */
+  *blobs(): IterableIterator<Bytes<unknown>> {
+    for (const [link, blob] of this.#blobs) if (link !== this.link) yield blob;
+  }
 }
 
 /**

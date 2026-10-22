@@ -7,6 +7,7 @@ import {
   linkSchema,
   type EncodedObject,
   type IdentityObject,
+  type Json,
   type Link,
   type Signature,
 } from "@estoc/object";
@@ -24,7 +25,7 @@ const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(sc
 const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) =>
   signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes, signature.identity.bytes]);
 const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
-const directly = async (object: EncodedObject, by: SoftwareSigner): Promise<Signed<EncodedObject>> => ({ object, signature: await signatures.sign(object, by) });
+const directly = async (object: EncodedObject<Json>, by: SoftwareSigner): Promise<Signed<EncodedObject<Json>>> => ({ object, signature: await signatures.sign(object, by) });
 
 const authorizations = await loadAuthorizations(defaultValidator);
 const { signatures } = authorizations;

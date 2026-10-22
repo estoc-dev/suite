@@ -11,6 +11,7 @@ import {
   type Blobs,
   type EncodedObject,
   type IdentityObject,
+  type Json,
   type Link,
   type Signature,
 } from "../src/index.ts";
@@ -35,7 +36,7 @@ interface Received {
   readonly signatures: readonly Uint8Array[];
 }
 
-const signersOf = (link: Link<EncodedObject>, received: Received) =>
+const signersOf = (link: Link<EncodedObject<Json>>, received: Received) =>
   received.signatures
     .map((bytes) => signatures.decode(bytes, received.blobs))
     .filter((signature) => signature.object === link)
@@ -119,7 +120,7 @@ const delivery = await encodeSchema(
 );
 
 // A sale is in force once its buyer and its seller have both signed it.
-function saleInForce(link: Link<EncodedObject>, received: Received): Sale | undefined {
+function saleInForce(link: Link<EncodedObject<Json>>, received: Received): Sale | undefined {
   const bytes = received.blobs.get(link);
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data as Sale;
@@ -129,10 +130,10 @@ function saleInForce(link: Link<EncodedObject>, received: Received): Sale | unde
 }
 
 // A delivery is confirmed once the buyer of a sale in force signs for it.
-function deliveryConfirmed(link: Link<EncodedObject>, received: Received): boolean {
+function deliveryConfirmed(link: Link<EncodedObject<Json>>, received: Received): boolean {
   const bytes = received.blobs.get(link);
   if (bytes === undefined) return false;
-  const { sale: saleLink } = decodeObject(bytes, delivery).data as { sale: Link<EncodedObject> };
+  const { sale: saleLink } = decodeObject(bytes, delivery).data as { sale: Link<EncodedObject<Json>> };
   const terms = saleInForce(saleLink, received);
   return terms !== undefined && signersOf(link, received).some((identity) => identity.link === terms.buyer);
 }
@@ -151,7 +152,7 @@ const receive = (signed: readonly Signature[]): Received => ({
   blobs: byLink([terms.bytes, confirmation.bytes, ...signed.map(({ identity }) => identity.bytes)]),
   signatures: signed.map(({ bytes }) => bytes),
 });
-const signedBy = (...pairs: [EncodedObject, SoftwareSigner][]) => Promise.all(pairs.map(([object, by]) => signatures.sign(object, by)));
+const signedBy = (...pairs: [EncodedObject<Json>, SoftwareSigner][]) => Promise.all(pairs.map(([object, by]) => signatures.sign(object, by)));
 
 describe("a sale", () => {
   it("is in force only once its buyer and its seller have both signed it", async () => {

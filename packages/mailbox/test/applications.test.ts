@@ -9,6 +9,7 @@ import {
   loadSignatures,
   type EncodedObject,
   type IdentityObject,
+  type Json,
   type Link,
   type Schema,
 } from "@estoc/object";
@@ -28,13 +29,13 @@ const { identities } = signatures;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
+const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.sign(object, by);
   await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
   return signature;
 };
 
-function readSigned(bundle: Bundle, schema: Schema) {
+function readSigned(bundle: Bundle, schema: Schema<Json>) {
   const signature = signatures.decode(bundle.root, bundle);
   const object = bundle.get(signature.object);
   if (object === undefined) throw new Error(`the bundle does not carry ${signature.object}`);
@@ -72,7 +73,7 @@ describe("a chat line", () => {
   const bob = signer("ed25519", 2);
   const carol = signer("ed25519", 3);
 
-  const passOn = async (line: EncodedObject) => {
+  const passOn = async (line: EncodedObject<Json>) => {
     const network = await MemoryNetwork.create(defaultValidator);
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);

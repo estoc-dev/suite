@@ -1,9 +1,13 @@
 # @estoc/object
 
-A JSON value written to a JSON Schema, encoded so that a value has one byte
-string and one link. An identity signs an object's link; what the value
-means comes from its schema, and who has to sign is up to the application
-that reads it.
+Data written to a schema, encoded so that it has one byte string and one
+link. An identity signs an object's link; what the data means comes from
+its schema, and who has to sign is up to the application that reads it.
+
+An object rests on an encoding, which writes each value of its data one
+way, and a schema language over that encoding. This package writes objects
+against what those two provide, and has one pair of them: JSON with JCS,
+and JSON Schema. In that pair:
 
 ```
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
@@ -14,17 +18,59 @@ Signature  an Object written to the signature schema, with the data
            {"identity": "sha256:<the Identity's link>", "object": "sha256:<the Object's link>", "signature": <hex>}
 ```
 
-The encoding, objects, schemas and validators are the substrate that every
+The encodings, objects, schemas and validators are the substrate that every
 application shares. Semantics are how a program reads objects as values of
 its own types. The semantics of identities and signatures are kept in this
 package because the packages built on it sign and name identities; another
 application can read the same objects without them.
 
-## Encoding
+## Encodings and schema languages
 
-- A blob is the JCS ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
-  encoding of a JSON value, in UTF-8. Its link is `sha256:` followed by the
-  SHA-256 of those bytes in lowercase hex.
+- A blob's link is `sha256:` followed by the SHA-256 of its bytes in
+  lowercase hex, whatever the bytes are.
+- An `Encoding<D>` is a model of data `D` and the one way each value is
+  written as bytes. Decoding refuses any bytes but those the encoding writes
+  for the value they hold, so that a value has one encoding and one link,
+  and it needs no schema, so that the schema an object names can be read
+  before the schema is. The encoding also writes an object, its data and
+  the link of its schema, as one value, and refuses any other value as an
+  object.
+- A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
+  data of one encoding, which it names. A schema is a blob of its own, with
+  one way of being written and a link.
+- A `SchemaValidator<S, D>` compiles the schemas of one language, which it
+  names, into checks of data `D`.
+
+A validator names its language and a language names its encoding, so a
+schema read with a validator knows the encoding of the objects written to
+it: reading or writing an object takes the schema and nothing more. The
+types tie them too: a language and its validators share the data type `D`
+of the encoding, and so do the readings of one semantics. `schemaOf`, which
+reads the link of the schema an object names before any schema is picked,
+is given the encoding.
+
+Two encodings of the same content are two blobs with two links, and
+neither reads as the other, just as the same data under two schemas is two
+objects. Moving to another encoding means writing new objects, not
+translating old ones.
+
+- In TypeScript a link is a `Link<T>` and the bytes of a blob are a
+  `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
+  bytes of a signature handed to `decodeObject` rather than to
+  `signatures.decode`, which verifies them. A link to a blob of no known
+  kind, such as the object a signature is over, is a `Link<never>`, and
+  reads as any. The type is a label, not a check: bytes read from a file or
+  the network pass as any `Bytes<T>`, and decoding them is what checks them.
+- Encoding goes through the same checks as decoding, so what is encoded here
+  decodes again with the same validator.
+
+## JSON
+
+`json` is the encoding of this package, `jsonSchema` the schema language
+over it, and `defaultValidator` a validator of that language.
+
+- `json` writes a JSON value as its JCS
+  ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
 - Decoding is strict: the bytes must be exactly the JCS encoding of the value
   they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
   or repeated, needless escapes, and numbers not written the shortest way
@@ -35,28 +81,23 @@ application can read the same objects without them.
   `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
   magnitude are exact in every language; write larger integers and decimal
   amounts as strings when they have to be exact.
+- An object is the JSON object `{"data": <data>, "schema": <link>}`, with no
+  other member, and a schema is a JSON object naming its dialect in
+  `$schema`, written as JSON is.
 - Blobs carry no type tag or version. A reader knows which kind it expects,
   and the kinds cannot pass for one another: an object has exactly its two
   fields, and a schema has `$schema`. A signature is an object, and like any
   object it cannot pass for one of another schema.
-- In TypeScript a link is a `Link<T>` and the bytes of a blob are a
-  `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
-  bytes of a signature handed to `decodeObject` rather than to
-  `signatures.decode`, which verifies them. A link to a blob of no known
-  kind, such as the object a signature is over, is a `Link<never>`, and
-  reads as any. The type is a label, not a check: bytes read from a file or
-  the network pass as any `Bytes<T>`, and decoding them is what checks them.
-- Encoding goes through the same checks as decoding, so what is encoded here
-  decodes again with the same validator.
-- `encodeJson` and `decodeJson` are this encoding on its own, for formats
+- `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
 
 ## Objects
 
-An object holds exactly `data` and `schema`, and its data has to fit the
-schema. Reading one takes the schema the reader expects and refuses an object
-written to any other, so an application does not mistake another schema's
-object for one of its own. The same value under two schemas is two objects.
+An object holds its data and the link of its schema, and nothing else, and
+its data has to fit the schema. Reading one takes the schema the reader
+expects and refuses an object written to any other, so an application does
+not mistake another schema's object for one of its own. The same value under
+two schemas is two objects.
 
 ```ts
 import { decodeObject, encodeObject, encodeSchema } from "@estoc/object";
@@ -76,11 +117,12 @@ const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "
 decodeObject(object.bytes, login).link === object.link;
 ```
 
-A schema holds all that its data is checked against. A `$ref` reaches the
-schema's own parts and nothing elsewhere, so the link of a schema fixes what
-its objects may hold, and no one changes that later by changing what a URL
-names. Where the data holds a link, the schema writes out what a link looks
-like: `linkSchema` is `{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}`,
+A schema holds all that its data is checked against. In JSON Schema a `$ref`
+reaches the schema's own parts and nothing elsewhere, so the link of a
+schema fixes what its objects may hold, and no one changes that later by
+changing what a URL names. Where the data holds a link, the schema writes
+out what a link looks like:
+`linkSchema` is `{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}`,
 to place there.
 
 ## Validators
@@ -90,16 +132,17 @@ schema once, when the schema is read, and the schema keeps the result, so
 reading a schema returns a promise and reading an object does not. Every
 validator works offline and keeps to three rules:
 
-- A `$ref` to anything outside the schema fails compilation, rather than the
-  validation that happens to reach it. A `$ref` in a place the dialect
-  ignores, such as under `then` without `if`, has no effect.
+- A reference to anything outside the schema fails compilation, rather than
+  the validation that happens to reach it.
 - The same schema and value give the same answer every time.
-- A dialect it does not support fails compilation.
+- A version of the language it does not support fails compilation.
 
-Anything else, such as whether `format` is asserted or which regular
-expression dialect `pattern` uses, is the validator's own. A signature
-commits to bytes, so a stricter validator can replace another without any
-blob changing.
+For JSON Schema, a reference is a `$ref`, and one in a place the dialect
+ignores, such as under `then` without `if`, has no effect; a version is a
+dialect. Anything else, such as whether `format` is asserted or which
+regular expression dialect `pattern` uses, is the validator's own. A
+signature commits to bytes, so a stricter validator can replace another
+without any blob changing.
 
 `defaultValidator`, from `@estoc/object/default-validator`, wraps
 [`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
@@ -132,21 +175,23 @@ worker in any case.
 
 ## Semantics
 
-`decodeObject` leaves the data as JSON. An object is data: anyone can write
-one to any schema, and nothing about it belongs to the program that reads
-it. A program has types of its own, and a `Semantics` is where objects
-from outside become values of them, and values of them become objects. It
-holds one `Reading` for each schema it takes, and reads an object by the
-reading of the schema the object is written to; an object of any other
-schema is refused. A reading holds its schema compiled, and the semantics
-checks the data against it before the reading turns it into the program's
-value, so the reading is left what the schema does not say. A semantics
-that writes also holds a `Writing`: the schema it writes to, which is one
-of those it reads, and how a value becomes data of that schema. It reads objects of every schema
-it has a reading of, and writes to one, the schema the program writes now.
+`decodeObject` leaves the data as its encoding reads it, JSON here. An
+object is data: anyone can write one to any schema, and nothing about it
+belongs to the program that reads it. A program has types of its own, and a
+`Semantics` is where objects from outside become values of them, and values
+of them become objects. It holds one `Reading` for each schema it takes, and
+reads an object by the reading of the schema the object is written to; an
+object of any other schema is refused. A reading holds its schema compiled,
+and the semantics checks the data against it before the reading turns it
+into the program's value, so the reading is left what the schema does not
+say. A semantics that writes also holds a `Writing`: the schema it writes
+to, which is one of those it reads, and how a value becomes data of that
+schema. It reads objects of every schema it has a reading of, and writes to
+one, the schema the program writes now. The schemas it reads are all of one
+encoding, whose data is its second type argument.
 
 ```ts
-import { Semantics, type Link } from "@estoc/object";
+import { Semantics, type Json, type Link } from "@estoc/object";
 
 interface Note {
   readonly text: string;
@@ -155,7 +200,7 @@ interface Note {
 }
 
 // A note was first written as {"text"}, and is now written as {"body", "language"}.
-const notes = new Semantics<Note, { readonly text: string; readonly language: string }>(
+const notes = new Semantics<Note, Json, { readonly text: string; readonly language: string }>(
   [
     { schema: noteSchema, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
     {
@@ -202,7 +247,7 @@ interface Reply {
 }
 
 // A reply names the note it answers by link, and reads with that note.
-const replies = new Semantics<Reply>([
+const replies = new Semantics<Reply, Json>([
   {
     schema: replySchema,
     read: (data, _, blobs) => {
@@ -216,7 +261,8 @@ const reply = replies.decode(bytes, blobs);
 
 A reader that takes objects of several schemas but picks something other
 than a reading by them, such as a transport for each kind of mailbox, reads
-the link of the schema an object names with `schemaOf`.
+the link of the schema an object names with `schemaOf`, given the encoding
+the object is in.
 
 ## Identities
 

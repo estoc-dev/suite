@@ -4,7 +4,9 @@ import { hasSchema, registerSchema, setShouldValidateFormat, unregisterSchema, t
 import { BASIC, compile, getSchema, interpret, type SchemaDocument } from "@hyperjump/json-schema/experimental";
 import "@hyperjump/json-schema/formats-lite";
 import { fromJs } from "@hyperjump/json-schema/instance/experimental";
-import { DRAFT_2020_12, type Check, type JsonSchema, type SchemaValidator } from "./schema.ts";
+import type { Json } from "./json.ts";
+import { DRAFT_2020_12, jsonSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
+import type { Check } from "./schema.ts";
 
 // hyperjump keeps one registry and one configuration for the whole realm.
 // Without these plugins it has nowhere to fetch a schema from, so a `$ref`
@@ -26,7 +28,8 @@ let turn: Promise<unknown> = Promise.resolve();
  * schemas instead of generating code and so runs under a strict content
  * security policy. It asserts `format`, and passes formats it does not know.
  */
-export const defaultValidator: SchemaValidator = {
+export const defaultValidator: JsonSchemaValidator = {
+  language: jsonSchema,
   compile(schema) {
     const check = turn.then(() => compileRegistered(schema));
     turn = check.catch(() => undefined);
@@ -34,7 +37,7 @@ export const defaultValidator: SchemaValidator = {
   },
 };
 
-async function compileRegistered(schema: JsonSchema): Promise<Check> {
+async function compileRegistered(schema: JsonSchema): Promise<Check<Json>> {
   if (schema.$schema !== DRAFT_2020_12) throw new Error(`unsupported dialect ${schema.$schema}`);
   registerSchema(schema as SchemaObject, anonymous);
   try {

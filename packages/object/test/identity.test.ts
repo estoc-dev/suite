@@ -2,8 +2,7 @@ import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeJson, type Json } from "../src/encoding.ts";
-import { decodeObject, encodeSchema, identitySchema, linkOf, loadSignatures } from "../src/index.ts";
+import { decodeObject, encodeSchema, identitySchema, json, linkOf, loadSignatures, type Json } from "../src/index.ts";
 
 const { identities } = await loadSignatures(defaultValidator);
 
@@ -11,7 +10,7 @@ const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
 const ed25519Key = keyOf("ed25519");
 const eip191Key = keyOf("eip191");
-const written = (data: Json) => encodeJson({ data, schema: linkOf(encodeJson(identitySchema)) });
+const written = (data: Json) => json.encode({ data, schema: linkOf(json.encode(identitySchema)) });
 
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)("in %s reads back from its object as the same identity", (scheme) => {
@@ -51,7 +50,7 @@ describe("an identity", () => {
 
   it("is refused written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
-    const bytes = encodeJson({ data: { publicKey: ed25519Key, scheme: "ed25519" }, schema: lookalike.link });
+    const bytes = json.encode({ data: { publicKey: ed25519Key, scheme: "ed25519" }, schema: lookalike.link });
     expect(() => identities.decode(bytes)).toThrow(/not read here/);
   });
 });

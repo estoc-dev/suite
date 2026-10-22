@@ -1,4 +1,4 @@
-import { encodeJson, encodeObject, encodeSchema } from "@estoc/object";
+import { encodeObject, encodeSchema, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
 import { createServer, type Server } from "node:http";
@@ -86,7 +86,7 @@ describe("an HTTP mailbox's url", () => {
   );
 
   // Written elsewhere, since this package does not write a mailbox it would refuse.
-  const written = (url: string) => encodeJson({ data: { key, url }, schema: http.schema.link });
+  const written = (url: string) => json.encode({ data: { key, url }, schema: http.schema.link });
 
   it.each([
     ["plain http to another machine", "http://mail.example/alice"],

@@ -1,8 +1,10 @@
 import { verify, type Identity, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { digestOf, HEX, type Bytes, type Link } from "./encoding.ts";
 import { identitySchema, identitySemantics, type IdentityObject } from "./identity.ts";
-import { DRAFT_2020_12, encodeSchema, linkSchema, type JsonSchema, type Schema, type SchemaValidator } from "./schema.ts";
+import type { Json } from "./json.ts";
+import { DRAFT_2020_12, HEX, linkSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
+import { digestOf, type Bytes, type Link } from "./link.ts";
+import { encodeSchema, type Schema } from "./schema.ts";
 import { Semantics } from "./semantics.ts";
 
 /**
@@ -53,11 +55,12 @@ type SignatureData = { readonly identity: Link<IdentityObject>; readonly object:
  */
 export class Signatures extends Semantics<
   Signature,
+  Json,
   { readonly identity: IdentityObject; readonly object: Link<unknown>; readonly signature: Uint8Array }
 > {
-  readonly identities: Semantics<IdentityObject, Identity>;
+  readonly identities: Semantics<IdentityObject, Json, Identity>;
 
-  constructor(identity: Schema, signature: Schema) {
+  constructor(identity: Schema<Json>, signature: Schema<Json>) {
     const identities = identitySemantics(identity);
     super(
       [
@@ -93,6 +96,6 @@ export class Signatures extends Semantics<
 }
 
 /** Signatures and the identities they name, read and written with their schemas compiled by `validator`. */
-export async function loadSignatures(validator: SchemaValidator): Promise<Signatures> {
+export async function loadSignatures(validator: JsonSchemaValidator): Promise<Signatures> {
   return new Signatures(await encodeSchema(identitySchema, validator), await encodeSchema(signatureSchema, validator));
 }

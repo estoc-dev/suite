@@ -37,8 +37,13 @@ export type JsonSchemaValidator = SchemaValidator<JsonSchema, Json>;
 export const HEX = /^(?:[0-9a-f]{2})*$/;
 
 /**
- * A link, as a subschema to write into a schema wherever its data holds one.
- * A schema refers to nothing outside itself, so each schema that takes a
- * link carries this.
+ * A link as JSON writes it, `{"$link": <link>}`, as a subschema to write
+ * into a schema wherever its data holds one. A schema refers to nothing
+ * outside itself, so each schema that takes a link carries this.
  */
-export const linkSchema: JsonObject = { type: "string", pattern: LINK_PATTERN };
+export const linkSchema: JsonObject = {
+  type: "object",
+  properties: { $link: { type: "string", pattern: LINK_PATTERN } },
+  required: ["$link"],
+  additionalProperties: false,
+};

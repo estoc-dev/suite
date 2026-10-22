@@ -20,7 +20,7 @@ const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
-const agent = identities.encode(hot.identity).link;
+const agent = { $link: identities.encode(hot.identity).link };
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([object.bytes, object.agent.bytes, signature.identity.bytes]);
 const identityBytes = [root, hot, deputy].map(({ identity }) => identities.encode(identity).bytes);
@@ -87,7 +87,8 @@ describe("the authorization schema", () => {
     ["an end without an offset", { agent, until: "2027-01-01T00:00:00" }],
     ["a field besides agent and until", { agent, scope: "all" }],
     ["no agent", { until: "2027-01-01T00:00:00Z" }],
-    ["an agent that is not a link", { agent: "hot" }],
+    ["an agent that is not a link", { agent: { $link: "hot" } }],
+    ["an agent's link as a bare string", { agent: agent.$link }],
     ["an agent written in place of the link to it", { agent: { publicKey: "00", scheme: "ed25519" } }],
   ])("refuses %s", (_, data) => {
     expect(() => encodeObject(authorization, data)).toThrow();
@@ -95,12 +96,13 @@ describe("the authorization schema", () => {
 });
 
 describe("the proxy schema", () => {
-  const link = target.link;
+  const link = { $link: target.link };
 
   it.each<[string, Json]>([
     ["an empty chain", { chain: [], target: link }],
-    ["a target that is not a link", { chain: [link], target: "the terms" }],
-    ["a chain holding something other than a link", { chain: [link, "the grant"], target: link }],
+    ["a target that is not a link", { chain: [link], target: { $link: "the terms" } }],
+    ["a target's link as a bare string", { chain: [link], target: target.link }],
+    ["a chain holding something other than a link", { chain: [link, { $link: "the grant" }], target: link }],
     ["a field besides chain and target", { chain: [link], principal: agent, target: link }],
   ])("refuses %s", (_, data) => {
     expect(() => encodeObject(proxy, data)).toThrow();

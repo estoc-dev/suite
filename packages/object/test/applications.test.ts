@@ -12,6 +12,7 @@ import {
   type EncodedObject,
   type IdentityObject,
   type Json,
+  type JsonLink,
   type Link,
   type Signature,
 } from "../src/index.ts";
@@ -84,8 +85,8 @@ describe("a login", () => {
 // A sale names its parties by the links of their identity objects, as a
 // signature names its signer.
 type Sale = {
-  readonly buyer: Link<IdentityObject>;
-  readonly seller: Link<IdentityObject>;
+  readonly buyer: JsonLink<IdentityObject>;
+  readonly seller: JsonLink<IdentityObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -125,7 +126,7 @@ function saleInForce(link: Link<EncodedObject<Json>>, received: Received): Sale 
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data as Sale;
   const signers = signersOf(link, received);
-  const signed = (party: Link<IdentityObject>) => signers.some((identity) => identity.link === party);
+  const signed = (party: JsonLink<IdentityObject>) => signers.some((identity) => identity.link === party.$link);
   return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
 }
 
@@ -133,21 +134,21 @@ function saleInForce(link: Link<EncodedObject<Json>>, received: Received): Sale 
 function deliveryConfirmed(link: Link<EncodedObject<Json>>, received: Received): boolean {
   const bytes = received.blobs.get(link);
   if (bytes === undefined) return false;
-  const { sale: saleLink } = decodeObject(bytes, delivery).data as { sale: Link<EncodedObject<Json>> };
+  const saleLink = (decodeObject(bytes, delivery).data as { sale: JsonLink<EncodedObject<Json>> }).sale.$link;
   const terms = saleInForce(saleLink, received);
-  return terms !== undefined && signersOf(link, received).some((identity) => identity.link === terms.buyer);
+  return terms !== undefined && signersOf(link, received).some((identity) => identity.link === terms.buyer.$link);
 }
 
 const buyer = signer("eip191", 1);
 const seller = signer("ed25519", 2);
 const witness = signer("solana-offchain", 3);
 const terms = encodeObject(sale, {
-  buyer: identities.encode(buyer.identity).link,
-  seller: identities.encode(seller.identity).link,
+  buyer: { $link: identities.encode(buyer.identity).link },
+  seller: { $link: identities.encode(seller.identity).link },
   goods: "one bicycle",
   price: "120.00 CAD",
 });
-const confirmation = encodeObject(delivery, { sale: terms.link });
+const confirmation = encodeObject(delivery, { sale: { $link: terms.link } });
 const receive = (signed: readonly Signature[]): Received => ({
   blobs: byLink([terms.bytes, confirmation.bytes, ...signed.map(({ identity }) => identity.bytes)]),
   signatures: signed.map(({ bytes }) => bytes),

@@ -24,7 +24,7 @@ const hexOf = (bytes: Uint8Array) => linkOf(bytes).slice("sha256:".length);
 const filesOf = (root: Uint8Array, ...blobs: Uint8Array[]) =>
   new Map([["index.json", root], ...blobs.map((blob) => [`blobs/sha256/${hexOf(blob)}`, blob] as const)]);
 const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) => {
-  const { data, schema } = JSON.parse(new TextDecoder().decode(bytes)) as { data: JsonObject; schema: string };
+  const { data, schema } = JSON.parse(new TextDecoder().decode(bytes)) as { data: JsonObject; schema: JsonObject };
   return json.encode({ data: change(data), schema });
 };
 
@@ -37,7 +37,7 @@ const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)
 const hello = encodeObject(note, "hello");
 const signature = await signatures.sign(hello, alice);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const root = encodeObject(links, [signature.link, hello.link, linkOf(image)]);
+const root = encodeObject(links, [signature.link, hello.link, linkOf(image)].map((link) => ({ $link: link })));
 
 describe("a bundle", () => {
   it("is written as index.json and one file per blob named by its link, and reads back the same", () => {
@@ -63,7 +63,7 @@ describe("a bundle", () => {
 
   it.each<[string, () => Map<string, Uint8Array>]>([
     ["no index.json", () => new Map([...filesOf(root.bytes, hello.bytes)].filter(([path]) => path !== "index.json"))],
-    ["an index.json formatted by hand", () => filesOf(utf8(JSON.stringify({ data: "hello", schema: note.link }, null, 2)))],
+    ["an index.json formatted by hand", () => filesOf(utf8(JSON.stringify({ data: "hello", schema: { $link: note.link } }, null, 2)))],
     ["an index.json that is a schema", () => filesOf(note.bytes)],
     ["an index.json that is not JSON", () => filesOf(image)],
     ["a blob that does not have the link its name says", () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]])],
@@ -95,7 +95,7 @@ describe("a bundle", () => {
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
     });
     const later = rewritten(signature.identity.bytes, (fields) => ({ ...fields, scheme: "a-later-scheme" }));
-    const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: linkOf(later) }));
+    const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { $link: linkOf(later) } }));
     const identityBytes = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       expect(() => signatures.decode(blob, identityBytes)).toThrow();

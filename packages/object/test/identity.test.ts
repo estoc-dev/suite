@@ -10,7 +10,7 @@ const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
 const ed25519Key = keyOf("ed25519");
 const eip191Key = keyOf("eip191");
-const written = (data: Json) => json.encode({ data, schema: linkOf(json.encode(identitySchema)) });
+const written = (data: Json) => json.encode({ data, schema: { $link: linkOf(json.encode(identitySchema)) } });
 
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)("in %s reads back from its object as the same identity", (scheme) => {
@@ -50,7 +50,7 @@ describe("an identity", () => {
 
   it("is refused written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
-    const bytes = json.encode({ data: { publicKey: ed25519Key, scheme: "ed25519" }, schema: lookalike.link });
+    const bytes = json.encode({ data: { publicKey: ed25519Key, scheme: "ed25519" }, schema: { $link: lookalike.link } });
     expect(() => identities.decode(bytes)).toThrow(/not read here/);
   });
 });

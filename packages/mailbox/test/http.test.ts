@@ -86,7 +86,7 @@ describe("an HTTP mailbox's url", () => {
   );
 
   // Written elsewhere, since this package does not write a mailbox it would refuse.
-  const written = (url: string) => json.encode({ data: { key, url }, schema: http.schema.link });
+  const written = (url: string) => json.encode({ data: { key, url }, schema: { $link: http.schema.link } });
 
   it.each([
     ["plain http to another machine", "http://mail.example/alice"],

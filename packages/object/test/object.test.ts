@@ -19,12 +19,14 @@ const login = await encodeSchema(
 );
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
-  ["without data", `{"schema":"${anything.link}"}`],
+  ["without data", `{"schema":{"$link":"${anything.link}"}}`],
   ["without a schema", '{"data":1}'],
-  ["with a field besides data and schema", `{"data":1,"note":"x","schema":"${anything.link}"}`],
-  ["whose schema is not a link", '{"data":1,"schema":"login"}'],
+  ["with a field besides data and schema", `{"data":1,"note":"x","schema":{"$link":"${anything.link}"}}`],
+  ["whose schema is not a link", '{"data":1,"schema":{"$link":"login"}}'],
+  ["whose schema link is a bare string", `{"data":1,"schema":"${anything.link}"}`],
+  ["whose schema link has a member besides $link", `{"data":1,"schema":{"$link":"${anything.link}","note":"x"}}`],
   ["whose schema is the schema itself", `{"data":1,"schema":{"$schema":"${DRAFT}"}}`],
-  ["that is an array", `[1,"${anything.link}"]`],
+  ["that is an array", `[1,{"$link":"${anything.link}"}]`],
 ];
 
 describe("an object", () => {
@@ -32,7 +34,7 @@ describe("an object", () => {
     ["a JSON object", greeting],
     ["an array", [1, "two", { three: null }]],
     ["a string", "hello"],
-    ["a link", login.link],
+    ["a link", { $link: login.link }],
     ["null", null],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
@@ -69,7 +71,7 @@ describe("an object", () => {
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
     expect(schemaOf(encodeObject(login, greeting).bytes, json)).toBe(login.link);
-    expect(schemaOf(utf8(`{"data":1,"schema":"${login.link}"}`), json)).toBe(login.link);
+    expect(schemaOf(utf8(`{"data":1,"schema":{"$link":"${login.link}"}}`), json)).toBe(login.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, text) => {

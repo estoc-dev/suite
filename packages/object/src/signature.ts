@@ -1,7 +1,7 @@
 import { verify, type Identity, type Signer } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { identitySchema, identitySemantics, type IdentityObject } from "./identity.ts";
-import type { Json } from "./json.ts";
+import type { Json, JsonLink } from "./json.ts";
 import { DRAFT_2020_12, HEX, linkSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
 import { digestOf, type Bytes, type Link } from "./link.ts";
 import { encodeSchema, type Schema } from "./schema.ts";
@@ -43,7 +43,11 @@ export interface Signature {
   readonly link: Link<Signature>;
 }
 
-type SignatureData = { readonly identity: Link<IdentityObject>; readonly object: Link<never>; readonly signature: string };
+type SignatureData = {
+  readonly identity: JsonLink<IdentityObject>;
+  readonly object: JsonLink<never>;
+  readonly signature: string;
+};
 
 /**
  * Reads signatures, and refuses one unless its identity signed the object it
@@ -68,16 +72,21 @@ export class Signatures extends Semantics<
           schema: signature,
           read(data, { bytes, link }, blobs) {
             const fields = data as SignatureData;
-            const signer = identities.follow(fields.identity, blobs);
+            const signer = identities.follow(fields.identity.$link, blobs);
+            const object = fields.object.$link;
             const value = hexToBytes(fields.signature);
-            if (!verify(signer, digestOf(fields.object), value)) throw new Error(`the signature does not verify for ${fields.object}`);
-            return { identity: signer, object: fields.object, signature: value, bytes, link };
+            if (!verify(signer, digestOf(object), value)) throw new Error(`the signature does not verify for ${object}`);
+            return { identity: signer, object, signature: value, bytes, link };
           },
         },
       ],
       {
         schema: signature.link,
-        write: ({ identity, object, signature }) => ({ identity: identity.link, object, signature: bytesToHex(signature) }),
+        write: ({ identity, object, signature }) => ({
+          identity: { $link: identity.link },
+          object: { $link: object },
+          signature: bytesToHex(signature),
+        }),
       },
     );
     this.identities = identities;

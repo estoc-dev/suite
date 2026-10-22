@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { encodeObject, encodeSchema, json, linkSchema, Semantics, type JsonObject, type Link } from "../src/index.ts";
+import { encodeObject, encodeSchema, json, linkSchema, Semantics, type JsonLink, type JsonObject, type Link } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaOf = (properties: JsonObject) =>
@@ -56,7 +56,8 @@ describe("a semantics", () => {
 
   it("refuses an object whose data does not fit its schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    expect(() => new Semantics([{ schema: first, read }]).decode(json.encode({ data: { text: 1 }, schema: first.link }))).toThrow(/does not fit/);
+    const bytes = json.encode({ data: { text: 1 }, schema: { $link: first.link } });
+    expect(() => new Semantics([{ schema: first, read }]).decode(bytes)).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
   });
 
@@ -106,8 +107,8 @@ const replies: Semantics<Reply> = new Semantics([
   {
     schema: replySchema,
     read: (data, _, blobs) => {
-      const { to, text } = data as { to: Link<Note>; text: string };
-      return { to: notes.follow(to, blobs), text };
+      const { to, text } = data as { to: JsonLink<Note>; text: string };
+      return { to: notes.follow(to.$link, blobs), text };
     },
   },
 ]);
@@ -115,7 +116,7 @@ const replies: Semantics<Reply> = new Semantics([
 describe("a semantics whose reading follows a link", () => {
   const note = encodeObject(first, { text: "lunch?" });
   const other = encodeObject(first, { text: "dinner?" });
-  const reply = encodeObject(replySchema, { to: note.link, text: "yes" });
+  const reply = encodeObject(replySchema, { to: { $link: note.link }, text: "yes" });
 
   it("reads with the object that the link names, from the blobs given", () => {
     const blobs = new Map([[note.link, received(note.bytes)]]);

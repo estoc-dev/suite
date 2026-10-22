@@ -81,8 +81,8 @@ over it, and `defaultValidator` a validator of that language.
   they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
   or repeated, needless escapes, and numbers not written the shortest way
   (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
-  refuses lone surrogates, NaN and Infinity. There are no further rules on
-  the JSON.
+  refuses lone surrogates, NaN and Infinity. Apart from the rule on `$link`
+  below, there are no further rules on the JSON.
 - Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
   `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
   magnitude are exact in every language; write larger integers and decimal

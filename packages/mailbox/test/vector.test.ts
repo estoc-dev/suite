@@ -2,6 +2,7 @@ import { encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
 import { describe, expect, it, test } from "vitest";
+import { loadHttpTransport } from "../src/http.ts";
 import { MailboxKey, mailboxSchema } from "../src/index.ts";
 
 // The bytes and the links were checked against Python's json module with
@@ -16,6 +17,13 @@ const schemaText =
   '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"name":{"type":"string"}},' +
   '"required":["key","name"],"title":"Memory mailbox","type":"object"}';
 const schemaLink = "sha256:ad78ace09f4e1f8597af52bc27c63f478b632545742521797d694a13ddba4f9e";
+const httpSchemaText =
+  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},' +
+  '"url":{"format":"uri","pattern":"^(https://|http://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?([/?#]|$))",' +
+  '"type":"string"}},' +
+  '"required":["key","url"],"title":"HTTP mailbox","type":"object"}';
+const httpSchemaLink = "sha256:8ffecf613658fc3f846c3a40be80feec587ce034ad53edd769708f3078ac1e4c";
 const publicKey = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
 const rootText = '{"data":"hello","schema":"sha256:612c3c87bf6797405b741d516ad1866d9395ec1d20276a5baf58fc676aabff2f"}';
 const rootLink = "sha256:9728eff8389d5e355f4b2576ee1b66523d8ed7d3b7cdab5542be3ca401767a18";
@@ -39,6 +47,12 @@ describe("the memory mailbox schema and an x25519 key", () => {
     expect(schema.link).toBe(schemaLink);
     expect(hex.encode(key.publicKey)).toBe(publicKey);
   });
+});
+
+test("the HTTP mailbox schema encodes to fixed bytes and a fixed link", async () => {
+  const { schema } = await loadHttpTransport(defaultValidator);
+  expect(new TextDecoder().decode(schema.bytes)).toBe(httpSchemaText);
+  expect(schema.link).toBe(httpSchemaLink);
 });
 
 test("sealed bytes made elsewhere open with that key to a bundle of a root and a blob", async () => {

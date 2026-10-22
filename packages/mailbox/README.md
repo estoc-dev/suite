@@ -161,5 +161,38 @@ interface Transport {
 bytes, resolves once they are handed on and rejects when they cannot be.
 How the receiver gets them, such as listening for requests or fetching from
 a relay, is the transport's own; it ends with the sealed bytes handed to
-`MailboxKey.open`. This package ships no transport yet. Its tests run on
-one in memory.
+`MailboxKey.open`. This package ships one transport, over HTTP; its tests
+also run on one in memory.
+
+### HTTP
+
+```ts
+import { loadHttpTransport } from "@estoc/mailbox/http";
+
+const http = await loadHttpTransport(defaultValidator);
+const mailbox = await mailboxFrom(handedOut, { transports: [http] });
+```
+
+```
+HTTP mailbox  {"key": <x25519 public key>, "url": <URL>}
+```
+
+The schema is titled `HTTP mailbox`. Its url starts with `https://`, or
+with `http://` to the receiver's own machine: `localhost`, `127.0.0.1` or
+`[::1]`, with or without a port. Sealed bytes cannot be read on the way,
+but over plain http whoever is on the way sees when messages arrive and how
+large they are, and can hold them back unnoticed. On one machine, as in
+development or for a daemon beside the sender, no one is on the way.
+
+`deliver` posts the sealed bytes to the url as `application/octet-stream`.
+A 2xx response means they were handed on. Any other response, or none,
+rejects, and nothing is sent again. A redirect is not followed, since it
+would take the bytes to a url the mailbox does not name. No cookies or
+other credentials and no referrer go with the request.
+
+The receiving side is whatever serves the url, and this package ships
+none. It passes the body of each POST to `MailboxKey.open` and answers 2xx
+once it has kept the bytes. Anyone can post to it, so it limits how large a
+body it takes. One that browsers send to answers their CORS preflight for a
+POST with `Content-Type: application/octet-stream`, since browsers ask
+before sending that type to another origin.

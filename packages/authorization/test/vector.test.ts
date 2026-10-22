@@ -9,8 +9,8 @@ import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/ind
 // keys and no whitespace, which writes these values as JCS does, and its
 // hashlib; the signatures, which Ed25519 makes deterministic, against
 // Python's cryptography package. A change to the format changes them.
-const authorizationSchemaLink = "sha256:d29870e078e52da1b055d4536adaa856a1b717f3e3fd5e3480e8b190c2b708ca";
-const proxySchemaLink = "sha256:121a2faacf1b07855a59863ad6a9f0d38f45472b6a5b563fc30a8169b6de5903";
+const authorizationSchemaLink = "sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b";
+const proxySchemaLink = "sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71";
 const hotIdentityText =
   '{"data":{"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","scheme":"ed25519"},' +
   '"schema":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}}';
@@ -18,27 +18,27 @@ const hotIdentityLink = "sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf
 const authorizationText =
   '{"data":{"agent":{"$link":"sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf57b7bfa3aae946d8"},' +
   '"until":"2027-01-01T00:00:00Z"},' +
-  '"schema":{"$link":"sha256:d29870e078e52da1b055d4536adaa856a1b717f3e3fd5e3480e8b190c2b708ca"}}';
-const authorizationLink = "sha256:ae1d5e3eda5ddd8dd0493549312b2481600d8858fd666be9d9e9154cbc5f5678";
+  '"schema":{"$link":"sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b"}}';
+const authorizationLink = "sha256:99aca15ffdf55e7eae96a2e4bc31c9ff6012d54c852ffdbeb162c041641a5eb8";
 const grantText =
   '{"data":{"identity":{"$link":"sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53"},' +
-  '"object":{"$link":"sha256:ae1d5e3eda5ddd8dd0493549312b2481600d8858fd666be9d9e9154cbc5f5678"},' +
-  '"signature":"c76a7cbcc26b5588909984c94e5a918a1874b8304e0cfabd8805deaa4d2775cd' +
-  '67af919fc7d78f079a9e5947fdb4400f05504b848a8e6a121af46ba17b4ac30b"},' +
-  '"schema":{"$link":"sha256:c44f0f4d7177466d11b3a2080f717a9846a9ccf6899c11c0657e37f067c22472"}}';
-const grantLink = "sha256:f9f42b3461a381a68bd026518f38b5a71107729e491980202e3f47cc3611294f";
+  '"object":{"$link":"sha256:99aca15ffdf55e7eae96a2e4bc31c9ff6012d54c852ffdbeb162c041641a5eb8"},' +
+  '"signature":"204c40fd4b00978c516c50815252c87f4ac851063dd7d7be02a4a2e972c991be' +
+  'e1424d04f74b52a1217145951e162953c79f1947ce97cedb41c584cb698cc302"},' +
+  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
+const grantLink = "sha256:9d4391f85a64c04f64488f8440f3fec4ed2dd839a81d6299f69c8cad406f1daa";
 const proxyText =
-  '{"data":{"chain":[{"$link":"sha256:f9f42b3461a381a68bd026518f38b5a71107729e491980202e3f47cc3611294f"}],' +
+  '{"data":{"chain":[{"$link":"sha256:9d4391f85a64c04f64488f8440f3fec4ed2dd839a81d6299f69c8cad406f1daa"}],' +
   '"target":{"$link":"sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52"}},' +
-  '"schema":{"$link":"sha256:121a2faacf1b07855a59863ad6a9f0d38f45472b6a5b563fc30a8169b6de5903"}}';
-const proxyLink = "sha256:aba4a05568edc1f7ae321ccb1dbdf78068973ca05d09ca8c2fd99eacad298239";
+  '"schema":{"$link":"sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71"}}';
+const proxyLink = "sha256:8f92675bda591aff1c7ac40e7bf3737ae2032ae2c6e344c645f8dd36e13a7ceb";
 const proxySignatureText =
   '{"data":{"identity":{"$link":"sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf57b7bfa3aae946d8"},' +
-  '"object":{"$link":"sha256:aba4a05568edc1f7ae321ccb1dbdf78068973ca05d09ca8c2fd99eacad298239"},' +
-  '"signature":"48ade88ecdf99476ee1101493bec65b988d9e250324642e48712e0a9618d2dd1' +
-  '276b89629725d42086b13d23dc13250a0e8b42f310edb037f943576e66651e08"},' +
-  '"schema":{"$link":"sha256:c44f0f4d7177466d11b3a2080f717a9846a9ccf6899c11c0657e37f067c22472"}}';
-const proxySignatureLink = "sha256:c7b727252570ff87514b16c21cc87b1d7a5e983414ea869d33419cdcdddb26cc";
+  '"object":{"$link":"sha256:8f92675bda591aff1c7ac40e7bf3737ae2032ae2c6e344c645f8dd36e13a7ceb"},' +
+  '"signature":"3e7f74c3e96aa5b70e2f15982c24874ac65c64140cad7ac2681a79a2896e0866' +
+  'cd11fe739dc185a406a8670baea9b9e0a6621a8b7420960a0b621c72cc4ffb0a"},' +
+  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
+const proxySignatureLink = "sha256:e854d7fc311beb767cbe9a394ca4f1e15f08267ee4f2ce1b720498574d87a93c";
 // The identity object of the signer of the vector in @estoc/object.
 const rootIdentityText =
   '{"data":{"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"},' +

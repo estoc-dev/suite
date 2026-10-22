@@ -26,6 +26,21 @@ function isJsonLink(value: Json): value is JsonLink<never> {
   return names.length === 1 && names[0] === "$link" && isLink(value.$link);
 }
 
+/**
+ * Throws for an object with a `$link` member that is not a link, so that
+ * whatever has the mark of a link is one.
+ */
+function checkLinks(value: Json): void {
+  if (isJsonObject(value)) {
+    if (Object.hasOwn(value, "$link") && !isJsonLink(value)) {
+      throw new Error('an object with a $link member is a link, {"$link": "sha256:<hex>"}, and holds nothing else');
+    }
+    for (const member of Object.values(value)) checkLinks(member);
+  } else if (value !== null && typeof value === "object") {
+    for (const item of value) checkLinks(item);
+  }
+}
+
 // A decoder left to its defaults strips a leading byte order mark, and the
 // bytes would then pass as canonical; kept, it fails to parse as JSON.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -34,12 +49,14 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
  * JSON values, each written as its JCS (RFC 8785) encoding in UTF-8. Bytes
  * that are anything else are refused, not normalized: invalid UTF-8,
  * whitespace, keys out of order or repeated, and numbers or escapes not
- * written the shortest way. A link is written `{"$link": <link>}`, and an
- * object is the JSON object `{"data": <data>, "schema": {"$link": <link>}}`,
- * with no other member.
+ * written the shortest way. A link is written `{"$link": <link>}`, and any
+ * other object with a `$link` member is refused. An object is the JSON
+ * object `{"data": <data>, "schema": {"$link": <link>}}`, with no other
+ * member.
  */
 export const json: Encoding<Json> = {
   encode(value) {
+    checkLinks(value);
     const text = canonicalize(value);
     if (text === undefined) throw new TypeError("not a JSON value");
     return utf8ToBytes(text);
@@ -48,6 +65,7 @@ export const json: Encoding<Json> = {
     const text = utf8.decode(bytes);
     const value = JSON.parse(text) as Json;
     if (canonicalize(value) !== text) throw new Error("not in the canonical JSON form of RFC 8785");
+    checkLinks(value);
     return value;
   },
   object: (data, schema) => ({ data, schema: { $link: schema } }),

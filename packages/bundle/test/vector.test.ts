@@ -23,8 +23,8 @@ const signatureText =
   '"object":{"$link":"sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52"},' +
   '"signature":"bc44d93c9596131d6723e9c749b910648918af6a3cdb6e4c9e493f62be3b1edf' +
   '84159319aa8ec050291690c57ef99ffb788d7c86d90fb3851bed43ce0d11aa02"},' +
-  '"schema":{"$link":"sha256:c44f0f4d7177466d11b3a2080f717a9846a9ccf6899c11c0657e37f067c22472"}}';
-const signatureLink = "sha256:38e613eb42595ec59ff3e52ee94e8a3f14b99e0fc5abe1fcfc388657788a9f20";
+  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
+const signatureLink = "sha256:b6799e6f181e8d164164bef5e33aec18bf7cc8c7e152d58652c0d0b45ccacd5f";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);

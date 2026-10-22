@@ -90,9 +90,11 @@ over it, and `defaultValidator` a validator of that language.
 - A link is the JSON object `{"$link": "sha256:<hex>"}`, with no other
   member. JSON has no type for a link, so this marks one wherever a value
   names a blob, as tag 42 does in CBOR, and a string is a string whatever
-  it holds. An object with a member beside `$link`, or whose `$link` is not
-  a link, is plain data. In TypeScript a link in JSON data is a
-  `JsonLink<T>`, `{ $link: Link<T> }`.
+  it holds. Any other object with a `$link` member is refused, in writing
+  and in reading, whether it holds something other than a link or a member
+  beside it, so whatever has the mark of a link is one. That holds for
+  schemas as well, which are JSON too. In TypeScript a link in JSON data is
+  a `JsonLink<T>`, `{ $link: Link<T> }`.
 - An object is the JSON object `{"data": <data>, "schema": <link>}`, with no
   other member, and a schema is a JSON object naming its dialect in
   `$schema`, written as JSON is.
@@ -134,7 +136,10 @@ reaches the schema's own parts and nothing elsewhere, so the link of a
 schema fixes what its objects may hold, and no one changes that later by
 changing what a URL names. Where the data holds a link, the schema writes
 out what a link looks like: `linkSchema`, to place there, takes an object
-whose one member is `$link`, a string matching `^sha256:[0-9a-f]{64}$`.
+whose one member is `$link`, a string matching `^sha256:[0-9a-f]{64}$`. It
+names the member through `propertyNames` rather than `properties`, since
+`{"properties": {"$link": …}}` would itself be an object with a `$link`
+member that is not a link.
 
 ## Validators
 

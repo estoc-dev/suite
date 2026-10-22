@@ -41,6 +41,33 @@ describe("strict decoding", () => {
   });
 });
 
+describe("an object with a $link member", () => {
+  const link = anything.link;
+
+  it("reads back as a link when it holds a link and nothing else, wherever it is", () => {
+    const data = { a: { $link: link }, b: [{ $link: link }] };
+    expect(decodeText(objectText(JSON.stringify(data))).data).toEqual(data);
+  });
+
+  it.each([
+    ["holds something other than a link", { $link: "hello" }],
+    ["holds a link in uppercase hex", { $link: `sha256:${link.slice(7).toUpperCase()}` }],
+    ["holds a number", { $link: 1 }],
+    ["holds a link and another member", { $link: link, note: "x" }],
+    ["holds a schema, as properties naming $link would", { $link: { type: "string" } }],
+  ])("is refused in writing and in reading when it %s, at any depth", (_, malformed) => {
+    for (const data of [malformed, { a: [malformed] }]) {
+      expect(() => encodeObject(anything, data)).toThrow(/\$link/);
+      expect(() => decodeText(objectText(JSON.stringify(data)))).toThrow(/\$link/);
+    }
+  });
+
+  it("is refused in a schema too", async () => {
+    const schema = { $schema: "https://json-schema.org/draft/2020-12/schema", properties: { $link: { type: "string" } } };
+    await expect(encodeSchema(schema, defaultValidator)).rejects.toThrow(/\$link/);
+  });
+});
+
 test.each([
   ["0.1", 0.1, "0.1"],
   ["10^21", 1e21, "1e+21"],

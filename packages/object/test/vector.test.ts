@@ -38,20 +38,20 @@ const identityText =
 const identityLink = "sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53";
 const signatureSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"identity":{"additionalProperties":false,' +
-  '"properties":{"$link":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"}},"required":["$link"],"type":"object"},' +
-  '"object":{"additionalProperties":false,' +
-  '"properties":{"$link":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"}},"required":["$link"],"type":"object"},' +
+  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
   '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:c44f0f4d7177466d11b3a2080f717a9846a9ccf6899c11c0657e37f067c22472";
+const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
 const signatureText =
   '{"data":{"identity":{"$link":"sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53"},' +
   '"object":{"$link":"sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52"},' +
   '"signature":"bc44d93c9596131d6723e9c749b910648918af6a3cdb6e4c9e493f62be3b1edf' +
   '84159319aa8ec050291690c57ef99ffb788d7c86d90fb3851bed43ce0d11aa02"},' +
-  '"schema":{"$link":"sha256:c44f0f4d7177466d11b3a2080f717a9846a9ccf6899c11c0657e37f067c22472"}}';
-const signatureLink = "sha256:38e613eb42595ec59ff3e52ee94e8a3f14b99e0fc5abe1fcfc388657788a9f20";
+  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
+const signatureLink = "sha256:b6799e6f181e8d164164bef5e33aec18bf7cc8c7e152d58652c0d0b45ccacd5f";
 
 const schema = await encodeSchema(
   {

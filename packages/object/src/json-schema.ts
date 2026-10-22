@@ -43,7 +43,9 @@ export const HEX = /^(?:[0-9a-f]{2})*$/;
  */
 export const linkSchema: JsonObject = {
   type: "object",
-  properties: { $link: { type: "string", pattern: LINK_PATTERN } },
   required: ["$link"],
-  additionalProperties: false,
+  // A schema is JSON too, so `properties: {"$link": …}` would be an object
+  // with a `$link` member that is not a link, and refused.
+  propertyNames: { const: "$link" },
+  additionalProperties: { type: "string", pattern: LINK_PATTERN },
 };

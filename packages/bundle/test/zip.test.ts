@@ -162,6 +162,14 @@ describe("a zipped bundle", () => {
     for (const blob of [root.bytes, text, image]) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 
+  it("without compression holds its files as they are, and unzips to them", async () => {
+    const large = writeBundle(root, [zeros]);
+    const stored = await zipBundle(large, { compress: false });
+    expect(stored.length).toBeGreaterThan(sizeOf(large));
+    expect((await zipBundle(large)).length).toBeLessThan(sizeOf(large));
+    expect(await unzipBundle(stored)).toEqual(large);
+  });
+
   it("is the same bytes whenever and wherever it is zipped", async () => {
     const zipped = (now: string, zone: string) => {
       vi.useFakeTimers({ now: new Date(now), toFake: ["Date"] });

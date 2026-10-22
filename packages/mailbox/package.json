@@ -10,10 +10,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@estoc/bundle": "workspace:*",
     "@estoc/object": "workspace:*",
     "@hpke/core": "1.9.0",
-    "@scure/base": "^2.4.0",
-    "temporal-polyfill": "^1.0.6"
+    "@scure/base": "^2.4.0"
   },
   "devDependencies": {
     "@estoc/identity": "workspace:*",

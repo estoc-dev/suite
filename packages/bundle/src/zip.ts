@@ -6,15 +6,20 @@ const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 const METHODS = [0, 8];
 
 /**
- * Zips the files of a bundle as they are, `index.json` at the top of the zip.
- * Every entry is dated 1980-02-01, so that a zip does not tell when or in which
- * time zone it was made. The date is in local time, which is what a zip
- * records. The earliest date a zip can hold is a month before, and zip.js
- * raises a date below it to it as it stood in the time zone zip.js was loaded
- * in; a month is clear of that in any time zone.
+ * Zips the files of a bundle as they are, `index.json` at the top of the zip,
+ * compressed with DEFLATE unless `compress` is false. Every entry is dated
+ * 1980-02-01, so that a zip does not tell when or in which time zone it was
+ * made. The date is in local time, which is what a zip records. The earliest
+ * date a zip can hold is a month before, and zip.js raises a date below it to
+ * it as it stood in the time zone zip.js was loaded in; a month is clear of
+ * that in any time zone.
  */
-export async function zipBundle(files: ReadonlyMap<string, Uint8Array>): Promise<Uint8Array> {
+export async function zipBundle(
+  files: ReadonlyMap<string, Uint8Array>,
+  { compress = true }: { readonly compress?: boolean } = {},
+): Promise<Uint8Array> {
   const zip = new ZipWriter(new Uint8ArrayWriter(), {
+    level: compress ? 6 : 0,
     lastModDate: new Date(1980, 1, 1),
     // An extended timestamp is in UTC, which a date in local time turns into
     // the time zone.

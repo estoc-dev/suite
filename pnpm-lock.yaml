@@ -89,6 +89,9 @@ importers:
 
   packages/mailbox:
     dependencies:
+      '@estoc/bundle':
+        specifier: workspace:*
+        version: link:../bundle
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
@@ -98,9 +101,6 @@ importers:
       '@scure/base':
         specifier: ^2.4.0
         version: 2.4.0
-      temporal-polyfill:
-        specifier: ^1.0.6
-        version: 1.0.6
     devDependencies:
       '@estoc/identity':
         specifier: workspace:*

@@ -69,11 +69,10 @@ reader does not know, is read all the same.
 
 Signatures are verified where they are used: the signatures of
 `@estoc/object` and `readStanding` in `@estoc/authorization` verify what
-they read. Verifying once on the way in and trusting it afterwards is what
-a store does with what it keeps. If reading a bundle verified signatures, it
-would have to know every identity scheme: a reader that predates a scheme
-could not read even the root of a card carrying a signature in it, and one
-bad signature that nothing refers to would refuse the whole bundle.
+they read. If reading a bundle verified signatures, it would have to know
+every identity scheme: a reader that predates a scheme could not read even
+the root of a card carrying a signature in it, and one bad signature that
+nothing refers to would refuse the whole bundle.
 
 A reader starts at the root, reads it through a semantics of the schemas it
 expects, and follows its links with `get`. To carry signed content, the root is the
@@ -97,7 +96,7 @@ such as a document a contract names by hash that both parties already hold,
 and the reader finds out when `get` gives `undefined`. Which blobs to carry
 is up to the application that writes the bundle. A blob the root does not
 lead to is kept and `get` returns it, but it means nothing: a bundle does
-not say which signatures are over an object, nor list the blobs it holds.
+not say which signatures are over an object.
 
 ## Zip
 

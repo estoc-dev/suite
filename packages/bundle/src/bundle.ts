@@ -52,6 +52,11 @@ export class Bundle {
   get(link: Link<unknown>): Bytes<unknown> | undefined {
     return this.#blobs.get(link);
   }
+
+  /** The root and the blobs under `blobs/sha256/`, each once, as a store takes them in. */
+  blobs(): Iterable<Bytes<unknown>> {
+    return this.#blobs.values();
+  }
 }
 
 /**

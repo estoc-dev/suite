@@ -95,6 +95,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/store':
+        specifier: workspace:*
+        version: link:../store
       '@hpke/core':
         specifier: 1.9.0
         version: 1.9.0

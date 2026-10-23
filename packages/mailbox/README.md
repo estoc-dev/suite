@@ -92,6 +92,66 @@ harmless to a reader, since blobs are named by their content and a reading
 only grows with what arrives; an application that needs a message to be
 fresh puts a nonce in its object, as a login does.
 
+## Through a store
+
+`loadPost` binds sending and receiving to a store of `@estoc/store`. What
+is sent is taken from the store, what arrives is kept there, and each is
+recorded as an object the user writes:
+
+```
+Inbound   {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
+Outbound  the same fields, under a schema of its own
+```
+
+```ts
+import { loadPost } from "@estoc/mailbox";
+
+const post = await loadPost(store, { transports: [transport], validator: defaultValidator });
+
+const outbox = await post.outbox(theirs.link);
+await outbox.send(signature.link); // the root and all it leads to in the store
+
+const inbox = await post.inbox(mine.link, key);
+await inbox.receive(sealed); // the bundle, kept with an Inbound record
+
+for await (const link of store.mine()) await post.read(link); // a Delivery, or undefined
+```
+
+Both mailboxes have to be in the store, since a record links to its
+mailbox and a store takes in nothing without all it leads to. The receiver
+writes its own mailbox when it makes it, and the sender writes a mailbox
+handed to it, alone or in whatever record of the handing the application
+keeps. `inbox` refuses a key other than the one the mailbox names: what
+that key opens was sealed to another mailbox.
+
+`send` takes a root that the store holds, whoever wrote it, so passing on
+what came in is sending its root. It bundles the closure of the root,
+schemas included, and writes `Outbound` once the transport takes the
+bundle. When the transport refuses it, nothing is written, and the root is
+still there to send again. Neither the zip nor the sealed bytes are kept:
+sending again seals the same bundle afresh.
+
+`receive` keeps the bundle and its `Inbound` record in one write. What does
+not open with the key is refused, and so is a bundle that leaves out a
+blob its root leads to and the store does not hold, record and all. Blobs
+the root does not lead to are dropped.
+
+### Reading what came and went
+
+Each time something comes in or goes out is a record of its own, so a
+message that arrives twice, or is sent again after it was lost, has two.
+`at` is the clock of the device that wrote the record, and is no part of
+the message. A reader takes the same `bundle` at the same `mailbox` as one
+message, at the earliest `at`: the bundle is named by its root, which is
+the same each time it is sent.
+
+The package keeps no index of the records. An application reads them as it
+needs: by going through all that is listed, as the tests read a
+conversation, and later by adding each record as it is written. An index
+that takes records in any order and more than once, and only grows, reads
+the same either way. What a message says and who signed it are read from
+its root when it is shown.
+
 ## Messages
 
 A message is a bundle of `@estoc/bundle`: an object as the root, and the

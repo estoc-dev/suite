@@ -20,6 +20,7 @@ const files = writeBundle(signature, [message.bytes, signature.identity.bytes]);
 const bundle = readBundle(files);
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
+[...bundle.blobs()];      // signature.bytes, message.bytes, signature.identity.bytes
 ```
 
 ## The root

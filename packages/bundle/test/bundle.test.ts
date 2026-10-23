@@ -137,6 +137,11 @@ describe("a bundle", () => {
     expect(bundle.get(root.link)).toEqual(root.bytes);
   });
 
+  it("lists its root and its blobs, each once, and no file that is not a blob", () => {
+    const files = new Map([...filesOf(root.bytes, root.bytes, hello.bytes, image), [".DS_Store", image]]);
+    expect([...readBundle(files).blobs()]).toEqual([root.bytes, hello.bytes, image]);
+  });
+
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([
     ["arrays", (bytes) => bytes.slice()],
     ["Node Buffers", (bytes) => Buffer.from(bytes)],

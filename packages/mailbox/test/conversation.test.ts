@@ -9,19 +9,20 @@ import {
   signatureSchema,
   type EncodedObject,
   type Json,
+  type JsonLink,
   type Link,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { MemoryBackend, Store } from "@estoc/store";
+import { MemoryBackend, scan, Store, type Index, type Rows } from "@estoc/store";
 import { describe, expect, it } from "vitest";
-import { loadPost, MailboxKey, type Delivery, type Inbox, type Outbox, type Post } from "../src/index.ts";
+import { inboundSchema, loadPost, MailboxKey, outboundSchema, type Inbox, type Outbox, type Post } from "../src/index.ts";
 import { MemoryNetwork, type Faults } from "./memory-network.ts";
 
 // A chat between two people, each with a store and a mailbox for the other.
 // What one sends is a signed line from their store, recorded there as gone
 // out; what arrives is kept with a record that it came in. The application
-// reads a conversation out of those records alone, going through all that
-// its user wrote, and reads each line from its bundle when it shows it.
+// reads a conversation out of those records alone, through an index of all
+// that its user wrote, and reads each line from its bundle when it shows it.
 
 const signatures = await loadSignatures(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -39,28 +40,42 @@ const line = await encodeSchema(
 const schemas = [line, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
   ({ bytes }) => bytes,
 );
+const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map((schema) => encodeSchema(schema, defaultValidator)));
 
-type Entry = Omit<Delivery, "link">;
+type Direction = "inbound" | "outbound";
+type Mailbox = Link<EncodedObject<Json>>;
+type Delivered = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
 
-// What the application keeps of the deliveries it has read: when each bundle
-// first came in at, or went out to, each mailbox. Deliveries can be added in
-// any order and more than once, so going through all that is listed and
-// adding each one as it is written come to the same.
-class Correspondence {
-  readonly #first = new Map<string, Entry>();
+// The application's index of the deliveries its user wrote: a row for each,
+// by which way it went, the mailbox, when, and the bundle.
+const deliveries: Index<Json, Delivered> = {
+  reads: [inbound!, outbound!],
+  rows: ({ schema, data }) => {
+    const { mailbox, at, bundle } = data as { mailbox: JsonLink<EncodedObject<Json>>; at: number; bundle: JsonLink<never> };
+    return [[schema.link === inbound!.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link]];
+  },
+};
 
-  add({ direction, mailbox, bundle, at }: Delivery): void {
-    const key = `${direction} ${mailbox} ${bundle}`;
-    const known = this.#first.get(key);
-    if (known === undefined || at < known.at) this.#first.set(key, { direction, mailbox, bundle, at });
-  }
+async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
+  const gathered: T[] = [];
+  for await (const item of items) gathered.push(item);
+  return gathered;
+}
 
-  /** What came in at `mine` and went out to `theirs`, in the order of when. */
-  conversation(mine: Link<unknown>, theirs: Link<unknown>): Entry[] {
-    return [...this.#first.values()]
-      .filter(({ direction, mailbox }) => mailbox === (direction === "inbound" ? mine : theirs))
-      .sort((a, b) => a.at - b.at);
-  }
+// What came in at `mine` and went out to `theirs`, in the order of when. A
+// bundle that came in, or went out, more than once is there once, at the
+// first time: a range gives its rows in the order of when.
+async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbox): Promise<Delivered[]> {
+  const first = async (range: AsyncIterable<Delivered>) => {
+    const seen = new Set<Link<never>>();
+    return (await all(range)).filter(([, , , bundle]) => {
+      const fresh = !seen.has(bundle);
+      seen.add(bundle);
+      return fresh;
+    });
+  };
+  const ways = await Promise.all([first(rows.range(["inbound", mine])), first(rows.range(["outbound", theirs]))]);
+  return ways.flat().sort((a, b) => a[2] - b[2]);
 }
 
 interface Person {
@@ -68,21 +83,6 @@ interface Person {
   readonly signer: SoftwareSigner;
   readonly store: Store;
   readonly post: Post;
-}
-
-async function deliveries({ store, post }: Person): Promise<Delivery[]> {
-  const read: Delivery[] = [];
-  for await (const link of store.mine()) {
-    const delivery = await post.read(link);
-    if (delivery !== undefined) read.push(delivery);
-  }
-  return read;
-}
-
-function correspondence(read: Iterable<Delivery>): Correspondence {
-  const kept = new Correspondence();
-  for (const delivery of read) kept.add(delivery);
-  return kept;
 }
 
 async function chat(faults: Faults = {}) {
@@ -129,28 +129,30 @@ async function chat(faults: Faults = {}) {
   // which way it went and who wrote it.
   const show = async (person: Person, mine: EncodedObject<Json>, theirs: EncodedObject<Json>) =>
     Promise.all(
-      correspondence(await deliveries(person))
-        .conversation(mine.link, theirs.link)
-        .map(async ({ direction, bundle }) => {
-          const signed = await person.store.read(signatures, bundle);
-          const { data } = decodeObject((await person.store.get(signed.object))!, line);
-          return [direction, names.get(signed.identity.link), (data as { text: string }).text];
-        }),
+      (await conversation(await scan(person.store, deliveries), mine.link, theirs.link)).map(async ([direction, , , bundle]) => {
+        const signed = await person.store.read(signatures, bundle);
+        const { data } = decodeObject((await person.store.get(signed.object))!, line);
+        return [direction, names.get(signed.identity.link), (data as { text: string }).text];
+      }),
     );
+  // What the person's store records as having come in, or gone out, at any mailbox.
+  const recorded = async ({ store }: Person, direction: Direction) => all((await scan(store, deliveries)).range([direction]));
 
   return {
     alice: {
       say: (text: string) => say(alice, atBob.outbox, text),
       collect: () => collect(atAlice),
       show: () => show(alice, atAlice.mailbox, atBob.mailbox),
-      deliveries: () => deliveries(alice),
+      recorded: (direction: Direction) => recorded(alice, direction),
       resend: (root: Link<unknown>) => atBob.outbox.send(root),
+      store: alice.store,
+      conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox.link, atBob.mailbox.link),
     },
     bob: {
       say: (text: string) => say(bob, atAlice.outbox, text),
       collect: () => collect(atBob),
       show: () => show(bob, atBob.mailbox, atAlice.mailbox),
-      deliveries: () => deliveries(bob),
+      recorded: (direction: Direction) => recorded(bob, direction),
     },
   };
 }
@@ -183,7 +185,7 @@ describe("a conversation", () => {
     await alice.say("lunch at noon?");
     await bob.collect();
 
-    expect((await bob.deliveries()).filter(({ direction }) => direction === "inbound")).toHaveLength(4);
+    expect(await bob.recorded("inbound")).toHaveLength(4);
     expect(await bob.show()).toEqual([
       ["inbound", "Alice", "hi Bob"],
       ["inbound", "Alice", "lunch at noon?"],
@@ -199,7 +201,7 @@ describe("a conversation", () => {
 
     await alice.resend(lost.link);
     await bob.collect();
-    expect((await alice.deliveries()).filter(({ direction }) => direction === "outbound")).toHaveLength(3);
+    expect(await alice.recorded("outbound")).toHaveLength(3);
     expect(await alice.show()).toEqual([
       ["outbound", "Alice", "hi Bob"],
       ["outbound", "Alice", "lunch at noon?"],
@@ -217,11 +219,13 @@ describe("a conversation", () => {
     await bob.say("hi Alice");
     await alice.collect();
 
-    const read = await alice.deliveries();
-    const at = (direction: Delivery["direction"]) => read.find((delivery) => delivery.direction === direction)!.mailbox;
-    const [mine, theirs] = [at("inbound"), at("outbound")];
-    expect(correspondence([...read, ...read].reverse()).conversation(mine, theirs)).toEqual(
-      correspondence(read).conversation(mine, theirs),
-    );
+    // What Alice wrote, written again to another store, last first and twice.
+    const copy = new Store(json, new MemoryBackend());
+    const written = await all(alice.store.mine());
+    for (const link of [...written, ...written].reverse()) {
+      const closure = await alice.store.closure(link);
+      await copy.write({ mine: [{ bytes: closure.get(link)! }], blobs: closure.values() });
+    }
+    expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });
 });

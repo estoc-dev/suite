@@ -103,6 +103,8 @@ Inbound   {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at":
 Outbound  the same fields, under a schema of its own
 ```
 
+The two schemas are `inboundSchema` and `outboundSchema`.
+
 ```ts
 import { loadPost } from "@estoc/mailbox";
 
@@ -113,8 +115,6 @@ await outbox.send(signature.link); // the root and all it leads to in the store
 
 const inbox = await post.inbox(mine.link, key);
 await inbox.receive(sealed); // the bundle, kept with an Inbound record
-
-for await (const link of store.mine()) await post.read(link); // a Delivery, or undefined
 ```
 
 Both mailboxes have to be in the store, since a record links to its
@@ -145,12 +145,12 @@ the message. A reader takes the same `bundle` at the same `mailbox` as one
 message, at the earliest `at`: the bundle is named by its root, which is
 the same each time it is sent.
 
-The package keeps no index of the records. An application reads them as it
-needs: by going through all that is listed, as the tests read a
-conversation, and later by adding each record as it is written. An index
-that takes records in any order and more than once, and only grows, reads
-the same either way. What a message says and who signed it are read from
-its root when it is shown.
+The package keeps no index of the records. An application keeps its own,
+an index of `@estoc/store` that reads `inboundSchema` and `outboundSchema`.
+The tests give each record the row `[direction, mailbox, at, bundle]`, and
+read a conversation from two ranges, what came in at one mailbox and what
+went out to the other, each bundle once at its first row. What a message
+says and who signed it are read from its root when it is shown.
 
 ## Messages
 

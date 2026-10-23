@@ -25,13 +25,19 @@ export function mailboxSchema(
   };
 }
 
+/** The draft 2020-12 schema of a record that a bundle came in at a mailbox of the user's. */
+export const inboundSchema: JsonSchema = deliverySchema("Inbound");
+
+/** The draft 2020-12 schema of a record that a bundle went out to a mailbox. */
+export const outboundSchema: JsonSchema = deliverySchema("Outbound");
+
 /**
- * The draft 2020-12 schema of a record that a bundle, named by the link of
- * its root, came in at a mailbox or went out to one. `at` is when, in
- * milliseconds since the Unix epoch by the clock of the device that wrote
- * the record.
+ * A record that a bundle, named by the link of its root, came in at a
+ * mailbox or went out to one. `at` is when, in milliseconds since the Unix
+ * epoch by the clock of the device that wrote the record. Records of both
+ * ways have the same fields, and the title tells them apart.
  */
-export function deliverySchema(title: "Inbound" | "Outbound"): JsonSchema {
+function deliverySchema(title: string): JsonSchema {
   return {
     $schema: DRAFT_2020_12,
     title,

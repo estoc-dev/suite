@@ -1,9 +1,9 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, identitySchema, json, loadSignatures, signatureSchema, type Link } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, identitySchema, json, loadSignatures, signatureSchema, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
-import { loadPost, MailboxKey, mailboxFrom } from "../src/index.ts";
+import { loadPost, MailboxKey, mailboxFrom, outboundSchema } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 const signatures = await loadSignatures(defaultValidator);
@@ -12,6 +12,7 @@ const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" 
 const schemas = [note, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
   ({ bytes }) => bytes,
 );
+const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, "hello, Bob");
 const signature = await signatures.sign(hello, alice);
@@ -45,7 +46,11 @@ describe("an outbox", () => {
     const sent = await (await post.outbox(mailbox.link)).send(signature.link);
     expect(sent).toEqual({ direction: "outbound", bundle: signature.link, mailbox: mailbox.link, at: 1000, link: sent.link });
     expect(await listed(store)).toContain(sent.link);
-    expect(await post.read(sent.link)).toEqual(sent);
+    expect(decodeObject((await store.get(sent.link))!, outbound).data).toEqual({
+      bundle: { $link: signature.link },
+      mailbox: { $link: mailbox.link },
+      at: 1000,
+    });
 
     const [sealed] = queue.take();
     const bundle = await bob.open(sealed!);
@@ -147,13 +152,5 @@ describe("an inbox", () => {
     const { post, mailbox } = await postWith(network);
     const other = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
     await expect(post.inbox(mailbox.link, other)).rejects.toThrow(/names another key/);
-  });
-});
-
-describe("a delivery read from a store", () => {
-  it("is nothing for an object of another schema", async () => {
-    const network = await MemoryNetwork.create(defaultValidator);
-    const { post, mailbox } = await postWith(network);
-    expect(await post.read(mailbox.link)).toBeUndefined();
   });
 });

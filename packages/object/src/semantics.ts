@@ -1,4 +1,4 @@
-import { decodeBlob, type Decoded, type Encoding } from "./encoding.ts";
+import { decodeBlob, type Decoded, type Encoding, type Fields } from "./encoding.ts";
 import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
@@ -21,7 +21,7 @@ export interface Reading<D, T> {
    * Throws when the data does not read as a `T`. A reading that follows a
    * link in the data looks the blob up in `blobs`.
    */
-  read(data: D, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }, blobs: Blobs): T;
+  read(data: Fields<D>, object: { readonly bytes: Bytes<T>; readonly link: Link<T> }, blobs: Blobs): T;
 }
 
 /**
@@ -32,7 +32,7 @@ export interface Reading<D, T> {
  */
 export interface Writing<D, V> {
   readonly schema: Link<Schema<D>>;
-  write(value: V): D;
+  write(value: V): Fields<D>;
 }
 
 /**

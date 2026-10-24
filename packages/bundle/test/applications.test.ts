@@ -42,7 +42,7 @@ function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
 const card = await schemaFor("Card", { mailbox: linkSchema, name: linkSchema });
 const contact = await schemaFor("Contact", { displayName: linkSchema, inbox: linkSchema });
 const mailbox = await schemaFor("Mailbox", { url: { type: "string", format: "uri" } });
-const name = await encodeSchema({ $schema: DRAFT, title: "Name", type: "string" }, defaultValidator);
+const name = await schemaFor("Name", { name: { type: "string" } });
 
 // A card lists the signatures of the one identity it is for: over a mailbox
 // that reaches it, and over the name it goes by. Another application writes
@@ -74,14 +74,14 @@ function readCard(bundle: Bundle) {
   return {
     identity: reachedAt.identity,
     mailbox: decodeObject(blobAt(bundle, reachedAt.object), mailbox).data,
-    name: decodeObject(blobAt(bundle, goesBy.object), name).data,
+    name: decodeObject(blobAt(bundle, goesBy.object), name).data.name,
   };
 }
 
 describe("a card", () => {
   const alice = signer("ed25519", 1);
   const inbox = encodeObject(mailbox, { url: "https://mail.example/alice" });
-  const called = encodeObject(name, "Alice");
+  const called = encodeObject(name, { name: "Alice" });
   const signed = Promise.all([signatures.sign(inbox, alice), signatures.sign(called, alice)]);
 
   it("reads as the mailbox and the name that its identity signed", async () => {

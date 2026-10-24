@@ -12,40 +12,40 @@ import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/ind
 const authorizationSchemaLink = "sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b";
 const proxySchemaLink = "sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71";
 const hotIdentityText =
-  '{"data":{"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","scheme":"ed25519"},' +
-  '"schema":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}}';
-const hotIdentityLink = "sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf57b7bfa3aae946d8";
+  '{"$type":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"},' +
+  '"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","scheme":"ed25519"}';
+const hotIdentityLink = "sha256:f5c09c4a0efac2d47552a5b03ce75ab7762d3ca149cc9b1355f33101dea495a0";
 const authorizationText =
-  '{"data":{"agent":{"$link":"sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf57b7bfa3aae946d8"},' +
-  '"until":"2027-01-01T00:00:00Z"},' +
-  '"schema":{"$link":"sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b"}}';
-const authorizationLink = "sha256:99aca15ffdf55e7eae96a2e4bc31c9ff6012d54c852ffdbeb162c041641a5eb8";
+  '{"$type":{"$link":"sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b"},' +
+  '"agent":{"$link":"sha256:f5c09c4a0efac2d47552a5b03ce75ab7762d3ca149cc9b1355f33101dea495a0"},' +
+  '"until":"2027-01-01T00:00:00Z"}';
+const authorizationLink = "sha256:7baf6e34fc1fc792dc9355e6d2e7586c7da4d6e89b430302ebab5f0789f9e3ba";
 const grantText =
-  '{"data":{"identity":{"$link":"sha256:62abc6480cbadc8179cf05e5b19faa7e3db3e7ef531bccb66a22988d56c87e53"},' +
-  '"object":{"$link":"sha256:99aca15ffdf55e7eae96a2e4bc31c9ff6012d54c852ffdbeb162c041641a5eb8"},' +
-  '"signature":"204c40fd4b00978c516c50815252c87f4ac851063dd7d7be02a4a2e972c991be' +
-  'e1424d04f74b52a1217145951e162953c79f1947ce97cedb41c584cb698cc302"},' +
-  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
-const grantLink = "sha256:9d4391f85a64c04f64488f8440f3fec4ed2dd839a81d6299f69c8cad406f1daa";
+  '{"$type":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
+  '"identity":{"$link":"sha256:3d52c9daa7ce3a7b07d4f155e33b08374b14e82f3d05c14f718d64d3552d6e1c"},' +
+  '"object":{"$link":"sha256:7baf6e34fc1fc792dc9355e6d2e7586c7da4d6e89b430302ebab5f0789f9e3ba"},' +
+  '"signature":"2ef003b374f2efa8a7046cd656bd0b3cee69aef70998aa452459ce3c9b5ad3a7' +
+  '0971b97d27c5aabb72950edeccc4acbbc5fec1fcfff01436b89d5ee80c78e703"}';
+const grantLink = "sha256:a5677034aa2c8cd9cd546169744f26b448c19485aa29fc06f583fa503bc0fed6";
 const proxyText =
-  '{"data":{"chain":[{"$link":"sha256:9d4391f85a64c04f64488f8440f3fec4ed2dd839a81d6299f69c8cad406f1daa"}],' +
-  '"target":{"$link":"sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52"}},' +
-  '"schema":{"$link":"sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71"}}';
-const proxyLink = "sha256:8f92675bda591aff1c7ac40e7bf3737ae2032ae2c6e344c645f8dd36e13a7ceb";
+  '{"$type":{"$link":"sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71"},' +
+  '"chain":[{"$link":"sha256:a5677034aa2c8cd9cd546169744f26b448c19485aa29fc06f583fa503bc0fed6"}],' +
+  '"target":{"$link":"sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de"}}';
+const proxyLink = "sha256:98bfce88823ed9f95cac72d528145e106a43fe0deca341a5968a0e08de8f2e49";
 const proxySignatureText =
-  '{"data":{"identity":{"$link":"sha256:cb783cb52eb08afc8fa95ae721ca7c63eef4d7288efc82cf57b7bfa3aae946d8"},' +
-  '"object":{"$link":"sha256:8f92675bda591aff1c7ac40e7bf3737ae2032ae2c6e344c645f8dd36e13a7ceb"},' +
-  '"signature":"3e7f74c3e96aa5b70e2f15982c24874ac65c64140cad7ac2681a79a2896e0866' +
-  'cd11fe739dc185a406a8670baea9b9e0a6621a8b7420960a0b621c72cc4ffb0a"},' +
-  '"schema":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"}}';
-const proxySignatureLink = "sha256:e854d7fc311beb767cbe9a394ca4f1e15f08267ee4f2ce1b720498574d87a93c";
+  '{"$type":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
+  '"identity":{"$link":"sha256:f5c09c4a0efac2d47552a5b03ce75ab7762d3ca149cc9b1355f33101dea495a0"},' +
+  '"object":{"$link":"sha256:98bfce88823ed9f95cac72d528145e106a43fe0deca341a5968a0e08de8f2e49"},' +
+  '"signature":"f5352d492d92b96a6bed2f72d57111a56d20f62be669a4badae3e68af253da96' +
+  '73b5ac9f20d87a1110c735b57064cd380970e5a78a9193c31a774652aecb7f09"}';
+const proxySignatureLink = "sha256:5643b184903b998a18fe0da8cb070a2ddeb548c7de4cd867dfab7b8437b9aed3";
 // The identity object of the signer of the vector in @estoc/object.
 const rootIdentityText =
-  '{"data":{"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"},' +
-  '"schema":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"}}';
+  '{"$type":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"},' +
+  '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"}';
 
 // The login object of the vector in @estoc/object.
-const target: Link<EncodedObject<Json>> = "sha256:5d30573d533225e8de6a606e0531506022e16419cad6b1f735b21d3fffcc4d52";
+const target: Link<EncodedObject<Json>> = "sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de";
 const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hot = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2));
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);

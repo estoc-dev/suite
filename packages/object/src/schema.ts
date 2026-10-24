@@ -1,8 +1,8 @@
-import { decodeBlob, type Encoding } from "./encoding.ts";
+import { decodeBlob, type Encoding, type Fields } from "./encoding.ts";
 import type { Bytes, Link } from "./link.ts";
 
-/** Lists what in a value does not fit a schema; an empty list means it fits. */
-export type Check<D> = (data: D) => readonly string[];
+/** Lists what in the data of an object does not fit a schema; an empty list means it fits. */
+export type Check<D> = (data: Fields<D>) => readonly string[];
 
 /**
  * A language of schemas `S` over the data of one encoding, as JSON Schema is
@@ -53,7 +53,7 @@ export class Schema<D> {
   }
 
   /** Lists what in `data` does not fit this schema; an empty list means it fits. */
-  validate(data: D): readonly string[] {
+  validate(data: Fields<D>): readonly string[] {
     return this.#check(data);
   }
 }

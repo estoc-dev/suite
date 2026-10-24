@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, schemaOf, type Json } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, schemaOf, type JsonObject } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -19,29 +19,36 @@ const login = await encodeSchema(
 );
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
-  ["without data", `{"schema":{"$link":"${anything.link}"}}`],
-  ["without a schema", '{"data":1}'],
-  ["with a field besides data and schema", `{"data":1,"note":"x","schema":{"$link":"${anything.link}"}}`],
-  ["whose schema is not a link", '{"data":1,"schema":{"$link":"login"}}'],
-  ["whose schema link is a bare string", `{"data":1,"schema":"${anything.link}"}`],
-  ["whose schema link has a member besides $link", `{"data":1,"schema":{"$link":"${anything.link}","note":"x"}}`],
-  ["whose schema is the schema itself", `{"data":1,"schema":{"$schema":"${DRAFT}"}}`],
+  ["without a $type", '{"v":1}'],
+  ["whose $type is not a link", '{"$type":{"$link":"login"},"v":1}'],
+  ["whose $type is a link as a bare string", `{"$type":"${anything.link}","v":1}`],
+  ["whose $type has a member besides $link", `{"$type":{"$link":"${anything.link}","note":"x"},"v":1}`],
+  ["whose $type is the schema itself", `{"$type":{"$schema":"${DRAFT}"},"v":1}`],
   ["that is an array", `[1,{"$link":"${anything.link}"}]`],
+  ["that is a string", `"${anything.link}"`],
 ];
 
 describe("an object", () => {
-  it.each<[string, Json]>([
-    ["a JSON object", greeting],
-    ["an array", [1, "two", { three: null }]],
-    ["a string", "hello"],
-    ["a link", { $link: login.link }],
-    ["null", null],
+  it.each<[string, JsonObject]>([
+    ["fields", greeting],
+    ["fields of every kind", { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null }],
+    ["no fields", {}],
+    ["a $type deeper in its data, which is data like any other", { inner: { $type: { $link: login.link } } }],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
     expect(read.data).toEqual(data);
     expect(read.link).toBe(object.link);
     expect(read.schema).toBe(anything);
+  });
+
+  it("reads back as its data without its $type, which a closed schema need not name", () => {
+    expect(decodeObject(encodeObject(login, greeting).bytes, login).data).toEqual(greeting);
+  });
+
+  it("is refused when its data has a $type of its own", () => {
+    expect(() => encodeObject(anything, { $type: { $link: login.link } })).toThrow(/\$type/);
+    expect(() => encodeObject(anything, { $type: "note" })).toThrow(/\$type/);
   });
 
   it("is linked by the SHA-256 of its bytes", () => {
@@ -71,7 +78,7 @@ describe("an object", () => {
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
     expect(schemaOf(encodeObject(login, greeting).bytes, json)).toBe(login.link);
-    expect(schemaOf(utf8(`{"data":1,"schema":{"$link":"${login.link}"}}`), json)).toBe(login.link);
+    expect(schemaOf(utf8(`{"$type":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, text) => {

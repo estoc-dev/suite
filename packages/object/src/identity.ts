@@ -25,10 +25,10 @@ export const identitySchema: JsonSchema = {
 };
 
 /**
- * An identity of `@estoc/identity`, as an object written to
- * `identitySchema`: `{"data": {"publicKey": <lowercase hex>, "scheme":
- * <scheme>}, "schema": <link to identitySchema>}`. A signature, or any
- * object, names an identity by the link of this object.
+ * An identity of `@estoc/identity`, as an object written to `identitySchema`:
+ * `{"$type": <link to identitySchema>, "publicKey": <lowercase hex>,
+ * "scheme": <scheme>}`. A signature, or any object, names an identity by the
+ * link of this object.
  */
 export interface IdentityObject extends Identity {
   readonly bytes: Bytes<IdentityObject>;

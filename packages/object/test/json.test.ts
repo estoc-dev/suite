@@ -5,18 +5,18 @@ import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/i
 
 const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const objectText = (data: string) => `{"data":${data},"schema":{"$link":"${anything.link}"}}`;
+const objectText = (value: string) => `{"$type":{"$link":"${anything.link}"},"v":${value}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
 
 describe("strict decoding", () => {
   it("accepts the canonical form", () => {
-    expect(decodeText(objectText('{"a":[1,"x"],"b":null}')).data).toEqual({ a: [1, "x"], b: null });
+    expect(decodeText(objectText('{"a":[1,"x"],"b":null}')).data).toEqual({ v: { a: [1, "x"], b: null } });
   });
 
   it.each([
-    ["whitespace between members", `{"data":1, "schema":{"$link":"${anything.link}"}}`],
+    ["whitespace between members", `{"$type":{"$link":"${anything.link}"}, "v":1}`],
     ["a trailing newline", `${objectText("1")}\n`],
-    ["keys out of order", `{"schema":{"$link":"${anything.link}"},"data":1}`],
+    ["keys out of order", `{"v":1,"$type":{"$link":"${anything.link}"}}`],
     ["a repeated key", objectText('{"a":1,"a":1}')],
     ["a number with a needless fraction", objectText("1.0")],
     ["a number with a needless exponent", objectText("1e2")],
@@ -46,7 +46,7 @@ describe("an object with a $link member", () => {
 
   it("reads back as a link when it holds a link and nothing else, wherever it is", () => {
     const data = { a: { $link: link }, b: [{ $link: link }] };
-    expect(decodeText(objectText(JSON.stringify(data))).data).toEqual(data);
+    expect(decodeText(objectText(JSON.stringify(data))).data).toEqual({ v: data });
   });
 
   it.each([
@@ -57,7 +57,7 @@ describe("an object with a $link member", () => {
     ["holds a schema, as properties naming $link would", { $link: { type: "string" } }],
   ])("is refused in writing and in reading when it %s, at any depth", (_, malformed) => {
     for (const data of [malformed, { a: [malformed] }]) {
-      expect(() => encodeObject(anything, data)).toThrow(/\$link/);
+      expect(() => encodeObject(anything, { v: data })).toThrow(/\$link/);
       expect(() => decodeText(objectText(JSON.stringify(data)))).toThrow(/\$link/);
     }
   });
@@ -73,25 +73,25 @@ test.each([
   ["10^21", 1e21, "1e+21"],
   ["2^60", 2 ** 60, "1152921504606847000"],
 ])("%s is written as JCS writes it and reads back", (_, value, written) => {
-  const object = encodeObject(anything, value);
+  const object = encodeObject(anything, { v: value });
   expect(new TextDecoder().decode(object.bytes)).toBe(objectText(written));
-  expect(decodeObject(object.bytes, anything).data).toBe(value);
+  expect(decodeObject(object.bytes, anything).data.v).toBe(value);
 });
 
 test("a string is written as UTF-8 and reads back", () => {
-  const object = encodeObject(anything, "Estoc 簽名 ✍️");
+  const object = encodeObject(anything, { v: "Estoc 簽名 ✍️" });
   expect(new TextDecoder().decode(object.bytes)).toBe(objectText('"Estoc 簽名 ✍️"'));
-  expect(decodeObject(object.bytes, anything).data).toBe("Estoc 簽名 ✍️");
+  expect(decodeObject(object.bytes, anything).data.v).toBe("Estoc 簽名 ✍️");
 });
 
 test("a lone surrogate cannot be encoded", () => {
-  expect(() => encodeObject(anything, "\ud800")).toThrow();
+  expect(() => encodeObject(anything, { v: "\ud800" })).toThrow();
 });
 
 test("any bytes, JSON or not, are linked by their SHA-256, as a decoded blob is", () => {
   const bytes = utf8("not JSON");
   expect(linkOf(bytes)).toBe(`sha256:${createHash("sha256").update(bytes).digest("hex")}`);
-  const object = encodeObject(anything, "hello");
+  const object = encodeObject(anything, { v: "hello" });
   expect(linkOf(object.bytes)).toBe(object.link);
 });
 
@@ -105,8 +105,8 @@ describe("the links in a JSON value", () => {
   });
 
   it("include the schema an object names", () => {
-    const object = encodeObject(anything, [{ $link: a }]);
-    expect([...json.links(json.decode(object.bytes))]).toEqual([a, anything.link]);
+    const object = encodeObject(anything, { v: [{ $link: a }] });
+    expect([...json.links(json.decode(object.bytes))]).toEqual([anything.link, a]);
   });
 
   it("leave out a string that is a link as a whole, as a member or as a member's name", () => {

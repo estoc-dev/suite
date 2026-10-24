@@ -14,9 +14,12 @@ const { signatures } = authorizations;
 const { identities } = signatures;
 const authorizationSchemaRead = await encodeSchema(authorizationSchema, defaultValidator);
 const proxySchemaRead = await encodeSchema(proxySchema, defaultValidator);
-const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
-const target = encodeObject(note, "the terms");
-const other = encodeObject(note, "other terms");
+const note = await encodeSchema(
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
+const target = encodeObject(note, { text: "the terms" });
+const other = encodeObject(note, { text: "other terms" });
 
 const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);

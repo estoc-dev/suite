@@ -27,13 +27,13 @@ export const signatureSchema: JsonSchema = {
 
 /**
  * An identity standing behind an object, as an object written to
- * `signatureSchema`: `{"data": {"identity": <link to the identity>,
- * "object": <link to the object>, "signature": <hex>}, "schema": <link to
- * signatureSchema>}`. That is all it says. Who has to sign, in what role and
- * by when are for the application that reads the object to decide. It names
- * the object by link, so it verifies without the object, but not without the
- * object of its identity. It travels apart from other signatures over the
- * same object. It does not say what the object is, so its link reads as any.
+ * `signatureSchema`: `{"$type": <link to signatureSchema>, "identity": <link
+ * to the identity>, "object": <link to the object>, "signature": <hex>}`.
+ * That is all it says. Who has to sign, in what role and by when are for the
+ * application that reads the object to decide. It names the object by link,
+ * so it verifies without the object, but not without the object of its
+ * identity. It travels apart from other signatures over the same object. It
+ * does not say what the object is, so its link reads as any.
  */
 export interface Signature {
   readonly identity: IdentityObject;

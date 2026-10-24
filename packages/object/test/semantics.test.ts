@@ -56,7 +56,7 @@ describe("a semantics", () => {
 
   it("refuses an object whose data does not fit its schema, before its reading sees it", () => {
     const read = vi.fn(() => 1);
-    const bytes = json.encode({ data: { text: 1 }, schema: { $link: first.link } });
+    const bytes = json.encode(json.object({ text: 1 }, first.link));
     expect(() => new Semantics([{ schema: first, read }]).decode(bytes)).toThrow(/does not fit/);
     expect(read).not.toHaveBeenCalled();
   });
@@ -91,7 +91,7 @@ describe("a semantics that writes", () => {
   });
 
   it("refuses a writing to a schema it has no reading of", () => {
-    expect(() => new Semantics([{ schema: first, read: () => 1 }], { schema: second.link, write: () => null })).toThrow(/does not read/);
+    expect(() => new Semantics([{ schema: first, read: () => 1 }], { schema: second.link, write: () => ({}) })).toThrow(/does not read/);
   });
 });
 

@@ -20,17 +20,19 @@ const { identities } = signatures;
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const parsed = (object: { readonly bytes: Uint8Array }) =>
-  JSON.parse(new TextDecoder().decode(object.bytes)) as { data: JsonObject; schema: JsonObject };
-const dataOf = (object: { readonly bytes: Uint8Array }) => parsed(object).data;
-const written = (signature: Signature, data: JsonObject) => json.encode({ data, schema: parsed(signature).schema });
+const fieldsOf = (object: { readonly bytes: Uint8Array }) => json.fields(json.decode(object.bytes));
+const dataOf = (object: { readonly bytes: Uint8Array }) => fieldsOf(object).data;
+const written = (signature: Signature, data: JsonObject) => json.encode(json.object(data, fieldsOf(signature).schema));
 const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
 const byLink = (...identities: IdentityObject[]) => new Map(identities.map(({ link, bytes }) => [link, bytes]));
 const identityOf = (signature: Signature) => byLink(signature.identity);
 
-const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
-const hello = encodeObject(note, "hello");
-const goodbye = encodeObject(note, "goodbye");
+const note = await encodeSchema(
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
+const hello = encodeObject(note, { text: "hello" });
+const goodbye = encodeObject(note, { text: "goodbye" });
 const schemes: Scheme[] = ["ed25519", "eip191", "solana-offchain"];
 
 describe("a signature", () => {
@@ -83,9 +85,8 @@ describe("a signature", () => {
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
-    ["written to another schema", (signature) => json.encode({ data: dataOf(signature), schema: { $link: note.link } })],
-    ["with a field besides data and schema", (signature) => json.encode({ ...parsed(signature), role: "buyer" })],
-    ["with its fields bare, outside data", (signature) => json.encode(dataOf(signature))],
+    ["written to another schema", (signature) => json.encode(json.object(dataOf(signature), note.link))],
+    ["without its $type", (signature) => json.encode(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await signatures.sign(hello, signer("ed25519"));
     expect(() => signatures.decode(change(signature), identityOf(signature))).toThrow();
@@ -93,7 +94,7 @@ describe("a signature", () => {
 
   it("is refused in any but the canonical form", async () => {
     const signature = await signatures.sign(hello, signer("ed25519"));
-    expect(() => signatures.decode(utf8(JSON.stringify(parsed(signature), null, 1)), identityOf(signature))).toThrow();
+    expect(() => signatures.decode(utf8(JSON.stringify(json.decode(signature.bytes), null, 1)), identityOf(signature))).toThrow();
   });
 
   it("reads as an object written to the signature schema, which does not verify it", async () => {

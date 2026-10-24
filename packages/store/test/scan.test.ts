@@ -59,10 +59,10 @@ describe("an index scanned from a store", () => {
   });
 
   it("is not filled when a row holds a number that is not finite", async () => {
-    const numbers: Index<Json, Key> = { reads: [note!], rows: ({ data }) => [[Number(data)]] };
+    const numbers: Index<Json, Key> = { reads: [note!], rows: ({ data }) => [[Number(data.number)]] };
     for (const number of ["-Infinity", "Infinity", "NaN"]) {
       const store = new Store(json, new MemoryBackend());
-      await store.write({ mine: [encodeObject(note!, number)], blobs: schemas });
+      await store.write({ mine: [encodeObject(note!, { number })], blobs: schemas });
       await expect(scan(store, numbers)).rejects.toThrow("a number that is not finite");
     }
   });

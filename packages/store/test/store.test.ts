@@ -7,7 +7,7 @@ import {
   linkOf,
   loadSignatures,
   signatureSchema,
-  type Json,
+  type JsonObject,
   type Link,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -22,7 +22,7 @@ const signatureSchemas = (await Promise.all([identitySchema, signatureSchema].ma
 );
 const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(7));
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: Json) => encodeObject(anything, data);
+const object = (data: JsonObject) => encodeObject(anything, data);
 
 const newStore = (backend: Backend = new MemoryBackend()) => new Store(json, backend);
 
@@ -36,7 +36,7 @@ describe("a store", () => {
   it("gives a blob back by its link, and nothing for a link it does not hold", async () => {
     const store = newStore();
     const image = utf8("not an object");
-    await store.write({ mine: [object({ $link: linkOf(image) })], blobs: [image, anything.bytes] });
+    await store.write({ mine: [object({ image: { $link: linkOf(image) } })], blobs: [image, anything.bytes] });
     expect(await store.get(linkOf(image))).toEqual(image);
     expect(await store.get(linkOf(utf8("never written")))).toBeUndefined();
   });
@@ -54,7 +54,7 @@ describe("a store", () => {
     const store = newStore();
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
-    const incomplete = object({ $link: linkOf(utf8("held nowhere")) });
+    const incomplete = object({ image: { $link: linkOf(utf8("held nowhere")) } });
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     await store.write({ mine: [note], blobs: [image, stray, incomplete.bytes, anything.bytes, ...signatureSchemas] });
     expect(await store.get(linkOf(image))).toEqual(image);
@@ -65,7 +65,7 @@ describe("a store", () => {
 
   it("lists an object once, however many times it is written", async () => {
     const store = newStore();
-    const note = object("hello");
+    const note = object({ text: "hello" });
     await store.write({ mine: [note, note], blobs: [anything.bytes] });
     await store.write({ mine: [note] });
     expect(await listed(store)).toEqual([note.link]);
@@ -73,7 +73,7 @@ describe("a store", () => {
 
   it("lists an object that came in with another once it is written as mine", async () => {
     const store = newStore();
-    const note = object("hello");
+    const note = object({ text: "hello" });
     const record = object({ received: { $link: note.link } });
     await store.write({ mine: [record], blobs: [note.bytes, anything.bytes] });
     expect(await listed(store)).toEqual([record.link]);
@@ -83,8 +83,8 @@ describe("a store", () => {
 
   it("refuses a batch with something written as mine that is not an object, and keeps none of it", async () => {
     const store = newStore();
-    const carried = object("carried");
-    const notCanonical = utf8(` ${new TextDecoder().decode(object("hello").bytes)}`);
+    const carried = object({ text: "carried" });
+    const notCanonical = utf8(` ${new TextDecoder().decode(object({ text: "hello" }).bytes)}`);
     await expect(store.write({ mine: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(/is not an object/);
     await expect(store.write({ mine: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(/is not an object/);
     expect(await store.get(carried.link)).toBeUndefined();
@@ -95,12 +95,12 @@ describe("a store", () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    const carried = object("carried");
+    const carried = object({ text: "carried" });
     await expect(store.write({ mine: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
       `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     const unheld = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
-    const written = encodeObject(unheld, "hello");
+    const written = encodeObject(unheld, { text: "hello" });
     await expect(store.write({ mine: [written] })).rejects.toThrow(`${written.link} leads to ${unheld.link}`);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
@@ -136,14 +136,14 @@ describe("a store", () => {
     );
     const image = utf8("an image");
     const inner = object({ image: { $link: linkOf(image) } });
-    const outer = object([{ $link: inner.link }]);
+    const outer = object({ inner: { $link: inner.link } });
     await store.write({ mine: [outer], blobs: [inner.bytes, image, anything.bytes] });
-    expect(order).toEqual([linkOf(image), anything.link, inner.link, outer.link]);
+    expect(order).toEqual([anything.link, linkOf(image), inner.link, outer.link]);
   });
 
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {
     const store = newStore();
-    const note = object("hello");
+    const note = object({ text: "hello" });
     const given = new Uint8Array(note.bytes);
     await store.write({ mine: [{ bytes: given }], blobs: [anything.bytes] });
     given.fill(0);
@@ -158,7 +158,7 @@ describe("the closure of a blob", () => {
     const store = newStore();
     const image = utf8("an image");
     const inner = object({ image: { $link: linkOf(image) } });
-    const outer = object([{ $link: inner.link }]);
+    const outer = object({ inner: { $link: inner.link } });
     await store.write({ mine: [outer], blobs: [inner.bytes, image, anything.bytes] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, inner.link, linkOf(image), anything.link].sort());
@@ -167,10 +167,10 @@ describe("the closure of a blob", () => {
 
   it("follows no link out of a blob that is not of the store's encoding", async () => {
     const store = newStore();
-    const target = object("target");
+    const target = object({ text: "target" });
     const text = utf8(`see ${target.link}`);
     const indented = utf8(` ${JSON.stringify([{ $link: target.link }])}`);
-    const outer = object([{ $link: linkOf(text) }, { $link: linkOf(indented) }]);
+    const outer = object({ text: { $link: linkOf(text) }, indented: { $link: linkOf(indented) } });
     await store.write({ mine: [outer], blobs: [text, indented, target.bytes, anything.bytes] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, linkOf(text), linkOf(indented), anything.link].sort());
@@ -179,14 +179,14 @@ describe("the closure of a blob", () => {
 
   it("is empty for a link the store does not hold", async () => {
     const store = newStore();
-    expect((await store.closure(object("absent").link)).size).toBe(0);
+    expect((await store.closure(object({ text: "absent" }).link)).size).toBe(0);
   });
 });
 
 describe("an object read from a store", () => {
   it("is read through a semantics, with the blobs its reading follows", async () => {
     const store = newStore();
-    const note = object("hello");
+    const note = object({ text: "hello" });
     const signature = await signatures.sign(note, signer);
     await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, anything.bytes, ...signatureSchemas] });
     const read = await store.read(signatures, signature.link);
@@ -196,7 +196,7 @@ describe("an object read from a store", () => {
 
   it("is refused by a semantics that does not read its schema", async () => {
     const store = newStore();
-    const note = object("hello");
+    const note = object({ text: "hello" });
     await store.write({ mine: [note], blobs: [anything.bytes] });
     // @ts-expect-error: refused at compile time too
     await expect(store.read(signatures, note.link)).rejects.toThrow(/not read here/);

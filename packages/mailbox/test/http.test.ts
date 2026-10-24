@@ -44,8 +44,11 @@ const http = await loadHttpTransport(defaultValidator);
 const options = { transports: [http] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const key = hex.encode(bob.publicKey);
-const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
-const hello = encodeObject(note, "hello, Bob");
+const note = await encodeSchema(
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
+const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
 
@@ -86,7 +89,7 @@ describe("an HTTP mailbox's url", () => {
   );
 
   // Written elsewhere, since this package does not write a mailbox it would refuse.
-  const written = (url: string) => json.encode({ data: { key, url }, schema: { $link: http.schema.link } });
+  const written = (url: string) => json.encode(json.object({ key, url }, http.schema.link));
 
   it.each([
     ["plain http to another machine", "http://mail.example/alice"],

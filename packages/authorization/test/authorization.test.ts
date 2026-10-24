@@ -1,5 +1,5 @@
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, json, linkOf, schemaOf, type Json } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, json, linkOf, schemaOf, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it, vi } from "vitest";
@@ -13,8 +13,11 @@ const { signatures } = authorizations;
 const { identities } = signatures;
 const authorization = await encodeSchema(authorizationSchema, defaultValidator);
 const proxy = await encodeSchema(proxySchema, defaultValidator);
-const note = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" }, defaultValidator);
-const target = encodeObject(note, "the terms");
+const note = await encodeSchema(
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
+const target = encodeObject(note, { text: "the terms" });
 
 const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);
@@ -82,7 +85,7 @@ describe("an authorization", () => {
 });
 
 describe("the authorization schema", () => {
-  it.each<[string, Json]>([
+  it.each<[string, JsonObject]>([
     ["an end that is a date only", { agent, until: "2027-01-01" }],
     ["an end without an offset", { agent, until: "2027-01-01T00:00:00" }],
     ["a field besides agent and until", { agent, scope: "all" }],
@@ -98,7 +101,7 @@ describe("the authorization schema", () => {
 describe("the proxy schema", () => {
   const link = { $link: target.link };
 
-  it.each<[string, Json]>([
+  it.each<[string, JsonObject]>([
     ["an empty chain", { chain: [], target: link }],
     ["a target that is not a link", { chain: [link], target: { $link: "the terms" } }],
     ["a target's link as a bare string", { chain: [link], target: target.link }],

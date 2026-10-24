@@ -1,4 +1,4 @@
-import { encodeSchema, type Json } from "@estoc/object";
+import { encodeSchema, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { mailboxSchema } from "../src/index.ts";
@@ -11,7 +11,7 @@ describe("a mailbox schema", () => {
     expect(memory.validate({ key, name: "q" })).toEqual([]);
   });
 
-  it.each<[string, Json]>([
+  it.each<[string, JsonObject]>([
     ["without a key", { name: "q" }],
     ["without a field its transport requires", { key }],
     ["whose key is in uppercase hex", { key: key.toUpperCase(), name: "q" }],

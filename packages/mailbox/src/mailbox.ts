@@ -73,8 +73,7 @@ export function readMailbox(
   const { data } = decodeObject(bytes, transport.schema);
   // A transport may write its schema by hand, so the key every mailbox has is
   // checked here and not left to it.
-  if (typeof data !== "object" || data === null || Array.isArray(data)) throw new Error("a mailbox is a JSON object");
-  const { key } = data as { readonly key?: Json };
+  const { key } = data;
   if (typeof key !== "string" || !/^[0-9a-f]{64}$/.test(key)) {
     throw new Error("a mailbox's key is an x25519 public key, 32 bytes in lowercase hex");
   }

@@ -54,9 +54,10 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
  * that are anything else are refused, not normalized: invalid UTF-8,
  * whitespace, keys out of order or repeated, and numbers or escapes not
  * written the shortest way. A link is written `{"$link": <link>}`, and any
- * other object with a `$link` member is refused. An object is the JSON
- * object `{"data": <data>, "schema": {"$link": <link>}}`, with no other
- * member.
+ * other object with a `$link` member is refused. An object is the JSON object
+ * of the fields of its data and `"$type": {"$link": <link>}`, the link of its
+ * schema. Only there does `$type` name a schema: deeper in the data it is a
+ * field like any other.
  */
 export const json: Encoding<Json> = {
   encode(value) {
@@ -72,14 +73,15 @@ export const json: Encoding<Json> = {
     checkLinks(value);
     return value;
   },
-  object: (data, schema) => ({ data, schema: { $link: schema } }),
+  object(data, schema) {
+    if (Object.hasOwn(data, "$type")) throw new Error("the data of an object holds no $type, which names the object's schema");
+    return { ...data, $type: { $link: schema } };
+  },
   fields(value) {
-    if (!isJsonObject(value) || Object.keys(value).sort().join() !== "data,schema") {
-      throw new Error("an object has the fields data and schema");
-    }
-    const { data, schema } = value as { readonly data: Json; readonly schema: Json };
-    if (!isJsonLink(schema)) throw new Error("an object names its schema by link");
-    return { data, schema: schema.$link };
+    if (!isJsonObject(value)) throw new Error("an object is a JSON object");
+    const { $type, ...data } = value;
+    if ($type === undefined || !isJsonLink($type)) throw new Error("an object names its schema by link in $type");
+    return { data, schema: $type.$link };
   },
   links: linksIn,
 };

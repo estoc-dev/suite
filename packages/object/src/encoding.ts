@@ -1,6 +1,9 @@
 import { linkOf, type Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
+/** The data of an object: fields, each a value of the encoding, by name. */
+export type Fields<D> = { readonly [name: string]: D };
+
 /**
  * A model of data and the one way each of its values is written as bytes,
  * of which objects are made. JSON with JCS is one; deterministic CBOR would
@@ -17,10 +20,14 @@ export interface Encoding<D> {
    * be read before the schema is.
    */
   decode(bytes: Uint8Array): D;
-  /** An object as one value: its data, and the link of the schema it is written to. */
-  object(data: D, schema: Link<Schema<D>>): D;
+  /**
+   * An object as one value: the fields of its data, and one field more,
+   * which the encoding keeps for the link of the schema the data is written
+   * to. Throws when the data has that field itself.
+   */
+  object(data: Fields<D>, schema: Link<Schema<D>>): D;
   /** The data and the schema link of a value that `object` gives; throws for any other value. */
-  fields(value: D): { readonly data: D; readonly schema: Link<Schema<D>> };
+  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> };
   /**
    * The links in a value, an object's schema included, so that what a blob
    * leads to can be gathered without reading it through a schema. It may

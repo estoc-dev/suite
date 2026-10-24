@@ -8,13 +8,13 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "string" }, defaultValidator);
+const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } }, defaultValidator);
 const schemas = [note, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
   ({ bytes }) => bytes,
 );
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
-const hello = encodeObject(note, "hello, Bob");
+const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 

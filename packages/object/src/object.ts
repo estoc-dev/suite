@@ -1,4 +1,4 @@
-import type { Encoding } from "./encoding.ts";
+import type { Encoding, Fields } from "./encoding.ts";
 import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 import { Semantics } from "./semantics.ts";
@@ -10,7 +10,7 @@ import { Semantics } from "./semantics.ts";
  */
 export interface EncodedObject<D> {
   readonly schema: Schema<D>;
-  readonly data: D;
+  readonly data: Fields<D>;
   readonly bytes: Bytes<EncodedObject<D>>;
   readonly link: Link<EncodedObject<D>>;
 }
@@ -24,11 +24,11 @@ export function decodeObject<D>(bytes: Bytes<EncodedObject<D>>, schema: Schema<D
   return semanticsOf(schema).decode(bytes);
 }
 
-export function encodeObject<D>(schema: Schema<D>, data: D): EncodedObject<D> {
+export function encodeObject<D>(schema: Schema<D>, data: Fields<D>): EncodedObject<D> {
   return semanticsOf(schema).encode(data);
 }
 
-function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, D> {
+function semanticsOf<D>(schema: Schema<D>): Semantics<EncodedObject<D>, Fields<D>> {
   return new Semantics([{ schema, read: (data, object) => ({ schema, data, ...object }) }], {
     schema: schema.link,
     write: (data) => data,

@@ -60,9 +60,9 @@ describe("the default validator", () => {
 
   it("reads a schema resource inside the schema that names no dialect as draft 2020-12", async () => {
     const child = { $id: "https://example.com/child", prefixItems: [{ type: "string" }] };
-    const pair = await compile({ $schema: DRAFT, $ref: "https://example.com/child", $defs: { child } });
-    expect(pair.validate(["a"])).toEqual([]);
-    expect(pair.validate([1])).not.toEqual([]);
+    const pair = await compile({ $schema: DRAFT, properties: { pair: { $ref: "https://example.com/child" } }, $defs: { child } });
+    expect(pair.validate({ pair: ["a"] })).toEqual([]);
+    expect(pair.validate({ pair: [1] })).not.toEqual([]);
   });
 
   it("refuses a schema that its dialect's meta-schema refuses", async () => {
@@ -110,18 +110,17 @@ describe("the default validator", () => {
       $defs: { deny: false, allow: true },
       __absolute_ref__: "urn:estoc:schema#/$defs/allow",
     });
-    expect(deny.validate(42)).not.toEqual([]);
+    expect(deny.validate({})).not.toEqual([]);
   });
 
   it("follows a $ref within the schema", async () => {
     const schema = await compile({
       $schema: DRAFT,
-      type: "array",
-      items: { $ref: "#/$defs/name" },
+      properties: { names: { type: "array", items: { $ref: "#/$defs/name" } } },
       $defs: { name: { type: "string", minLength: 1 } },
     });
-    expect(schema.validate(["a", "b"])).toEqual([]);
-    expect(schema.validate(["a", ""])).not.toEqual([]);
+    expect(schema.validate({ names: ["a", "b"] })).toEqual([]);
+    expect(schema.validate({ names: ["a", ""] })).not.toEqual([]);
   });
 
   it.each([
@@ -161,9 +160,9 @@ describe("the default validator", () => {
   });
 
   it("asserts format", async () => {
-    const date = await compile({ $schema: DRAFT, type: "string", format: "date" });
-    expect(date.validate("2026-10-19")).toEqual([]);
-    expect(date.validate("2026-13-45")).not.toEqual([]);
+    const date = await compile({ $schema: DRAFT, properties: { on: { type: "string", format: "date" } } });
+    expect(date.validate({ on: "2026-10-19" })).toEqual([]);
+    expect(date.validate({ on: "2026-13-45" })).not.toEqual([]);
   });
 
   it("compiles schemas one at a time, so that one cannot reach another", async () => {
@@ -216,17 +215,17 @@ describe("linkSchema", () => {
 const evenOnly: JsonSchemaValidator = {
   language: jsonSchema,
   async compile() {
-    return (data) => (typeof data === "number" && data % 2 !== 0 ? ["odd"] : []);
+    return ({ n }) => (typeof n === "number" && n % 2 !== 0 ? ["odd"] : []);
   },
 };
 const even = await encodeSchema({ $schema: "https://example.com/even" }, evenOnly);
 
 describe("a validator other than the default", () => {
   it("decides what an object may hold, when encoding and when decoding", async () => {
-    expect(encodeObject(even, 2).data).toBe(2);
-    expect(() => encodeObject(even, 3)).toThrow();
+    expect(encodeObject(even, { n: 2 }).data).toEqual({ n: 2 });
+    expect(() => encodeObject(even, { n: 3 })).toThrow();
     const anything = await decodeSchema(even.bytes, lenient);
-    const odd = encodeObject(anything, 3);
+    const odd = encodeObject(anything, { n: 3 });
     expect(() => decodeObject(odd.bytes, even)).toThrow();
   });
 
@@ -243,8 +242,8 @@ describe("a validator other than the default", () => {
 });
 
 test("the same bytes read by two validators give one link", async () => {
-  const bytes = (await encodeSchema({ $schema: DRAFT, type: "integer" }, defaultValidator)).bytes;
+  const bytes = (await encodeSchema({ $schema: DRAFT, properties: { n: { type: "integer" } } }, defaultValidator)).bytes;
   const read = await decodeSchema(bytes, lenient);
   expect(read.link).toBe((await decodeSchema(bytes, defaultValidator)).link);
-  expect(read.validate("not an integer")).toEqual([]);
+  expect(read.validate({ n: "not an integer" })).toEqual([]);
 });

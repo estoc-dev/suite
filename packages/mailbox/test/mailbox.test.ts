@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, loadSignatures, type Json } from "@estoc/object";
+import { encodeObject, encodeSchema, loadSignatures, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -14,8 +14,8 @@ const network = await MemoryNetwork.create(defaultValidator);
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
-const note = await encodeSchema({ $schema: DRAFT, type: "string" }, defaultValidator);
-const hello = encodeObject(note, "hello, Bob");
+const note = await encodeSchema({ $schema: DRAFT, type: "object", properties: { text: { type: "string" } } }, defaultValidator);
+const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
 
 describe("a mailbox", () => {
@@ -58,7 +58,7 @@ describe("a mailbox", () => {
 describe("a mailbox from bytes", () => {
   it("is refused when the bytes are not an object", async () => {
     // @ts-expect-error: refused at compile time too
-    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/fields data and schema/);
+    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/\$type/);
   });
 
   it("is refused when no transport given takes its schema", async () => {
@@ -67,8 +67,7 @@ describe("a mailbox from bytes", () => {
     await expect(mailboxFrom(mailbox, { transports: [] })).rejects.toThrow(/no transport takes/);
   });
 
-  it.each<[string, Json]>([
-    ["is not a JSON object", "a mailbox"],
+  it.each<[string, JsonObject]>([
     ["has no key", { name: "q" }],
     ["has a key in uppercase hex", { key: "AB".repeat(32) }],
     ["has a key of 31 bytes", { key: "ab".repeat(31) }],

@@ -2,7 +2,7 @@ import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeSchema, identitySchema, json, linkOf, loadSignatures, type Json } from "../src/index.ts";
+import { decodeObject, encodeSchema, identitySchema, json, linkOf, loadSignatures, type JsonObject } from "../src/index.ts";
 
 const { identities } = await loadSignatures(defaultValidator);
 
@@ -10,7 +10,7 @@ const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
 const ed25519Key = keyOf("ed25519");
 const eip191Key = keyOf("eip191");
-const written = (data: Json) => json.encode({ data, schema: { $link: linkOf(json.encode(identitySchema)) } });
+const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
 
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)("in %s reads back from its object as the same identity", (scheme) => {
@@ -34,7 +34,7 @@ describe("an identity", () => {
     expect(() => identities.decode(later)).toThrow(/unknown scheme/);
   });
 
-  it.each<[string, Json]>([
+  it.each<[string, JsonObject]>([
     ["a key of another scheme's length", { publicKey: eip191Key, scheme: "ed25519" }],
     ["a key shorter than its scheme's", { publicKey: ed25519Key, scheme: "eip191" }],
     ["the key in uppercase hex", { publicKey: ed25519Key.toUpperCase(), scheme: "ed25519" }],
@@ -43,14 +43,13 @@ describe("an identity", () => {
     ["a field besides publicKey and scheme", { publicKey: ed25519Key, scheme: "ed25519", role: "buyer" }],
     ["no key", { scheme: "ed25519" }],
     ["no scheme", { publicKey: ed25519Key }],
-    ["data that is not a JSON object", [ed25519Key, "ed25519"]],
   ])("is refused with %s", (_, data) => {
     expect(() => identities.decode(written(data))).toThrow();
   });
 
   it("is refused written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
-    const bytes = json.encode({ data: { publicKey: ed25519Key, scheme: "ed25519" }, schema: { $link: lookalike.link } });
+    const bytes = json.encode(json.object({ publicKey: ed25519Key, scheme: "ed25519" }, lookalike.link));
     expect(() => identities.decode(bytes)).toThrow(/not read here/);
   });
 });

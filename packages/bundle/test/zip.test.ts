@@ -17,11 +17,11 @@ const sizeOf = (files: ReadonlyMap<string, Uint8Array>) => [...files.values()].r
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
 const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", title: "Note", type: "string" },
+  { $schema: "https://json-schema.org/draft/2020-12/schema", title: "Note", type: "object", properties: { text: { type: "string" } } },
   defaultValidator,
 );
-const root = encodeObject(note, "a note");
-const another = encodeObject(note, "another note");
+const root = encodeObject(note, { text: "a note" });
+const another = encodeObject(note, { text: "another note" });
 const text = new TextEncoder().encode("a blob");
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const files = writeBundle(root, [text, image]);

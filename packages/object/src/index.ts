@@ -1,4 +1,4 @@
-export type { Encoding } from "./encoding.ts";
+export type { Encoding, Fields } from "./encoding.ts";
 export { identitySchema, type IdentityObject } from "./identity.ts";
 export { json, type Json, type JsonLink, type JsonObject } from "./json.ts";
 export { jsonSchema, linkSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";

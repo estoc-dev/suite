@@ -168,5 +168,6 @@ await authorizations.readStanding(login.link, entry, blobs, new Date());
 
 To find everyone who stands behind an object, the application reads each entry
 it holds. Finding those entries in a store takes an index from objects to
-the signatures over them and to the proxies for them; that index belongs
-to the store, and an entry it offers wrongly only fails to read.
+the signatures over them and to the proxies for them. The application
+keeps that index over its store, and an entry the index offers wrongly
+only fails to read.

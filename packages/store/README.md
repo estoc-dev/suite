@@ -102,22 +102,23 @@ A store keeps no index. An application keeps its own, of the objects the
 user writes: an `Index` says which schemas it reads and which rows each
 object of them gives. A row is a key of strings and finite numbers,
 compared one by one, a number before a string and a key before the longer
-keys that start with it. The rows of an object depend on it alone, and an index is
-the set of the rows its objects give, so the order they come in and how
-often make no difference. What depends on what else is written, such as
-whether something replaced an object, is worked out from the rows when
-they are read.
+keys that start with it. The rows of an object depend on it and on what it
+leads to, which `rows` reads by link from the `Reader` it is given, and on
+nothing else. An index is the set of the rows its objects give, so the
+order they come in and how often make no difference. What depends on what
+else is written, such as whether something replaced an object, is worked
+out from the rows when they are read.
 
 ```ts
 import { scan, type Index } from "@estoc/store";
 
-// Notes by tag, oldest first: a row for each tag of a note.
-const byTag: Index<Json, [tag: string, at: number, note: Link<unknown>]> = {
+type Note = { readonly tags: readonly string[]; readonly at: number };
+
+// Notes by tag, oldest first: a row for each tag of a note, from a
+// `noteSchema` declared as a `Schema<Json, Note>`.
+const byTag: Index<Json, [tag: string, at: number, note: Link<unknown>], Note> = {
   reads: [noteSchema],
-  rows: ({ link, data }) => {
-    const { tags, at } = data as { tags: string[]; at: number };
-    return tags.map((tag) => [tag, at, link]);
-  },
+  rows: ({ link, data }) => data.tags.map((tag) => [tag, data.at, link]),
 };
 
 const rows = await scan(store, byTag);

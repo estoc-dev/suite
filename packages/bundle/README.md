@@ -67,7 +67,7 @@ blobs, look at a clock, or check a schema. A signature under `blobs/` is
 bytes, as an image is, so one that does not verify, or whose scheme the
 reader does not know, is read all the same.
 
-Signatures are verified where they are used: the signatures of
+Signatures are verified where they are used: `signatures.read` in
 `@estoc/object` and `readStanding` in `@estoc/authorization` verify what
 they read. If reading a bundle verified signatures, it would have to know
 every identity scheme: a reader that predates a scheme could not read even
@@ -81,13 +81,13 @@ signature over it as the root, and a card lists the signatures over what it
 holds. The reader goes through each signature to the object it is over.
 
 ```ts
-const signed = signatures.decode(bundle.root, bundle);
-const message = decodeObject(bundle.get(signed.object)!, chatSchema);
+const signed = await signatures.read(bundle.link, bundle);
+const message = await readObject(bundle, signed.object, chatSchema);
 // signed.identity stands behind message
 ```
 
-A `Bundle` has the `get` that semantics and `readStanding` take their blobs
-by, so a signature is read against the bundle that carries its identity's
+A `Bundle` has the `get` that semantics and judgments such as
+`readStanding` take their blobs by, so a signature is read against the bundle that carries its identity's
 object, and a signature made through agents against the bundle that carries
 the proxy and its chain as well.
 

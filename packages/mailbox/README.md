@@ -60,11 +60,11 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 bundle inside. It refuses bytes that do not open with its key, and what
 opens but is not the zip of a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
-`signatures.decode` or `readStanding` and the bundle as the blobs.
+`signatures.read` or `readStanding` and the bundle as the reader.
 
 ```ts
 const bundle = await key.open(sealed);
-const signature = signatures.decode(bundle.root, bundle);
+const signature = await signatures.read(bundle.link, bundle);
 ```
 
 ## Sending

@@ -1,4 +1,4 @@
 export { MailboxKey } from "./key.ts";
 export { mailboxFrom, type Mailbox, type Options, type Transport } from "./mailbox.ts";
 export { loadPost, type Delivery, type Inbox, type Outbox, type Post, type PostOptions } from "./post.ts";
-export { inboundSchema, mailboxSchema, outboundSchema } from "./schema.ts";
+export { inboundSchema, mailboxSchema, outboundSchema, type DeliveryData } from "./schema.ts";

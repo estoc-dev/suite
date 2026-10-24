@@ -25,7 +25,7 @@ const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 const agent = { $link: identities.encode(hot.identity).link };
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([object.bytes, object.agent.bytes, signature.identity.bytes]);
+const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([signature.bytes, object.bytes, object.agent.bytes, signature.identity.bytes]);
 const identityBytes = [root, hot, deputy].map(({ identity }) => identities.encode(identity).bytes);
 const given = (...blobs: Uint8Array[]) => byLink([...identityBytes, ...blobs]);
 
@@ -36,7 +36,7 @@ describe("an authorization", () => {
     ["until an instant with fractional seconds", "2027-01-01T00:00:00.25Z"],
   ])("%s reads back from its blobs", async (_, until) => {
     const signed = await authorizations.authorize(hot.identity, root, until === undefined ? undefined : Temporal.Instant.from(until));
-    const read = authorizations.readAuthorization(signed.signature.bytes, blobsOf(signed));
+    const read = await authorizations.readAuthorization(signed.signature.link, blobsOf(signed));
     expect(read.signature.identity).toEqual(identities.encode(root.identity));
     expect(read.object.agent).toEqual(identities.encode(hot.identity));
     expect(read.object.until?.toString()).toBe(until);
@@ -61,26 +61,28 @@ describe("an authorization", () => {
     const blind = await loadAuthorizations(formatBlind);
     const object = encodeObject(await encodeSchema(authorizationSchema, formatBlind), { agent, until: "2027-01-01" });
     const signature = await signatures.sign(object, root);
-    expect(() => blind.readAuthorization(signature.bytes, given(object.bytes))).toThrow();
+    await expect(blind.readAuthorization(signature.link, given(signature.bytes, object.bytes))).rejects.toThrow();
   });
 
   it("is refused when the blob given for its object is another authorization", async () => {
     const first = await authorizations.authorize(hot.identity, root);
     const second = await authorizations.authorize(deputy.identity, root);
-    const blobs = given().set(first.object.link, second.object.bytes);
-    expect(() => authorizations.readAuthorization(first.signature.bytes, blobs)).toThrow(/is another blob/);
+    const blobs = given(first.signature.bytes).set(first.object.link, second.object.bytes);
+    await expect(authorizations.readAuthorization(first.signature.link, blobs)).rejects.toThrow(/is another blob/);
   });
 
   it("is not read without the object of its agent", async () => {
     const signed = await authorizations.authorize(stranger.identity, root);
-    expect(() => authorizations.readAuthorization(signed.signature.bytes, given(signed.object.bytes))).toThrow(/no blob is given/);
+    await expect(authorizations.readAuthorization(signed.signature.link, given(signed.signature.bytes, signed.object.bytes))).rejects.toThrow(
+      /no blob is given/,
+    );
   });
 
   it("is refused when its object is written to another schema, though shaped the same", async () => {
     const lookalike = await encodeSchema({ ...authorizationSchema, title: "Delegation" }, defaultValidator);
     const object = encodeObject(lookalike, { agent });
     const signature = await signatures.sign(object, root);
-    expect(() => authorizations.readAuthorization(signature.bytes, given(object.bytes))).toThrow(/not read here/);
+    await expect(authorizations.readAuthorization(signature.link, given(signature.bytes, object.bytes))).rejects.toThrow(/is written to/);
   });
 });
 

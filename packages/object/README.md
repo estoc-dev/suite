@@ -21,8 +21,10 @@ Signature  an Object written to the signature schema, with the fields
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares. Semantics are how a program reads objects as values of
-its own types. The semantics of identities and signatures are kept in this
-package because the packages built on it sign and name identities; another
+its own types, and judgments are the rules a schema cannot say, such as
+whether a signature verifies, worked out from an object and what it links
+to. The judgments of identities and signatures are kept in this package
+because the packages built on it sign and name identities; another
 application can read the same objects without them.
 
 ## Encodings and schema languages
@@ -65,8 +67,8 @@ translating old ones.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
-  bytes of a signature handed to `decodeObject` rather than to
-  `signatures.decode`, which verifies them. A link to a blob of no known
+  bytes of a signature handed to `decodeObject` with a schema whose data is
+  declared otherwise. A link to a blob of no known
   kind, such as the object a signature is over, is a `Link<never>`, and
   reads as any. The type is a label, not a check: bytes read from a file or
   the network pass as any `Bytes<T>`, and decoding them is what checks them.
@@ -124,10 +126,12 @@ does not mistake another schema's object for one of its own. The same value
 under two schemas is two objects.
 
 ```ts
-import { decodeObject, encodeObject, encodeSchema } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, type Json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
-const login = await encodeSchema(
+type Login = { readonly audience: string; readonly nonce: string };
+
+const login: Schema<Json, Login> = await encodeSchema(
   {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object",
@@ -138,8 +142,20 @@ const login = await encodeSchema(
   defaultValidator,
 );
 const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-decodeObject(object.bytes, login).link === object.link;
+decodeObject(object.bytes, login).data.nonce; // "6f1c0a9e"
 ```
+
+A schema carries the type a program reads its data as, `Schema<D, F>`. The
+program declares it where it gets the schema, as `login` is declared above,
+and the data of an object of that schema is an `F`. The declaration is the
+program's claim, and checking the data against the schema is what holds it:
+data that does not fit is refused, not handed out as an `F`. The data of a
+schema declared with no type is fields of the encoding.
+
+`readObject` reads the object that a link names from a `Reader`: anything
+with `get(link)` that gives the bytes at once or as a promise, such as a
+`Map`, a bundle or a store. It refuses a blob whose bytes have another
+link, and fails when the reader gives none.
 
 A schema holds all that its data is checked against. In JSON Schema a `$ref`
 reaches the schema's own parts and nothing elsewhere, so the link of a
@@ -155,7 +171,9 @@ member that is not a link.
 
 Whether a value fits a schema is the validator's call. A validator compiles a
 schema once, when the schema is read, and the schema keeps the result, so
-reading a schema returns a promise and reading an object does not. Every
+reading a schema returns a promise and checking an object against it does
+not: `decodeObject` is synchronous, and `readObject` returns a promise only
+because the reader it gets the blob from may answer with one. Every
 validator works offline and keeps to three rules:
 
 - A reference to anything outside the schema fails compilation, rather than
@@ -201,8 +219,8 @@ worker in any case.
 
 ## Semantics
 
-`decodeObject` leaves the data as its encoding reads it, a JSON object here.
-An object is data: anyone can write one to any schema, and nothing about it
+`decodeObject` gives the data in the shape its schema declares. An object
+is data: anyone can write one to any schema, and nothing about it
 belongs to the program that reads it. A program has types of its own, and a
 `Semantics` is where objects from outside become values of them, and values
 of them become objects. It holds one `Reading` for each schema it takes, and
@@ -302,11 +320,13 @@ in each, is for whoever reads identities. An identity in a scheme added
 later is written to the same schema, so identities already written keep
 their links.
 
-`identities` is the semantics this package reads and writes them with, and comes
-with the signatures below. It takes the schemes that `@estoc/identity`
-knows, with the key at its scheme's length, so that each identity has one
+`identities`, which comes with the signatures below, holds the identity
+schema, and `identities.check` is the judgment of an identity: it takes an
+identity's object and gives the identity. It takes the schemes that
+`@estoc/identity` knows, with the key at its scheme's length, so that each identity has one
 object and one link, and it refuses an identity in any other scheme, though
-its object fits the schema. `identities.encode` writes an identity as its
+its object fits the schema. `identities.read` does the same from the link
+of the object and a `Reader`. `identities.encode` writes an identity as its
 object, and refuses one it would not read, such as one whose key is not its
 scheme's length.
 
@@ -323,28 +343,30 @@ A signature is itself an object, written to `signatureSchema`, so a format
 that holds an object can hold a signature. It names its identity and the
 object it is over by their links, and the signature is in lowercase hex.
 `loadSignatures` compiles the identity and signature schemas with the
-validator the application picks, as any schema is, and gives the semantics
-this package reads and writes signatures with, which holds `identities` and
-`sign`. Reading a signature checks its data against the signature schema,
-reads its identity through `identities`, which checks the identity's object
-against the identity schema, and verifies the signature. So reading a
-signature takes the blob of its identity's object, but not that of the
-object signed, since the digest it signs is in the link. Reading a signature
-with `decodeObject` and the signature schema, as a viewer of arbitrary
-objects would, reads its fields without verifying it. `sign` signs the link
-of an object, so it takes anything that has one, such as a value read
-through a semantics. The signature it gives has the signer's identity object
-as `identity`, whose bytes go along with the signature. It writes the
-identity and the signature through their semantics before and after the
-signer signs, so a signer is not asked for a signature that would not read,
-and a signer whose signature does not verify is refused.
+validator the application picks, as any schema is, and gives `signatures`,
+which holds the signature schema, `identities` and `sign`.
+`signatures.verify` is the judgment of a signature: it takes the signature
+as an object of `signatures.schema` and a `Reader`, reads its identity
+from the reader with `identities.read`, and verifies the signature; `signatures.read` does the same from the link of the signature.
+So verifying a signature takes the blob of its identity's object, but not
+that of the object signed, since the digest it signs is in the link. It
+gives the signature's object with the identity it read as `identity`, the
+link of what it is over as `object`, and the signature as bytes. Reading a
+signature with `decodeObject` and the signature schema alone, as a viewer of
+arbitrary objects would, reads its fields without verifying it. `sign`
+signs the link of an object, so it takes anything that has one. The
+signature it gives has the signer's identity object as `identity`, whose
+bytes go along with the signature. It writes the identity before the signer
+signs and verifies the signature after, so a signer is not asked for a
+signature over an identity that would not read, and a signer whose
+signature does not verify is refused.
 
 A server that handed out a nonce can build the login object itself and take
 back only the signature, with the identity's object:
 
 ```ts
 import { SoftwareSigner } from "@estoc/identity";
-import { linkOf, loadSignatures } from "@estoc/object";
+import { decodeObject, encodeObject, linkOf, loadSignatures } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const signatures = await loadSignatures(defaultValidator);
@@ -352,11 +374,12 @@ const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed
 // The client sends signature.bytes and signature.identity.bytes.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const read = signatures.decode(signatureBytes, new Map([[linkOf(identityBytes), identityBytes]]));
+const signed = decodeObject(signatureBytes, signatures.schema);
+const read = await signatures.verify(signed, new Map([[linkOf(identityBytes), identityBytes]]));
 const user = read.object === expected.link ? read.identity : undefined;
 ```
 
 One identity can sign one object more than once, as a wallet need not sign
-deterministically, and each of those signatures reads. Finding the
+deterministically, and each of those signatures verifies. Finding the
 signatures over an object takes an index by the link they name, so hand an
 object over together with its signatures.

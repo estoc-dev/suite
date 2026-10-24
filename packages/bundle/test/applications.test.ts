@@ -6,12 +6,15 @@ import {
   encodeSchema,
   linkSchema,
   loadSignatures,
+  readObject,
   Semantics,
   type EncodedObject,
+  type Fields,
   type Json,
   type JsonLink,
   type JsonObject,
   type Link,
+  type Schema,
   type Signature,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -24,7 +27,7 @@ import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const schemaFor = (title: string, properties: JsonObject) =>
+const schemaFor = <F extends Fields<Json> = Fields<Json>>(title: string, properties: JsonObject): Promise<Schema<Json, F>> =>
   encodeSchema(
     { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
     defaultValidator,
@@ -33,16 +36,10 @@ const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
 
-function blobAt(bundle: Bundle, link: Link<unknown>): Uint8Array {
-  const bytes = bundle.get(link);
-  if (bytes === undefined) throw new Error(`the bundle does not carry ${link}`);
-  return bytes;
-}
-
 const card = await schemaFor("Card", { mailbox: linkSchema, name: linkSchema });
 const contact = await schemaFor("Contact", { displayName: linkSchema, inbox: linkSchema });
-const mailbox = await schemaFor("Mailbox", { url: { type: "string", format: "uri" } });
-const name = await schemaFor("Name", { name: { type: "string" } });
+const mailbox = await schemaFor<{ readonly url: string }>("Mailbox", { url: { type: "string", format: "uri" } });
+const name = await schemaFor<{ readonly name: string }>("Name", { name: { type: "string" } });
 
 // A card lists the signatures of the one identity it is for: over a mailbox
 // that reaches it, and over the name it goes by. Another application writes
@@ -66,15 +63,15 @@ const cards: Semantics<Card> = new Semantics([
   },
 ]);
 
-function readCard(bundle: Bundle) {
+async function readCard(bundle: Bundle) {
   const listed = cards.decode(bundle.root);
-  const reachedAt = signatures.decode(blobAt(bundle, listed.mailbox), bundle);
-  const goesBy = signatures.decode(blobAt(bundle, listed.name), bundle);
+  const reachedAt = await signatures.read(listed.mailbox, bundle);
+  const goesBy = await signatures.read(listed.name, bundle);
   if (!sameIdentity(reachedAt.identity, goesBy.identity)) throw new Error("a card is signed by the one identity it is for");
   return {
     identity: reachedAt.identity,
-    mailbox: decodeObject(blobAt(bundle, reachedAt.object), mailbox).data,
-    name: decodeObject(blobAt(bundle, goesBy.object), name).data.name,
+    mailbox: (await readObject(bundle, reachedAt.object, mailbox)).data,
+    name: (await readObject(bundle, goesBy.object, name)).data.name,
   };
 }
 
@@ -88,14 +85,14 @@ describe("a card", () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
   });
 
   it("with its name signed by someone else reads as no one's card", async () => {
@@ -103,15 +100,15 @@ describe("a card", () => {
     const byOther = await signatures.sign(called, signer("eip191", 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byOther.bytes, called.bytes, byMailbox.identity.bytes, byOther.identity.bytes]);
-    expect(() => readCard(bundle)).toThrow(/signed by the one identity/);
+    await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
   });
 });
 
-const chat = await schemaFor("Chat message", { text: { type: "string" } });
+const chat = await schemaFor<{ readonly text: string }>("Chat message", { text: { type: "string" } });
 
-function readMessage(bundle: Bundle) {
-  const read = signatures.decode(bundle.root, bundle);
-  return { from: read.identity, message: decodeObject(blobAt(bundle, read.object), chat).data };
+async function readMessage(bundle: Bundle) {
+  const read = await signatures.read(bundle.link, bundle);
+  return { from: read.identity, message: (await readObject(bundle, read.object, chat)).data };
 }
 
 describe("a chat message", () => {
@@ -120,25 +117,25 @@ describe("a chat message", () => {
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await signatures.sign(message, alice);
     const bundle = handOver(signature, [message.bytes, signature.identity.bytes]);
-    expect(readMessage(bundle)).toEqual({ from: identities.encode(alice.identity), message: { text: "See you at noon." } });
+    expect(await readMessage(bundle)).toEqual({ from: identities.encode(alice.identity), message: { text: "See you at noon." } });
   });
 });
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const standingEnvelope = await schemaFor("Stood behind", { message: linkSchema, signature: linkSchema });
+const standingEnvelope = await schemaFor<{ readonly message: JsonLink<EncodedObject<Json>>; readonly signature: JsonLink<Signature> }>(
+  "Stood behind",
+  { message: linkSchema, signature: linkSchema },
+);
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through
 // agents. Reading the standing takes the message as well as the signature, so
 // the envelope names both. The bundle is the blobs that the reading follows
 // that signature into.
-function readSent(bundle: Bundle, now: Date) {
-  const { message, signature } = decodeObject(bundle.root, standingEnvelope).data as {
-    message: JsonLink<EncodedObject<Json>>;
-    signature: JsonLink<Signature>;
-  };
-  const { identity, agents } = authorizations.readStanding(message.$link, blobAt(bundle, signature.$link), bundle, now);
-  return { from: identity, through: agents, message: decodeObject(blobAt(bundle, message.$link), chat).data };
+async function readSent(bundle: Bundle, now: Date) {
+  const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
+  const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle, now);
+  return { from: principal, through: agents, message: (await readObject(bundle, message.$link, chat)).data };
 }
 
 describe("a chat message sent through a device key", () => {
@@ -151,7 +148,7 @@ describe("a chat message sent through a device key", () => {
     const root = encodeObject(standingEnvelope, { message: { $link: message.link }, signature: { $link: proxy.signature.link } });
     const identityBytes = [grant.signature.identity.bytes, grant.object.agent.bytes];
     const blobs = [message.bytes, proxy.object.bytes, proxy.signature.bytes, grant.object.bytes, grant.signature.bytes, ...identityBytes];
-    expect(readSent(handOver(root, blobs), new Date())).toEqual({
+    expect(await readSent(handOver(root, blobs), new Date())).toEqual({
       from: identities.encode(wallet.identity),
       through: [identities.encode(deviceKey.identity)],
       message: { text: "See you at noon." },

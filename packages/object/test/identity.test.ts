@@ -2,9 +2,21 @@ import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeSchema, identitySchema, json, linkOf, loadSignatures, type JsonObject } from "../src/index.ts";
+import {
+  decodeObject,
+  encodeSchema,
+  identitySchema,
+  json,
+  linkOf,
+  loadSignatures,
+  type IdentityData,
+  type Json,
+  type JsonObject,
+  type Schema,
+} from "../src/index.ts";
 
 const { identities } = await loadSignatures(defaultValidator);
+const readIdentity = (bytes: Uint8Array) => identities.check(decodeObject(bytes, identities.schema));
 
 const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
@@ -18,7 +30,7 @@ describe("an identity", () => {
     const object = identities.encode(identity);
     // Without its label, as bytes read from a file or the network have none.
     const bytes: Uint8Array = object.bytes;
-    const read = identities.decode(bytes);
+    const read = readIdentity(bytes);
     expect(sameIdentity(read, identity)).toBe(true);
     expect(read.link).toBe(object.link);
   });
@@ -31,7 +43,7 @@ describe("an identity", () => {
     const schema = await encodeSchema(identitySchema, defaultValidator);
     const later = written({ publicKey: ed25519Key, scheme: "a-later-scheme" });
     expect(decodeObject(later, schema).data).toEqual({ publicKey: ed25519Key, scheme: "a-later-scheme" });
-    expect(() => identities.decode(later)).toThrow(/unknown scheme/);
+    expect(() => readIdentity(later)).toThrow(/unknown scheme/);
   });
 
   it.each<[string, JsonObject]>([
@@ -44,12 +56,13 @@ describe("an identity", () => {
     ["no key", { scheme: "ed25519" }],
     ["no scheme", { publicKey: ed25519Key }],
   ])("is refused with %s", (_, data) => {
-    expect(() => identities.decode(written(data))).toThrow();
+    expect(() => readIdentity(written(data))).toThrow();
   });
 
   it("is refused written to another schema, though shaped the same", async () => {
-    const lookalike = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
+    const lookalike: Schema<Json, IdentityData> = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
     const bytes = json.encode(json.object({ publicKey: ed25519Key, scheme: "ed25519" }, lookalike.link));
-    expect(() => identities.decode(bytes)).toThrow(/not read here/);
+    expect(() => readIdentity(bytes)).toThrow(/not to/);
+    expect(() => identities.check(decodeObject(bytes, lookalike))).toThrow(/an identity is written to/);
   });
 });

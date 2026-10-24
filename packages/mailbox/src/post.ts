@@ -4,6 +4,7 @@ import {
   type Bytes,
   type EncodedObject,
   type Json,
+  type JsonSchema,
   type JsonSchemaValidator,
   type Link,
   type Schema,
@@ -12,7 +13,7 @@ import type { Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { MailboxKey } from "./key.ts";
 import { mailboxFrom, readMailbox, type Mailbox, type Options, type Transport } from "./mailbox.ts";
-import { inboundSchema, outboundSchema } from "./schema.ts";
+import { inboundSchema, outboundSchema, type DeliveryData } from "./schema.ts";
 
 export interface PostOptions extends Options {
   /** The validator that the schemas of the records are compiled with. */
@@ -48,13 +49,13 @@ export class Post {
   readonly #store: Store;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
-  readonly #schemas: Readonly<Record<Direction, Schema<Json>>>;
+  readonly #schemas: Readonly<Record<Direction, Schema<Json, DeliveryData>>>;
 
   constructor(
     store: Store,
     transports: readonly Transport[],
     clock: () => number,
-    schemas: Readonly<Record<Direction, Schema<Json>>>,
+    schemas: Readonly<Record<Direction, Schema<Json, DeliveryData>>>,
   ) {
     this.#store = store;
     this.#transports = transports;
@@ -93,7 +94,7 @@ export class Post {
   ): Promise<Delivery> {
     const schema = this.#schemas[direction];
     const at = this.#clock();
-    const record = encodeObject<Json>(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
+    const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
     await this.#store.write({ mine: [record], blobs: [schema.bytes, ...blobs] });
     return { direction, bundle, mailbox, at, link: record.link };
   }
@@ -151,6 +152,7 @@ export class Inbox {
 
 /** Makes a post that sends and receives with `store`, through `transports`. */
 export async function loadPost(store: Store, { transports, validator, clock = Date.now }: PostOptions): Promise<Post> {
-  const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map((schema) => encodeSchema(schema, validator)));
+  const compile = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, validator);
+  const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(compile));
   return new Post(store, transports, clock, { inbound: inbound!, outbound: outbound! });
 }

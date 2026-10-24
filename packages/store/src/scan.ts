@@ -1,4 +1,4 @@
-import { decodeObject, schemaOf, type EncodedObject, type Schema } from "@estoc/object";
+import { decodeObject, schemaOf, type EncodedObject, type Fields, type Reader, type Schema } from "@estoc/object";
 import type { Store } from "./store.ts";
 
 /**
@@ -24,16 +24,17 @@ export type Prefix<K extends Key> =
  * going through all of them and adding each as it is written come to the
  * same rows, whatever the order and however often an object is added.
  */
-export interface Index<D, K extends Key> {
+export interface Index<D, K extends Key, F extends Fields<D> = Fields<D>> {
   /** The schemas of the objects the index reads. It passes over objects of any other. */
-  readonly reads: readonly Schema<D>[];
+  readonly reads: readonly Schema<D, F>[];
   /**
    * The rows of an object of one of those schemas, whose data fits it. They
-   * depend on the object alone; what depends on what else is written, such
-   * as whether something replaced it, is worked out from the rows when they
-   * are read.
+   * depend on the object and what it leads to, which `reader` gives by link,
+   * and on nothing else; what depends on what else is written, such as
+   * whether something replaced it, is worked out from the rows when they are
+   * read.
    */
-  rows(object: EncodedObject<D>): Iterable<K>;
+  rows(object: EncodedObject<D, F>, reader: Reader): Iterable<K> | AsyncIterable<K>;
 }
 
 /** The rows of an index, each once however many objects give it. */
@@ -49,7 +50,7 @@ export interface Rows<K extends Key> {
  * and checked against its schema before the index sees it, and the scan
  * fails on one whose data does not fit.
  */
-export async function scan<D, K extends Key>(store: Store, index: Index<D, K>): Promise<Rows<K>> {
+export async function scan<D, K extends Key, F extends Fields<D>>(store: Store, index: Index<D, K, F>): Promise<Rows<K>> {
   const encodings = new Set(index.reads.map(({ encoding }) => encoding));
   const [encoding] = encodings;
   if (encoding === undefined || encodings.size > 1) throw new Error("an index reads schemas of one encoding, and at least one");
@@ -62,7 +63,7 @@ export async function scan<D, K extends Key>(store: Store, index: Index<D, K>): 
     if (schema === undefined) continue;
     const object = decodeObject(bytes, schema);
     if (object.link !== link) throw new Error(`the store holds another blob under ${link}`);
-    for (const key of index.rows(object)) {
+    for await (const key of index.rows(object, store)) {
       if (!key.every((part) => typeof part === "string" || Number.isFinite(part))) throw new Error(`a row of ${link} holds a number that is not finite`);
       rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
     }

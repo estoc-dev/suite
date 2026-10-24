@@ -109,9 +109,7 @@ class SemanticsOf<D, T, V> implements Semantics<T, V> {
     const { data, schema } = this.#encoding.fields(value);
     const reading = this.#readings.get(schema);
     if (reading === undefined) throw new Error(`the object is written to ${schema}, which is not read here`);
-    const problems = reading.schema.validate(data);
-    if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
-    return reading.read(data, { bytes, link }, blobs);
+    return reading.read(reading.schema.validate(data), { bytes, link }, blobs);
   }
 }
 

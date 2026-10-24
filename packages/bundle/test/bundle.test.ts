@@ -9,7 +9,10 @@ import {
   linkOf,
   linkSchema,
   loadSignatures,
+  readObject,
+  type Json,
   type JsonObject,
+  type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -28,7 +31,10 @@ const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) 
   return json.encode(json.object(change(data), schema));
 };
 
-const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } }, defaultValidator);
+const note: Schema<Json, { readonly text?: string }> = await encodeSchema(
+  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
 const links = await encodeSchema(
   { $schema: DRAFT, title: "Links", type: "object", properties: { links: { type: "array", items: linkSchema } } },
   defaultValidator,
@@ -71,25 +77,25 @@ describe("a bundle", () => {
     expect(() => readBundle(files())).toThrow();
   });
 
-  it("reads with a signature as its root, which leads to the object it is over and to its identity", () => {
+  it("reads with a signature as its root, which leads to the object it is over and to its identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, signature.identity.bytes]));
     expect(bundle.link).toBe(signature.link);
-    const signed = signatures.decode(bundle.root, bundle);
-    expect(signatures.decode(bundle.get(bundle.link)!, bundle)).toEqual(signed);
+    const signed = await signatures.read(bundle.link, bundle);
+    expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle)).toEqual(signed);
     expect(signed.identity).toEqual(identities.encode(alice.identity));
-    expect(decodeObject(bundle.get(signed.object)!, note).data).toEqual({ text: "hello" });
+    expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 
-  it("takes as its root an object in the type a semantics read it into, and writes it as it was signed", async () => {
+  it("takes as its root an authorization as it was read, and writes it as it was signed", async () => {
     const authorizations = await loadAuthorizations(defaultValidator);
     const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
     const grant = await authorizations.authorize(agent.identity, alice);
     const bundle = readBundle(writeBundle(grant.object, [grant.signature.bytes, grant.object.agent.bytes, grant.signature.identity.bytes]));
     expect(bundle.link).toBe(grant.object.link);
-    expect(authorizations.readAuthorization(bundle.get(grant.signature.link)!, bundle)).toEqual(grant);
+    expect(await authorizations.readAuthorization(grant.signature.link, bundle)).toEqual(grant);
   });
 
-  it("reads with a signature that does not verify or whose scheme is unknown, as bytes", () => {
+  it("reads with a signature that does not verify or whose scheme is unknown, as bytes", async () => {
     const changed = rewritten(signature.bytes, (fields) => {
       const hex = fields.signature as string;
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
@@ -98,7 +104,7 @@ describe("a bundle", () => {
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { $link: linkOf(later) } }));
     const identityBytes = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
-      expect(() => signatures.decode(blob, identityBytes)).toThrow();
+      await expect(async () => signatures.verify(decodeObject(blob, signatures.schema), identityBytes)).rejects.toThrow();
       expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
   });
@@ -145,12 +151,12 @@ describe("a bundle", () => {
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([
     ["arrays", (bytes) => bytes.slice()],
     ["Node Buffers", (bytes) => Buffer.from(bytes)],
-  ])("keeps the bytes it checked when the given %s change afterwards", (_, given) => {
+  ])("keeps the bytes it checked when the given %s change afterwards", async (_, given) => {
     const files = filesOf(given(root.bytes), given(signature.bytes), given(hello.bytes), given(signature.identity.bytes));
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    const signed = signatures.decode(bundle.get(signature.link)!, bundle);
+    const signed = await signatures.read(signature.link, bundle);
     expect(bundle.get(signed.object)).toEqual(hello.bytes);
   });
 });

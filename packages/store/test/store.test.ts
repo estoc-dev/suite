@@ -183,28 +183,28 @@ describe("the closure of a blob", () => {
   });
 });
 
-describe("an object read from a store", () => {
-  it("is read through a semantics, with the blobs its reading follows", async () => {
+describe("a signature read from a store", () => {
+  it("verifies with the object of its identity, which the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const signature = await signatures.sign(note, signer);
     await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, anything.bytes, ...signatureSchemas] });
-    const read = await store.read(signatures, signature.link);
+    const read = await signatures.read(signature.link, store);
     expect(read.object).toBe(note.link);
     expect(read.identity.publicKey).toEqual(signer.identity.publicKey);
   });
 
-  it("is refused by a semantics that does not read its schema", async () => {
+  it("is refused when the store holds another kind of object under its link", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     await store.write({ mine: [note], blobs: [anything.bytes] });
     // @ts-expect-error: refused at compile time too
-    await expect(store.read(signatures, note.link)).rejects.toThrow(/not read here/);
+    await expect(signatures.read(note.link, store)).rejects.toThrow(/is written to/);
   });
 
   it("fails to read when the store does not hold it", async () => {
     const store = newStore();
     const link = linkOf(utf8("absent"));
-    await expect(store.read(signatures, link)).rejects.toThrow(`no blob is given for ${link}`);
+    await expect(signatures.read(link, store)).rejects.toThrow(`no blob is given for ${link}`);
   });
 });

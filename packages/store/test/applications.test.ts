@@ -69,8 +69,6 @@ async function listed(store: Store): Promise<Link<unknown>[]> {
   return links;
 }
 
-// Until a store has indexes, a reader goes through all that is listed and
-// keeps what reads as its type.
 async function readListed<T>(store: Store, semantics: Semantics<T>): Promise<T[]> {
   const values: T[] = [];
   for await (const link of store.mine()) {

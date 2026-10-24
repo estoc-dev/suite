@@ -4,12 +4,19 @@ import type { Store } from "./store.ts";
 /**
  * The key of a row: strings and numbers, compared one by one, a number
  * before a string, and a key before every longer key that starts with it.
- * The keys that start with a prefix therefore come together.
+ * The keys that start with a prefix therefore come together. Numbers are
+ * finite, as in JSON, and a scan fails on a row that holds any other.
  */
 export type Key = readonly (string | number)[];
 
-/** The keys that start a key of `K`, from none of it to all of it. */
-export type Prefix<K extends Key> = K extends readonly [...infer Head extends Key, unknown] ? K | Prefix<Head> : K;
+/**
+ * The keys that start a key of `K`, from none of it to all of it. The empty
+ * prefix stands outside the condition, so that it fits even a `K` that is
+ * still a type parameter.
+ */
+export type Prefix<K extends Key> =
+  | readonly []
+  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key] ? readonly [First, ...Prefix<Rest>] : K);
 
 /**
  * What an application keeps of the objects of some schemas that its user
@@ -56,7 +63,7 @@ export async function scan<D, K extends Key>(store: Store, index: Index<D, K>): 
     const object = decodeObject(bytes, schema);
     if (object.link !== link) throw new Error(`the store holds another blob under ${link}`);
     for (const key of index.rows(object)) {
-      if (key.some(Number.isNaN)) throw new Error(`a row of ${link} holds NaN, which has no place among keys`);
+      if (!key.every((part) => typeof part === "string" || Number.isFinite(part))) throw new Error(`a row of ${link} holds a number that is not finite`);
       rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
     }
   }

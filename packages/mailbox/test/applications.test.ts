@@ -1,13 +1,14 @@
 import type { Bundle } from "@estoc/bundle";
 import { SoftwareSigner, type Scheme } from "@estoc/identity";
 import {
-  decodeObject,
   encodeObject,
   encodeSchema,
   linkOf,
   linkSchema,
   loadSignatures,
+  readObject,
   type EncodedObject,
+  type Fields,
   type IdentityObject,
   type Json,
   type JsonLink,
@@ -35,11 +36,9 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: Sof
   return signature;
 };
 
-function readSigned(bundle: Bundle, schema: Schema<Json>) {
-  const signature = signatures.decode(bundle.root, bundle);
-  const object = bundle.get(signature.object);
-  if (object === undefined) throw new Error(`the bundle does not carry ${signature.object}`);
-  return { signature, identity: signature.identity, object: decodeObject(object, schema) };
+async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema<Json, F>) {
+  const signature = await signatures.read(bundle.link, bundle);
+  return { signature, identity: signature.identity, object: await readObject(bundle, signature.object, schema) };
 }
 
 async function receiver(network: MemoryNetwork, fill: number) {
@@ -48,7 +47,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   return { mailbox: queue.mailbox(key.publicKey).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
 }
 
-const chat = await encodeSchema(
+const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<IdentityObject> }> = await encodeSchema(
   {
     $schema: DRAFT,
     title: "Chat",
@@ -62,9 +61,9 @@ const chat = await encodeSchema(
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by the link of an identity object, whether that is the reader.
-function readChat(bundle: Bundle, reader: IdentityObject) {
-  const { identity, object } = readSigned(bundle, chat);
-  const { text, to } = object.data as { text: string; to?: JsonLink<IdentityObject> };
+async function readChat(bundle: Bundle, reader: IdentityObject) {
+  const { identity, object } = await readSigned(bundle, chat);
+  const { text, to } = object.data;
   return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.link };
 }
 
@@ -79,7 +78,7 @@ describe("a chat line", () => {
     const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
     const [received] = await atBob.take();
     // Bob passes on what he read: the signature, with the line and the identity it names.
-    const read = readSigned(received!, chat);
+    const read = await readSigned(received!, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
       read.identity.bytes,
@@ -91,7 +90,7 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passed.link).toBe(sent.link);
-    expect(readChat(passed, identities.encode(carol.identity))).toEqual({
+    expect(await readChat(passed, identities.encode(carol.identity))).toEqual({
       author: identities.encode(alice.identity),
       text: "lunch at noon?",
       forReader: undefined,
@@ -101,12 +100,12 @@ describe("a chat line", () => {
   it("written to Bob shows at Carol's that it is not for her", async () => {
     const line = encodeObject(chat, { to: { $link: identities.encode(bob.identity).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
-    expect(readChat(received, identities.encode(bob.identity)).forReader).toBe(true);
-    expect(readChat(passed, identities.encode(carol.identity)).forReader).toBe(false);
+    expect((await readChat(received, identities.encode(bob.identity))).forReader).toBe(true);
+    expect((await readChat(passed, identities.encode(carol.identity))).forReader).toBe(false);
   });
 });
 
-const join = await encodeSchema(
+const join: Schema<Json, { readonly invitation: JsonLink<never> }> = await encodeSchema(
   {
     $schema: DRAFT,
     title: "Join",
@@ -137,8 +136,8 @@ describe("a one-time invitation", () => {
     const letIn = async () => {
       const admitted: IdentityObject[] = [];
       for (const bundle of await inviter.take()) {
-        const { identity, object } = readSigned(bundle, join);
-        if (used || (object.data as { invitation: JsonLink<never> }).invitation.$link !== link) continue;
+        const { identity, object } = await readSigned(bundle, join);
+        if (used || object.data.invitation.$link !== link) continue;
         used = true;
         admitted.push(identity);
       }
@@ -164,7 +163,7 @@ type Sale = {
   readonly price: string;
 };
 
-const sale = await encodeSchema(
+const sale: Schema<Json, Sale> = await encodeSchema(
   {
     $schema: DRAFT,
     title: "Sale",
@@ -185,11 +184,11 @@ const sale = await encodeSchema(
 // it. Each party sends its own signature with the terms to the registry's
 // mailbox, and the registry reads all it has received, in whatever order
 // and as many times as it arrived.
-function salesInForce(received: readonly Bundle[]): Sale[] {
+async function salesInForce(received: readonly Bundle[]): Promise<Sale[]> {
   const signers = new Map<string, { terms: Sale; identities: IdentityObject[] }>();
   for (const bundle of received) {
-    const { identity, object } = readSigned(bundle, sale);
-    const record = signers.get(object.link) ?? { terms: object.data as Sale, identities: [] };
+    const { identity, object } = await readSigned(bundle, sale);
+    const record = signers.get(object.link) ?? { terms: object.data, identities: [] };
     record.identities.push(identity);
     signers.set(object.link, record);
   }
@@ -223,7 +222,7 @@ describe("a sale sent to a registry", () => {
     await send(seller);
     const received = await take();
     expect(received).toHaveLength(4);
-    expect(salesInForce(received)).toEqual([terms.data]);
+    expect(await salesInForce(received)).toEqual([terms.data]);
   });
 
   it("is not in force while the buyer's signature is lost, and is once the buyer sends it again", async () => {
@@ -231,8 +230,8 @@ describe("a sale sent to a registry", () => {
     await send(buyer);
     await send(seller);
     const received = await take();
-    expect(salesInForce(received)).toEqual([]);
+    expect(await salesInForce(received)).toEqual([]);
     await send(buyer);
-    expect(salesInForce([...received, ...(await take())])).toEqual([terms.data]);
+    expect(await salesInForce([...received, ...(await take())])).toEqual([terms.data]);
   });
 });

@@ -90,7 +90,8 @@ describe("a login schema, an object written to it and an Ed25519 signature over 
     expect(read.link).toBe(schemaLink);
     expect(decodeObject(new TextEncoder().encode(objectText), read).link).toBe(objectLink);
     const identity = new TextEncoder().encode(identityText);
-    expect(identities.decode(identity).link).toBe(identityLink);
-    expect(signatures.decode(new TextEncoder().encode(signatureText), new Map([[identityLink, identity]])).link).toBe(signatureLink);
+    expect(identities.read(decodeObject(identity, identities.schema)).link).toBe(identityLink);
+    const signature = decodeObject(new TextEncoder().encode(signatureText), signatures.schema);
+    expect((await signatures.verify(signature, new Map([[identityLink, identity]]))).link).toBe(signatureLink);
   });
 });

@@ -29,7 +29,7 @@ describe("a mailbox", () => {
     const bundle = await bob.open(sealed!);
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect(signatures.decode(bundle.root, bundle).identity).toEqual(identities.encode(alice.identity));
+    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.identity));
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {

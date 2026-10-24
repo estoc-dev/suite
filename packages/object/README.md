@@ -171,7 +171,9 @@ member that is not a link.
 
 Whether a value fits a schema is the validator's call. A validator compiles a
 schema once, when the schema is read, and the schema keeps the result, so
-reading a schema returns a promise and reading an object does not. Every
+reading a schema returns a promise and checking an object against it does
+not: `decodeObject` is synchronous, and `readObject` returns a promise only
+because the reader it gets the blob from may answer with one. Every
 validator works offline and keeps to three rules:
 
 - A reference to anything outside the schema fails compilation, rather than

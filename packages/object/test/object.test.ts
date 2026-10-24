@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, schemaOf, type JsonObject } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, readObject, schemaOf, type JsonObject } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -72,6 +72,23 @@ describe("an object", () => {
 
   it.each(malformed)("is refused %s", (_, text) => {
     expect(() => decodeObject(utf8(text), anything)).toThrow();
+  });
+});
+
+describe("an object read by its link", () => {
+  const object = encodeObject(login, greeting);
+
+  it("is the object whose blob the reader gives for the link", async () => {
+    expect(await readObject(new Map([[object.link, object.bytes]]), object.link, login)).toEqual(object);
+  });
+
+  it("is refused when the reader gives no blob for the link", async () => {
+    await expect(readObject(new Map(), object.link, login)).rejects.toThrow(/no blob is given/);
+  });
+
+  it("is refused when the reader gives another blob for the link", async () => {
+    const other = encodeObject(login, { ...greeting, nonce: "9a2e" });
+    await expect(readObject(new Map([[object.link, other.bytes]]), object.link, login)).rejects.toThrow(/is another blob/);
   });
 });
 

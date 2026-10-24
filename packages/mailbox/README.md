@@ -155,8 +155,8 @@ says and who signed it are read from its root when it is shown.
 ## Messages
 
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
-blobs it leads to, which semantics and `readStanding` in
-`@estoc/authorization` take their blobs from. Nothing in it names the
+blobs it leads to, which `readObject` and judgments such as `readStanding`
+in `@estoc/authorization` take their blobs from. Nothing in it names the
 sender. It travels as the zip that `zipBundle` writes with
 `compress: false`, which holds the same files as a bundle handed over as a
 file, so a message can be kept as one and a bundle sent as a message.

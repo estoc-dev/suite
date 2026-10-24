@@ -15,7 +15,7 @@ Proxy          {"chain": [<signature link>, …], "target": <object link>}, sign
 Both are objects of `@estoc/object`, written to two fixed draft 2020-12
 schemas, `authorizationSchema` and `proxySchema`, and signed as any object
 is. An Authorization names its agent by the link of the agent's identity
-object, as a signature names its signer. The schemas are compiled once, by the validator the application picks, together with those of signatures and identities, and `authorizations.signatures` is the semantics it signs and reads signatures with:
+object, as a signature names its signer. The schemas are compiled once, by the validator the application picks, together with those of signatures and identities, and `authorizations.signatures` is what it signs and reads signatures with:
 
 ```ts
 import { loadAuthorizations } from "@estoc/authorization";
@@ -168,5 +168,6 @@ await authorizations.readStanding(login.link, entry, blobs, new Date());
 
 To find everyone who stands behind an object, the application reads each entry
 it holds. Finding those entries in a store takes an index from objects to
-the signatures over them and to the proxies for them; that index belongs
-to the store, and an entry it offers wrongly only fails to read.
+the signatures over them and to the proxies for them. The application
+keeps that index over its store, and an entry the index offers wrongly
+only fails to read.

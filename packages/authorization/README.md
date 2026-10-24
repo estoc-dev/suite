@@ -38,17 +38,17 @@ for nothing.
 import { Temporal } from "temporal-polyfill";
 
 const grant = await authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
-// The agent receives the signature and the blobs it leads to:
+// The agent receives the link of the signature, and the signature with the blobs it leads to:
 // grant.signature.bytes, grant.object.bytes, and the identity objects of both,
 // grant.signature.identity.bytes and grant.object.agent.bytes.
-const received = authorizations.readAuthorization(signatureBytes, blobs);
+const received = await authorizations.readAuthorization(grant.signature.link, blobs);
 ```
 
 Both give a `Signed<Authorization>`: the `Authorization` as read, its `agent`
 the agent's identity object and its `until` a `Temporal.Instant` when there
 is one, and the `signature` over it, whose identity is the authorizer.
-`readAuthorization` takes the signature and looks up the blobs it leads to
-in `blobs` by link, as `readStanding` does.
+`readAuthorization` takes the link of the signature, and gets the signature
+and the blobs it leads to from `blobs` by link, as `readStanding` does.
 
 ### The end of an authorization
 
@@ -117,7 +117,7 @@ chain, and the reader checks each step without guessing.
 ## Reading
 
 `readStanding(target, entry, blobs, now)` reads how an identity stands
-behind `target` by one signature, `entry`:
+behind `target` by one signature, the one that `entry` links to:
 
 - an entry over `target` is its signer's own;
 - an entry over a Proxy whose target is `target` is the first authorizer's
@@ -145,8 +145,9 @@ are, as `sameIdentity` in `@estoc/identity` compares them.
 
 Every link from the entry points inward, to the Proxy, its chain, the
 authorizations and the identity objects of their signers and agents, so the
-reading only looks blobs up by link. `blobs` is anything with `get(link)`: a
-`Map`, a bundle, or a store that holds blobs by content. The reading checks
+reading only gets blobs by link, each when it comes to it. `blobs` is a
+`Reader` of `@estoc/object`, anything with `get(link)` that answers at once
+or with a promise: a `Map`, a bundle, or a store that holds blobs by content. The reading checks
 that each blob it gets has the link it asked for, so wrong bytes from a
 store make the reading fail, and do not make it read another standing.
 Blobs the entry does not lead to are not read.
@@ -154,13 +155,14 @@ Blobs the entry does not lead to are not read.
 ```ts
 import { linkOf } from "@estoc/object";
 
-// The browser key sends its signature over the Proxy as the entry, with the blobs it leads to.
-const entry = proxy.signature.bytes;
+// The browser key sends the link of its signature over the Proxy as the entry,
+// with the signature and the blobs it leads to.
+const entry = proxy.signature.link;
 const identities = [proxy.signature.identity.bytes, received.signature.identity.bytes];
-const sent = [proxy.object.bytes, received.signature.bytes, received.object.bytes, ...identities];
+const sent = [proxy.signature.bytes, proxy.object.bytes, received.signature.bytes, received.object.bytes, ...identities];
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
-authorizations.readStanding(login.link, entry, blobs, new Date());
+await authorizations.readStanding(login.link, entry, blobs, new Date());
 // { identity: <the wallet's identity object>, agents: [<the browser key's>] }
 ```
 

@@ -75,7 +75,7 @@ describe("an outbox", () => {
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.take()[0]!);
     expect(bundle.link).toBe(signature.link);
-    expect(signatures.decode(bundle.root, bundle).object).toBe(hello.link);
+    expect((await signatures.read(bundle.link, bundle)).object).toBe(hello.link);
   });
 
   it("records nothing when the transport refuses what it sends", async () => {
@@ -122,7 +122,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: mailbox.link, at: 1001 },
     ]);
     expect(await listed(store)).toEqual([mailbox.link, ...received.map(({ link }) => link)]);
-    expect((await store.read(signatures, signature.link)).object).toBe(hello.link);
+    expect((await signatures.read(signature.link, store)).object).toBe(hello.link);
   });
 
   it("keeps nothing of a bundle that leaves out a blob its root leads to", async () => {

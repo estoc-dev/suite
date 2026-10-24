@@ -30,7 +30,7 @@ const signature = await signatures.sign(note, signer);
 await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, ...schemas] });
 
 for await (const link of store.mine()) …;       // note.link, signature.link
-await store.read(signatures, signature.link);   // the signature, verified
+await signatures.read(signature.link, store);   // the signature, verified
 ```
 
 ## What is listed

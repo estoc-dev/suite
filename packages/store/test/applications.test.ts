@@ -100,7 +100,7 @@ describe("a signed note", () => {
     expect(await listed(bobStore)).toEqual([received.link]);
 
     const [record] = await readListed(bobStore, receipts);
-    const signed = await bobStore.read(signatures, record!.bundle);
+    const signed = await signatures.read(record!.bundle, bobStore);
     expect(sameIdentity(signed.identity, alice.identity)).toBe(true);
     expect((await bobStore.read(notes, signed.object)).text).toBe("hello");
   });

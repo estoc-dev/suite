@@ -1,4 +1,4 @@
-import { linkSchema, type JsonObject, type JsonSchema } from "@estoc/object";
+import { linkSchema, type EncodedObject, type Json, type JsonLink, type JsonObject, type JsonSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
@@ -30,6 +30,9 @@ export const inboundSchema: JsonSchema = deliverySchema("Inbound");
 
 /** The draft 2020-12 schema of a record that a bundle went out to a mailbox. */
 export const outboundSchema: JsonSchema = deliverySchema("Outbound");
+
+/** The data of a record of either way, as `inboundSchema` and `outboundSchema` describe it. */
+export type DeliveryData = { readonly bundle: JsonLink<never>; readonly mailbox: JsonLink<EncodedObject<Json>>; readonly at: number };
 
 /**
  * A record that a bundle, named by the link of its root, came in at a

@@ -37,8 +37,13 @@ export interface SchemaValidator<S, D> {
   compile(schema: S): Promise<Check<D>>;
 }
 
-/** A schema as a blob, compiled by the validator it was read with. */
-export class Schema<D> {
+/**
+ * A schema as a blob, compiled by the validator it was read with. `F` is the
+ * type the program reads the data written to it as. The program declares it
+ * where it gets the schema, as in `const note: Schema<Json, Note> = await
+ * encodeSchema(…)`, and only data that fits the schema is handed out as one.
+ */
+export class Schema<D, F extends Fields<D> = Fields<D>> {
   /** The encoding of the objects written to this schema, which is that of its language. */
   readonly encoding: Encoding<D>;
   readonly bytes: Bytes<Schema<D>>;
@@ -52,18 +57,26 @@ export class Schema<D> {
     this.#check = check;
   }
 
-  /** Lists what in `data` does not fit this schema; an empty list means it fits. */
-  validate(data: Fields<D>): readonly string[] {
-    return this.#check(data);
+  /** Gives back `data` as an `F` when it fits this schema, and throws saying what does not fit otherwise. */
+  validate(data: Fields<D>): F {
+    const problems = this.#check(data);
+    if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
+    return data as F;
   }
 }
 
-export async function decodeSchema<S, D>(bytes: Bytes<Schema<D>>, validator: SchemaValidator<S, D>): Promise<Schema<D>> {
+export async function decodeSchema<S, D, F extends Fields<D> = Fields<D>>(
+  bytes: Bytes<Schema<D>>,
+  validator: SchemaValidator<S, D>,
+): Promise<Schema<D, F>> {
   const { language } = validator;
   const { value, bytes: owned, link } = decodeBlob(language, bytes);
-  return new Schema(language.encoding, owned, link, await validator.compile(value));
+  return new Schema<D, F>(language.encoding, owned, link, await validator.compile(value));
 }
 
-export async function encodeSchema<S, D>(schema: S, validator: SchemaValidator<S, D>): Promise<Schema<D>> {
-  return decodeSchema(validator.language.encode(schema), validator);
+export async function encodeSchema<S, D, F extends Fields<D> = Fields<D>>(
+  schema: S,
+  validator: SchemaValidator<S, D>,
+): Promise<Schema<D, F>> {
+  return decodeSchema<S, D, F>(validator.language.encode(schema), validator);
 }

@@ -1,4 +1,5 @@
-import { encodeObject, encodeSchema, json, type Json } from "@estoc/object";
+import { SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, identitySchema, json, loadSignatures, signatureSchema, type Json, type SignatureData } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MemoryBackend, scan, Store, type Backend, type Index, type Key, type Rows } from "../src/index.ts";
@@ -56,6 +57,28 @@ describe("an index scanned from a store", () => {
     expect(await all(rows.range(["notes", "a"]))).toEqual([["notes", "a", "b"]]);
     // @ts-expect-error: a namespace is a string
     expect(await all(rows.range([1]))).toEqual([]);
+  });
+
+  it("gives rows that depend on what an object leads to, read from the store as they are needed", async () => {
+    const signatures = await loadSignatures(defaultValidator);
+    const bySigner: Index<Json, [signer: string, object: string], SignatureData> = {
+      reads: [signatures.schema],
+      async *rows(object, reader) {
+        const signature = await signatures.verify(object, reader);
+        yield [signature.identity.link, signature.object];
+      },
+    };
+    const [alice, bob] = [1, 2].map((fill) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)));
+    const hello = encodeObject(note!, {});
+    const signed = await Promise.all([alice!, bob!].map((by) => signatures.sign(hello, by)));
+    const signatureSchemas = await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)));
+    const store = new Store(json, new MemoryBackend());
+    await store.write({
+      mine: [hello, ...signed],
+      blobs: [...signed.map(({ identity }) => identity.bytes), ...schemas, ...signatureSchemas.map(({ bytes }) => bytes)],
+    });
+    const expected = signed.map(({ identity }) => [identity.link, hello.link]).sort(([a], [b]) => (a! < b! ? -1 : 1));
+    expect(await whole(await scan(store, bySigner))).toEqual(expected);
   });
 
   it("is not filled when a row holds a number that is not finite", async () => {

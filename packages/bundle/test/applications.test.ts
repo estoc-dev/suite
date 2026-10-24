@@ -134,8 +134,8 @@ const standingEnvelope = await schemaFor<{ readonly message: JsonLink<EncodedObj
 // that signature into.
 async function readSent(bundle: Bundle, now: Date) {
   const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
-  const { identity, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle, now);
-  return { from: identity, through: agents, message: (await readObject(bundle, message.$link, chat)).data };
+  const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle, now);
+  return { from: principal, through: agents, message: (await readObject(bundle, message.$link, chat)).data };
 }
 
 describe("a chat message sent through a device key", () => {

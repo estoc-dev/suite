@@ -3,7 +3,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Json } from "./json.ts";
 import { DRAFT_2020_12, HEX, type JsonSchema } from "./json-schema.ts";
 import type { Link } from "./link.ts";
-import { encodeObject, type EncodedObject } from "./object.ts";
+import { encodeObject, readObject, type EncodedObject, type Reader } from "./object.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -49,7 +49,7 @@ export class Identities {
     this.schema = schema;
   }
 
-  read(object: EncodedObject<Json, IdentityData>): IdentityObject {
+  check(object: EncodedObject<Json, IdentityData>): IdentityObject {
     if (object.schema.link !== this.schema.link) throw new Error(`an identity is written to ${this.schema.link}`);
     const { publicKey, scheme } = object.data;
     if (!Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${scheme}`);
@@ -58,8 +58,13 @@ export class Identities {
     return { ...object, link: object.link as Link<IdentityObject>, scheme: scheme as Scheme, publicKey: hexToBytes(publicKey) };
   }
 
+  /** Reads the identity that `link` names from `reader`, and checks it. */
+  async read(link: Link<IdentityObject>, reader: Reader): Promise<IdentityObject> {
+    return this.check(await readObject(reader, link, this.schema));
+  }
+
   /** Writes an identity as its object. */
   encode({ publicKey, scheme }: Identity): IdentityObject {
-    return this.read(encodeObject(this.schema, { publicKey: bytesToHex(publicKey), scheme }));
+    return this.check(encodeObject(this.schema, { publicKey: bytesToHex(publicKey), scheme }));
   }
 }

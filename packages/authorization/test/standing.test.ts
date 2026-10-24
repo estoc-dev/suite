@@ -40,7 +40,7 @@ const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blo
 const readEntry = (entry: AnySigned, given: readonly AnySigned[] = [], at = now, link: Link<unknown> = target.link) =>
   authorizations.readStanding(link, entry.signature.link, byLink([...identityBytes, ...parts(entry), ...given.flatMap(parts)]), at);
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
-  identity: identityOf(principal),
+  principal: identityOf(principal),
   agents: agents.map(identityOf),
 });
 const signed = async <T extends { readonly link: Link<unknown> }>(object: T, by: SoftwareSigner): Promise<Signed<T>> => ({

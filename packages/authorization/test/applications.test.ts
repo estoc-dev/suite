@@ -50,9 +50,9 @@ const login = await encodeSchema(
 // accepts one agent at most: a key that the user's wallet authorized.
 async function loggedIn(audience: string, nonce: string, entry: Link<Signature>, received: readonly Uint8Array[], now: Date): Promise<IdentityObject> {
   const expected = encodeObject(login, { audience, nonce });
-  const { identity, agents } = await authorizations.readStanding(expected.link, entry, byLink(received), now);
+  const { principal, agents } = await authorizations.readStanding(expected.link, entry, byLink(received), now);
   if (agents.length > 1) throw new Error("this server accepts one agent at most");
-  return identity;
+  return principal;
 }
 
 describe("a login", () => {
@@ -110,7 +110,7 @@ async function saleInForce(bytes: Uint8Array, entries: readonly Link<Signature>[
   const blobs = byLink(received);
   const standing = await Promise.all(entries.map((entry) => authorizations.readStanding(terms.link, entry, blobs, now).catch(() => undefined)));
   const { buyer, seller } = terms.data;
-  const behind = (party: JsonLink<IdentityObject>) => standing.some((way) => way?.identity.link === party.$link);
+  const behind = (party: JsonLink<IdentityObject>) => standing.some((way) => way?.principal.link === party.$link);
   return behind(buyer) && behind(seller) ? terms.data : undefined;
 }
 

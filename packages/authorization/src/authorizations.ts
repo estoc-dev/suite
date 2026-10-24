@@ -51,12 +51,12 @@ export interface Signed<T> {
 }
 
 /**
- * One way an identity stands behind an object: by its own signature when
+ * One way `principal` stands behind an object: by its own signature when
  * `agents` is empty, or else through these agents, in order from the one it
  * authorized to the one that signed the proxy.
  */
 export interface Standing {
-  readonly identity: IdentityObject;
+  readonly principal: IdentityObject;
   readonly agents: readonly IdentityObject[];
 }
 
@@ -67,34 +67,36 @@ export interface Standing {
  */
 export class Authorizations {
   readonly signatures: Signatures;
-  readonly #authorization: Schema<Json, AuthorizationData>;
-  readonly #proxy: Schema<Json, ProxyData>;
+  readonly #authorizationSchema: Schema<Json, AuthorizationData>;
+  readonly #proxySchema: Schema<Json, ProxyData>;
 
   constructor(signatures: Signatures, authorization: Schema<Json, AuthorizationData>, proxy: Schema<Json, ProxyData>) {
     this.signatures = signatures;
-    this.#authorization = authorization;
-    this.#proxy = proxy;
+    this.#authorizationSchema = authorization;
+    this.#proxySchema = proxy;
   }
 
   /** Signs an authorization that lets `agent` act for the signer, until the instant `until` if one is given. */
   async authorize(agent: Identity, signer: Signer, until?: Temporal.Instant): Promise<Signed<Authorization>> {
-    const named = this.signatures.identities.encode(agent);
-    const data = { agent: { $link: named.link } };
+    const identity = this.signatures.identities.encode(agent);
+    const data = { agent: { $link: identity.link } };
     // An instant past the year 9999 has no RFC 3339 `date-time`, so a
     // validator that asserts `format` refuses it here, before the signer is
     // asked, which may be a wallet prompting its holder.
-    const written = encodeObject(this.#authorization, until === undefined ? data : { ...data, until: until.toString() });
-    const object = await this.#readAuthorization(written, new Map([[named.link, named.bytes]]));
+    const written = encodeObject(this.#authorizationSchema, until === undefined ? data : { ...data, until: until.toString() });
+    const object = await this.#checkAuthorization(written, new Map([[identity.link, identity.bytes]]));
     return { object, signature: await this.signatures.sign(object, signer) };
   }
 
   /**
-   * Reads an authorization by the signature over it, `entry`, from `reader`,
-   * which holds the signature, the authorization and the objects of both
-   * identities.
+   * Reads an authorization by the link of the signature over it from
+   * `reader`, which holds the signature, the authorization and the objects of
+   * both identities.
    */
-  async readAuthorization(entry: Link<Signature>, reader: Reader): Promise<Signed<Authorization>> {
-    return this.#signedAuthorization(await this.signatures.read(entry, reader), reader);
+  async readAuthorization(link: Link<Signature>, reader: Reader): Promise<Signed<Authorization>> {
+    const signature = await this.signatures.read(link, reader);
+    const object = await this.#checkAuthorization(await readObject(reader, signature.object, this.#authorizationSchema), reader);
+    return { object, signature };
   }
 
   /**
@@ -106,7 +108,7 @@ export class Authorizations {
   async proxy(target: Link<unknown>, chain: readonly Signed<Authorization>[], signer: Signer): Promise<Signed<Proxy>> {
     checkChain(chain, signer.identity);
     const data = { target: { $link: target as Link<never> }, chain: chain.map(({ signature }) => ({ $link: signature.link })) };
-    const object = readProxy(encodeObject(this.#proxy, data));
+    const object = proxyOf(encodeObject(this.#proxySchema, data));
     return { object, signature: await this.signatures.sign(object, signer) };
   }
 
@@ -120,13 +122,13 @@ export class Authorizations {
    */
   async readStanding(target: Link<unknown>, entry: Link<Signature>, reader: Reader, now: Date): Promise<Standing> {
     const signature = await this.signatures.read(entry, reader);
-    if (signature.object === target) return { identity: signature.identity, agents: [] };
-    const proxy = readProxy(await readObject(reader, signature.object, this.#proxy));
+    if (signature.object === target) return { principal: signature.identity, agents: [] };
+    const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
     if (proxy.target !== target) throw new Error(`the proxy is for ${proxy.target}, not ${target}`);
     const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) {
-      const authorization = await this.#signedAuthorization(await this.signatures.read(link, reader), reader);
+      const authorization = await this.readAuthorization(link, reader);
       const { until } = authorization.object;
       if (until !== undefined && Temporal.Instant.compare(instant, until) >= 0) {
         throw new Error(`the authorization ${link} ended at ${until}`);
@@ -134,26 +136,21 @@ export class Authorizations {
       chain.push(authorization);
     }
     checkChain(chain, signature.identity);
-    return { identity: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
+    return { principal: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
   }
 
-  async #signedAuthorization(signature: Signature, reader: Reader): Promise<Signed<Authorization>> {
-    return { object: await this.#readAuthorization(await readObject(reader, signature.object, this.#authorization), reader), signature };
-  }
-
-  async #readAuthorization(object: EncodedObject<Json, AuthorizationData>, reader: Reader): Promise<Authorization> {
+  async #checkAuthorization(object: EncodedObject<Json, AuthorizationData>, reader: Reader): Promise<Authorization> {
     const { agent, until } = object.data;
     // Whether a validator asserts `format` is its own business, so an `until`
     // can reach here that Temporal does not read as an instant. Such an
     // authorization counts for no one, and is refused.
     const end = until === undefined ? undefined : Temporal.Instant.from(until);
-    const { identities } = this.signatures;
-    const identity = identities.read(await readObject(reader, agent.$link, identities.schema));
+    const identity = await this.signatures.identities.read(agent.$link, reader);
     return { ...object, link: object.link as Link<Authorization>, agent: identity, until: end };
   }
 }
 
-function readProxy(object: EncodedObject<Json, ProxyData>): Proxy {
+function proxyOf(object: EncodedObject<Json, ProxyData>): Proxy {
   const { target, chain } = object.data;
   return { ...object, link: object.link as Link<Proxy>, target: target.$link, chain: chain.map(({ $link }) => $link) };
 }

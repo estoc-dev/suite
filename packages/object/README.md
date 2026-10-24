@@ -319,11 +319,12 @@ later is written to the same schema, so identities already written keep
 their links.
 
 `identities`, which comes with the signatures below, holds the identity
-schema, and `identities.read` is the judgment of an identity: it takes an
+schema, and `identities.check` is the judgment of an identity: it takes an
 identity's object and gives the identity. It takes the schemes that
 `@estoc/identity` knows, with the key at its scheme's length, so that each identity has one
 object and one link, and it refuses an identity in any other scheme, though
-its object fits the schema. `identities.encode` writes an identity as its
+its object fits the schema. `identities.read` does the same from the link
+of the object and a `Reader`. `identities.encode` writes an identity as its
 object, and refuses one it would not read, such as one whose key is not its
 scheme's length.
 
@@ -343,9 +344,8 @@ object it is over by their links, and the signature is in lowercase hex.
 validator the application picks, as any schema is, and gives `signatures`,
 which holds the signature schema, `identities` and `sign`.
 `signatures.verify` is the judgment of a signature: it takes the signature
-as an object of `signatures.schema` and a `Reader`, reads its identity's
-object from the reader by link and through `identities`, and verifies the
-signature; `signatures.read` does the same from the link of the signature.
+as an object of `signatures.schema` and a `Reader`, reads its identity
+from the reader with `identities.read`, and verifies the signature; `signatures.read` does the same from the link of the signature.
 So verifying a signature takes the blob of its identity's object, but not
 that of the object signed, since the digest it signs is in the link. It
 gives the signature's object with the identity it read as `identity`, the

@@ -127,7 +127,7 @@ behind `target` by one signature, the one that `entry` links to:
   - the last agent is the one who signed the Proxy, and
   - every `until` in the chain is after `now`.
 
-The result is the principal and its agents in order, as their identity
+The result is the `principal` and its `agents` in order, as their identity
 objects, with no agents for a direct signature. An entry that stands no one behind `target` throws,
 saying why, such as which authorization has ended.
 
@@ -163,7 +163,7 @@ const sent = [proxy.signature.bytes, proxy.object.bytes, received.signature.byte
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
 await authorizations.readStanding(login.link, entry, blobs, new Date());
-// { identity: <the wallet's identity object>, agents: [<the browser key's>] }
+// { principal: <the wallet's identity object>, agents: [<the browser key's>] }
 ```
 
 To find everyone who stands behind an object, the application reads each entry

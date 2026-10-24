@@ -79,6 +79,6 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
     expect(read.signature.identity).toEqual(identities.encode(root.identity));
     expect(read.object.agent).toEqual(identities.encode(hot.identity));
     const standing = await authorizations.readStanding(target, proxySignatureLink, blobs, new Date("2026-12-31T23:59:59Z"));
-    expect(standing).toEqual({ identity: identities.encode(root.identity), agents: [identities.encode(hot.identity)] });
+    expect(standing).toEqual({ principal: identities.encode(root.identity), agents: [identities.encode(hot.identity)] });
   });
 });

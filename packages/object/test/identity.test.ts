@@ -16,7 +16,7 @@ import {
 } from "../src/index.ts";
 
 const { identities } = await loadSignatures(defaultValidator);
-const readIdentity = (bytes: Uint8Array) => identities.read(decodeObject(bytes, identities.schema));
+const readIdentity = (bytes: Uint8Array) => identities.check(decodeObject(bytes, identities.schema));
 
 const secretKey = new Uint8Array(32).fill(1);
 const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
@@ -63,6 +63,6 @@ describe("an identity", () => {
     const lookalike: Schema<Json, IdentityData> = await encodeSchema({ ...identitySchema, title: "Key" }, defaultValidator);
     const bytes = json.encode(json.object({ publicKey: ed25519Key, scheme: "ed25519" }, lookalike.link));
     expect(() => readIdentity(bytes)).toThrow(/not to/);
-    expect(() => identities.read(decodeObject(bytes, lookalike))).toThrow(/an identity is written to/);
+    expect(() => identities.check(decodeObject(bytes, lookalike))).toThrow(/an identity is written to/);
   });
 });

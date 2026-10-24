@@ -67,7 +67,7 @@ export class Signatures {
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const { data } = signature;
-    const identity = this.identities.read(await readObject(reader, data.identity.$link, this.identities.schema));
+    const identity = await this.identities.read(data.identity.$link, reader);
     const object = data.object.$link;
     const value = hexToBytes(data.signature);
     if (!verify(identity, digestOf(object), value)) throw new Error(`the signature does not verify for ${object}`);

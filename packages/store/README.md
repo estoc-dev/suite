@@ -97,6 +97,44 @@ closure as the blobs that the reading follows. A store is asynchronous,
 since storage in a browser is, while a semantics reads from blobs at hand;
 gathering the closure first leaves semantics as they are.
 
+## Indexes
+
+A store keeps no index. An application keeps its own, of the objects the
+user writes: an `Index` says which schemas it reads and which rows each
+object of them gives. A row is a key of strings and finite numbers,
+compared one by one, a number before a string and a key before the longer
+keys that start with it. The rows of an object depend on it alone, and an index is
+the set of the rows its objects give, so the order they come in and how
+often make no difference. What depends on what else is written, such as
+whether something replaced an object, is worked out from the rows when
+they are read.
+
+```ts
+import { scan, type Index } from "@estoc/store";
+
+// Notes by tag, oldest first: a row for each tag of a note.
+const byTag: Index<Json, [tag: string, at: number, note: Link<unknown>]> = {
+  reads: [noteSchema],
+  rows: ({ link, data }) => {
+    const { tags, at } = data as { tags: string[]; at: number };
+    return tags.map((tag) => [tag, at, link]);
+  },
+};
+
+const rows = await scan(store, byTag);
+for await (const [, at, note] of rows.range(["lunch"])) …;
+```
+
+`scan` goes through all that the user wrote, reads each object of a schema
+the index reads, checks it against its schema and hands it to the index.
+It passes over objects of other schemas, and what came from elsewhere
+reaches an index only by following links from what the user wrote.
+`range(prefix)` gives the rows whose keys start with `prefix`, in the
+order of their keys. What does not fit in rows, such as a count, an
+application keeps in a fold of its own, which then has to come to the same
+whatever the order and however often an object comes. The rows are kept in
+memory and worked out again on each scan.
+
 ## Backends
 
 A store keeps its blobs and its list in a backend, which keeps bytes and

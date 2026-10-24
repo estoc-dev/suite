@@ -72,7 +72,8 @@ past and reading another application's objects are the same work.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
-  them, kept on their device.
+  them, kept on their device; and the indexes an application fills from
+  what the user wrote.
 
 ## Development
 

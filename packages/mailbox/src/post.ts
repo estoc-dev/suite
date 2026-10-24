@@ -1,13 +1,9 @@
 import {
-  decodeObject,
   encodeObject,
   encodeSchema,
-  json,
-  schemaOf,
   type Bytes,
   type EncodedObject,
   type Json,
-  type JsonLink,
   type JsonSchemaValidator,
   type Link,
   type Schema,
@@ -16,7 +12,7 @@ import type { Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { MailboxKey } from "./key.ts";
 import { mailboxFrom, readMailbox, type Mailbox, type Options, type Transport } from "./mailbox.ts";
-import { deliverySchema } from "./schema.ts";
+import { inboundSchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
   /** The validator that the schemas of the records are compiled with. */
@@ -27,7 +23,7 @@ export interface PostOptions extends Options {
 
 type Direction = "inbound" | "outbound";
 
-/** A record, read from a store, that a bundle came in at a mailbox or went out to one. */
+/** A record, written to a store, that a bundle came in at a mailbox or went out to one. */
 export interface Delivery {
   readonly direction: Direction;
   /** The link of the bundle's root. */
@@ -36,7 +32,7 @@ export interface Delivery {
   /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the record. */
   readonly at: number;
   /** The link of the record. */
-  readonly link: Link<unknown>;
+  readonly link: Link<EncodedObject<Json>>;
 }
 
 type Written = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promise<Delivery>;
@@ -44,8 +40,9 @@ type Written = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promis
 /**
  * Sending and receiving with a store. What is sent is taken from the store,
  * what arrives is kept in it, and each is recorded there as a delivery that
- * the user writes, inbound or outbound. The records are listed with the
- * rest of what the user wrote, and `read` reads them back.
+ * the user writes, an object of `inboundSchema` or `outboundSchema`. The
+ * records are listed with the rest of what the user wrote, for the
+ * application to read into its indexes.
  */
 export class Post {
   readonly #store: Store;
@@ -80,21 +77,6 @@ export class Post {
     const { data } = readMailbox(await this.#held(mailbox), this.#transports);
     if (data.key !== hex.encode(key.publicKey)) throw new Error(`${mailbox} names another key than the one given`);
     return new Inbox(key, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
-  }
-
-  /** The delivery that `link` names in the store, or `undefined` when it names an object of another schema. */
-  async read(link: Link<unknown>): Promise<Delivery | undefined> {
-    const bytes = await this.#held(link);
-    const named = schemaOf(bytes, json);
-    const direction = (["inbound", "outbound"] as const).find((each) => this.#schemas[each].link === named);
-    if (direction === undefined) return undefined;
-    const { data } = decodeObject(bytes, this.#schemas[direction]);
-    const { bundle, mailbox, at } = data as {
-      readonly bundle: JsonLink<never>;
-      readonly mailbox: JsonLink<EncodedObject<Json>>;
-      readonly at: number;
-    };
-    return { direction, bundle: bundle.$link, mailbox: mailbox.$link, at, link };
   }
 
   async #held(link: Link<unknown>): Promise<Uint8Array> {
@@ -169,8 +151,6 @@ export class Inbox {
 
 /** Makes a post that sends and receives with `store`, through `transports`. */
 export async function loadPost(store: Store, { transports, validator, clock = Date.now }: PostOptions): Promise<Post> {
-  const [inbound, outbound] = await Promise.all(
-    (["Inbound", "Outbound"] as const).map((title) => encodeSchema(deliverySchema(title), validator)),
-  );
+  const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map((schema) => encodeSchema(schema, validator)));
   return new Post(store, transports, clock, { inbound: inbound!, outbound: outbound! });
 }

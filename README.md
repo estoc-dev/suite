@@ -12,7 +12,7 @@ schema it is written to and named by the hash of its bytes. Anyone can
 write one, to any schema, and what it means is up to whoever reads it.
 Estoc is one reader among others, so an application written elsewhere
 stands where Estoc does: it can read Estoc's objects its own way, and
-Estoc reads its objects once it has a reading of their schema.
+Estoc can read the application's.
 
 The packages fall on the two sides of that line.
 
@@ -28,44 +28,46 @@ The packages fall on the two sides of that line.
 Nor are objects tied to one encoding. Data is in an encoding and schemas
 in a language over it, here JSON and JSON Schema; deterministic CBOR with
 CDDL would serve as well, and `@estoc/object` depends on what such a pair
-provides rather than on JSON. What is written so far is JSON: the
-semantics Estoc writes, and the root of a bundle, which carries blobs of
-any encoding.
+provides rather than on JSON. What is written so far is JSON: the objects
+Estoc writes, and the root of a bundle, which carries blobs of any
+encoding.
 
 A semantics is code, and Estoc at heart is a set of semantics that a
 computer can run.
 
-A program has types of its own, such as `Signature` or `Authorization`, and
-reads objects into each through a `Semantics`, which holds one reading for
-each schema it takes and checks each object against its schema before the
-reading sees it. A semantics that writes holds a writing as well, for the
-one schema the program writes its values to now.
+A program reads an object with the schema it expects and the type it
+declares for that schema's data, and refuses the object unless its data
+fits. What a schema cannot say is left to judgments: whether a signature
+verifies, or who stands behind an object through a chain of
+authorizations. A judgment is worked out from an object and the objects it
+links to, read by link as it comes to them, each time the object is read,
+and gives a value, such as a `Signature` or an `Authorization`, that only
+it can make.
 
-- A semantics goes with its type. There is no registry from every schema to
-  whatever reads it: a reader knows what it expects, and picking a type by
-  a registry would be guessing.
-- Each schema reads straight into the current type, with no chain from one
-  version to the next. When the type changes, the compiler points to each
-  reading that no longer fits it.
-- Reading does not write again. A value can keep the link of the object it
-  was read from, so the signatures over that object still apply to it. Read
-  and written to another schema, the same content would be a new object that
-  no one has signed.
-- Which schemas stand for a type is the reader's to say, in its semantics,
-  and not anything a schema says of itself.
+- Objects are what a program keeps, indexes and shows. It need not turn
+  each into a type of its own first.
+- Which schemas a program reads is its own to say, and not anything a
+  schema says of itself. There is no registry from every schema to
+  whatever reads it: a reader knows what it expects, and picking by a
+  registry would be guessing.
+- Reading does not write again. What a program makes of an object can keep
+  its link, so the signatures over that object still apply to it. Read and
+  written to another schema, the same content would be a new object that no
+  one has signed.
 
 A schema is named by its link, so a schema that changes is another schema.
 A program's own newer schema, its older one and another application's are
-then alike: each is one more reading in a semantics. Keeping up with one's own
-past and reading another application's objects are the same work.
+then alike: each is one more schema for the program to read. Keeping up
+with one's own past and reading another application's objects are the same
+work.
 
 ## Packages
 
 - `@estoc/identity`: identities in their schemes, and signing and
   verifying with them. It knows keys, not JSON.
-- `@estoc/object`: encodings and schema languages, objects, schemas,
-  validators and semantics; JSON and JSON Schema as the pair in use; and the
-  semantics of identities and signatures.
+- `@estoc/object`: encodings and schema languages, objects, schemas and
+  validators; JSON and JSON Schema as the pair in use; and the judgments of
+  identities and signatures.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in.

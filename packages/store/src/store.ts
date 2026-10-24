@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type Encoding, type Link, type Semantics } from "@estoc/object";
+import { linkOf, schemaOf, type Bytes, type Encoding, type Link } from "@estoc/object";
 
 /**
  * Where a store keeps its blobs and the list of what was written to it:
@@ -28,8 +28,8 @@ export interface Backend {
 /** What one write puts in a store. */
 export interface Batch {
   /**
-   * Objects that the user of the store writes, in whatever type a semantics
-   * wrote them as. `mine` lists them.
+   * Objects that the user of the store writes, of whatever type the caller
+   * holds them as: only their bytes are written. `mine` lists them.
    */
   readonly mine?: Iterable<{ readonly bytes: Bytes<unknown> }>;
   /**
@@ -73,8 +73,6 @@ export interface Store {
    * and any other blob, such as an image, leads nowhere.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
-  /** Reads the object that `link` names through `semantics`, with its closure as the blobs. */
-  read<T>(semantics: Semantics<T>, link: Link<T>): Promise<T>;
 }
 
 class StoreOf<D> implements Store {
@@ -134,10 +132,6 @@ class StoreOf<D> implements Store {
       }
     }
     return gathered;
-  }
-
-  async read<T>(semantics: Semantics<T>, link: Link<T>): Promise<T> {
-    return semantics.follow(link, await this.closure(link));
   }
 
   /**

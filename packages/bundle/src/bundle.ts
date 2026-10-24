@@ -70,8 +70,8 @@ export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
 
 /**
  * The files of a bundle with `root` as its `index.json`, carrying `blobs`.
- * `root` is an object in whatever type a semantics read it into, and its
- * bytes are what is written.
+ * `root` is an object of whatever type the caller holds it as: only its
+ * bytes are written.
  */
 export function writeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);

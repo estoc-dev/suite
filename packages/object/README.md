@@ -20,8 +20,7 @@ Signature  an Object written to the signature schema, with the fields
 ```
 
 The encodings, objects, schemas and validators are the substrate that every
-application shares. Semantics are how a program reads objects as values of
-its own types, and judgments are the rules a schema cannot say, such as
+application shares. Judgments are the rules a schema cannot say, such as
 whether a signature verifies, worked out from an object and what it links
 to. The judgments of identities and signatures are kept in this package
 because the packages built on it sign and name identities; another
@@ -51,14 +50,14 @@ A validator names its language and a language names its encoding, so a
 schema read with a validator knows the encoding of the objects written to
 it: reading or writing an object takes the schema and nothing more. The
 types tie them too: a language and its validators share the data type `D`
-of the encoding, and so do the readings of one semantics. `schemaOf`, which
+of the encoding. `schemaOf`, which
 reads the link of the schema an object names before any schema is picked,
 is given the encoding.
 
 An encoding is one object, shared by the languages over its data: a
-language over JSON names `json`. A semantics tells encodings apart as
-objects, so it reads schemas of two languages together when both name the
-same encoding.
+language over JSON names `json`. Encodings are told apart as objects, so
+schemas of two languages that both name `json` are schemas of one
+encoding.
 
 Two encodings of the same content are two blobs with two links, and
 neither reads as the other, just as the same data under two schemas is two
@@ -217,98 +216,31 @@ the strings they test have been reviewed to keep validation cheap. A viewer
 of arbitrary objects, which also runs schemas someone else wrote, needs the
 worker in any case.
 
-## Semantics
+## Judgments
 
-`decodeObject` gives the data in the shape its schema declares. An object
-is data: anyone can write one to any schema, and nothing about it
-belongs to the program that reads it. A program has types of its own, and a
-`Semantics` is where objects from outside become values of them, and values
-of them become objects. It holds one `Reading` for each schema it takes, and
-reads an object by the reading of the schema the object is written to; an
-object of any other schema is refused. A reading holds its schema compiled,
-and the semantics checks the data against it before the reading turns it
-into the program's value, so the reading is left what the schema does not
-say. A semantics that writes also holds a `Writing`: the schema it writes
-to, which is one of those it reads, and how a value becomes data of that
-schema. It reads objects of every schema it has a reading of, and writes to
-one, the schema the program writes now. The schemas it reads all have one
-encoding, the same `Encoding` object, whose data type ties the readings and
-the writing together while the semantics is made; the semantics itself is a
-`Semantics<T, V>`, whatever the encoding.
+A schema says what the data of an object may hold, and no more. The rules
+it cannot say, such as whether a signature verifies or whether a key is its
+scheme's length, are judgments: worked out from an object and what it links
+to, each time the object is read. A judgment takes the object it judges,
+already checked against its schema, and a `Reader`, and reads by link the
+other objects it needs when it comes to them. It gives the object together
+with what it found, as a verified signature comes with the identity that
+made it, and only the judgment makes such a value, so a program holding one
+holds an object that passed. A judgment that starts from the link of the
+object takes the link and the reader instead, as `signatures.read` does.
 
-```ts
-import { Semantics, type JsonLink, type Link } from "@estoc/object";
+A program reads objects of the schemas it expects, with the type it
+declares for each, and judges those that need it. Which schemas those are
+is the program's to say, and not anything an object or a schema says of
+itself. A program that takes objects of several schemas, such as a
+transport for each kind of mailbox, reads the link of the schema an object
+names with `schemaOf`, given the encoding the object is in, and picks by it
+the schema to read the object with.
 
-interface Note {
-  readonly text: string;
-  readonly language: string | undefined;
-  readonly link: Link<Note>;
-}
-
-// A note was first written as {"text"}, and is now written as {"body", "language"}.
-const notes: Semantics<Note, { readonly text: string; readonly language: string }> = new Semantics(
-  [
-    { schema: noteSchema, read: (data, { link }) => ({ text: (data as { text: string }).text, language: undefined, link }) },
-    {
-      schema: noteWithLanguage,
-      read: (data, { link }) => {
-        const { body, language } = data as { body: string; language: string };
-        return { text: body, language, link };
-      },
-    },
-  ],
-  { schema: noteWithLanguage.link, write: ({ text, language }) => ({ body: text, language }) },
-);
-const note = notes.decode(bytes);
-const written = notes.encode({ text: "hello", language: "en" });
-```
-
-`encode` writes a value by the writing and reads the object back as
-`decode` would, so a value that would not read is refused, and what a
-semantics writes, it reads. A semantics without a writing writes nothing.
-
-A semantics with a single reading still draws the line: the shape of the
-data is known in the semantics and nowhere else, and the rest of the
-program sees only its own type. A newer schema of the program's own, an
-older one, and another application's are alike to a semantics, each one
-more reading. Which schemas stand for a note is the reader's to say, in its
-semantics, and not anything an object or a schema says of itself.
-
-A reading turns an object into a value and does not write it again, so a
-value can keep the link of the object it was read from, and the signatures
-over that object still apply to it. Read as a value and written again to
-another schema, the same content would be another object, which no one has
-signed.
-
-A reading can follow the links in its data to the objects they name. It
-gets the blobs that were given to `decode`, anything with `get(link)` such
-as a `Map`, a bundle or a store, and reads a linked object with `follow` on
-the semantics of that object, which refuses a blob whose bytes have another
-link. A reading that follows a link fails without its blob.
-
-```ts
-interface Reply {
-  readonly to: Note;
-  readonly text: string;
-}
-
-// A reply names the note it answers by link, and reads with that note.
-const replies: Semantics<Reply> = new Semantics([
-  {
-    schema: replySchema,
-    read: (data, _, blobs) => {
-      const { to, text } = data as { to: JsonLink<Note>; text: string };
-      return { to: notes.follow(to.$link, blobs), text };
-    },
-  },
-]);
-const reply = replies.decode(bytes, blobs);
-```
-
-A reader that takes objects of several schemas but picks something other
-than a reading by them, such as a transport for each kind of mailbox, reads
-the link of the schema an object names with `schemaOf`, given the encoding
-the object is in.
+Reading an object does not write it again, so what a program makes of it
+can keep its link, and the signatures over the object still apply. Written
+again to another schema, the same content would be another object, which
+no one has signed.
 
 ## Identities
 

@@ -1,18 +1,9 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import {
-  decodeObject,
-  encodeObject,
-  encodeSchema,
-  schemaOf,
-  Semantics,
-  type Encoding,
-  type Link,
-  type SchemaValidator,
-} from "../src/index.ts";
+import { decodeObject, encodeObject, encodeSchema, schemaOf, type Encoding, type Link, type SchemaValidator } from "../src/index.ts";
 
-// An encoding with nothing of JSON in it, to show that objects, schemas and
-// semantics hold over any: a value is fields of text, one to a line, written
+// An encoding with nothing of JSON in it, to show that objects and schemas
+// hold over any: a value is fields of text, one to a line, written
 // `name=text` in the order of their names, and an object names its schema in
 // the field `schema`.
 type Text = string | { readonly [name: string]: Text };
@@ -101,18 +92,8 @@ describe("an encoding other than JSON", () => {
     expect(() => encodeObject(pair, { greeting: "hello" })).toThrow(/does not fit/);
   });
 
-  it("is read by a semantics of its own, which refuses a JSON object", () => {
-    const greetings: Semantics<string, string> = new Semantics([{ schema: pair, read: ({ greeting, name }) => `${greeting}, ${name}` }], {
-      schema: pair.link,
-      write: (name) => ({ greeting: "hello", name }),
-    });
-    expect(greetings.encode("world")).toBe("hello, world");
+  it("refuses a JSON object read with one of its schemas", () => {
     const received: Uint8Array = encodeObject(note, { text: "hello" }).bytes;
-    expect(() => greetings.decode(received)).toThrow();
+    expect(() => decodeObject(received, pair)).toThrow();
   });
-});
-
-test("a semantics refuses schemas of two encodings", () => {
-  // @ts-expect-error: refused at compile time too
-  expect(() => new Semantics([{ schema: pair, read: () => 1 }, { schema: note, read: () => 2 }])).toThrow(/more than one encoding/);
 });

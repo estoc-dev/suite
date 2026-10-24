@@ -4,10 +4,11 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
+  json,
   linkSchema,
   loadSignatures,
   readObject,
-  Semantics,
+  schemaOf,
   type EncodedObject,
   type Fields,
   type Json,
@@ -36,8 +37,14 @@ const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
 
-const card = await schemaFor("Card", { mailbox: linkSchema, name: linkSchema });
-const contact = await schemaFor("Contact", { displayName: linkSchema, inbox: linkSchema });
+const card = await schemaFor<{ readonly mailbox: JsonLink<Signature>; readonly name: JsonLink<Signature> }>("Card", {
+  mailbox: linkSchema,
+  name: linkSchema,
+});
+const contact = await schemaFor<{ readonly displayName: JsonLink<Signature>; readonly inbox: JsonLink<Signature> }>("Contact", {
+  displayName: linkSchema,
+  inbox: linkSchema,
+});
 const mailbox = await schemaFor<{ readonly url: string }>("Mailbox", { url: { type: "string", format: "uri" } });
 const name = await schemaFor<{ readonly name: string }>("Name", { name: { type: "string" } });
 
@@ -46,25 +53,23 @@ const name = await schemaFor<{ readonly name: string }>("Name", { name: { type: 
 // the same to a schema of its own, a contact, which reads as a card too.
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
-const cards: Semantics<Card> = new Semantics([
-  {
-    schema: card,
-    read: (data) => {
-      const { mailbox, name } = data as { mailbox: JsonLink<Signature>; name: JsonLink<Signature> };
-      return { mailbox: mailbox.$link, name: name.$link };
-    },
-  },
-  {
-    schema: contact,
-    read: (data) => {
-      const { displayName, inbox } = data as { displayName: JsonLink<Signature>; inbox: JsonLink<Signature> };
-      return { mailbox: inbox.$link, name: displayName.$link };
-    },
-  },
-]);
+function cardOf(root: Uint8Array): Card {
+  switch (schemaOf(root, json)) {
+    case card.link: {
+      const { data } = decodeObject(root, card);
+      return { mailbox: data.mailbox.$link, name: data.name.$link };
+    }
+    case contact.link: {
+      const { data } = decodeObject(root, contact);
+      return { mailbox: data.inbox.$link, name: data.displayName.$link };
+    }
+    default:
+      throw new Error("the root is not a card");
+  }
+}
 
 async function readCard(bundle: Bundle) {
-  const listed = cards.decode(bundle.root);
+  const listed = cardOf(bundle.root);
   const reachedAt = await signatures.read(listed.mailbox, bundle);
   const goesBy = await signatures.read(listed.name, bundle);
   if (!sameIdentity(reachedAt.identity, goesBy.identity)) throw new Error("a card is signed by the one identity it is for");

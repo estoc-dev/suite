@@ -48,21 +48,32 @@ type Offered = {
   readonly signature: Signature;
 };
 
-type Accept = (actor: Actor) => Promise<Account>;
-
 /** A service's offer of an account, read from the service's origin and bound to it. */
 export class Offer {
   readonly origin: string;
   /** The service's identity, which the offer names and which signed it. */
   readonly service: IdentityObject;
   readonly link: Link<EncodedObject<Json, AccountOfferData>>;
-  readonly #accept: Accept;
+  readonly #bundle: Bundle;
+  readonly #signature: Signature;
+  readonly #store: Store;
+  readonly #authorizations: Authorizations;
+  readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
 
-  constructor({ origin, offer, signature }: Offered, accept: Accept) {
+  constructor(
+    { origin, bundle, offer, signature }: Offered,
+    store: Store,
+    authorizations: Authorizations,
+    acknowledgement: Schema<Json, AcknowledgementData>,
+  ) {
     this.origin = origin;
     this.service = signature.identity;
     this.link = offer.link;
-    this.#accept = accept;
+    this.#bundle = bundle;
+    this.#signature = signature;
+    this.#store = store;
+    this.#authorizations = authorizations;
+    this.#acknowledgementSchema = acknowledgement;
   }
 
   /**
@@ -73,8 +84,23 @@ export class Offer {
    * acknowledgement of the acceptance that opened it, which may have come
    * from another device.
    */
-  accept(actor: Actor): Promise<Account> {
-    return this.#accept(actor);
+  async accept(actor: Actor): Promise<Account> {
+    // The service holds the offer and the schemas, so they are left out.
+    const acceptance = await actor.sign(this.link);
+    const body = await zipped(acceptance.signature, acceptance.blobs);
+    const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
+    const answer = await bundleIn(await fetch(new URL("/", this.origin), request), [200, 201]);
+    const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
+    if (acknowledgement.identity.link !== this.service.link) {
+      throw new Error("the acknowledgement is signed by another identity than the service's");
+    }
+    const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
+    // The acceptance that opened an account stood when the service received
+    // it, though an authorization in its chain may have ended since.
+    const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer, new Date(at));
+    if (principal.link !== actor.principal.link) throw new Error("the acknowledgement is of another identity's account");
+    await this.#store.write({ mine: [acknowledgement, this.#signature], blobs: [...answer.blobs(), ...this.#bundle.blobs()] });
+    return { identity: actor.principal, service: this.service, at, link: acknowledgement.link };
   }
 }
 
@@ -111,28 +137,7 @@ export class Services {
     if (offer.data.identity.$link !== signature.identity.link) {
       throw new Error(`the offer of ${origin} is signed by another identity than the one it names`);
     }
-    const offered = { origin, bundle, offer, signature };
-    return new Offer(offered, (actor) => this.#accept(offered, actor));
-  }
-
-  async #accept({ origin, bundle, offer, signature }: Offered, actor: Actor): Promise<Account> {
-    // The service holds the offer and the schemas, so they are left out.
-    const acceptance = await actor.sign(offer.link);
-    const body = await zipped(acceptance.signature, acceptance.blobs);
-    const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
-    const answer = await bundleIn(await fetch(new URL("/", origin), request), [200, 201]);
-    const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
-    const service = signature.identity;
-    if (acknowledgement.identity.link !== service.link) {
-      throw new Error("the acknowledgement is signed by another identity than the service's");
-    }
-    const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
-    // The acceptance that opened an account stood when the service received
-    // it, though an authorization in its chain may have ended since.
-    const { principal: holder } = await this.#authorizations.readStanding(offer.link, accepted.$link, answer, new Date(at));
-    if (holder.link !== actor.principal.link) throw new Error("the acknowledgement is of another identity's account");
-    await this.#store.write({ mine: [acknowledgement, signature], blobs: [...answer.blobs(), ...bundle.blobs()] });
-    return { identity: actor.principal, service, at, link: acknowledgement.link };
+    return new Offer({ origin, bundle, offer, signature }, this.#store, this.#authorizations, this.#acknowledgementSchema);
   }
 }
 

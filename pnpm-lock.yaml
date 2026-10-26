@@ -118,6 +118,37 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.6.5)
 
+  packages/mailbox-service:
+    dependencies:
+      '@estoc/authorization':
+        specifier: workspace:*
+        version: link:../authorization
+      '@estoc/bundle':
+        specifier: workspace:*
+        version: link:../bundle
+      '@estoc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@estoc/object':
+        specifier: workspace:*
+        version: link:../object
+      '@estoc/store':
+        specifier: workspace:*
+        version: link:../store
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.5
+      temporal-polyfill:
+        specifier: ^1.0.6
+        version: 1.0.6
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.6.5)
+
   packages/object:
     dependencies:
       '@estoc/identity':

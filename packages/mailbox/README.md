@@ -220,9 +220,9 @@ interface Transport {
 `deliver` takes the data of a mailbox written to `schema` and the sealed
 bytes, resolves once they are handed on and rejects when they cannot be.
 How the receiver gets them, such as listening for requests or fetching from
-a relay, is the transport's own; it ends with the sealed bytes handed to
-`MailboxKey.open`. This package ships one transport, over HTTP; its tests
-also run on one in memory.
+a mailbox service, is the transport's own; it ends with the sealed bytes
+handed to `MailboxKey.open`. This package ships one transport, over HTTP;
+its tests also run on one in memory.
 
 ### HTTP
 

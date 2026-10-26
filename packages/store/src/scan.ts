@@ -1,11 +1,4 @@
-import {
-  decodeObject,
-  type EncodedObject,
-  type Fields,
-  type Reader,
-  type Schema,
-  schemaOf,
-} from "@estoc/object";
+import { decodeObject, type EncodedObject, type Fields, type Reader, type Schema, schemaOf } from "@estoc/object";
 import type { Store } from "./store.ts";
 
 /**
@@ -101,8 +94,7 @@ class SortedRows<K extends Key> implements Rows<K> {
       if (compare(rows[middle]!, start) < 0) low = middle + 1;
       else high = middle;
     }
-    for (let at = low; at < rows.length && start.every((part, i) => rows[at]![i] === part); at++)
-      yield rows[at]!;
+    for (let at = low; at < rows.length && start.every((part, i) => rows[at]![i] === part); at++) yield rows[at]!;
   }
 }
 

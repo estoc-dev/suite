@@ -29,8 +29,7 @@ const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const signer = (scheme: Scheme, fill: number) =>
-  SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.sign(object, by);
   await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
@@ -39,11 +38,7 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: Sof
 
 async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema<Json, F>) {
   const signature = await signatures.read(bundle.link, bundle);
-  return {
-    signature,
-    identity: signature.identity,
-    object: await readObject(bundle, signature.object, schema),
-  };
+  return { signature, identity: signature.identity, object: await readObject(bundle, signature.object, schema) };
 }
 
 async function receiver(network: MemoryNetwork, fill: number) {
@@ -55,29 +50,24 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<IdentityObject> }> =
-  await encodeSchema(
-    {
-      $schema: DRAFT,
-      title: "Chat",
-      type: "object",
-      properties: { to: linkSchema, text: { type: "string" } },
-      required: ["text"],
-      additionalProperties: false,
-    },
-    defaultValidator,
-  );
+const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<IdentityObject> }> = await encodeSchema(
+  {
+    $schema: DRAFT,
+    title: "Chat",
+    type: "object",
+    properties: { to: linkSchema, text: { type: "string" } },
+    required: ["text"],
+    additionalProperties: false,
+  },
+  defaultValidator,
+);
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by the link of an identity object, whether that is the reader.
 async function readChat(bundle: Bundle, reader: IdentityObject) {
   const { identity, object } = await readSigned(bundle, chat);
   const { text, to } = object.data;
-  return {
-    author: identity,
-    text,
-    forReader: to === undefined ? undefined : to.$link === reader.link,
-  };
+  return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.link };
 }
 
 describe("a chat line", () => {
@@ -88,18 +78,14 @@ describe("a chat line", () => {
   const passOn = async (line: EncodedObject<Json>) => {
     const network = await MemoryNetwork.create(defaultValidator);
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
-    const sent = await sendSigned(
-      await mailboxFrom(atBob.mailbox, { transports: [network.transport] }),
-      line,
-      alice,
-    );
+    const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
     const [received] = await atBob.take();
     // Bob passes on what he read: the signature, with the line and the identity it names.
     const read = await readSigned(received!, chat);
-    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(
-      read.signature,
-      [read.object.bytes, read.identity.bytes],
-    );
+    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
+      read.object.bytes,
+      read.identity.bytes,
+    ]);
     const [passed] = await atCarol.take();
     return { sent, received: received!, passed: passed! };
   };
@@ -115,10 +101,7 @@ describe("a chat line", () => {
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const line = encodeObject(chat, {
-      to: { $link: identities.encode(bob.identity).link },
-      text: "lunch at noon?",
-    });
+    const line = encodeObject(chat, { to: { $link: identities.encode(bob.identity).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
     expect((await readChat(received, identities.encode(bob.identity))).forReader).toBe(true);
     expect((await readChat(passed, identities.encode(carol.identity))).forReader).toBe(false);
@@ -233,10 +216,7 @@ describe("a sale sent to a registry", () => {
     const network = await MemoryNetwork.create(defaultValidator, faults);
     const registry = await receiver(network, 15);
     const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
-    return {
-      send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party),
-      take: registry.take,
-    };
+    return { send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party), take: registry.take };
   };
 
   it("is in force when every message arrives twice, the latest first", async () => {

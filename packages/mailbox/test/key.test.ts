@@ -9,17 +9,12 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
 const note = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    properties: { text: { type: "string" } },
-  },
+  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
   defaultValidator,
 );
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
-const sealTo = async (key: MailboxKey, plaintext: Uint8Array) =>
-  seal(await publicKeyFrom(key.publicKey), plaintext);
+const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);
 const sealed = await sealTo(bob, await zipBundle(writeBundle(root, [blob]), { compress: false }));
 
 describe("a mailbox key", () => {
@@ -51,12 +46,10 @@ describe("a mailbox key", () => {
 
   it("refuses what opens but is not the zip of a bundle", async () => {
     await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow();
-    const withoutRoot = new Map(
-      [...writeBundle(root, [blob])].filter(([path]) => path !== "index.json"),
+    const withoutRoot = new Map([...writeBundle(root, [blob])].filter(([path]) => path !== "index.json"));
+    await expect(bob.open(await sealTo(bob, await zipBundle(withoutRoot, { compress: false })))).rejects.toThrow(
+      /index.json/,
     );
-    await expect(
-      bob.open(await sealTo(bob, await zipBundle(withoutRoot, { compress: false }))),
-    ).rejects.toThrow(/index.json/);
   });
 
   it("refuses a zip whose files come to more bytes than the zip, as only a compressed one can", async () => {

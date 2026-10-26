@@ -31,10 +31,7 @@ const malformed: [string, string][] = [
   ["without a $type", '{"v":1}'],
   ["whose $type is not a link", '{"$type":{"$link":"login"},"v":1}'],
   ["whose $type is a link as a bare string", `{"$type":"${anything.link}","v":1}`],
-  [
-    "whose $type has a member besides $link",
-    `{"$type":{"$link":"${anything.link}","note":"x"},"v":1}`,
-  ],
+  ["whose $type has a member besides $link", `{"$type":{"$link":"${anything.link}","note":"x"},"v":1}`],
   ["whose $type is the schema itself", `{"$type":{"$schema":"${DRAFT}"},"v":1}`],
   ["that is an array", `[1,{"$link":"${anything.link}"}]`],
   ["that is a string", `"${anything.link}"`],
@@ -45,18 +42,10 @@ describe("an object", () => {
     ["fields", greeting],
     [
       "fields of every kind",
-      {
-        array: [1, "two", { three: null }],
-        string: "hello",
-        link: { $link: login.link },
-        null: null,
-      },
+      { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null },
     ],
     ["no fields", {}],
-    [
-      "a $type deeper in its data, which is data like any other",
-      { inner: { $type: { $link: login.link } } },
-    ],
+    ["a $type deeper in its data, which is data like any other", { inner: { $type: { $link: login.link } } }],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
@@ -102,9 +91,7 @@ describe("an object read by its link", () => {
   const object = encodeObject(login, greeting);
 
   it("is the object whose blob the reader gives for the link", async () => {
-    expect(await readObject(new Map([[object.link, object.bytes]]), object.link, login)).toEqual(
-      object,
-    );
+    expect(await readObject(new Map([[object.link, object.bytes]]), object.link, login)).toEqual(object);
   });
 
   it("is refused when the reader gives no blob for the link", async () => {
@@ -113,9 +100,9 @@ describe("an object read by its link", () => {
 
   it("is refused when the reader gives another blob for the link", async () => {
     const other = encodeObject(login, { ...greeting, nonce: "9a2e" });
-    await expect(
-      readObject(new Map([[object.link, other.bytes]]), object.link, login),
-    ).rejects.toThrow(/is another blob/);
+    await expect(readObject(new Map([[object.link, other.bytes]]), object.link, login)).rejects.toThrow(
+      /is another blob/,
+    );
   });
 });
 

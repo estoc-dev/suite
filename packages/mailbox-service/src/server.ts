@@ -111,8 +111,7 @@ class MailboxService {
   /** Answers a request, from any origin, since no request carries credentials. */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (pathname === "/offer")
-      return answerTo(request, "GET", () => this.#answerWith(this.#offer.signature.link, 200));
+    if (pathname === "/offer") return answerTo(request, "GET", () => this.#answerWith(this.#offer.signature.link, 200));
     if (pathname === "/") return answerTo(request, "POST", () => this.#open(request));
     return answer(404);
   }
@@ -130,14 +129,8 @@ class MailboxService {
     let identity: Link<IdentityObject>;
     try {
       accepted = await unpackBundle(zip);
-      const { principal } = await this.#authorizations.readStanding(
-        offer.link,
-        accepted.link,
-        accepted,
-        new Date(at),
-      );
-      if (principal.link === offer.data.identity.$link)
-        throw new Error("a service opens no account for itself");
+      const { principal } = await this.#authorizations.readStanding(offer.link, accepted.link, accepted, new Date(at));
+      if (principal.link === offer.data.identity.$link) throw new Error("a service opens no account for itself");
       identity = principal.link;
     } catch (error) {
       return answer(400, error instanceof Error ? error.message : String(error));
@@ -145,18 +138,11 @@ class MailboxService {
 
     const kept = await this.#accounts.get(identity);
     if (kept !== undefined) return this.#answerWith(kept, 200);
-    const acknowledgement = encodeObject(this.#acknowledgementSchema, {
-      accepted: { $link: accepted.link },
-      at,
-    });
+    const acknowledgement = encodeObject(this.#acknowledgementSchema, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
     const schemas = [this.#acknowledgementSchema.bytes, ...CHAIN_SCHEMAS];
-    await this.#store.write({
-      mine: [signature],
-      blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()],
-    });
-    if (await this.#accounts.add(identity, signature.link))
-      return this.#answerWith(signature.link, 201);
+    await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
+    if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
     return this.#answerWith((await this.#accounts.get(identity))!, 200);
   }
 
@@ -172,11 +158,7 @@ class MailboxService {
 
 export type { MailboxService };
 
-function answerTo(
-  request: Request,
-  method: string,
-  handle: () => Promise<Response>,
-): Promise<Response> | Response {
+function answerTo(request: Request, method: string, handle: () => Promise<Response>): Promise<Response> | Response {
   // A browser asks before it posts a zip to another origin.
   if (request.method === "OPTIONS") {
     return answer(204, null, {
@@ -193,17 +175,11 @@ function answer(
   reason: string | null = null,
   headers: Readonly<Record<string, string>> = {},
 ): Response {
-  return new Response(reason, {
-    status,
-    headers: { "access-control-allow-origin": "*", ...headers },
-  });
+  return new Response(reason, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 }
 
 function bundleAnswer(status: number, zip: Uint8Array): Response {
-  return new Response(zip, {
-    status,
-    headers: { "access-control-allow-origin": "*", "content-type": ZIP },
-  });
+  return new Response(zip, { status, headers: { "access-control-allow-origin": "*", "content-type": ZIP } });
 }
 
 /**
@@ -216,14 +192,8 @@ export async function loadMailboxService(
 ): Promise<MailboxService> {
   const authorizations = await loadAuthorizations(validator);
   const { signatures } = authorizations;
-  const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(
-    accountOfferSchema,
-    validator,
-  );
-  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(
-    acknowledgementSchema,
-    validator,
-  );
+  const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
+  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);
   const identity = signatures.identities.encode(signer.identity);
   const object = encodeObject(offerSchema, { identity: { $link: identity.link } });
   const signature = await signatures.sign(object, signer);
@@ -235,11 +205,5 @@ export async function loadMailboxService(
     signatures.identities.schema.bytes,
   ];
   await options.store.write({ mine: [signature], blobs });
-  return new MailboxService(
-    signer,
-    { object, signature },
-    authorizations,
-    acknowledgement,
-    options,
-  );
+  return new MailboxService(signer, { object, signature }, authorizations, acknowledgement, options);
 }

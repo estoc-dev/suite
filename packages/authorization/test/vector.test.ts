@@ -9,8 +9,7 @@ import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/ind
 // keys and no whitespace, which writes these values as JCS does, and its
 // hashlib; the signatures, which Ed25519 makes deterministic, against
 // Python's cryptography package. A change to the format changes them.
-const authorizationSchemaLink =
-  "sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b";
+const authorizationSchemaLink = "sha256:29d18ca525b3221f6fd6f1624cd52fc61d1ffef55e377e9f891d32e16337399b";
 const proxySchemaLink = "sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71";
 const hotIdentityText =
   '{"$type":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"},' +
@@ -39,16 +38,14 @@ const proxySignatureText =
   '"object":{"$link":"sha256:98bfce88823ed9f95cac72d528145e106a43fe0deca341a5968a0e08de8f2e49"},' +
   '"signature":"f5352d492d92b96a6bed2f72d57111a56d20f62be669a4badae3e68af253da96' +
   '73b5ac9f20d87a1110c735b57064cd380970e5a78a9193c31a774652aecb7f09"}';
-const proxySignatureLink =
-  "sha256:5643b184903b998a18fe0da8cb070a2ddeb548c7de4cd867dfab7b8437b9aed3";
+const proxySignatureLink = "sha256:5643b184903b998a18fe0da8cb070a2ddeb548c7de4cd867dfab7b8437b9aed3";
 // The identity object of the signer of the vector in @estoc/object.
 const rootIdentityText =
   '{"$type":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"}';
 
 // The login object of the vector in @estoc/object.
-const target: Link<EncodedObject<Json>> =
-  "sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de";
+const target: Link<EncodedObject<Json>> = "sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de";
 const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hot = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2));
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -56,19 +53,13 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 
 const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
-const grant = await authorizations.authorize(
-  hot.identity,
-  root,
-  Temporal.Instant.from("2027-01-01T00:00:00Z"),
-);
+const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
 const entry = await authorizations.createActor(hot, [grant]).sign(target);
 const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object)!;
 
 describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its agent signs", () => {
   it("encode to fixed bytes and links", async () => {
-    expect((await encodeSchema(authorizationSchema, defaultValidator)).link).toBe(
-      authorizationSchemaLink,
-    );
+    expect((await encodeSchema(authorizationSchema, defaultValidator)).link).toBe(authorizationSchemaLink);
     expect((await encodeSchema(proxySchema, defaultValidator)).link).toBe(proxySchemaLink);
     expect(text(grant.object.agent.bytes)).toBe(hotIdentityText);
     expect(grant.object.agent.link).toBe(hotIdentityLink);
@@ -83,17 +74,8 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
   });
 
   it("read from those bytes as the root standing behind the target through the agent", async () => {
-    const texts = [
-      rootIdentityText,
-      hotIdentityText,
-      authorizationText,
-      grantText,
-      proxyText,
-      proxySignatureText,
-    ];
-    const blobs = new Map<string, Uint8Array>(
-      texts.map((text) => [linkOf(utf8(text)), utf8(text)]),
-    );
+    const texts = [rootIdentityText, hotIdentityText, authorizationText, grantText, proxyText, proxySignatureText];
+    const blobs = new Map<string, Uint8Array>(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
     const read = await authorizations.readAuthorization(grantLink, blobs);
     expect(read.signature.identity).toEqual(identities.encode(root.identity));
     expect(read.object.agent).toEqual(identities.encode(hot.identity));

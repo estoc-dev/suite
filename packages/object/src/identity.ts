@@ -50,13 +50,11 @@ export class Identities {
   }
 
   check(object: EncodedObject<Json, IdentityData>): IdentityObject {
-    if (object.schema.link !== this.schema.link)
-      throw new Error(`an identity is written to ${this.schema.link}`);
+    if (object.schema.link !== this.schema.link) throw new Error(`an identity is written to ${this.schema.link}`);
     const { publicKey, scheme } = object.data;
     if (!Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${scheme}`);
     const length = publicKeyLengths[scheme as Scheme];
-    if (publicKey.length !== 2 * length)
-      throw new Error(`a ${scheme} public key is ${length} bytes`);
+    if (publicKey.length !== 2 * length) throw new Error(`a ${scheme} public key is ${length} bytes`);
     return {
       ...object,
       link: object.link as Link<IdentityObject>,

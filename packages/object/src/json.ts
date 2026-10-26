@@ -30,9 +30,7 @@ function* linksIn(value: Json): Generator<Link<never>> {
   if (isJsonObject(value)) {
     if (Object.hasOwn(value, "$link")) {
       if (!isJsonLink(value)) {
-        throw new Error(
-          'an object with a $link member is a link, {"$link": "sha256:<hex>"}, and holds nothing else',
-        );
+        throw new Error('an object with a $link member is a link, {"$link": "sha256:<hex>"}, and holds nothing else');
       }
       yield value.$link;
     } else {
@@ -83,8 +81,7 @@ export const json: Encoding<Json> = {
   fields(value) {
     if (!isJsonObject(value)) throw new Error("an object is a JSON object");
     const { $type, ...data } = value;
-    if ($type === undefined || !isJsonLink($type))
-      throw new Error("an object names its schema by link in $type");
+    if ($type === undefined || !isJsonLink($type)) throw new Error("an object names its schema by link in $type");
     return { data, schema: $type.$link };
   },
   links: linksIn,

@@ -171,9 +171,7 @@ class StoreOf<D> implements Store {
         } else if (await this.#backend.has(linked)) {
           held.add(linked);
         } else {
-          throw new Error(
-            `${top.link} leads to ${linked}, which neither the batch nor the store holds`,
-          );
+          throw new Error(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
         }
       }
     }

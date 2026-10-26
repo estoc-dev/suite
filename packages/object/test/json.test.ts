@@ -3,19 +3,14 @@ import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
 
-const anything = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema" },
-  defaultValidator,
-);
+const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const objectText = (value: string) => `{"$type":{"$link":"${anything.link}"},"v":${value}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
 
 describe("strict decoding", () => {
   it("accepts the canonical form", () => {
-    expect(decodeText(objectText('{"a":[1,"x"],"b":null}')).data).toEqual({
-      v: { a: [1, "x"], b: null },
-    });
+    expect(decodeText(objectText('{"a":[1,"x"],"b":null}')).data).toEqual({ v: { a: [1, "x"], b: null } });
   });
 
   it.each([
@@ -45,9 +40,7 @@ describe("strict decoding", () => {
   });
 
   it("refuses a byte order mark", () => {
-    expect(() =>
-      decodeObject(Uint8Array.of(0xef, 0xbb, 0xbf, ...utf8(objectText("1"))), anything),
-    ).toThrow();
+    expect(() => decodeObject(Uint8Array.of(0xef, 0xbb, 0xbf, ...utf8(objectText("1"))), anything)).toThrow();
   });
 });
 
@@ -113,12 +106,7 @@ describe("the links in a JSON value", () => {
   const b = linkOf(utf8("b"));
 
   it("are the ones its $link objects hold, at any depth", () => {
-    const value = {
-      list: [{ $link: a }, { nested: [{ $link: b }] }],
-      again: { $link: b },
-      count: 1,
-      none: null,
-    };
+    const value = { list: [{ $link: a }, { nested: [{ $link: b }] }], again: { $link: b }, count: 1, none: null };
     expect([...json.links(value)].sort()).toEqual([a, b, b].sort());
   });
 

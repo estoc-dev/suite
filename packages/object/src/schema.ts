@@ -50,12 +50,7 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
   readonly link: Link<Schema<D>>;
   readonly #check: Check<D>;
 
-  constructor(
-    encoding: Encoding<D>,
-    bytes: Bytes<Schema<D>>,
-    link: Link<Schema<D>>,
-    check: Check<D>,
-  ) {
+  constructor(encoding: Encoding<D>, bytes: Bytes<Schema<D>>, link: Link<Schema<D>>, check: Check<D>) {
     this.encoding = encoding;
     this.bytes = bytes;
     this.link = link;
@@ -65,8 +60,7 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
   /** Gives back `data` as an `F` when it fits this schema, and throws saying what does not fit otherwise. */
   validate(data: Fields<D>): F {
     const problems = this.#check(data);
-    if (problems.length > 0)
-      throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
+    if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);
     return data as F;
   }
 }

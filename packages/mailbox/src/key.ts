@@ -4,11 +4,7 @@ import { base64urlnopad } from "@scure/base";
 
 // HPKE (RFC 9180) in base mode, which seals to the receiver's key alone and
 // so does not say who sealed.
-const suite = new CipherSuite({
-  kem: new DhkemX25519HkdfSha256(),
-  kdf: new HkdfSha256(),
-  aead: new Aes128Gcm(),
-});
+const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes128Gcm() });
 const info = new TextEncoder().encode("Estoc Message");
 
 /** Reads a mailbox's `key` as a key to seal to; any 32 bytes are an x25519 public key. */

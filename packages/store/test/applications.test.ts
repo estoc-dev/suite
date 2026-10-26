@@ -49,12 +49,8 @@ const mallory = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(
 
 const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
 // A record that a bundle was received, naming it by its root.
-const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", {
-  bundle: linkSchema,
-});
-const contactSchema = await schemaFor<{ readonly name: string }>("Contact", {
-  name: { type: "string" },
-});
+const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", { bundle: linkSchema });
+const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { name: { type: "string" } });
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
@@ -62,9 +58,7 @@ const schemas = [
   noteSchema,
   receivedSchema,
   contactSchema,
-  ...(await Promise.all(
-    [identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)),
-  )),
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
 ].map(({ bytes }) => bytes);
 const newStore = () => new Store(json, new MemoryBackend());
 
@@ -97,10 +91,7 @@ describe("a signed note", () => {
     const aliceStore = newStore();
     const note = encodeObject(noteSchema, { text: "hello" });
     const signature = await signatures.sign(note, alice);
-    await aliceStore.write({
-      mine: [note, signature],
-      blobs: [signature.identity.bytes, ...schemas],
-    });
+    await aliceStore.write({ mine: [note, signature], blobs: [signature.identity.bytes, ...schemas] });
     const files = writeBundle(signature, (await aliceStore.closure(signature.link)).values());
 
     const bobStore = newStore();
@@ -120,9 +111,7 @@ describe("a bundle that leaves out a blob its objects lead to", () => {
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await signatures.sign(note, alice);
     const files = writeBundle(signature, [signature.identity.bytes]);
-    await expect(receive(bobStore, files)).rejects.toThrow(
-      `${signature.link} leads to ${note.link}`,
-    );
+    await expect(receive(bobStore, files)).rejects.toThrow(`${signature.link} leads to ${note.link}`);
     expect(await bobStore.get(signature.link)).toBeUndefined();
     expect(await listed(bobStore)).toEqual([]);
   });
@@ -134,34 +123,21 @@ describe("an object slipped into a bundle", () => {
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await signatures.sign(note, mallory);
     const slipped = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
-    await receive(
-      bobStore,
-      writeBundle(signature, [note.bytes, signature.identity.bytes, slipped.bytes]),
-    );
+    await receive(bobStore, writeBundle(signature, [note.bytes, signature.identity.bytes, slipped.bytes]));
     expect(await bobStore.get(note.link)).toEqual(note.bytes);
     expect(await bobStore.get(slipped.link)).toBeUndefined();
   });
 
   it("is not listed among the receiver's own when the bundle leads to it, though it is of a schema the receiver writes", async () => {
     const bobStore = newStore();
-    await bobStore.write({
-      mine: [encodeObject(contactSchema, { name: "Alice" })],
-      blobs: schemas,
-    });
+    await bobStore.write({ mine: [encodeObject(contactSchema, { name: "Alice" })], blobs: schemas });
 
     const slipped = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await signatures.sign(slipped, mallory);
-    const received = await receive(
-      bobStore,
-      writeBundle(signature, [slipped.bytes, signature.identity.bytes]),
-    );
+    const received = await receive(bobStore, writeBundle(signature, [slipped.bytes, signature.identity.bytes]));
 
-    expect((await readObject(bobStore, slipped.link, contactSchema)).data.name).toBe(
-      "Mallory, a friend of Bob's",
-    );
-    expect((await readListed(bobStore, contactSchema)).map(({ data }) => data.name)).toEqual([
-      "Alice",
-    ]);
+    expect((await readObject(bobStore, slipped.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
+    expect((await readListed(bobStore, contactSchema)).map(({ data }) => data.name)).toEqual(["Alice"]);
     expect(await listed(bobStore)).toContain(received.link);
   });
 });

@@ -38,10 +38,7 @@ export function decodeObject<D, F extends Fields<D>>(
   return { schema, data: schema.validate(fields.data), bytes: owned, link };
 }
 
-export function encodeObject<D, F extends Fields<D>>(
-  schema: Schema<D, F>,
-  data: F,
-): EncodedObject<D, F> {
+export function encodeObject<D, F extends Fields<D>>(schema: Schema<D, F>, data: F): EncodedObject<D, F> {
   return decodeObject(schema.encoding.encode(schema.encoding.object(data, schema.link)), schema);
 }
 

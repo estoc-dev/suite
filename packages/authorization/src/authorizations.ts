@@ -20,10 +20,7 @@ import {
 import { Temporal } from "temporal-polyfill";
 import { authorizationSchema, proxySchema } from "./schemas.ts";
 
-export type AuthorizationData = {
-  readonly agent: JsonLink<IdentityObject>;
-  readonly until?: string;
-};
+export type AuthorizationData = { readonly agent: JsonLink<IdentityObject>; readonly until?: string };
 
 /**
  * What an authorizer signs: it lets `agent` act for it in full, authorizing
@@ -35,10 +32,7 @@ export interface Authorization extends EncodedObject<Json, AuthorizationData> {
   readonly until: Temporal.Instant | undefined;
 }
 
-export type ProxyData = {
-  readonly target: JsonLink<never>;
-  readonly chain: readonly JsonLink<Signature>[];
-};
+export type ProxyData = { readonly target: JsonLink<never>; readonly chain: readonly JsonLink<Signature>[] };
 
 /**
  * What an agent signs to stand behind `target` for someone else: `chain`
@@ -87,22 +81,14 @@ export class Authorizations {
   readonly #authorizationSchema: Schema<Json, AuthorizationData>;
   readonly #proxySchema: Schema<Json, ProxyData>;
 
-  constructor(
-    signatures: Signatures,
-    authorization: Schema<Json, AuthorizationData>,
-    proxy: Schema<Json, ProxyData>,
-  ) {
+  constructor(signatures: Signatures, authorization: Schema<Json, AuthorizationData>, proxy: Schema<Json, ProxyData>) {
     this.signatures = signatures;
     this.#authorizationSchema = authorization;
     this.#proxySchema = proxy;
   }
 
   /** Signs an authorization that lets `agent` act for the signer, until the instant `until` if one is given. */
-  async authorize(
-    agent: Identity,
-    signer: Signer,
-    until?: Temporal.Instant,
-  ): Promise<Signed<Authorization>> {
+  async authorize(agent: Identity, signer: Signer, until?: Temporal.Instant): Promise<Signed<Authorization>> {
     const identity = this.signatures.identities.encode(agent);
     const data = { agent: { $link: identity.link } };
     // An instant past the year 9999 has no RFC 3339 `date-time`, so a
@@ -112,10 +98,7 @@ export class Authorizations {
       this.#authorizationSchema,
       until === undefined ? data : { ...data, until: until.toString() },
     );
-    const object = await this.#checkAuthorization(
-      written,
-      new Map([[identity.link, identity.bytes]]),
-    );
+    const object = await this.#checkAuthorization(written, new Map([[identity.link, identity.bytes]]));
     return { object, signature: await this.signatures.sign(object, signer) };
   }
 
@@ -152,12 +135,7 @@ export class Authorizations {
    * `reader` by link, and nothing else there is read. Throws when the entry
    * does not stand anyone behind `target`, saying why.
    */
-  async readStanding(
-    target: Link<unknown>,
-    entry: Link<Signature>,
-    reader: Reader,
-    now: Date,
-  ): Promise<Standing> {
+  async readStanding(target: Link<unknown>, entry: Link<Signature>, reader: Reader, now: Date): Promise<Standing> {
     const signature = await this.signatures.read(entry, reader);
     if (signature.object === target) return { principal: signature.identity, agents: [] };
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
@@ -173,16 +151,10 @@ export class Authorizations {
       chain.push(authorization);
     }
     checkChain(chain, signature.identity);
-    return {
-      principal: chain[0].signature.identity,
-      agents: chain.map(({ object }) => object.agent),
-    };
+    return { principal: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
   }
 
-  async #checkAuthorization(
-    object: EncodedObject<Json, AuthorizationData>,
-    reader: Reader,
-  ): Promise<Authorization> {
+  async #checkAuthorization(object: EncodedObject<Json, AuthorizationData>, reader: Reader): Promise<Authorization> {
     const { agent, until } = object.data;
     // Whether a validator asserts `format` is its own business, so an `until`
     // can reach here that Temporal does not read as an instant. Such an
@@ -244,27 +216,15 @@ export class Actor implements Standing {
     };
     const proxy = encodeObject(this.#proxySchema, data);
     const signature = await this.#signatures.sign(proxy, this.#signer);
-    const chain = this.#chain.flatMap(({ object, signature }) => [
-      signature,
-      signature.identity,
-      object,
-      object.agent,
-    ]);
-    const blobs = new Map(
-      [signature.identity, proxy, ...chain].map(({ link, bytes }) => [link, bytes]),
-    );
+    const chain = this.#chain.flatMap(({ object, signature }) => [signature, signature.identity, object, object.agent]);
+    const blobs = new Map([signature.identity, proxy, ...chain].map(({ link, bytes }) => [link, bytes]));
     return { signature, blobs: [...blobs.values()] };
   }
 }
 
 function proxyOf(object: EncodedObject<Json, ProxyData>): Proxy {
   const { target, chain } = object.data;
-  return {
-    ...object,
-    link: object.link as Link<Proxy>,
-    target: target.$link,
-    chain: chain.map(({ $link }) => $link),
-  };
+  return { ...object, link: object.link as Link<Proxy>, target: target.$link, chain: chain.map(({ $link }) => $link) };
 }
 
 export async function loadAuthorizations(validator: JsonSchemaValidator): Promise<Authorizations> {
@@ -282,15 +242,8 @@ function checkChain(
 ): asserts chain is readonly [Signed<Authorization>, ...Signed<Authorization>[]] {
   const last = chain.at(-1);
   if (last === undefined) throw new Error("a proxy names at least one authorization");
-  if (
-    !chain.every(
-      ({ signature }, i) => i === 0 || sameIdentity(chain[i - 1]!.object.agent, signature.identity),
-    )
-  ) {
-    throw new Error(
-      "each authorization in the chain has to be signed by the agent of the one before it",
-    );
+  if (!chain.every(({ signature }, i) => i === 0 || sameIdentity(chain[i - 1]!.object.agent, signature.identity))) {
+    throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
   }
-  if (!sameIdentity(last.object.agent, signer))
-    throw new Error("a proxy is signed by the last agent in its chain");
+  if (!sameIdentity(last.object.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
 }

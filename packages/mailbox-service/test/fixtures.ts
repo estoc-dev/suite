@@ -20,10 +20,7 @@ export const memoryStore = () => new Store(json, new MemoryBackend());
 export const authorizations = await loadAuthorizations(defaultValidator);
 export const { signatures } = authorizations;
 export const { identities } = signatures;
-export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(
-  accountOfferSchema,
-  defaultValidator,
-);
+export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
 export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(
   acknowledgementSchema,
   defaultValidator,
@@ -60,9 +57,7 @@ export async function serve(
     for await (const chunk of incoming) chunks.push(chunk as Buffer);
     const method = incoming.method ?? "GET";
     const body = method === "GET" || method === "HEAD" ? null : Buffer.concat(chunks);
-    const response = await handle(
-      new Request(new URL(incoming.url ?? "/", origin), { method, body }),
-    );
+    const response = await handle(new Request(new URL(incoming.url ?? "/", origin), { method, body }));
     outgoing
       .writeHead(response.status, Object.fromEntries(response.headers))
       .end(Buffer.from(await response.arrayBuffer()));

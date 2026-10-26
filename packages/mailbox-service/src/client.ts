@@ -102,17 +102,10 @@ export class Offer {
     if (acknowledgement.identity.link !== this.service.link) {
       throw new Error("the acknowledgement is signed by another identity than the service's");
     }
-    const { accepted, at } = (
-      await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)
-    ).data;
+    const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
     // The acceptance that opened an account stood when the service received
     // it, though an authorization in its chain may have ended since.
-    const { principal } = await this.#authorizations.readStanding(
-      this.link,
-      accepted.$link,
-      answer,
-      new Date(at),
-    );
+    const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer, new Date(at));
     if (principal.link !== actor.principal.link)
       throw new Error("the acknowledgement is of another identity's account");
     await this.#store.write({
@@ -170,12 +163,9 @@ export class Services {
 // answer came from it.
 function checkOrigin(origin: string): void {
   const url = new URL(origin);
-  if (url.origin !== origin)
-    throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
+  if (url.origin !== origin) throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.has(url.hostname))) {
-    throw new Error(
-      `a service is reached over https, or over http on this machine, not at ${origin}`,
-    );
+    throw new Error(`a service is reached over https, or over http on this machine, not at ${origin}`);
   }
 }
 
@@ -196,9 +186,6 @@ export async function loadServices(
 ): Promise<Services> {
   const authorizations = await loadAuthorizations(validator);
   const offer: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
-  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(
-    acknowledgementSchema,
-    validator,
-  );
+  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);
   return new Services(store, authorizations, offer, acknowledgement);
 }

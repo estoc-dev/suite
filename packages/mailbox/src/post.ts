@@ -76,8 +76,7 @@ export class Post {
    */
   async inbox(mailbox: Link<EncodedObject<Json>>, key: MailboxKey): Promise<Inbox> {
     const { data } = readMailbox(await this.#held(mailbox), this.#transports);
-    if (data.key !== hex.encode(key.publicKey))
-      throw new Error(`${mailbox} names another key than the one given`);
+    if (data.key !== hex.encode(key.publicKey)) throw new Error(`${mailbox} names another key than the one given`);
     return new Inbox(key, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
   }
 
@@ -95,11 +94,7 @@ export class Post {
   ): Promise<Delivery> {
     const schema = this.#schemas[direction];
     const at = this.#clock();
-    const record = encodeObject(schema, {
-      bundle: { $link: bundle },
-      mailbox: { $link: mailbox },
-      at,
-    });
+    const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
     await this.#store.write({ mine: [record], blobs: [schema.bytes, ...blobs] });
     return { direction, bundle, mailbox, at, link: record.link };
   }
@@ -159,12 +154,8 @@ export class Inbox {
 }
 
 /** Makes a post that sends and receives with `store`, through `transports`. */
-export async function loadPost(
-  store: Store,
-  { transports, validator, clock = Date.now }: PostOptions,
-): Promise<Post> {
-  const compile = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> =>
-    encodeSchema(schema, validator);
+export async function loadPost(store: Store, { transports, validator, clock = Date.now }: PostOptions): Promise<Post> {
+  const compile = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, validator);
   const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(compile));
   return new Post(store, transports, clock, { inbound: inbound!, outbound: outbound! });
 }

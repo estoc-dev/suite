@@ -49,12 +49,9 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
 );
 const schemas = [
   line,
-  ...(await Promise.all(
-    [identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)),
-  )),
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
 ].map(({ bytes }) => bytes);
-const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> =>
-  encodeSchema(schema, defaultValidator);
+const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
 const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(delivery));
 
 type Direction = "inbound" | "outbound";
@@ -79,11 +76,7 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // What came in at `mine` and went out to `theirs`, in the order of when. A
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
-async function conversation(
-  rows: Rows<Delivered>,
-  mine: Mailbox,
-  theirs: Mailbox,
-): Promise<Delivered[]> {
+async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbox): Promise<Delivered[]> {
   const first = async (range: AsyncIterable<Delivered>) => {
     const seen = new Set<Link<never>>();
     return (await all(range)).filter(([, , , bundle]) => {
@@ -92,10 +85,7 @@ async function conversation(
       return fresh;
     });
   };
-  const ways = await Promise.all([
-    first(rows.range(["inbound", mine])),
-    first(rows.range(["outbound", theirs])),
-  ]);
+  const ways = await Promise.all([first(rows.range(["inbound", mine])), first(rows.range(["outbound", theirs]))]);
   return ways.flat().sort((a, b) => a[2] - b[2]);
 }
 
@@ -115,20 +105,12 @@ async function chat(faults: Faults = {}) {
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
     const store = new Store(json, new MemoryBackend());
-    return {
-      name,
-      signer,
-      store,
-      post: await loadPost(store, { transports, validator: defaultValidator, clock }),
-    };
+    return { name, signer, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
   const names = new Map(
-    [alice, bob].map(({ name, signer }) => [
-      signatures.identities.encode(signer.identity).link,
-      name,
-    ]),
+    [alice, bob].map(({ name, signer }) => [signatures.identities.encode(signer.identity).link, name]),
   );
 
   // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
@@ -149,10 +131,7 @@ async function chat(faults: Faults = {}) {
   const say = async (from: Person, outbox: Outbox, text: string) => {
     const object = encodeObject(line, { text });
     const signature = await signatures.sign(object, from.signer);
-    await from.store.write({
-      mine: [signature],
-      blobs: [object.bytes, signature.identity.bytes, ...schemas],
-    });
+    await from.store.write({ mine: [signature], blobs: [object.bytes, signature.identity.bytes, ...schemas] });
     await outbox.send(signature.link);
     return signature;
   };

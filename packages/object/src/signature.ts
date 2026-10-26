@@ -2,13 +2,7 @@ import { type Signer, verify } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { Identities, type IdentityData, type IdentityObject, identitySchema } from "./identity.ts";
 import type { Json, JsonLink } from "./json.ts";
-import {
-  DRAFT_2020_12,
-  HEX,
-  type JsonSchema,
-  type JsonSchemaValidator,
-  linkSchema,
-} from "./json-schema.ts";
+import { DRAFT_2020_12, HEX, type JsonSchema, type JsonSchemaValidator, linkSchema } from "./json-schema.ts";
 import { digestOf, type Link } from "./link.ts";
 import { type EncodedObject, encodeObject, type Reader, readObject } from "./object.ts";
 import { encodeSchema, type Schema } from "./schema.ts";
@@ -71,21 +65,13 @@ export class Signatures {
    * need not sign deterministically, and each of those signatures verifies.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
-    if (signature.schema.link !== this.schema.link)
-      throw new Error(`a signature is written to ${this.schema.link}`);
+    if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const { data } = signature;
     const identity = await this.identities.read(data.identity.$link, reader);
     const object = data.object.$link;
     const value = hexToBytes(data.signature);
-    if (!verify(identity, digestOf(object), value))
-      throw new Error(`the signature does not verify for ${object}`);
-    return {
-      ...signature,
-      link: signature.link as Link<Signature>,
-      identity,
-      object,
-      signature: value,
-    };
+    if (!verify(identity, digestOf(object), value)) throw new Error(`the signature does not verify for ${object}`);
+    return { ...signature, link: signature.link as Link<Signature>, identity, object, signature: value };
   }
 
   /** Reads the signature that `link` names from `reader`, and verifies it. */
@@ -113,8 +99,5 @@ export class Signatures {
 
 /** Signatures and the identities they name, with their schemas compiled by `validator`. */
 export async function loadSignatures(validator: JsonSchemaValidator): Promise<Signatures> {
-  return new Signatures(
-    await encodeSchema(identitySchema, validator),
-    await encodeSchema(signatureSchema, validator),
-  );
+  return new Signatures(await encodeSchema(identitySchema, validator), await encodeSchema(signatureSchema, validator));
 }

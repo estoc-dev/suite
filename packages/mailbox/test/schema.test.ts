@@ -25,8 +25,6 @@ describe("a mailbox schema", () => {
   });
 
   it("is not made with a transport field named key", () => {
-    expect(() => mailboxSchema("Mailbox", { key: { type: "string" } })).toThrow(
-      /a field of every mailbox/,
-    );
+    expect(() => mailboxSchema("Mailbox", { key: { type: "string" } })).toThrow(/a field of every mailbox/);
   });
 });

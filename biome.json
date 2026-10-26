@@ -19,10 +19,7 @@
   },
   "linter": {
     "rules": {
-      "preset": "recommended",
-      "style": {
-        "noNonNullAssertion": "error"
-      }
+      "preset": "recommended"
     }
   },
   "assist": {

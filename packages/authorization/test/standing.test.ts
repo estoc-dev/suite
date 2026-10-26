@@ -2,7 +2,7 @@ import { type Scheme, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, linkOf, type Signature } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   type Authorization,
   authorizationSchema,
@@ -194,16 +194,17 @@ describe("an authorization with an end", () => {
 
   it("counts for no one when its end does not read as an instant, where the validator let it through", async () => {
     const blind = await loadAuthorizations(formatBlind);
-    const [blindAuthorization, blindProxy] = await Promise.all(
-      [authorizationSchema, proxySchema].map((schema) => encodeSchema(schema, formatBlind)),
-    );
+    const [blindAuthorization, blindProxy] = await Promise.all([
+      encodeSchema(authorizationSchema, formatBlind),
+      encodeSchema(proxySchema, formatBlind),
+    ]);
     const blindReadThroughUntil = async (until: string) => {
       const grant = await signed(
-        encodeObject(blindAuthorization!, { agent: { $link: identityOf(hot).link }, until }),
+        encodeObject(blindAuthorization, { agent: { $link: identityOf(hot).link }, until }),
         root,
       );
       const proxy = await signed(
-        encodeObject(blindProxy!, { chain: [{ $link: grant.signature.link }], target: { $link: target.link } }),
+        encodeObject(blindProxy, { chain: [{ $link: grant.signature.link }], target: { $link: target.link } }),
         hot,
       );
       const blobs = byLink([...identityBytes, ...parts(grant), ...parts(proxy)]);
@@ -229,7 +230,8 @@ describe("a standing through a proxy", () => {
 
   it.each(names.map((name, i) => [i, name] as const))("is not read without blob %i, the %s", async (missing) => {
     const proxy = await through([rootToHot, hotToDeputy], deputy);
-    const proxyObject = byLink(proxy.blobs).get(proxy.signature.object)!;
+    const proxyObject = byLink(proxy.blobs).get(proxy.signature.object);
+    assert.exists(proxyObject);
     const identities = [root, hot, deputy].map((s) => identityOf(s).bytes);
     const blobs = [...parts(rootToHot), ...parts(hotToDeputy), proxyObject, proxy.signature.bytes, ...identities];
     const readFrom = (given: Uint8Array[]) =>
@@ -242,19 +244,20 @@ describe("a standing through a proxy", () => {
     "is not read when blob %i, the %s, is given as another of its kind",
     async (swapped) => {
       const lasting = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
-      const [proxy, alike] = await Promise.all([rootToHot, lasting].map((grant) => through([grant], hot)));
-      const blobs = byLink([...identityBytes, ...parts(proxy!)]);
-      const links = [
-        rootToHot.object.link,
-        rootToHot.signature.link,
-        proxy!.signature.object,
-        rootToHot.object.agent.link,
+      const [proxy, alike] = await Promise.all([through([rootToHot], hot), through([lasting], hot)]);
+      const blobs = byLink([...identityBytes, ...parts(proxy)]);
+      const alikeObject = byLink(alike.blobs).get(alike.signature.object);
+      assert.exists(alikeObject);
+      const swaps: [string, Uint8Array][] = [
+        [rootToHot.object.link, lasting.object.bytes],
+        [rootToHot.signature.link, lasting.signature.bytes],
+        [proxy.signature.object, alikeObject],
+        [rootToHot.object.agent.link, identityOf(deputy).bytes],
       ];
-      blobs.set(
-        links[swapped]!,
-        [...parts(lasting), byLink(alike!.blobs).get(alike!.signature.object)!, identityOf(deputy).bytes][swapped]!,
-      );
-      await expect(authorizations.readStanding(target.link, proxy!.signature.link, blobs, now)).rejects.toThrow(
+      const swap = swaps[swapped];
+      assert.exists(swap);
+      blobs.set(...swap);
+      await expect(authorizations.readStanding(target.link, proxy.signature.link, blobs, now)).rejects.toThrow(
         /is another blob/,
       );
     },

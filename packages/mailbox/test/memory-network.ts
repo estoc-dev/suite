@@ -27,6 +27,8 @@ export interface Queue {
   mailbox(key: Uint8Array): EncodedObject<Json>;
   /** The sealed messages that have arrived since the last take, which leave the queue. */
   take(): Uint8Array[];
+  /** The one sealed message that has arrived since the last take; throws unless exactly one has. */
+  takeOne(): Uint8Array;
 }
 
 /**
@@ -63,6 +65,12 @@ export class MemoryNetwork {
       take: () => {
         const taken = arrived.splice(0);
         return this.#faults.reversed ? taken.reverse() : taken;
+      },
+      takeOne: () => {
+        const taken = arrived.splice(0);
+        const [sealed] = taken;
+        if (sealed === undefined || taken.length > 1) throw new Error(`${taken.length} messages arrived, not one`);
+        return sealed;
       },
     };
   }

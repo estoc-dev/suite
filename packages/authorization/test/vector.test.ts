@@ -2,7 +2,7 @@ import { SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeSchema, type Json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/index.ts";
 
 // The bytes and links were checked against Python's json module with sorted
@@ -55,7 +55,8 @@ const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
 const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
 const entry = await authorizations.createActor(hot, [grant]).sign(target);
-const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object)!;
+const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object);
+assert.exists(proxy);
 
 describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its agent signs", () => {
   it("encode to fixed bytes and links", async () => {

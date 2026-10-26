@@ -4,6 +4,7 @@ import {
   encodeSchema,
   loadSignatures,
   readObject,
+  type Bytes,
   type EncodedObject,
   type IdentityObject,
   type Json,
@@ -38,7 +39,7 @@ export type ProxyData = { readonly target: JsonLink<never>; readonly chain: read
  * links the signatures over the authorizations that lead from them to the
  * agent, in order.
  */
-export interface Proxy extends EncodedObject<Json, ProxyData> {
+interface Proxy extends EncodedObject<Json, ProxyData> {
   readonly link: Link<Proxy>;
   readonly target: Link<never>;
   readonly chain: readonly Link<Signature>[];
@@ -58,6 +59,16 @@ export interface Signed<T> {
 export interface Standing {
   readonly principal: IdentityObject;
   readonly agents: readonly IdentityObject[];
+}
+
+/**
+ * A signature by which an identity stands behind an object, and the blobs it
+ * leads to, each once: what a reading of it takes besides the signature
+ * itself. The object is only named, and is not among them.
+ */
+export interface Entry {
+  readonly signature: Signature;
+  readonly blobs: readonly Bytes<unknown>[];
 }
 
 /**
@@ -100,16 +111,14 @@ export class Authorizations {
   }
 
   /**
-   * Signs a proxy by which the chain's first authorizer stands behind
-   * `target`. The signer has to be the chain's last agent, and each
-   * authorization has to be signed by the agent of the one before it: a
-   * reader counts no other proxy, so no other is signed.
+   * An actor for the signer's own identity, which signs what it stands
+   * behind, or with `chain`, for the chain's first authorizer, with the signer
+   * signing proxies as the chain's last agent. Refuses a chain in which an
+   * authorization is not signed by the agent of the one before it, or that
+   * does not end at the signer: a reader counts no other proxy.
    */
-  async proxy(target: Link<unknown>, chain: readonly Signed<Authorization>[], signer: Signer): Promise<Signed<Proxy>> {
-    checkChain(chain, signer.identity);
-    const data = { target: { $link: target as Link<never> }, chain: chain.map(({ signature }) => ({ $link: signature.link })) };
-    const object = proxyOf(encodeObject(this.#proxySchema, data));
-    return { object, signature: await this.signatures.sign(object, signer) };
+  actor(signer: Signer, chain: readonly Signed<Authorization>[] = []): Actor {
+    return new Actor(this.signatures, this.#proxySchema, signer, chain);
   }
 
   /**
@@ -147,6 +156,55 @@ export class Authorizations {
     const end = until === undefined ? undefined : Temporal.Instant.from(until);
     const identity = await this.signatures.identities.read(agent.$link, reader);
     return { ...object, link: object.link as Link<Authorization>, agent: identity, until: end };
+  }
+}
+
+/**
+ * A signer standing behind objects for `principal`, through `agents`, as a
+ * reading of what it signs gives while the chain holds: itself with no agents,
+ * or a chain's first authorizer through the chain's agents, the signer being
+ * the last of them.
+ */
+export class Actor implements Standing {
+  readonly principal: IdentityObject;
+  readonly agents: readonly IdentityObject[];
+  readonly #signatures: Signatures;
+  readonly #proxySchema: Schema<Json, ProxyData>;
+  readonly #signer: Signer;
+  readonly #chain: readonly Signed<Authorization>[];
+
+  constructor(signatures: Signatures, proxy: Schema<Json, ProxyData>, signer: Signer, chain: readonly Signed<Authorization>[]) {
+    const [first] = chain;
+    if (first === undefined) {
+      this.principal = signatures.identities.encode(signer.identity);
+      this.agents = [];
+    } else {
+      checkChain(chain, signer.identity);
+      this.principal = first.signature.identity;
+      this.agents = chain.map(({ object }) => object.agent);
+    }
+    this.#signatures = signatures;
+    this.#proxySchema = proxy;
+    this.#signer = signer;
+    this.#chain = chain;
+  }
+
+  /**
+   * Stands behind `target` for the principal: signs it, or signs a proxy for
+   * it. The target is only named. No clock is looked at, since whether the
+   * chain holds is for the reader's clock to say.
+   */
+  async stand(target: Link<unknown>): Promise<Entry> {
+    if (this.#chain.length === 0) {
+      const signature = await this.#signatures.sign({ link: target }, this.#signer);
+      return { signature, blobs: [signature.identity.bytes] };
+    }
+    const data = { target: { $link: target as Link<never> }, chain: this.#chain.map(({ signature }) => ({ $link: signature.link })) };
+    const proxy = encodeObject(this.#proxySchema, data);
+    const signature = await this.#signatures.sign(proxy, this.#signer);
+    const chain = this.#chain.flatMap(({ object, signature }) => [signature, signature.identity, object, object.agent]);
+    const blobs = new Map([signature.identity, proxy, ...chain].map(({ link, bytes }) => [link, bytes]));
+    return { signature, blobs: [...blobs.values()] };
   }
 }
 

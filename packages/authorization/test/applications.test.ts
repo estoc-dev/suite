@@ -5,7 +5,6 @@ import {
   encodeSchema,
   linkOf,
   linkSchema,
-  type EncodedObject,
   type IdentityObject,
   type Json,
   type JsonLink,
@@ -16,7 +15,7 @@ import {
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { loadAuthorizations, type Signed } from "../src/index.ts";
+import { loadAuthorizations, type Entry } from "../src/index.ts";
 
 // Applications that take signatures made through agents. Whether to accept
 // agents, and how many, is each application's own rule; the package only
@@ -24,14 +23,11 @@ import { loadAuthorizations, type Signed } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const blobs = (...signed: Signed<{ readonly bytes: Uint8Array }>[]) =>
-  signed.flatMap(({ object, signature }) => [object.bytes, signature.bytes, signature.identity.bytes]);
+const blobs = (...entries: Entry[]) => entries.flatMap(({ signature, blobs }) => [signature.bytes, ...blobs]);
 const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
-const directly = async (object: EncodedObject<Json>, by: SoftwareSigner): Promise<Signed<EncodedObject<Json>>> => ({ object, signature: await signatures.sign(object, by) });
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const { signatures } = authorizations;
-const { identities } = signatures;
+const { identities } = authorizations.signatures;
 
 const login = await encodeSchema(
   {
@@ -60,9 +56,8 @@ describe("a login", () => {
   const browserKey = signer("ed25519", 2);
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
   const forADay = authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
-  const throughKey = forADay.then((grant) => authorizations.proxy(object.link, [grant], browserKey));
-  const logIn = async (entry: Signed<{ readonly bytes: Uint8Array }>, at: Date) =>
-    loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(await forADay, entry), at);
+  const throughKey = forADay.then((grant) => authorizations.actor(browserKey, [grant]).stand(object.link));
+  const logIn = (entry: Entry, at: Date) => loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(entry), at);
 
   it("through a key the wallet authorized for a day logs in the wallet", async () => {
     expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(wallet.identity));
@@ -73,7 +68,8 @@ describe("a login", () => {
   });
 
   it("signed by the key directly logs in the key, not the wallet", async () => {
-    expect(await logIn(await directly(object, browserKey), new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(browserKey.identity));
+    const direct = await authorizations.actor(browserKey).stand(object.link);
+    expect(await logIn(direct, new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(browserKey.identity));
   });
 });
 
@@ -126,17 +122,19 @@ describe("a sale", () => {
     price: "120.00 CAD",
   });
   const toBroker = authorizations.authorize(broker.identity, buyer);
-  const entriesOf = (...signed: { readonly signature: Signature }[]) => signed.map(({ signature }) => signature.link);
+  const directly = (by: SoftwareSigner) => authorizations.actor(by).stand(terms.link);
+  const entriesOf = (...entries: Entry[]) => entries.map(({ signature }) => signature.link);
 
   it("is in force once its seller signs it and its buyer signs it through a broker", async () => {
-    const grant = await toBroker;
-    const proxy = await authorizations.proxy(terms.link, [grant], broker);
-    const bySeller = await directly(terms, seller);
-    expect(await saleInForce(terms.bytes, entriesOf(bySeller, proxy), blobs(bySeller, grant, proxy), now)).toEqual(terms.data);
+    const proxy = await authorizations.actor(broker, [await toBroker]).stand(terms.link);
+    const bySeller = await directly(seller);
+    expect(await saleInForce(terms.bytes, entriesOf(bySeller, proxy), blobs(bySeller, proxy), now)).toEqual(terms.data);
   });
 
   it("is not in force when the broker signs it in its own name, as a witness would", async () => {
-    const [bySeller, byBroker] = await Promise.all([directly(terms, seller), directly(terms, broker)]);
-    expect(await saleInForce(terms.bytes, entriesOf(bySeller, byBroker), blobs(bySeller, byBroker, await toBroker), now)).toBeUndefined();
+    const [bySeller, byBroker] = await Promise.all([directly(seller), directly(broker)]);
+    const { object, signature } = await toBroker;
+    const received = [...blobs(bySeller, byBroker), object.bytes, signature.bytes];
+    expect(await saleInForce(terms.bytes, entriesOf(bySeller, byBroker), received, now)).toBeUndefined();
   });
 });

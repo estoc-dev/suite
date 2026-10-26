@@ -149,11 +149,9 @@ describe("a chat message sent through a device key", () => {
     const deviceKey = signer("ed25519", 2);
     const message = encodeObject(chat, { text: "See you at noon." });
     const grant = await authorizations.authorize(deviceKey.identity, wallet);
-    const proxy = await authorizations.proxy(message.link, [grant], deviceKey);
-    const root = encodeObject(standingEnvelope, { message: { $link: message.link }, signature: { $link: proxy.signature.link } });
-    const identityBytes = [grant.signature.identity.bytes, grant.object.agent.bytes];
-    const blobs = [message.bytes, proxy.object.bytes, proxy.signature.bytes, grant.object.bytes, grant.signature.bytes, ...identityBytes];
-    expect(await readSent(handOver(root, blobs), new Date())).toEqual({
+    const { signature, blobs } = await authorizations.actor(deviceKey, [grant]).stand(message.link);
+    const root = encodeObject(standingEnvelope, { message: { $link: message.link }, signature: { $link: signature.link } });
+    expect(await readSent(handOver(root, [message.bytes, signature.bytes, ...blobs]), new Date())).toEqual({
       from: identities.encode(wallet.identity),
       through: [identities.encode(deviceKey.identity)],
       message: { text: "See you at noon." },

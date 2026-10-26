@@ -15,7 +15,10 @@ export class MemoryBackend implements Backend {
     return this.#blobs.has(link);
   }
 
-  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void> {
+  async put(
+    blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+    mine: Iterable<Link<never>>,
+  ): Promise<void> {
     for (const [link, bytes] of blobs) this.#blobs.set(link, bytes);
     for (const link of mine) this.#mine.add(link);
   }

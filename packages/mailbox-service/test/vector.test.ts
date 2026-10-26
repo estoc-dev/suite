@@ -16,7 +16,8 @@ const acknowledgementSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"accepted":${linkText},"at":{"minimum":0,"type":"integer"}},` +
   '"required":["accepted","at"],"title":"Acknowledgement","type":"object"}';
-const acknowledgementSchemaLink = "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
+const acknowledgementSchemaLink =
+  "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
 const offerText =
   '{"$type":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
   '"identity":{"$link":"sha256:3d52c9daa7ce3a7b07d4f155e33b08374b14e82f3d05c14f718d64d3552d6e1c"}}';

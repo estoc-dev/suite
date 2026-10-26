@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, type Encoding, encodeObject, encodeSchema, type Link, type SchemaValidator, schemaOf } from "../src/index.ts";
+import {
+  decodeObject,
+  type Encoding,
+  encodeObject,
+  encodeSchema,
+  type Link,
+  type SchemaValidator,
+  schemaOf,
+} from "../src/index.ts";
 
 // An encoding with nothing of JSON in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written
@@ -11,7 +19,8 @@ type Text = string | { readonly [name: string]: Text };
 // Kept, a byte order mark is part of the first name, so that bytes with one
 // do not read as the same value as bytes without.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const isLink = (text: Text | undefined): text is Link<never> => typeof text === "string" && /^sha256:[0-9a-f]{64}$/.test(text);
+const isLink = (text: Text | undefined): text is Link<never> =>
+  typeof text === "string" && /^sha256:[0-9a-f]{64}$/.test(text);
 
 const lines: Encoding<Text> = {
   encode(value) {
@@ -21,7 +30,8 @@ const lines: Encoding<Text> = {
       .map((name) => {
         const text = value[name];
         if (/[=\n]/.test(name)) throw new Error("a name holds no = and no newline");
-        if (typeof text !== "string" || text.includes("\n")) throw new Error("a field holds a line of text");
+        if (typeof text !== "string" || text.includes("\n"))
+          throw new Error("a field holds a line of text");
         return `${name}=${text}\n`;
       });
     return new TextEncoder().encode(written.join(""));
@@ -38,7 +48,8 @@ const lines: Encoding<Text> = {
         return [line.slice(0, at), line.slice(at + 1)];
       });
     const value = Object.fromEntries(fields);
-    if (utf8.decode(lines.encode(value)) !== text) throw new Error("the fields are out of order or repeated");
+    if (utf8.decode(lines.encode(value)) !== text)
+      throw new Error("the fields are out of order or repeated");
     return value;
   },
   object(data, schema) {
@@ -62,7 +73,11 @@ const fieldCount: SchemaValidator<number, Text> = {
     decode(bytes) {
       const value = lines.decode(bytes);
       const count = typeof value === "string" ? undefined : value.count;
-      if (typeof count !== "string" || Object.keys(value).length !== 1 || !/^(0|[1-9][0-9]*)$/.test(count)) {
+      if (
+        typeof count !== "string" ||
+        Object.keys(value).length !== 1 ||
+        !/^(0|[1-9][0-9]*)$/.test(count)
+      ) {
         throw new Error("not a count of fields");
       }
       return Number(count);
@@ -76,14 +91,20 @@ const fieldCount: SchemaValidator<number, Text> = {
 
 const pair = await encodeSchema(2, fieldCount);
 const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { text: { type: "string" } },
+  },
   defaultValidator,
 );
 
 describe("an encoding other than JSON", () => {
   it("writes its objects as it writes any value, and reads them back", () => {
     const object = encodeObject(pair, { greeting: "hello", name: "world" });
-    expect(new TextDecoder().decode(object.bytes)).toBe(`greeting=hello\nname=world\nschema=${pair.link}\n`);
+    expect(new TextDecoder().decode(object.bytes)).toBe(
+      `greeting=hello\nname=world\nschema=${pair.link}\n`,
+    );
     expect(decodeObject(object.bytes, pair)).toEqual(object);
     expect(schemaOf(object.bytes, lines)).toBe(pair.link);
   });

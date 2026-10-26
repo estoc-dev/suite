@@ -14,7 +14,10 @@ const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0
  */
 export async function loadHttpTransport(validator: JsonSchemaValidator): Promise<Transport> {
   const url = { type: "string", format: "uri", pattern: URL_PATTERN };
-  return { schema: await encodeSchema(mailboxSchema("HTTP mailbox", { url }, ["url"]), validator), deliver };
+  return {
+    schema: await encodeSchema(mailboxSchema("HTTP mailbox", { url }, ["url"]), validator),
+    deliver,
+  };
 }
 
 async function deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void> {

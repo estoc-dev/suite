@@ -17,9 +17,16 @@ const lenient: JsonSchemaValidator = { language: jsonSchema, compile: async () =
 
 describe("decodeSchema", () => {
   it("reads back what encodeSchema wrote", async () => {
-    const schema = await encodeSchema({ $schema: DRAFT, type: "string", title: "Name" }, defaultValidator);
+    const schema = await encodeSchema(
+      { $schema: DRAFT, type: "string", title: "Name" },
+      defaultValidator,
+    );
     const read = await decodeSchema(schema.bytes, defaultValidator);
-    expect(jsonSchema.decode(read.bytes)).toEqual({ $schema: DRAFT, type: "string", title: "Name" });
+    expect(jsonSchema.decode(read.bytes)).toEqual({
+      $schema: DRAFT,
+      type: "string",
+      title: "Name",
+    });
     expect(read.link).toBe(schema.link);
   });
 
@@ -38,8 +45,9 @@ describe("decodeSchema", () => {
 
   it("refuses the bytes of an object", async () => {
     const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+    const { bytes } = encodeObject(anything, { $schema: DRAFT });
     // @ts-expect-error: refused at compile time too
-    await expect(decodeSchema(encodeObject(anything, { $schema: DRAFT }).bytes, defaultValidator)).rejects.toThrow();
+    await expect(decodeSchema(bytes, defaultValidator)).rejects.toThrow();
   });
 });
 
@@ -47,20 +55,31 @@ describe("the default validator", () => {
   const compile = (schema: JsonSchema) => encodeSchema(schema, defaultValidator);
 
   it("refuses a dialect other than draft 2020-12", async () => {
-    await expect(compile({ $schema: "http://json-schema.org/draft-07/schema#", type: "string" })).rejects.toThrow();
+    await expect(
+      compile({ $schema: "http://json-schema.org/draft-07/schema#", type: "string" }),
+    ).rejects.toThrow();
     await expect(compile({ $schema: `${DRAFT}#`, type: "string" })).rejects.toThrow();
   });
 
   it("refuses a schema resource inside the schema in another dialect", async () => {
-    for (const dialect of ["http://json-schema.org/draft-07/schema#", "https://example.com/unsupported-dialect"]) {
+    for (const dialect of [
+      "http://json-schema.org/draft-07/schema#",
+      "https://example.com/unsupported-dialect",
+    ]) {
       const child = { $id: "https://example.com/child", $schema: dialect, type: "string" };
-      await expect(compile({ $schema: DRAFT, $ref: "https://example.com/child", $defs: { child } })).rejects.toThrow();
+      await expect(
+        compile({ $schema: DRAFT, $ref: "https://example.com/child", $defs: { child } }),
+      ).rejects.toThrow();
     }
   });
 
   it("reads a schema resource inside the schema that names no dialect as draft 2020-12", async () => {
     const child = { $id: "https://example.com/child", prefixItems: [{ type: "string" }] };
-    const pair = await compile({ $schema: DRAFT, properties: { pair: { $ref: "https://example.com/child" } }, $defs: { child } });
+    const pair = await compile({
+      $schema: DRAFT,
+      properties: { pair: { $ref: "https://example.com/child" } },
+      $defs: { child },
+    });
     expect(() => pair.validate({ pair: ["a"] })).not.toThrow();
     expect(() => pair.validate({ pair: [1] })).toThrow();
   });
@@ -72,7 +91,9 @@ describe("the default validator", () => {
   it("refuses a schema with a $ref to a schema outside it, without fetching it", async () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     try {
-      await expect(compile({ $schema: DRAFT, $ref: "https://example.com/schema" })).rejects.toThrow();
+      await expect(
+        compile({ $schema: DRAFT, $ref: "https://example.com/schema" }),
+      ).rejects.toThrow();
       await expect(compile({ $schema: DRAFT, $ref: "file:///etc/schema.json" })).rejects.toThrow();
       expect(fetch).not.toHaveBeenCalled();
     } finally {
@@ -81,7 +102,12 @@ describe("the default validator", () => {
   });
 
   it("refuses an outside $ref even in a branch no value takes", async () => {
-    await expect(compile({ $schema: DRAFT, anyOf: [{ type: "string" }, { $ref: "https://example.com/schema" }] })).rejects.toThrow();
+    await expect(
+      compile({
+        $schema: DRAFT,
+        anyOf: [{ type: "string" }, { $ref: "https://example.com/schema" }],
+      }),
+    ).rejects.toThrow();
   });
 
   it("refuses a $ref to the meta-schema, which it has but the schema does not", async () => {
@@ -98,12 +124,16 @@ describe("the default validator", () => {
 
   it("refuses a schema that takes the $id of the meta-schema", async () => {
     await expect(compile({ $schema: DRAFT, $id: DRAFT, type: "string" })).rejects.toThrow();
-    await expect(compile({ $schema: DRAFT, $ref: DRAFT, $defs: { own: { $id: DRAFT, type: "number" } } })).rejects.toThrow();
+    await expect(
+      compile({ $schema: DRAFT, $ref: DRAFT, $defs: { own: { $id: DRAFT, type: "number" } } }),
+    ).rejects.toThrow();
   });
 
   it("follows a $ref by the keyword alone, whatever other members name", async () => {
     const outside = { $schema: DRAFT, $ref: "https://example.com/schema", $defs: { allow: true } };
-    await expect(compile({ ...outside, __absolute_ref__: "urn:estoc:schema#/$defs/allow" })).rejects.toThrow();
+    await expect(
+      compile({ ...outside, __absolute_ref__: "urn:estoc:schema#/$defs/allow" }),
+    ).rejects.toThrow();
     const deny = await compile({
       $schema: DRAFT,
       $ref: "#/$defs/deny",
@@ -151,7 +181,11 @@ describe("the default validator", () => {
   });
 
   it("reads only the members a value has", async () => {
-    const optional = await compile({ $schema: DRAFT, type: "object", properties: { constructor: { type: "string" } } });
+    const optional = await compile({
+      $schema: DRAFT,
+      type: "object",
+      properties: { constructor: { type: "string" } },
+    });
     expect(() => optional.validate({})).not.toThrow();
     expect(() => optional.validate({ constructor: "x" })).not.toThrow();
     expect(() => optional.validate({ constructor: 1 })).toThrow();
@@ -160,7 +194,10 @@ describe("the default validator", () => {
   });
 
   it("asserts format", async () => {
-    const date = await compile({ $schema: DRAFT, properties: { on: { type: "string", format: "date" } } });
+    const date = await compile({
+      $schema: DRAFT,
+      properties: { on: { type: "string", format: "date" } },
+    });
     expect(() => date.validate({ on: "2026-10-19" })).not.toThrow();
     expect(() => date.validate({ on: "2026-13-45" })).toThrow();
   });
@@ -171,7 +208,11 @@ describe("the default validator", () => {
       compile({ $schema: DRAFT, $ref: "https://example.com/named" }),
       compile({ $schema: DRAFT, type: "number" }),
     ]);
-    expect([named.status, reaching.status, unrelated.status]).toEqual(["fulfilled", "rejected", "fulfilled"]);
+    expect([named.status, reaching.status, unrelated.status]).toEqual([
+      "fulfilled",
+      "rejected",
+      "fulfilled",
+    ]);
   });
 
   it("forgets a schema once compiled, whether or not it compiled", async () => {
@@ -201,7 +242,11 @@ describe("linkSchema", () => {
   });
 
   it("refuses a link that is not sha256 and lowercase hex", () => {
-    for (const link of [terms.toUpperCase(), terms.slice(0, -1), terms.replace("sha256", "sha512")]) {
+    for (const link of [
+      terms.toUpperCase(),
+      terms.slice(0, -1),
+      terms.replace("sha256", "sha512"),
+    ]) {
       expect(() => contract.validate({ terms: { $link: link } })).toThrow();
     }
   });
@@ -242,7 +287,9 @@ describe("a validator other than the default", () => {
 });
 
 test("the same bytes read by two validators give one link", async () => {
-  const bytes = (await encodeSchema({ $schema: DRAFT, properties: { n: { type: "integer" } } }, defaultValidator)).bytes;
+  const bytes = (
+    await encodeSchema({ $schema: DRAFT, properties: { n: { type: "integer" } } }, defaultValidator)
+  ).bytes;
   const read = await decodeSchema(bytes, lenient);
   expect(read.link).toBe((await decodeSchema(bytes, defaultValidator)).link);
   expect(() => read.validate({ n: "not an integer" })).not.toThrow();

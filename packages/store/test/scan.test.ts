@@ -11,13 +11,26 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Backend, type Index, type Key, MemoryBackend, type Rows, Store, scan } from "../src/index.ts";
+import {
+  type Backend,
+  type Index,
+  type Key,
+  MemoryBackend,
+  type Rows,
+  Store,
+  scan,
+} from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const [note, tag] = await Promise.all(["Note", "Tag"].map((title) => encodeSchema({ $schema: DRAFT, title }, defaultValidator)));
+const [note, tag] = await Promise.all(
+  ["Note", "Tag"].map((title) => encodeSchema({ $schema: DRAFT, title }, defaultValidator)),
+);
 const schemas = [note!.bytes, tag!.bytes];
 
-const byKeys: Index<Json, Key> = { reads: [note!], rows: ({ data }) => (data as { keys: Key[] }).keys };
+const byKeys: Index<Json, Key> = {
+  reads: [note!],
+  rows: ({ data }) => (data as { keys: Key[] }).keys,
+};
 
 async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
   const rows: K[] = [];
@@ -32,7 +45,10 @@ describe("an index scanned from a store", () => {
     const store = new Store(json, new MemoryBackend());
     const unlisted = encodeObject(note!, { keys: [["unlisted"]] });
     await store.write({
-      mine: [encodeObject(note!, { keys: [["b"], ["a"]] }), encodeObject(tag!, { keys: [["tag"]], of: { $link: unlisted.link } })],
+      mine: [
+        encodeObject(note!, { keys: [["b"], ["a"]] }),
+        encodeObject(tag!, { keys: [["tag"]], of: { $link: unlisted.link } }),
+      ],
       blobs: [unlisted.bytes, ...schemas],
     });
     expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
@@ -41,7 +57,10 @@ describe("an index scanned from a store", () => {
   it("holds a row once, however many objects give it", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      mine: [encodeObject(note!, { keys: [["a"]], n: 1 }), encodeObject(note!, { keys: [["a"], ["a"]], n: 2 })],
+      mine: [
+        encodeObject(note!, { keys: [["a"]], n: 1 }),
+        encodeObject(note!, { keys: [["a"], ["a"]], n: 2 }),
+      ],
       blobs: schemas,
     });
     expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
@@ -52,7 +71,15 @@ describe("an index scanned from a store", () => {
     const keys = [["b", 2], ["a", "x"], ["a", 10], ["a", 9], ["a"], [1], ["ab"]];
     await store.write({ mine: [encodeObject(note!, { keys })], blobs: schemas });
     const rows = await scan(store, byKeys);
-    expect(await whole(rows)).toEqual([[1], ["a"], ["a", 9], ["a", 10], ["a", "x"], ["ab"], ["b", 2]]);
+    expect(await whole(rows)).toEqual([
+      [1],
+      ["a"],
+      ["a", 9],
+      ["a", 10],
+      ["a", "x"],
+      ["ab"],
+      ["b", 2],
+    ]);
     expect(await all(rows.range(["a"]))).toEqual([["a"], ["a", 9], ["a", 10], ["a", "x"]]);
     expect(await all(rows.range(["a", 10]))).toEqual([["a", 10]]);
     expect(await all(rows.range(["c"]))).toEqual([]);
@@ -60,9 +87,15 @@ describe("an index scanned from a store", () => {
 
   it("takes as a prefix any start of its keys, of the types they hold there", async () => {
     type Path = readonly [namespace: string, ...path: string[]];
-    const paths: Index<Json, Path> = { reads: [note!], rows: ({ data }) => (data as { keys: Path[] }).keys };
+    const paths: Index<Json, Path> = {
+      reads: [note!],
+      rows: ({ data }) => (data as { keys: Path[] }).keys,
+    };
     const store = new Store(json, new MemoryBackend());
-    await store.write({ mine: [encodeObject(note!, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })], blobs: schemas });
+    await store.write({
+      mine: [encodeObject(note!, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })],
+      blobs: schemas,
+    });
     const rows = await scan(store, paths);
     expect(await whole(rows)).toEqual([["notes"], ["notes", "a", "b"], ["tags", "a"]]);
     expect(await all(rows.range(["notes"]))).toEqual([["notes"], ["notes", "a", "b"]]);
@@ -80,21 +113,34 @@ describe("an index scanned from a store", () => {
         yield [signature.identity.link, signature.object];
       },
     };
-    const [alice, bob] = [1, 2].map((fill) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)));
+    const [alice, bob] = [1, 2].map((fill) =>
+      SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)),
+    );
     const hello = encodeObject(note!, {});
     const signed = await Promise.all([alice!, bob!].map((by) => signatures.sign(hello, by)));
-    const signatureSchemas = await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)));
+    const signatureSchemas = await Promise.all(
+      [identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)),
+    );
     const store = new Store(json, new MemoryBackend());
     await store.write({
       mine: [hello, ...signed],
-      blobs: [...signed.map(({ identity }) => identity.bytes), ...schemas, ...signatureSchemas.map(({ bytes }) => bytes)],
+      blobs: [
+        ...signed.map(({ identity }) => identity.bytes),
+        ...schemas,
+        ...signatureSchemas.map(({ bytes }) => bytes),
+      ],
     });
-    const expected = signed.map(({ identity }) => [identity.link, hello.link]).sort(([a], [b]) => (a! < b! ? -1 : 1));
+    const expected = signed
+      .map(({ identity }) => [identity.link, hello.link])
+      .sort(([a], [b]) => (a! < b! ? -1 : 1));
     expect(await whole(await scan(store, bySigner))).toEqual(expected);
   });
 
   it("is not filled when a row holds a number that is not finite", async () => {
-    const numbers: Index<Json, Key> = { reads: [note!], rows: ({ data }) => [[Number(data.number)]] };
+    const numbers: Index<Json, Key> = {
+      reads: [note!],
+      rows: ({ data }) => [[Number(data.number)]],
+    };
     for (const number of ["-Infinity", "Infinity", "NaN"]) {
       const store = new Store(json, new MemoryBackend());
       await store.write({ mine: [encodeObject(note!, { number })], blobs: schemas });
@@ -105,7 +151,10 @@ describe("an index scanned from a store", () => {
   it("is not filled from a store that holds another blob under a link it lists", async () => {
     const backend = new MemoryBackend();
     const store = new Store(json, backend);
-    const [listed, other] = [encodeObject(note!, { keys: [["a"]] }), encodeObject(note!, { keys: [["b"]] })];
+    const [listed, other] = [
+      encodeObject(note!, { keys: [["a"]] }),
+      encodeObject(note!, { keys: [["b"]] }),
+    ];
     await store.write({ mine: [listed, other], blobs: schemas });
     const swapped: Backend = {
       get: (link) => backend.get(link === listed.link ? other.link : link),
@@ -113,6 +162,8 @@ describe("an index scanned from a store", () => {
       put: (blobs, mine) => backend.put(blobs, mine),
       mine: () => backend.mine(),
     };
-    await expect(scan(new Store(json, swapped), byKeys)).rejects.toThrow(`another blob under ${listed.link}`);
+    await expect(scan(new Store(json, swapped), byKeys)).rejects.toThrow(
+      `another blob under ${listed.link}`,
+    );
   });
 });

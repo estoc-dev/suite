@@ -1,5 +1,14 @@
 import { packBundle } from "@estoc/bundle";
-import { type Bytes, decodeObject, type EncodedObject, type Json, type JsonObject, json, type Schema, schemaOf } from "@estoc/object";
+import {
+  type Bytes,
+  decodeObject,
+  type EncodedObject,
+  type Json,
+  type JsonObject,
+  json,
+  type Schema,
+  schemaOf,
+} from "@estoc/object";
 import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 
@@ -39,7 +48,10 @@ export class Mailbox {
    * Sends the bundle of `root` and `blobs`, packed as `packBundle` packs it,
    * sealed to the mailbox's key and handed to the transport.
    */
-  async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
+  async send(
+    root: { readonly bytes: Bytes<unknown> },
+    blobs: Iterable<Bytes<unknown>>,
+  ): Promise<void> {
     const zip = await packBundle(root, blobs);
     await this.#transport.deliver(this.#data, await seal(this.#key, zip));
   }
@@ -49,7 +61,10 @@ export class Mailbox {
  * Reads the bytes of a mailbox with the transport whose schema it is written
  * to, and binds it once to its key and that transport.
  */
-export async function mailboxFrom(bytes: Bytes<EncodedObject<Json>>, { transports }: Options): Promise<Mailbox> {
+export async function mailboxFrom(
+  bytes: Bytes<EncodedObject<Json>>,
+  { transports }: Options,
+): Promise<Mailbox> {
   const { data, transport } = readMailbox(bytes, transports);
   return new Mailbox(data, await publicKeyFrom(hex.decode(data.key)), transport);
 }

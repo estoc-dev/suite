@@ -28,7 +28,8 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
     if (!isJsonObject(value) || typeof value.$schema !== "string") {
       throw new Error("a schema is a JSON object naming its dialect in $schema");
     }
-    if (Object.hasOwn(value, "$type")) throw new Error("a schema has no $type, which names the schema of an object");
+    if (Object.hasOwn(value, "$type"))
+      throw new Error("a schema has no $type, which names the schema of an object");
     return value as JsonSchema;
   },
 };

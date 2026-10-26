@@ -19,9 +19,12 @@ const wallet = signer("eip191", 2);
 const device = signer("ed25519", 3);
 const otherService = signer("ed25519", 4);
 
-const getOffer = (service: MailboxService) => service.fetch(new Request("https://mail.example/offer"));
-const post = (service: MailboxService, body: Uint8Array) => service.fetch(new Request("https://mail.example/", { method: "POST", body }));
-const bundleOf = async (response: Response) => unpackBundle(new Uint8Array(await response.arrayBuffer()));
+const getOffer = (service: MailboxService) =>
+  service.fetch(new Request("https://mail.example/offer"));
+const post = (service: MailboxService, body: Uint8Array) =>
+  service.fetch(new Request("https://mail.example/", { method: "POST", body }));
+const bundleOf = async (response: Response) =>
+  unpackBundle(new Uint8Array(await response.arrayBuffer()));
 
 async function offerOf(service: MailboxService) {
   const bundle = await bundleOf(await getOffer(service));
@@ -45,7 +48,11 @@ async function proxied(offer: { readonly link: Link<unknown> }, until?: Temporal
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
   const signature = await signatures.read(bundle.link, bundle);
-  return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchemaRead) };
+  return {
+    bundle,
+    signature,
+    acknowledgement: await readObject(bundle, signature.object, acknowledgementSchemaRead),
+  };
 }
 
 describe("a mailbox service", () => {
@@ -67,8 +74,18 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.identity.link).toBe(serviceIdentity.link);
-    expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_000 });
-    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle, new Date(5_000))).toEqual({
+    expect(acknowledgement.data).toEqual({
+      accepted: { $link: accepted.signature.link },
+      at: 5_000,
+    });
+    expect(
+      await authorizations.readStanding(
+        offer.link,
+        accepted.signature.link,
+        bundle,
+        new Date(5_000),
+      ),
+    ).toEqual({
       principal: identities.encode(alice.identity),
       agents: [],
     });
@@ -92,16 +109,20 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { accepted: link, at } = acknowledgement.data;
     expect(link.$link).toBe(accepted.signature.link);
-    expect(await authorizations.readStanding(offer.link, link.$link, bundle, new Date(at))).toEqual({
-      principal: identities.encode(wallet.identity),
-      agents: [identities.encode(device.identity)],
-    });
+    expect(await authorizations.readStanding(offer.link, link.$link, bundle, new Date(at))).toEqual(
+      {
+        principal: identities.encode(wallet.identity),
+        agents: [identities.encode(device.identity)],
+      },
+    );
   });
 
   it("answers an identity that accepts again, another way, with the acknowledgement of its first acceptance", async () => {
     const { service } = await memoryService();
     const { offer } = await offerOf(service);
-    const first = new Uint8Array(await (await post(service, (await direct(offer, wallet)).zip)).arrayBuffer());
+    const first = new Uint8Array(
+      await (await post(service, (await direct(offer, wallet)).zip)).arrayBuffer(),
+    );
     const again = await post(service, (await proxied(offer)).zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
@@ -109,7 +130,10 @@ describe("a mailbox service", () => {
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
     ["that is not a zip", async () => new TextEncoder().encode("hello")],
-    ["whose root is not a signature", async (service) => packBundle((await offerOf(service)).offer, [])],
+    [
+      "whose root is not a signature",
+      async (service) => packBundle((await offerOf(service)).offer, []),
+    ],
     [
       "whose signature comes without its identity",
       async (service) => packBundle((await direct((await offerOf(service)).offer)).signature, []),
@@ -123,7 +147,9 @@ describe("a mailbox service", () => {
     ],
     [
       "through an authorization that has ended",
-      async (service) => (await proxied((await offerOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip,
+      async (service) =>
+        (await proxied((await offerOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500)))
+          .zip,
     ],
     [
       "that is the service's own signature over its offer",
@@ -146,16 +172,22 @@ describe("a mailbox service", () => {
 
   it("answers 405 to another method, saying which it takes, and 404 to another path", async () => {
     const { service } = await memoryService();
-    const put = await service.fetch(new Request("https://mail.example/offer", { method: "PUT", body: "x" }));
+    const put = await service.fetch(
+      new Request("https://mail.example/offer", { method: "PUT", body: "x" }),
+    );
     expect(put.status).toBe(405);
     expect(put.headers.get("allow")).toBe("GET");
-    expect((await service.fetch(new Request("https://mail.example/"))).headers.get("allow")).toBe("POST");
+    expect((await service.fetch(new Request("https://mail.example/"))).headers.get("allow")).toBe(
+      "POST",
+    );
     expect((await service.fetch(new Request("https://mail.example/accounts"))).status).toBe(404);
   });
 
   it("answers a browser's preflight for posting a zip from another origin", async () => {
     const { service } = await memoryService();
-    const response = await service.fetch(new Request("https://mail.example/", { method: "OPTIONS" }));
+    const response = await service.fetch(
+      new Request("https://mail.example/", { method: "OPTIONS" }),
+    );
     expect(response.status).toBe(204);
     expect(Object.fromEntries(response.headers)).toMatchObject({
       "access-control-allow-origin": "*",

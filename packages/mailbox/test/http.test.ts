@@ -23,7 +23,12 @@ const server = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(chunk as Buffer);
   const path = request.url;
-  requests.push({ method: request.method, path, type: request.headers["content-type"], body: new Uint8Array(Buffer.concat(chunks)) });
+  requests.push({
+    method: request.method,
+    path,
+    type: request.headers["content-type"],
+    body: new Uint8Array(Buffer.concat(chunks)),
+  });
   const status = answers[path ?? ""] ?? 404;
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
@@ -32,7 +37,9 @@ afterAll(() => close(server));
 beforeEach(() => void requests.splice(0));
 
 function listen(server: Server): Promise<number> {
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
+  return new Promise((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)),
+  );
 }
 
 function close(server: Server): Promise<void> {
@@ -45,11 +52,16 @@ const options = { transports: [http] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const key = hex.encode(bob.publicKey);
 const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { text: { type: "string" } },
+  },
   defaultValidator,
 );
 const hello = encodeObject(note, { text: "hello, Bob" });
-const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
+const mailboxAt = (url: string) =>
+  mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
 
 describe("an HTTP mailbox", () => {
@@ -57,7 +69,11 @@ describe("an HTTP mailbox", () => {
     await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, []);
     const [request, ...more] = take();
     expect(more).toEqual([]);
-    expect(request).toMatchObject({ method: "POST", path: "/inbox", type: "application/octet-stream" });
+    expect(request).toMatchObject({
+      method: "POST",
+      path: "/inbox",
+      type: "application/octet-stream",
+    });
     expect((await bob.open(request!.body)).root).toEqual(hello.bytes);
   });
 
@@ -76,17 +92,21 @@ describe("an HTTP mailbox", () => {
     const gone = createServer();
     const closed = await listen(gone);
     await close(gone);
-    await expect((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, [])).rejects.toThrow();
+    await expect(
+      (await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, []),
+    ).rejects.toThrow();
   });
 });
 
 describe("an HTTP mailbox's url", () => {
-  it.each(["https://mail.example/alice", "http://localhost:8080/inbox", "http://127.0.0.1", "http://[::1]:8080?to=bob"])(
-    "may be %s",
-    async (url) => {
-      await expect(mailboxAt(url)).resolves.toBeDefined();
-    },
-  );
+  it.each([
+    "https://mail.example/alice",
+    "http://localhost:8080/inbox",
+    "http://127.0.0.1",
+    "http://[::1]:8080?to=bob",
+  ])("may be %s", async (url) => {
+    await expect(mailboxAt(url)).resolves.toBeDefined();
+  });
 
   // Written elsewhere, since this package does not write a mailbox it would refuse.
   const written = (url: string) => json.encode(json.object({ key, url }, http.schema.link));
@@ -95,7 +115,10 @@ describe("an HTTP mailbox's url", () => {
     ["plain http to another machine", "http://mail.example/alice"],
     ["of another scheme", "ftp://mail.example/alice"],
     ["to a host whose name only starts as this machine's", "http://localhost.mail.example/inbox"],
-    ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
+    [
+      "to another host, with this machine's address as the user",
+      "http://127.0.0.1@mail.example/inbox",
+    ],
     ["not a URI", "https://mail example/alice"],
   ])("is refused when it is %s", async (_, url) => {
     await expect(mailboxFrom(written(url), options)).rejects.toThrow(/#\/url/);

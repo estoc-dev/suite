@@ -1,4 +1,11 @@
-import { decodeObject, type EncodedObject, type Fields, type Reader, type Schema, schemaOf } from "@estoc/object";
+import {
+  decodeObject,
+  type EncodedObject,
+  type Fields,
+  type Reader,
+  type Schema,
+  schemaOf,
+} from "@estoc/object";
 import type { Store } from "./store.ts";
 
 /**
@@ -16,7 +23,9 @@ export type Key = readonly (string | number)[];
  */
 export type Prefix<K extends Key> =
   | readonly []
-  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key] ? readonly [First, ...Prefix<Rest>] : K);
+  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key]
+      ? readonly [First, ...Prefix<Rest>]
+      : K);
 
 /**
  * What an application keeps of the objects of some schemas that its user
@@ -50,10 +59,14 @@ export interface Rows<K extends Key> {
  * and checked against its schema before the index sees it, and the scan
  * fails on one whose data does not fit.
  */
-export async function scan<D, K extends Key, F extends Fields<D>>(store: Store, index: Index<D, K, F>): Promise<Rows<K>> {
+export async function scan<D, K extends Key, F extends Fields<D>>(
+  store: Store,
+  index: Index<D, K, F>,
+): Promise<Rows<K>> {
   const encodings = new Set(index.reads.map(({ encoding }) => encoding));
   const [encoding] = encodings;
-  if (encoding === undefined || encodings.size > 1) throw new Error("an index reads schemas of one encoding, and at least one");
+  if (encoding === undefined || encodings.size > 1)
+    throw new Error("an index reads schemas of one encoding, and at least one");
   const schemas = new Map(index.reads.map((schema) => [schema.link, schema]));
   const rows = new Map<string, K>();
   for await (const link of store.mine()) {
@@ -88,7 +101,8 @@ class SortedRows<K extends Key> implements Rows<K> {
       if (compare(rows[middle]!, start) < 0) low = middle + 1;
       else high = middle;
     }
-    for (let at = low; at < rows.length && start.every((part, i) => rows[at]![i] === part); at++) yield rows[at]!;
+    for (let at = low; at < rows.length && start.every((part, i) => rows[at]![i] === part); at++)
+      yield rows[at]!;
   }
 }
 

@@ -34,7 +34,8 @@ const ed25519Curve: Curve = {
   publicKeyLength: 32,
   publicKeyOf: (secretKey) => ed25519.getPublicKey(secretKey),
   sign: (message, secretKey) => ed25519.sign(message, secretKey),
-  verify: (signature, message, publicKey) => ed25519.verify(signature, message, publicKey, { zip215: false }),
+  verify: (signature, message, publicKey) =>
+    ed25519.verify(signature, message, publicKey, { zip215: false }),
 };
 
 // Signatures are compact `r || s` without the recovery byte: the identity
@@ -43,7 +44,8 @@ const secp256k1Curve: Curve = {
   publicKeyLength: 33,
   publicKeyOf: (secretKey) => secp256k1.getPublicKey(secretKey, true),
   sign: (message, secretKey) => secp256k1.sign(message, secretKey, { prehash: false }),
-  verify: (signature, message, publicKey) => secp256k1.verify(signature, message, publicKey, { prehash: false, lowS: true }),
+  verify: (signature, message, publicKey) =>
+    secp256k1.verify(signature, message, publicKey, { prehash: false, lowS: true }),
 };
 
 const SOLANA_SIGNING_DOMAIN = concatBytes(Uint8Array.of(0xff), utf8ToBytes("solana offchain"));
@@ -68,7 +70,8 @@ export const schemes: Readonly<Record<Scheme, Framing>> = {
   },
   "solana-offchain": {
     curve: ed25519Curve,
-    message: (text, publicKey) => concatBytes(SOLANA_SIGNING_DOMAIN, Uint8Array.of(1, 1), publicKey, utf8ToBytes(text)),
+    message: (text, publicKey) =>
+      concatBytes(SOLANA_SIGNING_DOMAIN, Uint8Array.of(1, 1), publicKey, utf8ToBytes(text)),
   },
 };
 

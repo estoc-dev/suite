@@ -60,7 +60,9 @@ test("a signer keeps signing for its key after the caller changes the identity i
 
 describe("sameIdentity", () => {
   it("holds for the same key in the same scheme, held in different arrays", () => {
-    expect(sameIdentity(ed25519Signer.identity, structuredClone(ed25519Signer.identity))).toBe(true);
+    expect(sameIdentity(ed25519Signer.identity, structuredClone(ed25519Signer.identity))).toBe(
+      true,
+    );
   });
 
   it("does not hold for the same key in another scheme", () => {

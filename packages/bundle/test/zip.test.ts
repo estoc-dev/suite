@@ -1,17 +1,36 @@
 import { constants, deflateRawSync } from "node:zlib";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { configure, resetConfiguration, Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js/index-native.js";
+import {
+  configure,
+  resetConfiguration,
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipWriter,
+} from "@zip.js/zip.js/index-native.js";
 import { Inflate, Zip, ZipPassThrough, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
+import {
+  packBundle,
+  readBundle,
+  unpackBundle,
+  unzipBundle,
+  writeBundle,
+  zipBundle,
+} from "../src/index.ts";
 
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
-const sizeOf = (files: ReadonlyMap<string, Uint8Array>) => [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
+const sizeOf = (files: ReadonlyMap<string, Uint8Array>) =>
+  [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
 const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", title: "Note", type: "object", properties: { text: { type: "string" } } },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title: "Note",
+    type: "object",
+    properties: { text: { type: "string" } },
+  },
   defaultValidator,
 );
 const root = encodeObject(note, { text: "a note" });
@@ -39,7 +58,8 @@ function streamed(entries: [string, Uint8Array][]): Uint8Array {
 }
 
 // The fixtures have no zip comment, so the end record is at the end.
-const directoryOf = (zip: Uint8Array) => new DataView(zip.buffer, zip.byteOffset).getUint32(zip.length - 6, true);
+const directoryOf = (zip: Uint8Array) =>
+  new DataView(zip.buffer, zip.byteOffset).getUint32(zip.length - 6, true);
 
 // The zip of one entry, saying in both of its headers that the entry unzips
 // to one byte.
@@ -93,7 +113,11 @@ function shadowed(zip: Uint8Array, other: Uint8Array): Uint8Array {
   const end = zip.slice(directory);
   const endView = new DataView(end.buffer);
   endView.setUint32(42, header.length + field.length, true);
-  endView.setUint32(end.length - 6, header.length + field.length + entry.length + bytes.length, true);
+  endView.setUint32(
+    end.length - 6,
+    header.length + field.length + entry.length + bytes.length,
+    true,
+  );
   return concat(header, field, entry, bytes, end);
 }
 
@@ -190,7 +214,9 @@ describe("a zipped bundle", () => {
   });
 
   it("unzips with its files in a folder as no bundle", async () => {
-    const zip = await zipBundle(new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])));
+    const zip = await zipBundle(
+      new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])),
+    );
     const unzipped = await unzipBundle(zip);
     expect(unzipped.size).toBe(0);
     expect(() => readBundle(unzipped)).toThrow();
@@ -202,13 +228,19 @@ describe("a zipped bundle", () => {
   });
 
   it("unzips the entries its directory lists, whatever its comment holds", async () => {
-    const zip = hiding(await zipBundle(files), await zipBundle(new Map([["index.json", another.bytes]])));
+    const zip = hiding(
+      await zipBundle(files),
+      await zipBundle(new Map([["index.json", another.bytes]])),
+    );
     expect(await unzipBundle(zip)).toEqual(files);
   });
 
   it("unzips the entry its directory lists, where a reader going from header to header finds another", async () => {
     const listed = new Map([["index.json", root.bytes]]);
-    const zip = shadowed(await zipBundle(listed), await zipBundle(new Map([["index.json", another.bytes]])));
+    const zip = shadowed(
+      await zipBundle(listed),
+      await zipBundle(new Map([["index.json", another.bytes]])),
+    );
     expect(await unzipBundle(zip)).toEqual(listed);
   });
 
@@ -229,7 +261,9 @@ describe("a zipped bundle", () => {
 
   it("is refused at its limit with a few MiB unzipped, where each piece is unzipped whole", async () => {
     configure({ useCompressionStream: false, DecompressionStreamFallback: Whole });
-    await expect(unzipBundle(await zeroBomb(2 ** 26, 64), { bytes: 2 ** 10 })).rejects.toThrow(/more than/);
+    await expect(unzipBundle(await zeroBomb(2 ** 26, 64), { bytes: 2 ** 10 })).rejects.toThrow(
+      /more than/,
+    );
     expect(Whole.made).toBeLessThan(32 * 2 ** 20);
   });
 
@@ -264,13 +298,18 @@ describe("a zipped bundle", () => {
   it("is refused when it holds a path twice", async () => {
     const entries = [...files];
     expect(await unzipBundle(streamed(entries))).toEqual(files);
-    await expect(unzipBundle(streamed([...entries, [pathOf(text), text]]))).rejects.toThrow(/twice/);
-    await expect(unzipBundle(streamed([...entries, ["index.json", image]]))).rejects.toThrow(/twice/);
+    await expect(unzipBundle(streamed([...entries, [pathOf(text), text]]))).rejects.toThrow(
+      /twice/,
+    );
+    await expect(unzipBundle(streamed([...entries, ["index.json", image]]))).rejects.toThrow(
+      /twice/,
+    );
   });
 
   it("is refused when it is cut short anywhere", async () => {
     const zip = await zipBundle(files);
-    for (let end = 0; end < zip.length; end++) await expect(unzipBundle(zip.subarray(0, end))).rejects.toThrow();
+    for (let end = 0; end < zip.length; end++)
+      await expect(unzipBundle(zip.subarray(0, end))).rejects.toThrow();
   });
 
   it("is refused when the header of an entry its directory lists is damaged", async () => {
@@ -299,6 +338,8 @@ describe("a packed bundle", () => {
   });
 
   it("is refused when its files come to more bytes than the zip, as only a compressed one's can", async () => {
-    await expect(unpackBundle(await zipBundle(writeBundle(root, [zeros])))).rejects.toThrow(/more than/);
+    await expect(unpackBundle(await zipBundle(writeBundle(root, [zeros])))).rejects.toThrow(
+      /more than/,
+    );
   });
 });

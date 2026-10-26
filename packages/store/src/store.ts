@@ -146,7 +146,11 @@ class StoreOf<D> implements Store {
   ): Promise<Map<Link<unknown>, Uint8Array>> {
     const ordered = new Map<Link<unknown>, Uint8Array>();
     const held = new Set<Link<unknown>>();
-    const frame = (link: Link<unknown>, bytes: Uint8Array) => ({ link, bytes, links: this.#linksIn(bytes)[Symbol.iterator]() });
+    const frame = (link: Link<unknown>, bytes: Uint8Array) => ({
+      link,
+      bytes,
+      links: this.#linksIn(bytes)[Symbol.iterator](),
+    });
     for (const start of mine) {
       if (ordered.has(start)) continue;
       // A link is a hash of its blob, so no blob leads back to one on the path.
@@ -167,7 +171,9 @@ class StoreOf<D> implements Store {
         } else if (await this.#backend.has(linked)) {
           held.add(linked);
         } else {
-          throw new Error(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
+          throw new Error(
+            `${top.link} leads to ${linked}, which neither the batch nor the store holds`,
+          );
         }
       }
     }

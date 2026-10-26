@@ -48,7 +48,10 @@ export interface Decoded<T> {
  * Decodes a copy of `bytes`, so that what was read is what is kept, whatever
  * happens to the given array afterwards.
  */
-export function decodeBlob<T>(codec: { decode(bytes: Uint8Array): T }, bytes: Uint8Array): Decoded<T> {
+export function decodeBlob<T>(
+  codec: { decode(bytes: Uint8Array): T },
+  bytes: Uint8Array,
+): Decoded<T> {
   const owned = new Uint8Array(bytes);
   return { value: codec.decode(owned), bytes: owned, link: linkOf(owned) };
 }

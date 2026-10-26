@@ -7,11 +7,22 @@ import {
   unregisterSchema,
 } from "@hyperjump/json-schema/draft-2020-12";
 // The experimental API can change in a minor release, so the version is pinned exactly.
-import { BASIC, compile, getSchema, interpret, type SchemaDocument } from "@hyperjump/json-schema/experimental";
+import {
+  BASIC,
+  compile,
+  getSchema,
+  interpret,
+  type SchemaDocument,
+} from "@hyperjump/json-schema/experimental";
 import "@hyperjump/json-schema/formats-lite";
 import { fromJs } from "@hyperjump/json-schema/instance/experimental";
 import type { Json } from "./json.ts";
-import { DRAFT_2020_12, type JsonSchema, type JsonSchemaValidator, jsonSchema } from "./json-schema.ts";
+import {
+  DRAFT_2020_12,
+  type JsonSchema,
+  type JsonSchemaValidator,
+  jsonSchema,
+} from "./json-schema.ts";
 import type { Check } from "./schema.ts";
 
 // hyperjump keeps one registry and one configuration for the whole realm.
@@ -51,8 +62,10 @@ async function compileRegistered(schema: JsonSchema): Promise<Check<Json>> {
     const resources = Object.entries(root.document.embedded ?? {}) as [string, SchemaDocument][];
     for (const [uri, resource] of resources) {
       // The registry resolves a URI before the schema's own resources do.
-      if (uri !== anonymous && hasSchema(uri)) throw new Error(`the schema takes the $id ${uri} of another schema`);
-      if (resource.dialectId !== DRAFT_2020_12) throw new Error(`unsupported dialect ${resource.dialectId} in ${uri}`);
+      if (uri !== anonymous && hasSchema(uri))
+        throw new Error(`the schema takes the $id ${uri} of another schema`);
+      if (resource.dialectId !== DRAFT_2020_12)
+        throw new Error(`unsupported dialect ${resource.dialectId} in ${uri}`);
     }
 
     const compiled = await compile(root);
@@ -68,7 +81,8 @@ async function compileRegistered(schema: JsonSchema): Promise<Check<Json>> {
       const output = interpret(compiled, fromJs(data as Parameters<typeof fromJs>[0]), BASIC);
       if (output.valid) return [];
       const problems = (output.errors ?? []).map(
-        ({ instanceLocation, absoluteKeywordLocation }) => `${instanceLocation}: ${absoluteKeywordLocation}`,
+        ({ instanceLocation, absoluteKeywordLocation }) =>
+          `${instanceLocation}: ${absoluteKeywordLocation}`,
       );
       // An empty list would read as a fit.
       return problems.length > 0 ? problems : ["#: does not fit"];

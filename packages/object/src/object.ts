@@ -27,14 +27,21 @@ export interface Reader {
  * The caller names the schema it expects, so an object written to any other
  * is refused instead of read as one of these.
  */
-export function decodeObject<D, F extends Fields<D>>(bytes: Bytes<EncodedObject<D, F>>, schema: Schema<D, F>): EncodedObject<D, F> {
+export function decodeObject<D, F extends Fields<D>>(
+  bytes: Bytes<EncodedObject<D, F>>,
+  schema: Schema<D, F>,
+): EncodedObject<D, F> {
   const { value, bytes: owned, link } = decodeBlob(schema.encoding, bytes);
   const fields = schema.encoding.fields(value);
-  if (fields.schema !== schema.link) throw new Error(`the object is written to ${fields.schema}, not to ${schema.link}`);
+  if (fields.schema !== schema.link)
+    throw new Error(`the object is written to ${fields.schema}, not to ${schema.link}`);
   return { schema, data: schema.validate(fields.data), bytes: owned, link };
 }
 
-export function encodeObject<D, F extends Fields<D>>(schema: Schema<D, F>, data: F): EncodedObject<D, F> {
+export function encodeObject<D, F extends Fields<D>>(
+  schema: Schema<D, F>,
+  data: F,
+): EncodedObject<D, F> {
   return decodeObject(schema.encoding.encode(schema.encoding.object(data, schema.link)), schema);
 }
 

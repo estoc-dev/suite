@@ -49,9 +49,12 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
 );
 const schemas = [
   line,
-  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
+  ...(await Promise.all(
+    [identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)),
+  )),
 ].map(({ bytes }) => bytes);
-const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
+const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> =>
+  encodeSchema(schema, defaultValidator);
 const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(delivery));
 
 type Direction = "inbound" | "outbound";
@@ -76,7 +79,11 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // What came in at `mine` and went out to `theirs`, in the order of when. A
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
-async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbox): Promise<Delivered[]> {
+async function conversation(
+  rows: Rows<Delivered>,
+  mine: Mailbox,
+  theirs: Mailbox,
+): Promise<Delivered[]> {
   const first = async (range: AsyncIterable<Delivered>) => {
     const seen = new Set<Link<never>>();
     return (await all(range)).filter(([, , , bundle]) => {
@@ -85,7 +92,10 @@ async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbo
       return fresh;
     });
   };
-  const ways = await Promise.all([first(rows.range(["inbound", mine])), first(rows.range(["outbound", theirs]))]);
+  const ways = await Promise.all([
+    first(rows.range(["inbound", mine])),
+    first(rows.range(["outbound", theirs])),
+  ]);
   return ways.flat().sort((a, b) => a[2] - b[2]);
 }
 
@@ -105,11 +115,21 @@ async function chat(faults: Faults = {}) {
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
     const store = new Store(json, new MemoryBackend());
-    return { name, signer, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
+    return {
+      name,
+      signer,
+      store,
+      post: await loadPost(store, { transports, validator: defaultValidator, clock }),
+    };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map([alice, bob].map(({ name, signer }) => [signatures.identities.encode(signer.identity).link, name]));
+  const names = new Map(
+    [alice, bob].map(({ name, signer }) => [
+      signatures.identities.encode(signer.identity).link,
+      name,
+    ]),
+  );
 
   // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
   // their store: the owner to receive at it, the peer to send to it.
@@ -117,7 +137,8 @@ async function chat(faults: Faults = {}) {
     const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
     const queue = network.queue();
     const mailbox = queue.mailbox(key.publicKey);
-    for (const { store } of [owner, peer]) await store.write({ mine: [mailbox], blobs: [network.transport.schema.bytes] });
+    for (const { store } of [owner, peer])
+      await store.write({ mine: [mailbox], blobs: [network.transport.schema.bytes] });
     const inbox = await owner.post.inbox(mailbox.link, key);
     const outbox = await peer.post.outbox(mailbox.link);
     return { mailbox, inbox, outbox, take: queue.take };
@@ -128,7 +149,10 @@ async function chat(faults: Faults = {}) {
   const say = async (from: Person, outbox: Outbox, text: string) => {
     const object = encodeObject(line, { text });
     const signature = await signatures.sign(object, from.signer);
-    await from.store.write({ mine: [signature], blobs: [object.bytes, signature.identity.bytes, ...schemas] });
+    await from.store.write({
+      mine: [signature],
+      blobs: [object.bytes, signature.identity.bytes, ...schemas],
+    });
     await outbox.send(signature.link);
     return signature;
   };
@@ -140,14 +164,17 @@ async function chat(faults: Faults = {}) {
   // which way it went and who wrote it.
   const show = async (person: Person, mine: EncodedObject<Json>, theirs: EncodedObject<Json>) =>
     Promise.all(
-      (await conversation(await scan(person.store, deliveries), mine.link, theirs.link)).map(async ([direction, , , bundle]) => {
-        const signed = await signatures.read(bundle, person.store);
-        const { data } = await readObject(person.store, signed.object, line);
-        return [direction, names.get(signed.identity.link), data.text];
-      }),
+      (await conversation(await scan(person.store, deliveries), mine.link, theirs.link)).map(
+        async ([direction, , , bundle]) => {
+          const signed = await signatures.read(bundle, person.store);
+          const { data } = await readObject(person.store, signed.object, line);
+          return [direction, names.get(signed.identity.link), data.text];
+        },
+      ),
     );
   // What the person's store records as having come in, or gone out, at any mailbox.
-  const recorded = async ({ store }: Person, direction: Direction) => all((await scan(store, deliveries)).range([direction]));
+  const recorded = async ({ store }: Person, direction: Direction) =>
+    all((await scan(store, deliveries)).range([direction]));
 
   return {
     alice: {
@@ -157,7 +184,8 @@ async function chat(faults: Faults = {}) {
       recorded: (direction: Direction) => recorded(alice, direction),
       resend: (root: Link<unknown>) => atBob.outbox.send(root),
       store: alice.store,
-      conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox.link, atBob.mailbox.link),
+      conversation: async (store: Store) =>
+        conversation(await scan(store, deliveries), atAlice.mailbox.link, atBob.mailbox.link),
     },
     bob: {
       say: (text: string) => say(bob, atAlice.outbox, text),

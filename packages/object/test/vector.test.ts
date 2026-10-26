@@ -1,7 +1,15 @@
 import { SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, identitySchema, loadSignatures, signatureSchema } from "../src/index.ts";
+import {
+  decodeObject,
+  decodeSchema,
+  encodeObject,
+  encodeSchema,
+  identitySchema,
+  loadSignatures,
+  signatureSchema,
+} from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
@@ -23,7 +31,8 @@ const identitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"publicKey":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},"scheme":{"type":"string"}},' +
   '"required":["publicKey","scheme"],"title":"Identity","type":"object"}';
-const identitySchemaLink = "sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1";
+const identitySchemaLink =
+  "sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1";
 const identityText =
   '{"$type":{"$link":"sha256:96f86a5c46a498f99672d0f99d5a2d8738699ae9e13dd22a66629c2bbb4ecbd1"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c","scheme":"ed25519"}';
@@ -36,7 +45,8 @@ const signatureSchemaText =
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
   '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
+const signatureSchemaLink =
+  "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
 const signatureText =
   '{"$type":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
   '"identity":{"$link":"sha256:3d52c9daa7ce3a7b07d4f155e33b08374b14e82f3d05c14f718d64d3552d6e1c"},' +
@@ -57,7 +67,10 @@ const schema = await encodeSchema(
   defaultValidator,
 );
 const object = encodeObject(schema, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)));
+const signature = await signatures.sign(
+  object,
+  SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)),
+);
 
 describe("a login schema, an object written to it and an Ed25519 signature over that", () => {
   it("encode to fixed bytes and links, the signature written to the signature schema", async () => {
@@ -84,6 +97,8 @@ describe("a login schema, an object written to it and an Ed25519 signature over 
     const identity = new TextEncoder().encode(identityText);
     expect(identities.check(decodeObject(identity, identities.schema)).link).toBe(identityLink);
     const signature = decodeObject(new TextEncoder().encode(signatureText), signatures.schema);
-    expect((await signatures.verify(signature, new Map([[identityLink, identity]]))).link).toBe(signatureLink);
+    expect((await signatures.verify(signature, new Map([[identityLink, identity]]))).link).toBe(
+      signatureLink,
+    );
   });
 });

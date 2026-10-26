@@ -14,7 +14,10 @@ const network = await MemoryNetwork.create(defaultValidator);
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
-const note = await encodeSchema({ $schema: DRAFT, type: "object", properties: { text: { type: "string" } } }, defaultValidator);
+const note = await encodeSchema(
+  { $schema: DRAFT, type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
 
@@ -23,13 +26,18 @@ describe("a mailbox", () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const handed = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, signature.identity.bytes]);
+    await (await mailboxFrom(handed, options)).send(signature, [
+      hello.bytes,
+      signature.identity.bytes,
+    ]);
     const [sealed, ...more] = queue.take();
     expect(more).toEqual([]);
     const bundle = await bob.open(sealed!);
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.identity));
+    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(
+      identities.encode(alice.identity),
+    );
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {
@@ -44,7 +52,9 @@ describe("a mailbox", () => {
   it("refuses to send a root that is not an object, and sends nothing", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(/not an object/);
+    await expect(
+      mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, []),
+    ).rejects.toThrow(/not an object/);
     expect(queue.take()).toEqual([]);
   });
 
@@ -75,6 +85,8 @@ describe("a mailbox from bytes", () => {
   ])("is refused when it %s, where its transport's schema let it through", async (_, data) => {
     const loose = await encodeSchema({ $schema: DRAFT, title: "Loose mailbox" }, defaultValidator);
     const transport: Transport = { schema: loose, deliver: async () => undefined };
-    await expect(mailboxFrom(encodeObject(loose, data).bytes, { transports: [transport] })).rejects.toThrow(/a mailbox/);
+    await expect(
+      mailboxFrom(encodeObject(loose, data).bytes, { transports: [transport] }),
+    ).rejects.toThrow(/a mailbox/);
   });
 });

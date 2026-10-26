@@ -18,7 +18,6 @@ import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type 
 // The answers hold an acceptance and a few blobs of the service's. The
 // client chose the service, so this only bounds what it reads.
 const ANSWER_LIMIT = 1024 * 1024;
-const REASON_LIMIT = 1024;
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -154,9 +153,8 @@ function checkOrigin(origin: string): void {
 
 async function bundleIn(response: Response, statuses: readonly number[]): Promise<Bundle> {
   if (!statuses.includes(response.status)) {
-    const reason = await readBody(response.body, REASON_LIMIT);
-    const said = reason === undefined || reason.length === 0 ? "" : `: ${new TextDecoder().decode(reason)}`;
-    throw new Error(`the service answered ${response.status}${said}`);
+    const reason = await response.text();
+    throw new Error(`the service answered ${response.status}${reason === "" ? "" : `: ${reason}`}`);
   }
   const zip = await readBody(response.body, ANSWER_LIMIT);
   if (zip === undefined) throw new Error(`the service answered more than ${ANSWER_LIMIT} bytes`);

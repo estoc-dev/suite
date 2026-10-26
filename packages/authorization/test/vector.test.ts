@@ -54,7 +54,8 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
 const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
-const proxy = await authorizations.proxy(target, [grant], hot);
+const entry = await authorizations.createActor(hot, [grant]).sign(target);
+const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object)!;
 
 describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its agent signs", () => {
   it("encode to fixed bytes and links", async () => {
@@ -66,10 +67,10 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
     expect(grant.object.link).toBe(authorizationLink);
     expect(text(grant.signature.bytes)).toBe(grantText);
     expect(grant.signature.link).toBe(grantLink);
-    expect(text(proxy.object.bytes)).toBe(proxyText);
-    expect(proxy.object.link).toBe(proxyLink);
-    expect(text(proxy.signature.bytes)).toBe(proxySignatureText);
-    expect(proxy.signature.link).toBe(proxySignatureLink);
+    expect(text(proxy)).toBe(proxyText);
+    expect(entry.signature.object).toBe(proxyLink);
+    expect(text(entry.signature.bytes)).toBe(proxySignatureText);
+    expect(entry.signature.link).toBe(proxySignatureLink);
   });
 
   it("read from those bytes as the root standing behind the target through the agent", async () => {

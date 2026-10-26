@@ -92,16 +92,30 @@ sign an Authorization object: only a signature says both who authorized and
 whom. Only the last agent's own signature over the Proxy counts. The target
 is only named, so a reader does not need its bytes.
 
+### Actors
+
+An actor stands behind objects for one identity, its principal. Made from a
+signer alone, it is the signer's own and signs each object. Made with a
+chain, it is the first authorizer's, and signs a Proxy for each object as
+the chain's last agent.
+
 ```ts
-const proxy = await authorizations.proxy(login.link, [received], browserKey);
+const asWallet = authorizations.createActor(wallet);
+const throughKey = authorizations.createActor(browserKey, [received]);
+const entry = await throughKey.sign(login.link);
 ```
 
-It gives a `Signed<Proxy>`: the Proxy as read, its `target` and `chain` as
-links, and the agent's signature over it.
+`createActor` refuses a chain that does not connect, or that does not end
+at the signer, since no reader would count a proxy through it. An actor's
+`principal` and `agents` are what a reading gives back of what it signs, as
+long as the chain holds. `sign` does not look at a clock: whether an
+authorization has ended is for the reader's clock to say.
 
-`proxy` refuses a chain that does not connect, or that does not end at the
-signer, since no reader would count that proxy. It does not look at a
-clock.
+`sign` takes the link of the object alone, and gives an `Entry`: the
+signature, and the blobs it leads to, each once. For a proxy those are the
+Proxy, the chain's signatures and authorizations, and the identity objects
+they name; for a direct signature, the signer's identity object. The
+signature and its blobs are what a reader takes, and nothing else.
 
 ### Why an agent signs a proxy and not the object
 
@@ -155,14 +169,13 @@ Blobs the entry does not lead to are not read.
 ```ts
 import { linkOf } from "@estoc/object";
 
-// The browser key sends the link of its signature over the Proxy as the entry,
-// with the signature and the blobs it leads to.
-const entry = proxy.signature.link;
-const identities = [proxy.signature.identity.bytes, received.signature.identity.bytes];
-const sent = [proxy.signature.bytes, proxy.object.bytes, received.signature.bytes, received.object.bytes, ...identities];
+// The browser key sends the link of its signature as the entry, with the
+// signature and the blobs it leads to.
+const { signature, blobs: led } = await throughKey.sign(login.link);
+const sent = [signature.bytes, ...led];
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
-await authorizations.readStanding(login.link, entry, blobs, new Date());
+await authorizations.readStanding(login.link, signature.link, blobs, new Date());
 // { principal: <the wallet's identity object>, agents: [<the browser key's>] }
 ```
 

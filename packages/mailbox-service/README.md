@@ -3,7 +3,9 @@
 A mailbox service keeps messages for receivers who are not online. It is
 the receiving side of an HTTP mailbox of `@estoc/mailbox`: a receiver
 writes a url at the service into a mailbox, and senders post there as they
-post to any HTTP mailbox.
+post to any HTTP mailbox. This package opens accounts at such a service,
+and no more: its handler answers the offer and its acceptance, and
+receives no messages.
 
 An identity has an account at a service, one for each identity, and opens
 it by signing the service's offer. The identity is the account's key: the
@@ -86,8 +88,10 @@ they lead to.
 
 An identity has one account at a service. When an acceptance comes again,
 or the same identity accepts again by another device or another chain, the
-service answers with the acknowledgement it sent when the account opened.
-That acknowledgement links to the first acceptance, so a second device
+service answers with the acknowledgement it sent when the account opened,
+as long as the acceptance stands the identity behind the offer by the
+service's clock then: one through an authorization that has ended since is
+refused like any other. That acknowledgement links to the first acceptance, so a second device
 gets the first device's proxy and chain with it. The client reads the
 acceptance at the acknowledgement's `at`, when the service received it,
 since an authorization in its chain may have ended since, and refuses an
@@ -103,8 +107,10 @@ account for this identity.
 `accept` writes the service's signatures over the offer and over the
 acknowledgement to the store as mine, with all they lead to. Another
 device that syncs the store learns which services the identity has
-accounts at without asking them. When the service refuses, or its answer
-is refused, nothing is written.
+accounts at, by their identities, without asking them. Neither names
+where a service is reached, so an application that goes back to a service
+from another device keeps its origin itself. When the service refuses, or
+its answer is refused, nothing is written.
 
 `accept` gives the `Account`: the identity whose account it is, the
 service's identity, `at`, and the link of the service's signature over the

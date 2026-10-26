@@ -3,17 +3,17 @@ import type { Bytes } from "@estoc/object";
 
 export const ZIP = "application/zip";
 
-/**
- * The zip of the bundle of `root` and `blobs`, without compression, which is
- * how every bundle travels to and from a service. A zip without compression
- * is larger than its files, so a reader holds what it unzips to the zip's
- * own size and needs no other limit.
- */
+/** The zip of the bundle of `root` and `blobs`, without compression, which is how every bundle travels to and from a service. */
 export function zipped(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<Uint8Array> {
   return zipBundle(writeBundle(root, blobs), { compress: false });
 }
 
-/** Reads a bundle from its zip, and refuses one whose files come to more bytes than the zip. */
+/**
+ * Reads a bundle from its zip, and refuses one whose files come to more
+ * bytes than the zip. A zip without compression is larger than its files,
+ * so only a compressed one is refused for it, which could otherwise unzip
+ * to far more than arrived.
+ */
 export async function unzipped(zip: Uint8Array): Promise<Bundle> {
   return readBundle(await unzipBundle(zip, { bytes: zip.length }));
 }

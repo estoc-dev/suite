@@ -72,7 +72,7 @@ export interface ServiceOptions {
  * service's signed offer, and `POST /` opens an account for whoever signed
  * it.
  */
-export class MailboxService {
+class MailboxService {
   readonly #signer: Signer;
   readonly #offer: Signed<EncodedObject<Json, AccountOfferData>>;
   readonly #authorizations: Authorizations;
@@ -106,10 +106,8 @@ export class MailboxService {
   }
 
   /**
-   * Opens an account for the identity that the root of the posted bundle
-   * stands behind the offer: its signer's, or the principal's of a proxy.
-   * An identity that has an account gets the acknowledgement it was sent
-   * when the account opened, whatever it posts.
+   * Opens an account for whoever the posted acceptance stands behind the
+   * offer now, or answers with the acknowledgement that opened theirs.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
@@ -146,6 +144,8 @@ export class MailboxService {
     return bundleAnswer(status, await zipped({ bytes }, blobs));
   }
 }
+
+export type { MailboxService };
 
 function answerTo(request: Request, method: string, handle: () => Promise<Response>): Promise<Response> | Response {
   // A browser asks before it posts a zip to another origin.

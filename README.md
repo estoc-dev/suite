@@ -73,9 +73,8 @@ work.
   object as the way in.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
-- `@estoc/mailbox-service`: a service that keeps messages for receivers
-  who are not online, at which an identity opens an account by signing
-  its offer.
+- `@estoc/mailbox-service`: opening an account, by signing its offer, at
+  a service that keeps messages for receivers who are not online.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
   them, kept on their device; and the indexes an application fills from
   what the user wrote.

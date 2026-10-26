@@ -10,7 +10,7 @@ import {
 } from "@zip.js/zip.js/index-native.js";
 import { Inflate, Zip, ZipPassThrough, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
+import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
 
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
 const sizeOf = (files: ReadonlyMap<string, Uint8Array>) => [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
@@ -292,5 +292,19 @@ describe("a zipped bundle", () => {
     damaged[Buffer.from(stored).indexOf("a note") + 2] = "b".charCodeAt(0);
     expect(await unzipBundle(stored)).toEqual(files);
     await expect(unzipBundle(damaged)).rejects.toThrow();
+  });
+});
+
+describe("a packed bundle", () => {
+  it("is the zip of its files without compression, and unpacks to the same bundle", async () => {
+    const zip = await packBundle(root, [zeros]);
+    expect(zip).toEqual(await zipBundle(writeBundle(root, [zeros]), { compress: false }));
+    const bundle = await unpackBundle(zip);
+    expect(bundle.link).toBe(root.link);
+    expect(bundle.get(linkOf(zeros))).toEqual(zeros);
+  });
+
+  it("is refused when its files come to more bytes than the zip, as only a compressed one's can", async () => {
+    await expect(unpackBundle(await zipBundle(writeBundle(root, [zeros])))).rejects.toThrow(/more than/);
   });
 });

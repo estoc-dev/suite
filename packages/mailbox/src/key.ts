@@ -1,4 +1,4 @@
-import { readBundle, unzipBundle, type Bundle } from "@estoc/bundle";
+import { unpackBundle, type Bundle } from "@estoc/bundle";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
 
@@ -50,7 +50,7 @@ export class MailboxKey {
 
   /**
    * Opens sealed bytes to the bundle inside. Refuses bytes that do not open
-   * with this key, and what opens but is not the zip of a bundle.
+   * with this key, and what opens but does not unpack to a bundle.
    */
   async open(sealed: Uint8Array): Promise<Bundle> {
     const { encSize } = suite.kem;
@@ -60,11 +60,6 @@ export class MailboxKey {
     } catch (cause) {
       throw new Error("the sealed bytes do not open with this key", { cause });
     }
-    // Anyone can seal to a mailbox's key. A zip without compression is larger
-    // than the files it holds, so holding the files to the zip's own size
-    // refuses no zip written that way, and keeps a compressed one from
-    // unzipping to far more than arrived.
-    const zip = new Uint8Array(plaintext);
-    return readBundle(await unzipBundle(zip, { bytes: zip.length }));
+    return unpackBundle(new Uint8Array(plaintext));
   }
 }

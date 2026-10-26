@@ -1,7 +1,7 @@
 import { readObject, type Link } from "@estoc/object";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { unzipped, zipped } from "../src/http.ts";
+import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
@@ -21,7 +21,7 @@ const otherService = signer("ed25519", 4);
 
 const getOffer = (service: MailboxService) => service.fetch(new Request("https://mail.example/offer"));
 const post = (service: MailboxService, body: Uint8Array) => service.fetch(new Request("https://mail.example/", { method: "POST", body }));
-const bundleOf = async (response: Response) => unzipped(new Uint8Array(await response.arrayBuffer()));
+const bundleOf = async (response: Response) => unpackBundle(new Uint8Array(await response.arrayBuffer()));
 
 async function offerOf(service: MailboxService) {
   const bundle = await bundleOf(await getOffer(service));
@@ -32,14 +32,14 @@ async function offerOf(service: MailboxService) {
 /** The bundle that accepts `offer` by `by`'s own signature, with its identity. */
 async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await signatures.sign(offer, by);
-  return { signature, zip: await zipped(signature, [signature.identity.bytes]) };
+  return { signature, zip: await packBundle(signature, [signature.identity.bytes]) };
 }
 
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
 async function proxied(offer: { readonly link: Link<unknown> }, until?: Temporal.Instant) {
   const grant = await authorizations.authorize(device.identity, wallet, until);
   const { signature, blobs } = await authorizations.createActor(device, [grant]).sign(offer.link);
-  return { signature, zip: await zipped(signature, blobs) };
+  return { signature, zip: await packBundle(signature, blobs) };
 }
 
 async function acknowledgementIn(response: Response) {
@@ -109,8 +109,8 @@ describe("a mailbox service", () => {
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
     ["that is not a zip", async () => new TextEncoder().encode("hello")],
-    ["whose root is not a signature", async (service) => zipped((await offerOf(service)).offer, [])],
-    ["whose signature comes without its identity", async (service) => zipped((await direct((await offerOf(service)).offer)).signature, [])],
+    ["whose root is not a signature", async (service) => packBundle((await offerOf(service)).offer, [])],
+    ["whose signature comes without its identity", async (service) => packBundle((await direct((await offerOf(service)).offer)).signature, [])],
     [
       "accepting another service's offer",
       async () => {

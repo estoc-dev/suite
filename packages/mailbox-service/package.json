@@ -1,0 +1,26 @@
+{
+  "name": "@estoc/mailbox-service",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@estoc/authorization": "workspace:*",
+    "@estoc/bundle": "workspace:*",
+    "@estoc/identity": "workspace:*",
+    "@estoc/object": "workspace:*",
+    "@estoc/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "temporal-polyfill": "^1.0.6",
+    "typescript": "~5.8.0",
+    "vitest": "^3.2.7"
+  }
+}

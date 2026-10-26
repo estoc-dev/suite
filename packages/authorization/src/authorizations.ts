@@ -1,17 +1,17 @@
-import { sameIdentity, type Identity, type Signer } from "@estoc/identity";
+import { type Identity, type Signer, sameIdentity } from "@estoc/identity";
 import {
-  encodeObject,
-  encodeSchema,
-  loadSignatures,
-  readObject,
   type Bytes,
   type EncodedObject,
+  encodeObject,
+  encodeSchema,
   type IdentityObject,
   type Json,
   type JsonLink,
   type JsonSchemaValidator,
   type Link,
+  loadSignatures,
   type Reader,
+  readObject,
   type Schema,
   type Signature,
   type Signatures,
@@ -94,7 +94,10 @@ export class Authorizations {
     // An instant past the year 9999 has no RFC 3339 `date-time`, so a
     // validator that asserts `format` refuses it here, before the signer is
     // asked, which may be a wallet prompting its holder.
-    const written = encodeObject(this.#authorizationSchema, until === undefined ? data : { ...data, until: until.toString() });
+    const written = encodeObject(
+      this.#authorizationSchema,
+      until === undefined ? data : { ...data, until: until.toString() },
+    );
     const object = await this.#checkAuthorization(written, new Map([[identity.link, identity.bytes]]));
     return { object, signature: await this.signatures.sign(object, signer) };
   }
@@ -106,7 +109,10 @@ export class Authorizations {
    */
   async readAuthorization(link: Link<Signature>, reader: Reader): Promise<Signed<Authorization>> {
     const signature = await this.signatures.read(link, reader);
-    const object = await this.#checkAuthorization(await readObject(reader, signature.object, this.#authorizationSchema), reader);
+    const object = await this.#checkAuthorization(
+      await readObject(reader, signature.object, this.#authorizationSchema),
+      reader,
+    );
     return { object, signature };
   }
 
@@ -173,7 +179,12 @@ export class Actor implements Standing {
   readonly #signer: Signer;
   readonly #chain: readonly Signed<Authorization>[];
 
-  constructor(signatures: Signatures, proxy: Schema<Json, ProxyData>, signer: Signer, chain: readonly Signed<Authorization>[]) {
+  constructor(
+    signatures: Signatures,
+    proxy: Schema<Json, ProxyData>,
+    signer: Signer,
+    chain: readonly Signed<Authorization>[],
+  ) {
     const [first] = chain;
     if (first === undefined) {
       this.principal = signatures.identities.encode(signer.identity);
@@ -199,7 +210,10 @@ export class Actor implements Standing {
       const signature = await this.#signatures.sign({ link: target }, this.#signer);
       return { signature, blobs: [signature.identity.bytes] };
     }
-    const data = { target: { $link: target as Link<never> }, chain: this.#chain.map(({ signature }) => ({ $link: signature.link })) };
+    const data = {
+      target: { $link: target as Link<never> },
+      chain: this.#chain.map(({ signature }) => ({ $link: signature.link })),
+    };
     const proxy = encodeObject(this.#proxySchema, data);
     const signature = await this.#signatures.sign(proxy, this.#signer);
     const chain = this.#chain.flatMap(({ object, signature }) => [signature, signature.identity, object, object.agent]);
@@ -215,7 +229,11 @@ function proxyOf(object: EncodedObject<Json, ProxyData>): Proxy {
 
 export async function loadAuthorizations(validator: JsonSchemaValidator): Promise<Authorizations> {
   const signatures = await loadSignatures(validator);
-  return new Authorizations(signatures, await encodeSchema(authorizationSchema, validator), await encodeSchema(proxySchema, validator));
+  return new Authorizations(
+    signatures,
+    await encodeSchema(authorizationSchema, validator),
+    await encodeSchema(proxySchema, validator),
+  );
 }
 
 function checkChain(

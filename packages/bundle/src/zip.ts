@@ -1,6 +1,6 @@
 import type { Bytes } from "@estoc/object";
 import { configure, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
-import { BLOB, readBundle, ROOT, writeBundle, type Bundle } from "./bundle.ts";
+import { BLOB, type Bundle, ROOT, readBundle, writeBundle } from "./bundle.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 // Stored, and DEFLATE.
@@ -82,7 +82,8 @@ export async function unzipBundle(
     if (entry.directory || (path !== ROOT && !BLOB.test(path))) continue;
     // zip.js also unzips Deflate64, and any method registered with it, a piece
     // of which can make far more than a thousand times its size.
-    if (!METHODS.includes(entry.compressionMethod)) throw new Error(`the zip compresses ${path} other than with DEFLATE`);
+    if (!METHODS.includes(entry.compressionMethod))
+      throw new Error(`the zip compresses ${path} other than with DEFLATE`);
     const chunks: Uint8Array[] = [];
     await entry.getData(
       new WritableStream<Uint8Array>({
@@ -107,7 +108,10 @@ export async function unzipBundle(
  * how a bundle travels from one program to another: as a message, a request
  * or an answer.
  */
-export function packBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<Uint8Array> {
+export function packBundle(
+  root: { readonly bytes: Bytes<unknown> },
+  blobs: Iterable<Bytes<unknown>>,
+): Promise<Uint8Array> {
   return zipBundle(writeBundle(root, blobs), { compress: false });
 }
 

@@ -1,26 +1,26 @@
 import { loadAuthorizations } from "@estoc/authorization";
-import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  json,
-  linkSchema,
-  loadSignatures,
-  readObject,
-  schemaOf,
-  type EncodedObject,
   type Fields,
   type Json,
   type JsonLink,
   type JsonObject,
+  json,
   type Link,
+  linkSchema,
+  loadSignatures,
+  readObject,
   type Schema,
   type Signature,
+  schemaOf,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
+import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 
 // Applications that hand each other bundles. Each pins the schema of its
 // root and walks from it by link; the package only checks that the blobs are
@@ -28,9 +28,19 @@ import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const schemaFor = <F extends Fields<Json> = Fields<Json>>(title: string, properties: JsonObject): Promise<Schema<Json, F>> =>
+const schemaFor = <F extends Fields<Json> = Fields<Json>>(
+  title: string,
+  properties: JsonObject,
+): Promise<Schema<Json, F>> =>
   encodeSchema(
-    { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
+    {
+      $schema: DRAFT,
+      title,
+      type: "object",
+      properties,
+      required: Object.keys(properties),
+      additionalProperties: false,
+    },
     defaultValidator,
   );
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
@@ -41,10 +51,13 @@ const card = await schemaFor<{ readonly mailbox: JsonLink<Signature>; readonly n
   mailbox: linkSchema,
   name: linkSchema,
 });
-const contact = await schemaFor<{ readonly displayName: JsonLink<Signature>; readonly inbox: JsonLink<Signature> }>("Contact", {
-  displayName: linkSchema,
-  inbox: linkSchema,
-});
+const contact = await schemaFor<{ readonly displayName: JsonLink<Signature>; readonly inbox: JsonLink<Signature> }>(
+  "Contact",
+  {
+    displayName: linkSchema,
+    inbox: linkSchema,
+  },
+);
 const mailbox = await schemaFor<{ readonly url: string }>("Mailbox", { url: { type: "string", format: "uri" } });
 const name = await schemaFor<{ readonly name: string }>("Name", { name: { type: "string" } });
 
@@ -72,7 +85,8 @@ async function readCard(bundle: Bundle) {
   const listed = cardOf(bundle.root);
   const reachedAt = await signatures.read(listed.mailbox, bundle);
   const goesBy = await signatures.read(listed.name, bundle);
-  if (!sameIdentity(reachedAt.identity, goesBy.identity)) throw new Error("a card is signed by the one identity it is for");
+  if (!sameIdentity(reachedAt.identity, goesBy.identity))
+    throw new Error("a card is signed by the one identity it is for");
   return {
     identity: reachedAt.identity,
     mailbox: (await readObject(bundle, reachedAt.object, mailbox)).data,
@@ -90,21 +104,36 @@ describe("a card", () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({
+      identity: identities.encode(alice.identity),
+      mailbox: { url: "https://mail.example/alice" },
+      name: "Alice",
+    });
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({
+      identity: identities.encode(alice.identity),
+      mailbox: { url: "https://mail.example/alice" },
+      name: "Alice",
+    });
   });
 
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await signed;
     const byOther = await signatures.sign(called, signer("eip191", 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
-    const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byOther.bytes, called.bytes, byMailbox.identity.bytes, byOther.identity.bytes]);
+    const bundle = handOver(root, [
+      byMailbox.bytes,
+      inbox.bytes,
+      byOther.bytes,
+      called.bytes,
+      byMailbox.identity.bytes,
+      byOther.identity.bytes,
+    ]);
     await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
   });
 });
@@ -122,15 +151,18 @@ describe("a chat message", () => {
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await signatures.sign(message, alice);
     const bundle = handOver(signature, [message.bytes, signature.identity.bytes]);
-    expect(await readMessage(bundle)).toEqual({ from: identities.encode(alice.identity), message: { text: "See you at noon." } });
+    expect(await readMessage(bundle)).toEqual({
+      from: identities.encode(alice.identity),
+      message: { text: "See you at noon." },
+    });
   });
 });
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const standingEnvelope = await schemaFor<{ readonly message: JsonLink<EncodedObject<Json>>; readonly signature: JsonLink<Signature> }>(
-  "Stood behind",
-  { message: linkSchema, signature: linkSchema },
-);
+const standingEnvelope = await schemaFor<{
+  readonly message: JsonLink<EncodedObject<Json>>;
+  readonly signature: JsonLink<Signature>;
+}>("Stood behind", { message: linkSchema, signature: linkSchema });
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through
@@ -150,7 +182,10 @@ describe("a chat message sent through a device key", () => {
     const message = encodeObject(chat, { text: "See you at noon." });
     const grant = await authorizations.authorize(deviceKey.identity, wallet);
     const { signature, blobs } = await authorizations.createActor(deviceKey, [grant]).sign(message.link);
-    const root = encodeObject(standingEnvelope, { message: { $link: message.link }, signature: { $link: signature.link } });
+    const root = encodeObject(standingEnvelope, {
+      message: { $link: message.link },
+      signature: { $link: signature.link },
+    });
     expect(await readSent(handOver(root, [message.bytes, signature.bytes, ...blobs]), new Date())).toEqual({
       from: identities.encode(wallet.identity),
       through: [identities.encode(deviceKey.identity)],

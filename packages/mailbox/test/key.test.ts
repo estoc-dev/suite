@@ -2,8 +2,8 @@ import { writeBundle, zipBundle } from "@estoc/bundle";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { publicKeyFrom, seal } from "../src/key.ts";
 import { MailboxKey } from "../src/index.ts";
+import { publicKeyFrom, seal } from "../src/key.ts";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
@@ -47,7 +47,9 @@ describe("a mailbox key", () => {
   it("refuses what opens but is not the zip of a bundle", async () => {
     await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow();
     const withoutRoot = new Map([...writeBundle(root, [blob])].filter(([path]) => path !== "index.json"));
-    await expect(bob.open(await sealTo(bob, await zipBundle(withoutRoot, { compress: false })))).rejects.toThrow(/index.json/);
+    await expect(bob.open(await sealTo(bob, await zipBundle(withoutRoot, { compress: false })))).rejects.toThrow(
+      /index.json/,
+    );
   });
 
   it("refuses a zip whose files come to more bytes than the zip, as only a compressed one can", async () => {

@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, loadSignatures, type JsonObject } from "@estoc/object";
+import { encodeObject, encodeSchema, type JsonObject, loadSignatures } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
@@ -14,7 +14,10 @@ const network = await MemoryNetwork.create(defaultValidator);
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
-const note = await encodeSchema({ $schema: DRAFT, type: "object", properties: { text: { type: "string" } } }, defaultValidator);
+const note = await encodeSchema(
+  { $schema: DRAFT, type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
 
@@ -75,6 +78,8 @@ describe("a mailbox from bytes", () => {
   ])("is refused when it %s, where its transport's schema let it through", async (_, data) => {
     const loose = await encodeSchema({ $schema: DRAFT, title: "Loose mailbox" }, defaultValidator);
     const transport: Transport = { schema: loose, deliver: async () => undefined };
-    await expect(mailboxFrom(encodeObject(loose, data).bytes, { transports: [transport] })).rejects.toThrow(/a mailbox/);
+    await expect(mailboxFrom(encodeObject(loose, data).bytes, { transports: [transport] })).rejects.toThrow(
+      /a mailbox/,
+    );
   });
 });

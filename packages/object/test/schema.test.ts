@@ -5,10 +5,10 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
-  jsonSchema,
-  linkSchema,
   type JsonSchema,
   type JsonSchemaValidator,
+  jsonSchema,
+  linkSchema,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -60,7 +60,11 @@ describe("the default validator", () => {
 
   it("reads a schema resource inside the schema that names no dialect as draft 2020-12", async () => {
     const child = { $id: "https://example.com/child", prefixItems: [{ type: "string" }] };
-    const pair = await compile({ $schema: DRAFT, properties: { pair: { $ref: "https://example.com/child" } }, $defs: { child } });
+    const pair = await compile({
+      $schema: DRAFT,
+      properties: { pair: { $ref: "https://example.com/child" } },
+      $defs: { child },
+    });
     expect(() => pair.validate({ pair: ["a"] })).not.toThrow();
     expect(() => pair.validate({ pair: [1] })).toThrow();
   });
@@ -81,7 +85,9 @@ describe("the default validator", () => {
   });
 
   it("refuses an outside $ref even in a branch no value takes", async () => {
-    await expect(compile({ $schema: DRAFT, anyOf: [{ type: "string" }, { $ref: "https://example.com/schema" }] })).rejects.toThrow();
+    await expect(
+      compile({ $schema: DRAFT, anyOf: [{ type: "string" }, { $ref: "https://example.com/schema" }] }),
+    ).rejects.toThrow();
   });
 
   it("refuses a $ref to the meta-schema, which it has but the schema does not", async () => {
@@ -98,7 +104,9 @@ describe("the default validator", () => {
 
   it("refuses a schema that takes the $id of the meta-schema", async () => {
     await expect(compile({ $schema: DRAFT, $id: DRAFT, type: "string" })).rejects.toThrow();
-    await expect(compile({ $schema: DRAFT, $ref: DRAFT, $defs: { own: { $id: DRAFT, type: "number" } } })).rejects.toThrow();
+    await expect(
+      compile({ $schema: DRAFT, $ref: DRAFT, $defs: { own: { $id: DRAFT, type: "number" } } }),
+    ).rejects.toThrow();
   });
 
   it("follows a $ref by the keyword alone, whatever other members name", async () => {
@@ -242,7 +250,8 @@ describe("a validator other than the default", () => {
 });
 
 test("the same bytes read by two validators give one link", async () => {
-  const bytes = (await encodeSchema({ $schema: DRAFT, properties: { n: { type: "integer" } } }, defaultValidator)).bytes;
+  const bytes = (await encodeSchema({ $schema: DRAFT, properties: { n: { type: "integer" } } }, defaultValidator))
+    .bytes;
   const read = await decodeSchema(bytes, lenient);
   expect(read.link).toBe((await decodeSchema(bytes, defaultValidator)).link);
   expect(() => read.validate({ n: "not an integer" })).not.toThrow();

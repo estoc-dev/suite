@@ -6,7 +6,8 @@ import { acknowledgementSchemaRead, identities, offerSchema, signer } from "./fi
 // sorted keys and no whitespace, which writes these values as JCS does, its
 // hashlib, and the Ed25519 of its cryptography package for the secret key of
 // 32 bytes of 1. A change to the format changes them.
-const linkText = '{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}';
+const linkText =
+  '{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}';
 const offerSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`;

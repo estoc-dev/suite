@@ -1,4 +1,4 @@
-import { linkOf, type Link } from "./link.ts";
+import { type Link, linkOf } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
 /** The data of an object: fields, each a value of the encoding, by name. */

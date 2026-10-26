@@ -1,9 +1,9 @@
-import { publicKeyLengths, type Identity, type Scheme } from "@estoc/identity";
+import { type Identity, publicKeyLengths, type Scheme } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Json } from "./json.ts";
 import { DRAFT_2020_12, HEX, type JsonSchema } from "./json-schema.ts";
 import type { Link } from "./link.ts";
-import { encodeObject, readObject, type EncodedObject, type Reader } from "./object.ts";
+import { type EncodedObject, encodeObject, type Reader, readObject } from "./object.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -55,7 +55,12 @@ export class Identities {
     if (!Object.hasOwn(publicKeyLengths, scheme)) throw new Error(`unknown scheme ${scheme}`);
     const length = publicKeyLengths[scheme as Scheme];
     if (publicKey.length !== 2 * length) throw new Error(`a ${scheme} public key is ${length} bytes`);
-    return { ...object, link: object.link as Link<IdentityObject>, scheme: scheme as Scheme, publicKey: hexToBytes(publicKey) };
+    return {
+      ...object,
+      link: object.link as Link<IdentityObject>,
+      scheme: scheme as Scheme,
+      publicKey: hexToBytes(publicKey),
+    };
   }
 
   /** Reads the identity that `link` names from `reader`, and checks it. */

@@ -1,4 +1,12 @@
-import { encodeObject, encodeSchema, type EncodedObject, type Json, type JsonObject, type JsonSchemaValidator, type Schema } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  encodeSchema,
+  type Json,
+  type JsonObject,
+  type JsonSchemaValidator,
+  type Schema,
+} from "@estoc/object";
 import { hex } from "@scure/base";
 import { mailboxSchema, type Transport } from "../src/index.ts";
 

@@ -1,21 +1,32 @@
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorizations, type Signed } from "@estoc/authorization";
-import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
+import {
+  type Authorizations,
+  authorizationSchema,
+  loadAuthorizations,
+  proxySchema,
+  type Signed,
+} from "@estoc/authorization";
+import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import {
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  jsonSchema,
-  type EncodedObject,
   type IdentityObject,
   type Json,
   type JsonSchemaValidator,
+  jsonSchema,
   type Link,
   type Schema,
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
-import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
+import {
+  type AccountOfferData,
+  type AcknowledgementData,
+  accountOfferSchema,
+  acknowledgementSchema,
+} from "./schemas.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and an identity, or a proxy and its chain.
@@ -150,13 +161,20 @@ export type { MailboxService };
 function answerTo(request: Request, method: string, handle: () => Promise<Response>): Promise<Response> | Response {
   // A browser asks before it posts a zip to another origin.
   if (request.method === "OPTIONS") {
-    return answer(204, null, { "access-control-allow-methods": method, "access-control-allow-headers": "content-type" });
+    return answer(204, null, {
+      "access-control-allow-methods": method,
+      "access-control-allow-headers": "content-type",
+    });
   }
   if (request.method !== method) return answer(405, null, { allow: method });
   return handle();
 }
 
-function answer(status: number, reason: string | null = null, headers: Readonly<Record<string, string>> = {}): Response {
+function answer(
+  status: number,
+  reason: string | null = null,
+  headers: Readonly<Record<string, string>> = {},
+): Response {
   return new Response(reason, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 }
 
@@ -168,7 +186,10 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  * Makes the service of `signer`'s identity. It signs its offer once, here,
  * and writes the signature to the store with the offer.
  */
-export async function loadMailboxService(signer: Signer, { validator, ...options }: ServiceOptions): Promise<MailboxService> {
+export async function loadMailboxService(
+  signer: Signer,
+  { validator, ...options }: ServiceOptions,
+): Promise<MailboxService> {
   const authorizations = await loadAuthorizations(validator);
   const { signatures } = authorizations;
   const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
@@ -176,7 +197,13 @@ export async function loadMailboxService(signer: Signer, { validator, ...options
   const identity = signatures.identities.encode(signer.identity);
   const object = encodeObject(offerSchema, { identity: { $link: identity.link } });
   const signature = await signatures.sign(object, signer);
-  const blobs = [object.bytes, offerSchema.bytes, identity.bytes, signatures.schema.bytes, signatures.identities.schema.bytes];
+  const blobs = [
+    object.bytes,
+    offerSchema.bytes,
+    identity.bytes,
+    signatures.schema.bytes,
+    signatures.identities.schema.bytes,
+  ];
   await options.store.write({ mine: [signature], blobs });
   return new MailboxService(signer, { object, signature }, authorizations, acknowledgement, options);
 }

@@ -1,9 +1,17 @@
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, linkOf, type Link, type Signature } from "@estoc/object";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Link, linkOf, type Signature } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Entry, type Signed, type Standing } from "../src/index.ts";
+import {
+  type Authorization,
+  authorizationSchema,
+  type Entry,
+  loadAuthorizations,
+  proxySchema,
+  type Signed,
+  type Standing,
+} from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -36,23 +44,43 @@ type Given = AnySigned | Entry;
 const identityOf = (signer: SoftwareSigner) => identities.encode(signer.identity);
 // The objects of every identity here, given with the blobs a test is about.
 const identityBytes = [root, hot, deputy, stranger].map((signer) => identityOf(signer).bytes);
-const parts = (given: Given) => ("blobs" in given ? [given.signature.bytes, ...given.blobs] : [given.object.bytes, given.signature.bytes]);
-const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
+const parts = (given: Given) =>
+  "blobs" in given ? [given.signature.bytes, ...given.blobs] : [given.object.bytes, given.signature.bytes];
+const byLink = (blobs: readonly Uint8Array[]) =>
+  new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const readEntry = (entry: Given, given: readonly Given[] = [], at = now, link: Link<unknown> = target.link) =>
-  authorizations.readStanding(link, entry.signature.link, byLink([...identityBytes, ...parts(entry), ...given.flatMap(parts)]), at);
+  authorizations.readStanding(
+    link,
+    entry.signature.link,
+    byLink([...identityBytes, ...parts(entry), ...given.flatMap(parts)]),
+    at,
+  );
 const through = (chain: readonly Signed<Authorization>[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
   authorizations.createActor(by, chain).sign(link);
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
   principal: identityOf(principal),
   agents: agents.map(identityOf),
 });
-const signed = async <T extends { readonly link: Link<unknown> }>(object: T, by: SoftwareSigner): Promise<Signed<T>> => ({
+const signed = async <T extends { readonly link: Link<unknown> }>(
+  object: T,
+  by: SoftwareSigner,
+): Promise<Signed<T>> => ({
   object,
   signature: await signatures.sign(object, by),
 });
 // A proxy written without the checks that an actor makes, as anyone could write one.
-const unchecked = (chain: readonly { readonly signature: Signature }[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
-  signed(encodeObject(proxySchemaRead, { chain: chain.map(({ signature }) => ({ $link: signature.link })), target: { $link: link } }), by);
+const unchecked = (
+  chain: readonly { readonly signature: Signature }[],
+  by: SoftwareSigner,
+  link: Link<unknown> = target.link,
+) =>
+  signed(
+    encodeObject(proxySchemaRead, {
+      chain: chain.map(({ signature }) => ({ $link: signature.link })),
+      target: { $link: link },
+    }),
+    by,
+  );
 
 describe("a standing", () => {
   it("by a direct signature is its signer's own, through no agents and with no blob but its signer's identity", async () => {
@@ -91,7 +119,9 @@ describe("a proxy", () => {
   it("counts for no one when its chain does not connect", async () => {
     const strangerToDeputy = await authorizations.authorize(deputy.identity, stranger);
     const proxy = await unchecked([rootToHot, strangerToDeputy], deputy);
-    await expect(readEntry(proxy, [rootToHot, strangerToDeputy])).rejects.toThrow(/signed by the agent of the one before it/);
+    await expect(readEntry(proxy, [rootToHot, strangerToDeputy])).rejects.toThrow(
+      /signed by the agent of the one before it/,
+    );
   });
 
   it("counts for no one when its chain holds a signature over another schema's object of the same shape", async () => {
@@ -108,7 +138,10 @@ describe("a proxy", () => {
   });
 
   it("counts for no one when its agent signs it only through another proxy", async () => {
-    const proxy = encodeObject(proxySchemaRead, { chain: [{ $link: rootToHot.signature.link }], target: { $link: target.link } });
+    const proxy = encodeObject(proxySchemaRead, {
+      chain: [{ $link: rootToHot.signature.link }],
+      target: { $link: target.link },
+    });
     const overProxy = await through([hotToDeputy], deputy, proxy.link);
     expect(await readEntry(overProxy, [rootToHot], now, proxy.link)).toEqual(way(hot, deputy));
     await expect(readEntry(overProxy, [rootToHot])).rejects.toThrow(/the proxy is for/);
@@ -135,12 +168,17 @@ describe("an authorization with an end", () => {
   };
   // Written as another application could write it, with its end in any form RFC 3339 allows.
   const writtenUntil = async (until: string) => {
-    const grant = await signed(encodeObject(authorizationSchemaRead, { agent: { $link: identityOf(hot).link }, until }), root);
+    const grant = await signed(
+      encodeObject(authorizationSchemaRead, { agent: { $link: identityOf(hot).link }, until }),
+      root,
+    );
     return authorizations.readAuthorization(grant.signature.link, byLink([...identityBytes, ...parts(grant)]));
   };
 
   it("counts while the reader's clock is before its end, and not from its end on", async () => {
-    const readAt = await readThrough(await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2026-10-20T12:00:01Z")));
+    const readAt = await readThrough(
+      await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2026-10-20T12:00:01Z")),
+    );
     expect(await readAt(new Date("2026-10-20T12:00:00Z"))).toEqual(way(root, hot));
     expect(await readAt(new Date("2026-10-20T12:00:00.999Z"))).toEqual(way(root, hot));
     await expect(readAt(new Date("2026-10-20T12:00:01Z"))).rejects.toThrow(/ended at/);
@@ -160,7 +198,10 @@ describe("an authorization with an end", () => {
       [authorizationSchema, proxySchema].map((schema) => encodeSchema(schema, formatBlind)),
     );
     const blindReadThroughUntil = async (until: string) => {
-      const grant = await signed(encodeObject(blindAuthorization!, { agent: { $link: identityOf(hot).link }, until }), root);
+      const grant = await signed(
+        encodeObject(blindAuthorization!, { agent: { $link: identityOf(hot).link }, until }),
+        root,
+      );
       const proxy = await signed(
         encodeObject(blindProxy!, { chain: [{ $link: grant.signature.link }], target: { $link: target.link } }),
         hot,
@@ -191,7 +232,8 @@ describe("a standing through a proxy", () => {
     const proxyObject = byLink(proxy.blobs).get(proxy.signature.object)!;
     const identities = [root, hot, deputy].map((s) => identityOf(s).bytes);
     const blobs = [...parts(rootToHot), ...parts(hotToDeputy), proxyObject, proxy.signature.bytes, ...identities];
-    const readFrom = (given: Uint8Array[]) => authorizations.readStanding(target.link, proxy.signature.link, byLink(given), now);
+    const readFrom = (given: Uint8Array[]) =>
+      authorizations.readStanding(target.link, proxy.signature.link, byLink(given), now);
     expect(await readFrom(blobs)).toEqual(way(root, hot, deputy));
     await expect(readFrom(blobs.filter((_, i) => i !== missing))).rejects.toThrow(/no blob is given for/);
   });
@@ -202,9 +244,19 @@ describe("a standing through a proxy", () => {
       const lasting = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
       const [proxy, alike] = await Promise.all([rootToHot, lasting].map((grant) => through([grant], hot)));
       const blobs = byLink([...identityBytes, ...parts(proxy!)]);
-      const links = [rootToHot.object.link, rootToHot.signature.link, proxy!.signature.object, rootToHot.object.agent.link];
-      blobs.set(links[swapped]!, [...parts(lasting), byLink(alike!.blobs).get(alike!.signature.object)!, identityOf(deputy).bytes][swapped]!);
-      await expect(authorizations.readStanding(target.link, proxy!.signature.link, blobs, now)).rejects.toThrow(/is another blob/);
+      const links = [
+        rootToHot.object.link,
+        rootToHot.signature.link,
+        proxy!.signature.object,
+        rootToHot.object.agent.link,
+      ];
+      blobs.set(
+        links[swapped]!,
+        [...parts(lasting), byLink(alike!.blobs).get(alike!.signature.object)!, identityOf(deputy).bytes][swapped]!,
+      );
+      await expect(authorizations.readStanding(target.link, proxy!.signature.link, blobs, now)).rejects.toThrow(
+        /is another blob/,
+      );
     },
   );
 
@@ -212,7 +264,14 @@ describe("a standing through a proxy", () => {
     const proxy = await through([rootToHot], hot);
     const direct = await signed(target, stranger);
     const forged = new TextDecoder().decode(direct.signature.bytes).replace(/"signature":"../, '"signature":"00');
-    const junk = [new Uint8Array(0), utf8("not JSON"), utf8("{}"), utf8(forged), ...parts(direct), ...parts(hotToDeputy)];
+    const junk = [
+      new Uint8Array(0),
+      utf8("not JSON"),
+      utf8("{}"),
+      utf8(forged),
+      ...parts(direct),
+      ...parts(hotToDeputy),
+    ];
     const blobs = byLink([...junk, ...parts(proxy), ...junk]);
     expect(await authorizations.readStanding(target.link, proxy.signature.link, blobs, now)).toEqual(way(root, hot));
   });

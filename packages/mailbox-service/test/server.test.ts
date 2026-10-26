@@ -1,7 +1,7 @@
-import { readObject, type Link } from "@estoc/object";
+import { packBundle, unpackBundle } from "@estoc/bundle";
+import { type Link, readObject } from "@estoc/object";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
@@ -20,7 +20,8 @@ const device = signer("ed25519", 3);
 const otherService = signer("ed25519", 4);
 
 const getOffer = (service: MailboxService) => service.fetch(new Request("https://mail.example/offer"));
-const post = (service: MailboxService, body: Uint8Array) => service.fetch(new Request("https://mail.example/", { method: "POST", body }));
+const post = (service: MailboxService, body: Uint8Array) =>
+  service.fetch(new Request("https://mail.example/", { method: "POST", body }));
 const bundleOf = async (response: Response) => unpackBundle(new Uint8Array(await response.arrayBuffer()));
 
 async function offerOf(service: MailboxService) {
@@ -110,7 +111,10 @@ describe("a mailbox service", () => {
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
     ["that is not a zip", async () => new TextEncoder().encode("hello")],
     ["whose root is not a signature", async (service) => packBundle((await offerOf(service)).offer, [])],
-    ["whose signature comes without its identity", async (service) => packBundle((await direct((await offerOf(service)).offer)).signature, [])],
+    [
+      "whose signature comes without its identity",
+      async (service) => packBundle((await direct((await offerOf(service)).offer)).signature, []),
+    ],
     [
       "accepting another service's offer",
       async () => {
@@ -118,8 +122,15 @@ describe("a mailbox service", () => {
         return (await direct((await offerOf(other)).offer)).zip;
       },
     ],
-    ["through an authorization that has ended", async (service) => (await proxied((await offerOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip],
-    ["that is the service's own signature over its offer", async (service) => new Uint8Array(await (await getOffer(service)).arrayBuffer())],
+    [
+      "through an authorization that has ended",
+      async (service) =>
+        (await proxied((await offerOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip,
+    ],
+    [
+      "that is the service's own signature over its offer",
+      async (service) => new Uint8Array(await (await getOffer(service)).arrayBuffer()),
+    ],
   ])("answers 400 to a bundle %s, and opens no account", async (_, body) => {
     const { service, store } = await memoryService();
     const response = await post(service, await body(service));

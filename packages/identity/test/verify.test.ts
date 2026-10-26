@@ -2,7 +2,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
-import { signingText, SoftwareSigner, verify, type Identity, type Scheme } from "../src/index.ts";
+import { type Identity, type Scheme, SoftwareSigner, signingText, verify } from "../src/index.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const otherDigest = digest.map((byte) => byte ^ 0xff);
@@ -19,7 +19,10 @@ const secrets: Record<Scheme, Uint8Array> = {
 
 describe.each(["ed25519", "eip191", "solana-offchain"] as const)("an identity signing in %s", (scheme) => {
   const signer = SoftwareSigner.fromSecretKey(scheme, secrets[scheme]);
-  const other = SoftwareSigner.fromSecretKey(scheme, secrets[scheme].map((byte) => byte ^ 0x5a));
+  const other = SoftwareSigner.fromSecretKey(
+    scheme,
+    secrets[scheme].map((byte) => byte ^ 0x5a),
+  );
 
   it("verifies what its signer signs", async () => {
     expect(verify(signer.identity, digest, await signer.sign(digest))).toBe(true);

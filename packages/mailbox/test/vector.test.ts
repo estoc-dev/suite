@@ -26,8 +26,7 @@ const httpSchemaText =
 const httpSchemaLink = "sha256:8ffecf613658fc3f846c3a40be80feec587ce034ad53edd769708f3078ac1e4c";
 const publicKey = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
 const rootText =
-  '{"$type":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' +
-  '"text":"hello"}';
+  '{"$type":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' + '"text":"hello"}';
 const rootLink = "sha256:924c53891d3a9ef8f03dbfdee0264e0b072994701ef9c9b72c82e4f7b2d2080f";
 const blob = new Uint8Array([0xfb, 0xff, 0xbf]);
 const sealed =
@@ -44,7 +43,10 @@ const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(1));
 
 describe("the memory mailbox schema and an x25519 key", () => {
   it("encode to fixed bytes, a fixed link and a fixed public key", async () => {
-    const schema = await encodeSchema(mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]), defaultValidator);
+    const schema = await encodeSchema(
+      mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]),
+      defaultValidator,
+    );
     expect(new TextDecoder().decode(schema.bytes)).toBe(schemaText);
     expect(schema.link).toBe(schemaLink);
     expect(hex.encode(key.publicKey)).toBe(publicKey);

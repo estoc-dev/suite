@@ -1,5 +1,14 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, identitySchema, json, loadSignatures, signatureSchema, type Link } from "@estoc/object";
+import {
+  decodeObject,
+  encodeObject,
+  encodeSchema,
+  identitySchema,
+  json,
+  type Link,
+  loadSignatures,
+  signatureSchema,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -8,10 +17,14 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } }, defaultValidator);
-const schemas = [note, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
-  ({ bytes }) => bytes,
+const note = await encodeSchema(
+  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
 );
+const schemas = [
+  note,
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
+].map(({ bytes }) => bytes);
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
@@ -30,7 +43,11 @@ async function listed(store: Store): Promise<Link<unknown>[]> {
 async function postWith(network: MemoryNetwork, key: MailboxKey = bob) {
   const store = new Store(json, new MemoryBackend());
   let now = 1000;
-  const post = await loadPost(store, { transports: [network.transport], validator: defaultValidator, clock: () => now++ });
+  const post = await loadPost(store, {
+    transports: [network.transport],
+    validator: defaultValidator,
+    clock: () => now++,
+  });
   const queue = network.queue();
   const mailbox = queue.mailbox(key.publicKey);
   await store.write({ mine: [mailbox], blobs: [network.transport.schema.bytes] });
@@ -44,7 +61,13 @@ describe("an outbox", () => {
     await store.write({ mine: [signature], blobs: [hello.bytes, signature.identity.bytes, ...schemas] });
 
     const sent = await (await post.outbox(mailbox.link)).send(signature.link);
-    expect(sent).toEqual({ direction: "outbound", bundle: signature.link, mailbox: mailbox.link, at: 1000, link: sent.link });
+    expect(sent).toEqual({
+      direction: "outbound",
+      bundle: signature.link,
+      mailbox: mailbox.link,
+      at: 1000,
+      link: sent.link,
+    });
     expect(await listed(store)).toContain(sent.link);
     expect(decodeObject((await store.get(sent.link))!, outbound).data).toEqual({
       bundle: { $link: signature.link },
@@ -93,7 +116,9 @@ describe("an outbox", () => {
   it("refuses a root that the store does not hold, and sends nothing", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { post, queue, mailbox } = await postWith(network);
-    await expect((await post.outbox(mailbox.link)).send(signature.link)).rejects.toThrow(`the store does not hold ${signature.link}`);
+    await expect((await post.outbox(mailbox.link)).send(signature.link)).rejects.toThrow(
+      `the store does not hold ${signature.link}`,
+    );
     expect(queue.take()).toEqual([]);
   });
 

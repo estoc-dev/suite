@@ -1,7 +1,10 @@
 export const ZIP = "application/zip";
 
 /** The bytes of a body, or `undefined` when it holds more than `limit`, of which no more is read. */
-export async function readBody(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array | undefined> {
+export async function readBody(
+  body: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array | undefined> {
   if (body === null) return new Uint8Array();
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];

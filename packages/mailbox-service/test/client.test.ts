@@ -1,10 +1,10 @@
+import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
-import { encodeObject, readObject, type Link } from "@estoc/object";
+import { encodeObject, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
 import { Temporal } from "temporal-polyfill";
 import { afterEach, describe, expect, it } from "vitest";
-import { packBundle, unpackBundle } from "@estoc/bundle";
 import { loadServices } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
@@ -59,11 +59,18 @@ describe("an offer", () => {
     expect(offer.service.link).toBe(serviceIdentity.link);
 
     const account = await offer.accept(authorizations.createActor(alice));
-    expect(account).toEqual({ identity: identities.encode(alice.identity), service: serviceIdentity, at: 7_000, link: account.link });
+    expect(account).toEqual({
+      identity: identities.encode(alice.identity),
+      service: serviceIdentity,
+      at: 7_000,
+      link: account.link,
+    });
     const kept = await signatures.read(account.link, store);
     expect(kept.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
-    expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_000))).principal.link).toBe(account.identity.link);
+    expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_000))).principal.link).toBe(
+      account.identity.link,
+    );
     const offered = await signatures.read((await mine(store)).find((link) => link !== account.link)!, store);
     expect([offered.object, offered.identity.link]).toEqual([offer.link, serviceIdentity.link]);
   });
@@ -84,7 +91,12 @@ describe("an offer", () => {
     const again = await (await services.offer(origin)).accept(await through(phone, wallet));
     expect(again).toEqual(first);
     const kept = await readObject(store, (await signatures.read(again.link, store)).object, acknowledgementSchemaRead);
-    const standing = await authorizations.readStanding((await services.offer(origin)).link, kept.data.accepted.$link, store, new Date(again.at));
+    const standing = await authorizations.readStanding(
+      (await services.offer(origin)).link,
+      kept.data.accepted.$link,
+      store,
+      new Date(again.at),
+    );
     expect(standing.agents).toEqual([identities.encode(laptop.identity)]);
   });
 
@@ -120,19 +132,28 @@ describe("getting an offer", () => {
 
 // A service that hands the offer of `service` and answers an acceptance as `answer` does.
 async function answering(service: MailboxService, answer: (zip: Uint8Array) => Promise<Response>) {
-  return running(async (request) => (request.method === "POST" ? answer(new Uint8Array(await request.arrayBuffer())) : service.fetch(request)));
+  return running(async (request) =>
+    request.method === "POST" ? answer(new Uint8Array(await request.arrayBuffer())) : service.fetch(request),
+  );
 }
 
 describe("accepting an offer", () => {
   it("refuses an acknowledgement signed by another identity than the service's, and writes nothing", async () => {
     const { service } = await memoryService();
     const origin = await answering(service, async (zip) => {
-      const acknowledgement = encodeObject(acknowledgementSchemaRead, { accepted: { $link: (await unpackBundle(zip)).link }, at: 1 });
+      const acknowledgement = encodeObject(acknowledgementSchemaRead, {
+        accepted: { $link: (await unpackBundle(zip)).link },
+        at: 1,
+      });
       const signature = await signatures.sign(acknowledgement, mallory);
-      return new Response(await packBundle(signature, [acknowledgement.bytes, signature.identity.bytes]), { status: 201 });
+      return new Response(await packBundle(signature, [acknowledgement.bytes, signature.identity.bytes]), {
+        status: 201,
+      });
     });
     const { store, services } = await client();
-    await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(/signed by another identity/);
+    await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(
+      /signed by another identity/,
+    );
     expect(await mine(store)).toEqual([]);
   });
 
@@ -141,10 +162,14 @@ describe("accepting an offer", () => {
     const offer = (await (await client()).services.offer(await running((request) => service.fetch(request)))).link;
     const bobs = await signatures.sign({ link: offer }, bob);
     const origin = await answering(service, async () =>
-      service.fetch(new Request("https://mail.example/", { method: "POST", body: await packBundle(bobs, [bobs.identity.bytes]) })),
+      service.fetch(
+        new Request("https://mail.example/", { method: "POST", body: await packBundle(bobs, [bobs.identity.bytes]) }),
+      ),
     );
     const { store, services } = await client();
-    await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(/another identity's account/);
+    await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(
+      /another identity's account/,
+    );
     expect(await mine(store)).toEqual([]);
   });
 });

@@ -5,5 +5,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 export const formatBlind: JsonSchemaValidator = {
   ...defaultValidator,
   compile: (schema) =>
-    defaultValidator.compile(JSON.parse(JSON.stringify(schema, (key, value) => (key === "format" ? undefined : value)))),
+    defaultValidator.compile(
+      JSON.parse(JSON.stringify(schema, (key, value) => (key === "format" ? undefined : value))),
+    ),
 };

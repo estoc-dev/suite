@@ -1,4 +1,4 @@
-import { json, linkOf, schemaOf, type Bytes, type Link } from "@estoc/object";
+import { type Bytes, json, type Link, linkOf, schemaOf } from "@estoc/object";
 
 export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
@@ -78,7 +78,10 @@ export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
  * bytes are written. Refuses a root that is not an object in canonical JSON,
  * since no reader would take the bundle.
  */
-export function writeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
+export function writeBundle(
+  root: { readonly bytes: Bytes<unknown> },
+  blobs: Iterable<Bytes<unknown>>,
+): Map<string, Uint8Array> {
   checkRoot(root.bytes);
   const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);
   for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);

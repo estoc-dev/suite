@@ -1,4 +1,4 @@
-import { decodeObject, schemaOf, type EncodedObject, type Fields, type Reader, type Schema } from "@estoc/object";
+import { decodeObject, type EncodedObject, type Fields, type Reader, type Schema, schemaOf } from "@estoc/object";
 import type { Store } from "./store.ts";
 
 /**
@@ -16,7 +16,9 @@ export type Key = readonly (string | number)[];
  */
 export type Prefix<K extends Key> =
   | readonly []
-  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key] ? readonly [First, ...Prefix<Rest>] : K);
+  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key]
+      ? readonly [First, ...Prefix<Rest>]
+      : K);
 
 /**
  * What an application keeps of the objects of some schemas that its user
@@ -50,10 +52,14 @@ export interface Rows<K extends Key> {
  * and checked against its schema before the index sees it, and the scan
  * fails on one whose data does not fit.
  */
-export async function scan<D, K extends Key, F extends Fields<D>>(store: Store, index: Index<D, K, F>): Promise<Rows<K>> {
+export async function scan<D, K extends Key, F extends Fields<D>>(
+  store: Store,
+  index: Index<D, K, F>,
+): Promise<Rows<K>> {
   const encodings = new Set(index.reads.map(({ encoding }) => encoding));
   const [encoding] = encodings;
-  if (encoding === undefined || encodings.size > 1) throw new Error("an index reads schemas of one encoding, and at least one");
+  if (encoding === undefined || encodings.size > 1)
+    throw new Error("an index reads schemas of one encoding, and at least one");
   const schemas = new Map(index.reads.map((schema) => [schema.link, schema]));
   const rows = new Map<string, K>();
   for await (const link of store.mine()) {
@@ -64,7 +70,8 @@ export async function scan<D, K extends Key, F extends Fields<D>>(store: Store, 
     const object = decodeObject(bytes, schema);
     if (object.link !== link) throw new Error(`the store holds another blob under ${link}`);
     for await (const key of index.rows(object, store)) {
-      if (!key.every((part) => typeof part === "string" || Number.isFinite(part))) throw new Error(`a row of ${link} holds a number that is not finite`);
+      if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
+        throw new Error(`a row of ${link} holds a number that is not finite`);
       rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
     }
   }

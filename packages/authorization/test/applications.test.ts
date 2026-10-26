@@ -1,21 +1,21 @@
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  linkOf,
-  linkSchema,
   type IdentityObject,
   type Json,
   type JsonLink,
   type Link,
+  linkOf,
+  linkSchema,
   type Schema,
   type Signature,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { loadAuthorizations, type Entry } from "../src/index.ts";
+import { type Entry, loadAuthorizations } from "../src/index.ts";
 
 // Applications that take signatures made through agents. Whether to accept
 // agents, and how many, is each application's own rule; the package only
@@ -24,7 +24,8 @@ import { loadAuthorizations, type Entry } from "../src/index.ts";
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const blobs = (...entries: Entry[]) => entries.flatMap(({ signature, blobs }) => [signature.bytes, ...blobs]);
-const byLink = (received: readonly Uint8Array[]) => new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
+const byLink = (received: readonly Uint8Array[]) =>
+  new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
 
 const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
@@ -44,7 +45,13 @@ const login = await encodeSchema(
 // The server builds the login object from its audience and the nonce it
 // handed out, and takes back one signature with the blobs it leads to. It
 // accepts one agent at most: a key that the user's wallet authorized.
-async function loggedIn(audience: string, nonce: string, entry: Link<Signature>, received: readonly Uint8Array[], now: Date): Promise<IdentityObject> {
+async function loggedIn(
+  audience: string,
+  nonce: string,
+  entry: Link<Signature>,
+  received: readonly Uint8Array[],
+  now: Date,
+): Promise<IdentityObject> {
   const expected = encodeObject(login, { audience, nonce });
   const { principal, agents } = await authorizations.readStanding(expected.link, entry, byLink(received), now);
   if (agents.length > 1) throw new Error("this server accepts one agent at most");
@@ -57,7 +64,8 @@ describe("a login", () => {
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
   const forADay = authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
   const throughKey = forADay.then((grant) => authorizations.createActor(browserKey, [grant]).sign(object.link));
-  const logIn = (entry: Entry, at: Date) => loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(entry), at);
+  const logIn = (entry: Entry, at: Date) =>
+    loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(entry), at);
 
   it("through a key the wallet authorized for a day logs in the wallet", async () => {
     expect(await logIn(await throughKey, new Date("2026-10-20T12:00:00Z"))).toEqual(identities.encode(wallet.identity));
@@ -101,10 +109,17 @@ const sale: Schema<Json, Sale> = await encodeSchema(
 // A sale is in force once its buyer and its seller both stand behind it, by
 // their own signatures or through agents, as many as it takes. Each party
 // hands in one signature, and one that does not read stands no one behind it.
-async function saleInForce(bytes: Uint8Array, entries: readonly Link<Signature>[], received: readonly Uint8Array[], now: Date): Promise<Sale | undefined> {
+async function saleInForce(
+  bytes: Uint8Array,
+  entries: readonly Link<Signature>[],
+  received: readonly Uint8Array[],
+  now: Date,
+): Promise<Sale | undefined> {
   const terms = decodeObject(bytes, sale);
   const blobs = byLink(received);
-  const standing = await Promise.all(entries.map((entry) => authorizations.readStanding(terms.link, entry, blobs, now).catch(() => undefined)));
+  const standing = await Promise.all(
+    entries.map((entry) => authorizations.readStanding(terms.link, entry, blobs, now).catch(() => undefined)),
+  );
   const { buyer, seller } = terms.data;
   const behind = (party: JsonLink<IdentityObject>) => standing.some((way) => way?.principal.link === party.$link);
   return behind(buyer) && behind(seller) ? terms.data : undefined;

@@ -1,19 +1,24 @@
-import { loadAuthorizations, type Actor, type Authorizations } from "@estoc/authorization";
-import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
+import { type Actor, type Authorizations, loadAuthorizations } from "@estoc/authorization";
+import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
-  encodeSchema,
-  readObject,
   type EncodedObject,
+  encodeSchema,
   type IdentityObject,
   type Json,
   type JsonSchemaValidator,
   type Link,
+  readObject,
   type Schema,
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
-import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
+import {
+  type AccountOfferData,
+  type AcknowledgementData,
+  accountOfferSchema,
+  acknowledgementSchema,
+} from "./schemas.ts";
 
 // The answers hold an acceptance and a few blobs of the service's. The
 // client chose the service, so this only bounds what it reads.
@@ -23,7 +28,11 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 // A redirect would take the request to an origin other than the one whose
 // offer the client holds.
-const REQUEST = { redirect: "error", credentials: "omit", referrerPolicy: "no-referrer" } as const satisfies RequestInit;
+const REQUEST = {
+  redirect: "error",
+  credentials: "omit",
+  referrerPolicy: "no-referrer",
+} as const satisfies RequestInit;
 
 /** An identity's account at a service, written to the store. */
 export interface Account {
@@ -97,8 +106,12 @@ export class Offer {
     // The acceptance that opened an account stood when the service received
     // it, though an authorization in its chain may have ended since.
     const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer, new Date(at));
-    if (principal.link !== actor.principal.link) throw new Error("the acknowledgement is of another identity's account");
-    await this.#store.write({ mine: [acknowledgement, this.#signature], blobs: [...answer.blobs(), ...this.#bundle.blobs()] });
+    if (principal.link !== actor.principal.link)
+      throw new Error("the acknowledgement is of another identity's account");
+    await this.#store.write({
+      mine: [acknowledgement, this.#signature],
+      blobs: [...answer.blobs(), ...this.#bundle.blobs()],
+    });
     return { identity: actor.principal, service: this.service, at, link: acknowledgement.link };
   }
 }
@@ -136,7 +149,12 @@ export class Services {
     if (offer.data.identity.$link !== signature.identity.link) {
       throw new Error(`the offer of ${origin} is signed by another identity than the one it names`);
     }
-    return new Offer({ origin, bundle, offer, signature }, this.#store, this.#authorizations, this.#acknowledgementSchema);
+    return new Offer(
+      { origin, bundle, offer, signature },
+      this.#store,
+      this.#authorizations,
+      this.#acknowledgementSchema,
+    );
   }
 }
 
@@ -162,7 +180,10 @@ async function bundleIn(response: Response, statuses: readonly number[]): Promis
 }
 
 /** Reaches mailbox services for the identities of the user of `store`, which keeps the accounts opened. */
-export async function loadServices(store: Store, { validator }: { readonly validator: JsonSchemaValidator }): Promise<Services> {
+export async function loadServices(
+  store: Store,
+  { validator }: { readonly validator: JsonSchemaValidator },
+): Promise<Services> {
   const authorizations = await loadAuthorizations(validator);
   const offer: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
   const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);

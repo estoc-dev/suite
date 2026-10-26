@@ -3,23 +3,23 @@ import {
   encodeObject,
   encodeSchema,
   identitySchema,
+  type JsonObject,
   json,
+  type Link,
   linkOf,
   loadSignatures,
   signatureSchema,
-  type JsonObject,
-  type Link,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MemoryBackend, Store, type Backend } from "../src/index.ts";
+import { type Backend, MemoryBackend, Store } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const signatures = await loadSignatures(defaultValidator);
-const signatureSchemas = (await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))).map(
-  ({ bytes }) => bytes,
-);
+const signatureSchemas = (
+  await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))
+).map(({ bytes }) => bytes);
 const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(7));
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: JsonObject) => encodeObject(anything, data);
@@ -58,7 +58,8 @@ describe("a store", () => {
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     await store.write({ mine: [note], blobs: [image, stray, incomplete.bytes, anything.bytes, ...signatureSchemas] });
     expect(await store.get(linkOf(image))).toEqual(image);
-    for (const link of [linkOf(stray), incomplete.link, ...signatureSchemas.map(linkOf)]) expect(await store.get(link)).toBeUndefined();
+    for (const link of [linkOf(stray), incomplete.link, ...signatureSchemas.map(linkOf)])
+      expect(await store.get(link)).toBeUndefined();
     await store.write({ blobs: [image, stray] });
     expect(await store.get(linkOf(stray))).toBeUndefined();
   });
@@ -85,7 +86,9 @@ describe("a store", () => {
     const store = newStore();
     const carried = object({ text: "carried" });
     const notCanonical = utf8(` ${new TextDecoder().decode(object({ text: "hello" }).bytes)}`);
-    await expect(store.write({ mine: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(/is not an object/);
+    await expect(store.write({ mine: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(
+      /is not an object/,
+    );
     await expect(store.write({ mine: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(/is not an object/);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
@@ -188,7 +191,10 @@ describe("a signature read from a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const signature = await signatures.sign(note, signer);
-    await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, anything.bytes, ...signatureSchemas] });
+    await store.write({
+      mine: [note, signature],
+      blobs: [signature.identity.bytes, anything.bytes, ...signatureSchemas],
+    });
     const read = await signatures.read(signature.link, store);
     expect(read.object).toBe(note.link);
     expect(read.identity.publicKey).toEqual(signer.identity.publicKey);

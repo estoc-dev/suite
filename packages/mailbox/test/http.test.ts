@@ -1,8 +1,8 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { encodeObject, encodeSchema, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
 import { MailboxKey, mailboxFrom } from "../src/index.ts";
@@ -23,7 +23,12 @@ const server = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(chunk as Buffer);
   const path = request.url;
-  requests.push({ method: request.method, path, type: request.headers["content-type"], body: new Uint8Array(Buffer.concat(chunks)) });
+  requests.push({
+    method: request.method,
+    path,
+    type: request.headers["content-type"],
+    body: new Uint8Array(Buffer.concat(chunks)),
+  });
   const status = answers[path ?? ""] ?? 404;
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
@@ -81,12 +86,14 @@ describe("an HTTP mailbox", () => {
 });
 
 describe("an HTTP mailbox's url", () => {
-  it.each(["https://mail.example/alice", "http://localhost:8080/inbox", "http://127.0.0.1", "http://[::1]:8080?to=bob"])(
-    "may be %s",
-    async (url) => {
-      await expect(mailboxAt(url)).resolves.toBeDefined();
-    },
-  );
+  it.each([
+    "https://mail.example/alice",
+    "http://localhost:8080/inbox",
+    "http://127.0.0.1",
+    "http://[::1]:8080?to=bob",
+  ])("may be %s", async (url) => {
+    await expect(mailboxAt(url)).resolves.toBeDefined();
+  });
 
   // Written elsewhere, since this package does not write a mailbox it would refuse.
   const written = (url: string) => json.encode(json.object({ key, url }, http.schema.link));

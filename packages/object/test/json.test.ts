@@ -25,7 +25,10 @@ describe("strict decoding", () => {
     ["a lone surrogate", objectText('"\\ud800"')],
     ["a needless escape", objectText('"\\u0041"')],
     ["an escaped solidus", objectText('"a\\/b"')],
-    ["the schema link in uppercase hex", objectText("1").replace(anything.link.slice(7), anything.link.slice(7).toUpperCase())],
+    [
+      "the schema link in uppercase hex",
+      objectText("1").replace(anything.link.slice(7), anything.link.slice(7).toUpperCase()),
+    ],
   ])("refuses %s", (_, text) => {
     expect(() => decodeText(text)).toThrow();
   });
@@ -63,7 +66,10 @@ describe("an object with a $link member", () => {
   });
 
   it("is refused in a schema too", async () => {
-    const schema = { $schema: "https://json-schema.org/draft/2020-12/schema", properties: { $link: { type: "string" } } };
+    const schema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      properties: { $link: { type: "string" } },
+    };
     await expect(encodeSchema(schema, defaultValidator)).rejects.toThrow(/\$link/);
   });
 });

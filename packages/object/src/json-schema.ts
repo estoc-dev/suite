@@ -1,4 +1,4 @@
-import { isJsonObject, json, type Json, type JsonObject } from "./json.ts";
+import { isJsonObject, type Json, type JsonObject, json } from "./json.ts";
 import { LINK_PATTERN } from "./link.ts";
 import type { SchemaLanguage, SchemaValidator } from "./schema.ts";
 

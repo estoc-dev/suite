@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeObject, encodeSchema, schemaOf, type Encoding, type Link, type SchemaValidator } from "../src/index.ts";
+import {
+  decodeObject,
+  type Encoding,
+  encodeObject,
+  encodeSchema,
+  type Link,
+  type SchemaValidator,
+  schemaOf,
+} from "../src/index.ts";
 
 // An encoding with nothing of JSON in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written
@@ -11,7 +19,8 @@ type Text = string | { readonly [name: string]: Text };
 // Kept, a byte order mark is part of the first name, so that bytes with one
 // do not read as the same value as bytes without.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const isLink = (text: Text | undefined): text is Link<never> => typeof text === "string" && /^sha256:[0-9a-f]{64}$/.test(text);
+const isLink = (text: Text | undefined): text is Link<never> =>
+  typeof text === "string" && /^sha256:[0-9a-f]{64}$/.test(text);
 
 const lines: Encoding<Text> = {
   encode(value) {

@@ -1,4 +1,4 @@
-import { linkSchema, type JsonSchema } from "@estoc/object";
+import { type JsonSchema, linkSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 

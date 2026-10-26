@@ -1,4 +1,4 @@
-import { unpackBundle, type Bundle } from "@estoc/bundle";
+import { type Bundle, unpackBundle } from "@estoc/bundle";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
 
@@ -56,7 +56,10 @@ export class MailboxKey {
     const { encSize } = suite.kem;
     let plaintext: ArrayBuffer;
     try {
-      plaintext = await suite.open({ recipientKey: this.#keys, enc: sealed.subarray(0, encSize), info }, sealed.subarray(encSize));
+      plaintext = await suite.open(
+        { recipientKey: this.#keys, enc: sealed.subarray(0, encSize), info },
+        sealed.subarray(encSize),
+      );
     } catch (cause) {
       throw new Error("the sealed bytes do not open with this key", { cause });
     }

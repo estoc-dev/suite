@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, linkOf, type EncodedObject, type Json, type Link } from "@estoc/object";
+import { type EncodedObject, encodeSchema, type Json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
@@ -79,7 +79,15 @@ describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its a
     const read = await authorizations.readAuthorization(grantLink, blobs);
     expect(read.signature.identity).toEqual(identities.encode(root.identity));
     expect(read.object.agent).toEqual(identities.encode(hot.identity));
-    const standing = await authorizations.readStanding(target, proxySignatureLink, blobs, new Date("2026-12-31T23:59:59Z"));
-    expect(standing).toEqual({ principal: identities.encode(root.identity), agents: [identities.encode(hot.identity)] });
+    const standing = await authorizations.readStanding(
+      target,
+      proxySignatureLink,
+      blobs,
+      new Date("2026-12-31T23:59:59Z"),
+    );
+    expect(standing).toEqual({
+      principal: identities.encode(root.identity),
+      agents: [identities.encode(hot.identity)],
+    });
   });
 });

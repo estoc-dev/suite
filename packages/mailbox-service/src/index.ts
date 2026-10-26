@@ -1,2 +1,7 @@
-export { loadServices, type Account, type Offer, type Services } from "./client.ts";
-export { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
+export { type Account, loadServices, type Offer, type Services } from "./client.ts";
+export {
+  type AccountOfferData,
+  type AcknowledgementData,
+  accountOfferSchema,
+  acknowledgementSchema,
+} from "./schemas.ts";

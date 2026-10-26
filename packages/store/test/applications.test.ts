@@ -1,23 +1,23 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { sameIdentity, SoftwareSigner } from "@estoc/identity";
+import { SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  identitySchema,
-  json,
-  linkSchema,
-  loadSignatures,
-  readObject,
-  schemaOf,
-  signatureSchema,
-  type EncodedObject,
   type Fields,
+  identitySchema,
   type Json,
   type JsonLink,
   type JsonObject,
+  json,
   type Link,
+  linkSchema,
+  loadSignatures,
+  readObject,
   type Schema,
+  schemaOf,
+  signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -28,9 +28,19 @@ import { MemoryBackend, Store } from "../src/index.ts";
 // of receiving it, and read by following links from that record.
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const schemaFor = <F extends Fields<Json> = Fields<Json>>(title: string, properties: JsonObject): Promise<Schema<Json, F>> =>
+const schemaFor = <F extends Fields<Json> = Fields<Json>>(
+  title: string,
+  properties: JsonObject,
+): Promise<Schema<Json, F>> =>
   encodeSchema(
-    { $schema: DRAFT, title, type: "object", properties, required: Object.keys(properties), additionalProperties: false },
+    {
+      $schema: DRAFT,
+      title,
+      type: "object",
+      properties,
+      required: Object.keys(properties),
+      additionalProperties: false,
+    },
     defaultValidator,
   );
 const signatures = await loadSignatures(defaultValidator);
@@ -58,7 +68,10 @@ async function listed(store: Store): Promise<Link<unknown>[]> {
   return links;
 }
 
-async function readListed<F extends Fields<Json>>(store: Store, schema: Schema<Json, F>): Promise<EncodedObject<Json, F>[]> {
+async function readListed<F extends Fields<Json>>(
+  store: Store,
+  schema: Schema<Json, F>,
+): Promise<EncodedObject<Json, F>[]> {
   const objects: EncodedObject<Json, F>[] = [];
   for await (const link of store.mine()) {
     const bytes = (await store.get(link))!;

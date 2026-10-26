@@ -1,23 +1,23 @@
 import type { Bundle } from "@estoc/bundle";
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
 import {
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  linkOf,
-  linkSchema,
-  loadSignatures,
-  readObject,
-  type EncodedObject,
   type Fields,
   type IdentityObject,
   type Json,
   type JsonLink,
+  linkOf,
+  linkSchema,
+  loadSignatures,
+  readObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MailboxKey, mailboxFrom, type Mailbox } from "../src/index.ts";
-import { MemoryNetwork, type Faults } from "./memory-network.ts";
+import { type Mailbox, MailboxKey, mailboxFrom } from "../src/index.ts";
+import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes, each as a bundle
 // whose root is the signature over it. A message names no sender, and
@@ -44,7 +44,10 @@ async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema
 async function receiver(network: MemoryNetwork, fill: number) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
-  return { mailbox: queue.mailbox(key.publicKey).bytes, take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))) };
+  return {
+    mailbox: queue.mailbox(key.publicKey).bytes,
+    take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))),
+  };
 }
 
 const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<IdentityObject> }> = await encodeSchema(

@@ -13,11 +13,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
 
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
-const sizeOf = (files: ReadonlyMap<string, Uint8Array>) => [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
+const sizeOf = (files: ReadonlyMap<string, Uint8Array>) =>
+  [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
 const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", title: "Note", type: "object", properties: { text: { type: "string" } } },
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title: "Note",
+    type: "object",
+    properties: { text: { type: "string" } },
+  },
   defaultValidator,
 );
 const root = encodeObject(note, { text: "a note" });

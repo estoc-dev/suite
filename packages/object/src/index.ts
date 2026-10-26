@@ -1,8 +1,15 @@
 export type { Encoding, Fields } from "./encoding.ts";
-export { identitySchema, type Identities, type IdentityData, type IdentityObject } from "./identity.ts";
-export { json, type Json, type JsonLink, type JsonObject } from "./json.ts";
-export { jsonSchema, linkSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
-export { linkOf, type Bytes, type Link } from "./link.ts";
-export { decodeObject, encodeObject, readObject, schemaOf, type EncodedObject, type Reader } from "./object.ts";
-export { decodeSchema, encodeSchema, type Check, type Schema, type SchemaLanguage, type SchemaValidator } from "./schema.ts";
-export { loadSignatures, signatureSchema, type Signature, type SignatureData, type Signatures } from "./signature.ts";
+export { type Identities, type IdentityData, type IdentityObject, identitySchema } from "./identity.ts";
+export { type Json, type JsonLink, type JsonObject, json } from "./json.ts";
+export { type JsonSchema, type JsonSchemaValidator, jsonSchema, linkSchema } from "./json-schema.ts";
+export { type Bytes, type Link, linkOf } from "./link.ts";
+export { decodeObject, type EncodedObject, encodeObject, type Reader, readObject, schemaOf } from "./object.ts";
+export {
+  type Check,
+  decodeSchema,
+  encodeSchema,
+  type Schema,
+  type SchemaLanguage,
+  type SchemaValidator,
+} from "./schema.ts";
+export { loadSignatures, type Signature, type SignatureData, type Signatures, signatureSchema } from "./signature.ts";

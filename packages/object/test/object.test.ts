@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, readObject, schemaOf, type JsonObject } from "../src/index.ts";
+import {
+  decodeObject,
+  decodeSchema,
+  encodeObject,
+  encodeSchema,
+  type JsonObject,
+  json,
+  readObject,
+  schemaOf,
+} from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -31,7 +40,10 @@ const malformed: [string, string][] = [
 describe("an object", () => {
   it.each<[string, JsonObject]>([
     ["fields", greeting],
-    ["fields of every kind", { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null }],
+    [
+      "fields of every kind",
+      { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null },
+    ],
     ["no fields", {}],
     ["a $type deeper in its data, which is data like any other", { inner: { $type: { $link: login.link } } }],
   ])("holding %s reads back with the same link", (_, data) => {
@@ -88,7 +100,9 @@ describe("an object read by its link", () => {
 
   it("is refused when the reader gives another blob for the link", async () => {
     const other = encodeObject(login, { ...greeting, nonce: "9a2e" });
-    await expect(readObject(new Map([[object.link, other.bytes]]), object.link, login)).rejects.toThrow(/is another blob/);
+    await expect(readObject(new Map([[object.link, other.bytes]]), object.link, login)).rejects.toThrow(
+      /is another blob/,
+    );
   });
 });
 

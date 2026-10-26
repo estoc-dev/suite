@@ -1,10 +1,10 @@
 export {
-  loadAuthorizations,
   type Actor,
   type Authorization,
   type AuthorizationData,
   type Authorizations,
   type Entry,
+  loadAuthorizations,
   type ProxyData,
   type Signed,
   type Standing,

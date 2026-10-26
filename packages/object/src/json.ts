@@ -74,7 +74,8 @@ export const json: Encoding<Json> = {
     return value;
   },
   object(data, schema) {
-    if (Object.hasOwn(data, "$type")) throw new Error("the data of an object holds no $type, which names the object's schema");
+    if (Object.hasOwn(data, "$type"))
+      throw new Error("the data of an object holds no $type, which names the object's schema");
     return { ...data, $type: { $link: schema } };
   },
   fields(value) {

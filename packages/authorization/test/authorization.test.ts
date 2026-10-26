@@ -123,8 +123,8 @@ describe("an actor", () => {
   const now = new Date("2026-10-20T12:00:00Z");
 
   it("without a chain stands behind a target for its signer by the signer's own signature", async () => {
-    const actor = authorizations.actor(root);
-    const { signature, blobs } = await actor.stand(target.link);
+    const actor = authorizations.createActor(root);
+    const { signature, blobs } = await actor.sign(target.link);
     expect(actor).toMatchObject({ principal: identities.encode(root.identity), agents: [] });
     expect(signature.object).toBe(target.link);
     expect(signature.identity).toEqual(identities.encode(root.identity));
@@ -133,8 +133,8 @@ describe("an actor", () => {
 
   it("with a chain stands behind a target for the chain's first authorizer by a proxy over the chain's signatures, in order", async () => {
     const [toHot, toDeputy] = await grants;
-    const actor = authorizations.actor(deputy, [toHot, toDeputy]);
-    const { signature, blobs } = await actor.stand(target.link);
+    const actor = authorizations.createActor(deputy, [toHot, toDeputy]);
+    const { signature, blobs } = await actor.sign(target.link);
     expect(actor).toMatchObject({ principal: identities.encode(root.identity), agents: [hot, deputy].map(({ identity }) => identities.encode(identity)) });
     expect(decodeObject(byLink(blobs).get(signature.object)!, proxy).data).toEqual({
       chain: [toHot, toDeputy].map(({ signature }) => ({ $link: signature.link })),
@@ -145,7 +145,7 @@ describe("an actor", () => {
 
   it("gives each blob that a reading of its entry takes besides the entry, once, and no other", async () => {
     const [toHot, toDeputy] = await grants;
-    const { signature, blobs } = await authorizations.actor(deputy, [toHot, toDeputy]).stand(target.link);
+    const { signature, blobs } = await authorizations.createActor(deputy, [toHot, toDeputy]).sign(target.link);
     const taken = [...[toHot, toDeputy].flatMap(({ object, signature }) => [object.link, signature.link]), signature.object];
     const identityLinks = [root, hot, deputy].map(({ identity }) => identities.encode(identity).link);
     expect(blobs.map((blob) => linkOf(blob)).sort()).toEqual([...taken, ...identityLinks].sort());
@@ -153,15 +153,15 @@ describe("an actor", () => {
 
   it.each([0, 1, 2])("reads back from its entry and blobs alone as its own standing, through %i agents", async (length) => {
     const [toHot, toDeputy] = await grants;
-    const actor = authorizations.actor([root, hot, deputy][length]!, [toHot, toDeputy].slice(0, length));
-    const { signature, blobs } = await actor.stand(target.link);
+    const actor = authorizations.createActor([root, hot, deputy][length]!, [toHot, toDeputy].slice(0, length));
+    const { signature, blobs } = await actor.sign(target.link);
     const read = await authorizations.readStanding(target.link, signature.link, byLink([signature.bytes, ...blobs]), now);
     expect(read).toEqual({ principal: actor.principal, agents: actor.agents });
   });
 
   it("is not made from a chain in which an authorization is not signed by the agent of the one before", async () => {
     const [toHot, , strangerToDeputy] = await grants;
-    expect(() => authorizations.actor(deputy, [toHot, strangerToDeputy])).toThrow(/signed by the agent of the one before it/);
+    expect(() => authorizations.createActor(deputy, [toHot, strangerToDeputy])).toThrow(/signed by the agent of the one before it/);
   });
 
   it("is not made for a signer other than the chain's last agent", async () => {
@@ -171,6 +171,6 @@ describe("an actor", () => {
       [[toHot], deputy],
       [[toHot, toDeputy], hot],
     ];
-    for (const [chain, by] of chains) expect(() => authorizations.actor(by, chain)).toThrow(/signed by the last agent/);
+    for (const [chain, by] of chains) expect(() => authorizations.createActor(by, chain)).toThrow(/signed by the last agent/);
   });
 });

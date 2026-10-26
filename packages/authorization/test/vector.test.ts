@@ -54,7 +54,7 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
 const grant = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2027-01-01T00:00:00Z"));
-const entry = await authorizations.actor(hot, [grant]).stand(target);
+const entry = await authorizations.createActor(hot, [grant]).sign(target);
 const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object)!;
 
 describe("the two schemas, an Ed25519 authorization until 2027 and a proxy its agent signs", () => {

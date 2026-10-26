@@ -100,18 +100,18 @@ chain, it is the first authorizer's, and signs a Proxy for each object as
 the chain's last agent.
 
 ```ts
-const asWallet = authorizations.actor(wallet);
-const throughKey = authorizations.actor(browserKey, [received]);
-const entry = await throughKey.stand(login.link);
+const asWallet = authorizations.createActor(wallet);
+const throughKey = authorizations.createActor(browserKey, [received]);
+const entry = await throughKey.sign(login.link);
 ```
 
-`actor` refuses a chain that does not connect, or that does not end at the
-signer, since no reader would count a proxy through it. Its `principal` and
-`agents` are what a reading gives back of what it signs, as long as the
-chain holds. `stand` does not look at a clock: whether an authorization has
-ended is for the reader's clock to say.
+`createActor` refuses a chain that does not connect, or that does not end
+at the signer, since no reader would count a proxy through it. An actor's
+`principal` and `agents` are what a reading gives back of what it signs, as
+long as the chain holds. `sign` does not look at a clock: whether an
+authorization has ended is for the reader's clock to say.
 
-`stand` takes the link of the object alone, and gives an `Entry`: the
+`sign` takes the link of the object alone, and gives an `Entry`: the
 signature, and the blobs it leads to, each once. For a proxy those are the
 Proxy, the chain's signatures and authorizations, and the identity objects
 they name; for a direct signature, the signer's identity object. The
@@ -171,7 +171,7 @@ import { linkOf } from "@estoc/object";
 
 // The browser key sends the link of its signature as the entry, with the
 // signature and the blobs it leads to.
-const { signature, blobs: led } = await throughKey.stand(login.link);
+const { signature, blobs: led } = await throughKey.sign(login.link);
 const sent = [signature.bytes, ...led];
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));

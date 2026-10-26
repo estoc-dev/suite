@@ -117,7 +117,7 @@ export class Authorizations {
    * authorization is not signed by the agent of the one before it, or that
    * does not end at the signer: a reader counts no other proxy.
    */
-  actor(signer: Signer, chain: readonly Signed<Authorization>[] = []): Actor {
+  createActor(signer: Signer, chain: readonly Signed<Authorization>[] = []): Actor {
     return new Actor(this.signatures, this.#proxySchema, signer, chain);
   }
 
@@ -190,11 +190,11 @@ export class Actor implements Standing {
   }
 
   /**
-   * Stands behind `target` for the principal: signs it, or signs a proxy for
-   * it. The target is only named. No clock is looked at, since whether the
-   * chain holds is for the reader's clock to say.
+   * Signs for the principal behind `target`: the target itself, or a proxy
+   * for it. The target is only named. No clock is looked at, since whether
+   * the chain holds is for the reader's clock to say.
    */
-  async stand(target: Link<unknown>): Promise<Entry> {
+  async sign(target: Link<unknown>): Promise<Entry> {
     if (this.#chain.length === 0) {
       const signature = await this.#signatures.sign({ link: target }, this.#signer);
       return { signature, blobs: [signature.identity.bytes] };

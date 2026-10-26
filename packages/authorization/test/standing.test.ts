@@ -41,7 +41,7 @@ const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blo
 const readEntry = (entry: Given, given: readonly Given[] = [], at = now, link: Link<unknown> = target.link) =>
   authorizations.readStanding(link, entry.signature.link, byLink([...identityBytes, ...parts(entry), ...given.flatMap(parts)]), at);
 const through = (chain: readonly Signed<Authorization>[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
-  authorizations.actor(by, chain).stand(link);
+  authorizations.createActor(by, chain).sign(link);
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
   principal: identityOf(principal),
   agents: agents.map(identityOf),

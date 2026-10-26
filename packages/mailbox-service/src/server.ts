@@ -143,7 +143,9 @@ class MailboxService {
     const schemas = [this.#acknowledgementSchema.bytes, ...CHAIN_SCHEMAS];
     await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
     if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
-    return this.#answerWith((await this.#accounts.get(identity))!, 200);
+    const opened = await this.#accounts.get(identity);
+    if (opened === undefined) throw new Error(`the accounts refused to add ${identity} and hold no account for it`);
+    return this.#answerWith(opened, 200);
   }
 
   /** Answers with the bundle of one of the service's signatures and all it leads to in the store. */

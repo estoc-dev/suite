@@ -4,7 +4,7 @@ import { encodeObject, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
 import { Temporal } from "temporal-polyfill";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadServices } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
@@ -71,7 +71,9 @@ describe("an offer", () => {
     expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_000))).principal.link).toBe(
       account.identity.link,
     );
-    const offered = await signatures.read((await mine(store)).find((link) => link !== account.link)!, store);
+    const signedOffer = (await mine(store)).find((link) => link !== account.link);
+    assert.exists(signedOffer);
+    const offered = await signatures.read(signedOffer, store);
     expect([offered.object, offered.identity.link]).toEqual([offer.link, serviceIdentity.link]);
   });
 

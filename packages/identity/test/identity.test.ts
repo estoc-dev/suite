@@ -54,7 +54,7 @@ test.each(["ed25519", "eip191", "solana-offchain"] as const)(
 
 test("a signer keeps signing for its key after the caller changes the identity it handed out", async () => {
   const handedOut = ed25519Signer.identity;
-  handedOut.publicKey[0]! ^= 1;
+  handedOut.publicKey.fill(0);
   expect(verify(ed25519Signer.identity, digest, await ed25519Signer.sign(digest))).toBe(true);
 });
 

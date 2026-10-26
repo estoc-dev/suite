@@ -1,12 +1,12 @@
 import { SoftwareSigner } from "@estoc/identity";
 import {
-  decodeObject,
   encodeObject,
   encodeSchema,
   identitySchema,
   json,
   type Link,
   loadSignatures,
+  readObject,
   signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -69,14 +69,13 @@ describe("an outbox", () => {
       link: sent.link,
     });
     expect(await listed(store)).toContain(sent.link);
-    expect(decodeObject((await store.get(sent.link))!, outbound).data).toEqual({
+    expect((await readObject(store, sent.link, outbound)).data).toEqual({
       bundle: { $link: signature.link },
       mailbox: { $link: mailbox.link },
       at: 1000,
     });
 
-    const [sealed] = queue.take();
-    const bundle = await bob.open(sealed!);
+    const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(new Set(bundle.blobs())).toEqual(new Set((await store.closure(signature.link)).values()));
   });
@@ -89,14 +88,14 @@ describe("an outbox", () => {
       signature.identity.bytes,
       ...schemas,
     ]);
-    await (await atBob.post.inbox(atBob.mailbox.link, bob)).receive(atBob.queue.take()[0]!);
+    await (await atBob.post.inbox(atBob.mailbox.link, bob)).receive(atBob.queue.takeOne());
 
     const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
     const queue = network.queue();
     const atCarol = queue.mailbox(carol.publicKey);
     await atBob.store.write({ mine: [atCarol], blobs: [network.transport.schema.bytes] });
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
-    const bundle = await carol.open(queue.take()[0]!);
+    const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect((await signatures.read(bundle.link, bundle)).object).toBe(hello.link);
   });
@@ -156,7 +155,7 @@ describe("an inbox", () => {
     await sendTo(network, mailbox.bytes, [signature.identity.bytes, ...schemas]);
     const inbox = await post.inbox(mailbox.link, bob);
 
-    await expect(inbox.receive(queue.take()[0]!)).rejects.toThrow(`leads to ${hello.link}`);
+    await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`leads to ${hello.link}`);
     expect(await listed(store)).toEqual([mailbox.link]);
     expect(await store.get(signature.link)).toBeUndefined();
   });
@@ -168,7 +167,7 @@ describe("an inbox", () => {
     await sendTo(network, other.mailbox.bytes, [hello.bytes, signature.identity.bytes, ...schemas]);
     const inbox = await post.inbox(mailbox.link, bob);
 
-    await expect(inbox.receive(other.queue.take()[0]!)).rejects.toThrow(/do not open/);
+    await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/do not open/);
     expect(await listed(store)).toEqual([mailbox.link]);
   });
 

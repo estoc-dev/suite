@@ -154,9 +154,9 @@ class StoreOf<D> implements Store {
     for (const start of mine) {
       if (ordered.has(start)) continue;
       // A link is a hash of its blob, so no blob leads back to one on the path.
+      // biome-ignore lint/style/noNonNullAssertion: each of mine is among the given blobs
       const path = [frame(start, given.get(start)!)];
-      while (path.length > 0) {
-        const top = path.at(-1)!;
+      for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
         const next = top.links.next();
         if (next.done) {
           ordered.set(top.link, top.bytes);

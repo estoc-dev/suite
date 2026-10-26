@@ -15,7 +15,7 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { type Index, MemoryBackend, type Rows, Store, scan } from "@estoc/store";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   type DeliveryData,
   type Inbox,
@@ -52,7 +52,7 @@ const schemas = [
   ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
 ].map(({ bytes }) => bytes);
 const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
-const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(delivery));
+const [inbound, outbound] = await Promise.all([delivery(inboundSchema), delivery(outboundSchema)]);
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
@@ -61,9 +61,9 @@ type Delivered = [direction: Direction, mailbox: Mailbox, at: number, bundle: Li
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle.
 const deliveries: Index<Json, Delivered, DeliveryData> = {
-  reads: [inbound!, outbound!],
+  reads: [inbound, outbound],
   rows: ({ schema, data: { mailbox, at, bundle } }) => [
-    [schema.link === inbound!.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link],
+    [schema.link === inbound.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link],
   ],
 };
 
@@ -242,7 +242,9 @@ describe("a conversation", () => {
     const written = await all(alice.store.mine());
     for (const link of [...written, ...written].reverse()) {
       const closure = await alice.store.closure(link);
-      await copy.write({ mine: [{ bytes: closure.get(link)! }], blobs: closure.values() });
+      const bytes = closure.get(link);
+      assert.exists(bytes);
+      await copy.write({ mine: [{ bytes }], blobs: closure.values() });
     }
     expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });

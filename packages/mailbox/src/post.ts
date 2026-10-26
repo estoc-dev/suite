@@ -156,6 +156,6 @@ export class Inbox {
 /** Makes a post that sends and receives with `store`, through `transports`. */
 export async function loadPost(store: Store, { transports, validator, clock = Date.now }: PostOptions): Promise<Post> {
   const compile = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, validator);
-  const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(compile));
-  return new Post(store, transports, clock, { inbound: inbound!, outbound: outbound! });
+  const [inbound, outbound] = await Promise.all([compile(inboundSchema), compile(outboundSchema)]);
+  return new Post(store, transports, clock, { inbound, outbound });
 }

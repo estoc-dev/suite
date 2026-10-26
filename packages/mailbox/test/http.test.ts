@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { encodeObject, encodeSchema, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
 import { MailboxKey, mailboxFrom } from "../src/index.ts";
 
@@ -62,8 +62,9 @@ describe("an HTTP mailbox", () => {
     await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, []);
     const [request, ...more] = take();
     expect(more).toEqual([]);
+    assert.exists(request);
     expect(request).toMatchObject({ method: "POST", path: "/inbox", type: "application/octet-stream" });
-    expect((await bob.open(request!.body)).root).toEqual(hello.bytes);
+    expect((await bob.open(request.body)).root).toEqual(hello.bytes);
   });
 
   it("rejects a send that the server answers with other than 2xx", async () => {

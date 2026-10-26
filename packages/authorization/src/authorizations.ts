@@ -242,8 +242,10 @@ function checkChain(
 ): asserts chain is readonly [Signed<Authorization>, ...Signed<Authorization>[]] {
   const last = chain.at(-1);
   if (last === undefined) throw new Error("a proxy names at least one authorization");
-  if (!chain.every(({ signature }, i) => i === 0 || sameIdentity(chain[i - 1]!.object.agent, signature.identity))) {
-    throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
-  }
+  const linked = chain.every(({ object }, i) => {
+    const next = chain[i + 1];
+    return next === undefined || sameIdentity(object.agent, next.signature.identity);
+  });
+  if (!linked) throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
   if (!sameIdentity(last.object.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
 }

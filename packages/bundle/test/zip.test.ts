@@ -9,7 +9,7 @@ import {
   ZipWriter,
 } from "@zip.js/zip.js/index-native.js";
 import { Inflate, Zip, ZipPassThrough, zipSync } from "fflate";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";
 
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
@@ -228,7 +228,9 @@ describe("a zipped bundle", () => {
     const zip = await zipBundle(new Map([[pathOf(zeros), zeros]]));
     await expect(unzipBundle(zip, { bytes: zeros.length - 1 })).rejects.toThrow(/more than/);
     const unzipped = await unzipBundle(zip, { bytes: zeros.length });
-    expect(linkOf(unzipped.get(pathOf(zeros))!)).toBe(linkOf(zeros));
+    const kept = unzipped.get(pathOf(zeros));
+    assert.exists(kept);
+    expect(linkOf(kept)).toBe(linkOf(zeros));
   });
 
   it("is refused at its limit when it unzips to a thousand times its size, whatever size it gives", async () => {

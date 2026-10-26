@@ -35,8 +35,7 @@ describe("a mailbox key", () => {
     ["the first byte of the ciphertext", 32],
     ["the last byte of the tag", sealed.length - 1],
   ])("does not open sealed bytes with %s changed", async (_, at) => {
-    const changed = sealed.slice();
-    changed[at]! ^= 1;
+    const changed = sealed.map((byte, i) => (i === at ? byte ^ 1 : byte));
     await expect(bob.open(changed)).rejects.toThrow(/do not open with this key/);
   });
 

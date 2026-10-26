@@ -40,7 +40,8 @@ export class MailboxKey {
     // Web Crypto derives no X25519 public key on its own, but exports one in
     // the JWK of a private key.
     const { x } = await crypto.subtle.exportKey("jwk", privateKey);
-    const publicKey = base64urlnopad.decode(x!);
+    if (x === undefined) throw new Error("the JWK of an X25519 private key holds no public key");
+    const publicKey = base64urlnopad.decode(x);
     return new MailboxKey({ privateKey, publicKey: await publicKeyFrom(publicKey) }, publicKey);
   }
 

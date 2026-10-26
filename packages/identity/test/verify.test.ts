@@ -37,8 +37,7 @@ describe.each(["ed25519", "eip191", "solana-offchain"] as const)("an identity si
   });
 
   it("rejects a signature with one bit changed", async () => {
-    const signature = await signer.sign(digest);
-    signature[10]! ^= 1;
+    const signature = (await signer.sign(digest)).map((byte, i) => (i === 10 ? byte ^ 1 : byte));
     expect(verify(signer.identity, digest, signature)).toBe(false);
   });
 

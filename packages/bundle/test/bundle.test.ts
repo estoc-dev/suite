@@ -15,7 +15,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
@@ -67,8 +67,10 @@ describe("a bundle", () => {
 
   it("gives a signature back as bytes that do not read as an object of another schema", () => {
     const bundle = readBundle(writeBundle(root, [signature.bytes]));
+    const bytes = bundle.get(linkOf(signature.bytes));
+    assert.exists(bytes);
     // @ts-expect-error: refused at compile time too
-    expect(() => decodeObject(bundle.get(linkOf(signature.bytes))!, note)).toThrow();
+    expect(() => decodeObject(bytes, note)).toThrow();
   });
 
   it.each<[string, () => Map<string, Uint8Array>]>([

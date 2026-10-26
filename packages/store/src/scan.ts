@@ -85,6 +85,7 @@ class SortedRows<K extends Key> implements Rows<K> {
     this.#rows = rows;
   }
 
+  // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
   async *range(prefix: Prefix<K>): AsyncIterable<K> {
     const start: Key = [...prefix];
     const rows = this.#rows;
@@ -107,3 +108,4 @@ function compare(a: Key, b: Key): number {
   }
   return a.length - b.length;
 }
+// biome-ignore-end lint/style/noNonNullAssertion: each index is below the length it is checked against

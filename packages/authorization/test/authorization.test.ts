@@ -1,5 +1,5 @@
 import { type Scheme, SoftwareSigner } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, type JsonObject, linkOf } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, type JsonObject, linkOf, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it, vi } from "vitest";
@@ -153,7 +153,7 @@ describe("an actor", () => {
       principal: identities.encode(root.identity),
       agents: [hot, deputy].map(({ identity }) => identities.encode(identity)),
     });
-    expect(decodeObject(byLink(blobs).get(signature.object)!, proxy).data).toEqual({
+    expect((await readObject(byLink(blobs), signature.object, proxy)).data).toEqual({
       chain: [toHot, toDeputy].map(({ signature }) => ({ $link: signature.link })),
       target: { $link: target.link },
     });
@@ -171,11 +171,15 @@ describe("an actor", () => {
     expect(blobs.map((blob) => linkOf(blob)).sort()).toEqual([...taken, ...identityLinks].sort());
   });
 
-  it.each([0, 1, 2])(
+  it.each([
+    [0, root],
+    [1, hot],
+    [2, deputy],
+  ] as const)(
     "reads back from its entry and blobs alone as its own standing, through %i agents",
-    async (length) => {
+    async (length, by) => {
       const [toHot, toDeputy] = await grants;
-      const actor = authorizations.createActor([root, hot, deputy][length]!, [toHot, toDeputy].slice(0, length));
+      const actor = authorizations.createActor(by, [toHot, toDeputy].slice(0, length));
       const { signature, blobs } = await actor.sign(target.link);
       const read = await authorizations.readStanding(
         target.link,

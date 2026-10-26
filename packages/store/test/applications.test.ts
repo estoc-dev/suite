@@ -20,7 +20,7 @@ import {
   signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { MemoryBackend, Store } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
@@ -74,7 +74,8 @@ async function readListed<F extends Fields<Json>>(
 ): Promise<EncodedObject<Json, F>[]> {
   const objects: EncodedObject<Json, F>[] = [];
   for await (const link of store.mine()) {
-    const bytes = (await store.get(link))!;
+    const bytes = await store.get(link);
+    assert.exists(bytes);
     if (schemaOf(bytes, json) === schema.link) objects.push(decodeObject(bytes, schema));
   }
   return objects;
@@ -99,7 +100,8 @@ describe("a signed note", () => {
     expect(await listed(bobStore)).toEqual([received.link]);
 
     const [record] = await readListed(bobStore, receivedSchema);
-    const signed = await signatures.read(record!.data.bundle.$link, bobStore);
+    assert.exists(record);
+    const signed = await signatures.read(record.data.bundle.$link, bobStore);
     expect(sameIdentity(signed.identity, alice.identity)).toBe(true);
     expect((await readObject(bobStore, signed.object, noteSchema)).data.text).toBe("hello");
   });

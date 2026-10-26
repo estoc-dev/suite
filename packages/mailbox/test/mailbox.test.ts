@@ -27,9 +27,7 @@ describe("a mailbox", () => {
     // Bob hands the mailbox out as bytes, in a QR code say.
     const handed = queue.mailbox(bob.publicKey).bytes;
     await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, signature.identity.bytes]);
-    const [sealed, ...more] = queue.take();
-    expect(more).toEqual([]);
-    const bundle = await bob.open(sealed!);
+    const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
     expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.identity));
@@ -39,9 +37,10 @@ describe("a mailbox", () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
     await mailbox.send(hello, [new Uint8Array(4096)]);
+    const repeating = queue.takeOne();
     await mailbox.send(hello, [crypto.getRandomValues(new Uint8Array(4096))]);
-    const [repeating, random] = queue.take();
-    expect(repeating!.length).toBe(random!.length);
+    const random = queue.takeOne();
+    expect(repeating.length).toBe(random.length);
   });
 
   it("refuses to send a root that is not an object, and sends nothing", async () => {

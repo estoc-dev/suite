@@ -15,7 +15,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { type Mailbox, MailboxKey, mailboxFrom } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
@@ -80,14 +80,16 @@ describe("a chat line", () => {
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
     const [received] = await atBob.take();
+    assert.exists(received);
     // Bob passes on what he read: the signature, with the line and the identity it names.
-    const read = await readSigned(received!, chat);
+    const read = await readSigned(received, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
       read.identity.bytes,
     ]);
     const [passed] = await atCarol.take();
-    return { sent, received: received!, passed: passed! };
+    assert.exists(passed);
+    return { sent, received, passed };
   };
 
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {

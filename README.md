@@ -101,5 +101,7 @@ One pnpm workspace; packages go under `packages/` as they are written.
 
 ```bash
 pnpm install
-pnpm typecheck && pnpm test
+pnpm check && pnpm typecheck && pnpm test
 ```
+
+Biome formats and lints the code; `pnpm fix` applies what it can.

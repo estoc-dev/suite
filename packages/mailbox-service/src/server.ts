@@ -1,4 +1,4 @@
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorizations } from "@estoc/authorization";
+import { authorizationSchema, loadAuthorizations, proxySchema, type Authorizations, type Signed } from "@estoc/authorization";
 import type { Bundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import {
@@ -67,12 +67,6 @@ export interface ServiceOptions {
   readonly clock?: () => number;
 }
 
-interface Offered {
-  readonly object: EncodedObject<Json, AccountOfferData>;
-  /** The zip of the bundle of the service's signature over the offer. */
-  readonly zip: Uint8Array;
-}
-
 /**
  * A mailbox service, as a handler of HTTP requests. `GET /offer` answers the
  * service's signed offer, and `POST /` opens an account for whoever signed
@@ -80,7 +74,7 @@ interface Offered {
  */
 export class MailboxService {
   readonly #signer: Signer;
-  readonly #offer: Offered;
+  readonly #offer: Signed<EncodedObject<Json, AccountOfferData>>;
   readonly #authorizations: Authorizations;
   readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
   readonly #store: Store;
@@ -89,7 +83,7 @@ export class MailboxService {
 
   constructor(
     signer: Signer,
-    offer: Offered,
+    offer: Signed<EncodedObject<Json, AccountOfferData>>,
     authorizations: Authorizations,
     acknowledgement: Schema<Json, AcknowledgementData>,
     { store, accounts, clock = Date.now }: Omit<ServiceOptions, "validator">,
@@ -106,7 +100,7 @@ export class MailboxService {
   /** Answers a request, from any origin, since no request carries credentials. */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (pathname === "/offer") return answerTo(request, "GET", async () => bundleAnswer(200, this.#offer.zip));
+    if (pathname === "/offer") return answerTo(request, "GET", () => this.#answerWith(this.#offer.signature.link, 200));
     if (pathname === "/") return answerTo(request, "POST", () => this.#open(request));
     return answer(404);
   }
@@ -134,20 +128,20 @@ export class MailboxService {
     }
 
     const kept = await this.#accounts.get(identity);
-    if (kept !== undefined) return this.#acknowledged(kept, 200);
+    if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#acknowledgementSchema, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
     const schemas = [this.#acknowledgementSchema.bytes, ...CHAIN_SCHEMAS];
     await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
-    if (await this.#accounts.add(identity, signature.link)) return this.#acknowledged(signature.link, 201);
-    return this.#acknowledged((await this.#accounts.get(identity))!, 200);
+    if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
+    return this.#answerWith((await this.#accounts.get(identity))!, 200);
   }
 
-  /** The bundle of an acknowledgement's signature and all it leads to in the store. */
-  async #acknowledged(link: Link<Signature>, status: number): Promise<Response> {
+  /** Answers with the bundle of one of the service's signatures and all it leads to in the store. */
+  async #answerWith(link: Link<Signature>, status: number): Promise<Response> {
     const closure = await this.#store.closure(link);
     const bytes = closure.get(link);
-    if (bytes === undefined) throw new Error(`the store does not hold the acknowledgement ${link}`);
+    if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
     const blobs = [...closure].filter(([linked]) => linked !== link).map(([, blob]) => blob);
     return bundleAnswer(status, await zipped({ bytes }, blobs));
   }
@@ -184,5 +178,5 @@ export async function loadMailboxService(signer: Signer, { validator, ...options
   const signature = await signatures.sign(object, signer);
   const blobs = [object.bytes, offerSchema.bytes, identity.bytes, signatures.schema.bytes, signatures.identities.schema.bytes];
   await options.store.write({ mine: [signature], blobs });
-  return new MailboxService(signer, { object, zip: await zipped(signature, blobs) }, authorizations, acknowledgement, options);
+  return new MailboxService(signer, { object, signature }, authorizations, acknowledgement, options);
 }

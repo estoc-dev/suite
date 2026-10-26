@@ -1,5 +1,5 @@
 import { loadAuthorizations, type Actor, type Authorizations } from "@estoc/authorization";
-import type { Bundle } from "@estoc/bundle";
+import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
 import {
   encodeSchema,
   readObject,
@@ -12,7 +12,7 @@ import {
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
-import { readBody, unzipped, ZIP, zipped } from "./http.ts";
+import { readBody, ZIP } from "./http.ts";
 import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
 
 // The answers hold an acceptance and a few blobs of the service's. The
@@ -86,7 +86,7 @@ export class Offer {
   async accept(actor: Actor): Promise<Account> {
     // The service holds the offer and the schemas, so they are left out.
     const acceptance = await actor.sign(this.link);
-    const body = await zipped(acceptance.signature, acceptance.blobs);
+    const body = await packBundle(acceptance.signature, acceptance.blobs);
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(new URL("/", this.origin), request), [200, 201]);
     const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
@@ -158,7 +158,7 @@ async function bundleIn(response: Response, statuses: readonly number[]): Promis
   }
   const zip = await readBody(response.body, ANSWER_LIMIT);
   if (zip === undefined) throw new Error(`the service answered more than ${ANSWER_LIMIT} bytes`);
-  return unzipped(zip);
+  return unpackBundle(zip);
 }
 
 /** Reaches mailbox services for the identities of the user of `store`, which keeps the accounts opened. */

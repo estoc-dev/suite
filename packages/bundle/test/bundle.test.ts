@@ -77,6 +77,10 @@ describe("a bundle", () => {
     expect(() => readBundle(files())).toThrow();
   });
 
+  it("is not written with a root that is not an object", () => {
+    expect(() => writeBundle({ bytes: image }, [hello.bytes])).toThrow(/not an object/);
+  });
+
   it("reads with a signature as its root, which leads to the object it is over and to its identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, signature.identity.bytes]));
     expect(bundle.link).toBe(signature.link);

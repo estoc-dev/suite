@@ -4,7 +4,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
 import { Temporal } from "temporal-polyfill";
 import { afterEach, describe, expect, it } from "vitest";
-import { unzipped, zipped } from "../src/http.ts";
+import { packBundle, unpackBundle } from "@estoc/bundle";
 import { loadServices } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
@@ -111,7 +111,7 @@ describe("getting an offer", () => {
   it("refuses an offer signed by another identity than the one it names", async () => {
     const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.link } });
     const signature = await signatures.sign(offer, mallory);
-    const zip = await zipped(signature, [offer.bytes, signature.identity.bytes]);
+    const zip = await packBundle(signature, [offer.bytes, signature.identity.bytes]);
     const origin = await running(async () => new Response(zip));
     const { services } = await client();
     await expect(services.offer(origin)).rejects.toThrow(/signed by another identity/);
@@ -127,9 +127,9 @@ describe("accepting an offer", () => {
   it("refuses an acknowledgement signed by another identity than the service's, and writes nothing", async () => {
     const { service } = await memoryService();
     const origin = await answering(service, async (zip) => {
-      const acknowledgement = encodeObject(acknowledgementSchemaRead, { accepted: { $link: (await unzipped(zip)).link }, at: 1 });
+      const acknowledgement = encodeObject(acknowledgementSchemaRead, { accepted: { $link: (await unpackBundle(zip)).link }, at: 1 });
       const signature = await signatures.sign(acknowledgement, mallory);
-      return new Response(await zipped(signature, [acknowledgement.bytes, signature.identity.bytes]), { status: 201 });
+      return new Response(await packBundle(signature, [acknowledgement.bytes, signature.identity.bytes]), { status: 201 });
     });
     const { store, services } = await client();
     await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(/signed by another identity/);
@@ -141,7 +141,7 @@ describe("accepting an offer", () => {
     const offer = (await (await client()).services.offer(await running((request) => service.fetch(request)))).link;
     const bobs = await signatures.sign({ link: offer }, bob);
     const origin = await answering(service, async () =>
-      service.fetch(new Request("https://mail.example/", { method: "POST", body: await zipped(bobs, [bobs.identity.bytes]) })),
+      service.fetch(new Request("https://mail.example/", { method: "POST", body: await packBundle(bobs, [bobs.identity.bytes]) })),
     );
     const { store, services } = await client();
     await expect((await services.offer(origin)).accept(authorizations.createActor(alice))).rejects.toThrow(/another identity's account/);

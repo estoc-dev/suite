@@ -61,6 +61,22 @@ then alike: each is one more schema for the program to read. Keeping up
 with one's own past and reading another application's objects are the same
 work.
 
+What one program asks of another, and what the other answers, is a
+bundle: an object as the root, with the blobs it leads to. What is asked is said by the root's schema, and who asks by
+whoever stands behind the root, read with the same judgments as any
+object, so neither rests on the connection, a session or a credential.
+The same bundle can go over HTTP, through a mailbox, or as a file, and
+both sides can keep what was asked and answered, an answer linking to what
+it answers. Reading what is public, such as an object by its link, asks
+with nothing but where to look; a refusal changes nothing and is no
+object.
+
+A signature says that an identity stands behind an object, but not when,
+or over which connection, and whoever holds the bundle can send it again.
+So a request either does no harm when it comes again, as opening an
+account at a mailbox service does not, or its object holds what makes it
+fresh, such as a nonce.
+
 ## Packages
 
 - `@estoc/identity`: identities in their schemes, and signing and
@@ -70,7 +86,7 @@ work.
   identities and signatures.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
-  object as the way in.
+  object as the way in, and packed to travel between programs.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
 - `@estoc/mailbox-service`: opening an account, by signing its offer, at

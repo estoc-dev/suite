@@ -1,5 +1,5 @@
 import { authorizationSchema, loadAuthorizations, proxySchema, type Authorizations, type Signed } from "@estoc/authorization";
-import type { Bundle } from "@estoc/bundle";
+import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import {
   encodeObject,
@@ -14,7 +14,7 @@ import {
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
-import { readBody, unzipped, ZIP, zipped } from "./http.ts";
+import { readBody, ZIP } from "./http.ts";
 import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
@@ -117,7 +117,7 @@ class MailboxService {
     let accepted: Bundle;
     let identity: Link<IdentityObject>;
     try {
-      accepted = await unzipped(zip);
+      accepted = await unpackBundle(zip);
       const { principal } = await this.#authorizations.readStanding(offer.link, accepted.link, accepted, new Date(at));
       if (principal.link === offer.data.identity.$link) throw new Error("a service opens no account for itself");
       identity = principal.link;
@@ -141,7 +141,7 @@ class MailboxService {
     const bytes = closure.get(link);
     if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
     const blobs = [...closure].filter(([linked]) => linked !== link).map(([, blob]) => blob);
-    return bundleAnswer(status, await zipped({ bytes }, blobs));
+    return bundleAnswer(status, await packBundle({ bytes }, blobs));
   }
 }
 

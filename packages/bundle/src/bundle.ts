@@ -25,11 +25,7 @@ export class Bundle {
     // what is kept, whatever happens to the given arrays afterwards. A file
     // read in Node is a Buffer, whose `slice` shares memory instead of copying.
     this.root = new Uint8Array(index);
-    try {
-      schemaOf(this.root, json);
-    } catch (cause) {
-      throw new Error(`${ROOT} is not an object in canonical JSON`, { cause });
-    }
+    checkRoot(this.root);
     this.link = linkOf(this.root);
     this.#blobs.set(this.link, this.root);
     for (const [path, bytes] of files) {
@@ -59,9 +55,17 @@ export class Bundle {
   }
 }
 
+function checkRoot(bytes: Uint8Array): void {
+  try {
+    schemaOf(bytes, json);
+  } catch (cause) {
+    throw new Error(`${ROOT} is not an object in canonical JSON`, { cause });
+  }
+}
+
 /**
  * Reads a bundle from its files by path: a folder read into memory, or a zip
- * unpacked. Refuses it when `index.json` is missing or is not an object, or
+ * unzipped. Refuses it when `index.json` is missing or is not an object, or
  * when a blob does not have the link its name says.
  */
 export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
@@ -71,9 +75,11 @@ export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
 /**
  * The files of a bundle with `root` as its `index.json`, carrying `blobs`.
  * `root` is an object of whatever type the caller holds it as: only its
- * bytes are written.
+ * bytes are written. Refuses a root that is not an object in canonical JSON,
+ * since no reader would take the bundle.
  */
 export function writeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Map<string, Uint8Array> {
+  checkRoot(root.bytes);
   const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);
   for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);
   return files;

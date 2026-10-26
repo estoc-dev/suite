@@ -1,5 +1,6 @@
+import type { Bytes } from "@estoc/object";
 import { configure, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
-import { BLOB, ROOT } from "./bundle.ts";
+import { BLOB, readBundle, ROOT, writeBundle, type Bundle } from "./bundle.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 // Stored, and DEFLATE.
@@ -99,6 +100,25 @@ export async function unzipBundle(
     files.set(path, joined(chunks));
   }
   return files;
+}
+
+/**
+ * The zip of the bundle of `root` and `blobs`, without compression, which is
+ * how a bundle travels from one program to another: as a message, a request
+ * or an answer.
+ */
+export function packBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<Uint8Array> {
+  return zipBundle(writeBundle(root, blobs), { compress: false });
+}
+
+/**
+ * Reads a bundle that arrived as a zip, and refuses one whose files come to
+ * more bytes than the zip. A zip without compression is larger than its
+ * files, so no zip that `packBundle` writes is refused for it, while a
+ * compressed one could otherwise unzip to far more than arrived.
+ */
+export async function unpackBundle(zip: Uint8Array): Promise<Bundle> {
+  return readBundle(await unzipBundle(zip, { bytes: zip.length }));
 }
 
 function joined(chunks: Uint8Array[]): Uint8Array {

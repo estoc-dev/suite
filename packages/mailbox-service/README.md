@@ -142,10 +142,9 @@ No request carries credentials, so it answers any origin, and it answers
 the CORS preflight that a browser sends before it posts a zip to another
 origin. A body is read up to 64 KiB.
 
-Bundles travel both ways as the zip that `zipBundle` writes with
-`compress: false`. A zip without compression is larger than its files, so
-a reader refuses a zip whose files come to more than its own size, and a
-small zip cannot unzip to much more than arrived.
+Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
+them, and are read with `unpackBundle`, so a small body cannot unzip to
+much more than arrived.
 
 A service opens no account for its own identity: its signature over its
 offer is what `GET /offer` answers, and posting that back accepts nothing.

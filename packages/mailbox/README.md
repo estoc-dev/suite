@@ -8,7 +8,7 @@ deal with keys, encryption or transports.
 
 ```
 Mailbox  {"key": <x25519 public key>, <the transport's fields>…}
-Message  a bundle of @estoc/bundle, zipped without compression
+Message  a bundle of @estoc/bundle, packed
 Sealed   the HPKE encapsulated key, 32 bytes, followed by the ciphertext of a Message
 ```
 
@@ -58,7 +58,7 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 
 `open` takes the sealed bytes that a transport received and gives back the
 bundle inside. It refuses bytes that do not open with its key, and what
-opens but is not the zip of a bundle. It does not read who stands behind
+opens but does not unpack to a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.read` or `readStanding` and the bundle as the reader.
 
@@ -84,13 +84,13 @@ transport's schema to, and binds the key and the transport once. The
 `Mailbox` it returns shows neither, only `send`.
 
 `send` takes a root and blobs as `writeBundle` does, and refuses a root
-that is not an object. It zips the bundle, seals the zip to the key and
-hands the sealed bytes to the transport. It resolves once they are handed
-on. Nothing confirms that a message arrived and nothing is sent again: a
-message can be lost, arrive twice, or arrive out of order. That is
-harmless to a reader, since blobs are named by their content and a reading
-only grows with what arrives; an application that needs a message to be
-fresh puts a nonce in its object, as a login does.
+that is not an object. It packs the bundle with `packBundle`, seals the
+zip to the key and hands the sealed bytes to the transport. It resolves
+once they are handed on. Nothing confirms that a message arrived and
+nothing is sent again: a message can be lost, arrive twice, or arrive out
+of order. That is harmless to a reader, since blobs are named by their
+content and a reading only grows with what arrives; an application that
+needs a message to be fresh puts a nonce in its object, as a login does.
 
 ## Through a store
 
@@ -157,23 +157,16 @@ says and who signed it are read from its root when it is shown.
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
 blobs it leads to, which `readObject` and judgments such as `readStanding`
 in `@estoc/authorization` take their blobs from. Nothing in it names the
-sender. It travels as the zip that `zipBundle` writes with
-`compress: false`, which holds the same files as a bundle handed over as a
-file, so a message can be kept as one and a bundle sent as a message.
+sender. It travels packed, as a bundle travels between programs:
+`send` packs it with `packBundle`, and `open` reads it with `unpackBundle`.
+A packed bundle holds the same files as a bundle handed over as a file, so
+a message can be kept as one and a bundle sent as a message.
 
-The zip is not compressed because it is encrypted next. How far DEFLATE
-shrinks the files depends on what they hold, so when someone else writes
-part of a message, the length of the sealed bytes could tell them whether
-their part repeats something secret in the rest. Without compression the
-length depends on the sizes of the files alone.
-
-Anyone can seal to a mailbox's key, so `open` refuses a zip whose files
-come to more bytes than the zip itself. A zip without compression is larger
-than its files and is never refused for it, while a compressed one could
-otherwise unzip to far more than arrived. `open` keeps the other limit of
-`unzipBundle`, 10,000 entries, so a bundle of more blobs is refused when it
-is opened, though `send` sends it: what a receiver takes is its own to
-limit, and a sender does not know it.
+A packed bundle is not compressed, so the length of the sealed bytes
+depends on the sizes of its files alone, and anyone who seals to a
+mailbox's key cannot make `open` unzip far more than arrived. `open` also
+refuses a zip of more than 10,000 entries, though `send` sends it: what a
+receiver takes is its own to limit, and a sender does not know it.
 
 ## Sealing
 

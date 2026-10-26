@@ -26,14 +26,15 @@ bundle.get(message.link); // message.bytes
 ## The root
 
 A bundle has a root, and the root is an object, so a reader knows what a
-bundle is by the root's schema. Loose files packed together would leave it
+bundle is by the root's schema. Loose files put together would leave it
 guessing. `index.json` has to be the canonical JSON of an object, naming its
 schema in `$type`. An `index.json` formatted by hand, or one that holds a
 schema, makes the whole bundle refused. A signature is an object too, so it
 can be the root, with what it is over carried in the bundle. `writeBundle`
 takes the root as whatever type the program holds it as, such as an
 `Authorization`, and writes its bytes, so the root is written as it was
-signed.
+signed. It refuses a root that is not an object, since no reader would
+take the bundle.
 
 `index.json` is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is
@@ -110,11 +111,7 @@ const bundle = readBundle(await unzipBundle(zip));
 ```
 
 `zipBundle` compresses with DEFLATE unless it is given `compress: false`,
-and then stores the files as they are. A zip that is encrypted afterwards,
-as a message to a mailbox is, is better stored: how far DEFLATE shrinks a
-file depends on what it holds, so when someone else writes part of a
-bundle, the length of the ciphertext can tell them whether their part
-repeats something secret elsewhere in it.
+and then stores the files as they are, as a packed bundle is.
 
 The entries start at the bundle's root: `index.json` is at the top of the
 zip, not in a folder. A zip with the bundle in a folder unzips to no
@@ -161,3 +158,31 @@ anywhere else are not entries, even when they look like one: those of a blob
 that is itself a zip, or of the zip's comment. A reader that goes from header
 to header instead can come to entries the directory does not list, and read
 another bundle from the same zip.
+
+## Packed
+
+A bundle that goes from one program to another, as a message, a request or
+an answer, travels packed: `packBundle` zips the bundle of a root and blobs
+without compression, and `unpackBundle` reads it back.
+
+```ts
+import { packBundle, unpackBundle } from "@estoc/bundle";
+
+const zip = await packBundle(signature, [message.bytes, signature.identity.bytes]);
+const bundle = await unpackBundle(zip);
+```
+
+A packed bundle is a zip like any other, so it can be kept as a file, and
+`unzipBundle` reads it. It is not compressed, for two reasons:
+
+- What arrives comes from someone else, and a zip without compression is
+  larger than its files. `unpackBundle` refuses a zip whose files come to
+  more bytes than the zip itself, which refuses none that `packBundle`
+  writes and keeps a compressed one from unzipping to far more than
+  arrived. It keeps the other limit of `unzipBundle`, 10,000 entries.
+- What travels is encrypted on the way, by TLS or by sealing it to a
+  mailbox's key. How far DEFLATE shrinks a file depends on what it holds,
+  so when someone else writes part of a bundle, the length of the
+  ciphertext could tell them whether their part repeats something secret
+  elsewhere in it. Without compression the length depends on the sizes of
+  the files alone.

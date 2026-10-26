@@ -1,10 +1,8 @@
-import { loadAuthorizations, type Authorization, type Authorizations, type Signed } from "@estoc/authorization";
+import { loadAuthorizations, type Actor, type Authorizations } from "@estoc/authorization";
 import type { Bundle } from "@estoc/bundle";
-import type { Signer } from "@estoc/identity";
 import {
   encodeSchema,
   readObject,
-  type Bytes,
   type EncodedObject,
   type IdentityObject,
   type Json,
@@ -30,7 +28,7 @@ const REQUEST = { redirect: "error", credentials: "omit", referrerPolicy: "no-re
 
 /** An identity's account at a service, written to the store. */
 export interface Account {
-  /** The identity whose account it is: the signer's, or the principal's that the signer acted for. */
+  /** The identity whose account it is: the principal of the actor that accepted the offer. */
   readonly identity: IdentityObject;
   /** The service's identity, which signed the offer and the acknowledgement. */
   readonly service: IdentityObject;
@@ -50,7 +48,7 @@ type Offered = {
   readonly signature: Signature;
 };
 
-type Accept = (signer: Signer, chain: readonly Signed<Authorization>[]) => Promise<Account>;
+type Accept = (actor: Actor) => Promise<Account>;
 
 /** A service's offer of an account, read from the service's origin and bound to it. */
 export class Offer {
@@ -68,16 +66,15 @@ export class Offer {
   }
 
   /**
-   * Opens an account by accepting the offer: for the signer's identity, which
-   * signs the offer, or with `chain`, for the principal that the chain starts
-   * at, with the signer signing a proxy for it as the chain's last agent.
-   * Writes the service's signatures over the offer and over the
-   * acknowledgement to the store as mine, with all they lead to. An identity
-   * that has an account there already gets the acknowledgement of the
-   * acceptance that opened it, which may have come from another device.
+   * Opens an account for the actor's principal by accepting the offer: the
+   * actor signs the offer, or a proxy for it. Writes the service's signatures
+   * over the offer and over the acknowledgement to the store as mine, with
+   * all they lead to. An identity that has an account there already gets the
+   * acknowledgement of the acceptance that opened it, which may have come
+   * from another device.
    */
-  accept(signer: Signer, chain: readonly Signed<Authorization>[] = []): Promise<Account> {
-    return this.#accept(signer, chain);
+  accept(actor: Actor): Promise<Account> {
+    return this.#accept(actor);
   }
 }
 
@@ -115,12 +112,14 @@ export class Services {
       throw new Error(`the offer of ${origin} is signed by another identity than the one it names`);
     }
     const offered = { origin, bundle, offer, signature };
-    return new Offer(offered, (signer, chain) => this.#accept(offered, signer, chain));
+    return new Offer(offered, (actor) => this.#accept(offered, actor));
   }
 
-  async #accept({ origin, bundle, offer, signature }: Offered, signer: Signer, chain: readonly Signed<Authorization>[]): Promise<Account> {
-    const { entry, principal, blobs } = await this.#acceptance(offer, signer, chain);
-    const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body: await zipped(entry, blobs) };
+  async #accept({ origin, bundle, offer, signature }: Offered, actor: Actor): Promise<Account> {
+    // The service holds the offer and the schemas, so they are left out.
+    const acceptance = await actor.sign(offer.link);
+    const body = await zipped(acceptance.signature, acceptance.blobs);
+    const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(new URL("/", origin), request), [200, 201]);
     const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
     const service = signature.identity;
@@ -131,29 +130,9 @@ export class Services {
     // The acceptance that opened an account stood when the service received
     // it, though an authorization in its chain may have ended since.
     const { principal: holder } = await this.#authorizations.readStanding(offer.link, accepted.$link, answer, new Date(at));
-    if (holder.link !== principal.link) throw new Error("the acknowledgement is of another identity's account");
+    if (holder.link !== actor.principal.link) throw new Error("the acknowledgement is of another identity's account");
     await this.#store.write({ mine: [acknowledgement, signature], blobs: [...answer.blobs(), ...bundle.blobs()] });
-    return { identity: principal, service, at, link: acknowledgement.link };
-  }
-
-  /**
-   * The signature that accepts the offer, the identity it stands behind the
-   * offer, and the blobs the service reads it with. The service holds the
-   * offer and the schemas, so they are left out.
-   */
-  async #acceptance(
-    offer: EncodedObject<Json, AccountOfferData>,
-    signer: Signer,
-    chain: readonly Signed<Authorization>[],
-  ): Promise<{ readonly entry: Signature; readonly principal: IdentityObject; readonly blobs: readonly Bytes<unknown>[] }> {
-    const [first] = chain;
-    if (first === undefined) {
-      const entry = await this.#authorizations.signatures.sign(offer, signer);
-      return { entry, principal: entry.identity, blobs: [entry.identity.bytes] };
-    }
-    const { object, signature } = await this.#authorizations.proxy(offer.link, chain, signer);
-    const grants = chain.flatMap(({ object, signature }) => [signature.bytes, signature.identity.bytes, object.bytes, object.agent.bytes]);
-    return { entry: signature, principal: first.signature.identity, blobs: [signature.identity.bytes, object.bytes, ...grants] };
+    return { identity: actor.principal, service, at, link: acknowledgement.link };
   }
 }
 

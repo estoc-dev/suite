@@ -56,16 +56,19 @@ confirm each signature, so the wallet can instead authorize a key on the
 device with `@estoc/authorization`, and the device signs a Proxy for the
 offer. The account is still the wallet's.
 
+`accept` takes an actor of `@estoc/authorization`, and opens the account of
+its principal:
+
 ```ts
-const account = await offer.accept(wallet);
+const account = await offer.accept(authorizations.createActor(wallet));
 // or, for the wallet, by a key on the device that it authorized:
-const account = await offer.accept(deviceKey, [grant]);
+const account = await offer.accept(authorizations.createActor(deviceKey, [grant]));
 ```
 
-`accept` signs, or signs the proxy, and posts the bundle of that signature
-to `POST /`: the signature as the root, with the identity, and for a proxy
-the Proxy and its chain. The offer and the schemas are left out, since the
-service has them.
+The actor signs the offer, or a proxy for it, and `accept` posts the
+bundle of that signature to `POST /`: the signature as the root, with the
+identity, and for a proxy the Proxy and its chain. The offer and the
+schemas are left out, since the service has them.
 
 The service reads who stands behind its offer by the root, with
 `readStanding` at its clock, opens an account for that identity, and

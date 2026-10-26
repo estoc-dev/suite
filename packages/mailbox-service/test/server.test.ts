@@ -38,8 +38,7 @@ async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
 async function proxied(offer: { readonly link: Link<unknown> }, until?: Temporal.Instant) {
   const grant = await authorizations.authorize(device.identity, wallet, until);
-  const { object, signature } = await authorizations.proxy(offer.link, [grant], device);
-  const blobs = [object.bytes, signature.identity.bytes, grant.signature.bytes, grant.signature.identity.bytes, grant.object.bytes];
+  const { signature, blobs } = await authorizations.createActor(device, [grant]).sign(offer.link);
   return { signature, zip: await zipped(signature, blobs) };
 }
 

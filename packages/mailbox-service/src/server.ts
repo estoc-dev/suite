@@ -1,21 +1,21 @@
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorizations, type Signed } from "@estoc/authorization";
-import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
+import { type Authorizations, authorizationSchema, loadAuthorizations, proxySchema, type Signed } from "@estoc/authorization";
+import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import {
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  jsonSchema,
-  type EncodedObject,
   type IdentityObject,
   type Json,
   type JsonSchemaValidator,
+  jsonSchema,
   type Link,
   type Schema,
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
-import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
+import { type AccountOfferData, type AcknowledgementData, accountOfferSchema, acknowledgementSchema } from "./schemas.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and an identity, or a proxy and its chain.

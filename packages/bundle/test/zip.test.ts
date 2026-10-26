@@ -1,13 +1,7 @@
 import { constants, deflateRawSync } from "node:zlib";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import {
-  configure,
-  resetConfiguration,
-  Uint8ArrayReader,
-  Uint8ArrayWriter,
-  ZipWriter,
-} from "@zip.js/zip.js/index-native.js";
+import { configure, resetConfiguration, Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js/index-native.js";
 import { Inflate, Zip, ZipPassThrough, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBundle } from "../src/index.ts";

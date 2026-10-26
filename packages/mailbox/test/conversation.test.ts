@@ -1,23 +1,32 @@
 import { SoftwareSigner } from "@estoc/identity";
 import {
+  type EncodedObject,
   encodeObject,
   encodeSchema,
   identitySchema,
-  json,
-  loadSignatures,
-  readObject,
-  signatureSchema,
-  type EncodedObject,
   type Json,
   type JsonSchema,
+  json,
   type Link,
+  loadSignatures,
+  readObject,
   type Schema,
+  signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { MemoryBackend, scan, Store, type Index, type Rows } from "@estoc/store";
+import { type Index, MemoryBackend, type Rows, Store, scan } from "@estoc/store";
 import { describe, expect, it } from "vitest";
-import { inboundSchema, loadPost, MailboxKey, outboundSchema, type DeliveryData, type Inbox, type Outbox, type Post } from "../src/index.ts";
-import { MemoryNetwork, type Faults } from "./memory-network.ts";
+import {
+  type DeliveryData,
+  type Inbox,
+  inboundSchema,
+  loadPost,
+  MailboxKey,
+  type Outbox,
+  outboundSchema,
+  type Post,
+} from "../src/index.ts";
+import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a store and a mailbox for the other.
 // What one sends is a signed line from their store, recorded there as gone
@@ -38,9 +47,10 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   },
   defaultValidator,
 );
-const schemas = [line, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
-  ({ bytes }) => bytes,
-);
+const schemas = [
+  line,
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
+].map(({ bytes }) => bytes);
 const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
 const [inbound, outbound] = await Promise.all([inboundSchema, outboundSchema].map(delivery));
 
@@ -52,7 +62,9 @@ type Delivered = [direction: Direction, mailbox: Mailbox, at: number, bundle: Li
 // by which way it went, the mailbox, when, and the bundle.
 const deliveries: Index<Json, Delivered, DeliveryData> = {
   reads: [inbound!, outbound!],
-  rows: ({ schema, data: { mailbox, at, bundle } }) => [[schema.link === inbound!.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link]],
+  rows: ({ schema, data: { mailbox, at, bundle } }) => [
+    [schema.link === inbound!.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link],
+  ],
 };
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {

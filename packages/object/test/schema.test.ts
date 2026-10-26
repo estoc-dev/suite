@@ -5,10 +5,10 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
-  jsonSchema,
-  linkSchema,
   type JsonSchema,
   type JsonSchemaValidator,
+  jsonSchema,
+  linkSchema,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";

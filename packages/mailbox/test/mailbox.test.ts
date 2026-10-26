@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, loadSignatures, type JsonObject } from "@estoc/object";
+import { encodeObject, encodeSchema, type JsonObject, loadSignatures } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";

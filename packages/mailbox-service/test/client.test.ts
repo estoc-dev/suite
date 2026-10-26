@@ -1,10 +1,10 @@
+import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
-import { encodeObject, readObject, type Link } from "@estoc/object";
+import { encodeObject, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
 import { Temporal } from "temporal-polyfill";
 import { afterEach, describe, expect, it } from "vitest";
-import { packBundle, unpackBundle } from "@estoc/bundle";
 import { loadServices } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
@@ -63,7 +63,9 @@ describe("an offer", () => {
     const kept = await signatures.read(account.link, store);
     expect(kept.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
-    expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_000))).principal.link).toBe(account.identity.link);
+    expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_000))).principal.link).toBe(
+      account.identity.link,
+    );
     const offered = await signatures.read((await mine(store)).find((link) => link !== account.link)!, store);
     expect([offered.object, offered.identity.link]).toEqual([offer.link, serviceIdentity.link]);
   });
@@ -84,7 +86,12 @@ describe("an offer", () => {
     const again = await (await services.offer(origin)).accept(await through(phone, wallet));
     expect(again).toEqual(first);
     const kept = await readObject(store, (await signatures.read(again.link, store)).object, acknowledgementSchemaRead);
-    const standing = await authorizations.readStanding((await services.offer(origin)).link, kept.data.accepted.$link, store, new Date(again.at));
+    const standing = await authorizations.readStanding(
+      (await services.offer(origin)).link,
+      kept.data.accepted.$link,
+      store,
+      new Date(again.at),
+    );
     expect(standing.agents).toEqual([identities.encode(laptop.identity)]);
   });
 
@@ -120,7 +127,9 @@ describe("getting an offer", () => {
 
 // A service that hands the offer of `service` and answers an acceptance as `answer` does.
 async function answering(service: MailboxService, answer: (zip: Uint8Array) => Promise<Response>) {
-  return running(async (request) => (request.method === "POST" ? answer(new Uint8Array(await request.arrayBuffer())) : service.fetch(request)));
+  return running(async (request) =>
+    request.method === "POST" ? answer(new Uint8Array(await request.arrayBuffer())) : service.fetch(request),
+  );
 }
 
 describe("accepting an offer", () => {

@@ -2,8 +2,8 @@ import { writeBundle, zipBundle } from "@estoc/bundle";
 import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { publicKeyFrom, seal } from "../src/key.ts";
 import { MailboxKey } from "../src/index.ts";
+import { publicKeyFrom, seal } from "../src/key.ts";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));

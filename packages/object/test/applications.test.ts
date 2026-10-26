@@ -1,18 +1,18 @@
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  linkOf,
-  linkSchema,
-  loadSignatures,
-  type EncodedObject,
   type IdentityObject,
   type Json,
   type JsonLink,
   type Link,
+  linkOf,
+  linkSchema,
+  loadSignatures,
   type Reader,
   type Schema,
   type Signature,
@@ -152,7 +152,8 @@ const receive = (signed: readonly Signature[]): Received => ({
   blobs: byLink([terms.bytes, confirmation.bytes, ...signed.map(({ identity }) => identity.bytes)]),
   signatures: signed.map(({ bytes }) => bytes),
 });
-const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) => Promise.all(pairs.map(([object, by]) => signatures.sign(object, by)));
+const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>
+  Promise.all(pairs.map(([object, by]) => signatures.sign(object, by)));
 
 describe("a sale", () => {
   it("is in force only once its buyer and its seller have both signed it", async () => {

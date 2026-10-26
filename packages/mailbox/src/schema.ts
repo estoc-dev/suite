@@ -1,4 +1,4 @@
-import { linkSchema, type EncodedObject, type Json, type JsonLink, type JsonObject, type JsonSchema } from "@estoc/object";
+import { type EncodedObject, type Json, type JsonLink, type JsonObject, type JsonSchema, linkSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 

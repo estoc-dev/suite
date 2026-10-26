@@ -1,5 +1,5 @@
 import { SoftwareSigner } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, identitySchema, json, loadSignatures, signatureSchema, type Link } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, identitySchema, json, type Link, loadSignatures, signatureSchema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -8,10 +8,14 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const note = await encodeSchema({ $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } }, defaultValidator);
-const schemas = [note, ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator))))].map(
-  ({ bytes }) => bytes,
+const note = await encodeSchema(
+  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
 );
+const schemas = [
+  note,
+  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
+].map(({ bytes }) => bytes);
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });

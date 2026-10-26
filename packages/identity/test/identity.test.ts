@@ -1,6 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { describe, expect, it, test } from "vitest";
-import { sameIdentity, SoftwareSigner, verify, type Identity } from "../src/index.ts";
+import { type Identity, SoftwareSigner, sameIdentity, verify } from "../src/index.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const ed25519Signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));

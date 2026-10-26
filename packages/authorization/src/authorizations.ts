@@ -1,17 +1,17 @@
-import { sameIdentity, type Identity, type Signer } from "@estoc/identity";
+import { type Identity, type Signer, sameIdentity } from "@estoc/identity";
 import {
-  encodeObject,
-  encodeSchema,
-  loadSignatures,
-  readObject,
   type Bytes,
   type EncodedObject,
+  encodeObject,
+  encodeSchema,
   type IdentityObject,
   type Json,
   type JsonLink,
   type JsonSchemaValidator,
   type Link,
+  loadSignatures,
   type Reader,
+  readObject,
   type Schema,
   type Signature,
   type Signatures,

@@ -1,22 +1,22 @@
-import { SoftwareSigner, type Scheme, type Signer } from "@estoc/identity";
+import { type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it, test, vi } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  json,
-  linkOf,
-  loadSignatures,
-  signatureSchema,
   type IdentityObject,
   type Json,
   type JsonObject,
   type JsonSchemaValidator,
+  json,
+  linkOf,
+  loadSignatures,
   type Reader,
   type Schema,
   type Signature,
   type Signatures,
+  signatureSchema,
 } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);

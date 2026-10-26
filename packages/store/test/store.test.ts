@@ -3,16 +3,16 @@ import {
   encodeObject,
   encodeSchema,
   identitySchema,
+  type JsonObject,
   json,
+  type Link,
   linkOf,
   loadSignatures,
   signatureSchema,
-  type JsonObject,
-  type Link,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MemoryBackend, Store, type Backend } from "../src/index.ts";
+import { type Backend, MemoryBackend, Store } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);

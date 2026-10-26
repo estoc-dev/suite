@@ -1,9 +1,17 @@
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { encodeObject, encodeSchema, linkOf, type Link, type Signature } from "@estoc/object";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Link, linkOf, type Signature } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Entry, type Signed, type Standing } from "../src/index.ts";
+import {
+  type Authorization,
+  authorizationSchema,
+  type Entry,
+  loadAuthorizations,
+  proxySchema,
+  type Signed,
+  type Standing,
+} from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -203,7 +211,10 @@ describe("a standing through a proxy", () => {
       const [proxy, alike] = await Promise.all([rootToHot, lasting].map((grant) => through([grant], hot)));
       const blobs = byLink([...identityBytes, ...parts(proxy!)]);
       const links = [rootToHot.object.link, rootToHot.signature.link, proxy!.signature.object, rootToHot.object.agent.link];
-      blobs.set(links[swapped]!, [...parts(lasting), byLink(alike!.blobs).get(alike!.signature.object)!, identityOf(deputy).bytes][swapped]!);
+      blobs.set(
+        links[swapped]!,
+        [...parts(lasting), byLink(alike!.blobs).get(alike!.signature.object)!, identityOf(deputy).bytes][swapped]!,
+      );
       await expect(authorizations.readStanding(target.link, proxy!.signature.link, blobs, now)).rejects.toThrow(/is another blob/);
     },
   );

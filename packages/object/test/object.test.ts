@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, readObject, schemaOf, type JsonObject } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, type JsonObject, json, readObject, schemaOf } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);

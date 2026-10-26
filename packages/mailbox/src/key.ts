@@ -1,4 +1,4 @@
-import { unpackBundle, type Bundle } from "@estoc/bundle";
+import { type Bundle, unpackBundle } from "@estoc/bundle";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
 

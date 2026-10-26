@@ -5,13 +5,13 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
+  type Json,
+  type JsonObject,
   json,
   linkOf,
   linkSchema,
   loadSignatures,
   readObject,
-  type Json,
-  type JsonObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -72,7 +72,10 @@ describe("a bundle", () => {
     ["an index.json formatted by hand", () => filesOf(utf8(JSON.stringify(json.object({ text: "hello" }, note.link), null, 2)))],
     ["an index.json that is a schema", () => filesOf(note.bytes)],
     ["an index.json that is not JSON", () => filesOf(image)],
-    ["a blob that does not have the link its name says", () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]])],
+    [
+      "a blob that does not have the link its name says",
+      () => new Map([...filesOf(root.bytes), [`blobs/sha256/${hexOf(hello.bytes)}`, image]]),
+    ],
   ])("is refused with %s", (_, files) => {
     expect(() => readBundle(files())).toThrow();
   });

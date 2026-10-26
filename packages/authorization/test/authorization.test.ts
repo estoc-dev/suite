@@ -1,9 +1,9 @@
-import { SoftwareSigner, type Scheme } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, linkOf, type JsonObject } from "@estoc/object";
+import { type Scheme, SoftwareSigner } from "@estoc/identity";
+import { decodeObject, encodeObject, encodeSchema, type JsonObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it, vi } from "vitest";
-import { authorizationSchema, loadAuthorizations, proxySchema, type Authorization, type Signed } from "../src/index.ts";
+import { type Authorization, authorizationSchema, loadAuthorizations, proxySchema, type Signed } from "../src/index.ts";
 import { formatBlind } from "./format-blind.ts";
 
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -25,7 +25,8 @@ const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 const agent = { $link: identities.encode(hot.identity).link };
 const byLink = (blobs: readonly Uint8Array[]) => new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-const blobsOf = ({ object, signature }: Signed<Authorization>) => byLink([signature.bytes, object.bytes, object.agent.bytes, signature.identity.bytes]);
+const blobsOf = ({ object, signature }: Signed<Authorization>) =>
+  byLink([signature.bytes, object.bytes, object.agent.bytes, signature.identity.bytes]);
 const identityBytes = [root, hot, deputy].map(({ identity }) => identities.encode(identity).bytes);
 const given = (...blobs: Uint8Array[]) => byLink([...identityBytes, ...blobs]);
 
@@ -73,9 +74,9 @@ describe("an authorization", () => {
 
   it("is not read without the object of its agent", async () => {
     const signed = await authorizations.authorize(stranger.identity, root);
-    await expect(authorizations.readAuthorization(signed.signature.link, given(signed.signature.bytes, signed.object.bytes))).rejects.toThrow(
-      /no blob is given/,
-    );
+    await expect(
+      authorizations.readAuthorization(signed.signature.link, given(signed.signature.bytes, signed.object.bytes)),
+    ).rejects.toThrow(/no blob is given/);
   });
 
   it("is refused when its object is written to another schema, though shaped the same", async () => {
@@ -135,7 +136,10 @@ describe("an actor", () => {
     const [toHot, toDeputy] = await grants;
     const actor = authorizations.createActor(deputy, [toHot, toDeputy]);
     const { signature, blobs } = await actor.sign(target.link);
-    expect(actor).toMatchObject({ principal: identities.encode(root.identity), agents: [hot, deputy].map(({ identity }) => identities.encode(identity)) });
+    expect(actor).toMatchObject({
+      principal: identities.encode(root.identity),
+      agents: [hot, deputy].map(({ identity }) => identities.encode(identity)),
+    });
     expect(decodeObject(byLink(blobs).get(signature.object)!, proxy).data).toEqual({
       chain: [toHot, toDeputy].map(({ signature }) => ({ $link: signature.link })),
       target: { $link: target.link },

@@ -1,4 +1,4 @@
-import { json, linkOf, schemaOf, type Bytes, type Link } from "@estoc/object";
+import { type Bytes, json, type Link, linkOf, schemaOf } from "@estoc/object";
 
 export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;

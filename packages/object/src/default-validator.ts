@@ -1,11 +1,17 @@
 import { removeUriSchemePlugin } from "@hyperjump/browser";
-import { hasSchema, registerSchema, setShouldValidateFormat, unregisterSchema, type SchemaObject } from "@hyperjump/json-schema/draft-2020-12";
+import {
+  hasSchema,
+  registerSchema,
+  type SchemaObject,
+  setShouldValidateFormat,
+  unregisterSchema,
+} from "@hyperjump/json-schema/draft-2020-12";
 // The experimental API can change in a minor release, so the version is pinned exactly.
 import { BASIC, compile, getSchema, interpret, type SchemaDocument } from "@hyperjump/json-schema/experimental";
 import "@hyperjump/json-schema/formats-lite";
 import { fromJs } from "@hyperjump/json-schema/instance/experimental";
 import type { Json } from "./json.ts";
-import { DRAFT_2020_12, jsonSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
+import { DRAFT_2020_12, type JsonSchema, type JsonSchemaValidator, jsonSchema } from "./json-schema.ts";
 import type { Check } from "./schema.ts";
 
 // hyperjump keeps one registry and one configuration for the whole realm.

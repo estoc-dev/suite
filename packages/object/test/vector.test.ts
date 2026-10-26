@@ -1,15 +1,7 @@
 import { SoftwareSigner } from "@estoc/identity";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import {
-  decodeObject,
-  decodeSchema,
-  encodeObject,
-  encodeSchema,
-  identitySchema,
-  loadSignatures,
-  signatureSchema,
-} from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, identitySchema, loadSignatures, signatureSchema } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;

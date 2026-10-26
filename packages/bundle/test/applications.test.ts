@@ -1,26 +1,26 @@
 import { loadAuthorizations } from "@estoc/authorization";
-import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  json,
-  linkSchema,
-  loadSignatures,
-  readObject,
-  schemaOf,
-  type EncodedObject,
   type Fields,
   type Json,
   type JsonLink,
   type JsonObject,
+  json,
   type Link,
+  linkSchema,
+  loadSignatures,
+  readObject,
   type Schema,
   type Signature,
+  schemaOf,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { readBundle, writeBundle, type Bundle } from "../src/index.ts";
+import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 
 // Applications that hand each other bundles. Each pins the schema of its
 // root and walks from it by link; the package only checks that the blobs are
@@ -90,21 +90,36 @@ describe("a card", () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({
+      identity: identities.encode(alice.identity),
+      mailbox: { url: "https://mail.example/alice" },
+      name: "Alice",
+    });
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
     const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, byName.identity.bytes]);
-    expect(await readCard(bundle)).toEqual({ identity: identities.encode(alice.identity), mailbox: { url: "https://mail.example/alice" }, name: "Alice" });
+    expect(await readCard(bundle)).toEqual({
+      identity: identities.encode(alice.identity),
+      mailbox: { url: "https://mail.example/alice" },
+      name: "Alice",
+    });
   });
 
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await signed;
     const byOther = await signatures.sign(called, signer("eip191", 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
-    const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byOther.bytes, called.bytes, byMailbox.identity.bytes, byOther.identity.bytes]);
+    const bundle = handOver(root, [
+      byMailbox.bytes,
+      inbox.bytes,
+      byOther.bytes,
+      called.bytes,
+      byMailbox.identity.bytes,
+      byOther.identity.bytes,
+    ]);
     await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
   });
 });

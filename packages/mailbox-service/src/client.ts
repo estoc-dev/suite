@@ -1,19 +1,19 @@
-import { loadAuthorizations, type Actor, type Authorizations } from "@estoc/authorization";
-import { packBundle, unpackBundle, type Bundle } from "@estoc/bundle";
+import { type Actor, type Authorizations, loadAuthorizations } from "@estoc/authorization";
+import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
-  encodeSchema,
-  readObject,
   type EncodedObject,
+  encodeSchema,
   type IdentityObject,
   type Json,
   type JsonSchemaValidator,
   type Link,
+  readObject,
   type Schema,
   type Signature,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
-import { accountOfferSchema, acknowledgementSchema, type AccountOfferData, type AcknowledgementData } from "./schemas.ts";
+import { type AccountOfferData, type AcknowledgementData, accountOfferSchema, acknowledgementSchema } from "./schemas.ts";
 
 // The answers hold an acceptance and a few blobs of the service's. The
 // client chose the service, so this only bounds what it reads.

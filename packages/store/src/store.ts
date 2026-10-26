@@ -1,4 +1,4 @@
-import { linkOf, schemaOf, type Bytes, type Encoding, type Link } from "@estoc/object";
+import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
 
 /**
  * Where a store keeps its blobs and the list of what was written to it:

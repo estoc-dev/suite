@@ -1,8 +1,8 @@
 import {
-  encodeObject,
-  encodeSchema,
   type Bytes,
   type EncodedObject,
+  encodeObject,
+  encodeSchema,
   type Json,
   type JsonSchema,
   type JsonSchemaValidator,
@@ -12,8 +12,8 @@ import {
 import type { Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { MailboxKey } from "./key.ts";
-import { mailboxFrom, readMailbox, type Mailbox, type Options, type Transport } from "./mailbox.ts";
-import { inboundSchema, outboundSchema, type DeliveryData } from "./schema.ts";
+import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
+import { type DeliveryData, inboundSchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
   /** The validator that the schemas of the records are compiled with. */
@@ -122,7 +122,10 @@ export class Outbox {
     const closure = await this.#store.closure(root);
     const bytes = closure.get(root);
     if (bytes === undefined) throw new Error(`the store does not hold ${root}`);
-    await this.#mailbox.send({ bytes }, [...closure].filter(([link]) => link !== root).map(([, blob]) => blob));
+    await this.#mailbox.send(
+      { bytes },
+      [...closure].filter(([link]) => link !== root).map(([, blob]) => blob),
+    );
     return this.#written(root as Link<never>);
   }
 }

@@ -1,4 +1,4 @@
-import { decodeObject, schemaOf, type EncodedObject, type Fields, type Reader, type Schema } from "@estoc/object";
+import { decodeObject, type EncodedObject, type Fields, type Reader, type Schema, schemaOf } from "@estoc/object";
 import type { Store } from "./store.ts";
 
 /**
@@ -64,7 +64,8 @@ export async function scan<D, K extends Key, F extends Fields<D>>(store: Store, 
     const object = decodeObject(bytes, schema);
     if (object.link !== link) throw new Error(`the store holds another blob under ${link}`);
     for await (const key of index.rows(object, store)) {
-      if (!key.every((part) => typeof part === "string" || Number.isFinite(part))) throw new Error(`a row of ${link} holds a number that is not finite`);
+      if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
+        throw new Error(`a row of ${link} holds a number that is not finite`);
       rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
     }
   }

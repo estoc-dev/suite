@@ -1,5 +1,5 @@
 import type { Identity } from "./identity.ts";
-import { schemes, type Scheme } from "./scheme.ts";
+import { type Scheme, schemes } from "./scheme.ts";
 import { signingText } from "./signing-text.ts";
 
 /**

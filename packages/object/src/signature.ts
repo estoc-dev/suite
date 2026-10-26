@@ -1,10 +1,10 @@
-import { verify, type Signer } from "@estoc/identity";
+import { type Signer, verify } from "@estoc/identity";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { Identities, identitySchema, type IdentityData, type IdentityObject } from "./identity.ts";
+import { Identities, type IdentityData, type IdentityObject, identitySchema } from "./identity.ts";
 import type { Json, JsonLink } from "./json.ts";
-import { DRAFT_2020_12, HEX, linkSchema, type JsonSchema, type JsonSchemaValidator } from "./json-schema.ts";
+import { DRAFT_2020_12, HEX, type JsonSchema, type JsonSchemaValidator, linkSchema } from "./json-schema.ts";
 import { digestOf, type Link } from "./link.ts";
-import { encodeObject, readObject, type EncodedObject, type Reader } from "./object.ts";
+import { type EncodedObject, encodeObject, type Reader, readObject } from "./object.ts";
 import { encodeSchema, type Schema } from "./schema.ts";
 
 /**

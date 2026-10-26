@@ -1,6 +1,6 @@
 import type { Bytes } from "@estoc/object";
 import { configure, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
-import { BLOB, readBundle, ROOT, writeBundle, type Bundle } from "./bundle.ts";
+import { BLOB, type Bundle, ROOT, readBundle, writeBundle } from "./bundle.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 // Stored, and DEFLATE.

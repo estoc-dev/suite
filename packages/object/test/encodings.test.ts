@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeObject, encodeSchema, schemaOf, type Encoding, type Link, type SchemaValidator } from "../src/index.ts";
+import { decodeObject, type Encoding, encodeObject, encodeSchema, type Link, type SchemaValidator, schemaOf } from "../src/index.ts";
 
 // An encoding with nothing of JSON in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written

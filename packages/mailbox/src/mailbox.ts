@@ -1,5 +1,5 @@
 import { packBundle } from "@estoc/bundle";
-import { decodeObject, json, schemaOf, type Bytes, type EncodedObject, type Json, type JsonObject, type Schema } from "@estoc/object";
+import { type Bytes, decodeObject, type EncodedObject, type Json, type JsonObject, json, type Schema, schemaOf } from "@estoc/object";
 import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 

@@ -1,23 +1,23 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { sameIdentity, SoftwareSigner } from "@estoc/identity";
+import { SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   encodeSchema,
-  identitySchema,
-  json,
-  linkSchema,
-  loadSignatures,
-  readObject,
-  schemaOf,
-  signatureSchema,
-  type EncodedObject,
   type Fields,
+  identitySchema,
   type Json,
   type JsonLink,
   type JsonObject,
+  json,
   type Link,
+  linkSchema,
+  loadSignatures,
+  readObject,
   type Schema,
+  schemaOf,
+  signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";

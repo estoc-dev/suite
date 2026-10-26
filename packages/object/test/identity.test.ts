@@ -1,17 +1,17 @@
-import { sameIdentity, SoftwareSigner, type Scheme } from "@estoc/identity";
+import { type Scheme, SoftwareSigner, sameIdentity } from "@estoc/identity";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   encodeSchema,
+  type IdentityData,
   identitySchema,
+  type Json,
+  type JsonObject,
   json,
   linkOf,
   loadSignatures,
-  type IdentityData,
-  type Json,
-  type JsonObject,
   type Schema,
 } from "../src/index.ts";
 

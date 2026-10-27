@@ -145,6 +145,17 @@ The result is the `principal` and its `agents` in order, as their identity
 objects, with no agents for a direct signature. An entry that stands no one behind `target` throws,
 saying why, such as which authorization has ended.
 
+A reader that learns what the object is only from the entry, as a service
+learns what a request asks, reads the object with it:
+`readEntry(entry, schema, blobs, now)`. An entry over a Proxy is read as
+above, behind the Proxy's target, and an entry over any other object is its
+signer's own. The object has to be among the blobs, and is refused unless it
+is of `schema`. The result is the standing with the `object`.
+
+```ts
+const { object, principal } = await authorizations.readEntry(bundle.link, requestSchema, bundle, new Date());
+```
+
 The signatures a chain links to, and the entry itself, are direct signatures,
 so a proxy cannot sit in a chain, and a Proxy cannot itself be signed
 through another. Authorizing others lengthens the chain within one Proxy,

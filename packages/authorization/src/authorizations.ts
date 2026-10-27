@@ -4,6 +4,7 @@ import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
+  type Fields,
   type IdentityObject,
   type Json,
   type JsonLink,
@@ -15,6 +16,7 @@ import {
   type Schema,
   type Signature,
   type Signatures,
+  schemaOf,
 } from "@estoc/object";
 // Temporal is not yet in every runtime this runs in, nor in the TypeScript lib.
 import { Temporal } from "temporal-polyfill";
@@ -140,6 +142,45 @@ export class Authorizations {
     if (signature.object === target) return { principal: signature.identity, agents: [] };
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
     if (proxy.target !== target) throw new Error(`the proxy is for ${proxy.target}, not ${target}`);
+    return this.#standingThrough(proxy, signature.identity, reader, now);
+  }
+
+  /**
+   * Reads the object that one signature, `entry`, stands an identity behind,
+   * and how, at the reader's clock `now`, for a reader that learns what the
+   * object is only from the entry, as a service learns what a request asks.
+   * An entry over a Proxy is the chain's first authorizer's, behind the
+   * Proxy's target; an entry over any other object is its signer's own. The
+   * object is got from `reader` with the rest, and refused unless it is of
+   * `schema`.
+   */
+  async readEntry<D, F extends Fields<D>>(
+    entry: Link<Signature>,
+    schema: Schema<D, F>,
+    reader: Reader,
+    now: Date,
+  ): Promise<Standing & { readonly object: EncodedObject<D, F> }> {
+    const signature = await this.signatures.read(entry, reader);
+    if (!(await this.#isProxy(signature.object, reader))) {
+      return { object: await readObject(reader, signature.object, schema), principal: signature.identity, agents: [] };
+    }
+    const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
+    const object = await readObject(reader, proxy.target, schema);
+    return { object, ...(await this.#standingThrough(proxy, signature.identity, reader, now)) };
+  }
+
+  async #isProxy(link: Link<unknown>, reader: Reader): Promise<boolean> {
+    const bytes = await reader.get(link);
+    if (bytes === undefined) return false;
+    try {
+      return schemaOf(bytes, this.#proxySchema.encoding) === this.#proxySchema.link;
+    } catch {
+      return false;
+    }
+  }
+
+  /** How the first authorizer in a proxy's chain stands behind its target, when the chain holds at `now`. */
+  async #standingThrough(proxy: Proxy, signer: Identity, reader: Reader, now: Date): Promise<Standing> {
     const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) {
@@ -150,7 +191,7 @@ export class Authorizations {
       }
       chain.push(authorization);
     }
-    checkChain(chain, signature.identity);
+    checkChain(chain, signer);
     return { principal: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
   }
 

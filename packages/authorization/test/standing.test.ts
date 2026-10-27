@@ -279,3 +279,43 @@ describe("a standing through a proxy", () => {
     expect(await authorizations.readStanding(target.link, proxy.signature.link, blobs, now)).toEqual(way(root, hot));
   });
 });
+
+describe("an entry read for an object of a schema", () => {
+  const readWith = (entry: Given, at = now) =>
+    authorizations.readEntry(entry.signature.link, note, byLink([...identityBytes, target.bytes, ...parts(entry)]), at);
+
+  it("over such an object stands its signer behind it, and gives the object", async () => {
+    expect(await readWith(await signed(target, root))).toEqual({ object: target, ...way(root) });
+  });
+
+  it("over a proxy stands the chain's first authorizer behind the proxy's target, and gives the target", async () => {
+    expect(await readWith(await through([rootToHot, hotToDeputy], deputy))).toEqual({
+      object: target,
+      ...way(root, hot, deputy),
+    });
+  });
+
+  it("over an object of another schema is refused", async () => {
+    await expect(readWith(await signed(rootToHot.object, root))).rejects.toThrow(/is written to/);
+  });
+
+  it("over a proxy for an object of another schema is refused", async () => {
+    await expect(readWith(await through([rootToHot], hot, rootToHot.object.link))).rejects.toThrow(/is written to/);
+  });
+
+  it("is refused when the object is not among the blobs, directly or through a proxy", async () => {
+    await expect(readWith(await authorizations.createActor(root).sign(other.link))).rejects.toThrow(/no blob is given/);
+    await expect(readWith(await through([rootToHot], hot, other.link))).rejects.toThrow(/no blob is given/);
+  });
+
+  it("over a proxy that its chain's last agent did not sign is refused", async () => {
+    const { signature, blobs } = await through([rootToHot], hot);
+    const entry = { signature: await signatures.sign({ link: signature.object }, root), blobs };
+    await expect(readWith(entry)).rejects.toThrow(/signed by the last agent/);
+  });
+
+  it("over a proxy is refused once an authorization in its chain has ended", async () => {
+    const ended = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2026-10-20T11:59:59Z"));
+    await expect(readWith(await through([ended], hot))).rejects.toThrow(/ended at/);
+  });
+});

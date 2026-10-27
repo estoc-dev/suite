@@ -130,30 +130,33 @@ chain, and the reader checks each step without guessing.
 
 ## Reading
 
-`readStanding(target, entry, blobs, now)` reads how an identity stands
-behind `target` by one signature, the one that `entry` links to:
+`readEntry(entry, blobs, now)` reads which object an identity stands behind
+by one signature, the one that `entry` links to, and how:
 
-- an entry over `target` is its signer's own;
-- an entry over a Proxy whose target is `target` is the first authorizer's
-  in the chain, when
+- an entry over a Proxy stands the first authorizer in the chain behind the
+  Proxy's target, when
   - every link in the chain leads to a signature over an Authorization,
   - the agent of each authorization signed the next one,
   - the last agent is the one who signed the Proxy, and
-  - every `until` in the chain is after `now`.
+  - every `until` in the chain is after `now`;
+- an entry over any other object stands its signer behind it.
 
-The result is the `principal` and its `agents` in order, as their identity
-objects, with no agents for a direct signature. An entry that stands no one behind `target` throws,
-saying why, such as which authorization has ended.
+The result is the `target`, the link of that object, with the `principal`
+and its `agents` in order, as their identity objects, with no agents for a
+direct signature. An entry that stands no one behind anything throws, saying
+why, such as which authorization has ended. The object is only named, so the
+blobs need not hold it. A Proxy is read as one only when the blobs hold it;
+without it, the entry is its signer's own, behind the Proxy's link.
 
-A reader that learns what the object is only from the entry, as a service
-learns what a request asks, reads the object with it:
-`readEntry(entry, schema, blobs, now)`. An entry over a Proxy is read as
-above, behind the Proxy's target, and an entry over any other object is its
-signer's own. The object has to be among the blobs, and is refused unless it
-is of `schema`. The result is the standing with the `object`.
+A reader that expects one object, such as a server that built the login it
+asked to have signed, reads with `readStanding(target, entry, blobs, now)`,
+which gives the standing and refuses an entry for any other object. A
+reader that learns what the object is from the entry, as a service learns
+what a request asks, reads it by `target`, with the schema it expects:
 
 ```ts
-const { object, principal } = await authorizations.readEntry(bundle.link, requestSchema, bundle, new Date());
+const { target, principal } = await authorizations.readEntry(bundle.link, bundle, new Date());
+const request = await readObject(bundle, target, requestSchema);
 ```
 
 The signatures a chain links to, and the entry itself, are direct signatures,

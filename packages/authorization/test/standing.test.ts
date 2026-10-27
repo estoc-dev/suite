@@ -103,7 +103,7 @@ describe("a standing", () => {
 
   it("is not read from a signature over another object", async () => {
     const entry = await signed(other, root);
-    await expect(readEntry(entry)).rejects.toThrow(/is written to/);
+    await expect(readEntry(entry)).rejects.toThrow(/the entry is for/);
   });
 });
 
@@ -144,12 +144,12 @@ describe("a proxy", () => {
     });
     const overProxy = await through([hotToDeputy], deputy, proxy.link);
     expect(await readEntry(overProxy, [rootToHot], now, proxy.link)).toEqual(way(hot, deputy));
-    await expect(readEntry(overProxy, [rootToHot])).rejects.toThrow(/the proxy is for/);
+    await expect(readEntry(overProxy, [rootToHot])).rejects.toThrow(/the entry is for/);
   });
 
   it("counts on its target and on no other object", async () => {
     const proxy = await through([rootToHot], hot, other.link);
-    await expect(readEntry(proxy)).rejects.toThrow(/the proxy is for/);
+    await expect(readEntry(proxy)).rejects.toThrow(/the entry is for/);
     expect(await readEntry(proxy, [], now, other.link)).toEqual(way(root, hot));
   });
 
@@ -237,7 +237,9 @@ describe("a standing through a proxy", () => {
     const readFrom = (given: Uint8Array[]) =>
       authorizations.readStanding(target.link, proxy.signature.link, byLink(given), now);
     expect(await readFrom(blobs)).toEqual(way(root, hot, deputy));
-    await expect(readFrom(blobs.filter((_, i) => i !== missing))).rejects.toThrow(/no blob is given for/);
+    // Without the proxy, the entry reads as its signer's own over the proxy's link.
+    const refusal = names[missing] === "proxy" ? /the entry is for/ : /no blob is given for/;
+    await expect(readFrom(blobs.filter((_, i) => i !== missing))).rejects.toThrow(refusal);
   });
 
   it.each(["authorization", "signature over it", "proxy", "agent's identity"].map((name, i) => [i, name] as const))(
@@ -280,41 +282,36 @@ describe("a standing through a proxy", () => {
   });
 });
 
-describe("an entry read for an object of a schema", () => {
-  const readWith = (entry: Given, at = now) =>
-    authorizations.readEntry(entry.signature.link, note, byLink([...identityBytes, target.bytes, ...parts(entry)]), at);
+describe("an entry read without its target", () => {
+  const readWith = (entry: Given, blobs: readonly Uint8Array[] = parts(entry), at = now) =>
+    authorizations.readEntry(entry.signature.link, byLink([...identityBytes, ...blobs]), at);
 
-  it("over such an object stands its signer behind it, and gives the object", async () => {
-    expect(await readWith(await signed(target, root))).toEqual({ object: target, ...way(root) });
+  it("over an object stands its signer behind it, whether or not the object is given", async () => {
+    const entry = await signed(target, root);
+    expect(await readWith(entry)).toEqual({ target: target.link, ...way(root) });
+    expect(await readWith(entry, [entry.signature.bytes])).toEqual({ target: target.link, ...way(root) });
   });
 
-  it("over a proxy stands the chain's first authorizer behind the proxy's target, and gives the target", async () => {
+  it("over a proxy stands the chain's first authorizer behind the proxy's target", async () => {
     expect(await readWith(await through([rootToHot, hotToDeputy], deputy))).toEqual({
-      object: target,
+      target: target.link,
       ...way(root, hot, deputy),
     });
   });
 
-  it("over an object of another schema is refused", async () => {
-    await expect(readWith(await signed(rootToHot.object, root))).rejects.toThrow(/is written to/);
+  it("over a proxy that is not given stands its signer behind the proxy's link", async () => {
+    const entry = await through([rootToHot], hot);
+    const blobs = parts(entry).filter((bytes) => linkOf(bytes) !== entry.signature.object);
+    expect(await readWith(entry, blobs)).toEqual({ target: entry.signature.object, ...way(hot) });
   });
 
-  it("over a proxy for an object of another schema is refused", async () => {
-    await expect(readWith(await through([rootToHot], hot, rootToHot.object.link))).rejects.toThrow(/is written to/);
-  });
-
-  it("is refused when the object is not among the blobs, directly or through a proxy", async () => {
-    await expect(readWith(await authorizations.createActor(root).sign(other.link))).rejects.toThrow(/no blob is given/);
-    await expect(readWith(await through([rootToHot], hot, other.link))).rejects.toThrow(/no blob is given/);
-  });
-
-  it("over a proxy that its chain's last agent did not sign is refused", async () => {
+  it("over a proxy that its chain's last agent did not sign stands no one behind anything", async () => {
     const { signature, blobs } = await through([rootToHot], hot);
     const entry = { signature: await signatures.sign({ link: signature.object }, root), blobs };
     await expect(readWith(entry)).rejects.toThrow(/signed by the last agent/);
   });
 
-  it("over a proxy is refused once an authorization in its chain has ended", async () => {
+  it("over a proxy stands no one behind anything once an authorization in its chain has ended", async () => {
     const ended = await authorizations.authorize(hot.identity, root, Temporal.Instant.from("2026-10-20T11:59:59Z"));
     await expect(readWith(await through([ended], hot))).rejects.toThrow(/ended at/);
   });

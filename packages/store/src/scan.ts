@@ -68,7 +68,6 @@ export async function scan<D, K extends Key, F extends Fields<D>>(
     const schema = schemas.get(schemaOf(bytes, encoding));
     if (schema === undefined) continue;
     const object = decodeObject(bytes, schema);
-    if (object.link !== link) throw new Error(`the store holds another blob under ${link}`);
     for await (const key of index.rows(object, store)) {
       if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
         throw new Error(`a row of ${link} holds a number that is not finite`);

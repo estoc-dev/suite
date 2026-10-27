@@ -15,6 +15,7 @@ import {
   type Schema,
   type Signature,
   type Signatures,
+  schemaOf,
 } from "@estoc/object";
 // Temporal is not yet in every runtime this runs in, nor in the TypeScript lib.
 import { Temporal } from "temporal-polyfill";
@@ -129,17 +130,35 @@ export class Authorizations {
 
   /**
    * Reads how an identity stands behind `target` by one signature, `entry`,
-   * at the reader's clock `now`. An entry over `target` is its signer's own;
-   * an entry over a Proxy for `target` is the chain's first authorizer's,
-   * through the chain's agents. The entry and what it leads to are got from
-   * `reader` by link, and nothing else there is read. Throws when the entry
-   * does not stand anyone behind `target`, saying why.
+   * at the reader's clock `now`, as `readEntry` reads it, and throws unless
+   * the entry is for `target`.
    */
   async readStanding(target: Link<unknown>, entry: Link<Signature>, reader: Reader, now: Date): Promise<Standing> {
+    const { target: read, ...standing } = await this.readEntry(entry, reader, now);
+    if (read !== target) throw new Error(`the entry is for ${read}, not ${target}`);
+    return standing;
+  }
+
+  /**
+   * Reads which object one signature, `entry`, stands an identity behind, and
+   * how, at the reader's clock `now`. An entry over a Proxy stands the chain's
+   * first authorizer behind the Proxy's target, through the chain's agents;
+   * an entry over any other object stands its signer behind it. The entry and
+   * what it leads to are got from `reader` by link, and nothing else there is
+   * read. The object is only named, so a reader that does not know it reads
+   * it by `target`, with the schema it expects. Throws when the entry stands
+   * no one behind anything, saying why.
+   */
+  async readEntry(
+    entry: Link<Signature>,
+    reader: Reader,
+    now: Date,
+  ): Promise<Standing & { readonly target: Link<never> }> {
     const signature = await this.signatures.read(entry, reader);
-    if (signature.object === target) return { principal: signature.identity, agents: [] };
+    if (!(await this.#isProxy(signature.object, reader))) {
+      return { target: signature.object, principal: signature.identity, agents: [] };
+    }
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
-    if (proxy.target !== target) throw new Error(`the proxy is for ${proxy.target}, not ${target}`);
     const instant = Temporal.Instant.fromEpochMilliseconds(now.getTime());
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) {
@@ -151,7 +170,23 @@ export class Authorizations {
       chain.push(authorization);
     }
     checkChain(chain, signature.identity);
-    return { principal: chain[0].signature.identity, agents: chain.map(({ object }) => object.agent) };
+    return {
+      target: proxy.target,
+      principal: chain[0].signature.identity,
+      agents: chain.map(({ object }) => object.agent),
+    };
+  }
+
+  // A Proxy that the reader does not hold cannot be told from any other
+  // object, so the entry reads as its signer's own over the Proxy's link.
+  async #isProxy(link: Link<unknown>, reader: Reader): Promise<boolean> {
+    const bytes = await reader.get(link);
+    if (bytes === undefined) return false;
+    try {
+      return schemaOf(bytes, this.#proxySchema.encoding) === this.#proxySchema.link;
+    } catch {
+      return false;
+    }
   }
 
   async #checkAuthorization(object: EncodedObject<Json, AuthorizationData>, reader: Reader): Promise<Authorization> {

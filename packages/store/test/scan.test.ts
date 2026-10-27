@@ -118,10 +118,13 @@ describe("an index scanned from a store", () => {
     }
   });
 
-  it("is not filled from a store that holds another blob under a link it lists", async () => {
+  it.each([
+    ["a schema it reads", note],
+    ["a schema it does not read", tag],
+  ])("is not filled from a store that holds another blob under a link it lists, of %s", async (_, schema) => {
     const backend = new MemoryBackend();
     const store = new Store(json, backend);
-    const [listed, other] = [encodeObject(note, { keys: [["a"]] }), encodeObject(note, { keys: [["b"]] })];
+    const [listed, other] = [encodeObject(note, { keys: [["a"]] }), encodeObject(schema, { keys: [["b"]] })];
     await store.write({ mine: [listed, other], blobs: schemas });
     const swapped: Backend = {
       get: (link) => backend.get(link === listed.link ? other.link : link),

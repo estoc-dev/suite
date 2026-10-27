@@ -26,6 +26,13 @@ const object = (data: JsonObject) => encodeObject(anything, data);
 
 const newStore = (backend: Backend = new MemoryBackend()) => new Store(json, backend);
 
+const giving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
+  get: (link) => backend.get(link === under ? other : link),
+  has: (link) => backend.has(link),
+  put: (blobs, mine) => backend.put(blobs, mine),
+  mine: () => backend.mine(),
+});
+
 async function listed(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
   for await (const link of store.mine()) links.push(link);
@@ -39,6 +46,14 @@ describe("a store", () => {
     await store.write({ mine: [object({ image: { $link: linkOf(image) } })], blobs: [image, anything.bytes] });
     expect(await store.get(linkOf(image))).toEqual(image);
     expect(await store.get(linkOf(utf8("never written")))).toBeUndefined();
+  });
+
+  it("refuses to give a blob when its backend gives other bytes under the link", async () => {
+    const backend = new MemoryBackend();
+    const [kept, other] = [object({ text: "kept" }), object({ text: "other" })];
+    await newStore(backend).write({ mine: [kept, other], blobs: [anything.bytes] });
+    const store = newStore(giving(backend, kept.link, other.link));
+    await expect(store.get(kept.link)).rejects.toThrow(`another blob under ${kept.link}`);
   });
 
   it("lists what is written as mine, and not the blobs written with it", async () => {
@@ -178,6 +193,15 @@ describe("the closure of a blob", () => {
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, linkOf(text), linkOf(indented), anything.link].sort());
     expect(await store.get(target.link)).toBeUndefined();
+  });
+
+  it("is refused when the backend gives other bytes under a link it leads to", async () => {
+    const backend = new MemoryBackend();
+    const [inner, other] = [object({ text: "inner" }), object({ text: "other" })];
+    const outer = object({ inner: { $link: inner.link } });
+    await newStore(backend).write({ mine: [outer, other], blobs: [inner.bytes, anything.bytes] });
+    const store = newStore(giving(backend, inner.link, other.link));
+    await expect(store.closure(outer.link)).rejects.toThrow(`another blob under ${inner.link}`);
   });
 
   it("is empty for a link the store does not hold", async () => {

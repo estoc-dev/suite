@@ -122,11 +122,10 @@ proxy the Proxy and its chain. The offer and the schemas are left out,
 since the service has them.
 
 The service reads who stands behind its offer by the root, with
-`readStanding` at its clock, opens an account for that identity, and
-answers with its signature over an acknowledgement of the root. `at` is
-when it received the root. The answer is a bundle: the service's signature
-as the root, with the acknowledgement, the acceptance, the offer and all
-they lead to.
+`readStanding`, opens an account for that identity, and answers with its
+signature over an acknowledgement of the root. `at` is when it received the
+root. The answer is a bundle: the service's signature as the root, with the
+acknowledgement, the acceptance, the offer and all they lead to.
 
 | Status | Meaning |
 |---|---|
@@ -138,14 +137,11 @@ they lead to.
 An identity has one account at a service. When an acceptance comes again,
 or the same identity accepts again by another device or another chain, the
 service answers with the acknowledgement it sent when the account opened,
-as long as the acceptance stands the identity behind the offer by the
-service's clock then: one through an authorization that has ended since is
-refused like any other. That acknowledgement links to the first acceptance, so a second device
-gets the first device's proxy and chain with it. The client reads the
-acceptance at the acknowledgement's `at`, when the service received it,
-since an authorization in its chain may have ended since, and refuses an
-acknowledgement that is signed by another identity than the service's or
-that is of another identity's account.
+as long as the acceptance stands the identity behind the offer. That
+acknowledgement links to the first acceptance, so a second device gets the
+first device's proxy and chain with it. The client reads that acceptance,
+and refuses an acknowledgement that is signed by another identity than the
+service's or that is of another identity's account.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service opened an

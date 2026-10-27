@@ -149,7 +149,7 @@ class MailboxService {
 
   /**
    * Opens an account for whoever the posted acceptance stands behind the
-   * offer now, or answers with the acknowledgement that opened theirs.
+   * offer, or answers with the acknowledgement that opened theirs.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
@@ -160,7 +160,7 @@ class MailboxService {
     let identity: Link<IdentityObject>;
     try {
       accepted = await unpackBundle(zip);
-      const { principal } = await this.#authorizations.readStanding(offer.link, accepted.link, accepted, new Date(at));
+      const { principal } = await this.#authorizations.readStanding(offer.link, accepted.link, accepted);
       if (principal.link === offer.data.identity.$link) throw new Error("a service opens no account for itself");
       identity = principal.link;
     } catch (error) {

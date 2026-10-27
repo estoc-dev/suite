@@ -8,7 +8,7 @@ the blobs it leads to, and reads who stands behind the object by it, and
 through which agents.
 
 ```
-Authorization  {"agent": <identity link>, "until"?: <RFC 3339 date-time>}, signed by the authorizer
+Authorization  {"agent": <identity link>}, signed by the authorizer
 Proxy          {"chain": [<signature link>, …], "target": <object link>}, signed by the last agent
 ```
 
@@ -35,9 +35,7 @@ need not agree to be named; until it signs a proxy, the authorization counts
 for nothing.
 
 ```ts
-import { Temporal } from "temporal-polyfill";
-
-const grant = await authorizations.authorize(browserKey.identity, wallet, Temporal.Instant.from("2026-10-21T12:00:00Z"));
+const grant = await authorizations.authorize(browserKey.identity, wallet);
 // The agent receives the link of the signature, and the signature with the blobs it leads to:
 // grant.signature.bytes, grant.object.bytes, and the identity objects of both,
 // grant.signature.identity.bytes and grant.object.agent.bytes.
@@ -45,41 +43,16 @@ const received = await authorizations.readAuthorization(grant.signature.link, bl
 ```
 
 Both give a `Signed<Authorization>`: the `Authorization` as read, its `agent`
-the agent's identity object and its `until` a `Temporal.Instant` when there
-is one, and the `signature` over it, whose identity is the authorizer.
-`readAuthorization` takes the link of the signature, and gets the signature
-and the blobs it leads to from `blobs` by link, as `readStanding` does.
+the agent's identity object, and the `signature` over it, whose identity is
+the authorizer. `readAuthorization` takes the link of the signature, and
+gets the signature and the blobs it leads to from `blobs` by link, as
+`readStanding` does.
 
-### The end of an authorization
-
-`until` is an RFC 3339 `date-time`. A reader takes it as the instant that
-`Temporal.Instant.from` reads, and the authorization holds while the
-reader's clock is strictly before that instant. Without `until`, an
-authorization does not end.
-
-`authorize` takes the end as a `Temporal.Instant` and writes it in UTC, as
-its `toString` does, so one instant gives one object. Another application
-can write the same instant other ways, with an offset or with trailing
-zeros in its fractional seconds; each way is another object with the same
-meaning, and each reads.
-
-Whether `format` is asserted is the validator's business. An `until` that a
-validator lets through but that does not read as an instant, such as a date
-alone, is refused by `readAuthorization`, and a chain that holds it counts
-for nothing. An instant past the year 9999 has no RFC 3339 form, and a
-validator that asserts `format` refuses it in `authorize`, before the signer
-is asked.
-
-There is no revocation. Offline, a revocation may not arrive in time, and if
-one more blob could undo an authorization, no reading would be settled. To
-be able to take an authorization back, give it a short `until` and renew it.
-
-A signature does not show when it was made, so once `until` has passed,
-nothing signed under the authorization counts for its authorizer any more,
-including what was signed in time. A login, judged on the spot, is not
-affected. Something meant to last, such as a contract, is signed again by
-the principal directly, or the application records when it checked it; that
-record is the application's state, not part of the format.
+An authorization has no end, and there is no revocation. Offline, a
+revocation may not arrive in time, and if one more blob could undo an
+authorization, no reading would be settled. Once signed, an authorization
+holds from then on: whoever holds the agent's key acts for the authorizer,
+so authorizing a key trusts it as far as the authorizer's own.
 
 ## Proxies
 
@@ -107,9 +80,7 @@ const entry = await throughKey.sign(login.link);
 
 `createActor` refuses a chain that does not connect, or that does not end
 at the signer, since no reader would count a proxy through it. An actor's
-`principal` and `agents` are what a reading gives back of what it signs, as
-long as the chain holds. `sign` does not look at a clock: whether an
-authorization has ended is for the reader's clock to say.
+`principal` and `agents` are what a reading gives back of what it signs.
 
 `sign` takes the link of the object alone, and gives an `Entry`: the
 signature, and the blobs it leads to, each once. For a proxy those are the
@@ -130,32 +101,31 @@ chain, and the reader checks each step without guessing.
 
 ## Reading
 
-`readEntry(entry, blobs, now)` reads which object an identity stands behind
+`readEntry(entry, blobs)` reads which object an identity stands behind
 by one signature, the one that `entry` links to, and how:
 
 - an entry over a Proxy stands the first authorizer in the chain behind the
   Proxy's target, when
   - every link in the chain leads to a signature over an Authorization,
-  - the agent of each authorization signed the next one,
-  - the last agent is the one who signed the Proxy, and
-  - every `until` in the chain is after `now`;
+  - the agent of each authorization signed the next one, and
+  - the last agent is the one who signed the Proxy;
 - an entry over any other object stands its signer behind it.
 
 The result is the `target`, the link of that object, with the `principal`
 and its `agents` in order, as their identity objects, with no agents for a
 direct signature. An entry that stands no one behind anything throws, saying
-why, such as which authorization has ended. The object is only named, so the
+why, such as which blob is missing. The object is only named, so the
 blobs need not hold it. A Proxy is read as one only when the blobs hold it;
 without it, the entry is its signer's own, behind the Proxy's link.
 
 A reader that expects one object, such as a server that built the login it
-asked to have signed, reads with `readStanding(target, entry, blobs, now)`,
+asked to have signed, reads with `readStanding(target, entry, blobs)`,
 which gives the standing and refuses an entry for any other object. A
 reader that learns what the object is from the entry, as a service learns
 what a request asks, reads it by `target`, with the schema it expects:
 
 ```ts
-const { target, principal } = await authorizations.readEntry(bundle.link, bundle, new Date());
+const { target, principal } = await authorizations.readEntry(bundle.link, bundle);
 const request = await readObject(bundle, target, requestSchema);
 ```
 
@@ -192,7 +162,7 @@ const { signature, blobs: led } = await throughKey.sign(login.link);
 const sent = [signature.bytes, ...led];
 // The server files those blobs by link, and reads the entry against the login object it expects.
 const blobs = new Map<string, Uint8Array>(sent.map((bytes) => [linkOf(bytes), bytes]));
-await authorizations.readStanding(login.link, signature.link, blobs, new Date());
+await authorizations.readStanding(login.link, signature.link, blobs);
 // { principal: <the wallet's identity object>, agents: [<the browser key's>] }
 ```
 

@@ -169,9 +169,9 @@ const standingEnvelope = await schemaFor<{
 // agents. Reading the standing takes the message as well as the signature, so
 // the envelope names both. The bundle is the blobs that the reading follows
 // that signature into.
-async function readSent(bundle: Bundle, now: Date) {
+async function readSent(bundle: Bundle) {
   const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
-  const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle, now);
+  const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle);
   return { from: principal, through: agents, message: (await readObject(bundle, message.$link, chat)).data };
 }
 
@@ -186,7 +186,7 @@ describe("a chat message sent through a device key", () => {
       message: { $link: message.link },
       signature: { $link: signature.link },
     });
-    expect(await readSent(handOver(root, [message.bytes, signature.bytes, ...blobs]), new Date())).toEqual({
+    expect(await readSent(handOver(root, [message.bytes, signature.bytes, ...blobs]))).toEqual({
       from: identities.encode(wallet.identity),
       through: [identities.encode(deviceKey.identity)],
       message: { text: "See you at noon." },

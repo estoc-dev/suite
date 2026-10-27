@@ -4,7 +4,7 @@ const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /**
  * What an authorizer signs to let `agent`, the link of an identity object,
- * act for it, until `until` if given.
+ * act for it.
  */
 export const authorizationSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -12,7 +12,6 @@ export const authorizationSchema: JsonSchema = {
   type: "object",
   properties: {
     agent: linkSchema,
-    until: { type: "string", format: "date-time" },
   },
   required: ["agent"],
   additionalProperties: false,

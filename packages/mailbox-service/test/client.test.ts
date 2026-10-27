@@ -3,7 +3,6 @@ import type { Signer } from "@estoc/identity";
 import { type EncodedObject, encodeObject, encodeSchema, type Json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
-import { Temporal } from "temporal-polyfill";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadServices, type Services } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
@@ -32,8 +31,8 @@ const mallory = signer("ed25519", 6);
 
 const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.link } });
 
-const through = async (agent: Signer, principal: Signer, until?: Temporal.Instant) =>
-  authorizations.createActor(agent, [await authorizations.authorize(agent.identity, principal, until)]);
+const through = async (agent: Signer, principal: Signer) =>
+  authorizations.createActor(agent, [await authorizations.authorize(agent.identity, principal)]);
 
 const servers: { close(): Promise<void> }[] = [];
 afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => server.close()))));
@@ -243,7 +242,7 @@ describe("an account offer", () => {
     const kept = await signatures.read(account.link, store);
     expect(kept.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
-    expect((await authorizations.readStanding(offer.link, accepted.$link, store, new Date(7_001))).principal.link).toBe(
+    expect((await authorizations.readStanding(offer.link, accepted.$link, store)).principal.link).toBe(
       account.identity.link,
     );
   });
@@ -262,17 +261,17 @@ describe("an account offer", () => {
     const again = await (await accountAt(services, origin)).accept(await through(phone, wallet));
     expect(again).toEqual(first);
     const kept = await readObject(store, (await signatures.read(again.link, store)).object, acknowledgementSchemaRead);
-    const standing = await authorizations.readStanding(offer.link, kept.data.accepted.$link, store, new Date(again.at));
+    const standing = await authorizations.readStanding(offer.link, kept.data.accepted.$link, store);
     expect(standing.agents).toEqual([identities.encode(laptop.identity)]);
   });
 
   it("whose service refuses the acceptance throws what the service said, and writes nothing", async () => {
-    const { origin } = await running({ start: Date.parse("2026-10-26T12:00:00Z") });
+    const { origin } = await running();
     const { store, services } = await client();
     const service = await services.at(origin);
     assert.exists(service.account);
-    const ended = await through(laptop, wallet, Temporal.Instant.from("2026-10-26T00:00:00Z"));
-    await expect(service.account.accept(ended)).rejects.toThrow(/answered 400: the authorization .* ended/);
+    const itself = authorizations.createActor(serviceSigner);
+    await expect(service.account.accept(itself)).rejects.toThrow(/answered 400: a service opens no account for itself/);
     expect(await mine(store)).toEqual([service.link]);
   });
 });

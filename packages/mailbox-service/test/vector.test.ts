@@ -11,10 +11,10 @@ const linkText =
 const serviceSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"at":{"minimum":0,"type":"integer"},"offers":{"items":{"additionalProperties":false,' +
-  `"properties":{"accept":{"pattern":"^[0-9a-f]{32}$","type":"string"},"offer":${linkText}},` +
+  `"properties":{"accept":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
   '"required":["offer","accept"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
   '"required":["origin","at","offers"],"title":"Service","type":"object"}';
-const serviceSchemaLink = "sha256:4ed330fbd70191353a7beddbf3013963fd650d2d7b27c14117a4158f6185b6e2";
+const serviceSchemaLink = "sha256:fc96c061b840aef0bdd71bdc86a5531db9cd6067b3f8868f54b7fbc2fb11abd8";
 const offerSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`;

@@ -90,7 +90,7 @@ async function signedService(
   by: Signer = serviceSigner,
 ) {
   const signed = await Promise.all(offers.map(([object, signer]) => signatures.sign(object, signer)));
-  const listed = signed.map((signature, i) => ({ offer: { $link: signature.link }, accept: `${i}`.repeat(32) }));
+  const listed = signed.map((signature) => ({ offer: { $link: signature.link }, accept: signature.object }));
   const service = encodeObject(serviceSchemaRead, { origin, at: 1, offers: listed });
   const signature = await signatures.sign(service, by);
   const blobs = [

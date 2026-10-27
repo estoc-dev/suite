@@ -1,5 +1,6 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import { encodeObject, type Link, readObject } from "@estoc/object";
+import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
 import { assert, describe, expect, it } from "vitest";
 import type { MailboxService } from "../src/server.ts";
@@ -67,7 +68,7 @@ async function acknowledgementIn(response: Response) {
 }
 
 describe("a mailbox service", () => {
-  it("answers GET / with its signature over a Service at its origin, which lists its offer of an account and the id that takes acceptances of it", async () => {
+  it("answers GET / with its signature over a Service at its origin, which lists its offer of an account under the offer's link", async () => {
     const { service } = await memoryService({ start: 3_000 });
     const response = await getRoot(service);
     expect(response.status).toBe(200);
@@ -79,7 +80,7 @@ describe("a mailbox service", () => {
       at: 3_000,
       offers: [{ offer: { $link: offered.link }, accept }],
     });
-    expect(accept).toMatch(/^[0-9a-f]{32}$/);
+    expect(accept).toBe(offer.link);
     expect(offered.identity.link).toBe(serviceIdentity.link);
     expect(offer.data).toEqual({ identity: { $link: serviceIdentity.link } });
   });
@@ -171,7 +172,7 @@ describe("a mailbox service", () => {
   it("answers 404 at an id it did not give out, and at any other path", async () => {
     const { service } = await memoryService();
     const { accept } = await rootOf(service);
-    for (const path of [`/${"0".repeat(32)}`, `/${accept.toUpperCase()}`, `/${accept}/`, "/offer", "/accounts"])
+    for (const path of [`/sha256:${"0".repeat(64)}`, `/${accept.toUpperCase()}`, `/${accept}/`, "/offer", "/accounts"])
       expect((await service.fetch(request(path, { method: "POST", body: "x" }))).status).toBe(404);
   });
 
@@ -196,17 +197,19 @@ describe("a mailbox service", () => {
     });
   });
 
-  it("answers 410 at an id that only an earlier Service of its lists", async () => {
+  it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
-    const { offered, offer } = await rootOf(service);
-    const id = "f".repeat(32);
+    const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
+    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.link } });
+    const offered = await signatures.sign(dropped, serviceSigner);
     const earlier = encodeObject(serviceSchemaRead, {
       origin: "https://mail.example",
       at: 2_000,
-      offers: [{ offer: { $link: offered.link }, accept: id }],
+      offers: [{ offer: { $link: offered.link }, accept: dropped.link }],
     });
-    await store.write({ mine: [await signatures.sign(earlier, serviceSigner)], blobs: [earlier.bytes] });
-    expect((await post(service, id, (await direct(offer)).zip)).status).toBe(410);
+    const blobs = [earlier.bytes, offered.bytes, dropped.bytes, schema.bytes];
+    await store.write({ mine: [await signatures.sign(earlier, serviceSigner)], blobs });
+    expect((await post(service, dropped.link, (await direct(dropped)).zip)).status).toBe(410);
   });
 
   it("answers with the latest Service that its store holds, which a start elsewhere may have signed since", async () => {
@@ -231,7 +234,7 @@ describe("a mailbox service started again", () => {
     expect(await mine(store)).toHaveLength(1);
   });
 
-  it("at another origin signs a new Service, which keeps the signature over its offer and the id that takes acceptances of it", async () => {
+  it("at another origin signs a new Service, which keeps the signature over its offer", async () => {
     const { service, store } = await memoryService();
     const before = await rootOf(service);
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 9_000 });

@@ -15,8 +15,7 @@
     "@estoc/bundle": "workspace:*",
     "@estoc/identity": "workspace:*",
     "@estoc/object": "workspace:*",
-    "@estoc/store": "workspace:*",
-    "@scure/base": "^2.4.0"
+    "@estoc/store": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

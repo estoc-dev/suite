@@ -16,7 +16,6 @@ import {
   type Signatures,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
-import { hex } from "@scure/base";
 import { readBody, ZIP } from "./http.ts";
 import { type Locations, locations, servicesOf } from "./locations.ts";
 import {
@@ -24,6 +23,7 @@ import {
   type AcknowledgementData,
   accountOfferSchema,
   acknowledgementSchema,
+  formOf,
   ID,
   type ServiceData,
   serviceSchema,
@@ -134,9 +134,9 @@ class MailboxService {
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(root, 200));
     const id = pathname.slice(1);
     if (!ID.test(id)) return answer(404);
-    // A Service of the service's lists its offer of an account alone, so an
-    // id that the latest lists takes acceptances of that offer.
-    if (await this.#lists(root, id)) return answerTo(request, "POST", () => this.#open(request));
+    if (id === this.#offer.link && (await this.#lists(root, id))) {
+      return answerTo(request, "POST", () => this.#open(request));
+    }
     for (const link of earlier) if (await this.#lists(link, id)) return answer(410);
     return answer(404);
   }
@@ -219,10 +219,10 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
 /**
  * Makes the service of `signer`'s identity at `origin`. The store holds the
  * Services it signed before, the latest of which says where it was and what
- * it offered there. When the origin and the offer are as they were, the
- * service answers with that Service, and else it signs a new one, which
- * keeps the service's signature over the offer and its id from the latest
- * Service that lists them.
+ * it offered there. When the service says the same now, that Service stays
+ * the latest, and else the service signs a new one. Either way the offer is
+ * listed under its link, with the service's signature over it from the
+ * latest Service that lists it.
  */
 export async function loadMailboxService(
   signer: Signer,
@@ -248,20 +248,16 @@ export async function loadMailboxService(
     ),
   );
   const [previous] = services;
-  const kept = await offeredIn(services, offer.link, signatures, store);
-  const signature = kept?.signature ?? (await signatures.sign(offer, signer));
-  // Sixteen random bytes do not come out twice, so a new id is not checked
-  // against those given out before.
-  const accept = kept?.accept ?? hex.encode(crypto.getRandomValues(new Uint8Array(16)));
-  const offers = [{ offer: { $link: signature.link }, accept }];
-  const unchanged =
-    previous !== undefined &&
-    encodeObject(schemas.service, { origin, at: previous.data.at, offers }).link === previous.link;
-  if (!unchanged) {
+  const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await signatures.sign(offer, signer));
+  const next: ServiceData = {
+    origin,
     // The latest `at` says where the service is, so a clock set back does
     // not put the new Service behind the one before.
-    const at = previous === undefined ? clock() : Math.max(clock(), previous.data.at + 1);
-    const object = encodeObject(schemas.service, { origin, at, offers });
+    at: previous === undefined ? clock() : Math.max(clock(), previous.data.at + 1),
+    offers: [{ offer: { $link: signature.link }, accept: offer.link }],
+  };
+  if (previous === undefined || formOf(previous.data) !== formOf(next)) {
+    const object = encodeObject(schemas.service, next);
     const signed = await signatures.sign(object, signer);
     const blobs = [
       object.bytes,
@@ -288,20 +284,17 @@ async function readService(
   return readObject(store, (await signatures.read(link, store)).object, service);
 }
 
-/**
- * The service's signature over `offer` and its id, as the first of
- * `services` that lists the offer lists them, when one does.
- */
-async function offeredIn(
+/** The service's signature over `offer`, as the first of `services` that lists the offer lists it, when one does. */
+async function signedIn(
   services: readonly EncodedObject<Json, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,
   store: Store,
-): Promise<{ readonly signature: Signature; readonly accept: string } | undefined> {
+): Promise<Signature | undefined> {
   for (const { data } of services) {
-    for (const { offer: listed, accept } of data.offers) {
+    for (const { offer: listed } of data.offers) {
       const signature = await signatures.read(listed.$link, store);
-      if (signature.object === offer) return { signature, accept };
+      if (signature.object === offer) return signature;
     }
   }
   return undefined;

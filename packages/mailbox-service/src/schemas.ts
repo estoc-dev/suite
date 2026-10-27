@@ -3,6 +3,9 @@ import {
   type JsonLink,
   type JsonObject,
   type JsonSchema,
+  json,
+  type Link,
+  linkOf,
   linkSchema,
   type Signature,
 } from "@estoc/object";
@@ -10,10 +13,11 @@ import {
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /**
- * An id that a service gives out in an address: 16 random bytes in lowercase
- * hex. It names one thing for good, and the service gives it out once.
+ * An id that a service gives out in an address. The id of an offer is the
+ * offer's link, so it names that offer for good, wherever and however often
+ * the service starts.
  */
-export const ID = /^[0-9a-f]{32}$/;
+export const ID = /^sha256:[0-9a-f]{64}$/;
 
 const idSchema: JsonObject = { type: "string", pattern: ID.source };
 
@@ -51,6 +55,15 @@ export type ServiceData = {
   readonly at: number;
   readonly offers: readonly { readonly offer: JsonLink<Signature>; readonly accept: string }[];
 };
+
+/**
+ * A Service's form apart from when it was signed: two Services that say the
+ * same, the same origin and the same offers, have one form, whatever their
+ * `at`.
+ */
+export function formOf({ at: _, ...said }: ServiceData): Link<unknown> {
+  return linkOf(json.encode(said));
+}
 
 /**
  * What a service signs to offer an account to any identity that signs it

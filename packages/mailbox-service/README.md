@@ -17,15 +17,16 @@ where the bytes came from; TLS keeps them private, and vouches for the
 service on first contact alone.
 
 What a client posts to, the service gives it: each offer in a Service comes
-with an id, 16 random bytes in hex, and the address is the origin and the
-id, `<origin>/<id>`. That is the one rule for making a url. An id names one
-thing for good, and the service keeps it: once what it names ends, the
-service answers 410 there, and gives the id to nothing else. A request
-names the object it acts on by link, so where the service moves, neither a
-request nor a signature changes.
+with an id, and the address is the origin and the id, `<origin>/<id>`.
+That is the one rule for making a url. An id names one thing for good: once
+what it names ends, the service answers 410 there, and the id names nothing
+else. The id of an offer is the offer's link, so it is the same wherever
+the service is and however often it starts. A request names the object it
+acts on by link, so where the service moves, neither a request nor a
+signature changes.
 
 ```
-Service          {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <id>}, …]}, signed by the service
+Service          {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <link of the offer>}, …]}, signed by the service
 Account offer    {"identity": <link of the service's identity>}, signed by the service
 Acknowledgement  {"accepted": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 ```
@@ -175,10 +176,11 @@ export default { fetch: (request: Request) => service.fetch(request) };
 origin it is reached at. The origin is set there rather than read from a
 request, whose host is the requester's to choose. Started with an empty
 store, it signs the offer and a Service at that origin that lists the offer
-with a new id, and writes the signature over the Service to `store`, a
-store of `@estoc/store`, as the service's own, with all it leads to. Each acknowledgement it signs is
-written there too, as the service's own, with the acceptance and all it
-leads to, and what the bundle of an acceptance holds besides is dropped.
+under its link, and writes the signature over the Service to `store`, a
+store of `@estoc/store`, as the service's own, with all it leads to. Each
+acknowledgement it signs is written there too, as the service's own, with
+the acceptance and all it leads to, and what the bundle of an acceptance
+holds besides is dropped.
 
 The Services in the store are what the service gave out. Of them, the one
 with the latest `at` is the one it answers `GET /` with, as a client takes
@@ -189,12 +191,12 @@ works this out from the store on each request, through the same index of
 `@estoc/store` that `of` reads, so services that share a store answer
 alike, with the latest Service that any of them signed.
 
-Started again with the same store, the service answers with the same
-Service when the origin and the offer are as they were. At another origin
-it signs a new Service that keeps the signature over the offer and its id,
+Started again with the same store, the service keeps answering with the
+latest Service when what it would sign says the same apart from `at`: the
+same origin and the same offers. At another origin it signs a new Service,
+which lists the offer under the same id with the same signature over it,
 so what a client holds still holds. The new Service comes later than the
-one before by its `at`, even when the service's clock is behind. An id is
-16 random bytes, so none is given out twice.
+one before by its `at`, even when the service's clock is behind.
 
 `accounts` holds one row for each identity: the link of the identity, and
 the link of the service's signature over the acknowledgement of its

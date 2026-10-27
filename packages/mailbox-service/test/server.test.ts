@@ -1,4 +1,5 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
+import type { Signer } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
@@ -9,11 +10,13 @@ import {
   authorizations,
   identities,
   memoryService,
+  memoryStore,
   offerSchema,
   serviceIdentity,
   serviceSchemaRead,
   serviceSigner,
   signatures,
+  signedAtOrigins,
   signer,
 } from "./fixtures.ts";
 
@@ -218,6 +221,50 @@ describe("a mailbox service", () => {
     const { data, accept, offer } = await rootOf(service);
     expect(data).toMatchObject({ origin: "https://post.example", at: 9_000 });
     expect((await post(service, accept, (await direct(offer)).zip)).status).toBe(201);
+  });
+
+  it("answers with the Service whose signature has the greater link, of two at the same at, whichever its store took first", async () => {
+    const [first, second] = [await memoryService(), await memoryService()];
+    const { data } = await rootOf(first.service);
+    const origins = ["https://one.example", "https://two.example"];
+    const [greater, lesser] = await signedAtOrigins({ ...data, at: 9_000 }, origins);
+    assert.exists(greater);
+    assert.exists(lesser);
+    for (const { object, signature } of [greater, lesser])
+      await first.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { object, signature } of [lesser, greater])
+      await second.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { service } of [first, second])
+      expect((await rootOf(service)).signature.link).toBe(greater.signature.link);
+  });
+
+  it("answers alike from two starts at once on one store, at two origins, though both sign the same at", async () => {
+    // Each start signs only once both have read the store, as starts can
+    // whose signer answers over a network.
+    let release = () => {};
+    const bothRead = new Promise<void>((resolve) => (release = resolve));
+    let reading = 2;
+    const by: Signer = {
+      identity: serviceSigner.identity,
+      async sign(digest) {
+        if (--reading === 0) release();
+        await bothRead;
+        return serviceSigner.sign(digest);
+      },
+    };
+    const store = memoryStore();
+    const started = await Promise.all(
+      ["https://one.example", "https://two.example"].map((origin) =>
+        memoryService({ store, by, origin, start: 10_000 }),
+      ),
+    );
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const ats = await Promise.all(
+      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
+    );
+    expect(ats).toEqual([10_000, 10_000]);
+    const [one, two] = await Promise.all(started.map(({ service }) => rootOf(service)));
+    expect(one?.signature.link).toBe(two?.signature.link);
   });
 
   it("refuses to start at a url that is not an origin", async () => {

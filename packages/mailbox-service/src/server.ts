@@ -141,7 +141,6 @@ class MailboxService {
     return answer(404);
   }
 
-  /** Whether the Service that `link` names the service's signature over lists `id`. */
   async #lists(link: Link<Signature>, id: string): Promise<boolean> {
     const { signatures } = this.#authorizations;
     const { offers } = (await readService(link, signatures, this.#store, this.#schemas.service)).data;
@@ -274,7 +273,6 @@ export async function loadMailboxService(
   return new MailboxService(signer, { offer, locations: index }, authorizations, schemas, { ...options, clock });
 }
 
-/** The Service that `link` names a signature over, read from `store`. */
 async function readService(
   link: Link<Signature>,
   signatures: Signatures,

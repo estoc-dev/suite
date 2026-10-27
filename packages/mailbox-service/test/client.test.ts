@@ -19,6 +19,7 @@ import {
   serviceSchemaRead,
   serviceSigner,
   signatures,
+  signedAtOrigins,
   signer,
 } from "./fixtures.ts";
 
@@ -188,6 +189,32 @@ describe("a service found by its identity", () => {
     const account = (await services.of(serviceIdentity.link))?.account;
     assert.exists(account);
     expect((await account.accept(authorizations.createActor(alice))).at).toBe(5_001);
+  });
+
+  it("is, of two Services at the same at, the one whose signature has the greater link, whichever the store took first", async () => {
+    const { origin } = await running();
+    const [first, second] = [await client(), await client()];
+    const { link } = await first.services.at(origin);
+    await second.services.at(origin);
+    const { data } = await readObject(
+      first.store,
+      (await signatures.read(link, first.store)).object,
+      serviceSchemaRead,
+    );
+    const origins = ["https://one.example", "https://two.example"];
+    const [greater, lesser] = await signedAtOrigins({ ...data, at: 9_000 }, origins);
+    assert.exists(greater);
+    assert.exists(lesser);
+    for (const { object, signature } of [greater, lesser])
+      await first.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { object, signature } of [lesser, greater])
+      await second.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { services } of [first, second]) {
+      expect(await services.of(serviceIdentity.link)).toMatchObject({
+        origin: greater.object.data.origin,
+        link: greater.signature.link,
+      });
+    }
   });
 
   it("is undefined for an identity of which the store holds no Service", async () => {

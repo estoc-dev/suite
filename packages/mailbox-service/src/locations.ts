@@ -13,7 +13,11 @@ import {
 import { type Index, type Store, scan } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
 
-/** A row of a Service's signature: the identity that signed it, its `at`, and its link. */
+/**
+ * The signature's link comes after `at`, so that of two Services at the same
+ * `at`, as services started at once on one store can sign, every store takes
+ * the same one for the latest, whatever order it took them in.
+ */
 type Location = readonly [identity: Link<IdentityObject>, at: number, service: Link<Signature>];
 
 export type Locations = Index<Json, Location, SignatureData>;
@@ -33,7 +37,7 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
 
 /**
  * The links of the signatures over the Services of `identity` that `store`
- * holds as mine, from the latest `at` back.
+ * holds as mine, from the latest back.
  */
 export async function servicesOf(
   store: Store,

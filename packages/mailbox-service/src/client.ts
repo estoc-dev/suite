@@ -162,10 +162,10 @@ export class Services {
   }
 
   /**
-   * The Service of `identity` that the store holds with the latest `at`,
-   * read without reaching the service, or `undefined` when the store holds
-   * none. A Service gets there by `at`, on this device or on another whose
-   * store this one syncs with.
+   * The latest Service of `identity` that the store holds, read without
+   * reaching the service, or `undefined` when the store holds none. A
+   * Service gets there by `at`, on this device or on another whose store
+   * this one syncs with.
    */
   async of(identity: Link<IdentityObject>): Promise<Service | undefined> {
     const [latest] = await servicesOf(this.#store, this.#locations, identity);

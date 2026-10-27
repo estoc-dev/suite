@@ -11,10 +11,17 @@ the acceptance of its offer, and receives no messages.
 
 A service is named by its identity. Its origin is where that identity is
 reached for now, and the service says so by signing a Service: at `at` it
-is at `origin`, and makes these offers. Every answer of the service is
-signed by its identity, so a client goes by who signed an answer, not by
-where the bytes came from; TLS keeps them private, and vouches for the
-service on first contact alone.
+is at `origin`, and makes these offers. What the service gives out, its
+Services and its acknowledgements, is signed by its identity, so a client
+goes by who signed it, not by where the bytes came from; TLS keeps them
+private, and vouches for the service on first contact alone. A refusal is
+plain text, and a client keeps nothing of it.
+
+Of the Services that an identity signed, the latest says where it is now:
+the one with the greatest `at`, and of those with the same `at`, the one
+whose signature has the greater link, compared as ASCII strings. Services
+started at once can sign the same `at`, and every reader takes the same one
+of them for the latest, whatever order its store took them in.
 
 What a client posts to, the service gives it: each offer in a Service comes
 with an id, and the address is the origin and the id, `<origin>/<id>`.
@@ -67,9 +74,9 @@ machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
-After first contact the service is its identity. `of` gives the Service of
-an identity that the store holds with the latest `at`, whichever channel
-brought it, and reaches nothing:
+After first contact the service is its identity. `of` gives the latest
+Service of an identity that the store holds, whichever channel brought it,
+and reaches nothing:
 
 ```ts
 const service = await services.of(account.service.link);
@@ -182,11 +189,11 @@ acknowledgement it signs is written there too, as the service's own, with
 the acceptance and all it leads to, and what the bundle of an acceptance
 holds besides is dropped.
 
-The Services in the store are what the service gave out. Of them, the one
-with the latest `at` is the one it answers `GET /` with, as a client takes
-the latest for where a service is, and the ids they list are the ids it
-gave out: one that the latest lists takes acceptances, one that only an
-earlier one lists is answered 410, and one that none lists 404. The service
+The Services in the store are what the service gave out. Of them, the
+latest is the one it answers `GET /` with, as a client takes it for where
+a service is, and the ids they list are the ids it gave out: one that the
+latest lists takes acceptances, one that only an earlier one lists is
+answered 410, and one that none lists 404. The service
 works this out from the store on each request, through the same index of
 `@estoc/store` that `of` reads, so services that share a store answer
 alike, with the latest Service that any of them signed.
@@ -195,8 +202,11 @@ Started again with the same store, the service keeps answering with the
 latest Service when what it would sign says the same apart from `at`: the
 same origin and the same offers. At another origin it signs a new Service,
 which lists the offer under the same id with the same signature over it,
-so what a client holds still holds. The new Service comes later than the
-one before by its `at`, even when the service's clock is behind.
+so what a client holds still holds. The new Service's `at` is later than
+that of every Service the store held when it started, even when the
+service's clock is behind. Two started at once on one store can sign the
+same `at`, and the latest of the two is then the one whose signature has
+the greater link.
 
 `accounts` holds one row for each identity: the link of the identity, and
 the link of the service's signature over the acknowledgement of its

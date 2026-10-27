@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { loadAuthorizations } from "@estoc/authorization";
-import { type Scheme, SoftwareSigner } from "@estoc/identity";
-import { encodeSchema, type Json, json, type Schema } from "@estoc/object";
+import { type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
 import {
@@ -44,7 +44,7 @@ export async function memoryService({
   store = memoryStore(),
 }: {
   readonly start?: number;
-  readonly by?: SoftwareSigner;
+  readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
 } = {}) {
@@ -57,6 +57,20 @@ export async function memoryService({
     clock: () => now++,
   });
   return { service, store };
+}
+
+/**
+ * The service's signatures over a Service like `service` at each of
+ * `origins`, each with its Service, the greater link first.
+ */
+export async function signedAtOrigins(service: ServiceData, origins: readonly string[]) {
+  const signed = await Promise.all(
+    origins.map(async (origin) => {
+      const object = encodeObject(serviceSchemaRead, { ...service, origin });
+      return { object, signature: await signatures.sign(object, serviceSigner) };
+    }),
+  );
+  return signed.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));
 }
 
 /** Serves `handle` over HTTP at 127.0.0.1, as a host would run a service's handler. */

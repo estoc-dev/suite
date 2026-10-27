@@ -26,8 +26,9 @@ const idSchema: JsonObject = { type: "string", pattern: ID.source };
  * milliseconds since the Unix epoch by the service's clock, its identity is
  * reached at `origin`, and makes the offers listed, each as the link of the
  * service's signature over the offer and the id that takes acceptances of
- * it. Of the Services that one identity signs, the one with the latest `at`
- * says where it is now.
+ * it. Of the Services that one identity signs, the latest says where it is
+ * now: the one with the greatest `at`, and of those with the same `at`, the
+ * one whose signature has the greater link, compared as ASCII strings.
  */
 export const serviceSchema: JsonSchema = {
   $schema: DRAFT_2020_12,

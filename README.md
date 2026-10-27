@@ -89,8 +89,9 @@ fresh, such as a nonce.
   object as the way in, and packed to travel between programs.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
-- `@estoc/mailbox-service`: opening an account, by signing its offer, at
-  a service that keeps messages for receivers who are not online.
+- `@estoc/mailbox-service`: a service that keeps messages for receivers
+  who are not online, reached by its identity, and opening an account
+  there by signing its offer.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
   them, kept on their device; and the indexes an application fills from
   what the user wrote.

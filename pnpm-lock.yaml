@@ -138,6 +138,9 @@ importers:
       '@estoc/store':
         specifier: workspace:*
         version: link:../store
+      '@scure/base':
+        specifier: ^2.4.0
+        version: 2.4.0
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

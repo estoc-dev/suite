@@ -1,6 +1,56 @@
-import { type IdentityObject, type JsonLink, type JsonSchema, linkSchema, type Signature } from "@estoc/object";
+import {
+  type IdentityObject,
+  type JsonLink,
+  type JsonObject,
+  type JsonSchema,
+  linkSchema,
+  type Signature,
+} from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+
+/**
+ * An id that a service gives out in an address: 16 random bytes in lowercase
+ * hex. It names one thing for good, and the service gives it out once.
+ */
+export const ID = /^[0-9a-f]{32}$/;
+
+const idSchema: JsonObject = { type: "string", pattern: ID.source };
+
+/**
+ * What a service signs to say where it is and what it offers: at `at`, in
+ * milliseconds since the Unix epoch by the service's clock, its identity is
+ * reached at `origin`, and makes the offers listed, each as the link of the
+ * service's signature over the offer and the id that takes acceptances of
+ * it. Of the Services that one identity signs, the one with the latest `at`
+ * says where it is now.
+ */
+export const serviceSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Service",
+  type: "object",
+  properties: {
+    origin: { type: "string" },
+    at: { type: "integer", minimum: 0 },
+    offers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { offer: linkSchema, accept: idSchema },
+        required: ["offer", "accept"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["origin", "at", "offers"],
+  additionalProperties: false,
+};
+
+export type ServiceData = {
+  readonly origin: string;
+  readonly at: number;
+  readonly offers: readonly { readonly offer: JsonLink<Signature>; readonly accept: string }[];
+};
 
 /**
  * What a service signs to offer an account to any identity that signs it

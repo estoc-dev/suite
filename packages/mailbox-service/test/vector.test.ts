@@ -1,6 +1,6 @@
 import { encodeObject } from "@estoc/object";
 import { expect, test } from "vitest";
-import { acknowledgementSchemaRead, identities, offerSchema, signer } from "./fixtures.ts";
+import { acknowledgementSchemaRead, identities, offerSchema, serviceSchemaRead, signer } from "./fixtures.ts";
 
 // The bytes and the links were checked against Python's json module with
 // sorted keys and no whitespace, which writes these values as JCS does, its
@@ -8,6 +8,13 @@ import { acknowledgementSchemaRead, identities, offerSchema, signer } from "./fi
 // 32 bytes of 1. A change to the format changes them.
 const linkText =
   '{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}';
+const serviceSchemaText =
+  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"at":{"minimum":0,"type":"integer"},"offers":{"items":{"additionalProperties":false,' +
+  `"properties":{"accept":{"pattern":"^[0-9a-f]{32}$","type":"string"},"offer":${linkText}},` +
+  '"required":["offer","accept"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
+  '"required":["origin","at","offers"],"title":"Service","type":"object"}';
+const serviceSchemaLink = "sha256:4ed330fbd70191353a7beddbf3013963fd650d2d7b27c14117a4158f6185b6e2";
 const offerSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`;
@@ -23,6 +30,11 @@ const offerText =
 const offerLink = "sha256:224809480d6cc847888af3719e93d083b1a036eba79249342bd6cb9dedb763ed";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+test("the Service schema encodes to fixed bytes and a fixed link", () => {
+  expect(text(serviceSchemaRead.bytes)).toBe(serviceSchemaText);
+  expect(serviceSchemaRead.link).toBe(serviceSchemaLink);
+});
 
 test("the account offer schema encodes to fixed bytes and a fixed link", () => {
   expect(text(offerSchema.bytes)).toBe(offerSchemaText);

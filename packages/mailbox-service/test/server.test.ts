@@ -1,16 +1,22 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import { type Link, readObject } from "@estoc/object";
+import type { Signer } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
 import { Temporal } from "temporal-polyfill";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
   authorizations,
   identities,
   memoryService,
+  memoryStore,
   offerSchema,
   serviceIdentity,
+  serviceSchemaRead,
+  serviceSigner,
   signatures,
+  signedAtOrigins,
   signer,
 } from "./fixtures.ts";
 
@@ -19,16 +25,31 @@ const wallet = signer("eip191", 2);
 const device = signer("ed25519", 3);
 const otherService = signer("ed25519", 4);
 
-const getOffer = (service: MailboxService) => service.fetch(new Request("https://mail.example/offer"));
-const post = (service: MailboxService, body: Uint8Array) =>
-  service.fetch(new Request("https://mail.example/", { method: "POST", body }));
+const request = (path: string, init?: RequestInit) => new Request(new URL(path, "https://mail.example"), init);
+const getRoot = (service: MailboxService) => service.fetch(request("/"));
+const post = (service: MailboxService, id: string, body: Uint8Array) =>
+  service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => unpackBundle(new Uint8Array(await response.arrayBuffer()));
+const mine = async (store: { mine(): AsyncIterable<Link<never>> }) => {
+  const links: Link<never>[] = [];
+  for await (const link of store.mine()) links.push(link);
+  return links.sort();
+};
 
-async function offerOf(service: MailboxService) {
-  const bundle = await bundleOf(await getOffer(service));
+/** What `GET /` answers, read: the service's signature over its Service, and the offer of an account it lists. */
+async function rootOf(service: MailboxService) {
+  const bundle = await bundleOf(await getRoot(service));
   const signature = await signatures.read(bundle.link, bundle);
-  return { bundle, signature, offer: await readObject(bundle, signature.object, offerSchema) };
+  const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
+  const [listed] = data.offers;
+  assert.exists(listed);
+  const offered = await signatures.read(listed.offer.$link, bundle);
+  const offer = await readObject(bundle, offered.object, offerSchema);
+  return { signature, data, offered, offer, accept: listed.accept };
 }
+
+const accepting = async (service: MailboxService, body: Uint8Array) =>
+  post(service, (await rootOf(service)).accept, body);
 
 /** The bundle that accepts `offer` by `by`'s own signature, with its identity. */
 async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
@@ -50,26 +71,33 @@ async function acknowledgementIn(response: Response) {
 }
 
 describe("a mailbox service", () => {
-  it("answers GET /offer with its signature over an offer that names its identity", async () => {
-    const { service } = await memoryService();
-    const response = await getOffer(service);
+  it("answers GET / with its signature over a Service at its origin, which lists its offer of an account under the offer's link", async () => {
+    const { service } = await memoryService({ start: 3_000 });
+    const response = await getRoot(service);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
-    const { signature, offer } = await offerOf(service);
+    const { signature, data, offered, offer, accept } = await rootOf(service);
     expect(signature.identity.link).toBe(serviceIdentity.link);
+    expect(data).toEqual({
+      origin: "https://mail.example",
+      at: 3_000,
+      offers: [{ offer: { $link: offered.link }, accept }],
+    });
+    expect(accept).toBe(offer.link);
+    expect(offered.identity.link).toBe(serviceIdentity.link);
     expect(offer.data).toEqual({ identity: { $link: serviceIdentity.link } });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
     const { service } = await memoryService({ start: 5_000 });
-    const { offer } = await offerOf(service);
+    const { offer, accept } = await rootOf(service);
     const accepted = await direct(offer);
-    const response = await post(service, accepted.zip);
+    const response = await post(service, accept, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.identity.link).toBe(serviceIdentity.link);
-    expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_000 });
-    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle, new Date(5_000))).toEqual({
+    expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
+    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle, new Date(5_001))).toEqual({
       principal: identities.encode(alice.identity),
       agents: [],
     });
@@ -77,18 +105,18 @@ describe("a mailbox service", () => {
 
   it("answers 200 with the same acknowledgement when the same acceptance comes again", async () => {
     const { service } = await memoryService();
-    const { zip } = await direct((await offerOf(service)).offer);
-    const first = new Uint8Array(await (await post(service, zip)).arrayBuffer());
-    const again = await post(service, zip);
+    const { zip } = await direct((await rootOf(service)).offer);
+    const first = new Uint8Array(await (await accepting(service, zip)).arrayBuffer());
+    const again = await accepting(service, zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
   });
 
   it("opens the account of the principal for an agent's signature over a proxy", async () => {
     const { service } = await memoryService();
-    const { offer } = await offerOf(service);
+    const { offer } = await rootOf(service);
     const accepted = await proxied(offer);
-    const response = await post(service, accepted.zip);
+    const response = await accepting(service, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { accepted: link, at } = acknowledgement.data;
@@ -101,68 +129,171 @@ describe("a mailbox service", () => {
 
   it("answers an identity that accepts again, another way, with the acknowledgement of its first acceptance", async () => {
     const { service } = await memoryService();
-    const { offer } = await offerOf(service);
-    const first = new Uint8Array(await (await post(service, (await direct(offer, wallet)).zip)).arrayBuffer());
-    const again = await post(service, (await proxied(offer)).zip);
+    const { offer } = await rootOf(service);
+    const first = new Uint8Array(await (await accepting(service, (await direct(offer, wallet)).zip)).arrayBuffer());
+    const again = await accepting(service, (await proxied(offer)).zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
     ["that is not a zip", async () => new TextEncoder().encode("hello")],
-    ["whose root is not a signature", async (service) => packBundle((await offerOf(service)).offer, [])],
+    ["whose root is not a signature", async (service) => packBundle((await rootOf(service)).offer, [])],
     [
       "whose signature comes without its identity",
-      async (service) => packBundle((await direct((await offerOf(service)).offer)).signature, []),
+      async (service) => packBundle((await direct((await rootOf(service)).offer)).signature, []),
     ],
     [
       "accepting another service's offer",
       async () => {
         const { service: other } = await memoryService({ by: otherService });
-        return (await direct((await offerOf(other)).offer)).zip;
+        return (await direct((await rootOf(other)).offer)).zip;
       },
     ],
     [
       "through an authorization that has ended",
       async (service) =>
-        (await proxied((await offerOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip,
+        (await proxied((await rootOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip,
     ],
     [
       "that is the service's own signature over its offer",
-      async (service) => new Uint8Array(await (await getOffer(service)).arrayBuffer()),
+      async (service) => (await direct((await rootOf(service)).offer, serviceSigner)).zip,
     ],
   ])("answers 400 to a bundle %s, and opens no account", async (_, body) => {
     const { service, store } = await memoryService();
-    const response = await post(service, await body(service));
+    const response = await accepting(service, await body(service));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toBe("");
-    const mine = [];
-    for await (const link of store.mine()) mine.push(link);
-    expect(mine).toEqual([(await offerOf(service)).signature.link]);
+    expect(await mine(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
   it("answers 413 to a body of more than 64 KiB", async () => {
     const { service } = await memoryService();
-    expect((await post(service, new Uint8Array(64 * 1024 + 1))).status).toBe(413);
+    expect((await accepting(service, new Uint8Array(64 * 1024 + 1))).status).toBe(413);
   });
 
-  it("answers 405 to another method, saying which it takes, and 404 to another path", async () => {
+  it("answers 404 at an id it did not give out, and at any other path", async () => {
     const { service } = await memoryService();
-    const put = await service.fetch(new Request("https://mail.example/offer", { method: "PUT", body: "x" }));
+    const { accept } = await rootOf(service);
+    for (const path of [`/sha256:${"0".repeat(64)}`, `/${accept.toUpperCase()}`, `/${accept}/`, "/offer", "/accounts"])
+      expect((await service.fetch(request(path, { method: "POST", body: "x" }))).status).toBe(404);
+  });
+
+  it("answers 405 to another method, saying which it takes", async () => {
+    const { service } = await memoryService();
+    const put = await service.fetch(request("/", { method: "PUT", body: "x" }));
     expect(put.status).toBe(405);
     expect(put.headers.get("allow")).toBe("GET");
-    expect((await service.fetch(new Request("https://mail.example/"))).headers.get("allow")).toBe("POST");
-    expect((await service.fetch(new Request("https://mail.example/accounts"))).status).toBe(404);
+    const get = await service.fetch(request(`/${(await rootOf(service)).accept}`));
+    expect(get.status).toBe(405);
+    expect(get.headers.get("allow")).toBe("POST");
   });
 
   it("answers a browser's preflight for posting a zip from another origin", async () => {
     const { service } = await memoryService();
-    const response = await service.fetch(new Request("https://mail.example/", { method: "OPTIONS" }));
+    const response = await service.fetch(request(`/${(await rootOf(service)).accept}`, { method: "OPTIONS" }));
     expect(response.status).toBe(204);
     expect(Object.fromEntries(response.headers)).toMatchObject({
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "POST",
       "access-control-allow-headers": "content-type",
     });
+  });
+
+  it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
+    const { service, store } = await memoryService({ start: 3_000 });
+    const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
+    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.link } });
+    const offered = await signatures.sign(dropped, serviceSigner);
+    const earlier = encodeObject(serviceSchemaRead, {
+      origin: "https://mail.example",
+      at: 2_000,
+      offers: [{ offer: { $link: offered.link }, accept: dropped.link }],
+    });
+    const blobs = [earlier.bytes, offered.bytes, dropped.bytes, schema.bytes];
+    await store.write({ mine: [await signatures.sign(earlier, serviceSigner)], blobs });
+    expect((await post(service, dropped.link, (await direct(dropped)).zip)).status).toBe(410);
+  });
+
+  it("answers with the latest Service that its store holds, which a start elsewhere may have signed since", async () => {
+    const { service, store } = await memoryService();
+    await memoryService({ store, origin: "https://post.example", start: 9_000 });
+    const { data, accept, offer } = await rootOf(service);
+    expect(data).toMatchObject({ origin: "https://post.example", at: 9_000 });
+    expect((await post(service, accept, (await direct(offer)).zip)).status).toBe(201);
+  });
+
+  it("answers with the Service whose signature has the greater link, of two at the same at, whichever its store took first", async () => {
+    const [first, second] = [await memoryService(), await memoryService()];
+    const { data } = await rootOf(first.service);
+    const origins = ["https://one.example", "https://two.example"];
+    const [greater, lesser] = await signedAtOrigins({ ...data, at: 9_000 }, origins);
+    assert.exists(greater);
+    assert.exists(lesser);
+    for (const { object, signature } of [greater, lesser])
+      await first.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { object, signature } of [lesser, greater])
+      await second.store.write({ mine: [signature], blobs: [object.bytes] });
+    for (const { service } of [first, second])
+      expect((await rootOf(service)).signature.link).toBe(greater.signature.link);
+  });
+
+  it("answers alike from two starts at once on one store, at two origins, though both sign the same at", async () => {
+    // Each start signs only once both have read the store, as starts can
+    // whose signer answers over a network.
+    let release = () => {};
+    const bothRead = new Promise<void>((resolve) => (release = resolve));
+    let reading = 2;
+    const by: Signer = {
+      identity: serviceSigner.identity,
+      async sign(digest) {
+        if (--reading === 0) release();
+        await bothRead;
+        return serviceSigner.sign(digest);
+      },
+    };
+    const store = memoryStore();
+    const started = await Promise.all(
+      ["https://one.example", "https://two.example"].map((origin) =>
+        memoryService({ store, by, origin, start: 10_000 }),
+      ),
+    );
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const ats = await Promise.all(
+      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
+    );
+    expect(ats).toEqual([10_000, 10_000]);
+    const [one, two] = await Promise.all(started.map(({ service }) => rootOf(service)));
+    expect(one?.signature.link).toBe(two?.signature.link);
+  });
+
+  it("refuses to start at a url that is not an origin", async () => {
+    await expect(memoryService({ origin: "https://mail.example/inbox" })).rejects.toThrow(/is not an origin/);
+  });
+});
+
+describe("a mailbox service started again", () => {
+  it("answers with the same Service when its origin and its offer are as they were", async () => {
+    const { service, store } = await memoryService();
+    const first = new Uint8Array(await (await getRoot(service)).arrayBuffer());
+    const { service: again } = await memoryService({ store, start: 9_000 });
+    expect(new Uint8Array(await (await getRoot(again)).arrayBuffer())).toEqual(first);
+    expect(await mine(store)).toHaveLength(1);
+  });
+
+  it("at another origin signs a new Service, which keeps the signature over its offer", async () => {
+    const { service, store } = await memoryService();
+    const before = await rootOf(service);
+    const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 9_000 });
+    const after = await rootOf(moved);
+    expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
+    expect(await mine(store)).toEqual([before.signature.link, after.signature.link].sort());
+    expect((await post(moved, after.accept, (await direct(after.offer)).zip)).status).toBe(201);
+  });
+
+  it("at another origin signs its new Service later than the one before, though its clock is behind", async () => {
+    const { store } = await memoryService({ start: 5_000 });
+    const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
+    expect((await rootOf(moved)).data).toMatchObject({ origin: "https://post.example", at: 5_001 });
   });
 });

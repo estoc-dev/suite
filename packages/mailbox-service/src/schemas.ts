@@ -1,6 +1,70 @@
-import { type IdentityObject, type JsonLink, type JsonSchema, linkSchema, type Signature } from "@estoc/object";
+import {
+  type IdentityObject,
+  type JsonLink,
+  type JsonObject,
+  type JsonSchema,
+  json,
+  type Link,
+  linkOf,
+  linkSchema,
+  type Signature,
+} from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+
+/**
+ * An id that a service gives out in an address. The id of an offer is the
+ * offer's link, so it names that offer for good, wherever and however often
+ * the service starts.
+ */
+export const ID = /^sha256:[0-9a-f]{64}$/;
+
+const idSchema: JsonObject = { type: "string", pattern: ID.source };
+
+/**
+ * What a service signs to say where it is and what it offers: at `at`, in
+ * milliseconds since the Unix epoch by the service's clock, its identity is
+ * reached at `origin`, and makes the offers listed, each as the link of the
+ * service's signature over the offer and the id that takes acceptances of
+ * it. Of the Services that one identity signs, the latest says where it is
+ * now: the one with the greatest `at`, and of those with the same `at`, the
+ * one whose signature has the greater link, compared as ASCII strings.
+ */
+export const serviceSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Service",
+  type: "object",
+  properties: {
+    origin: { type: "string" },
+    at: { type: "integer", minimum: 0 },
+    offers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { offer: linkSchema, accept: idSchema },
+        required: ["offer", "accept"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["origin", "at", "offers"],
+  additionalProperties: false,
+};
+
+export type ServiceData = {
+  readonly origin: string;
+  readonly at: number;
+  readonly offers: readonly { readonly offer: JsonLink<Signature>; readonly accept: string }[];
+};
+
+/**
+ * A Service's form apart from when it was signed: two Services that say the
+ * same, the same origin and the same offers, have one form, whatever their
+ * `at`.
+ */
+export function formOf({ at: _, ...said }: ServiceData): Link<unknown> {
+  return linkOf(json.encode(said));
+}
 
 /**
  * What a service signs to offer an account to any identity that signs it

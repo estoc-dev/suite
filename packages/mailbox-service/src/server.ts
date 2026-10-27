@@ -1,10 +1,4 @@
-import {
-  type Authorizations,
-  authorizationSchema,
-  loadAuthorizations,
-  proxySchema,
-  type Signed,
-} from "@estoc/authorization";
+import { type Authorizations, authorizationSchema, loadAuthorizations, proxySchema } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import {
@@ -16,21 +10,33 @@ import {
   type JsonSchemaValidator,
   jsonSchema,
   type Link,
+  readObject,
   type Schema,
   type Signature,
+  type Signatures,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
+import { type Locations, locations, servicesOf } from "./locations.ts";
 import {
   type AccountOfferData,
   type AcknowledgementData,
   accountOfferSchema,
   acknowledgementSchema,
+  formOf,
+  ID,
+  type ServiceData,
+  serviceSchema,
 } from "./schemas.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and an identity, or a proxy and its chain.
 const REQUEST_LIMIT = 64 * 1024;
+
+type Schemas = {
+  readonly service: Schema<Json, ServiceData>;
+  readonly acknowledgement: Schema<Json, AcknowledgementData>;
+};
 
 // An acceptance through a proxy leads to these schemas, which a client need
 // not send, since the service has them.
@@ -67,8 +73,15 @@ export class MemoryAccounts implements Accounts {
 
 export interface ServiceOptions {
   /**
-   * Where the service writes its offer and the acknowledgements it signs as
-   * its own, with all they lead to.
+   * The origin the service is reached at, such as `https://mail.example`,
+   * which it signs into its Service. It is set here rather than read from a
+   * request, whose host is the requester's to choose.
+   */
+  readonly origin: string;
+  /**
+   * Where the service writes what it signs as its own, with all it leads
+   * to: its Services, which say what ids it gave out, and the
+   * acknowledgements.
    */
   readonly store: Store;
   readonly accounts: Accounts;
@@ -79,41 +92,59 @@ export interface ServiceOptions {
 }
 
 /**
- * A mailbox service, as a handler of HTTP requests. `GET /offer` answers the
- * service's signed offer, and `POST /` opens an account for whoever signed
- * it.
+ * A mailbox service, as a handler of HTTP requests. `GET /` answers the
+ * service's signed Service, and a `POST` to the id that it lists for the
+ * offer of an account opens one for whoever signed the offer.
  */
 class MailboxService {
   readonly #signer: Signer;
-  readonly #offer: Signed<EncodedObject<Json, AccountOfferData>>;
+  readonly #offer: EncodedObject<Json, AccountOfferData>;
+  readonly #locations: Locations;
   readonly #authorizations: Authorizations;
-  readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
+  readonly #schemas: Schemas;
   readonly #store: Store;
   readonly #accounts: Accounts;
   readonly #clock: () => number;
 
   constructor(
     signer: Signer,
-    offer: Signed<EncodedObject<Json, AccountOfferData>>,
+    { offer, locations }: { readonly offer: EncodedObject<Json, AccountOfferData>; readonly locations: Locations },
     authorizations: Authorizations,
-    acknowledgement: Schema<Json, AcknowledgementData>,
-    { store, accounts, clock = Date.now }: Omit<ServiceOptions, "validator">,
+    schemas: Schemas,
+    { store, accounts, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "clock">>,
   ) {
     this.#signer = signer;
     this.#offer = offer;
+    this.#locations = locations;
     this.#authorizations = authorizations;
-    this.#acknowledgementSchema = acknowledgement;
+    this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
     this.#clock = clock;
   }
 
-  /** Answers a request, from any origin, since no request carries credentials. */
+  /**
+   * Answers a request, from any origin, since no request carries
+   * credentials, by the Services of the service's that the store holds now.
+   */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (pathname === "/offer") return answerTo(request, "GET", () => this.#answerWith(this.#offer.signature.link, 200));
-    if (pathname === "/") return answerTo(request, "POST", () => this.#open(request));
+    const [root, ...earlier] = await servicesOf(this.#store, this.#locations, this.#offer.data.identity.$link);
+    if (root === undefined) throw new Error("the store holds no Service of the service's");
+    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(root, 200));
+    const id = pathname.slice(1);
+    if (!ID.test(id)) return answer(404);
+    if (id === this.#offer.link && (await this.#lists(root, id))) {
+      return answerTo(request, "POST", () => this.#open(request));
+    }
+    for (const link of earlier) if (await this.#lists(link, id)) return answer(410);
     return answer(404);
+  }
+
+  async #lists(link: Link<Signature>, id: string): Promise<boolean> {
+    const { signatures } = this.#authorizations;
+    const { offers } = (await readService(link, signatures, this.#store, this.#schemas.service)).data;
+    return offers.some(({ accept }) => accept === id);
   }
 
   /**
@@ -124,7 +155,7 @@ class MailboxService {
     const zip = await readBody(request.body, REQUEST_LIMIT);
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
-    const offer = this.#offer.object;
+    const offer = this.#offer;
     let accepted: Bundle;
     let identity: Link<IdentityObject>;
     try {
@@ -138,9 +169,9 @@ class MailboxService {
 
     const kept = await this.#accounts.get(identity);
     if (kept !== undefined) return this.#answerWith(kept, 200);
-    const acknowledgement = encodeObject(this.#acknowledgementSchema, { accepted: { $link: accepted.link }, at });
+    const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
-    const schemas = [this.#acknowledgementSchema.bytes, ...CHAIN_SCHEMAS];
+    const schemas = [this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS];
     await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
     if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
     const opened = await this.#accounts.get(identity);
@@ -185,27 +216,84 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
 }
 
 /**
- * Makes the service of `signer`'s identity. It signs its offer once, here,
- * and writes the signature to the store with the offer.
+ * Makes the service of `signer`'s identity at `origin`. The store holds the
+ * Services it signed before, the latest of which says where it was and what
+ * it offered there. When the service says the same now, that Service stays
+ * the latest, and else the service signs a new one. Either way the offer is
+ * listed under its link, with the service's signature over it from the
+ * latest Service that lists it.
  */
 export async function loadMailboxService(
   signer: Signer,
-  { validator, ...options }: ServiceOptions,
+  { origin, validator, clock = Date.now, ...options }: ServiceOptions,
 ): Promise<MailboxService> {
+  if (new URL(origin).origin !== origin)
+    throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
+  const { store } = options;
   const authorizations = await loadAuthorizations(validator);
   const { signatures } = authorizations;
   const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
-  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);
+  const schemas: Schemas = {
+    service: await encodeSchema(serviceSchema, validator),
+    acknowledgement: await encodeSchema(acknowledgementSchema, validator),
+  };
   const identity = signatures.identities.encode(signer.identity);
-  const object = encodeObject(offerSchema, { identity: { $link: identity.link } });
-  const signature = await signatures.sign(object, signer);
-  const blobs = [
-    object.bytes,
-    offerSchema.bytes,
-    identity.bytes,
-    signatures.schema.bytes,
-    signatures.identities.schema.bytes,
-  ];
-  await options.store.write({ mine: [signature], blobs });
-  return new MailboxService(signer, { object, signature }, authorizations, acknowledgement, options);
+  const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
+  const index = locations(signatures, schemas.service);
+
+  const services = await Promise.all(
+    (await servicesOf(store, index, identity.link)).map((link) =>
+      readService(link, signatures, store, schemas.service),
+    ),
+  );
+  const [previous] = services;
+  const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await signatures.sign(offer, signer));
+  const next: ServiceData = {
+    origin,
+    // The latest `at` says where the service is, so a clock set back does
+    // not put the new Service behind the one before.
+    at: previous === undefined ? clock() : Math.max(clock(), previous.data.at + 1),
+    offers: [{ offer: { $link: signature.link }, accept: offer.link }],
+  };
+  if (previous === undefined || formOf(previous.data) !== formOf(next)) {
+    const object = encodeObject(schemas.service, next);
+    const signed = await signatures.sign(object, signer);
+    const blobs = [
+      object.bytes,
+      schemas.service.bytes,
+      signature.bytes,
+      offer.bytes,
+      offerSchema.bytes,
+      identity.bytes,
+      signatures.schema.bytes,
+      signatures.identities.schema.bytes,
+    ];
+    await store.write({ mine: [signed], blobs });
+  }
+  return new MailboxService(signer, { offer, locations: index }, authorizations, schemas, { ...options, clock });
+}
+
+async function readService(
+  link: Link<Signature>,
+  signatures: Signatures,
+  store: Store,
+  service: Schema<Json, ServiceData>,
+): Promise<EncodedObject<Json, ServiceData>> {
+  return readObject(store, (await signatures.read(link, store)).object, service);
+}
+
+/** The service's signature over `offer`, as the first of `services` that lists the offer lists it, when one does. */
+async function signedIn(
+  services: readonly EncodedObject<Json, ServiceData>[],
+  offer: Link<unknown>,
+  signatures: Signatures,
+  store: Store,
+): Promise<Signature | undefined> {
+  for (const { data } of services) {
+    for (const { offer: listed } of data.offers) {
+      const signature = await signatures.read(listed.$link, store);
+      if (signature.object === offer) return signature;
+    }
+  }
+  return undefined;
 }

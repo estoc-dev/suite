@@ -3,54 +3,102 @@
 A mailbox service keeps messages for receivers who are not online. It is
 the receiving side of an HTTP mailbox of `@estoc/mailbox`: a receiver
 writes a url at the service into a mailbox, and senders post there as they
-post to any HTTP mailbox. This package opens accounts at such a service,
-and no more: its handler answers the offer and its acceptance, and
-receives no messages.
+post to any HTTP mailbox. This package reaches such a service and opens
+accounts there, and no more: its handler answers where the service is and
+the acceptance of its offer, and receives no messages.
 
-An identity has an account at a service, one for each identity, and opens
-it by signing the service's offer. The identity is the account's key: the
-service hands out no secret to keep, and whoever signs as the identity
-reaches the account from any device.
+## Addressing
+
+A service is named by its identity. Its origin is where that identity is
+reached for now, and the service says so by signing a Service: at `at` it
+is at `origin`, and makes these offers. What the service gives out, its
+Services and its acknowledgements, is signed by its identity, so a client
+goes by who signed it, not by where the bytes came from; TLS keeps them
+private, and vouches for the service on first contact alone. A refusal is
+plain text, and a client keeps nothing of it.
+
+Of the Services that an identity signed, the latest says where it is now:
+the one with the greatest `at`, and of those with the same `at`, the one
+whose signature has the greater link, compared as ASCII strings. Services
+started at once can sign the same `at`, and every reader takes the same one
+of them for the latest, whatever order its store took them in.
+
+What a client posts to, the service gives it: each offer in a Service comes
+with an id, and the address is the origin and the id, `<origin>/<id>`.
+That is the one rule for making a url. An id names one thing for good: once
+what it names ends, the service answers 410 there, and the id names nothing
+else. The id of an offer is the offer's link, so it is the same wherever
+the service is and however often it starts. A request names the object it
+acts on by link, so where the service moves, neither a request nor a
+signature changes.
 
 ```
+Service          {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <link of the offer>}, …]}, signed by the service
 Account offer    {"identity": <link of the service's identity>}, signed by the service
 Acknowledgement  {"accepted": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 ```
 
-Both are objects of `@estoc/object`, written to two fixed draft 2020-12
-schemas, `accountOfferSchema` and `acknowledgementSchema`, which the client
-and the service share. The client is `@estoc/mailbox-service`, and the
-service `@estoc/mailbox-service/server`.
+All three are objects of `@estoc/object`, written to fixed draft 2020-12
+schemas, `serviceSchema`, `accountOfferSchema` and `acknowledgementSchema`,
+which the client and the service share. The client is
+`@estoc/mailbox-service`, and the service `@estoc/mailbox-service/server`.
 
-## The offer
+An offer names no origin and no id. It is what an identity signs to accept
+it, so it stays one object, with one link, wherever the service is reached.
 
-A service has an identity of its own. It signs one offer, which names that
-identity, so each service's offer has a link of its own, and a signature
-that accepts one service's offer accepts no other's.
-
-The service answers `GET /offer` with a bundle: its signature over the
-offer as the root, with the offer, the service's identity and their
-schemas. Anyone can write an offer and sign it, so what makes an offer the
-service's is the origin it came from: the client gets it from the
-service's origin over TLS, and takes the identity that signed it as the
-service's. An offer signed by another identity than the one it names is
-refused.
+## Reaching a service
 
 ```ts
 import { loadServices } from "@estoc/mailbox-service";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const services = await loadServices(store, { validator: defaultValidator });
-const offer = await services.offer("https://mail.example");
+const service = await services.at("https://mail.example");
 ```
 
-`offer` takes an origin alone, a scheme, a host and a port, and refuses a
-url with a path. It takes `https://`, or `http://` to the client's own
+`at` gets the Service at an origin, from `GET /`: a bundle with the
+service's signature over the Service as the root, and the offers it lists,
+the service's signatures over them, the service's identity and their
+schemas. What the origin answers over TLS is the service's, so `at` takes
+the identity that signed the Service as the service's, and refuses a
+Service that names another origin than the one asked, or that lists an
+offer that another identity signed. It writes the service's signature over
+the Service to the store as mine, with all it leads to, and gives a
+`Service`: the service's identity, its origin, `at`, the link of the
+signature, and `account`, the offer of an account when the Service lists
+one. Offers of schemas the client does not read are passed over.
+
+`at` takes an origin alone, a scheme, a host and a port, and refuses a url
+with a path. It takes `https://`, or `http://` to the client's own
 machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
-the one it trusts the offer for.
+the one it trusts on first contact.
+
+After first contact the service is its identity. `of` gives the latest
+Service of an identity that the store holds, whichever channel brought it,
+and reaches nothing:
+
+```ts
+const service = await services.of(account.service.link);
+```
+
+Another device that syncs the store goes back to the service that way, and
+to where it moved, once the store holds the newer Service. `of` checks a
+Service it reads from the store as `at` does, save that no origin was
+asked: its origin is still to be one that `at` takes. It reads every
+Service in the store, through an index of `@estoc/store`.
 
 ## Opening an account
+
+An identity has an account at a service, one for each identity, and opens
+it by signing the service's offer. The identity is the account's key: the
+service hands out no secret to keep, and whoever signs as the identity
+reaches the account from any device.
+
+A service has an identity of its own. It signs one offer, which names that
+identity, so each service's offer has a link of its own, and a signature
+that accepts one service's offer accepts no other's. An account offer that
+names another identity than the one that signed it is refused.
 
 Opening an account is accepting the offer: an identity signs it, and the
 account is the account of whoever signed. A wallet asks its holder to
@@ -62,15 +110,16 @@ offer. The account is still the wallet's.
 its principal:
 
 ```ts
-const account = await offer.accept(authorizations.createActor(wallet));
+const account = await service.account.accept(authorizations.createActor(wallet));
 // or, for the wallet, by a key on the device that it authorized:
-const account = await offer.accept(authorizations.createActor(deviceKey, [grant]));
+const account = await service.account.accept(authorizations.createActor(deviceKey, [grant]));
 ```
 
 The actor signs the offer, or a proxy for it, and `accept` posts the
-bundle of that signature to `POST /`: the signature as the root, with the
-identity, and for a proxy the Proxy and its chain. The offer and the
-schemas are left out, since the service has them.
+bundle of that signature to `POST /<id>`, at the id that the Service lists
+with the offer: the signature as the root, with the identity, and for a
+proxy the Proxy and its chain. The offer and the schemas are left out,
+since the service has them.
 
 The service reads who stands behind its offer by the root, with
 `readStanding` at its clock, opens an account for that identity, and
@@ -104,13 +153,13 @@ account for this identity.
 
 ### What the client keeps
 
-`accept` writes the service's signatures over the offer and over the
-acknowledgement to the store as mine, with all they lead to. Another
-device that syncs the store learns which services the identity has
-accounts at, by their identities, without asking them. Neither names
-where a service is reached, so an application that goes back to a service
-from another device keeps its origin itself. When the service refuses, or
-its answer is refused, nothing is written.
+`at` writes the service's signature over the Service, which leads to the
+offers and the service's signatures over them, and `accept` writes the
+service's signature over the acknowledgement, each to the store as mine,
+with all they lead to. Another device that syncs the store learns which
+services the identity has accounts at, by their identities, and where
+they are, without asking them. When the service refuses, or its answer is
+refused, `accept` writes nothing.
 
 `accept` gives the `Account`: the identity whose account it is, the
 service's identity, `at`, and the link of the service's signature over the
@@ -121,15 +170,43 @@ acknowledgement.
 ```ts
 import { loadMailboxService, MemoryAccounts } from "@estoc/mailbox-service/server";
 
-const service = await loadMailboxService(serviceKey, { store, accounts: new MemoryAccounts(), validator: defaultValidator });
+const service = await loadMailboxService(serviceKey, {
+  origin: "https://mail.example",
+  store,
+  accounts: new MemoryAccounts(),
+  validator: defaultValidator,
+});
 export default { fetch: (request: Request) => service.fetch(request) };
 ```
 
-`loadMailboxService` takes the signer of the service's identity, signs the
-offer once, and writes the signature with the offer to `store`, a store of
-`@estoc/store`. Each acknowledgement it signs is written there too, as the
-service's own, with the acceptance and all it leads to, and what the bundle
-of an acceptance holds besides is dropped.
+`loadMailboxService` takes the signer of the service's identity and the
+origin it is reached at. The origin is set there rather than read from a
+request, whose host is the requester's to choose. Started with an empty
+store, it signs the offer and a Service at that origin that lists the offer
+under its link, and writes the signature over the Service to `store`, a
+store of `@estoc/store`, as the service's own, with all it leads to. Each
+acknowledgement it signs is written there too, as the service's own, with
+the acceptance and all it leads to, and what the bundle of an acceptance
+holds besides is dropped.
+
+The Services in the store are what the service gave out. Of them, the
+latest is the one it answers `GET /` with, as a client takes it for where
+a service is, and the ids they list are the ids it gave out: one that the
+latest lists takes acceptances, one that only an earlier one lists is
+answered 410, and one that none lists 404. The service
+works this out from the store on each request, through the same index of
+`@estoc/store` that `of` reads, so services that share a store answer
+alike, with the latest Service that any of them signed.
+
+Started again with the same store, the service keeps answering with the
+latest Service when what it would sign says the same apart from `at`: the
+same origin and the same offers. At another origin it signs a new Service,
+which lists the offer under the same id with the same signature over it,
+so what a client holds still holds. The new Service's `at` is later than
+that of every Service the store held when it started, even when the
+service's clock is behind. Two started at once on one store can sign the
+same `at`, and the latest of the two is then the one whose signature has
+the greater link.
 
 `accounts` holds one row for each identity: the link of the identity, and
 the link of the service's signature over the acknowledgement of its
@@ -138,13 +215,15 @@ step, so two acceptances of one identity that arrive together open one
 account. `MemoryAccounts` keeps the rows in memory.
 
 `fetch` takes a `Request` and gives a `Response`, as a fetch handler does.
-No request carries credentials, so it answers any origin, and it answers
-the CORS preflight that a browser sends before it posts a zip to another
+It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and
+at any other path, and 410 at an id that only an earlier Service lists. No
+request carries credentials, so it answers any origin, and it answers the
+CORS preflight that a browser sends before it posts a zip to another
 origin. A body is read up to 64 KiB.
 
 Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to
 much more than arrived.
 
-A service opens no account for its own identity: its signature over its
-offer is what `GET /offer` answers, and posting that back accepts nothing.
+A service opens no account for its own identity: a signature of its own
+over its offer accepts nothing.

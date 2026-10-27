@@ -2,7 +2,6 @@ import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { Temporal } from "temporal-polyfill";
 import { assert, describe, expect, it } from "vitest";
 import type { MailboxService } from "../src/server.ts";
 import {
@@ -58,8 +57,8 @@ async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
 }
 
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
-async function proxied(offer: { readonly link: Link<unknown> }, until?: Temporal.Instant) {
-  const grant = await authorizations.authorize(device.identity, wallet, until);
+async function proxied(offer: { readonly link: Link<unknown> }) {
+  const grant = await authorizations.authorize(device.identity, wallet);
   const { signature, blobs } = await authorizations.createActor(device, [grant]).sign(offer.link);
   return { signature, zip: await packBundle(signature, blobs) };
 }
@@ -97,7 +96,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
-    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle, new Date(5_001))).toEqual({
+    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle)).toEqual({
       principal: identities.encode(alice.identity),
       agents: [],
     });
@@ -119,9 +118,9 @@ describe("a mailbox service", () => {
     const response = await accepting(service, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, acknowledgement } = await acknowledgementIn(response);
-    const { accepted: link, at } = acknowledgement.data;
+    const { accepted: link } = acknowledgement.data;
     expect(link.$link).toBe(accepted.signature.link);
-    expect(await authorizations.readStanding(offer.link, link.$link, bundle, new Date(at))).toEqual({
+    expect(await authorizations.readStanding(offer.link, link.$link, bundle)).toEqual({
       principal: identities.encode(wallet.identity),
       agents: [identities.encode(device.identity)],
     });
@@ -149,11 +148,6 @@ describe("a mailbox service", () => {
         const { service: other } = await memoryService({ by: otherService });
         return (await direct((await rootOf(other)).offer)).zip;
       },
-    ],
-    [
-      "through an authorization that has ended",
-      async (service) =>
-        (await proxied((await rootOf(service)).offer, Temporal.Instant.fromEpochMilliseconds(500))).zip,
     ],
     [
       "that is the service's own signature over its offer",

@@ -118,9 +118,7 @@ export class AccountOffer {
       throw new Error("the acknowledgement is signed by another identity than the service's");
     }
     const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
-    // The acceptance that opened an account stood when the service received
-    // it, though an authorization in its chain may have ended since.
-    const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer, new Date(at));
+    const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer);
     if (principal.link !== actor.principal.link)
       throw new Error("the acknowledgement is of another identity's account");
     await this.#store.write({ mine: [acknowledgement], blobs: answer.blobs() });

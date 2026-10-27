@@ -13,12 +13,11 @@ import {
   readObject,
   type Schema,
   type Signature,
-  type SignatureData,
-  type Signatures,
   schemaOf,
 } from "@estoc/object";
-import { type Index, type Store, scan } from "@estoc/store";
+import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
+import { type Locations, locations, servicesOf } from "./locations.ts";
 import {
   type AccountOfferData,
   type AcknowledgementData,
@@ -47,9 +46,6 @@ type Schemas = {
   readonly offer: Schema<Json, AccountOfferData>;
   readonly acknowledgement: Schema<Json, AcknowledgementData>;
 };
-
-/** A row of a Service's signature: the identity that signed it, its `at`, and its link. */
-type Location = readonly [identity: Link<IdentityObject>, at: number, service: Link<Signature>];
 
 /** An identity's account at a service, written to the store. */
 export interface Account {
@@ -140,7 +136,7 @@ export class Services {
   readonly #store: Store;
   readonly #authorizations: Authorizations;
   readonly #schemas: Schemas;
-  readonly #locations: Index<Json, Location, SignatureData>;
+  readonly #locations: Locations;
 
   constructor(store: Store, authorizations: Authorizations, schemas: Schemas) {
     this.#store = store;
@@ -172,8 +168,7 @@ export class Services {
    * store this one syncs with.
    */
   async of(identity: Link<IdentityObject>): Promise<Service | undefined> {
-    let latest: Link<Signature> | undefined;
-    for await (const [, , link] of (await scan(this.#store, this.#locations)).range([identity])) latest = link;
+    const [latest] = await servicesOf(this.#store, this.#locations, identity);
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
 
@@ -211,19 +206,6 @@ export class Services {
     }
     return { identity, origin, at, link, account };
   }
-}
-
-/** The Services that the signatures written as mine sign, by the identity that signed each. */
-function locations(signatures: Signatures, service: Schema<Json, ServiceData>): Index<Json, Location, SignatureData> {
-  return {
-    reads: [signatures.schema],
-    async *rows(signature, reader) {
-      const bytes = await reader.get(signature.data.object.$link);
-      if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-      const { identity, link } = await signatures.verify(signature, reader);
-      yield [identity.link, decodeObject(bytes, service).data.at, link];
-    },
-  };
 }
 
 // Plain http is for the client's own machine alone, as in development: on

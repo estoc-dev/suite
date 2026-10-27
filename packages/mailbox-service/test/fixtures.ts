@@ -13,7 +13,7 @@ import {
   type ServiceData,
   serviceSchema,
 } from "../src/index.ts";
-import { loadMailboxService, MemoryAccounts, MemoryRegistry } from "../src/server.ts";
+import { loadMailboxService, MemoryAccounts } from "../src/server.ts";
 
 export const signer = (scheme: Scheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -34,32 +34,29 @@ export const serviceIdentity = identities.encode(serviceSigner.identity);
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a
- * millisecond a reading from `start`. Given the store and the registry of
- * another, it is that service started again.
+ * millisecond a reading from `start`. Given the store of another, it is
+ * that service started again.
  */
 export async function memoryService({
   start = 1_000,
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
-  registry = new MemoryRegistry(),
 }: {
   readonly start?: number;
   readonly by?: SoftwareSigner;
   readonly origin?: string;
   readonly store?: Store;
-  readonly registry?: MemoryRegistry;
 } = {}) {
   let now = start;
   const service = await loadMailboxService(by, {
     origin,
     store,
     accounts: new MemoryAccounts(),
-    registry,
     validator: defaultValidator,
     clock: () => now++,
   });
-  return { service, store, registry };
+  return { service, store };
 }
 
 /** Serves `handle` over HTTP at 127.0.0.1, as a host would run a service's handler. */

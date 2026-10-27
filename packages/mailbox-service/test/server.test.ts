@@ -196,12 +196,25 @@ describe("a mailbox service", () => {
     });
   });
 
-  it("answers 410 at an id that names an offer it no longer makes", async () => {
-    const { service, registry } = await memoryService();
+  it("answers 410 at an id that only an earlier Service of its lists", async () => {
+    const { service, store } = await memoryService({ start: 3_000 });
+    const { offered, offer } = await rootOf(service);
     const id = "f".repeat(32);
-    const offer = encodeObject(offerSchema, { identity: { $link: identities.encode(otherService.identity).link } });
-    await registry.add(id, { accepts: offer.link });
+    const earlier = encodeObject(serviceSchemaRead, {
+      origin: "https://mail.example",
+      at: 2_000,
+      offers: [{ offer: { $link: offered.link }, accept: id }],
+    });
+    await store.write({ mine: [await signatures.sign(earlier, serviceSigner)], blobs: [earlier.bytes] });
     expect((await post(service, id, (await direct(offer)).zip)).status).toBe(410);
+  });
+
+  it("answers with the latest Service that its store holds, which a start elsewhere may have signed since", async () => {
+    const { service, store } = await memoryService();
+    await memoryService({ store, origin: "https://post.example", start: 9_000 });
+    const { data, accept, offer } = await rootOf(service);
+    expect(data).toMatchObject({ origin: "https://post.example", at: 9_000 });
+    expect((await post(service, accept, (await direct(offer)).zip)).status).toBe(201);
   });
 
   it("refuses to start at a url that is not an origin", async () => {
@@ -211,20 +224,26 @@ describe("a mailbox service", () => {
 
 describe("a mailbox service started again", () => {
   it("answers with the same Service when its origin and its offer are as they were", async () => {
-    const { service, store, registry } = await memoryService();
+    const { service, store } = await memoryService();
     const first = new Uint8Array(await (await getRoot(service)).arrayBuffer());
-    const { service: again } = await memoryService({ store, registry, start: 9_000 });
+    const { service: again } = await memoryService({ store, start: 9_000 });
     expect(new Uint8Array(await (await getRoot(again)).arrayBuffer())).toEqual(first);
     expect(await mine(store)).toHaveLength(1);
   });
 
   it("at another origin signs a new Service, which keeps the signature over its offer and the id that takes acceptances of it", async () => {
-    const { service, store, registry } = await memoryService();
+    const { service, store } = await memoryService();
     const before = await rootOf(service);
-    const { service: moved } = await memoryService({ store, registry, origin: "https://post.example", start: 9_000 });
+    const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 9_000 });
     const after = await rootOf(moved);
     expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
     expect(await mine(store)).toEqual([before.signature.link, after.signature.link].sort());
     expect((await post(moved, after.accept, (await direct(after.offer)).zip)).status).toBe(201);
+  });
+
+  it("at another origin signs its new Service later than the one before, though its clock is behind", async () => {
+    const { store } = await memoryService({ start: 5_000 });
+    const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
+    expect((await rootOf(moved)).data).toMatchObject({ origin: "https://post.example", at: 5_001 });
   });
 });

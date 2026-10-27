@@ -170,7 +170,7 @@ describe("a service reached at its origin", () => {
 describe("a service found by its identity", () => {
   it("is the Service with the latest at that the store holds, whichever came first, read without reaching the service", async () => {
     const first = await running({ start: 1_000 });
-    const moved = await running({ store: first.store, registry: first.registry, start: 5_000 });
+    const moved = await running({ start: 5_000 });
     const { services } = await client();
     await services.at(moved.origin);
     await services.at(first.origin);
@@ -182,7 +182,7 @@ describe("a service found by its identity", () => {
     const first = await running();
     const { services } = await client();
     await services.at(first.origin);
-    const moved = await running({ store: first.store, registry: first.registry, start: 5_000 });
+    const moved = await running({ store: first.store, start: 5_000 });
     await services.at(moved.origin);
     await first.close();
     const account = (await services.of(serviceIdentity.link))?.account;

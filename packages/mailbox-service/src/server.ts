@@ -18,6 +18,7 @@ import {
 import type { Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { readBody, ZIP } from "./http.ts";
+import { type Locations, locations, servicesOf } from "./locations.ts";
 import {
   type AccountOfferData,
   type AcknowledgementData,
@@ -31,6 +32,11 @@ import {
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and an identity, or a proxy and its chain.
 const REQUEST_LIMIT = 64 * 1024;
+
+type Schemas = {
+  readonly service: Schema<Json, ServiceData>;
+  readonly acknowledgement: Schema<Json, AcknowledgementData>;
+};
 
 // An acceptance through a proxy leads to these schemas, which a client need
 // not send, since the service has them.
@@ -65,57 +71,6 @@ export class MemoryAccounts implements Accounts {
   }
 }
 
-/** What an id that a service gave out names: the offer whose acceptances it takes. */
-export type Named = { readonly accepts: Link<unknown> };
-
-/**
- * What a service gave out and answers for from then on: each id in the
- * addresses it signs, with what the id names, and the Service it answers
- * `GET /` with. An id names one thing for good: once the service no longer
- * makes the offer that an id names, it answers 410 there, and the id names
- * nothing else.
- */
-export interface Registry {
-  /** What `id` names, or `undefined` when the service did not give it out. */
-  get(id: string): Promise<Named | undefined>;
-  /**
-   * Keeps `named` under `id` unless the id was given out already, in one
-   * step, and resolves to whether it was kept.
-   */
-  add(id: string, named: Named): Promise<boolean>;
-  /**
-   * The link of the service's signature over the Service that it answers
-   * `GET /` with, or `undefined` before it signs one.
-   */
-  root(): Promise<Link<Signature> | undefined>;
-  /** Makes `link` the root, in place of the one before. */
-  setRoot(link: Link<Signature>): Promise<void>;
-}
-
-/** Keeps a registry in memory, for tests and for a service that keeps nothing once it ends. */
-export class MemoryRegistry implements Registry {
-  readonly #named = new Map<string, Named>();
-  #root: Link<Signature> | undefined;
-
-  async get(id: string): Promise<Named | undefined> {
-    return this.#named.get(id);
-  }
-
-  async add(id: string, named: Named): Promise<boolean> {
-    if (this.#named.has(id)) return false;
-    this.#named.set(id, named);
-    return true;
-  }
-
-  async root(): Promise<Link<Signature> | undefined> {
-    return this.#root;
-  }
-
-  async setRoot(link: Link<Signature>): Promise<void> {
-    this.#root = link;
-  }
-}
-
 export interface ServiceOptions {
   /**
    * The origin the service is reached at, such as `https://mail.example`,
@@ -124,12 +79,12 @@ export interface ServiceOptions {
    */
   readonly origin: string;
   /**
-   * Where the service writes its Service and the acknowledgements it signs
-   * as its own, with all they lead to.
+   * Where the service writes what it signs as its own, with all it leads
+   * to: its Services, which say what ids it gave out, and the
+   * acknowledgements.
    */
   readonly store: Store;
   readonly accounts: Accounts;
-  readonly registry: Registry;
   /** The validator that the schemas are compiled with. */
   readonly validator: JsonSchemaValidator;
   /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
@@ -143,42 +98,54 @@ export interface ServiceOptions {
  */
 class MailboxService {
   readonly #signer: Signer;
-  readonly #root: Link<Signature>;
   readonly #offer: EncodedObject<Json, AccountOfferData>;
+  readonly #locations: Locations;
   readonly #authorizations: Authorizations;
-  readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
+  readonly #schemas: Schemas;
   readonly #store: Store;
   readonly #accounts: Accounts;
-  readonly #registry: Registry;
   readonly #clock: () => number;
 
   constructor(
     signer: Signer,
-    { root, offer }: { readonly root: Link<Signature>; readonly offer: EncodedObject<Json, AccountOfferData> },
+    { offer, locations }: { readonly offer: EncodedObject<Json, AccountOfferData>; readonly locations: Locations },
     authorizations: Authorizations,
-    acknowledgement: Schema<Json, AcknowledgementData>,
-    { store, accounts, registry, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "registry" | "clock">>,
+    schemas: Schemas,
+    { store, accounts, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "clock">>,
   ) {
     this.#signer = signer;
-    this.#root = root;
     this.#offer = offer;
+    this.#locations = locations;
     this.#authorizations = authorizations;
-    this.#acknowledgementSchema = acknowledgement;
+    this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
-    this.#registry = registry;
     this.#clock = clock;
   }
 
-  /** Answers a request, from any origin, since no request carries credentials. */
+  /**
+   * Answers a request, from any origin, since no request carries
+   * credentials, by the Services of the service's that the store holds now.
+   */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(this.#root, 200));
+    const [root, ...earlier] = await servicesOf(this.#store, this.#locations, this.#offer.data.identity.$link);
+    if (root === undefined) throw new Error("the store holds no Service of the service's");
+    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(root, 200));
     const id = pathname.slice(1);
-    const named = ID.test(id) ? await this.#registry.get(id) : undefined;
-    if (named === undefined) return answer(404);
-    if (named.accepts !== this.#offer.link) return answer(410);
-    return answerTo(request, "POST", () => this.#open(request));
+    if (!ID.test(id)) return answer(404);
+    // A Service of the service's lists its offer of an account alone, so an
+    // id that the latest lists takes acceptances of that offer.
+    if (await this.#lists(root, id)) return answerTo(request, "POST", () => this.#open(request));
+    for (const link of earlier) if (await this.#lists(link, id)) return answer(410);
+    return answer(404);
+  }
+
+  /** Whether the Service that `link` names the service's signature over lists `id`. */
+  async #lists(link: Link<Signature>, id: string): Promise<boolean> {
+    const { signatures } = this.#authorizations;
+    const { offers } = (await readService(link, signatures, this.#store, this.#schemas.service)).data;
+    return offers.some(({ accept }) => accept === id);
   }
 
   /**
@@ -203,9 +170,9 @@ class MailboxService {
 
     const kept = await this.#accounts.get(identity);
     if (kept !== undefined) return this.#answerWith(kept, 200);
-    const acknowledgement = encodeObject(this.#acknowledgementSchema, { accepted: { $link: accepted.link }, at });
+    const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
-    const schemas = [this.#acknowledgementSchema.bytes, ...CHAIN_SCHEMAS];
+    const schemas = [this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS];
     await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
     if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
     const opened = await this.#accounts.get(identity);
@@ -250,12 +217,12 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
 }
 
 /**
- * Makes the service of `signer`'s identity at `origin`. It signs its offer
- * and a Service that lists it, and writes the signature over the Service to
- * the store with all it leads to. Started again with the same registry and
- * store, it keeps the Service when the origin and the offer are as they
- * were, and else signs a new one that keeps the ids of the offers it still
- * makes.
+ * Makes the service of `signer`'s identity at `origin`. The store holds the
+ * Services it signed before, the latest of which says where it was and what
+ * it offered there. When the origin and the offer are as they were, the
+ * service answers with that Service, and else it signs a new one, which
+ * keeps the service's signature over the offer and its id from the latest
+ * Service that lists them.
  */
 export async function loadMailboxService(
   signer: Signer,
@@ -263,32 +230,42 @@ export async function loadMailboxService(
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
-  const { store, registry } = options;
+  const { store } = options;
   const authorizations = await loadAuthorizations(validator);
   const { signatures } = authorizations;
   const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
-  const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);
-  const service: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, validator);
+  const schemas: Schemas = {
+    service: await encodeSchema(serviceSchema, validator),
+    acknowledgement: await encodeSchema(acknowledgementSchema, validator),
+  };
   const identity = signatures.identities.encode(signer.identity);
   const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
+  const index = locations(signatures, schemas.service);
 
-  const previous = await previousService(registry, signatures, store, service);
-  const kept = await offeredIn(previous?.object.data, offer.link, signatures, store);
+  const services = await Promise.all(
+    (await servicesOf(store, index, identity.link)).map((link) =>
+      readService(link, signatures, store, schemas.service),
+    ),
+  );
+  const [previous] = services;
+  const kept = await offeredIn(services, offer.link, signatures, store);
   const signature = kept?.signature ?? (await signatures.sign(offer, signer));
-  const accept = kept?.accept ?? (await giveOut(registry, { accepts: offer.link }));
+  // Sixteen random bytes do not come out twice, so a new id is not checked
+  // against those given out before.
+  const accept = kept?.accept ?? hex.encode(crypto.getRandomValues(new Uint8Array(16)));
   const offers = [{ offer: { $link: signature.link }, accept }];
   const unchanged =
     previous !== undefined &&
-    encodeObject(service, { origin, at: previous.object.data.at, offers }).link === previous.object.link;
-  let root: Link<Signature>;
-  if (unchanged) {
-    root = previous.root;
-  } else {
-    const object = encodeObject(service, { origin, at: clock(), offers });
+    encodeObject(schemas.service, { origin, at: previous.data.at, offers }).link === previous.link;
+  if (!unchanged) {
+    // The latest `at` says where the service is, so a clock set back does
+    // not put the new Service behind the one before.
+    const at = previous === undefined ? clock() : Math.max(clock(), previous.data.at + 1);
+    const object = encodeObject(schemas.service, { origin, at, offers });
     const signed = await signatures.sign(object, signer);
     const blobs = [
       object.bytes,
-      service.bytes,
+      schemas.service.bytes,
       signature.bytes,
       offer.bytes,
       offerSchema.bytes,
@@ -297,40 +274,35 @@ export async function loadMailboxService(
       signatures.identities.schema.bytes,
     ];
     await store.write({ mine: [signed], blobs });
-    await registry.setRoot(signed.link);
-    root = signed.link;
   }
-  return new MailboxService(signer, { root, offer }, authorizations, acknowledgement, { ...options, clock });
+  return new MailboxService(signer, { offer, locations: index }, authorizations, schemas, { ...options, clock });
 }
 
-/** The Service that the registry holds as the root, read from the store, when it holds one. */
-async function previousService(
-  registry: Registry,
+/** The Service that `link` names a signature over, read from `store`. */
+async function readService(
+  link: Link<Signature>,
   signatures: Signatures,
   store: Store,
   service: Schema<Json, ServiceData>,
-): Promise<{ readonly root: Link<Signature>; readonly object: EncodedObject<Json, ServiceData> } | undefined> {
-  const root = await registry.root();
-  if (root === undefined) return undefined;
-  return { root, object: await readObject(store, (await signatures.read(root, store)).object, service) };
+): Promise<EncodedObject<Json, ServiceData>> {
+  return readObject(store, (await signatures.read(link, store)).object, service);
 }
 
-/** The signature over `offer` and its id, as the Service `previous` lists them, when it lists them. */
+/**
+ * The service's signature over `offer` and its id, as the first of
+ * `services` that lists the offer lists them, when one does.
+ */
 async function offeredIn(
-  previous: ServiceData | undefined,
+  services: readonly EncodedObject<Json, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,
   store: Store,
 ): Promise<{ readonly signature: Signature; readonly accept: string } | undefined> {
-  for (const { offer: listed, accept } of previous?.offers ?? []) {
-    const signature = await signatures.read(listed.$link, store);
-    if (signature.object === offer) return { signature, accept };
+  for (const { data } of services) {
+    for (const { offer: listed, accept } of data.offers) {
+      const signature = await signatures.read(listed.$link, store);
+      if (signature.object === offer) return { signature, accept };
+    }
   }
   return undefined;
-}
-
-async function giveOut(registry: Registry, named: Named): Promise<string> {
-  const id = hex.encode(crypto.getRandomValues(new Uint8Array(16)));
-  if (!(await registry.add(id, named))) throw new Error(`the registry gave out ${id} already`);
-  return id;
 }

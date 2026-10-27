@@ -175,10 +175,13 @@ Every link from the entry points inward, to the Proxy, its chain, the
 authorizations and the identity objects of their signers and agents, so the
 reading only gets blobs by link, each when it comes to it. `blobs` is a
 `Reader` of `@estoc/object`, anything with `get(link)` that answers at once
-or with a promise: a `Map`, a bundle, or a store that holds blobs by content. The reading checks
-that each blob it gets has the link it asked for, so wrong bytes from a
-store make the reading fail, and do not make it read another standing.
-Blobs the entry does not lead to are not read.
+or with a promise: a `Map`, a bundle, or a store that holds blobs by
+content. A reader gives under a link only the blob that the link names, so
+the reading looks at the object an entry signs to tell a Proxy from any
+other object. A bundle checks its blobs when it is made, and a store hashes
+what it gets back, so wrong bytes from a damaged store make the reading
+fail, and do not make it read another standing. Blobs the entry does not
+lead to are not read.
 
 ```ts
 import { linkOf } from "@estoc/object";

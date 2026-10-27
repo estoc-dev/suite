@@ -153,8 +153,14 @@ schema declared with no type is fields of the encoding.
 
 `readObject` reads the object that a link names from a `Reader`: anything
 with `get(link)` that gives the bytes at once or as a promise, such as a
-`Map`, a bundle or a store. It refuses a blob whose bytes have another
-link, and fails when the reader gives none.
+`Map`, a bundle or a store. A reader gives under a link only the blob that
+the link names, or nothing: a bundle checks its blobs when it is made, a
+store hashes what it gets back from where it keeps them, and a `Map` holds
+what was filed in it by `linkOf`. So what reads from a reader, such as a
+judgment that looks at an object's schema before choosing how to read it,
+takes the bytes as the blob of the link. `readObject` fails when the reader
+gives no blob, and refuses one whose bytes have another link all the same,
+since decoding them gives their link anyway.
 
 A schema holds all that its data is checked against. In JSON Schema a `$ref`
 reaches the schema's own parts and nothing elsewhere, so the link of a

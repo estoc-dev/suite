@@ -15,8 +15,11 @@ export interface EncodedObject<D, F extends Fields<D> = Fields<D>> {
 }
 
 /**
- * Blobs got by link: a store, a bundle, or a Map of blobs in memory. What a
- * reader gives under a link is checked against the link by whoever reads it.
+ * Blobs got by link: a store, a bundle, or a Map of blobs in memory. A reader
+ * gives under a link only the blob that the link names, or nothing, so what
+ * reads from it can look at the bytes before choosing how to read them. A
+ * reader whose bytes come from where they may have changed, such as a disk or
+ * the network, hashes them before it gives them.
  */
 export interface Reader {
   get(link: Link<unknown>): Uint8Array | undefined | Promise<Uint8Array | undefined>;

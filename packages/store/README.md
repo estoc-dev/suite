@@ -94,7 +94,10 @@ const files = writeBundle(signature, (await store.closure(signature.link)).value
 
 A store is a `Reader`: `readObject` reads an object from it by link, and a
 judgment such as `signatures.read` reads from it the blobs it needs, each
-when it comes to it, without gathering a closure first.
+when it comes to it, without gathering a closure first. Like every reader,
+it gives under a link only the blob that the link names: `get` and
+`closure` hash what the backend gives back, and throw when the backend
+gives other bytes, as a damaged disk may.
 
 ## Indexes
 
@@ -138,6 +141,7 @@ memory and worked out again on each scan.
 ## Backends
 
 A store keeps its blobs and its list in a backend, which keeps bytes and
-links as it is given them; the store does the hashing and decoding.
+links as it is given them; the store does the hashing and decoding, of
+what goes in and of what comes back.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.

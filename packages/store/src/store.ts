@@ -3,7 +3,8 @@ import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/o
 /**
  * Where a store keeps its blobs and the list of what was written to it:
  * memory, a folder, or storage in a browser. It keeps bytes and links as it
- * is given them; the store hashes and decodes.
+ * is given them; the store hashes and decodes, and hashes again what it gets
+ * back, so a backend that was damaged makes reading fail.
  */
 export interface Backend {
   /**
@@ -51,7 +52,10 @@ export interface Batch {
  * it writes as mine leads to.
  */
 export interface Store {
-  /** A blob by its link, written to the store as mine or not. */
+  /**
+   * A blob by its link, written to the store as mine or not. Throws when the
+   * backend gives other bytes under the link.
+   */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   // For links of several kinds at once, as in an array of the links of objects
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
@@ -70,7 +74,8 @@ export interface Store {
    * The blob that `link` names and every blob it leads to, or nothing when
    * the store does not hold it. A blob of the store's encoding leads to the
    * links that the encoding finds in it, the schema of an object included,
-   * and any other blob, such as an image, leads nowhere.
+   * and any other blob, such as an image, leads nowhere. Throws as `get`
+   * does.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
 }
@@ -86,8 +91,10 @@ class StoreOf<D> implements Store {
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
-  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
-    return this.#backend.get(link);
+  async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
+    const bytes = await this.#backend.get(link);
+    if (bytes !== undefined && linkOf(bytes) !== link) throw new Error(`the backend holds another blob under ${link}`);
+    return bytes;
   }
 
   async write({ mine = [], blobs = [] }: Batch): Promise<void> {
@@ -122,7 +129,7 @@ class StoreOf<D> implements Store {
     const seen = new Set([link]);
     const pending = [link];
     for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-      const bytes = await this.#backend.get(next);
+      const bytes = await this.get(next);
       if (bytes === undefined) continue;
       gathered.set(next, bytes);
       for (const linked of this.#linksIn(bytes)) {

@@ -1,14 +1,5 @@
-import { SoftwareSigner } from "@estoc/identity";
-import {
-  encodeObject,
-  encodeSchema,
-  identitySchema,
-  json,
-  type Link,
-  loadSignatures,
-  readObject,
-  signatureSchema,
-} from "@estoc/object";
+import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -21,14 +12,11 @@ const note = await encodeSchema(
   { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
   defaultValidator,
 );
-const schemas = [
-  note,
-  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
-].map(({ bytes }) => bytes);
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
+const schemas = [note, signatures.schema, signature.identity.schema].map(({ bytes }) => bytes);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
 async function listed(store: Store): Promise<Link<unknown>[]> {

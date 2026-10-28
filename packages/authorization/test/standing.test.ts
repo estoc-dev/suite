@@ -1,5 +1,5 @@
-import { type Scheme, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, type Link, linkOf, type Signature } from "@estoc/object";
+import { type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
 import {

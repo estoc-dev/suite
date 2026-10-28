@@ -1,20 +1,24 @@
-import { type Identity, type Signer, sameIdentity } from "@estoc/identity";
+import {
+  type Identity,
+  type IdentityObject,
+  loadSignatures,
+  type Signature,
+  type Signatures,
+  type Signer,
+  sameIdentity,
+} from "@estoc/identity";
 import {
   type Bytes,
   type EncodedObject,
   encodeObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonLink,
   type JsonSchemaValidator,
   type Link,
-  loadSignatures,
   type Reader,
   readObject,
   type Schema,
-  type Signature,
-  type Signatures,
   schemaOf,
 } from "@estoc/object";
 import { authorizationSchema, proxySchema } from "./schemas.ts";

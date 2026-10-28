@@ -1,14 +1,5 @@
-import { SoftwareSigner } from "@estoc/identity";
-import {
-  encodeObject,
-  encodeSchema,
-  identitySchema,
-  type Json,
-  json,
-  loadSignatures,
-  type SignatureData,
-  signatureSchema,
-} from "@estoc/object";
+import { loadSignatures, type SignatureData, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, encodeSchema, type Json, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { type Backend, type Index, type Key, MemoryBackend, type Rows, Store, scan } from "../src/index.ts";
@@ -90,16 +81,13 @@ describe("an index scanned from a store", () => {
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)));
     const hello = encodeObject(note, {});
     const signed = await Promise.all(signers.map((by) => signatures.sign(hello, by)));
-    const signatureSchemas = await Promise.all(
-      [identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)),
-    );
     const store = new Store(json, new MemoryBackend());
     await store.write({
       mine: [hello, ...signed],
       blobs: [
-        ...signed.map(({ identity }) => identity.bytes),
+        ...signed.flatMap(({ identity }) => [identity.bytes, identity.schema.bytes]),
+        signatures.schema.bytes,
         ...schemas,
-        ...signatureSchemas.map(({ bytes }) => bytes),
       ],
     });
     const expected = signed

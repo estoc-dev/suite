@@ -1,21 +1,25 @@
-import { type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
-import { describe, expect, it, test, vi } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonObject,
   type JsonSchemaValidator,
   json,
   linkOf,
-  loadSignatures,
   type Reader,
   type Schema,
+} from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
+import { describe, expect, it, test, vi } from "vitest";
+import {
+  type IdentityObject,
+  loadSignatures,
+  type Scheme,
   type Signature,
   type Signatures,
+  type Signer,
+  SoftwareSigner,
   signatureSchema,
 } from "../src/index.ts";
 
@@ -153,7 +157,9 @@ describe("signatures loaded with a validator", () => {
   const noIdentity: JsonSchemaValidator = {
     ...defaultValidator,
     compile: (schema) =>
-      schema.title === "Identity" ? Promise.resolve(() => ["no identity fits"]) : defaultValidator.compile(schema),
+      String(schema.title).endsWith(" identity")
+        ? Promise.resolve(() => ["no identity fits"])
+        : defaultValidator.compile(schema),
   };
 
   it("refuse a signature whose identity's object it says does not fit", async () => {

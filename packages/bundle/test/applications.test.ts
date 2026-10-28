@@ -1,5 +1,5 @@
 import { loadAuthorizations } from "@estoc/authorization";
-import { type Scheme, SoftwareSigner, sameIdentity } from "@estoc/identity";
+import { loadSignatures, type Scheme, type Signature, SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -12,10 +12,8 @@ import {
   json,
   type Link,
   linkSchema,
-  loadSignatures,
   readObject,
   type Schema,
-  type Signature,
   schemaOf,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";

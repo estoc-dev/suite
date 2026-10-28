@@ -1,14 +1,5 @@
-import {
-  type IdentityObject,
-  type JsonLink,
-  type JsonObject,
-  type JsonSchema,
-  json,
-  type Link,
-  linkOf,
-  linkSchema,
-  type Signature,
-} from "@estoc/object";
+import type { IdentityObject, Signature } from "@estoc/identity";
+import { type JsonLink, type JsonObject, type JsonSchema, json, type Link, linkOf, linkSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 

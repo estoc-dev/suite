@@ -1,22 +1,19 @@
-import { type Scheme, SoftwareSigner } from "@estoc/identity";
-import { describe, expect, it } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   type EncodedObject,
   encodeObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonLink,
   type Link,
   linkOf,
   linkSchema,
-  loadSignatures,
   type Reader,
   type Schema,
-  type Signature,
-} from "../src/index.ts";
+} from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
+import { describe, expect, it } from "vitest";
+import { type IdentityObject, loadSignatures, type Scheme, type Signature, SoftwareSigner } from "../src/index.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it

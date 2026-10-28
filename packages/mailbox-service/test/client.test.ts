@@ -97,10 +97,10 @@ async function signedService(
     service.bytes,
     serviceSchemaRead.bytes,
     signature.identity.bytes,
+    signature.identity.schema.bytes,
     signatures.schema.bytes,
-    identities.schema.bytes,
     ...signed.map(({ bytes }) => bytes),
-    ...signed.map(({ identity }) => identity.bytes),
+    ...signed.flatMap(({ identity }) => [identity.bytes, identity.schema.bytes]),
     ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
   ];
   return packBundle(signature, blobs);

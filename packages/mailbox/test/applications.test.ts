@@ -1,16 +1,14 @@
 import type { Bundle } from "@estoc/bundle";
-import { type Scheme, SoftwareSigner } from "@estoc/identity";
+import { type IdentityObject, loadSignatures, type Scheme, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
   type Fields,
-  type IdentityObject,
   type Json,
   type JsonLink,
   linkOf,
   linkSchema,
-  loadSignatures,
   readObject,
   type Schema,
 } from "@estoc/object";

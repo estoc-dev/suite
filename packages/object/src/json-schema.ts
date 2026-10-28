@@ -35,9 +35,6 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
 
 export type JsonSchemaValidator = SchemaValidator<JsonSchema, Json>;
 
-/** Bytes in lowercase hex, as a pattern for a JSON Schema. */
-export const HEX = /^(?:[0-9a-f]{2})*$/;
-
 /**
  * A link as JSON writes it, `{"$link": <link>}`, as a subschema to write
  * into a schema wherever its data holds one. A schema refers to nothing

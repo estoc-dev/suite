@@ -1,23 +1,20 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { SoftwareSigner, sameIdentity } from "@estoc/identity";
+import { loadSignatures, type Signature, SoftwareSigner, sameIdentity } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
   encodeObject,
   encodeSchema,
   type Fields,
-  identitySchema,
   type Json,
   type JsonLink,
   type JsonObject,
   json,
   type Link,
   linkSchema,
-  loadSignatures,
   readObject,
   type Schema,
   schemaOf,
-  signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
@@ -54,13 +51,10 @@ const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { na
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
-const schemas = [
-  noteSchema,
-  receivedSchema,
-  contactSchema,
-  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
-].map(({ bytes }) => bytes);
+const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema].map(({ bytes }) => bytes);
 const newStore = () => new Store(json, new MemoryBackend());
+// The object of a signature's identity, with the schema it is written to.
+const identityOf = ({ identity }: Signature) => [identity.bytes, identity.schema.bytes];
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -92,7 +86,7 @@ describe("a signed note", () => {
     const aliceStore = newStore();
     const note = encodeObject(noteSchema, { text: "hello" });
     const signature = await signatures.sign(note, alice);
-    await aliceStore.write({ mine: [note, signature], blobs: [signature.identity.bytes, ...schemas] });
+    await aliceStore.write({ mine: [note, signature], blobs: [...identityOf(signature), ...schemas] });
     const files = writeBundle(signature, (await aliceStore.closure(signature.link)).values());
 
     const bobStore = newStore();
@@ -112,7 +106,7 @@ describe("a bundle that leaves out a blob its objects lead to", () => {
     const bobStore = newStore();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await signatures.sign(note, alice);
-    const files = writeBundle(signature, [signature.identity.bytes]);
+    const files = writeBundle(signature, identityOf(signature));
     await expect(receive(bobStore, files)).rejects.toThrow(`${signature.link} leads to ${note.link}`);
     expect(await bobStore.get(signature.link)).toBeUndefined();
     expect(await listed(bobStore)).toEqual([]);
@@ -125,7 +119,7 @@ describe("an object slipped into a bundle", () => {
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await signatures.sign(note, mallory);
     const slipped = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
-    await receive(bobStore, writeBundle(signature, [note.bytes, signature.identity.bytes, slipped.bytes]));
+    await receive(bobStore, writeBundle(signature, [note.bytes, ...identityOf(signature), slipped.bytes]));
     expect(await bobStore.get(note.link)).toEqual(note.bytes);
     expect(await bobStore.get(slipped.link)).toBeUndefined();
   });
@@ -136,7 +130,7 @@ describe("an object slipped into a bundle", () => {
 
     const slipped = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await signatures.sign(slipped, mallory);
-    const received = await receive(bobStore, writeBundle(signature, [slipped.bytes, signature.identity.bytes]));
+    const received = await receive(bobStore, writeBundle(signature, [slipped.bytes, ...identityOf(signature)]));
 
     expect((await readObject(bobStore, slipped.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
     expect((await readListed(bobStore, contactSchema)).map(({ data }) => data.name)).toEqual(["Alice"]);

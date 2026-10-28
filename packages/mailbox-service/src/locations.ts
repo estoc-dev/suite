@@ -1,15 +1,5 @@
-import {
-  decodeObject,
-  type IdentityObject,
-  type Json,
-  json,
-  type Link,
-  type Schema,
-  type Signature,
-  type SignatureData,
-  type Signatures,
-  schemaOf,
-} from "@estoc/object";
+import type { IdentityObject, Signature, SignatureData, Signatures } from "@estoc/identity";
+import { decodeObject, type Json, json, type Link, type Schema, schemaOf } from "@estoc/object";
 import { type Index, type Store, scan } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
 

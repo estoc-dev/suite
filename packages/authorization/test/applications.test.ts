@@ -1,16 +1,14 @@
-import { type Scheme, SoftwareSigner } from "@estoc/identity";
+import { type IdentityObject, type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonLink,
   type Link,
   linkOf,
   linkSchema,
   type Schema,
-  type Signature,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";

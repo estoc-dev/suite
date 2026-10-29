@@ -1,4 +1,4 @@
-import type { IdentityObject, Signature } from "@estoc/identity";
+import type { KeyObject, Signature } from "@estoc/identity";
 import { type JsonLink, type JsonObject, type JsonSchema, json, type Link, linkOf, linkSchema } from "@estoc/object";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
@@ -17,8 +17,8 @@ const idSchema: JsonObject = { type: "string", pattern: ID.source };
  * milliseconds since the Unix epoch by the service's clock, its identity is
  * reached at `origin`, and makes the offers listed, each as the link of the
  * service's signature over the offer and the id that takes acceptances of
- * it. Of the Services that one identity signs, the latest says where it is
- * now: the one with the greatest `at`, and of those with the same `at`, the
+ * it. Of the Services that identities of one root sign, the latest says
+ * where the service is now: the one with the greatest `at`, and of those with the same `at`, the
  * one whose signature has the greater link, compared as ASCII strings.
  */
 export const serviceSchema: JsonSchema = {
@@ -59,8 +59,9 @@ export function formOf({ at: _, ...said }: ServiceData): Link<unknown> {
 
 /**
  * What a service signs to offer an account to any identity that signs it
- * too. It names the service's identity, so each service's offer has a link
- * of its own, and a signature over it accepts that service's offer alone.
+ * too. It names the root of the service's identity, so each service's offer
+ * has a link of its own, and a signature over it accepts that service's
+ * offer alone.
  */
 export const accountOfferSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -71,7 +72,7 @@ export const accountOfferSchema: JsonSchema = {
   additionalProperties: false,
 };
 
-export type AccountOfferData = { readonly identity: JsonLink<IdentityObject> };
+export type AccountOfferData = { readonly identity: JsonLink<KeyObject> };
 
 /**
  * What a service signs once it opens an account: `accepted` is the link of

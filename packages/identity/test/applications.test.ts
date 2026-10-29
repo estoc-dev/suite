@@ -15,6 +15,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import {
   type IdentityObject,
+  type KeyObject,
   loadSignatures,
   type Scheme,
   type Signature,
@@ -97,11 +98,11 @@ describe("a login", () => {
   });
 });
 
-// A sale names its parties by the links of their identity objects, and a
-// signature its signer by a signed identity that leads to one.
+// A sale names its parties by the links of their roots, and a signature its
+// signer by a signed identity that leads to one.
 type Sale = {
-  readonly buyer: JsonLink<IdentityObject>;
-  readonly seller: JsonLink<IdentityObject>;
+  readonly buyer: JsonLink<KeyObject>;
+  readonly seller: JsonLink<KeyObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -141,7 +142,7 @@ async function saleInForce(link: Link<EncodedObject<Json, Sale>>, received: Rece
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, received);
-  const signed = (party: JsonLink<IdentityObject>) => signers.some((identity) => identity.link === party.$link);
+  const signed = (party: JsonLink<KeyObject>) => signers.some((identity) => identity.root.link === party.$link);
   return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
 }
 
@@ -151,7 +152,8 @@ async function deliveryConfirmed(link: Link<unknown>, received: Received): Promi
   if (bytes === undefined) return false;
   const terms = await saleInForce(decodeObject(bytes, delivery).data.sale.$link, received);
   return (
-    terms !== undefined && (await signersOf(link, received)).some((identity) => identity.link === terms.buyer.$link)
+    terms !== undefined &&
+    (await signersOf(link, received)).some((identity) => identity.root.link === terms.buyer.$link)
   );
 }
 
@@ -159,8 +161,8 @@ const buyer = signer("eip191", 1);
 const seller = signer("ed25519", 2);
 const witness = signer("solana-offchain", 3);
 const terms = encodeObject(sale, {
-  buyer: { $link: identities.encode(buyer.key).link },
-  seller: { $link: identities.encode(seller.key).link },
+  buyer: { $link: identities.keys.encode(buyer.key).link },
+  seller: { $link: identities.keys.encode(seller.key).link },
   goods: "one bicycle",
   price: "120.00 CAD",
 });

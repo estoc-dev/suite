@@ -104,7 +104,7 @@ async function chat(faults: Faults = {}) {
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.link, name]));
+  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.root.link, name]));
 
   // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
   // their store: the owner to receive at it, the peer to send to it.
@@ -143,7 +143,7 @@ async function chat(faults: Faults = {}) {
         async ([direction, , , bundle]) => {
           const signed = await signatures.read(bundle, person.store);
           const { data } = await readObject(person.store, signed.object, line);
-          return [direction, names.get(signed.signedIdentity.identity.link), data.text];
+          return [direction, names.get(signed.signedIdentity.identity.root.link), data.text];
         },
       ),
     );

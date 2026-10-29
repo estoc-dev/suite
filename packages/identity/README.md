@@ -73,10 +73,11 @@ scheme's schema does not take.
 
 An identity is written to `identitySchema`, whatever the scheme of its
 root, and names its root by the link of the root's object. It holds its
-root and nothing else, so each key has one identity, with one link, and
-two identities are the same when their links are. An object that names
-someone names their identity, not their key, and a signature names a
-signed identity of it.
+root and nothing else, so each key has one identity, with one link.
+Someone is their root: two identities are of the same someone when the
+links of their roots are the same, and an object that names someone names
+their root by that link, while a signature names a signed identity of the
+identity that makes it.
 
 `loadIdentities` compiles the identity schema and the key schemas with the
 validator the application picks, and gives `identities`, which holds
@@ -97,8 +98,8 @@ object. A signature names who makes it by the link of a signed identity,
 so reading a signature reads that the root stands behind the identity. A
 wallet need not sign deterministically, so one identity can have several
 signed identities, and each of them stands for it: two signers are the
-same when the links of their identities are, not those of their signed
-identities.
+same someone when the roots of their identities are, whichever signed
+identities they sign by.
 
 `identities.publish` takes the root's `Signer`, writes the identity, has
 the root sign it, and gives the signed identity: what a wallet confirms

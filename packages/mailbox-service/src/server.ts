@@ -6,7 +6,7 @@ import {
   type Standing,
 } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { IdentityActor, IdentityObject, Signature, Signatures, Signer } from "@estoc/identity";
+import type { IdentityActor, KeyObject, Signature, Signatures, Signer } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -46,30 +46,30 @@ type Schemas = {
 const CHAIN_SCHEMAS = [proxySchema, authorizationSchema].map((schema) => jsonSchema.encode(schema));
 
 /**
- * The accounts of a service, one for each identity, as the link of the
- * service's signature over the acknowledgement that opened it.
+ * The accounts of a service, one for each root of an identity, as the link
+ * of the service's signature over the acknowledgement that opened it.
  */
 export interface Accounts {
-  /** The acknowledgement of `identity`'s account, or `undefined` when it has none. */
-  get(identity: Link<IdentityObject>): Promise<Link<Signature> | undefined>;
+  /** The acknowledgement of `root`'s account, or `undefined` when it has none. */
+  get(root: Link<KeyObject>): Promise<Link<Signature> | undefined>;
   /**
-   * Keeps `acknowledgement` as `identity`'s unless it has an account already,
-   * in one step, and resolves to whether it was kept.
+   * Keeps `acknowledgement` as `root`'s unless it has an account already, in
+   * one step, and resolves to whether it was kept.
    */
-  add(identity: Link<IdentityObject>, acknowledgement: Link<Signature>): Promise<boolean>;
+  add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean>;
 }
 
 /** Keeps accounts in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryAccounts implements Accounts {
-  readonly #accounts = new Map<Link<IdentityObject>, Link<Signature>>();
+  readonly #accounts = new Map<Link<KeyObject>, Link<Signature>>();
 
-  async get(identity: Link<IdentityObject>): Promise<Link<Signature> | undefined> {
-    return this.#accounts.get(identity);
+  async get(root: Link<KeyObject>): Promise<Link<Signature> | undefined> {
+    return this.#accounts.get(root);
   }
 
-  async add(identity: Link<IdentityObject>, acknowledgement: Link<Signature>): Promise<boolean> {
-    if (this.#accounts.has(identity)) return false;
-    this.#accounts.set(identity, acknowledgement);
+  async add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean> {
+    if (this.#accounts.has(root)) return false;
+    this.#accounts.set(root, acknowledgement);
     return true;
   }
 }
@@ -132,12 +132,12 @@ class MailboxService {
    */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    const [root, ...earlier] = await servicesOf(this.#store, this.#locations, this.#offer.data.identity.$link);
-    if (root === undefined) throw new Error("the store holds no Service of the service's");
-    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(root, 200));
+    const [latest, ...earlier] = await servicesOf(this.#store, this.#locations, this.#offer.data.identity.$link);
+    if (latest === undefined) throw new Error("the store holds no Service of the service's");
+    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
     const id = pathname.slice(1);
     if (!ID.test(id)) return answer(404);
-    if (id === this.#offer.link && (await this.#lists(root, id))) {
+    if (id === this.#offer.link && (await this.#lists(latest, id))) {
       return answerTo(request, "POST", () => this.#open(request));
     }
     for (const link of earlier) if (await this.#lists(link, id)) return answer(410);
@@ -164,23 +164,23 @@ class MailboxService {
     try {
       accepted = await unpackBundle(zip);
       standing = await this.#authorizations.readStanding(offer.link, accepted.link, accepted);
-      if (standing.principal.link === offer.data.identity.$link)
+      if (standing.principal.root.link === offer.data.identity.$link)
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, error instanceof Error ? error.message : String(error));
     }
-    const identity = standing.principal.link;
+    const root = standing.principal.root.link;
 
-    const kept = await this.#accounts.get(identity);
+    const kept = await this.#accounts.get(root);
     if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#actor.sign(acknowledgement);
     const identities = [standing.principal, ...standing.agents].flatMap(({ blobs }) => blobs);
     const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS, ...identities];
     await this.#store.write({ mine: [signature], blobs: [...blobs, ...accepted.blobs()] });
-    if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
-    const opened = await this.#accounts.get(identity);
-    if (opened === undefined) throw new Error(`the accounts refused to add ${identity} and hold no account for it`);
+    if (await this.#accounts.add(root, signature.link)) return this.#answerWith(signature.link, 201);
+    const opened = await this.#accounts.get(root);
+    if (opened === undefined) throw new Error(`the accounts refused to add ${root} and hold no account for it`);
     return this.#answerWith(opened, 200);
   }
 
@@ -244,12 +244,12 @@ export async function loadMailboxService(
     service: await encodeSchema(serviceSchema, validator),
     acknowledgement: await encodeSchema(acknowledgementSchema, validator),
   };
-  const identity = signatures.identities.encode(signer.key);
-  const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
+  const root = signatures.identities.keys.encode(signer.key);
+  const offer = encodeObject(offerSchema, { identity: { $link: root.link } });
   const index = locations(signatures, schemas.service);
 
   const signed = await Promise.all(
-    (await servicesOf(store, index, identity.link)).map((link) => signatures.read(link, store)),
+    (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store)),
   );
   const [latest] = signed;
   const actor = signatures.actor(signer, latest?.signedIdentity ?? (await signatures.identities.publish(signer)));

@@ -1,6 +1,6 @@
 import { type Actor, type Authorizations, loadAuthorizations } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { IdentityObject, Signature } from "@estoc/identity";
+import type { IdentityObject, KeyObject, Signature } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -77,7 +77,7 @@ export interface Service {
 
 /** A service's offer of an account, taken at the id that the Service lists for it. */
 export class AccountOffer {
-  /** The service's identity, which the offer names and which signed it. */
+  /** The service's identity, whose root the offer names and which signed it. */
   readonly service: IdentityObject;
   readonly link: Link<EncodedObject<Json, AccountOfferData>>;
   readonly #url: URL;
@@ -113,13 +113,13 @@ export class AccountOffer {
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(this.#url, request), [200, 201]);
     const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
-    if (acknowledgement.signedIdentity.identity.link !== this.service.link) {
-      throw new Error("the acknowledgement is signed by another identity than the service's");
+    if (acknowledgement.signedIdentity.identity.root.link !== this.service.root.link) {
+      throw new Error("the acknowledgement is signed by another root than the service's");
     }
     const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
     const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer);
-    if (principal.link !== actor.principal.link)
-      throw new Error("the acknowledgement is of another identity's account");
+    if (principal.root.link !== actor.principal.root.link)
+      throw new Error("the acknowledgement is of another root's account");
     await this.#store.write({ mine: [acknowledgement], blobs: answer.blobs() });
     return { identity: actor.principal, service: this.service, at, link: acknowledgement.link };
   }
@@ -159,40 +159,41 @@ export class Services {
   }
 
   /**
-   * The latest Service of `identity` that the store holds, read without
+   * The latest Service of `root` that the store holds, read without
    * reaching the service, or `undefined` when the store holds none. A
    * Service gets there by `at`, on this device or on another whose store
    * this one syncs with.
    */
-  async of(identity: Link<IdentityObject>): Promise<Service | undefined> {
-    const [latest] = await servicesOf(this.#store, this.#locations, identity);
+  async of(root: Link<KeyObject>): Promise<Service | undefined> {
+    const [latest] = await servicesOf(this.#store, this.#locations, root);
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
 
   /**
    * Reads the Service that `link` names the service's signature over.
    * Refuses it when its origin is not one that a client reaches, when an
-   * offer it lists is signed by another identity, or when its offer of an
-   * account names another identity. Offers of schemas the client does not
-   * read are passed over.
+   * offer it lists is signed by an identity of another root, or when its
+   * offer of an account names another root. Offers of schemas the client
+   * does not read are passed over.
    */
   async #read(link: Link<Signature>, reader: Reader): Promise<Service> {
     const { signatures } = this.#authorizations;
     const read = await signatures.read(link, reader);
     const { identity } = read.signedIdentity;
+    const { root } = identity;
     const { origin, at, offers } = (await readObject(reader, read.object, this.#schemas.service)).data;
     checkOrigin(origin);
     let account: AccountOffer | undefined;
     for (const { offer, accept } of offers) {
       const signature = await signatures.read(offer.$link, reader);
-      if (signature.signedIdentity.identity.link !== identity.link) {
-        throw new Error(`the Service of ${identity.link} lists an offer signed by another identity`);
+      if (signature.signedIdentity.identity.root.link !== root.link) {
+        throw new Error(`the Service of ${root.link} lists an offer signed by another root`);
       }
       const bytes = await reader.get(signature.object);
       if (bytes === undefined) throw new Error(`no blob is given for ${signature.object}`);
       if (account !== undefined || schemaOf(bytes, json) !== this.#schemas.offer.link) continue;
-      if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== identity.link) {
-        throw new Error(`the Service of ${identity.link} lists an account offer that names another identity`);
+      if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== root.link) {
+        throw new Error(`the Service of ${root.link} lists an account offer that names another root`);
       }
       const url = new URL(`/${accept}`, origin);
       account = new AccountOffer(

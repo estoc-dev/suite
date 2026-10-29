@@ -85,7 +85,7 @@ async function readCard(bundle: Bundle) {
   const listed = cardOf(bundle.root);
   const reachedAt = await signatures.read(listed.mailbox, bundle);
   const goesBy = await signatures.read(listed.name, bundle);
-  if (reachedAt.signedIdentity.identity.link !== goesBy.signedIdentity.identity.link)
+  if (reachedAt.signedIdentity.identity.root.link !== goesBy.signedIdentity.identity.root.link)
     throw new Error("a card is signed by the one identity it is for");
   return {
     identity: reachedAt.signedIdentity.identity,

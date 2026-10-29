@@ -47,13 +47,14 @@ export const signedIdentitySchema: JsonSchema = {
 export type IdentityData = { readonly root: JsonLink<KeyObject> };
 
 /**
- * Someone who signs, as others name them: an object written to
+ * Someone who signs, as others see them: an object written to
  * `identitySchema`, `{"$describedBy": <link to identitySchema>, "root":
- * <link to a key>}`, read with its root, the key that signs for it. An
- * object names an identity by the link of this object, and a signature names
- * the signed identity of it. It holds its root and nothing else, so each key
- * has one identity, with one link, and two identities are the same when
- * their links are.
+ * <link to a key>}`, read with its root, the key that signs for it. It holds
+ * its root and nothing else, so each key has one identity, with one link.
+ * Someone is their root: two identities are of the same someone when the
+ * links of their roots are the same, and an object that names someone names
+ * their root by that link, while a signature names a signed identity of the
+ * identity that makes it.
  *
  * `blobs` are what it takes to read the identity again: the bytes of its
  * object and of its root's, and of the schemas they are written to.
@@ -73,8 +74,9 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * identity and verified, the bytes being the root's signature over the
  * identity's link. A signature names the identity that makes it by the link
  * of this object. A wallet need not sign deterministically, so one identity
- * can have several, and each of them stands for it: two signed identities
- * are of the same identity when the links of their identities are the same.
+ * can have several, and each of them stands for it: two signers are the same
+ * someone when the roots of their identities are the same, whichever signed
+ * identities they sign by.
  *
  * `blobs` are what it takes to read it again: the bytes of its object and of
  * its schema, and the identity's `blobs`.

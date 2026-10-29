@@ -1,4 +1,4 @@
-import type { IdentityObject, Signature, SignatureData, Signatures } from "@estoc/identity";
+import type { KeyObject, Signature, SignatureData, Signatures } from "@estoc/identity";
 import { decodeObject, type Json, json, type Link, type Schema, schemaOf } from "@estoc/object";
 import { type Index, type Store, scan } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
@@ -8,11 +8,11 @@ import type { ServiceData } from "./schemas.ts";
  * `at`, as services started at once on one store can sign, every store takes
  * the same one for the latest, whatever order it took them in.
  */
-type Location = readonly [identity: Link<IdentityObject>, at: number, service: Link<Signature>];
+type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signature>];
 
 export type Locations = Index<Json, Location, SignatureData>;
 
-/** The Services that the signatures written as mine sign, by the identity that signed each. */
+/** The Services that the signatures written as mine sign, by the root of the identity that signed each. */
 export function locations(signatures: Signatures, service: Schema<Json, ServiceData>): Locations {
   return {
     reads: [signatures.schema],
@@ -20,21 +20,21 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
       const bytes = await reader.get(signature.data.object.$link);
       if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
       const { signedIdentity, link } = await signatures.verify(signature, reader);
-      yield [signedIdentity.identity.link, decodeObject(bytes, service).data.at, link];
+      yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
     },
   };
 }
 
 /**
- * The links of the signatures over the Services of `identity` that `store`
+ * The links of the signatures over the Services of `root` that `store`
  * holds as mine, from the latest back.
  */
 export async function servicesOf(
   store: Store,
   locations: Locations,
-  identity: Link<IdentityObject>,
+  root: Link<KeyObject>,
 ): Promise<Link<Signature>[]> {
   const links: Link<Signature>[] = [];
-  for await (const [, , link] of (await scan(store, locations)).range([identity])) links.unshift(link);
+  for await (const [, , link] of (await scan(store, locations)).range([root])) links.unshift(link);
   return links;
 }

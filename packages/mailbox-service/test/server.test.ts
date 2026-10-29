@@ -85,7 +85,7 @@ describe("a mailbox service", () => {
     });
     expect(accept).toBe(offer.link);
     expect(offered.signedIdentity.identity.link).toBe(serviceIdentity.link);
-    expect(offer.data).toEqual({ identity: { $link: serviceIdentity.link } });
+    expect(offer.data).toEqual({ identity: { $link: serviceIdentity.root.link } });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
@@ -198,7 +198,7 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.link } });
+    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.root.link } });
     const asService = await actorOf(serviceSigner);
     const offered = await asService.sign(dropped);
     const earlier = encodeObject(serviceSchemaRead, {

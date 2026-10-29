@@ -15,7 +15,8 @@ Proxy          {"chain": [<signature link>, …], "target": <object link>}, sign
 Both are objects of `@estoc/object`, written to two fixed draft 2020-12
 schemas, `authorizationSchema` and `proxySchema`, and signed as any object
 is. An Authorization names its agent by the link of the agent's identity
-object, as a signature names its signer. The schemas are compiled once, by the validator the application picks, together with those of signatures and identities, and `authorizations.signatures` is what it signs and reads signatures with:
+object, the identity that a signature's signed identity leads to, so the
+agent need not have signed its identity to be named. The schemas are compiled once, by the validator the application picks, together with those of signatures and identities, and `authorizations.signatures` is what it signs and reads signatures with:
 
 ```ts
 import { loadAuthorizations } from "@estoc/authorization";
@@ -35,16 +36,18 @@ need not agree to be named; until it signs a proxy, the authorization counts
 for nothing.
 
 ```ts
+// The wallet signs its identity once, and signs through an actor for it.
+const wallet = signatures.actor(walletSigner, await signatures.identities.publish(walletSigner));
 const grant = await authorizations.authorize(browserKey.key, wallet);
 // The agent receives the link of the signature, and the signature with the blobs it leads to:
 // grant.signature.bytes, grant.object.bytes, and the blobs of both identities,
-// grant.signature.identity.blobs and grant.object.agent.blobs.
+// grant.signature.signedIdentity.blobs and grant.object.agent.blobs.
 const received = await authorizations.readAuthorization(grant.signature.link, blobs);
 ```
 
 Both give a `Signed<Authorization>`: the `Authorization` as read, its `agent`
-the agent's identity object, and the `signature` over it, whose identity is
-the authorizer. `readAuthorization` takes the link of the signature, and
+the agent's identity object, and the `signature` over it, whose signed
+identity is the authorizer's. `readAuthorization` takes the link of the signature, and
 gets the signature and the blobs it leads to from `blobs` by link, as
 `readStanding` does.
 
@@ -67,27 +70,30 @@ is only named, so a reader does not need its bytes.
 
 ### Actors
 
-An actor stands behind objects for one identity, its principal. Made from a
-signer alone, it is the signer's own and signs each object. Made with a
-chain, it is the first authorizer's, and signs a Proxy for each object as
-the chain's last agent.
+An actor stands behind objects for one identity, its principal. It is made
+from an identity actor of `@estoc/identity`, which signs as one signed
+identity. Made from that alone, it is that identity's own and signs each
+object. Made with a chain, it is the first authorizer's, and signs a Proxy
+for each object as the chain's last agent.
 
 ```ts
 const asWallet = authorizations.createActor(wallet);
-const throughKey = authorizations.createActor(browserKey, [received]);
+const browser = signatures.actor(browserKey, await signatures.identities.publish(browserKey));
+const throughKey = authorizations.createActor(browser, [received]);
 const entry = await throughKey.sign(login.link);
 ```
 
 `createActor` refuses a chain that does not connect, or that does not end
-at the signer, since no reader would count a proxy through it. An actor's
+at the identity actor's identity, since no reader would count a proxy
+through it. An actor's
 `principal` and `agents` are what a reading gives back of what it signs.
 
 `sign` takes the link of the object alone, and gives an `Entry`: the
 signature, and the blobs it leads to, each once. For a proxy those are the
 Proxy, the chain's signatures and authorizations, and the blobs of the
-identities they name; for a direct signature, the blobs of the signer's
-identity. The
-signature and its blobs are what a reader takes, and nothing else.
+signed identities and identities they name; for a direct signature, the
+blobs of the signer's signed identity. The signature and its blobs are what
+a reader takes, and nothing else.
 
 ### Why an agent signs a proxy and not the object
 
@@ -137,14 +143,16 @@ and the reading does not recurse. A chain has no length limit: whether to
 accept agents, and how many, is up to the application, as is who has to
 stand behind an object for it to hold.
 
-Two identities are the same when their links are.
+Two identities are the same when their links are. A signer is read as the
+identity its signed identity leads to, so two signatures by one identity
+stand for it alike, whichever of its signed identities they name.
 
 ### Blobs
 
 Every link from the entry points inward, to the Proxy, its chain, the
-authorizations, the identities of their signers and agents, and the roots
-of those identities, so the
-reading only gets blobs by link, each when it comes to it. `blobs` is a
+authorizations, the signed identities of their signers, the identities of
+signers and agents, and the roots of those identities, so the reading only
+gets blobs by link, each when it comes to it. `blobs` is a
 `Reader` of `@estoc/object`, anything with `get(link)` that answers at once
 or with a promise: a `Map`, a bundle, or a store that holds blobs by
 content. A reader gives under a link only the blob that the link names, so

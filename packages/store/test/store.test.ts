@@ -199,17 +199,17 @@ describe("the closure of a blob", () => {
 });
 
 describe("a signature read from a store", () => {
-  it("verifies with the blobs of its identity, which the store holds", async () => {
+  it("verifies with the blobs of its signed identity, which the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const signature = await signatures.sign(note, signer);
+    const signature = await signatures.actor(signer, await signatures.identities.publish(signer)).sign(note);
     await store.write({
       mine: [note, signature],
-      blobs: [...signature.identity.blobs, anything.bytes, ...signatureSchemas],
+      blobs: [...signature.signedIdentity.blobs, anything.bytes, ...signatureSchemas],
     });
     const read = await signatures.read(signature.link, store);
     expect(read.object).toBe(note.link);
-    expect(read.identity.root.publicKey).toEqual(signer.key.publicKey);
+    expect(read.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
 
   it("is refused when the store holds another kind of object under its link", async () => {

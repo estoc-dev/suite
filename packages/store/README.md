@@ -25,9 +25,9 @@ import { MemoryBackend, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
-const signature = await signatures.sign(note, signer);
+const signature = await actor.sign(note);
 // `schemas` are all that the program writes to; the store keeps those named here.
-await store.write({ mine: [note, signature], blobs: [...signature.identity.blobs, ...schemas] });
+await store.write({ mine: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
 for await (const link of store.mine()) …;       // note.link, signature.link
 await signatures.read(signature.link, store);   // the signature, verified

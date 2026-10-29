@@ -44,6 +44,8 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
+const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await identities.publish(by));
+const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 
 const card = await schemaFor<{ readonly mailbox: JsonLink<Signature>; readonly name: JsonLink<Signature> }>("Card", {
   mailbox: linkSchema,
@@ -83,10 +85,10 @@ async function readCard(bundle: Bundle) {
   const listed = cardOf(bundle.root);
   const reachedAt = await signatures.read(listed.mailbox, bundle);
   const goesBy = await signatures.read(listed.name, bundle);
-  if (reachedAt.identity.link !== goesBy.identity.link)
+  if (reachedAt.signedIdentity.identity.link !== goesBy.signedIdentity.identity.link)
     throw new Error("a card is signed by the one identity it is for");
   return {
-    identity: reachedAt.identity,
+    identity: reachedAt.signedIdentity.identity,
     mailbox: (await readObject(bundle, reachedAt.object, mailbox)).data,
     name: (await readObject(bundle, goesBy.object, name)).data.name,
   };
@@ -96,12 +98,18 @@ describe("a card", () => {
   const alice = signer("ed25519", 1);
   const inbox = encodeObject(mailbox, { url: "https://mail.example/alice" });
   const called = encodeObject(name, { name: "Alice" });
-  const signed = Promise.all([signatures.sign(inbox, alice), signatures.sign(called, alice)]);
+  const signed = Promise.all([sign(inbox, alice), sign(called, alice)]);
 
   it("reads as the mailbox and the name that its identity signed", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
-    const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, ...byName.identity.blobs]);
+    const bundle = handOver(root, [
+      byMailbox.bytes,
+      inbox.bytes,
+      byName.bytes,
+      called.bytes,
+      ...byName.signedIdentity.blobs,
+    ]);
     expect(await readCard(bundle)).toEqual({
       identity: identities.encode(alice.key),
       mailbox: { url: "https://mail.example/alice" },
@@ -112,7 +120,13 @@ describe("a card", () => {
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await signed;
     const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
-    const bundle = handOver(root, [byMailbox.bytes, inbox.bytes, byName.bytes, called.bytes, ...byName.identity.blobs]);
+    const bundle = handOver(root, [
+      byMailbox.bytes,
+      inbox.bytes,
+      byName.bytes,
+      called.bytes,
+      ...byName.signedIdentity.blobs,
+    ]);
     expect(await readCard(bundle)).toEqual({
       identity: identities.encode(alice.key),
       mailbox: { url: "https://mail.example/alice" },
@@ -122,15 +136,15 @@ describe("a card", () => {
 
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await signed;
-    const byOther = await signatures.sign(called, signer("eip191", 2));
+    const byOther = await sign(called, signer("eip191", 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
       byOther.bytes,
       called.bytes,
-      ...byMailbox.identity.blobs,
-      ...byOther.identity.blobs,
+      ...byMailbox.signedIdentity.blobs,
+      ...byOther.signedIdentity.blobs,
     ]);
     await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
   });
@@ -140,15 +154,15 @@ const chat = await schemaFor<{ readonly text: string }>("Chat message", { text: 
 
 async function readMessage(bundle: Bundle) {
   const read = await signatures.read(bundle.link, bundle);
-  return { from: read.identity, message: (await readObject(bundle, read.object, chat)).data };
+  return { from: read.signedIdentity.identity, message: (await readObject(bundle, read.object, chat)).data };
 }
 
 describe("a chat message", () => {
   it("reads through the signature at its root as the message from its signer", async () => {
     const alice = signer("ed25519", 1);
     const message = encodeObject(chat, { text: "See you at noon." });
-    const signature = await signatures.sign(message, alice);
-    const bundle = handOver(signature, [message.bytes, ...signature.identity.blobs]);
+    const signature = await sign(message, alice);
+    const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
     expect(await readMessage(bundle)).toEqual({
       from: identities.encode(alice.key),
       message: { text: "See you at noon." },
@@ -164,9 +178,9 @@ const standingEnvelope = await schemaFor<{
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through
-// agents. Reading the standing takes the message as well as the signature, so
-// the envelope names both. The bundle is the blobs that the reading follows
-// that signature into.
+// agents. Reading the standing checks the signature against the message's
+// link, so the envelope names both. The bundle is the blobs that the reading
+// follows that signature into.
 async function readSent(bundle: Bundle) {
   const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
   const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle);
@@ -178,8 +192,8 @@ describe("a chat message sent through a device key", () => {
     const wallet = signer("eip191", 1);
     const deviceKey = signer("ed25519", 2);
     const message = encodeObject(chat, { text: "See you at noon." });
-    const grant = await authorizations.authorize(deviceKey.key, wallet);
-    const { signature, blobs } = await authorizations.createActor(deviceKey, [grant]).sign(message.link);
+    const grant = await authorizations.authorize(deviceKey.key, await actorOf(wallet));
+    const { signature, blobs } = await authorizations.createActor(await actorOf(deviceKey), [grant]).sign(message.link);
     const root = encodeObject(standingEnvelope, {
       message: { $link: message.link },
       signature: { $link: signature.link },

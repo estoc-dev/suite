@@ -8,13 +8,14 @@ import {
   type Scheme,
   SoftwareSigner,
   signatureSchema,
+  signedIdentitySchema,
 } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
-// its hashlib; the signature, which Ed25519 makes deterministic, against
+// its hashlib; the signatures, which Ed25519 makes deterministic, against
 // Python's cryptography package. A change to the format changes them.
 const keySchemaTexts: Record<Scheme, string> = {
   ed25519:
@@ -49,22 +50,35 @@ const identityText =
   '{"$describedBy":{"$link":"sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526"},' +
   '"root":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
 const identityLink = "sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364";
-const signatureSchemaText =
+const signedIdentitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
-  '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
-const signatureText =
-  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
+  '"required":["identity","signature"],"title":"Signed Identity","type":"object"}';
+const signedIdentitySchemaLink = "sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa";
+const signedIdentityText =
+  '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
   '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"},' +
+  '"signature":"5cfaf21fdc8c442905a85577e8346727cd635d5042bbe45331b861c3444aef6e' +
+  'aa149e6de2bf1543316e69bee4cf66c80056a3f25cb315cc621ae439d8386f01"}';
+const signedIdentityLink = "sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe";
+const signatureSchemaText =
+  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},' +
+  '"signedIdentity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
+  '"required":["signedIdentity","object","signature"],"title":"Signature","type":"object"}';
+const signatureSchemaLink = "sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135";
+const signatureText =
+  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
-  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e"}';
-const signatureLink = "sha256:9d0aa1dea63a8773113fc3b05e24311028b7b73e54bd2efbaaaf4783f6fb0d7c";
+  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e",' +
+  '"signedIdentity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"}}';
+const signatureLink = "sha256:5f7b0b3af90bb61a512241aaa46f65ca66349791272d91a3aff23a8e4c849f9b";
 
 // The login object of the vector in @estoc/object.
 const objectLink: Link<never> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
@@ -87,22 +101,30 @@ test("the identity schema encodes to fixed bytes and a fixed link", async () => 
   expect(schema.link).toBe(identitySchemaLink);
 });
 
+test("the signed identity schema encodes to fixed bytes and a fixed link", async () => {
+  const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
+  expect(text(schema.bytes)).toBe(signedIdentitySchemaText);
+  expect(schema.link).toBe(signedIdentitySchemaLink);
+});
+
 test("the signature schema encodes to fixed bytes and a fixed link", async () => {
   const schema = await encodeSchema(signatureSchema, defaultValidator);
   expect(text(schema.bytes)).toBe(signatureSchemaText);
   expect(schema.link).toBe(signatureSchemaLink);
 });
 
-describe("an identity with an Ed25519 root and its signature over the login object of @estoc/object", () => {
+describe("an identity with an Ed25519 root, signed, and its signature over the login object of @estoc/object", () => {
   it("encode to fixed bytes and links", async () => {
-    const signature = await signatures.sign(
-      { link: objectLink },
-      SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1)),
-    );
-    expect(text(signature.identity.root.bytes)).toBe(keyText);
-    expect(signature.identity.root.link).toBe(keyLink);
-    expect(text(signature.identity.bytes)).toBe(identityText);
-    expect(signature.identity.link).toBe(identityLink);
+    const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+    const actor = signatures.actor(root, await signatures.identities.publish(root));
+    const signature = await actor.sign({ link: objectLink });
+    const { identity } = signature.signedIdentity;
+    expect(text(identity.root.bytes)).toBe(keyText);
+    expect(identity.root.link).toBe(keyLink);
+    expect(text(identity.bytes)).toBe(identityText);
+    expect(identity.link).toBe(identityLink);
+    expect(text(signature.signedIdentity.bytes)).toBe(signedIdentityText);
+    expect(signature.signedIdentity.link).toBe(signedIdentityLink);
     expect(text(signature.bytes)).toBe(signatureText);
     expect(signature.link).toBe(signatureLink);
   });
@@ -111,13 +133,17 @@ describe("an identity with an Ed25519 root and its signature over the login obje
     const blobs = new Map([
       [keyLink, utf8(keyText)],
       [identityLink, utf8(identityText)],
+      [signedIdentityLink, utf8(signedIdentityText)],
     ]);
-    const read = await signatures.identities.read(identityLink, blobs);
-    expect(read.root.scheme).toBe("ed25519");
+    const read = await signatures.identities.readSigned(signedIdentityLink, blobs);
+    expect(read.identity.link).toBe(identityLink);
+    expect(read.identity.root.scheme).toBe("ed25519");
     const keySchema = await decodeSchema(utf8(keySchemaTexts.ed25519), defaultValidator);
     expect(decodeObject(utf8(keyText), keySchema).link).toBe(keyLink);
     const schema = await decodeSchema(utf8(identitySchemaText), defaultValidator);
     expect(decodeObject(utf8(identityText), schema).link).toBe(identityLink);
+    const signedSchema = await decodeSchema(utf8(signedIdentitySchemaText), defaultValidator);
+    expect(decodeObject(utf8(signedIdentityText), signedSchema).link).toBe(signedIdentityLink);
     const signature = decodeObject(utf8(signatureText), signatures.schema);
     expect((await signatures.verify(signature, blobs)).link).toBe(signatureLink);
   });

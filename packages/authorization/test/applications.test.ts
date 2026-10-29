@@ -25,7 +25,9 @@ const byLink = (received: readonly Uint8Array[]) =>
   new Map<string, Uint8Array>(received.map((bytes) => [linkOf(bytes), bytes]));
 
 const authorizations = await loadAuthorizations(defaultValidator);
-const { identities } = authorizations.signatures;
+const { signatures } = authorizations;
+const { identities } = signatures;
+const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await identities.publish(by));
 
 const login = await encodeSchema(
   {
@@ -58,16 +60,16 @@ describe("a login", () => {
   const wallet = signer("eip191", 1);
   const browserKey = signer("ed25519", 2);
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-  const toKey = authorizations.authorize(browserKey.key, wallet);
+  const toKey = actorOf(wallet).then((by) => authorizations.authorize(browserKey.key, by));
   const logIn = (entry: Entry) => loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(entry));
 
   it("through a key the wallet authorized logs in the wallet", async () => {
-    const throughKey = await authorizations.createActor(browserKey, [await toKey]).sign(object.link);
+    const throughKey = await authorizations.createActor(await actorOf(browserKey), [await toKey]).sign(object.link);
     expect(await logIn(throughKey)).toEqual(identities.encode(wallet.key));
   });
 
   it("signed by the key directly logs in the key, not the wallet", async () => {
-    const direct = await authorizations.createActor(browserKey).sign(object.link);
+    const direct = await authorizations.createActor(await actorOf(browserKey)).sign(object.link);
     expect(await logIn(direct)).toEqual(identities.encode(browserKey.key));
   });
 });
@@ -125,12 +127,12 @@ describe("a sale", () => {
     goods: "one bicycle",
     price: "120.00 CAD",
   });
-  const toBroker = authorizations.authorize(broker.key, buyer);
-  const directly = (by: SoftwareSigner) => authorizations.createActor(by).sign(terms.link);
+  const toBroker = actorOf(buyer).then((by) => authorizations.authorize(broker.key, by));
+  const directly = async (by: SoftwareSigner) => authorizations.createActor(await actorOf(by)).sign(terms.link);
   const entriesOf = (...entries: Entry[]) => entries.map(({ signature }) => signature.link);
 
   it("is in force once its seller signs it and its buyer signs it through a broker", async () => {
-    const proxy = await authorizations.createActor(broker, [await toBroker]).sign(terms.link);
+    const proxy = await authorizations.createActor(await actorOf(broker), [await toBroker]).sign(terms.link);
     const bySeller = await directly(seller);
     expect(await saleInForce(terms.bytes, entriesOf(bySeller, proxy), blobs(bySeller, proxy))).toEqual(terms.data);
   });

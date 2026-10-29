@@ -29,14 +29,18 @@ const { identities } = signatures;
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
-  const signature = await signatures.sign(object, by);
-  await mailbox.send(signature, [object.bytes, ...signature.identity.blobs]);
+  const signature = await signatures.actor(by, await identities.publish(by)).sign(object);
+  await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
 
 async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema<Json, F>) {
   const signature = await signatures.read(bundle.link, bundle);
-  return { signature, identity: signature.identity, object: await readObject(bundle, signature.object, schema) };
+  return {
+    signature,
+    identity: signature.signedIdentity.identity,
+    object: await readObject(bundle, signature.object, schema),
+  };
 }
 
 async function receiver(network: MemoryNetwork, fill: number) {
@@ -79,11 +83,11 @@ describe("a chat line", () => {
     const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
     const [received] = await atBob.take();
     assert.exists(received);
-    // Bob passes on what he read: the signature, with the line and the identity it names.
+    // Bob passes on what he read: the signature, with the line and the signed identity it names.
     const read = await readSigned(received, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
-      ...read.identity.blobs,
+      ...read.signature.signedIdentity.blobs,
     ]);
     const [passed] = await atCarol.take();
     assert.exists(passed);

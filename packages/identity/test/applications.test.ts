@@ -13,7 +13,14 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type IdentityObject, loadSignatures, type Scheme, type Signature, SoftwareSigner } from "../src/index.ts";
+import {
+  type IdentityObject,
+  loadSignatures,
+  type Scheme,
+  type Signature,
+  type Signer,
+  SoftwareSigner,
+} from "../src/index.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it
@@ -25,6 +32,8 @@ const { identities } = signatures;
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
+const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
+  signatures.actor(by, await identities.publish(by)).sign(object);
 
 /**
  * What an application holds: blobs by link, the objects of the identities
@@ -41,7 +50,7 @@ async function signersOf(link: Link<unknown>, received: Received): Promise<Ident
   );
   return (await Promise.all(read))
     .filter((signature) => signature.object === link)
-    .map((signature) => signature.identity);
+    .map((signature) => signature.signedIdentity.identity);
 }
 
 const login = await encodeSchema(
@@ -67,15 +76,15 @@ async function loggedIn(
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
   const read = await signatures.verify(decodeObject(signature, signatures.schema), byLink(identity));
-  return read.object === expected.link ? read.identity : undefined;
+  return read.object === expected.link ? read.signedIdentity.identity : undefined;
 }
 
 describe("a login", () => {
   const user = signer("eip191", 1);
-  const signed = signatures.sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
+  const signed = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
-    const { bytes, identity } = await signed;
-    return loggedIn(audience, nonce, bytes, identity.blobs);
+    const { bytes, signedIdentity } = await signed;
+    return loggedIn(audience, nonce, bytes, signedIdentity.blobs);
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
@@ -88,8 +97,8 @@ describe("a login", () => {
   });
 });
 
-// A sale names its parties by the links of their identity objects, as a
-// signature names its signer.
+// A sale names its parties by the links of their identity objects, and a
+// signature its signer by a signed identity that leads to one.
 type Sale = {
   readonly buyer: JsonLink<IdentityObject>;
   readonly seller: JsonLink<IdentityObject>;
@@ -157,11 +166,11 @@ const terms = encodeObject(sale, {
 });
 const confirmation = encodeObject(delivery, { sale: { $link: terms.link } });
 const receive = (signed: readonly Signature[]): Received => ({
-  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ identity }) => identity.blobs)]),
+  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs)]),
   signatures: signed.map(({ bytes }) => bytes),
 });
 const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>
-  Promise.all(pairs.map(([object, by]) => signatures.sign(object, by)));
+  Promise.all(pairs.map(([object, by]) => sign(object, by)));
 
 describe("a sale", () => {
   it("is in force only once its buyer and its seller have both signed it", async () => {
@@ -171,7 +180,7 @@ describe("a sale", () => {
   });
 
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
-    const witnessed = await signatures.sign(terms, witness);
+    const witnessed = await sign(terms, witness);
     const received = receive([...(await signedBy([terms, buyer])), witnessed]);
     expect(await signersOf(terms.link, received)).toContainEqual(identities.encode(witness.key));
     expect(await saleInForce(terms.link, received)).toBeUndefined();

@@ -19,18 +19,18 @@ const note = await encodeSchema(
   defaultValidator,
 );
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.sign(hello, alice);
+const signature = await signatures.actor(alice, await identities.publish(alice)).sign(hello);
 
 describe("a mailbox", () => {
   it("carries a bundle to the queue it names, sealed so that its key opens it", async () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const handed = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, ...signature.identity.blobs]);
+    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, ...signature.signedIdentity.blobs]);
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.key));
+    expect((await signatures.read(bundle.link, bundle)).signedIdentity.identity).toEqual(identities.encode(alice.key));
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {

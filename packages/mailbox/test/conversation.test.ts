@@ -1,4 +1,4 @@
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { type IdentityActor, loadSignatures, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -85,7 +85,7 @@ async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbo
 
 interface Person {
   readonly name: string;
-  readonly signer: SoftwareSigner;
+  readonly actor: IdentityActor;
   readonly store: Store;
   readonly post: Post;
 }
@@ -98,12 +98,13 @@ async function chat(faults: Faults = {}) {
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
+    const actor = signatures.actor(signer, await signatures.identities.publish(signer));
     const store = new Store(json, new MemoryBackend());
-    return { name, signer, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
+    return { name, actor, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map([alice, bob].map(({ name, signer }) => [signatures.identities.encode(signer.key).link, name]));
+  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.link, name]));
 
   // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
   // their store: the owner to receive at it, the peer to send to it.
@@ -122,10 +123,10 @@ async function chat(faults: Faults = {}) {
 
   const say = async (from: Person, outbox: Outbox, text: string) => {
     const object = encodeObject(line, { text });
-    const signature = await signatures.sign(object, from.signer);
+    const signature = await from.actor.sign(object);
     await from.store.write({
       mine: [signature],
-      blobs: [object.bytes, ...signature.identity.blobs, ...schemas],
+      blobs: [object.bytes, ...signature.signedIdentity.blobs, ...schemas],
     });
     await outbox.send(signature.link);
     return signature;
@@ -142,7 +143,7 @@ async function chat(faults: Faults = {}) {
         async ([direction, , , bundle]) => {
           const signed = await signatures.read(bundle, person.store);
           const { data } = await readObject(person.store, signed.object, line);
-          return [direction, names.get(signed.identity.link), data.text];
+          return [direction, names.get(signed.signedIdentity.identity.link), data.text];
         },
       ),
     );

@@ -9,15 +9,16 @@ the acceptance of its offer, and receives no messages.
 
 ## Addressing
 
-A service is named by its identity. Its origin is where that identity is
-reached for now, and the service says so by signing a Service: at `at` it
+A service is named by the root of its identity. Its origin is where the
+service is reached for now, and it says so by signing a Service: at `at` it
 is at `origin`, and makes these offers. What the service gives out, its
 Services and its acknowledgements, is signed by its identity, so a client
 goes by who signed it, not by where the bytes came from; TLS keeps them
 private, and vouches for the service on first contact alone. A refusal is
 plain text, and a client keeps nothing of it.
 
-Of the Services that an identity signed, the latest says where it is now:
+Of the Services that identities of one root signed, the latest says where
+the service is now:
 the one with the greatest `at`, and of those with the same `at`, the one
 whose signature has the greater link, compared as ASCII strings. Services
 started at once can sign the same `at`, and every reader takes the same one
@@ -34,7 +35,7 @@ signature changes.
 
 ```
 Service          {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <link of the offer>}, …]}, signed by the service
-Account offer    {"identity": <link of the service's identity>}, signed by the service
+Account offer    {"identity": <link of the service's root>}, signed by the service
 Acknowledgement  {"accepted": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 ```
 
@@ -62,11 +63,11 @@ the service's signatures over them, the service's identity and their
 schemas. What the origin answers over TLS is the service's, so `at` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
-offer that another identity signed. It writes the service's signature over
-the Service to the store as mine, with all it leads to, and gives a
-`Service`: the service's identity, its origin, `at`, the link of the
-signature, and `account`, the offer of an account when the Service lists
-one. Offers of schemas the client does not read are passed over.
+offer signed by an identity of another root. It writes the service's
+signature over the Service to the store as mine, with all it leads to, and
+gives a `Service`: the service's identity, its origin, `at`, the link of
+the signature, and `account`, the offer of an account when the Service
+lists one. Offers of schemas the client does not read are passed over.
 
 `at` takes an origin alone, a scheme, a host and a port, and refuses a url
 with a path. It takes `https://`, or `http://` to the client's own
@@ -74,12 +75,12 @@ machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
-After first contact the service is its identity. `of` gives the latest
-Service of an identity that the store holds, whichever channel brought it,
-and reaches nothing:
+After first contact the service is its root. `of` gives the latest
+Service of a root that the store holds, whichever channel brought it, and
+reaches nothing:
 
 ```ts
-const service = await services.of(account.service.link);
+const service = await services.of(account.service.root.link);
 ```
 
 Another device that syncs the store goes back to the service that way, and
@@ -90,15 +91,16 @@ Service in the store, through an index of `@estoc/store`.
 
 ## Opening an account
 
-An identity has an account at a service, one for each identity, and opens
-it by signing the service's offer. The identity is the account's key: the
-service hands out no secret to keep, and whoever signs as the identity
-reaches the account from any device.
+An identity has an account at a service, one for each root, and opens it
+by signing the service's offer. The account is found by the identity's
+root: the service hands out no secret to keep, and whoever signs as an
+identity of that root reaches the account from any device.
 
-A service has an identity of its own. It signs one offer, which names that
-identity, so each service's offer has a link of its own, and a signature
-that accepts one service's offer accepts no other's. An account offer that
-names another identity than the one that signed it is refused.
+A service has an identity of its own. It signs one offer, which names the
+root of that identity, so each service's offer has a link of its own, and a
+signature that accepts one service's offer accepts no other's. An account
+offer that names another root than that of the identity that signed it is
+refused.
 
 Opening an account is accepting the offer: an identity signs it, and the
 account is the account of whoever signed. A wallet asks its holder to
@@ -121,27 +123,28 @@ with the offer: the signature as the root, with the signed identity, and
 for a proxy the Proxy and its chain. The offer and the schemas are left out,
 since the service has them.
 
-The service reads who stands behind its offer by the root, with
-`readStanding`, opens an account for that identity, and answers with its
-signature over an acknowledgement of the root. `at` is when it received the
-root. The answer is a bundle: the service's signature as the root, with the
-acknowledgement, the acceptance, the offer and all they lead to.
+The service reads who stands behind its offer by the bundle's root, with
+`readStanding`, opens an account for the root of their identity, and
+answers with its signature over an acknowledgement of the bundle's root.
+`at` is when it received that. The answer is a bundle: the service's
+signature as the root, with the acknowledgement, the acceptance, the offer
+and all they lead to.
 
 | Status | Meaning |
 |---|---|
 | 201 | the account opened; the answer is its acknowledgement |
-| 200 | the identity had an account; the answer is that account's acknowledgement |
+| 200 | the identity's root had an account; the answer is that account's acknowledgement |
 | 400 | the bundle does not read, or its root does not stand anyone behind this service's offer |
 | 413 | the body is over 64 KiB |
 
-An identity has one account at a service. When an acceptance comes again,
-or the same identity accepts again by another device or another chain, the
-service answers with the acknowledgement it sent when the account opened,
-as long as the acceptance stands the identity behind the offer. That
-acknowledgement links to the first acceptance, so a second device gets the
-first device's proxy and chain with it. The client reads that acceptance,
-and refuses an acknowledgement that is signed by another identity than the
-service's or that is of another identity's account.
+A root has one account at a service. When an acceptance comes again, or
+an identity of the same root accepts again by another device or another
+chain, the service answers with the acknowledgement it sent when the
+account opened, as long as the acceptance stands an identity of that root
+behind the offer. That acknowledgement links to the first acceptance, so a
+second device gets the first device's proxy and chain with it. The client
+reads that acceptance, and refuses an acknowledgement that is signed by
+another root than the service's or that is of another root's account.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service opened an
@@ -153,8 +156,8 @@ account for this identity.
 offers and the service's signatures over them, and `accept` writes the
 service's signature over the acknowledgement, each to the store as mine,
 with all they lead to. Another device that syncs the store learns which
-services the identity has accounts at, by their identities, and where
-they are, without asking them. When the service refuses, or its answer is
+services the identity has accounts at, by their roots, and where they
+are, without asking them. When the service refuses, or its answer is
 refused, `accept` writes nothing.
 
 `accept` gives the `Account`: the identity whose account it is, the
@@ -207,10 +210,10 @@ service's clock is behind. Two started at once on one store can sign the
 same `at`, and the latest of the two is then the one whose signature has
 the greater link.
 
-`accounts` holds one row for each identity: the link of the identity, and
-the link of the service's signature over the acknowledgement of its
-account. Its `add` keeps a row only for an identity without one, in one
-step, so two acceptances of one identity that arrive together open one
+`accounts` holds one row for each root: the link of the root of an
+identity, and the link of the service's signature over the acknowledgement
+of its account. Its `add` keeps a row only for a root without one, in one
+step, so two acceptances of one root that arrive together open one
 account. `MemoryAccounts` keeps the rows in memory.
 
 `fetch` takes a `Request` and gives a `Response`, as a fetch handler does.
@@ -224,5 +227,5 @@ Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to
 much more than arrived.
 
-A service opens no account for its own identity: a signature of its own
-over its offer accepts nothing.
+A service opens no account for its own root: a signature of its own over
+its offer accepts nothing.

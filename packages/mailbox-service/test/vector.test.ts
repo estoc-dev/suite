@@ -26,8 +26,8 @@ const acknowledgementSchemaText =
 const acknowledgementSchemaLink = "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
 const offerText =
   '{"$describedBy":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
-  '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"}}';
-const offerLink = "sha256:8eaf9f4eb41c6ddc43c75cadb8956914ce0fe67c02ea40c09aca63fc8b0d2325";
+  '"identity":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
+const offerLink = "sha256:29eed5808328bb8ccad3d911b6c5790ecd0588942ed3041cb406ffb88a5f6246";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
@@ -46,9 +46,9 @@ test("the acknowledgement schema encodes to fixed bytes and a fixed link", () =>
   expect(acknowledgementSchemaRead.link).toBe(acknowledgementSchemaLink);
 });
 
-test("the offer of an identity with an Ed25519 root encodes to fixed bytes and a fixed link", () => {
-  const identity = identities.encode(signer("ed25519", 1).key);
-  const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
+test("the offer of a service whose root is an Ed25519 key encodes to fixed bytes and a fixed link", () => {
+  const root = identities.keys.encode(signer("ed25519", 1).key);
+  const offer = encodeObject(offerSchema, { identity: { $link: root.link } });
   expect(text(offer.bytes)).toBe(offerText);
   expect(offer.link).toBe(offerLink);
 });

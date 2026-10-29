@@ -30,7 +30,7 @@ const laptop = signer("ed25519", 3);
 const phone = signer("solana-offchain", 4);
 const mallory = signer("ed25519", 6);
 
-const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.link } });
+const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.root.link } });
 
 const through = async (agent: Signer, principal: Signer) =>
   authorizations.createActor(await actorOf(agent), [
@@ -138,24 +138,24 @@ describe("a service reached at its origin", () => {
     expect(await mine(store)).toEqual([]);
   });
 
-  it("refuses a Service that lists an offer signed by another identity", async () => {
+  it("refuses a Service that lists an offer signed by another root", async () => {
     const { origin } = await serving(
       async (_, origin) => new Response(await signedService(origin, [[offer, mallory]])),
     );
     const { services } = await client();
-    await expect(services.at(origin)).rejects.toThrow(/lists an offer signed by another identity/);
+    await expect(services.at(origin)).rejects.toThrow(/lists an offer signed by another root/);
   });
 
-  it("refuses an account offer that names another identity than the one that signed it", async () => {
+  it("refuses an account offer that names another root than that of the identity that signed it", async () => {
     const zip = (origin: string) => signedService(origin, [[offer, mallory]], mallory);
     const { origin } = await serving(async (_, origin) => new Response(await zip(origin)));
     const { services } = await client();
-    await expect(services.at(origin)).rejects.toThrow(/lists an account offer that names another identity/);
+    await expect(services.at(origin)).rejects.toThrow(/lists an account offer that names another root/);
   });
 
   it("passes over an offer of a schema it does not read", async () => {
     const other = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const unread = encodeObject(other, { identity: { $link: serviceIdentity.link } });
+    const unread = encodeObject(other, { identity: { $link: serviceIdentity.root.link } });
     const { origin } = await serving(
       async (_, origin) =>
         new Response(
@@ -170,7 +170,7 @@ describe("a service reached at its origin", () => {
   });
 });
 
-describe("a service found by its identity", () => {
+describe("a service found by its root", () => {
   it("is the Service with the latest at that the store holds, whichever came first, read without reaching the service", async () => {
     const first = await running({ start: 1_000 });
     const moved = await running({ start: 5_000 });
@@ -178,7 +178,7 @@ describe("a service found by its identity", () => {
     await services.at(moved.origin);
     await services.at(first.origin);
     await Promise.all([first.close(), moved.close()]);
-    expect(await services.of(serviceIdentity.link)).toMatchObject({ origin: moved.origin, at: 5_000 });
+    expect(await services.of(serviceIdentity.root.link)).toMatchObject({ origin: moved.origin, at: 5_000 });
   });
 
   it("gives the offer of an account that the latest Service lists, taken at its origin", async () => {
@@ -188,7 +188,7 @@ describe("a service found by its identity", () => {
     const moved = await running({ store: first.store, start: 5_000 });
     await services.at(moved.origin);
     await first.close();
-    const account = (await services.of(serviceIdentity.link))?.account;
+    const account = (await services.of(serviceIdentity.root.link))?.account;
     assert.exists(account);
     expect((await account.accept(await directly(alice))).at).toBe(5_001);
   });
@@ -212,19 +212,19 @@ describe("a service found by its identity", () => {
     for (const { object, signature } of [lesser, greater])
       await second.store.write({ mine: [signature], blobs: [object.bytes] });
     for (const { services } of [first, second]) {
-      expect(await services.of(serviceIdentity.link)).toMatchObject({
+      expect(await services.of(serviceIdentity.root.link)).toMatchObject({
         origin: greater.object.data.origin,
         link: greater.signature.link,
       });
     }
   });
 
-  it("is undefined for an identity of which the store holds no Service", async () => {
+  it("is undefined for a root of which the store holds no Service", async () => {
     const { origin } = await running();
     const { services } = await client();
-    expect(await services.of(serviceIdentity.link)).toBeUndefined();
+    expect(await services.of(serviceIdentity.root.link)).toBeUndefined();
     await services.at(origin);
-    expect(await services.of(identities.encode(alice.key).link)).toBeUndefined();
+    expect(await services.of(identities.keys.encode(alice.key).link)).toBeUndefined();
   });
 });
 
@@ -280,7 +280,7 @@ describe("an account offer", () => {
 });
 
 describe("accepting an account offer", () => {
-  it("refuses an acknowledgement signed by another identity than the service's, and writes nothing", async () => {
+  it("refuses an acknowledgement signed by another root than the service's, and writes nothing", async () => {
     const { origin } = await running({}, async (_, request) => {
       const acknowledgement = encodeObject(acknowledgementSchemaRead, {
         accepted: { $link: (await unpackBundle(new Uint8Array(await request.arrayBuffer()))).link },
@@ -293,11 +293,11 @@ describe("accepting an account offer", () => {
     });
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(await directly(alice))).rejects.toThrow(/signed by another identity/);
+    await expect(account.accept(await directly(alice))).rejects.toThrow(/signed by another root/);
     expect(await mine(store)).toHaveLength(1);
   });
 
-  it("refuses the service's acknowledgement of another identity's account, and writes nothing", async () => {
+  it("refuses the service's acknowledgement of another root's account, and writes nothing", async () => {
     const bobs = await (await actorOf(bob)).sign(offer);
     const { origin } = await running({}, async (service, request) =>
       service.fetch(
@@ -306,7 +306,7 @@ describe("accepting an account offer", () => {
     );
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(await directly(alice))).rejects.toThrow(/another identity's account/);
+    await expect(account.accept(await directly(alice))).rejects.toThrow(/another root's account/);
     expect(await mine(store)).toHaveLength(1);
   });
 });

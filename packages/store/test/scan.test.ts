@@ -75,7 +75,7 @@ describe("an index scanned from a store", () => {
       reads: [signatures.schema],
       async *rows(object, reader) {
         const signature = await signatures.verify(object, reader);
-        yield [signature.signedIdentity.identity.link, signature.object];
+        yield [signature.signedIdentity.identity.root.link, signature.object];
       },
     };
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)));
@@ -89,7 +89,7 @@ describe("an index scanned from a store", () => {
       blobs: [...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs), signatures.schema.bytes, ...schemas],
     });
     const expected = signed
-      .map(({ signedIdentity }) => signedIdentity.identity.link)
+      .map(({ signedIdentity }) => signedIdentity.identity.root.link)
       .sort()
       .map((link) => [link, hello.link]);
     expect(await whole(await scan(store, bySigner))).toEqual(expected);

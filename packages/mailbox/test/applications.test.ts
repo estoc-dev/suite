@@ -1,5 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
-import { type IdentityObject, loadSignatures, type Scheme, SoftwareSigner } from "@estoc/identity";
+import { type IdentityObject, type KeyObject, loadSignatures, type Scheme, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -52,7 +52,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<IdentityObject> }> = await encodeSchema(
+const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<KeyObject> }> = await encodeSchema(
   {
     $schema: DRAFT,
     title: "Chat",
@@ -65,11 +65,11 @@ const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<Identit
 );
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
-// is for by the link of an identity object, whether that is the reader.
+// is for by the link of their root, whether that is the reader.
 async function readChat(bundle: Bundle, reader: IdentityObject) {
   const { identity, object } = await readSigned(bundle, chat);
   const { text, to } = object.data;
-  return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.link };
+  return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.root.link };
 }
 
 describe("a chat line", () => {
@@ -105,7 +105,7 @@ describe("a chat line", () => {
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const line = encodeObject(chat, { to: { $link: identities.encode(bob.key).link }, text: "lunch at noon?" });
+    const line = encodeObject(chat, { to: { $link: identities.keys.encode(bob.key).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
     expect((await readChat(received, identities.encode(bob.key))).forReader).toBe(true);
     expect((await readChat(passed, identities.encode(carol.key))).forReader).toBe(false);
@@ -164,8 +164,8 @@ describe("a one-time invitation", () => {
 });
 
 type Sale = {
-  readonly buyer: JsonLink<IdentityObject>;
-  readonly seller: JsonLink<IdentityObject>;
+  readonly buyer: JsonLink<KeyObject>;
+  readonly seller: JsonLink<KeyObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -199,8 +199,8 @@ async function salesInForce(received: readonly Bundle[]): Promise<Sale[]> {
     record.identities.push(identity);
     signers.set(object.link, record);
   }
-  const signedBy = (identities: IdentityObject[]) => (party: JsonLink<IdentityObject>) =>
-    identities.some((identity) => identity.link === party.$link);
+  const signedBy = (identities: IdentityObject[]) => (party: JsonLink<KeyObject>) =>
+    identities.some((identity) => identity.root.link === party.$link);
   return [...signers.values()]
     .filter(({ terms, identities }) => [terms.buyer, terms.seller].every(signedBy(identities)))
     .map(({ terms }) => terms);
@@ -210,8 +210,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer("eip191", 6);
   const seller = signer("solana-offchain", 7);
   const terms = encodeObject(sale, {
-    buyer: { $link: identities.encode(buyer.key).link },
-    seller: { $link: identities.encode(seller.key).link },
+    buyer: { $link: identities.keys.encode(buyer.key).link },
+    seller: { $link: identities.keys.encode(seller.key).link },
     goods: "one bicycle",
     price: "120.00 CAD",
   });

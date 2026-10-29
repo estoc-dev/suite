@@ -30,7 +30,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await identities.publish(by)).sign(object);
-  await mailbox.send(signature, [object.bytes, ...signature.identity.blobs]);
+  await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
 
@@ -38,7 +38,7 @@ async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema
   const signature = await signatures.read(bundle.link, bundle);
   return {
     signature,
-    identity: signature.identity.identity,
+    identity: signature.signedIdentity.identity,
     object: await readObject(bundle, signature.object, schema),
   };
 }
@@ -87,7 +87,7 @@ describe("a chat line", () => {
     const read = await readSigned(received, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
-      ...read.signature.identity.blobs,
+      ...read.signature.signedIdentity.blobs,
     ]);
     const [passed] = await atCarol.take();
     assert.exists(passed);

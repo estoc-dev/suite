@@ -13,7 +13,7 @@ Identity         an Object written to the identity schema, with the field
 Signed identity  an Object written to the signed identity schema, with the fields
                  "identity": <the Identity's link>, "signature": <hex>
 Signature        an Object written to the signature schema, with the fields
-                 "identity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
+                 "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
 ```
 
 ## Schemes
@@ -139,18 +139,18 @@ that identity, as the root's scheme reads them; `signatures.read` does the
 same from the link of the signature. So verifying a signature takes the
 blobs of its signed identity, but not that of the object signed, since the
 digest it signs is in the link. It gives the signature's object with the
-signed identity it read as `identity`, the link of what it is over as
-`object`, and the signature as bytes. Reading a signature with `decodeObject` and the signature schema
-alone, as a viewer of arbitrary objects would, reads its fields without
-verifying it.
+signed identity it read as `signedIdentity`, the link of what it is over
+as `object`, and the signature as bytes. Reading a signature with
+`decodeObject` and the signature schema alone, as a viewer of arbitrary
+objects would, reads its fields without verifying it.
 
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
 signed identity whose root is the signer's key, and refuses any other.
 `actor.sign` signs the link of an object, so it takes anything that has
-one, and gives a signature whose `identity` is `actor.identity`, the signed
-identity the actor was made for, whose `blobs` go along with the
-signature. It verifies the signature after the signer signs, so a signer
-whose signature does not verify is refused.
+one, and gives a signature whose `signedIdentity` is
+`actor.signedIdentity`, the signed identity the actor was made for, whose
+`blobs` go along with the signature. It verifies the signature after the
+signer signs, so a signer whose signature does not verify is refused.
 
 A server that handed out a nonce can build the login object of the example
 in `@estoc/object` itself, and take back only the signature, with the
@@ -165,12 +165,12 @@ const signatures = await loadSignatures(defaultValidator);
 const signer = SoftwareSigner.fromSecretKey("ed25519", secretKey);
 const actor = signatures.actor(signer, await signatures.identities.publish(signer));
 const signature = await actor.sign(object);
-// The client sends signature.bytes and signature.identity.blobs.
+// The client sends signature.bytes and signature.signedIdentity.blobs.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 const signed = decodeObject(signatureBytes, signatures.schema);
 const read = await signatures.verify(signed, new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes])));
-const user = read.object === expected.link ? read.identity.identity : undefined;
+const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 
 One identity can sign one object more than once, as a wallet need not sign

@@ -16,11 +16,11 @@ from a zip. `writeBundle` gives the map back.
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
 
-const files = writeBundle(signature, [message.bytes, ...signature.identity.blobs]);
+const files = writeBundle(signature, [message.bytes, ...signature.signedIdentity.blobs]);
 const bundle = readBundle(files);
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
-[...bundle.blobs()];      // signature.bytes, message.bytes, ...signature.identity.blobs
+[...bundle.blobs()];      // signature.bytes, message.bytes, ...signature.signedIdentity.blobs
 ```
 
 ## The root
@@ -84,7 +84,7 @@ holds. The reader goes through each signature to the object it is over.
 ```ts
 const signed = await signatures.read(bundle.link, bundle);
 const message = await readObject(bundle, signed.object, chatSchema);
-// signed.identity.identity stands behind message
+// signed.signedIdentity.identity stands behind message
 ```
 
 A `Bundle` is a `Reader`, with the `get` that `readObject` and judgments
@@ -106,7 +106,7 @@ unzips a zip back into the map that `readBundle` takes. Both use zip.js and
 return promises.
 
 ```ts
-const zip = await zipBundle(writeBundle(signature, [message.bytes, ...signature.identity.blobs]));
+const zip = await zipBundle(writeBundle(signature, [message.bytes, ...signature.signedIdentity.blobs]));
 const bundle = readBundle(await unzipBundle(zip));
 ```
 
@@ -168,7 +168,7 @@ without compression, and `unpackBundle` reads it back.
 ```ts
 import { packBundle, unpackBundle } from "@estoc/bundle";
 
-const zip = await packBundle(signature, [message.bytes, ...signature.identity.blobs]);
+const zip = await packBundle(signature, [message.bytes, ...signature.signedIdentity.blobs]);
 const bundle = await unpackBundle(zip);
 ```
 

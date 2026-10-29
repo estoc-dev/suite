@@ -19,8 +19,8 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
     async *rows(signature, reader) {
       const bytes = await reader.get(signature.data.object.$link);
       if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-      const { identity, link } = await signatures.verify(signature, reader);
-      yield [identity.identity.link, decodeObject(bytes, service).data.at, link];
+      const { signedIdentity, link } = await signatures.verify(signature, reader);
+      yield [signedIdentity.identity.link, decodeObject(bytes, service).data.at, link];
     },
   };
 }

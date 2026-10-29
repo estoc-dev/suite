@@ -252,7 +252,7 @@ export async function loadMailboxService(
     (await servicesOf(store, index, identity.link)).map((link) => signatures.read(link, store)),
   );
   const [latest] = signed;
-  const actor = signatures.actor(signer, latest?.identity ?? (await signatures.identities.publish(signer)));
+  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await signatures.identities.publish(signer)));
   const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
@@ -272,7 +272,7 @@ export async function loadMailboxService(
       offer.bytes,
       offerSchema.bytes,
       signatures.schema.bytes,
-      ...actor.identity.blobs,
+      ...actor.signedIdentity.blobs,
     ];
     await store.write({ mine: [await actor.sign(object)], blobs });
   }

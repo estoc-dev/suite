@@ -30,7 +30,7 @@ const createActor = async (by: SoftwareSigner, chain: readonly Signed<Authorizat
 const byLink = (blobs: readonly Uint8Array[]) =>
   new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const blobsOf = ({ object, signature }: Signed<Authorization>) =>
-  byLink([signature.bytes, object.bytes, ...object.agent.blobs, ...signature.identity.blobs]);
+  byLink([signature.bytes, object.bytes, ...object.agent.blobs, ...signature.signedIdentity.blobs]);
 const identityBlobs = (await Promise.all([root, hot, deputy].map((by) => identities.publish(by)))).flatMap(
   ({ blobs }) => blobs,
 );
@@ -40,7 +40,7 @@ describe("an authorization", () => {
   it("reads back from its blobs", async () => {
     const signed = await authorize(hot, root);
     const read = await authorizations.readAuthorization(signed.signature.link, blobsOf(signed));
-    expect(read.signature.identity.identity).toEqual(identities.encode(root.key));
+    expect(read.signature.signedIdentity.identity).toEqual(identities.encode(root.key));
     expect(read.object.agent).toEqual(identities.encode(hot.key));
     expect(read.object.link).toBe(signed.object.link);
     expect(read.signature.link).toBe(signed.signature.link);
@@ -104,8 +104,8 @@ describe("an actor", () => {
     const { signature, blobs } = await actor.sign(target.link);
     expect(actor).toMatchObject({ principal: identities.encode(root.key), agents: [] });
     expect(signature.object).toBe(target.link);
-    expect(signature.identity.identity).toEqual(identities.encode(root.key));
-    expect(blobs).toEqual(signature.identity.blobs);
+    expect(signature.signedIdentity.identity).toEqual(identities.encode(root.key));
+    expect(blobs).toEqual(signature.signedIdentity.blobs);
   });
 
   it("with a chain stands behind a target for the chain's first authorizer by a proxy over the chain's signatures, in order", async () => {
@@ -120,7 +120,7 @@ describe("an actor", () => {
       chain: [toHot, toDeputy].map(({ signature }) => ({ $link: signature.link })),
       target: { $link: target.link },
     });
-    expect(signature.identity.identity).toEqual(identities.encode(deputy.key));
+    expect(signature.signedIdentity.identity).toEqual(identities.encode(deputy.key));
   });
 
   it("gives each blob that its entry leads to besides the entry, with the identities' schemas, once, and no other", async () => {

@@ -38,7 +38,7 @@ const written = (signature: Signature, data: JsonObject) => json.encode(json.obj
 const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
 const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
-const identityOf = (signature: Signature) => byLink(signature.identity);
+const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await identities.publish(by)).sign(object);
 
@@ -60,8 +60,8 @@ describe("a signature", () => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
     const read = await verified(signature.bytes, identityOf(signature));
-    expect(read.identity).toEqual(signature.identity);
-    expect(read.identity.identity).toEqual(identities.encode(by.key));
+    expect(read.signedIdentity).toEqual(signature.signedIdentity);
+    expect(read.signedIdentity.identity).toEqual(identities.encode(by.key));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -80,9 +80,9 @@ describe("a signature", () => {
       await identities.publish(signer("ed25519", 2)),
       await identities.publish(signer("solana-offchain")),
     ]) {
-      await expect(verified(rewritten(signature, { identity: { $link: other.link } }), byLink(other))).rejects.toThrow(
-        /does not verify/,
-      );
+      await expect(
+        verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),
+      ).rejects.toThrow(/does not verify/);
     }
   });
 
@@ -105,16 +105,16 @@ describe("a signature", () => {
       (f) => ({ ...f, object: { $link: `sha256:${hello.link.slice(7).toUpperCase()}` } }),
     ],
     ["its object's link as a bare string", (f) => ({ ...f, object: hello.link })],
-    ["a field besides identity, object and signature", (f) => ({ ...f, role: "buyer" })],
+    ["a field besides signedIdentity, object and signature", (f) => ({ ...f, role: "buyer" })],
     ["no signature", ({ signature: _, ...f }) => f],
     ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     [
-      "its identity written in place of the link to it",
-      (f) => ({ ...f, identity: dataOf(identities.encode(signer("ed25519").key)) }),
+      "an identity written in place of the link to its signed identity",
+      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer("ed25519").key)) }),
     ],
     [
       "its identity in place of its signed identity",
-      (f) => ({ ...f, identity: { $link: identities.encode(signer("ed25519").key).link } }),
+      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer("ed25519").key).link } }),
     ],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer("ed25519"));
@@ -155,22 +155,22 @@ describe("a signature", () => {
 
 describe("an identity actor", () => {
   it("signs as the signed identity it is made for", async () => {
-    const identity = await identities.publish(signer("ed25519"));
-    const signature = await signatures.actor(signer("ed25519"), identity).sign(hello);
-    expect(signature.identity).toBe(identity);
-    expect(signature.data.identity.$link).toBe(identity.link);
+    const signedIdentity = await identities.publish(signer("ed25519"));
+    const signature = await signatures.actor(signer("ed25519"), signedIdentity).sign(hello);
+    expect(signature.signedIdentity).toBe(signedIdentity);
+    expect(signature.data.signedIdentity.$link).toBe(signedIdentity.link);
   });
 
   it("is not made for a signer that is not the identity's root", async () => {
-    const identity = await identities.publish(signer("ed25519"));
-    expect(() => signatures.actor(signer("ed25519", 2), identity)).toThrow(/not the root/);
-    expect(() => signatures.actor(signer("solana-offchain"), identity)).toThrow(/not the root/);
+    const signedIdentity = await identities.publish(signer("ed25519"));
+    expect(() => signatures.actor(signer("ed25519", 2), signedIdentity)).toThrow(/not the root/);
+    expect(() => signatures.actor(signer("solana-offchain"), signedIdentity)).toThrow(/not the root/);
   });
 
   it("refuses a signature that does not verify for its key", async () => {
-    const identity = await identities.publish(signer("ed25519", 2));
+    const signedIdentity = await identities.publish(signer("ed25519", 2));
     const wrong: Signer = { key: signer("ed25519", 2).key, sign: (digest) => signer("ed25519").sign(digest) };
-    await expect(signatures.actor(wrong, identity).sign(hello)).rejects.toThrow(/does not verify/);
+    await expect(signatures.actor(wrong, signedIdentity).sign(hello)).rejects.toThrow(/does not verify/);
   });
 });
 

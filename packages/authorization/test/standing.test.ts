@@ -84,7 +84,7 @@ const unchecked = (
 describe("a standing", () => {
   it("by a direct signature is its signer's own, through no agents and with no blobs but its signer's identity's", async () => {
     const entry = await signed(target, root);
-    const blobs = byLink([entry.signature.bytes, ...entry.signature.identity.blobs]);
+    const blobs = byLink([entry.signature.bytes, ...entry.signature.signedIdentity.blobs]);
     expect(await authorizations.readStanding(target.link, entry.signature.link, blobs)).toEqual(way(root));
   });
 
@@ -208,7 +208,7 @@ describe("a standing through a proxy", () => {
     const swaps: [string, Uint8Array][] = [
       [rootToHot.object.link, rootToDeputy.object.bytes],
       [rootToHot.signature.link, rootToDeputy.signature.bytes],
-      [rootToHot.signature.identity.link, alike.signature.identity.bytes],
+      [rootToHot.signature.signedIdentity.link, alike.signature.signedIdentity.bytes],
       [proxy.signature.object, alikeObject],
       [rootToHot.object.agent.link, identityOf(deputy).bytes],
       [rootToHot.object.agent.root.link, identityOf(deputy).root.bytes],

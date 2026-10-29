@@ -54,7 +54,7 @@ const accepting = async (service: MailboxService, body: Uint8Array) =>
 /** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await (await actorOf(by)).sign(offer);
-  return { signature, zip: await packBundle(signature, signature.identity.blobs) };
+  return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
@@ -77,14 +77,14 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     const { signature, data, offered, offer, accept } = await rootOf(service);
-    expect(signature.identity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
       offers: [{ offer: { $link: offered.link }, accept }],
     });
     expect(accept).toBe(offer.link);
-    expect(offered.identity.identity.link).toBe(serviceIdentity.link);
+    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity.link);
     expect(offer.data).toEqual({ identity: { $link: serviceIdentity.link } });
   });
 
@@ -95,7 +95,7 @@ describe("a mailbox service", () => {
     const response = await post(service, accept, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
-    expect(signature.identity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
     expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle)).toEqual({
       principal: identities.encode(alice.key),
@@ -295,7 +295,7 @@ describe("a mailbox service started again", () => {
     const { service: moved } = await memoryService({ store, by, origin: "https://post.example", start: 9_000 });
     const after = await rootOf(moved);
     expect(after.data.origin).toBe("https://post.example");
-    expect(after.signature.identity.link).toBe(before.signature.identity.link);
+    expect(after.signature.signedIdentity.link).toBe(before.signature.signedIdentity.link);
     expect(sign).toHaveBeenCalledOnce();
   });
 

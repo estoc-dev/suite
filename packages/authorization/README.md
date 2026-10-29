@@ -41,7 +41,7 @@ const wallet = signatures.actor(walletSigner, await signatures.identities.publis
 const grant = await authorizations.authorize(browserKey.key, wallet);
 // The agent receives the link of the signature, and the signature with the blobs it leads to:
 // grant.signature.bytes, grant.object.bytes, and the blobs of both identities,
-// grant.signature.identity.blobs and grant.object.agent.blobs.
+// grant.signature.signedIdentity.blobs and grant.object.agent.blobs.
 const received = await authorizations.readAuthorization(grant.signature.link, blobs);
 ```
 

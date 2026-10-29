@@ -50,7 +50,7 @@ async function signersOf(link: Link<unknown>, received: Received): Promise<Ident
   );
   return (await Promise.all(read))
     .filter((signature) => signature.object === link)
-    .map((signature) => signature.identity.identity);
+    .map((signature) => signature.signedIdentity.identity);
 }
 
 const login = await encodeSchema(
@@ -76,15 +76,15 @@ async function loggedIn(
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
   const read = await signatures.verify(decodeObject(signature, signatures.schema), byLink(identity));
-  return read.object === expected.link ? read.identity.identity : undefined;
+  return read.object === expected.link ? read.signedIdentity.identity : undefined;
 }
 
 describe("a login", () => {
   const user = signer("eip191", 1);
   const signed = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
-    const { bytes, identity } = await signed;
-    return loggedIn(audience, nonce, bytes, identity.blobs);
+    const { bytes, signedIdentity } = await signed;
+    return loggedIn(audience, nonce, bytes, signedIdentity.blobs);
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
@@ -166,7 +166,7 @@ const terms = encodeObject(sale, {
 });
 const confirmation = encodeObject(delivery, { sale: { $link: terms.link } });
 const receive = (signed: readonly Signature[]): Received => ({
-  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ identity }) => identity.blobs)]),
+  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs)]),
   signatures: signed.map(({ bytes }) => bytes),
 });
 const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>

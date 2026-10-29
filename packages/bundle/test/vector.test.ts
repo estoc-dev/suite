@@ -49,12 +49,12 @@ const signedIdentityText =
   'aa149e6de2bf1543316e69bee4cf66c80056a3f25cb315cc621ae439d8386f01"}';
 const signedIdentityLink = "sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe";
 const signatureText =
-  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"},' +
+  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
-  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e"}';
-const signatureLink = "sha256:8231b22129b63f31cbcb32c8f0f66641f0061184a6ef4bf7baaa6835f5f155bc";
+  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e",' +
+  '"signedIdentity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"}}';
+const signatureLink = "sha256:5f7b0b3af90bb61a512241aaa46f65ca66349791272d91a3aff23a8e4c849f9b";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -83,7 +83,7 @@ describe("a bundle whose root is a signature over a login object, carrying the o
         [keyLink, utf8(keyText)],
       ]),
     );
-    const written = writeBundle(signature, [utf8(objectText), ...signature.identity.blobs]);
+    const written = writeBundle(signature, [utf8(objectText), ...signature.signedIdentity.blobs]);
     expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
   });
 

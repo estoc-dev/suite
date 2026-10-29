@@ -145,15 +145,15 @@ export class Authorizations {
   async readEntry(entry: Link<Signature>, reader: Reader): Promise<Standing & { readonly target: Link<never> }> {
     const signature = await this.signatures.read(entry, reader);
     if (!(await this.#isProxy(signature.object, reader))) {
-      return { target: signature.object, principal: signature.identity.identity, agents: [] };
+      return { target: signature.object, principal: signature.signedIdentity.identity, agents: [] };
     }
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) chain.push(await this.readAuthorization(link, reader));
-    checkChain(chain, signature.identity.identity.link);
+    checkChain(chain, signature.signedIdentity.identity.link);
     return {
       target: proxy.target,
-      principal: chain[0].signature.identity.identity,
+      principal: chain[0].signature.signedIdentity.identity,
       agents: chain.map(({ object }) => object.agent),
     };
   }
@@ -192,11 +192,11 @@ export class Actor implements Standing {
   constructor(proxy: Schema<Json, ProxyData>, actor: IdentityActor, chain: readonly Signed<Authorization>[]) {
     const [first] = chain;
     if (first === undefined) {
-      this.principal = actor.identity.identity;
+      this.principal = actor.signedIdentity.identity;
       this.agents = [];
     } else {
-      checkChain(chain, actor.identity.identity.link);
-      this.principal = first.signature.identity.identity;
+      checkChain(chain, actor.signedIdentity.identity.link);
+      this.principal = first.signature.signedIdentity.identity;
       this.agents = chain.map(({ object }) => object.agent);
     }
     this.#proxySchema = proxy;
@@ -211,7 +211,7 @@ export class Actor implements Standing {
   async sign(target: Link<unknown>): Promise<Entry> {
     if (this.#chain.length === 0) {
       const signature = await this.#actor.sign({ link: target });
-      return { signature, blobs: signature.identity.blobs };
+      return { signature, blobs: signature.signedIdentity.blobs };
     }
     const data = {
       target: { $link: target as Link<never> },
@@ -221,11 +221,11 @@ export class Actor implements Standing {
     const signature = await this.#actor.sign(proxy);
     const chain = this.#chain.flatMap(({ object, signature }) => [
       signature.bytes,
-      ...signature.identity.blobs,
+      ...signature.signedIdentity.blobs,
       object.bytes,
       ...object.agent.blobs,
     ]);
-    return { signature, blobs: [...byLink([...signature.identity.blobs, proxy.bytes, ...chain]).values()] };
+    return { signature, blobs: [...byLink([...signature.signedIdentity.blobs, proxy.bytes, ...chain]).values()] };
   }
 }
 
@@ -255,7 +255,7 @@ function checkChain(
   if (last === undefined) throw new Error("a proxy names at least one authorization");
   const linked = chain.every(({ object }, i) => {
     const next = chain[i + 1];
-    return next === undefined || object.agent.link === next.signature.identity.identity.link;
+    return next === undefined || object.agent.link === next.signature.signedIdentity.identity.link;
   });
   if (!linked) throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
   if (last.object.agent.link !== signer) throw new Error("a proxy is signed by the last agent in its chain");

@@ -65,20 +65,20 @@ const signedIdentityText =
 const signedIdentityLink = "sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe";
 const signatureSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"properties":{"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
-  '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
+  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},' +
+  '"signedIdentity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
+  '"required":["signedIdentity","object","signature"],"title":"Signature","type":"object"}';
+const signatureSchemaLink = "sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135";
 const signatureText =
-  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"},' +
+  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
-  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e"}';
-const signatureLink = "sha256:8231b22129b63f31cbcb32c8f0f66641f0061184a6ef4bf7baaa6835f5f155bc";
+  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e",' +
+  '"signedIdentity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"}}';
+const signatureLink = "sha256:5f7b0b3af90bb61a512241aaa46f65ca66349791272d91a3aff23a8e4c849f9b";
 
 // The login object of the vector in @estoc/object.
 const objectLink: Link<never> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
@@ -118,13 +118,13 @@ describe("an identity with an Ed25519 root, signed, and its signature over the l
     const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
     const actor = signatures.actor(root, await signatures.identities.publish(root));
     const signature = await actor.sign({ link: objectLink });
-    const { identity } = signature.identity;
+    const { identity } = signature.signedIdentity;
     expect(text(identity.root.bytes)).toBe(keyText);
     expect(identity.root.link).toBe(keyLink);
     expect(text(identity.bytes)).toBe(identityText);
     expect(identity.link).toBe(identityLink);
-    expect(text(signature.identity.bytes)).toBe(signedIdentityText);
-    expect(signature.identity.link).toBe(signedIdentityLink);
+    expect(text(signature.signedIdentity.bytes)).toBe(signedIdentityText);
+    expect(signature.signedIdentity.link).toBe(signedIdentityLink);
     expect(text(signature.bytes)).toBe(signatureText);
     expect(signature.link).toBe(signatureLink);
   });

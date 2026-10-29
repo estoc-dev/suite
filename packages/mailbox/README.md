@@ -73,7 +73,7 @@ const signature = await signatures.read(bundle.link, bundle);
 import { mailboxFrom } from "@estoc/mailbox";
 
 const mailbox = await mailboxFrom(handedOut, { transports: [transport] });
-await mailbox.send(signature, [object.bytes, ...signature.identity.blobs]);
+await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
 ```
 
 `mailboxFrom` takes the bytes of a mailbox alone; who stands behind it is

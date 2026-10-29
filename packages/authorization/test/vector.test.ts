@@ -28,24 +28,24 @@ const authorizationText =
   '"agent":{"$link":"sha256:9266b958ad1eca7e1ac843bdc5dde8f3223906f2b85eeeef40b086e6589b2e0a"}}';
 const authorizationLink = "sha256:29fae116a06b22080608a584f3e4cc7dddd926516303d10ccdfb433f20d43bbc";
 const grantText =
-  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"},' +
+  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:29fae116a06b22080608a584f3e4cc7dddd926516303d10ccdfb433f20d43bbc"},' +
   '"signature":"0457cf39a0a5888e02530342bc8a359752ff1473beffef5790bd9c7fd3d3843d' +
-  '8ad66b69c310222287fea2f3dff212f37cea6f1c0ee540ceb41e465331dfc009"}';
-const grantLink = "sha256:12d7d9e825192cf9f6534339dcc4819fcb98ee6fa2c9cd64f158b78e08cf64e3";
+  '8ad66b69c310222287fea2f3dff212f37cea6f1c0ee540ceb41e465331dfc009",' +
+  '"signedIdentity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"}}';
+const grantLink = "sha256:2a2a69021b3d1c971f5139cdff945139bffa88b557827125b57eb54f03293ed8";
 const proxyText =
   '{"$describedBy":{"$link":"sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71"},' +
-  '"chain":[{"$link":"sha256:12d7d9e825192cf9f6534339dcc4819fcb98ee6fa2c9cd64f158b78e08cf64e3"}],' +
+  '"chain":[{"$link":"sha256:2a2a69021b3d1c971f5139cdff945139bffa88b557827125b57eb54f03293ed8"}],' +
   '"target":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"}}';
-const proxyLink = "sha256:8ee43a465e980eeefb66247430bea97890f552299a3b33ca882fb868f388e155";
+const proxyLink = "sha256:ec3ac350c625171e428c7f1fd1697da4623c78fcafd771aa1a88b47ae612c3e0";
 const proxySignatureText =
-  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:2f6bfd6f40544241ba6adbed092f1a84596ea19d83387620f0c5640b657aed72"},' +
-  '"object":{"$link":"sha256:8ee43a465e980eeefb66247430bea97890f552299a3b33ca882fb868f388e155"},' +
-  '"signature":"527d8b4aa9ae9dc4e9157f7a9855536d8d57865876eed3ca03809f8a35eb8a72' +
-  '3792f8f5936e40d5579249a78c97c2f9a2c82017b2d5becfd78a84a40ae41006"}';
-const proxySignatureLink = "sha256:8e23ec03755195d79115272dcb479500ca778b5a2868bf7fd7bc5cdd200f5b04";
+  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
+  '"object":{"$link":"sha256:ec3ac350c625171e428c7f1fd1697da4623c78fcafd771aa1a88b47ae612c3e0"},' +
+  '"signature":"541c3ba34accbb745ba04d63c59cf76f9d30638f363390ddc0da4867a44922ea' +
+  '5551465505a41c081b21a6856bbdc6c7a14030cb31fe9fd46c4ae5a45fb0a000",' +
+  '"signedIdentity":{"$link":"sha256:2f6bfd6f40544241ba6adbed092f1a84596ea19d83387620f0c5640b657aed72"}}';
+const proxySignatureLink = "sha256:b94af375d84583e592f9a753241158cee3067016a9f506ccc9132af2d9fdb278";
 // The signed identity of the signer of the vector in @estoc/identity, its identity and its root.
 const rootKeyText =
   '{"$describedBy":{"$link":"sha256:56ba2935043425c303dcf4d2b68ad608ab724b342a8a4c78665829549917912a"},' +
@@ -82,8 +82,8 @@ describe("the two schemas, an Ed25519 authorization and a proxy its agent signs"
     expect(text(grant.object.agent.root.bytes)).toBe(hotKeyText);
     expect(text(grant.object.agent.bytes)).toBe(hotIdentityText);
     expect(grant.object.agent.link).toBe(hotIdentityLink);
-    expect(text(hotActor.identity.bytes)).toBe(hotSignedText);
-    expect(hotActor.identity.link).toBe(hotSignedLink);
+    expect(text(hotActor.signedIdentity.bytes)).toBe(hotSignedText);
+    expect(hotActor.signedIdentity.link).toBe(hotSignedLink);
     expect(text(grant.object.bytes)).toBe(authorizationText);
     expect(grant.object.link).toBe(authorizationLink);
     expect(text(grant.signature.bytes)).toBe(grantText);
@@ -109,7 +109,7 @@ describe("the two schemas, an Ed25519 authorization and a proxy its agent signs"
     ];
     const blobs = new Map<string, Uint8Array>(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
     const read = await authorizations.readAuthorization(grantLink, blobs);
-    expect(read.signature.identity.identity).toEqual(identities.encode(root.key));
+    expect(read.signature.signedIdentity.identity).toEqual(identities.encode(root.key));
     expect(read.object.agent).toEqual(identities.encode(hot.key));
     const standing = await authorizations.readStanding(target, proxySignatureLink, blobs);
     expect(standing).toEqual({

@@ -94,11 +94,11 @@ describe("a bundle", () => {
   });
 
   it("reads with a signature as its root, which leads to the object it is over and to its signed identity", async () => {
-    const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.identity.blobs]));
+    const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
     expect(bundle.link).toBe(signature.link);
     const signed = await signatures.read(bundle.link, bundle);
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle)).toEqual(signed);
-    expect(signed.identity.identity).toEqual(identities.encode(alice.key));
+    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 
@@ -110,23 +110,23 @@ describe("a bundle", () => {
       writeBundle(grant.object, [
         grant.signature.bytes,
         ...grant.object.agent.blobs,
-        ...grant.signature.identity.blobs,
+        ...grant.signature.signedIdentity.blobs,
       ]),
     );
     expect(bundle.link).toBe(grant.object.link);
     expect(await authorizations.readAuthorization(grant.signature.link, bundle)).toEqual(grant);
   });
 
-  it("reads with a signature that does not verify or whose identity is written to an unknown schema, as bytes", async () => {
+  it("reads with a signature that does not verify or whose signed identity is written to an unknown schema, as bytes", async () => {
     const changed = rewritten(signature.bytes, (fields) => {
       const hex = fields.signature as string;
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
     });
-    const { data } = json.fields(json.decode(signature.identity.bytes));
+    const { data } = json.fields(json.decode(signature.signedIdentity.bytes));
     const laterSchema = linkOf(json.encode({ $schema: DRAFT, title: "A later signed identity" }));
     const later = json.encode(json.object(data, laterSchema));
-    const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { $link: linkOf(later) } }));
-    const identityBytes = new Map([...signature.identity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));
+    const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, signedIdentity: { $link: linkOf(later) } }));
+    const identityBytes = new Map([...signature.signedIdentity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       await expect(async () =>
         signatures.verify(decodeObject(blob, signatures.schema), identityBytes),
@@ -182,7 +182,7 @@ describe("a bundle", () => {
       given(root.bytes),
       given(signature.bytes),
       given(hello.bytes),
-      ...signature.identity.blobs.map(given),
+      ...signature.signedIdentity.blobs.map(given),
     );
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);

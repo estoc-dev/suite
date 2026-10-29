@@ -100,10 +100,10 @@ async function signedService(
   const blobs = [
     service.bytes,
     serviceSchemaRead.bytes,
-    ...signature.identity.blobs,
+    ...signature.signedIdentity.blobs,
     signatures.schema.bytes,
     ...signed.map(({ bytes }) => bytes),
-    ...signed.flatMap(({ identity }) => identity.blobs),
+    ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs),
     ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
   ];
   return packBundle(signature, blobs);
@@ -118,7 +118,7 @@ describe("a service reached at its origin", () => {
     expect(service.account?.service).toEqual(serviceIdentity);
     expect(service.account?.link).toBe(offer.link);
     expect(await mine(store)).toEqual([service.link]);
-    expect((await signatures.read(service.link, store)).identity.identity.link).toBe(serviceIdentity.link);
+    expect((await signatures.read(service.link, store)).signedIdentity.identity.link).toBe(serviceIdentity.link);
   });
 
   it.each([
@@ -243,7 +243,7 @@ describe("an account offer", () => {
     });
     expect(await mine(store)).toEqual([service.link, account.link].sort());
     const kept = await signatures.read(account.link, store);
-    expect(kept.identity.identity.link).toBe(serviceIdentity.link);
+    expect(kept.signedIdentity.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
     expect((await authorizations.readStanding(offer.link, accepted.$link, store)).principal.link).toBe(
       account.identity.link,
@@ -287,7 +287,7 @@ describe("accepting an account offer", () => {
         at: 1,
       });
       const signature = await (await actorOf(mallory)).sign(acknowledgement);
-      return new Response(await packBundle(signature, [acknowledgement.bytes, ...signature.identity.blobs]), {
+      return new Response(await packBundle(signature, [acknowledgement.bytes, ...signature.signedIdentity.blobs]), {
         status: 201,
       });
     });
@@ -300,7 +300,9 @@ describe("accepting an account offer", () => {
   it("refuses the service's acknowledgement of another identity's account, and writes nothing", async () => {
     const bobs = await (await actorOf(bob)).sign(offer);
     const { origin } = await running({}, async (service, request) =>
-      service.fetch(new Request(request.url, { method: "POST", body: await packBundle(bobs, bobs.identity.blobs) })),
+      service.fetch(
+        new Request(request.url, { method: "POST", body: await packBundle(bobs, bobs.signedIdentity.blobs) }),
+      ),
     );
     const { store, services } = await client();
     const account = await accountAt(services, origin);

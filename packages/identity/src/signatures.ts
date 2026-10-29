@@ -35,34 +35,34 @@ export const signatureSchema: JsonSchema = {
   title: "Signature",
   type: "object",
   properties: {
-    identity: linkSchema,
+    signedIdentity: linkSchema,
     object: linkSchema,
     signature: hexSchema,
   },
-  required: ["identity", "object", "signature"],
+  required: ["signedIdentity", "object", "signature"],
   additionalProperties: false,
 };
 
 export type SignatureData = {
-  readonly identity: JsonLink<SignedIdentityObject>;
+  readonly signedIdentity: JsonLink<SignedIdentityObject>;
   readonly object: JsonLink<never>;
   readonly signature: string;
 };
 
 /**
  * An identity standing behind an object, as an object written to
- * `signatureSchema`: `{"$describedBy": <link to signatureSchema>, "identity":
- * <link to the signed identity>, "object": <link to the object>, "signature":
- * <hex>}`, read and verified. That is all it says. Who has to sign, in what
- * role and by when are for the application that reads the object to decide.
- * It names the object by link, so it verifies without the object, but not
- * without the blobs of its identity. It travels apart from other signatures
- * over the same object. It does not say what the object is, so its link
- * reads as any.
+ * `signatureSchema`: `{"$describedBy": <link to signatureSchema>,
+ * "signedIdentity": <link to the signed identity>, "object": <link to the
+ * object>, "signature": <hex>}`, read and verified. That is all it says.
+ * Who has to sign, in what role and by when are for the application that
+ * reads the object to decide. It names the object by link, so it verifies
+ * without the object, but not without the blobs of its signed identity. It
+ * travels apart from other signatures over the same object. It does not
+ * say what the object is, so its link reads as any.
  */
 export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly link: Link<Signature>;
-  readonly identity: SignedIdentityObject;
+  readonly signedIdentity: SignedIdentityObject;
   readonly object: Link<never>;
   readonly signature: Uint8Array;
 }
@@ -72,10 +72,10 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
  * of it, which every signature it makes names.
  */
 export interface IdentityActor {
-  readonly identity: SignedIdentityObject;
+  readonly signedIdentity: SignedIdentityObject;
   /**
    * Signs the link of an object, and so the object, whatever it is read as.
-   * The signature's `identity.blobs` go along with it. A signature that does
+   * The signature's `signedIdentity.blobs` go along with it. A signature that does
    * not verify is refused.
    */
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
@@ -101,7 +101,7 @@ export class Signatures {
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
-    return signatureOf(signature, await this.identities.readSigned(signature.data.identity.$link, reader));
+    return signatureOf(signature, await this.identities.readSigned(signature.data.signedIdentity.$link, reader));
   }
 
   /** Reads the signature that `link` names from `reader`, and verifies it. */
@@ -109,33 +109,32 @@ export class Signatures {
     return this.verify(await readObject(reader, link, this.schema), reader);
   }
 
-  /** An actor for `identity`, which refuses a signer that is not its root. */
-  actor(signer: Signer, identity: SignedIdentityObject): IdentityActor {
-    if (!sameKey(signer.key, identity.identity.root)) {
-      throw new Error(`the signer's key is not the root of ${identity.identity.link}`);
-    }
+  /** An actor for `signedIdentity`, which refuses a signer that is not its root. */
+  actor(signer: Signer, signedIdentity: SignedIdentityObject): IdentityActor {
+    const { identity } = signedIdentity;
+    if (!sameKey(signer.key, identity.root)) throw new Error(`the signer's key is not the root of ${identity.link}`);
     const schema = this.schema;
     return {
-      identity,
+      signedIdentity,
       async sign(object) {
         const data = {
-          identity: { $link: identity.link },
+          signedIdentity: { $link: signedIdentity.link },
           object: { $link: object.link as Link<never> },
           signature: bytesToHex(await signer.sign(digestOf(object.link))),
         };
-        return signatureOf(encodeObject(schema, data), identity);
+        return signatureOf(encodeObject(schema, data), signedIdentity);
       },
     };
   }
 }
 
-function signatureOf(signature: EncodedObject<Json, SignatureData>, identity: SignedIdentityObject): Signature {
+function signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
   const object = signature.data.object.$link;
   const value = hexToBytes(signature.data.signature);
-  if (!verify(identity.identity.root, digestOf(object), value)) {
+  if (!verify(signedIdentity.identity.root, digestOf(object), value)) {
     throw new Error(`the signature does not verify for ${object}`);
   }
-  return { ...signature, link: signature.link as Link<Signature>, identity, object, signature: value };
+  return { ...signature, link: signature.link as Link<Signature>, signedIdentity, object, signature: value };
 }
 
 /** Signatures and the identities they name, with their schemas compiled by `validator`. */

@@ -8,6 +8,7 @@ import { loadServices, type Services } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
+  actorOf,
   authorizations,
   identities,
   memoryService,
@@ -32,7 +33,10 @@ const mallory = signer("ed25519", 6);
 const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.link } });
 
 const through = async (agent: Signer, principal: Signer) =>
-  authorizations.createActor(agent, [await authorizations.authorize(agent.key, principal)]);
+  authorizations.createActor(await actorOf(agent), [
+    await authorizations.authorize(agent.key, await actorOf(principal)),
+  ]);
+const directly = async (by: Signer) => authorizations.createActor(await actorOf(by));
 
 const servers: { close(): Promise<void> }[] = [];
 afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => server.close()))));
@@ -89,10 +93,10 @@ async function signedService(
   offers: readonly (readonly [EncodedObject<Json>, Signer])[],
   by: Signer = serviceSigner,
 ) {
-  const signed = await Promise.all(offers.map(([object, signer]) => signatures.sign(object, signer)));
+  const signed = await Promise.all(offers.map(async ([object, signer]) => (await actorOf(signer)).sign(object)));
   const listed = signed.map((signature) => ({ offer: { $link: signature.link }, accept: signature.object }));
   const service = encodeObject(serviceSchemaRead, { origin, at: 1, offers: listed });
-  const signature = await signatures.sign(service, by);
+  const signature = await (await actorOf(by)).sign(service);
   const blobs = [
     service.bytes,
     serviceSchemaRead.bytes,
@@ -114,7 +118,7 @@ describe("a service reached at its origin", () => {
     expect(service.account?.service).toEqual(serviceIdentity);
     expect(service.account?.link).toBe(offer.link);
     expect(await mine(store)).toEqual([service.link]);
-    expect((await signatures.read(service.link, store)).identity.link).toBe(serviceIdentity.link);
+    expect((await signatures.read(service.link, store)).identity.identity.link).toBe(serviceIdentity.link);
   });
 
   it.each([
@@ -186,7 +190,7 @@ describe("a service found by its identity", () => {
     await first.close();
     const account = (await services.of(serviceIdentity.link))?.account;
     assert.exists(account);
-    expect((await account.accept(authorizations.createActor(alice))).at).toBe(5_001);
+    expect((await account.accept(await directly(alice))).at).toBe(5_001);
   });
 
   it("is, of two Services at the same at, the one whose signature has the greater link, whichever the store took first", async () => {
@@ -230,7 +234,7 @@ describe("an account offer", () => {
     const { store, services } = await client();
     const service = await services.at(origin);
     assert.exists(service.account);
-    const account = await service.account.accept(authorizations.createActor(alice));
+    const account = await service.account.accept(await directly(alice));
     expect(account).toEqual({
       identity: identities.encode(alice.key),
       service: serviceIdentity,
@@ -239,7 +243,7 @@ describe("an account offer", () => {
     });
     expect(await mine(store)).toEqual([service.link, account.link].sort());
     const kept = await signatures.read(account.link, store);
-    expect(kept.identity.link).toBe(serviceIdentity.link);
+    expect(kept.identity.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
     expect((await authorizations.readStanding(offer.link, accepted.$link, store)).principal.link).toBe(
       account.identity.link,
@@ -269,7 +273,7 @@ describe("an account offer", () => {
     const { store, services } = await client();
     const service = await services.at(origin);
     assert.exists(service.account);
-    const itself = authorizations.createActor(serviceSigner);
+    const itself = await directly(serviceSigner);
     await expect(service.account.accept(itself)).rejects.toThrow(/answered 400: a service opens no account for itself/);
     expect(await mine(store)).toEqual([service.link]);
   });
@@ -282,25 +286,25 @@ describe("accepting an account offer", () => {
         accepted: { $link: (await unpackBundle(new Uint8Array(await request.arrayBuffer()))).link },
         at: 1,
       });
-      const signature = await signatures.sign(acknowledgement, mallory);
+      const signature = await (await actorOf(mallory)).sign(acknowledgement);
       return new Response(await packBundle(signature, [acknowledgement.bytes, ...signature.identity.blobs]), {
         status: 201,
       });
     });
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(authorizations.createActor(alice))).rejects.toThrow(/signed by another identity/);
+    await expect(account.accept(await directly(alice))).rejects.toThrow(/signed by another identity/);
     expect(await mine(store)).toHaveLength(1);
   });
 
   it("refuses the service's acknowledgement of another identity's account, and writes nothing", async () => {
-    const bobs = await signatures.sign(offer, bob);
+    const bobs = await (await actorOf(bob)).sign(offer);
     const { origin } = await running({}, async (service, request) =>
       service.fetch(new Request(request.url, { method: "POST", body: await packBundle(bobs, bobs.identity.blobs) })),
     );
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(authorizations.createActor(alice))).rejects.toThrow(/another identity's account/);
+    await expect(account.accept(await directly(alice))).rejects.toThrow(/another identity's account/);
     expect(await mine(store)).toHaveLength(1);
   });
 });

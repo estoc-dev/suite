@@ -6,7 +6,7 @@ import {
   type Standing,
 } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { IdentityObject, Signature, Signatures, Signer } from "@estoc/identity";
+import type { IdentityActor, IdentityObject, Signature, Signatures, Signer } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -100,7 +100,7 @@ export interface ServiceOptions {
  * offer of an account opens one for whoever signed the offer.
  */
 class MailboxService {
-  readonly #signer: Signer;
+  readonly #actor: IdentityActor;
   readonly #offer: EncodedObject<Json, AccountOfferData>;
   readonly #locations: Locations;
   readonly #authorizations: Authorizations;
@@ -110,13 +110,13 @@ class MailboxService {
   readonly #clock: () => number;
 
   constructor(
-    signer: Signer,
+    actor: IdentityActor,
     { offer, locations }: { readonly offer: EncodedObject<Json, AccountOfferData>; readonly locations: Locations },
     authorizations: Authorizations,
     schemas: Schemas,
     { store, accounts, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "clock">>,
   ) {
-    this.#signer = signer;
+    this.#actor = actor;
     this.#offer = offer;
     this.#locations = locations;
     this.#authorizations = authorizations;
@@ -174,7 +174,7 @@ class MailboxService {
     const kept = await this.#accounts.get(identity);
     if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
-    const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
+    const signature = await this.#actor.sign(acknowledgement);
     const identities = [standing.principal, ...standing.agents].flatMap(({ blobs }) => blobs);
     const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS, ...identities];
     await this.#store.write({ mine: [signature], blobs: [...blobs, ...accepted.blobs()] });
@@ -226,7 +226,9 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  * it offered there. When the service says the same now, that Service stays
  * the latest, and else the service signs a new one. Either way the offer is
  * listed under its link, with the service's signature over it from the
- * latest Service that lists it.
+ * latest Service that lists it. The service signs as the signed identity
+ * of its latest Service, and publishes its identity only when the store
+ * holds no Service of it.
  */
 export async function loadMailboxService(
   signer: Signer,
@@ -246,13 +248,14 @@ export async function loadMailboxService(
   const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
   const index = locations(signatures, schemas.service);
 
-  const services = await Promise.all(
-    (await servicesOf(store, index, identity.link)).map((link) =>
-      readService(link, signatures, store, schemas.service),
-    ),
+  const signed = await Promise.all(
+    (await servicesOf(store, index, identity.link)).map((link) => signatures.read(link, store)),
   );
+  const [latest] = signed;
+  const actor = signatures.actor(signer, latest?.identity ?? (await signatures.identities.publish(signer)));
+  const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
-  const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await signatures.sign(offer, signer));
+  const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
   const next: ServiceData = {
     origin,
     // The latest `at` says where the service is, so a clock set back does
@@ -262,7 +265,6 @@ export async function loadMailboxService(
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
     const object = encodeObject(schemas.service, next);
-    const signed = await signatures.sign(object, signer);
     const blobs = [
       object.bytes,
       schemas.service.bytes,
@@ -270,11 +272,11 @@ export async function loadMailboxService(
       offer.bytes,
       offerSchema.bytes,
       signatures.schema.bytes,
-      ...identity.blobs,
+      ...actor.identity.blobs,
     ];
-    await store.write({ mine: [signed], blobs });
+    await store.write({ mine: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(signer, { offer, locations: index }, authorizations, schemas, { ...options, clock });
+  return new MailboxService(actor, { offer, locations: index }, authorizations, schemas, { ...options, clock });
 }
 
 async function readService(

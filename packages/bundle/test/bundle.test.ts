@@ -40,7 +40,8 @@ const links = await encodeSchema(
 );
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const signature = await signatures.sign(hello, alice);
+const asAlice = signatures.actor(alice, await identities.publish(alice));
+const signature = await asAlice.sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
   links: [signature.link, hello.link, linkOf(image)].map((link) => ({ $link: link })),
@@ -92,19 +93,19 @@ describe("a bundle", () => {
     expect(() => writeBundle({ bytes: image }, [hello.bytes])).toThrow(/not an object/);
   });
 
-  it("reads with a signature as its root, which leads to the object it is over and to its identity", async () => {
+  it("reads with a signature as its root, which leads to the object it is over and to its signed identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.identity.blobs]));
     expect(bundle.link).toBe(signature.link);
     const signed = await signatures.read(bundle.link, bundle);
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle)).toEqual(signed);
-    expect(signed.identity).toEqual(identities.encode(alice.key));
+    expect(signed.identity.identity).toEqual(identities.encode(alice.key));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 
   it("takes as its root an authorization as it was read, and writes it as it was signed", async () => {
     const authorizations = await loadAuthorizations(defaultValidator);
     const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
-    const grant = await authorizations.authorize(agent.key, alice);
+    const grant = await authorizations.authorize(agent.key, asAlice);
     const bundle = readBundle(
       writeBundle(grant.object, [
         grant.signature.bytes,
@@ -122,7 +123,7 @@ describe("a bundle", () => {
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
     });
     const { data } = json.fields(json.decode(signature.identity.bytes));
-    const laterSchema = linkOf(json.encode({ $schema: DRAFT, title: "A later identity" }));
+    const laterSchema = linkOf(json.encode({ $schema: DRAFT, title: "A later signed identity" }));
     const later = json.encode(json.object(data, laterSchema));
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { $link: linkOf(later) } }));
     const identityBytes = new Map([...signature.identity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));

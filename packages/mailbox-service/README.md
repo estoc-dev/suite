@@ -106,19 +106,19 @@ confirm each signature, so the wallet can instead authorize a key on the
 device with `@estoc/authorization`, and the device signs a Proxy for the
 offer. The account is still the wallet's.
 
-`accept` takes an actor of `@estoc/authorization`, and opens the account of
-its principal:
+`accept` takes an actor of `@estoc/authorization`, made from an identity
+actor of `@estoc/identity`, and opens the account of its principal:
 
 ```ts
 const account = await service.account.accept(authorizations.createActor(wallet));
 // or, for the wallet, by a key on the device that it authorized:
-const account = await service.account.accept(authorizations.createActor(deviceKey, [grant]));
+const account = await service.account.accept(authorizations.createActor(device, [grant]));
 ```
 
 The actor signs the offer, or a proxy for it, and `accept` posts the
 bundle of that signature to `POST /<id>`, at the id that the Service lists
-with the offer: the signature as the root, with the identity, and for a
-proxy the Proxy and its chain. The offer and the schemas are left out,
+with the offer: the signature as the root, with the signed identity, and
+for a proxy the Proxy and its chain. The offer and the schemas are left out,
 since the service has them.
 
 The service reads who stands behind its offer by the root, with
@@ -178,9 +178,12 @@ export default { fetch: (request: Request) => service.fetch(request) };
 `loadMailboxService` takes the signer of the service's identity and the
 origin it is reached at. The origin is set there rather than read from a
 request, whose host is the requester's to choose. Started with an empty
-store, it signs the offer and a Service at that origin that lists the offer
-under its link, and writes the signature over the Service to `store`, a
-store of `@estoc/store`, as the service's own, with all it leads to. Each
+store, it has the signer sign the service's identity, then the offer and a
+Service at that origin that lists the offer under its link, and writes the
+signature over the Service to `store`, a store of `@estoc/store`, as the
+service's own, with all it leads to. Started with a store that holds a
+Service of its, it signs as the signed identity that the latest Service
+names, and the signer does not sign the identity again. Each
 acknowledgement it signs is written there too, as the service's own, with
 the acceptance and all it leads to, and what the bundle of an acceptance
 holds besides is dropped.

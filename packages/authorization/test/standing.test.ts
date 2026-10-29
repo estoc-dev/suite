@@ -31,15 +31,19 @@ const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 
-const rootToHot = await authorizations.authorize(hot.key, root);
-const hotToDeputy = await authorizations.authorize(deputy.key, hot);
+const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await identities.publish(by));
+const authorize = async (agent: SoftwareSigner, by: SoftwareSigner) =>
+  authorizations.authorize(agent.key, await actorOf(by));
+const rootToHot = await authorize(hot, root);
+const hotToDeputy = await authorize(deputy, hot);
 
 type AnySigned = Signed<{ readonly bytes: Uint8Array; readonly link: Link<unknown> }>;
 type Given = AnySigned | Entry;
 
 const identityOf = (signer: SoftwareSigner) => identities.encode(signer.key);
-// The blobs of every identity here, given with the blobs a test is about.
-const identityBlobs = [root, hot, deputy, stranger].flatMap((signer) => identityOf(signer).blobs);
+// The blobs of every signed identity here, given with the blobs a test is about.
+const signedIdentities = await Promise.all([root, hot, deputy, stranger].map((by) => identities.publish(by)));
+const identityBlobs = signedIdentities.flatMap(({ blobs }) => blobs);
 const parts = (given: Given) =>
   "blobs" in given ? [given.signature.bytes, ...given.blobs] : [given.object.bytes, given.signature.bytes];
 const byLink = (blobs: readonly Uint8Array[]) =>
@@ -51,7 +55,7 @@ const readEntry = (entry: Given, given: readonly Given[] = [], link: Link<unknow
     byLink([...identityBlobs, ...parts(entry), ...given.flatMap(parts)]),
   );
 const through = (chain: readonly Signed<Authorization>[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
-  authorizations.createActor(by, chain).sign(link);
+  actorOf(by).then((actor) => authorizations.createActor(actor, chain).sign(link));
 const way = (principal: SoftwareSigner, ...agents: SoftwareSigner[]): Standing => ({
   principal: identityOf(principal),
   agents: agents.map(identityOf),
@@ -61,7 +65,7 @@ const signed = async <T extends { readonly link: Link<unknown> }>(
   by: SoftwareSigner,
 ): Promise<Signed<T>> => ({
   object,
-  signature: await signatures.sign(object, by),
+  signature: await (await actorOf(by)).sign(object),
 });
 // A proxy written without the checks that an actor makes, as anyone could write one.
 const unchecked = (
@@ -106,13 +110,13 @@ describe("a proxy", () => {
   it("counts for no one when signed by anyone but its chain's last agent", async () => {
     const { signature, blobs } = await through([rootToHot], hot);
     for (const by of [root, deputy]) {
-      const entry = { signature: await signatures.sign({ link: signature.object }, by), blobs };
+      const entry = { signature: await (await actorOf(by)).sign({ link: signature.object }), blobs };
       await expect(readEntry(entry)).rejects.toThrow(/signed by the last agent/);
     }
   });
 
   it("counts for no one when its chain does not connect", async () => {
-    const strangerToDeputy = await authorizations.authorize(deputy.key, stranger);
+    const strangerToDeputy = await authorize(deputy, stranger);
     const proxy = await unchecked([rootToHot, strangerToDeputy], deputy);
     await expect(readEntry(proxy, [rootToHot, strangerToDeputy])).rejects.toThrow(
       /signed by the agent of the one before it/,
@@ -157,6 +161,9 @@ describe("a standing through a proxy", () => {
     "signature over it",
     "proxy",
     "signature over it",
+    "principal's signed identity",
+    "first agent's signed identity",
+    "second agent's signed identity",
     "principal's identity",
     "first agent's identity",
     "second agent's identity",
@@ -169,12 +176,14 @@ describe("a standing through a proxy", () => {
     const proxy = await through([rootToHot, hotToDeputy], deputy);
     const proxyObject = byLink(proxy.blobs).get(proxy.signature.object);
     assert.exists(proxyObject);
-    const identities = [root, hot, deputy].map(identityOf);
+    const signed = signedIdentities.slice(0, 3);
+    const identities = signed.map(({ identity }) => identity);
     const blobs = [
       ...parts(rootToHot),
       ...parts(hotToDeputy),
       proxyObject,
       proxy.signature.bytes,
+      ...signed.map(({ bytes }) => bytes),
       ...identities.map(({ bytes }) => bytes),
       ...identities.map(({ root }) => root.bytes),
     ];
@@ -187,11 +196,11 @@ describe("a standing through a proxy", () => {
   });
 
   it.each(
-    ["authorization", "signature over it", "proxy", "agent's identity", "agent's root"].map(
+    ["authorization", "signature over it", "signer's signed identity", "proxy", "agent's identity", "agent's root"].map(
       (name, i) => [i, name] as const,
     ),
   )("is not read when blob %i, the %s, is given as another of its kind", async (swapped) => {
-    const rootToDeputy = await authorizations.authorize(deputy.key, root);
+    const rootToDeputy = await authorize(deputy, root);
     const [proxy, alike] = await Promise.all([through([rootToHot], hot), through([rootToDeputy], deputy)]);
     const blobs = byLink([...identityBlobs, ...parts(proxy)]);
     const alikeObject = byLink(alike.blobs).get(alike.signature.object);
@@ -199,6 +208,7 @@ describe("a standing through a proxy", () => {
     const swaps: [string, Uint8Array][] = [
       [rootToHot.object.link, rootToDeputy.object.bytes],
       [rootToHot.signature.link, rootToDeputy.signature.bytes],
+      [rootToHot.signature.identity.link, alike.signature.identity.bytes],
       [proxy.signature.object, alikeObject],
       [rootToHot.object.agent.link, identityOf(deputy).bytes],
       [rootToHot.object.agent.root.link, identityOf(deputy).root.bytes],
@@ -253,7 +263,7 @@ describe("an entry read without its target", () => {
 
   it("over a proxy that its chain's last agent did not sign stands no one behind anything", async () => {
     const { signature, blobs } = await through([rootToHot], hot);
-    const entry = { signature: await signatures.sign({ link: signature.object }, root), blobs };
+    const entry = { signature: await (await actorOf(root)).sign({ link: signature.object }), blobs };
     await expect(readWith(entry)).rejects.toThrow(/signed by the last agent/);
   });
 });

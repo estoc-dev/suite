@@ -113,7 +113,7 @@ export class AccountOffer {
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(this.#url, request), [200, 201]);
     const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
-    if (acknowledgement.identity.link !== this.service.link) {
+    if (acknowledgement.identity.identity.link !== this.service.link) {
       throw new Error("the acknowledgement is signed by another identity than the service's");
     }
     const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
@@ -178,13 +178,14 @@ export class Services {
    */
   async #read(link: Link<Signature>, reader: Reader): Promise<Service> {
     const { signatures } = this.#authorizations;
-    const { identity, object } = await signatures.read(link, reader);
-    const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
+    const read = await signatures.read(link, reader);
+    const { identity } = read.identity;
+    const { origin, at, offers } = (await readObject(reader, read.object, this.#schemas.service)).data;
     checkOrigin(origin);
     let account: AccountOffer | undefined;
     for (const { offer, accept } of offers) {
       const signature = await signatures.read(offer.$link, reader);
-      if (signature.identity.link !== identity.link) {
+      if (signature.identity.identity.link !== identity.link) {
         throw new Error(`the Service of ${identity.link} lists an offer signed by another identity`);
       }
       const bytes = await reader.get(signature.object);

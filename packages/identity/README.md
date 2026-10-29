@@ -2,16 +2,18 @@
 
 Someone who signs, as others see them: an identity, and the key that signs
 for it, its root. A key signs the links of objects of `@estoc/object`. The
-key, the identity and the signature are each written as an object, which
-another object names by its link.
+key, the identity, the root's signature over the identity and each
+signature are written as objects, which another object names by its link.
 
 ```
-Key        an Object written to the key schema of its scheme, with the field
-           "publicKey": <hex>
-Identity   an Object written to the identity schema, with the field
-           "root": <the Key's link>
-Signature  an Object written to the signature schema, with the fields
-           "identity": <the Identity's link>, "object": <the Object's link>, "signature": <hex>
+Key              an Object written to the key schema of its scheme, with the field
+                 "publicKey": <hex>
+Identity         an Object written to the identity schema, with the field
+                 "root": <the Key's link>
+Signed identity  an Object written to the signed identity schema, with the fields
+                 "identity": <the Identity's link>, "signature": <hex>
+Signature        an Object written to the signature schema, with the fields
+                 "identity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
 ```
 
 ## Schemes
@@ -73,7 +75,8 @@ An identity is written to `identitySchema`, whatever the scheme of its
 root, and names its root by the link of the root's object. It holds its
 root and nothing else, so each key has one identity, with one link, and
 two identities are the same when their links are. An object that names
-someone, such as a signature, names their identity, not their key.
+someone names their identity, not their key, and a signature names a
+signed identity of it.
 
 `loadIdentities` compiles the identity schema and the key schemas with the
 validator the application picks, and gives `identities`, which holds
@@ -84,6 +87,27 @@ identity whose root is a key. Reading an identity takes the blobs of both
 objects; an identity carries them as `blobs`, with those of the schemas
 they are written to, so where an identity goes, as into a store or a
 bundle, `...identity.blobs` goes along.
+
+## Signed identities
+
+A signed identity is an identity as its root stands behind it, written to
+`signedIdentitySchema`: it names the identity by its link and holds the
+root's signature over that link, which the root signs as it signs any
+object. A signature names who makes it by the link of a signed identity,
+so reading a signature reads that the root stands behind the identity. A
+wallet need not sign deterministically, so one identity can have several
+signed identities, and each of them stands for it: two signers are the
+same when the links of their identities are, not those of their signed
+identities.
+
+`identities.publish` takes the root's `Signer`, writes the identity, has
+the root sign it, and gives the signed identity: what a wallet confirms
+once, when the identity is made. It writes the identity before the root
+signs, so a signer is not asked to sign an identity that would not read.
+`identities.readSigned` takes the link of a signed identity and a
+`Reader`, reads the identity with `identities.read`, and refuses a
+signature that its root did not make. A signed identity carries as `blobs`
+its object and its schema with the identity's `blobs`.
 
 ## Signatures
 
@@ -96,39 +120,41 @@ others over the same object.
 
 A signature is itself an object, written to `signatureSchema` whatever the
 scheme of the key that signs, so a format that holds an object can hold a
-signature. It names its identity and the object it is over by their links,
-and holds the signature as bytes, in lowercase hex, which writes each byte
-string one way. What the bytes hold is for the key's scheme to say: in
-each scheme here, one signature of 64 bytes. A scheme whose signature holds
+signature. It names a signed identity and the object it is over by their
+links, and holds the signature as bytes, in lowercase hex, which writes
+each byte string one way. What the bytes hold is for the key's scheme to
+say: in each scheme here, one signature of 64 bytes. A scheme whose signature holds
 more, such as a passkey's authenticator data or the shares of a threshold,
 lays it out in the bytes its own way, and the signature schema, and what
 reads signatures by it, stay as they are.
 
-`loadSignatures` compiles the signature schema, the identity schema and
-the key schemas with the validator the application picks, and gives
-`signatures`, which holds the signature schema, `identities` and `sign`.
-`signatures.verify` is the judgment of a signature: it takes the signature
-as an object of `signatures.schema` and a `Reader`, reads its identity from
-the reader with `identities.read`, and verifies the signature's bytes by
-the identity's root, as the root's scheme reads them; `signatures.read`
-does the same from the link of the signature. So verifying a signature
-takes the blobs of its identity, but not that of the object signed, since
-the digest it signs is in the link. It gives the signature's object with
-the identity it read as `identity`, the link of what it is over as
+`loadSignatures` compiles the signature schema, the signed identity
+schema, the identity schema and the key schemas with the validator the
+application picks, and gives `signatures`, which holds the signature
+schema, `identities` and `actor`. `signatures.verify` is the judgment of a
+signature: it takes the signature as an object of `signatures.schema` and a
+`Reader`, reads its signed identity from the reader with
+`identities.readSigned`, and verifies the signature's bytes by the root of
+that identity, as the root's scheme reads them; `signatures.read` does the
+same from the link of the signature. So verifying a signature takes the
+blobs of its signed identity, but not that of the object signed, since the
+digest it signs is in the link. It gives the signature's object with the
+signed identity it read as `identity`, the link of what it is over as
 `object`, and the signature as bytes. Reading a signature with `decodeObject` and the signature schema
 alone, as a viewer of arbitrary objects would, reads its fields without
 verifying it.
 
-`sign` signs the link of an object, so it takes anything that has one. The
-signature it gives has as `identity` the identity whose root is the
-signer's key, and its `blobs` go along with the signature. It writes the
-identity before the signer signs and verifies the signature after, so a
-signer is not asked for a signature for an identity that would not read,
-and a signer whose signature does not verify is refused.
+Signing goes through an actor. `signatures.actor` takes a `Signer` and a
+signed identity whose root is the signer's key, and refuses any other.
+`actor.sign` signs the link of an object, so it takes anything that has
+one, and gives a signature whose `identity` is `actor.identity`, the signed
+identity the actor was made for, whose `blobs` go along with the
+signature. It verifies the signature after the signer signs, so a signer
+whose signature does not verify is refused.
 
 A server that handed out a nonce can build the login object of the example
 in `@estoc/object` itself, and take back only the signature, with the
-identity's blobs:
+signed identity's blobs:
 
 ```ts
 import { loadSignatures, SoftwareSigner } from "@estoc/identity";
@@ -136,13 +162,15 @@ import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const signatures = await loadSignatures(defaultValidator);
-const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
+const signer = SoftwareSigner.fromSecretKey("ed25519", secretKey);
+const actor = signatures.actor(signer, await signatures.identities.publish(signer));
+const signature = await actor.sign(object);
 // The client sends signature.bytes and signature.identity.blobs.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 const signed = decodeObject(signatureBytes, signatures.schema);
 const read = await signatures.verify(signed, new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes])));
-const user = read.object === expected.link ? read.identity : undefined;
+const user = read.object === expected.link ? read.identity.identity : undefined;
 ```
 
 One identity can sign one object more than once, as a wallet need not sign

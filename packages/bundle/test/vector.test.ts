@@ -8,8 +8,8 @@ import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 const signatures = await loadSignatures(defaultValidator);
 
 // The login object is the vector of @estoc/object, and the signature over it
-// and its signer's identity, with the identity's blobs, those of
-// @estoc/identity. A change to the format changes them.
+// and its signer's signed identity, with the signed identity's blobs, those
+// of @estoc/identity. A change to the format changes them.
 // stored-by-python.zip holds the same files as Python's zipfile writes them,
 // without compression and with index.json last.
 const objectText =
@@ -35,18 +35,33 @@ const identityText =
   '{"$describedBy":{"$link":"sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526"},' +
   '"root":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
 const identityLink = "sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364";
+const signedIdentitySchemaText =
+  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
+  '"required":["identity","signature"],"title":"Signed Identity","type":"object"}';
+const signedIdentitySchemaLink = "sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa";
+const signedIdentityText =
+  '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
+  '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"},' +
+  '"signature":"5cfaf21fdc8c442905a85577e8346727cd635d5042bbe45331b861c3444aef6e' +
+  'aa149e6de2bf1543316e69bee4cf66c80056a3f25cb315cc621ae439d8386f01"}';
+const signedIdentityLink = "sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe";
 const signatureText =
   '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"},' +
+  '"identity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
   'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e"}';
-const signatureLink = "sha256:9d0aa1dea63a8773113fc3b05e24311028b7b73e54bd2efbaaaf4783f6fb0d7c";
+const signatureLink = "sha256:8231b22129b63f31cbcb32c8f0f66641f0061184a6ef4bf7baaa6835f5f155bc";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const blobs = new Map<Link<unknown>, string>([
   [objectLink, objectText],
+  [signedIdentityLink, signedIdentityText],
+  [signedIdentitySchemaLink, signedIdentitySchemaText],
   [identityLink, identityText],
   [keyLink, keyText],
   [identitySchemaLink, identitySchemaText],
@@ -57,12 +72,13 @@ const files = new Map([
   ...[...blobs].map(([link, text]) => [`blobs/sha256/${link.slice(7)}`, text] as const),
 ]);
 
-describe("a bundle whose root is a signature over a login object, carrying the object and the signer's identity", () => {
+describe("a bundle whose root is a signature over a login object, carrying the object and the signer's signed identity", () => {
   it("writes to fixed files", async () => {
     const read = decodeObject(utf8(signatureText), signatures.schema);
     const signature = await signatures.verify(
       read,
       new Map([
+        [signedIdentityLink, utf8(signedIdentityText)],
         [identityLink, utf8(identityText)],
         [keyLink, utf8(keyText)],
       ]),

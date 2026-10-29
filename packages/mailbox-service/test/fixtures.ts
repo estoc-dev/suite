@@ -22,6 +22,7 @@ export const memoryStore = () => new Store(json, new MemoryBackend());
 export const authorizations = await loadAuthorizations(defaultValidator);
 export const { signatures } = authorizations;
 export const { identities } = signatures;
+export const actorOf = async (by: Signer) => signatures.actor(by, await identities.publish(by));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
 export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(
@@ -67,7 +68,7 @@ export async function signedAtOrigins(service: ServiceData, origins: readonly st
   const signed = await Promise.all(
     origins.map(async (origin) => {
       const object = encodeObject(serviceSchemaRead, { ...service, origin });
-      return { object, signature: await signatures.sign(object, serviceSigner) };
+      return { object, signature: await (await actorOf(serviceSigner)).sign(object) };
     }),
   );
   return signed.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));

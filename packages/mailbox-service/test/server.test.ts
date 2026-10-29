@@ -2,10 +2,11 @@ import { packBundle, unpackBundle } from "@estoc/bundle";
 import type { Signer } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
+  actorOf,
   authorizations,
   identities,
   memoryService,
@@ -52,14 +53,14 @@ const accepting = async (service: MailboxService, body: Uint8Array) =>
 
 /** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
-  const signature = await signatures.sign(offer, by);
+  const signature = await (await actorOf(by)).sign(offer);
   return { signature, zip: await packBundle(signature, signature.identity.blobs) };
 }
 
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
 async function proxied(offer: { readonly link: Link<unknown> }) {
-  const grant = await authorizations.authorize(device.key, wallet);
-  const { signature, blobs } = await authorizations.createActor(device, [grant]).sign(offer.link);
+  const grant = await authorizations.authorize(device.key, await actorOf(wallet));
+  const { signature, blobs } = await authorizations.createActor(await actorOf(device), [grant]).sign(offer.link);
   return { signature, zip: await packBundle(signature, blobs) };
 }
 
@@ -76,14 +77,14 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     const { signature, data, offered, offer, accept } = await rootOf(service);
-    expect(signature.identity.link).toBe(serviceIdentity.link);
+    expect(signature.identity.identity.link).toBe(serviceIdentity.link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
       offers: [{ offer: { $link: offered.link }, accept }],
     });
     expect(accept).toBe(offer.link);
-    expect(offered.identity.link).toBe(serviceIdentity.link);
+    expect(offered.identity.identity.link).toBe(serviceIdentity.link);
     expect(offer.data).toEqual({ identity: { $link: serviceIdentity.link } });
   });
 
@@ -94,7 +95,7 @@ describe("a mailbox service", () => {
     const response = await post(service, accept, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
-    expect(signature.identity.link).toBe(serviceIdentity.link);
+    expect(signature.identity.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
     expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle)).toEqual({
       principal: identities.encode(alice.key),
@@ -198,14 +199,15 @@ describe("a mailbox service", () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
     const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.link } });
-    const offered = await signatures.sign(dropped, serviceSigner);
+    const asService = await actorOf(serviceSigner);
+    const offered = await asService.sign(dropped);
     const earlier = encodeObject(serviceSchemaRead, {
       origin: "https://mail.example",
       at: 2_000,
       offers: [{ offer: { $link: offered.link }, accept: dropped.link }],
     });
     const blobs = [earlier.bytes, offered.bytes, dropped.bytes, schema.bytes];
-    await store.write({ mine: [await signatures.sign(earlier, serviceSigner)], blobs });
+    await store.write({ mine: [await asService.sign(earlier)], blobs });
     expect((await post(service, dropped.link, (await direct(dropped)).zip)).status).toBe(410);
   });
 
@@ -283,6 +285,18 @@ describe("a mailbox service started again", () => {
     expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
     expect(await mine(store)).toEqual([before.signature.link, after.signature.link].sort());
     expect((await post(moved, after.accept, (await direct(after.offer)).zip)).status).toBe(201);
+  });
+
+  it("signs as the signed identity of its latest Service, which its signer does not sign again", async () => {
+    const { service, store } = await memoryService();
+    const before = await rootOf(service);
+    const sign = vi.fn((digest: Uint8Array) => serviceSigner.sign(digest));
+    const by = { key: serviceSigner.key, sign };
+    const { service: moved } = await memoryService({ store, by, origin: "https://post.example", start: 9_000 });
+    const after = await rootOf(moved);
+    expect(after.data.origin).toBe("https://post.example");
+    expect(after.signature.identity.link).toBe(before.signature.identity.link);
+    expect(sign).toHaveBeenCalledOnce();
   });
 
   it("at another origin signs its new Service later than the one before, though its clock is behind", async () => {

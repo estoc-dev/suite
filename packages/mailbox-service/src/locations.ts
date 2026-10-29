@@ -20,7 +20,7 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
       const bytes = await reader.get(signature.data.object.$link);
       if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
       const { identity, link } = await signatures.verify(signature, reader);
-      yield [identity.link, decodeObject(bytes, service).data.at, link];
+      yield [identity.identity.link, decodeObject(bytes, service).data.at, link];
     },
   };
 }

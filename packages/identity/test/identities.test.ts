@@ -1,13 +1,23 @@
-import { encodeSchema, type JsonObject, json, linkOf } from "@estoc/object";
+import { digestOf, encodeSchema, type JsonObject, json, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
-import { identitySchema, keySchemas, loadIdentities, type Scheme, SoftwareSigner, sameKey } from "../src/index.ts";
+import {
+  identitySchema,
+  keySchemas,
+  loadIdentities,
+  type Scheme,
+  SoftwareSigner,
+  sameKey,
+  signedIdentitySchema,
+} from "../src/index.ts";
 
 const identities = await loadIdentities(defaultValidator);
 const { keys } = identities;
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
-const key = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill)).key;
+const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
 const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
 const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) =>
   identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
@@ -75,5 +85,62 @@ describe("an identity", () => {
     await expect(identities.read(identity.link, new Map([[identity.link, other.bytes]]))).rejects.toThrow(
       /another blob/,
     );
+  });
+});
+
+describe("a signed identity", () => {
+  const writtenSigned = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(signedIdentitySchema))));
+  const readSignedFrom = (bytes: Uint8Array, ...blobs: readonly Uint8Array[]) =>
+    identities.readSigned(linkOf(bytes), byLink([bytes, ...blobs]));
+  const signedBy = async (by: SoftwareSigner, identity = identities.encode(by.key)) => ({
+    identity: { $link: identity.link },
+    signature: bytesToHex(await by.sign(digestOf(identity.link))),
+  });
+
+  it.each(["ed25519", "eip191", "solana-offchain"] as const)(
+    "published by a %s root reads back from its blobs with its identity",
+    async (scheme) => {
+      const signed = await identities.publish(signer(scheme));
+      const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+      expect(read.link).toBe(signed.link);
+      expect(read.identity).toEqual(identities.encode(key(scheme)));
+      expect(read.signature).toEqual(signed.signature);
+    },
+  );
+
+  it("carries as its blobs its object, its schema, and its identity's blobs", async () => {
+    const signed = await identities.publish(signer("ed25519"));
+    const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
+    expect(signed.blobs.map((bytes) => linkOf(bytes))).toEqual([
+      signed.link,
+      schema.link,
+      ...signed.identity.blobs.map((bytes) => linkOf(bytes)),
+    ]);
+  });
+
+  it("is refused when another key signed it", async () => {
+    const identity = identities.encode(key("ed25519"));
+    const bytes = writtenSigned(await signedBy(signer("ed25519", 2), identity));
+    await expect(readSignedFrom(bytes, ...identity.blobs)).rejects.toThrow(/did not sign/);
+  });
+
+  it("is refused when it names another identity than its root signed", async () => {
+    const other = identities.encode(key("ed25519", 2));
+    const data = { ...(await signedBy(signer("ed25519"))), identity: { $link: other.link } };
+    await expect(readSignedFrom(writtenSigned(data), ...other.blobs)).rejects.toThrow(/did not sign/);
+  });
+
+  it("is refused without the blobs of its identity", async () => {
+    await expect(readSignedFrom(writtenSigned(await signedBy(signer("ed25519"))))).rejects.toThrow(/no blob is given/);
+  });
+
+  it.each<[string, (signed: JsonObject) => JsonObject]>([
+    ["a field besides identity and signature", (signed) => ({ ...signed, at: 0 })],
+    ["its signature in uppercase hex", (signed) => ({ ...signed, signature: String(signed.signature).toUpperCase() })],
+    ["no signature", ({ signature: _, ...signed }) => signed],
+  ])("is refused with %s", async (_, change) => {
+    const identity = identities.encode(key("ed25519"));
+    const bytes = writtenSigned(change(await signedBy(signer("ed25519"))));
+    await expect(readSignedFrom(bytes, ...identity.blobs)).rejects.toThrow(/does not fit/);
   });
 });

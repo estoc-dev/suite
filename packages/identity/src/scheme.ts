@@ -67,11 +67,6 @@ function keySchema(title: string, curve: Curve): JsonSchema {
   };
 }
 
-/**
- * A scheme as a whole: its curve, how it frames the signing text, and the
- * schema its identities are written to, which tells a reader the scheme of
- * an identity it reads.
- */
 interface Definition {
   readonly curve: Curve;
   message(text: string, publicKey: Uint8Array): Uint8Array;

@@ -28,11 +28,11 @@ const login = await encodeSchema(
 );
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
-  ["without a $type", '{"v":1}'],
-  ["whose $type is not a link", '{"$type":{"$link":"login"},"v":1}'],
-  ["whose $type is a link as a bare string", `{"$type":"${anything.link}","v":1}`],
-  ["whose $type has a member besides $link", `{"$type":{"$link":"${anything.link}","note":"x"},"v":1}`],
-  ["whose $type is the schema itself", `{"$type":{"$schema":"${DRAFT}"},"v":1}`],
+  ["without a $describedBy", '{"v":1}'],
+  ["whose $describedBy is not a link", '{"$describedBy":{"$link":"login"},"v":1}'],
+  ["whose $describedBy is a link as a bare string", `{"$describedBy":"${anything.link}","v":1}`],
+  ["whose $describedBy has a member besides $link", `{"$describedBy":{"$link":"${anything.link}","note":"x"},"v":1}`],
+  ["whose $describedBy is the schema itself", `{"$describedBy":{"$schema":"${DRAFT}"},"v":1}`],
   ["that is an array", `[1,{"$link":"${anything.link}"}]`],
   ["that is a string", `"${anything.link}"`],
 ];
@@ -45,7 +45,10 @@ describe("an object", () => {
       { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null },
     ],
     ["no fields", {}],
-    ["a $type deeper in its data, which is data like any other", { inner: { $type: { $link: login.link } } }],
+    [
+      "a $describedBy deeper in its data, which is data like any other",
+      { inner: { $describedBy: { $link: login.link } } },
+    ],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
@@ -54,13 +57,13 @@ describe("an object", () => {
     expect(read.schema).toBe(anything);
   });
 
-  it("reads back as its data without its $type, which a closed schema need not name", () => {
+  it("reads back as its data without its $describedBy, which a closed schema need not name", () => {
     expect(decodeObject(encodeObject(login, greeting).bytes, login).data).toEqual(greeting);
   });
 
-  it("is refused when its data has a $type of its own", () => {
-    expect(() => encodeObject(anything, { $type: { $link: login.link } })).toThrow(/\$type/);
-    expect(() => encodeObject(anything, { $type: "note" })).toThrow(/\$type/);
+  it("is refused when its data has a $describedBy of its own", () => {
+    expect(() => encodeObject(anything, { $describedBy: { $link: login.link } })).toThrow(/\$describedBy/);
+    expect(() => encodeObject(anything, { $describedBy: "note" })).toThrow(/\$describedBy/);
   });
 
   it("is linked by the SHA-256 of its bytes", () => {
@@ -109,7 +112,7 @@ describe("an object read by its link", () => {
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
     expect(schemaOf(encodeObject(login, greeting).bytes, json)).toBe(login.link);
-    expect(schemaOf(utf8(`{"$type":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
+    expect(schemaOf(utf8(`{"$describedBy":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, text) => {

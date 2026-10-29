@@ -52,13 +52,14 @@ export type SignatureData = {
 
 /**
  * An identity standing behind an object, as an object written to
- * `signatureSchema`: `{"$type": <link to signatureSchema>, "identity": <link
- * to the identity>, "object": <link to the object>, "signature": <hex>}`,
- * read and verified. That is all it says. Who has to sign, in what role and
- * by when are for the application that reads the object to decide. It names
- * the object by link, so it verifies without the object, but not without the
- * object of its identity. It travels apart from other signatures over the
- * same object. It does not say what the object is, so its link reads as any.
+ * `signatureSchema`: `{"$describedBy": <link to signatureSchema>, "identity":
+ * <link to the identity>, "object": <link to the object>, "signature":
+ * <hex>}`, read and verified. That is all it says. Who has to sign, in what
+ * role and by when are for the application that reads the object to decide.
+ * It names the object by link, so it verifies without the object, but not
+ * without the object of its identity. It travels apart from other signatures
+ * over the same object. It does not say what the object is, so its link
+ * reads as any.
  */
 export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly link: Link<Signature>;

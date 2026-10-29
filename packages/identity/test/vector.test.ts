@@ -29,9 +29,9 @@ const identitySchemaLinks: Record<Scheme, string> = {
   "solana-offchain": "sha256:638178eb4d10567b84a05d2a073dac2f72cd581a17880b83d00107bb73994961",
 };
 const identityText =
-  '{"$type":{"$link":"sha256:c8a75f0349805a6afaa44d44ea0787c048310934de9dc8565788f0f003014be5"},' +
+  '{"$describedBy":{"$link":"sha256:c8a75f0349805a6afaa44d44ea0787c048310934de9dc8565788f0f003014be5"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
-const identityLink = "sha256:25c90970d2a76cc7223d47405f04ec51fd5e0194020014bd6816652bc94383b8";
+const identityLink = "sha256:85ec27528b097c6c4b3f41dff76f54c3fe33fc47a7e50fb16878a994d8558065";
 const signatureSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
@@ -42,15 +42,15 @@ const signatureSchemaText =
   '"required":["identity","object","signature"],"title":"Signature","type":"object"}';
 const signatureSchemaLink = "sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5";
 const signatureText =
-  '{"$type":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:25c90970d2a76cc7223d47405f04ec51fd5e0194020014bd6816652bc94383b8"},' +
-  '"object":{"$link":"sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de"},' +
-  '"signature":"13ca07ea915690d48f8ef2689f836614390bf782cd2202ea4aa4e520f1b03b7b' +
-  'f7f0fed866dac80182832deed515a44ed0deee3b0d0325f1aca6bb03e97f2c09"}';
-const signatureLink = "sha256:2821c6e9629b6f3aaf33acec1ec094577a8ee1cea259f60dfd22e9cbdf9effa2";
+  '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
+  '"identity":{"$link":"sha256:85ec27528b097c6c4b3f41dff76f54c3fe33fc47a7e50fb16878a994d8558065"},' +
+  '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
+  '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
+  'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e"}';
+const signatureLink = "sha256:1be0b5f4f90cf9fa258693b05e8dc91fb7e85b5adfc794622c0d92e04f631c5e";
 
 // The login object of the vector in @estoc/object.
-const objectLink: Link<never> = "sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de";
+const objectLink: Link<never> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);

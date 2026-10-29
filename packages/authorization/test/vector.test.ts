@@ -10,37 +10,43 @@ import { authorizationSchema, loadAuthorizations, proxySchema } from "../src/ind
 // Python's cryptography package. A change to the format changes them.
 const authorizationSchemaLink = "sha256:3eb52fc430c3498d03d3a00452acad920862a45d2e6ec6b525fd28e70968ecff";
 const proxySchemaLink = "sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71";
-const hotIdentityText =
-  '{"$describedBy":{"$link":"sha256:c8a75f0349805a6afaa44d44ea0787c048310934de9dc8565788f0f003014be5"},' +
+const hotKeyText =
+  '{"$describedBy":{"$link":"sha256:56ba2935043425c303dcf4d2b68ad608ab724b342a8a4c78665829549917912a"},' +
   '"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"}';
-const hotIdentityLink = "sha256:a5d60d006cb3713cabb1e17e0a4633a8fc68e55f220d7a09df1451263f1d8ed3";
+const hotIdentityText =
+  '{"$describedBy":{"$link":"sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526"},' +
+  '"root":{"$link":"sha256:77dc4ae3459e1ed1c26f740c469d2f3b4b5a84767185cbef2d52744d68f95df3"}}';
+const hotIdentityLink = "sha256:9266b958ad1eca7e1ac843bdc5dde8f3223906f2b85eeeef40b086e6589b2e0a";
 const authorizationText =
   '{"$describedBy":{"$link":"sha256:3eb52fc430c3498d03d3a00452acad920862a45d2e6ec6b525fd28e70968ecff"},' +
-  '"agent":{"$link":"sha256:a5d60d006cb3713cabb1e17e0a4633a8fc68e55f220d7a09df1451263f1d8ed3"}}';
-const authorizationLink = "sha256:2463c1d7a92203e65373f266289041a5f82486ccf010acfc56729fc870351a59";
+  '"agent":{"$link":"sha256:9266b958ad1eca7e1ac843bdc5dde8f3223906f2b85eeeef40b086e6589b2e0a"}}';
+const authorizationLink = "sha256:29fae116a06b22080608a584f3e4cc7dddd926516303d10ccdfb433f20d43bbc";
 const grantText =
   '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:85ec27528b097c6c4b3f41dff76f54c3fe33fc47a7e50fb16878a994d8558065"},' +
-  '"object":{"$link":"sha256:2463c1d7a92203e65373f266289041a5f82486ccf010acfc56729fc870351a59"},' +
-  '"signature":"74e065ef21c869ae623d9a79518f8843f93ad286ace42c98eeb815c1548bff25' +
-  '9089b87be764b527a81ea7b1a04de9a88bc20f0b7859f9e702d8da45f8c98005"}';
-const grantLink = "sha256:b38adf42f0f4a667ba98c7d85e291fb0f039b3fe19184db727ad7c669aa92c5c";
+  '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"},' +
+  '"object":{"$link":"sha256:29fae116a06b22080608a584f3e4cc7dddd926516303d10ccdfb433f20d43bbc"},' +
+  '"signature":"0457cf39a0a5888e02530342bc8a359752ff1473beffef5790bd9c7fd3d3843d' +
+  '8ad66b69c310222287fea2f3dff212f37cea6f1c0ee540ceb41e465331dfc009"}';
+const grantLink = "sha256:759d133acb9199a5870702463984e79da4e50f8c0e90aea7669ee3103854fc73";
 const proxyText =
   '{"$describedBy":{"$link":"sha256:ffa6bc8b7be6fa4f12b8be838f62e26eb0e083f1bc50398b422982e0a59dff71"},' +
-  '"chain":[{"$link":"sha256:b38adf42f0f4a667ba98c7d85e291fb0f039b3fe19184db727ad7c669aa92c5c"}],' +
+  '"chain":[{"$link":"sha256:759d133acb9199a5870702463984e79da4e50f8c0e90aea7669ee3103854fc73"}],' +
   '"target":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"}}';
-const proxyLink = "sha256:aeefea4eb7abee22ce0d28a00a25fff27922e709805bc83a2ccec4110f473f85";
+const proxyLink = "sha256:efc47cdbdcf974315a8efa68cde1f6a11592b713df84a85d07d86ff6f268d767";
 const proxySignatureText =
   '{"$describedBy":{"$link":"sha256:28ba587a7be8e3258409b9f7dee927d8526051ca62e84e9f1950d956a10cc7d5"},' +
-  '"identity":{"$link":"sha256:a5d60d006cb3713cabb1e17e0a4633a8fc68e55f220d7a09df1451263f1d8ed3"},' +
-  '"object":{"$link":"sha256:aeefea4eb7abee22ce0d28a00a25fff27922e709805bc83a2ccec4110f473f85"},' +
-  '"signature":"ec750eb08b77d24a8567b12f7100300fb002cb311d7114f07beb7a0188163fe8' +
-  'b75f8402ce211a805fb59d0a0d702dde9c0489edba0f6f18845364135394700b"}';
-const proxySignatureLink = "sha256:48b9d3b6ef26955dc3801c5afee49e7cc94bd98257c08b5ef8fb00926f71f231";
-// The identity object of the signer of the vector in @estoc/identity.
-const rootIdentityText =
-  '{"$describedBy":{"$link":"sha256:c8a75f0349805a6afaa44d44ea0787c048310934de9dc8565788f0f003014be5"},' +
+  '"identity":{"$link":"sha256:9266b958ad1eca7e1ac843bdc5dde8f3223906f2b85eeeef40b086e6589b2e0a"},' +
+  '"object":{"$link":"sha256:efc47cdbdcf974315a8efa68cde1f6a11592b713df84a85d07d86ff6f268d767"},' +
+  '"signature":"7dcdb7db736ce3298cbdf9cc21ce0c9c1e187e6a639067cfbe0ac8bd840b1946' +
+  '0109fbb914c1a9086d968ecab5ec49547f4d02790be3b2f1a9a60e0ab6d26309"}';
+const proxySignatureLink = "sha256:76522a35feb73eec8dde46e19ced482fb5d3799791c921772c81a126e255c596";
+// The identity of the signer of the vector in @estoc/identity, and its root.
+const rootKeyText =
+  '{"$describedBy":{"$link":"sha256:56ba2935043425c303dcf4d2b68ad608ab724b342a8a4c78665829549917912a"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
+const rootIdentityText =
+  '{"$describedBy":{"$link":"sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526"},' +
+  '"root":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
 
 // The login object of the vector in @estoc/object.
 const target: Link<EncodedObject<Json>> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
@@ -51,7 +57,7 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 
 const authorizations = await loadAuthorizations(defaultValidator);
 const { identities } = authorizations.signatures;
-const grant = await authorizations.authorize(hot.identity, root);
+const grant = await authorizations.authorize(hot.key, root);
 const entry = await authorizations.createActor(hot, [grant]).sign(target);
 const proxy = entry.blobs.find((blob) => linkOf(blob) === entry.signature.object);
 assert.exists(proxy);
@@ -60,6 +66,7 @@ describe("the two schemas, an Ed25519 authorization and a proxy its agent signs"
   it("encode to fixed bytes and links", async () => {
     expect((await encodeSchema(authorizationSchema, defaultValidator)).link).toBe(authorizationSchemaLink);
     expect((await encodeSchema(proxySchema, defaultValidator)).link).toBe(proxySchemaLink);
+    expect(text(grant.object.agent.root.bytes)).toBe(hotKeyText);
     expect(text(grant.object.agent.bytes)).toBe(hotIdentityText);
     expect(grant.object.agent.link).toBe(hotIdentityLink);
     expect(text(grant.object.bytes)).toBe(authorizationText);
@@ -73,15 +80,24 @@ describe("the two schemas, an Ed25519 authorization and a proxy its agent signs"
   });
 
   it("read from those bytes as the root standing behind the target through the agent", async () => {
-    const texts = [rootIdentityText, hotIdentityText, authorizationText, grantText, proxyText, proxySignatureText];
+    const texts = [
+      rootKeyText,
+      rootIdentityText,
+      hotKeyText,
+      hotIdentityText,
+      authorizationText,
+      grantText,
+      proxyText,
+      proxySignatureText,
+    ];
     const blobs = new Map<string, Uint8Array>(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
     const read = await authorizations.readAuthorization(grantLink, blobs);
-    expect(read.signature.identity).toEqual(identities.encode(root.identity));
-    expect(read.object.agent).toEqual(identities.encode(hot.identity));
+    expect(read.signature.identity).toEqual(identities.encode(root.key));
+    expect(read.object.agent).toEqual(identities.encode(hot.key));
     const standing = await authorizations.readStanding(target, proxySignatureLink, blobs);
     expect(standing).toEqual({
-      principal: identities.encode(root.identity),
-      agents: [identities.encode(hot.identity)],
+      principal: identities.encode(root.key),
+      agents: [identities.encode(hot.key)],
     });
   });
 });

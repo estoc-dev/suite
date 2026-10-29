@@ -175,13 +175,9 @@ class MailboxService {
     if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
-    const identities = [standing.principal, ...standing.agents];
-    const schemas = [
-      this.#schemas.acknowledgement.bytes,
-      ...CHAIN_SCHEMAS,
-      ...identities.map(({ schema }) => schema.bytes),
-    ];
-    await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
+    const identities = [standing.principal, ...standing.agents].flatMap(({ blobs }) => blobs);
+    const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS, ...identities];
+    await this.#store.write({ mine: [signature], blobs: [...blobs, ...accepted.blobs()] });
     if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
     const opened = await this.#accounts.get(identity);
     if (opened === undefined) throw new Error(`the accounts refused to add ${identity} and hold no account for it`);
@@ -246,7 +242,7 @@ export async function loadMailboxService(
     service: await encodeSchema(serviceSchema, validator),
     acknowledgement: await encodeSchema(acknowledgementSchema, validator),
   };
-  const identity = signatures.identities.encode(signer.identity);
+  const identity = signatures.identities.encode(signer.key);
   const offer = encodeObject(offerSchema, { identity: { $link: identity.link } });
   const index = locations(signatures, schemas.service);
 
@@ -273,9 +269,8 @@ export async function loadMailboxService(
       signature.bytes,
       offer.bytes,
       offerSchema.bytes,
-      identity.bytes,
       signatures.schema.bytes,
-      identity.schema.bytes,
+      ...identity.blobs,
     ];
     await store.write({ mine: [signed], blobs });
   }

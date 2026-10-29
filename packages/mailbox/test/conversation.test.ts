@@ -103,9 +103,7 @@ async function chat(faults: Faults = {}) {
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map(
-    [alice, bob].map(({ name, signer }) => [signatures.identities.encode(signer.identity).link, name]),
-  );
+  const names = new Map([alice, bob].map(({ name, signer }) => [signatures.identities.encode(signer.key).link, name]));
 
   // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
   // their store: the owner to receive at it, the peer to send to it.
@@ -127,7 +125,7 @@ async function chat(faults: Faults = {}) {
     const signature = await signatures.sign(object, from.signer);
     await from.store.write({
       mine: [signature],
-      blobs: [object.bytes, signature.identity.bytes, signature.identity.schema.bytes, ...schemas],
+      blobs: [object.bytes, ...signature.identity.blobs, ...schemas],
     });
     await outbox.send(signature.link);
     return signature;

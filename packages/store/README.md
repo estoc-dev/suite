@@ -27,7 +27,7 @@ const store = new Store(json, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await signatures.sign(note, signer);
 // `schemas` are all that the program writes to; the store keeps those named here.
-await store.write({ mine: [note, signature], blobs: [signature.identity.bytes, ...schemas] });
+await store.write({ mine: [note, signature], blobs: [...signature.identity.blobs, ...schemas] });
 
 for await (const link of store.mine()) …;       // note.link, signature.link
 await signatures.read(signature.link, store);   // the signature, verified

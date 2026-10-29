@@ -31,15 +31,15 @@ const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
 
-const rootToHot = await authorizations.authorize(hot.identity, root);
-const hotToDeputy = await authorizations.authorize(deputy.identity, hot);
+const rootToHot = await authorizations.authorize(hot.key, root);
+const hotToDeputy = await authorizations.authorize(deputy.key, hot);
 
 type AnySigned = Signed<{ readonly bytes: Uint8Array; readonly link: Link<unknown> }>;
 type Given = AnySigned | Entry;
 
-const identityOf = (signer: SoftwareSigner) => identities.encode(signer.identity);
-// The objects of every identity here, given with the blobs a test is about.
-const identityBytes = [root, hot, deputy, stranger].map((signer) => identityOf(signer).bytes);
+const identityOf = (signer: SoftwareSigner) => identities.encode(signer.key);
+// The blobs of every identity here, given with the blobs a test is about.
+const identityBlobs = [root, hot, deputy, stranger].flatMap((signer) => identityOf(signer).blobs);
 const parts = (given: Given) =>
   "blobs" in given ? [given.signature.bytes, ...given.blobs] : [given.object.bytes, given.signature.bytes];
 const byLink = (blobs: readonly Uint8Array[]) =>
@@ -48,7 +48,7 @@ const readEntry = (entry: Given, given: readonly Given[] = [], link: Link<unknow
   authorizations.readStanding(
     link,
     entry.signature.link,
-    byLink([...identityBytes, ...parts(entry), ...given.flatMap(parts)]),
+    byLink([...identityBlobs, ...parts(entry), ...given.flatMap(parts)]),
   );
 const through = (chain: readonly Signed<Authorization>[], by: SoftwareSigner, link: Link<unknown> = target.link) =>
   authorizations.createActor(by, chain).sign(link);
@@ -78,9 +78,9 @@ const unchecked = (
   );
 
 describe("a standing", () => {
-  it("by a direct signature is its signer's own, through no agents and with no blob but its signer's identity", async () => {
+  it("by a direct signature is its signer's own, through no agents and with no blobs but its signer's identity's", async () => {
     const entry = await signed(target, root);
-    const blobs = byLink([entry.signature.bytes, entry.signature.identity.bytes]);
+    const blobs = byLink([entry.signature.bytes, ...entry.signature.identity.blobs]);
     expect(await authorizations.readStanding(target.link, entry.signature.link, blobs)).toEqual(way(root));
   });
 
@@ -112,7 +112,7 @@ describe("a proxy", () => {
   });
 
   it("counts for no one when its chain does not connect", async () => {
-    const strangerToDeputy = await authorizations.authorize(deputy.identity, stranger);
+    const strangerToDeputy = await authorizations.authorize(deputy.key, stranger);
     const proxy = await unchecked([rootToHot, strangerToDeputy], deputy);
     await expect(readEntry(proxy, [rootToHot, strangerToDeputy])).rejects.toThrow(
       /signed by the agent of the one before it/,
@@ -160,14 +160,24 @@ describe("a standing through a proxy", () => {
     "principal's identity",
     "first agent's identity",
     "second agent's identity",
+    "principal's root",
+    "first agent's root",
+    "second agent's root",
   ];
 
   it.each(names.map((name, i) => [i, name] as const))("is not read without blob %i, the %s", async (missing) => {
     const proxy = await through([rootToHot, hotToDeputy], deputy);
     const proxyObject = byLink(proxy.blobs).get(proxy.signature.object);
     assert.exists(proxyObject);
-    const identities = [root, hot, deputy].map((s) => identityOf(s).bytes);
-    const blobs = [...parts(rootToHot), ...parts(hotToDeputy), proxyObject, proxy.signature.bytes, ...identities];
+    const identities = [root, hot, deputy].map(identityOf);
+    const blobs = [
+      ...parts(rootToHot),
+      ...parts(hotToDeputy),
+      proxyObject,
+      proxy.signature.bytes,
+      ...identities.map(({ bytes }) => bytes),
+      ...identities.map(({ root }) => root.bytes),
+    ];
     const readFrom = (given: Uint8Array[]) =>
       authorizations.readStanding(target.link, proxy.signature.link, byLink(given));
     expect(await readFrom(blobs)).toEqual(way(root, hot, deputy));
@@ -176,28 +186,30 @@ describe("a standing through a proxy", () => {
     await expect(readFrom(blobs.filter((_, i) => i !== missing))).rejects.toThrow(refusal);
   });
 
-  it.each(["authorization", "signature over it", "proxy", "agent's identity"].map((name, i) => [i, name] as const))(
-    "is not read when blob %i, the %s, is given as another of its kind",
-    async (swapped) => {
-      const rootToDeputy = await authorizations.authorize(deputy.identity, root);
-      const [proxy, alike] = await Promise.all([through([rootToHot], hot), through([rootToDeputy], deputy)]);
-      const blobs = byLink([...identityBytes, ...parts(proxy)]);
-      const alikeObject = byLink(alike.blobs).get(alike.signature.object);
-      assert.exists(alikeObject);
-      const swaps: [string, Uint8Array][] = [
-        [rootToHot.object.link, rootToDeputy.object.bytes],
-        [rootToHot.signature.link, rootToDeputy.signature.bytes],
-        [proxy.signature.object, alikeObject],
-        [rootToHot.object.agent.link, identityOf(deputy).bytes],
-      ];
-      const swap = swaps[swapped];
-      assert.exists(swap);
-      blobs.set(...swap);
-      await expect(authorizations.readStanding(target.link, proxy.signature.link, blobs)).rejects.toThrow(
-        /is another blob/,
-      );
-    },
-  );
+  it.each(
+    ["authorization", "signature over it", "proxy", "agent's identity", "agent's root"].map(
+      (name, i) => [i, name] as const,
+    ),
+  )("is not read when blob %i, the %s, is given as another of its kind", async (swapped) => {
+    const rootToDeputy = await authorizations.authorize(deputy.key, root);
+    const [proxy, alike] = await Promise.all([through([rootToHot], hot), through([rootToDeputy], deputy)]);
+    const blobs = byLink([...identityBlobs, ...parts(proxy)]);
+    const alikeObject = byLink(alike.blobs).get(alike.signature.object);
+    assert.exists(alikeObject);
+    const swaps: [string, Uint8Array][] = [
+      [rootToHot.object.link, rootToDeputy.object.bytes],
+      [rootToHot.signature.link, rootToDeputy.signature.bytes],
+      [proxy.signature.object, alikeObject],
+      [rootToHot.object.agent.link, identityOf(deputy).bytes],
+      [rootToHot.object.agent.root.link, identityOf(deputy).root.bytes],
+    ];
+    const swap = swaps[swapped];
+    assert.exists(swap);
+    blobs.set(...swap);
+    await expect(authorizations.readStanding(target.link, proxy.signature.link, blobs)).rejects.toThrow(
+      /is another blob/,
+    );
+  });
 
   it("reads the same with blobs added that its entry does not lead to", async () => {
     const proxy = await through([rootToHot], hot);
@@ -218,7 +230,7 @@ describe("a standing through a proxy", () => {
 
 describe("an entry read without its target", () => {
   const readWith = (entry: Given, blobs: readonly Uint8Array[] = parts(entry)) =>
-    authorizations.readEntry(entry.signature.link, byLink([...identityBytes, ...blobs]));
+    authorizations.readEntry(entry.signature.link, byLink([...identityBlobs, ...blobs]));
 
   it("over an object stands its signer behind it, whether or not the object is given", async () => {
     const entry = await signed(target, root);

@@ -1,11 +1,10 @@
 import {
-  type Identity,
   type IdentityObject,
+  type Key,
   loadSignatures,
   type Signature,
   type Signatures,
   type Signer,
-  sameIdentity,
 } from "@estoc/identity";
 import {
   type Bytes,
@@ -16,6 +15,7 @@ import {
   type JsonLink,
   type JsonSchemaValidator,
   type Link,
+  linkOf,
   type Reader,
   readObject,
   type Schema,
@@ -89,17 +89,17 @@ export class Authorizations {
     this.#proxySchema = proxy;
   }
 
-  /** Signs an authorization that lets `agent` act for the signer. */
-  async authorize(agent: Identity, signer: Signer): Promise<Signed<Authorization>> {
+  /** Signs an authorization that lets the identity whose root is `agent` act for the signer. */
+  async authorize(agent: Key, signer: Signer): Promise<Signed<Authorization>> {
     const identity = this.signatures.identities.encode(agent);
     const written = encodeObject(this.#authorizationSchema, { agent: { $link: identity.link } });
-    const object = await this.#checkAuthorization(written, new Map([[identity.link, identity.bytes]]));
+    const object = await this.#checkAuthorization(written, byLink(identity.blobs));
     return { object, signature: await this.signatures.sign(object, signer) };
   }
 
   /**
    * Reads an authorization by the link of the signature over it from
-   * `reader`, which holds the signature, the authorization and the objects of
+   * `reader`, which holds the signature, the authorization and the blobs of
    * both identities.
    */
   async readAuthorization(link: Link<Signature>, reader: Reader): Promise<Signed<Authorization>> {
@@ -150,7 +150,7 @@ export class Authorizations {
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) chain.push(await this.readAuthorization(link, reader));
-    checkChain(chain, signature.identity);
+    checkChain(chain, signature.identity.link);
     return {
       target: proxy.target,
       principal: chain[0].signature.identity,
@@ -197,10 +197,10 @@ export class Actor implements Standing {
   ) {
     const [first] = chain;
     if (first === undefined) {
-      this.principal = signatures.identities.encode(signer.identity);
+      this.principal = signatures.identities.encode(signer.key);
       this.agents = [];
     } else {
-      checkChain(chain, signer.identity);
+      checkChain(chain, signatures.identities.encode(signer.key).link);
       this.principal = first.signature.identity;
       this.agents = chain.map(({ object }) => object.agent);
     }
@@ -217,7 +217,7 @@ export class Actor implements Standing {
   async sign(target: Link<unknown>): Promise<Entry> {
     if (this.#chain.length === 0) {
       const signature = await this.#signatures.sign({ link: target }, this.#signer);
-      return { signature, blobs: [signature.identity.bytes] };
+      return { signature, blobs: signature.identity.blobs };
     }
     const data = {
       target: { $link: target as Link<never> },
@@ -225,9 +225,13 @@ export class Actor implements Standing {
     };
     const proxy = encodeObject(this.#proxySchema, data);
     const signature = await this.#signatures.sign(proxy, this.#signer);
-    const chain = this.#chain.flatMap(({ object, signature }) => [signature, signature.identity, object, object.agent]);
-    const blobs = new Map([signature.identity, proxy, ...chain].map(({ link, bytes }) => [link, bytes]));
-    return { signature, blobs: [...blobs.values()] };
+    const chain = this.#chain.flatMap(({ object, signature }) => [
+      signature.bytes,
+      ...signature.identity.blobs,
+      object.bytes,
+      ...object.agent.blobs,
+    ]);
+    return { signature, blobs: [...byLink([...signature.identity.blobs, proxy.bytes, ...chain]).values()] };
   }
 }
 
@@ -245,16 +249,20 @@ export async function loadAuthorizations(validator: JsonSchemaValidator): Promis
   );
 }
 
+function byLink(blobs: readonly Uint8Array[]): Map<Link<unknown>, Uint8Array> {
+  return new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
+}
+
 function checkChain(
   chain: readonly Signed<Authorization>[],
-  signer: Identity,
+  signer: Link<IdentityObject>,
 ): asserts chain is readonly [Signed<Authorization>, ...Signed<Authorization>[]] {
   const last = chain.at(-1);
   if (last === undefined) throw new Error("a proxy names at least one authorization");
   const linked = chain.every(({ object }, i) => {
     const next = chain[i + 1];
-    return next === undefined || sameIdentity(object.agent, next.signature.identity);
+    return next === undefined || object.agent.link === next.signature.identity.link;
   });
   if (!linked) throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
-  if (!sameIdentity(last.object.agent, signer)) throw new Error("a proxy is signed by the last agent in its chain");
+  if (last.object.agent.link !== signer) throw new Error("a proxy is signed by the last agent in its chain");
 }

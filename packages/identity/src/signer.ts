@@ -1,14 +1,14 @@
-import type { Identity } from "./identity.ts";
+import type { Key } from "./key.ts";
 import { type Scheme, schemes } from "./scheme.ts";
 import { signingText } from "./signing-text.ts";
 
 /**
- * The private side of an identity, as the capability to sign for it. A
- * wallet stands behind one the same way a key in memory does, which is why
- * signing is asynchronous.
+ * The private side of a key, as the capability to sign with it. A wallet
+ * stands behind one the same way a key in memory does, which is why signing
+ * is asynchronous.
  */
 export interface Signer {
-  readonly identity: Identity;
+  readonly key: Key;
   sign(digest: Uint8Array): Promise<Uint8Array>;
 }
 
@@ -29,7 +29,7 @@ export class SoftwareSigner implements Signer {
     return new SoftwareSigner(scheme, schemes[scheme].curve.publicKeyOf(owned), owned);
   }
 
-  get identity(): Identity {
+  get key(): Key {
     return { scheme: this.#scheme, publicKey: this.#publicKey.slice() };
   }
 

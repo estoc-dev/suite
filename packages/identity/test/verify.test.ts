@@ -2,7 +2,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
-import { type Identity, type Scheme, SoftwareSigner, signingText, verify } from "../src/index.ts";
+import { type Key, type Scheme, SoftwareSigner, signingText, verify } from "../src/index.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const otherDigest = digest.map((byte) => byte ^ 0xff);
@@ -17,7 +17,7 @@ const secrets: Record<Scheme, Uint8Array> = {
   "solana-offchain": ed25519Secret,
 };
 
-describe.each(["ed25519", "eip191", "solana-offchain"] as const)("an identity signing in %s", (scheme) => {
+describe.each(["ed25519", "eip191", "solana-offchain"] as const)("a key signing in %s", (scheme) => {
   const signer = SoftwareSigner.fromSecretKey(scheme, secrets[scheme]);
   const other = SoftwareSigner.fromSecretKey(
     scheme,
@@ -25,42 +25,42 @@ describe.each(["ed25519", "eip191", "solana-offchain"] as const)("an identity si
   );
 
   it("verifies what its signer signs", async () => {
-    expect(verify(signer.identity, digest, await signer.sign(digest))).toBe(true);
+    expect(verify(signer.key, digest, await signer.sign(digest))).toBe(true);
   });
 
   it("rejects its signature over another digest", async () => {
-    expect(verify(signer.identity, otherDigest, await signer.sign(digest))).toBe(false);
+    expect(verify(signer.key, otherDigest, await signer.sign(digest))).toBe(false);
   });
 
   it("rejects another key's signature", async () => {
-    expect(verify(signer.identity, digest, await other.sign(digest))).toBe(false);
+    expect(verify(signer.key, digest, await other.sign(digest))).toBe(false);
   });
 
   it("rejects a signature with one bit changed", async () => {
     const signature = (await signer.sign(digest)).map((byte, i) => (i === 10 ? byte ^ 1 : byte));
-    expect(verify(signer.identity, digest, signature)).toBe(false);
+    expect(verify(signer.key, digest, signature)).toBe(false);
   });
 
   it("rejects a signature of the wrong length", async () => {
     const signature = await signer.sign(digest);
-    expect(verify(signer.identity, digest, signature.subarray(0, 63))).toBe(false);
-    expect(verify(signer.identity, digest, Uint8Array.of(...signature, 0))).toBe(false);
+    expect(verify(signer.key, digest, signature.subarray(0, 63))).toBe(false);
+    expect(verify(signer.key, digest, Uint8Array.of(...signature, 0))).toBe(false);
   });
 });
 
 test("one Ed25519 key signs differently as ed25519 and as solana-offchain", async () => {
   const plain = SoftwareSigner.fromSecretKey("ed25519", ed25519Secret);
   const solana = SoftwareSigner.fromSecretKey("solana-offchain", ed25519Secret);
-  expect(verify(solana.identity, digest, await plain.sign(digest))).toBe(false);
-  expect(verify(plain.identity, digest, await solana.sign(digest))).toBe(false);
+  expect(verify(solana.key, digest, await plain.sign(digest))).toBe(false);
+  expect(verify(plain.key, digest, await solana.sign(digest))).toBe(false);
 });
 
-test("an eip191 identity rejects the high-s twin of its signature", async () => {
+test("an eip191 key rejects the high-s twin of its signature", async () => {
   const signer = SoftwareSigner.fromSecretKey("eip191", secp256k1Secret);
   const signature = await signer.sign(digest);
   const s = bytesToNumberBE(signature.subarray(32));
   const twin = Uint8Array.of(...signature.subarray(0, 32), ...numberToBytesBE(secp256k1.Point.CURVE().n - s, 32));
-  expect(verify(signer.identity, digest, twin)).toBe(false);
+  expect(verify(signer.key, digest, twin)).toBe(false);
 });
 
 describe("signingText", () => {
@@ -79,7 +79,7 @@ describe("signingText", () => {
 // `@solana/offchain-messages`, over `signingText(digest)`.
 describe("signatures from chain tooling", () => {
   test("a personal_sign signature verifies, and a software signer makes the same one", async () => {
-    const identity: Identity = {
+    const key: Key = {
       scheme: "eip191",
       publicKey: hexToBytes("038318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed75"),
     };
@@ -88,12 +88,12 @@ describe("signatures from chain tooling", () => {
         "0ab4520877c1872689d150dfd1e79cd60b1f5672e4dcca56aa5ed8f8f07217fe1c",
     );
     const signature = withRecovery.subarray(0, 64);
-    expect(verify(identity, digest, signature)).toBe(true);
+    expect(verify(key, digest, signature)).toBe(true);
     expect(await SoftwareSigner.fromSecretKey("eip191", secp256k1Secret).sign(digest)).toEqual(signature);
   });
 
   test("a version 1 off-chain message signature verifies, and a software signer makes the same one", async () => {
-    const identity: Identity = {
+    const key: Key = {
       scheme: "solana-offchain",
       publicKey: hexToBytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"),
     };
@@ -101,7 +101,7 @@ describe("signatures from chain tooling", () => {
       "650916577c3e960ff47a8c156caf5363a4c0241a0e82a95086e2f42922cec46f" +
         "c13c2a6ba57311be775ef5c88deb02a521754a06d241f50c20a71721fa06a600",
     );
-    expect(verify(identity, digest, signature)).toBe(true);
+    expect(verify(key, digest, signature)).toBe(true);
     expect(await SoftwareSigner.fromSecretKey("solana-offchain", ed25519Secret).sign(digest)).toEqual(signature);
   });
 });

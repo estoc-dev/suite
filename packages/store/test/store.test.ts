@@ -8,9 +8,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const signatures = await loadSignatures(defaultValidator);
 const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(7));
-const signatureSchemas = [signatures.schema, signatures.identities.encode(signer.identity).schema].map(
-  ({ bytes }) => bytes,
-);
+const signatureSchemas = [signatures.schema, signatures.identities.encode(signer.key).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: JsonObject) => encodeObject(anything, data);
 
@@ -201,17 +199,17 @@ describe("the closure of a blob", () => {
 });
 
 describe("a signature read from a store", () => {
-  it("verifies with the object of its identity, which the store holds", async () => {
+  it("verifies with the blobs of its identity, which the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const signature = await signatures.sign(note, signer);
     await store.write({
       mine: [note, signature],
-      blobs: [signature.identity.bytes, anything.bytes, ...signatureSchemas],
+      blobs: [...signature.identity.blobs, anything.bytes, ...signatureSchemas],
     });
     const read = await signatures.read(signature.link, store);
     expect(read.object).toBe(note.link);
-    expect(read.identity.publicKey).toEqual(signer.identity.publicKey);
+    expect(read.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
 
   it("is refused when the store holds another kind of object under its link", async () => {

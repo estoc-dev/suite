@@ -26,11 +26,11 @@ describe("a mailbox", () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const handed = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, signature.identity.bytes]);
+    await (await mailboxFrom(handed, options)).send(signature, [hello.bytes, ...signature.identity.blobs]);
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.identity));
+    expect((await signatures.read(bundle.link, bundle)).identity).toEqual(identities.encode(alice.key));
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {

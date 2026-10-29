@@ -84,11 +84,7 @@ describe("an index scanned from a store", () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
       mine: [hello, ...signed],
-      blobs: [
-        ...signed.flatMap(({ identity }) => [identity.bytes, identity.schema.bytes]),
-        signatures.schema.bytes,
-        ...schemas,
-      ],
+      blobs: [...signed.flatMap(({ identity }) => identity.blobs), signatures.schema.bytes, ...schemas],
     });
     const expected = signed
       .map(({ identity }) => identity.link)

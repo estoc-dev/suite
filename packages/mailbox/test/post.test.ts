@@ -16,7 +16,7 @@ const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.sign(hello, alice);
-const schemas = [note, signatures.schema, signature.identity.schema].map(({ bytes }) => bytes);
+const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
@@ -46,7 +46,7 @@ describe("an outbox", () => {
   it("sends the closure of a root the store holds, and records that it went out once the transport takes it", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post, queue, mailbox } = await postWith(network);
-    await store.write({ mine: [signature], blobs: [hello.bytes, signature.identity.bytes, ...schemas] });
+    await store.write({ mine: [signature], blobs: [hello.bytes, ...signature.identity.blobs, ...schemas] });
 
     const sent = await (await post.outbox(mailbox.link)).send(signature.link);
     expect(sent).toEqual({
@@ -73,7 +73,7 @@ describe("an outbox", () => {
     const atBob = await postWith(network);
     await (await mailboxFrom(atBob.mailbox.bytes, { transports: [network.transport] })).send(signature, [
       hello.bytes,
-      signature.identity.bytes,
+      ...signature.identity.blobs,
       ...schemas,
     ]);
     await (await atBob.post.inbox(atBob.mailbox.link, bob)).receive(atBob.queue.takeOne());
@@ -91,7 +91,7 @@ describe("an outbox", () => {
   it("records nothing when the transport refuses what it sends", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post } = await postWith(network);
-    await store.write({ mine: [signature], blobs: [hello.bytes, signature.identity.bytes, ...schemas] });
+    await store.write({ mine: [signature], blobs: [hello.bytes, ...signature.identity.blobs, ...schemas] });
     const elsewhere = (await MemoryNetwork.create(defaultValidator)).queue().mailbox(bob.publicKey);
     await store.write({ mine: [elsewhere], blobs: [network.transport.schema.bytes] });
     const before = await listed(store);
@@ -124,7 +124,7 @@ describe("an inbox", () => {
   it("keeps what arrives with a record that it came in, once for each time it came", async () => {
     const network = await MemoryNetwork.create(defaultValidator, { twice: true });
     const { store, post, queue, mailbox } = await postWith(network);
-    await sendTo(network, mailbox.bytes, [hello.bytes, signature.identity.bytes, ...schemas]);
+    await sendTo(network, mailbox.bytes, [hello.bytes, ...signature.identity.blobs, ...schemas]);
     const inbox = await post.inbox(mailbox.link, bob);
 
     const received = [];
@@ -140,7 +140,7 @@ describe("an inbox", () => {
   it("keeps nothing of a bundle that leaves out a blob its root leads to", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post, queue, mailbox } = await postWith(network);
-    await sendTo(network, mailbox.bytes, [signature.identity.bytes, ...schemas]);
+    await sendTo(network, mailbox.bytes, [...signature.identity.blobs, ...schemas]);
     const inbox = await post.inbox(mailbox.link, bob);
 
     await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`leads to ${hello.link}`);
@@ -152,7 +152,7 @@ describe("an inbox", () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post, mailbox } = await postWith(network);
     const other = await postWith(network, await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3)));
-    await sendTo(network, other.mailbox.bytes, [hello.bytes, signature.identity.bytes, ...schemas]);
+    await sendTo(network, other.mailbox.bytes, [hello.bytes, ...signature.identity.blobs, ...schemas]);
     const inbox = await post.inbox(mailbox.link, bob);
 
     await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/do not open/);

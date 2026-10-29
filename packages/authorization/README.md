@@ -35,10 +35,10 @@ need not agree to be named; until it signs a proxy, the authorization counts
 for nothing.
 
 ```ts
-const grant = await authorizations.authorize(browserKey.identity, wallet);
+const grant = await authorizations.authorize(browserKey.key, wallet);
 // The agent receives the link of the signature, and the signature with the blobs it leads to:
-// grant.signature.bytes, grant.object.bytes, and the identity objects of both,
-// grant.signature.identity.bytes and grant.object.agent.bytes.
+// grant.signature.bytes, grant.object.bytes, and the blobs of both identities,
+// grant.signature.identity.blobs and grant.object.agent.blobs.
 const received = await authorizations.readAuthorization(grant.signature.link, blobs);
 ```
 
@@ -84,8 +84,9 @@ at the signer, since no reader would count a proxy through it. An actor's
 
 `sign` takes the link of the object alone, and gives an `Entry`: the
 signature, and the blobs it leads to, each once. For a proxy those are the
-Proxy, the chain's signatures and authorizations, and the identity objects
-they name; for a direct signature, the signer's identity object. The
+Proxy, the chain's signatures and authorizations, and the blobs of the
+identities they name; for a direct signature, the blobs of the signer's
+identity. The
 signature and its blobs are what a reader takes, and nothing else.
 
 ### Why an agent signs a proxy and not the object
@@ -136,13 +137,13 @@ and the reading does not recurse. A chain has no length limit: whether to
 accept agents, and how many, is up to the application, as is who has to
 stand behind an object for it to hold.
 
-Two identities are the same when their schemes and their public key bytes
-are, as `sameIdentity` in `@estoc/identity` compares them.
+Two identities are the same when their links are.
 
 ### Blobs
 
 Every link from the entry points inward, to the Proxy, its chain, the
-authorizations and the identity objects of their signers and agents, so the
+authorizations, the identities of their signers and agents, and the roots
+of those identities, so the
 reading only gets blobs by link, each when it comes to it. `blobs` is a
 `Reader` of `@estoc/object`, anything with `get(link)` that answers at once
 or with a promise: a `Map`, a bundle, or a store that holds blobs by

@@ -81,8 +81,8 @@ fresh, such as a nonce.
 
 - `@estoc/object`: encodings and schema languages, objects, schemas and
   validators; JSON and JSON Schema as the pair in use.
-- `@estoc/identity`: an identity in its scheme, written as an object, and
-  the signatures it makes.
+- `@estoc/identity`: keys in their schemes, an identity written as an
+  object that names its root key, and the signatures it makes.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in, and packed to travel between programs.

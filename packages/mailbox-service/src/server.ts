@@ -1,19 +1,22 @@
-import { type Authorizations, authorizationSchema, loadAuthorizations, proxySchema } from "@estoc/authorization";
+import {
+  type Authorizations,
+  authorizationSchema,
+  loadAuthorizations,
+  proxySchema,
+  type Standing,
+} from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { Signer } from "@estoc/identity";
+import type { IdentityObject, Signature, Signatures, Signer } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonSchemaValidator,
   jsonSchema,
   type Link,
   readObject,
   type Schema,
-  type Signature,
-  type Signatures,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
@@ -157,21 +160,27 @@ class MailboxService {
     const at = this.#clock();
     const offer = this.#offer;
     let accepted: Bundle;
-    let identity: Link<IdentityObject>;
+    let standing: Standing;
     try {
       accepted = await unpackBundle(zip);
-      const { principal } = await this.#authorizations.readStanding(offer.link, accepted.link, accepted);
-      if (principal.link === offer.data.identity.$link) throw new Error("a service opens no account for itself");
-      identity = principal.link;
+      standing = await this.#authorizations.readStanding(offer.link, accepted.link, accepted);
+      if (standing.principal.link === offer.data.identity.$link)
+        throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, error instanceof Error ? error.message : String(error));
     }
+    const identity = standing.principal.link;
 
     const kept = await this.#accounts.get(identity);
     if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#authorizations.signatures.sign(acknowledgement, this.#signer);
-    const schemas = [this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS];
+    const identities = [standing.principal, ...standing.agents];
+    const schemas = [
+      this.#schemas.acknowledgement.bytes,
+      ...CHAIN_SCHEMAS,
+      ...identities.map(({ schema }) => schema.bytes),
+    ];
     await this.#store.write({ mine: [signature], blobs: [acknowledgement.bytes, ...schemas, ...accepted.blobs()] });
     if (await this.#accounts.add(identity, signature.link)) return this.#answerWith(signature.link, 201);
     const opened = await this.#accounts.get(identity);
@@ -266,7 +275,7 @@ export async function loadMailboxService(
       offerSchema.bytes,
       identity.bytes,
       signatures.schema.bytes,
-      signatures.identities.schema.bytes,
+      identity.schema.bytes,
     ];
     await store.write({ mine: [signed], blobs });
   }

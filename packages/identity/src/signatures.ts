@@ -1,16 +1,35 @@
-import { type Signer, verify } from "@estoc/identity";
+import {
+  digestOf,
+  type EncodedObject,
+  encodeObject,
+  encodeSchema,
+  type Json,
+  type JsonLink,
+  type JsonSchema,
+  type JsonSchemaValidator,
+  type Link,
+  linkSchema,
+  type Reader,
+  readObject,
+  type Schema,
+} from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { Identities, type IdentityData, type IdentityObject, identitySchema } from "./identity.ts";
-import type { Json, JsonLink } from "./json.ts";
-import { DRAFT_2020_12, HEX, type JsonSchema, type JsonSchemaValidator, linkSchema } from "./json-schema.ts";
-import { digestOf, type Link } from "./link.ts";
-import { type EncodedObject, encodeObject, type Reader, readObject } from "./object.ts";
-import { encodeSchema, type Schema } from "./schema.ts";
+import { type Identities, type IdentityObject, loadIdentities } from "./identities.ts";
+import { verify } from "./identity.ts";
+import type { Signer } from "./signer.ts";
+
+const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /**
- * The schema every signature is written to. A reader that reads a signature
- * as an object of this schema, such as a viewer, reads its fields without
- * verifying it.
+ * The schema every signature is written to, whatever the scheme of its
+ * identity. A reader that reads a signature as an object of this schema,
+ * such as a viewer, reads its fields without verifying it.
+ *
+ * `signature` holds bytes, and the schema says no more of them than that
+ * they are in lowercase hex, the one way of writing each byte string. What
+ * the bytes hold is for the identity's scheme to say: however a scheme lays
+ * out a signature in them, they stay bytes, so this schema and those who read
+ * signatures by it do not change for a scheme added later.
  */
 export const signatureSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -19,7 +38,7 @@ export const signatureSchema: JsonSchema = {
   properties: {
     identity: linkSchema,
     object: linkSchema,
-    signature: { type: "string", pattern: HEX.source },
+    signature: { type: "string", pattern: "^(?:[0-9a-f]{2})*$" },
   },
   required: ["identity", "object", "signature"],
   additionalProperties: false,
@@ -48,21 +67,23 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly signature: Uint8Array;
 }
 
-/** Signatures, verified and made with their schema and that of identities. */
+/** Signatures, verified and made with their schema and the identities they name. */
 export class Signatures {
   readonly schema: Schema<Json, SignatureData>;
   readonly identities: Identities;
 
-  constructor(identity: Schema<Json, IdentityData>, signature: Schema<Json, SignatureData>) {
-    this.identities = new Identities(identity);
+  constructor(identities: Identities, signature: Schema<Json, SignatureData>) {
+    this.identities = identities;
     this.schema = signature;
   }
 
   /**
    * Gives a signature with its identity, and refuses it unless that identity
    * signed the object it names. The object of the identity is read from
-   * `reader`. One identity can sign one object many times, since a wallet
-   * need not sign deterministically, and each of those signatures verifies.
+   * `reader`, and the scheme of the schema it is written to says how the
+   * signature's bytes are read. One identity can sign one object many times,
+   * since a wallet need not sign deterministically, and each of those
+   * signatures verifies.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
@@ -82,8 +103,8 @@ export class Signatures {
   /**
    * Signs the link of an object, and so the object, whatever it is read as.
    * The signature names the signer's identity object, `signature.identity`,
-   * whose bytes go along with it. A signature that does not verify is
-   * refused.
+   * whose bytes go along with it, as does the schema it is written to. A
+   * signature that does not verify is refused.
    */
   async sign(object: { readonly link: Link<unknown> }, signer: Signer): Promise<Signature> {
     const identity = this.identities.encode(signer.identity);
@@ -99,5 +120,5 @@ export class Signatures {
 
 /** Signatures and the identities they name, with their schemas compiled by `validator`. */
 export async function loadSignatures(validator: JsonSchemaValidator): Promise<Signatures> {
-  return new Signatures(await encodeSchema(identitySchema, validator), await encodeSchema(signatureSchema, validator));
+  return new Signatures(await loadIdentities(validator), await encodeSchema(signatureSchema, validator));
 }

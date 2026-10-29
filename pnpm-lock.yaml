@@ -70,6 +70,9 @@ importers:
 
   packages/identity:
     dependencies:
+      '@estoc/object':
+        specifier: workspace:*
+        version: link:../object
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
@@ -148,9 +151,6 @@ importers:
 
   packages/object:
     dependencies:
-      '@estoc/identity':
-        specifier: workspace:*
-        version: link:../identity
       '@hyperjump/browser':
         specifier: 1.6.0
         version: 1.6.0

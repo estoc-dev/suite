@@ -1,3 +1,4 @@
+import type { JsonSchema } from "@estoc/object";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
@@ -49,15 +50,34 @@ const secp256k1Curve: Curve = {
 
 const SOLANA_SIGNING_DOMAIN = concatBytes(Uint8Array.of(0xff), utf8ToBytes("solana offchain"));
 
-interface Framing {
-  readonly curve: Curve;
-  message(text: string, publicKey: Uint8Array): Uint8Array;
+const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+
+// The schema is a blob, so its title is part of its link and of the link of
+// every identity written to it. Where two schemes take keys of one shape, as
+// ed25519 and solana-offchain do, the title naming the scheme is the only
+// thing that sets their schemas, and so one key's identities in them, apart.
+function keySchema(title: string, curve: Curve): JsonSchema {
+  return {
+    $schema: DRAFT_2020_12,
+    title,
+    type: "object",
+    properties: { publicKey: { type: "string", pattern: `^[0-9a-f]{${2 * curve.publicKeyLength}}$` } },
+    required: ["publicKey"],
+    additionalProperties: false,
+  };
 }
 
-export const schemes: Readonly<Record<Scheme, Framing>> = {
+interface Definition {
+  readonly curve: Curve;
+  message(text: string, publicKey: Uint8Array): Uint8Array;
+  readonly identitySchema: JsonSchema;
+}
+
+export const schemes: Readonly<Record<Scheme, Definition>> = {
   ed25519: {
     curve: ed25519Curve,
     message: (text) => utf8ToBytes(text),
+    identitySchema: keySchema("Ed25519 identity", ed25519Curve),
   },
   eip191: {
     curve: secp256k1Curve,
@@ -66,16 +86,11 @@ export const schemes: Readonly<Record<Scheme, Framing>> = {
       const prefix = utf8ToBytes(`\x19Ethereum Signed Message:\n${body.length}`);
       return keccak_256(concatBytes(prefix, body));
     },
+    identitySchema: keySchema("EIP-191 identity", secp256k1Curve),
   },
   "solana-offchain": {
     curve: ed25519Curve,
     message: (text, publicKey) => concatBytes(SOLANA_SIGNING_DOMAIN, Uint8Array.of(1, 1), publicKey, utf8ToBytes(text)),
+    identitySchema: keySchema("Solana off-chain identity", ed25519Curve),
   },
-};
-
-/** The length in bytes of a public key in each scheme. */
-export const publicKeyLengths: Readonly<Record<Scheme, number>> = {
-  ed25519: schemes.ed25519.curve.publicKeyLength,
-  eip191: schemes.eip191.curve.publicKeyLength,
-  "solana-offchain": schemes["solana-offchain"].curve.publicKeyLength,
 };

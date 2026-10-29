@@ -79,11 +79,10 @@ fresh, such as a nonce.
 
 ## Packages
 
-- `@estoc/identity`: identities in their schemes, and signing and
-  verifying with them. It knows keys, not JSON.
 - `@estoc/object`: encodings and schema languages, objects, schemas and
-  validators; JSON and JSON Schema as the pair in use; and the judgments of
-  identities and signatures.
+  validators; JSON and JSON Schema as the pair in use.
+- `@estoc/identity`: an identity in its scheme, written as an object, and
+  the signatures it makes.
 - `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in, and packed to travel between programs.

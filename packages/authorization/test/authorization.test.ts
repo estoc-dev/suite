@@ -69,7 +69,7 @@ describe("the authorization schema", () => {
     ["no agent", {}],
     ["an agent that is not a link", { agent: { $link: "hot" } }],
     ["an agent's link as a bare string", { agent: agent.$link }],
-    ["an agent written in place of the link to it", { agent: { publicKey: "00", scheme: "ed25519" } }],
+    ["an agent written in place of the link to it", { agent: { publicKey: "00" } }],
   ])("refuses %s", (_, data) => {
     expect(() => encodeObject(authorization, data)).toThrow();
   });

@@ -1,10 +1,10 @@
 import { type Actor, type Authorizations, loadAuthorizations } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
+import type { IdentityObject, Signature } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
   encodeSchema,
-  type IdentityObject,
   type Json,
   type JsonSchemaValidator,
   json,
@@ -12,7 +12,6 @@ import {
   type Reader,
   readObject,
   type Schema,
-  type Signature,
   schemaOf,
 } from "@estoc/object";
 import type { Store } from "@estoc/store";

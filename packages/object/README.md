@@ -13,18 +13,11 @@ and JSON Schema. In that pair:
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
 Object     {"$type": <the Schema's link>, ...<the fields of its data>}
-Identity   an Object written to the identity schema, with the fields
-           "publicKey": <hex>, "scheme": <scheme>
-Signature  an Object written to the signature schema, with the fields
-           "identity": <the Identity's link>, "object": <the Object's link>, "signature": <hex>
 ```
 
 The encodings, objects, schemas and validators are the substrate that every
-application shares. Judgments are the rules a schema cannot say, such as
-whether a signature verifies, worked out from an object and what it links
-to. The judgments of identities and signatures are kept in this package
-because the packages built on it sign and name identities; another
-application can read the same objects without them.
+application shares, and they give an object no meaning. Identities, and the
+signatures by which they stand behind objects, are in `@estoc/identity`.
 
 ## Encodings and schema languages
 
@@ -225,99 +218,26 @@ worker in any case.
 ## Judgments
 
 A schema says what the data of an object may hold, and no more. The rules
-it cannot say, such as whether a signature verifies or whether a key is its
-scheme's length, are judgments: worked out from an object and what it links
-to, each time the object is read. A judgment takes the object it judges,
-already checked against its schema, and a `Reader`, and reads by link the
-other objects it needs when it comes to them. It gives the object together
-with what it found, as a verified signature comes with the identity that
-made it, and only the judgment makes such a value, so a program holding one
-holds an object that passed. A judgment that starts from the link of the
-object takes the link and the reader instead, as `signatures.read` does.
+it cannot say, such as whether a signature verifies, are judgments: worked
+out from an object and what it links to, each time the object is read. A
+judgment takes the object it judges, already checked against its schema,
+and a `Reader`, and reads by link the other objects it needs when it comes
+to them. It gives the object together with what it found, as a verified
+signature comes with the identity that made it, and only the judgment
+makes such a value, so a program holding one holds an object that passed.
+A judgment that starts from the link of the object takes the link and the
+reader instead, as `signatures.read` does. The judgments of identities and
+signatures are in `@estoc/identity`.
 
 A program reads objects of the schemas it expects, with the type it
 declares for each, and judges those that need it. Which schemas those are
 is the program's to say, and not anything an object or a schema says of
 itself. A program that takes objects of several schemas, such as a
-transport for each kind of mailbox, reads the link of the schema an object
-names with `schemaOf`, given the encoding the object is in, and picks by it
-the schema to read the object with.
+transport for each kind of mailbox, or an identity in each scheme, reads
+the link of the schema an object names with `schemaOf`, given the encoding
+the object is in, and picks by it the schema to read the object with.
 
 Reading an object does not write it again, so what a program makes of it
 can keep its link, and the signatures over the object still apply. Written
 again to another schema, the same content would be another object, which
 no one has signed.
-
-## Identities
-
-An identity of `@estoc/identity` is written as an object of
-`identitySchema`, and other objects name it by the link of that object. The
-schema holds the shape of an identity, a key in lowercase hex and the name
-of its scheme, and no more: which schemes there are, and how long a key is
-in each, is for whoever reads identities. An identity in a scheme added
-later is written to the same schema, so identities already written keep
-their links.
-
-`identities`, which comes with the signatures below, holds the identity
-schema, and `identities.check` is the judgment of an identity: it takes an
-identity's object and gives the identity. It takes the schemes that
-`@estoc/identity` knows, with the key at its scheme's length, so that each identity has one
-object and one link, and it refuses an identity in any other scheme, though
-its object fits the schema. `identities.read` does the same from the link
-of the object and a `Reader`. `identities.encode` writes an identity as its
-object, and refuses one it would not read, such as one whose key is not its
-scheme's length.
-
-## Signatures
-
-A signature says one thing: this identity stands behind this object. It
-carries no role and no time. Who has to sign, and what makes a login or a
-contract hold, is for the application that reads the object, by the schema
-it pins; anyone can sign an object, whether the object names them or not.
-Each signature is a blob of its own, collected and passed on apart from the
-others over the same object.
-
-A signature is itself an object, written to `signatureSchema`, so a format
-that holds an object can hold a signature. It names its identity and the
-object it is over by their links, and the signature is in lowercase hex.
-`loadSignatures` compiles the identity and signature schemas with the
-validator the application picks, as any schema is, and gives `signatures`,
-which holds the signature schema, `identities` and `sign`.
-`signatures.verify` is the judgment of a signature: it takes the signature
-as an object of `signatures.schema` and a `Reader`, reads its identity
-from the reader with `identities.read`, and verifies the signature; `signatures.read` does the same from the link of the signature.
-So verifying a signature takes the blob of its identity's object, but not
-that of the object signed, since the digest it signs is in the link. It
-gives the signature's object with the identity it read as `identity`, the
-link of what it is over as `object`, and the signature as bytes. Reading a
-signature with `decodeObject` and the signature schema alone, as a viewer of
-arbitrary objects would, reads its fields without verifying it. `sign`
-signs the link of an object, so it takes anything that has one. The
-signature it gives has the signer's identity object as `identity`, whose
-bytes go along with the signature. It writes the identity before the signer
-signs and verifies the signature after, so a signer is not asked for a
-signature over an identity that would not read, and a signer whose
-signature does not verify is refused.
-
-A server that handed out a nonce can build the login object itself and take
-back only the signature, with the identity's object:
-
-```ts
-import { SoftwareSigner } from "@estoc/identity";
-import { decodeObject, encodeObject, linkOf, loadSignatures } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-
-const signatures = await loadSignatures(defaultValidator);
-const signature = await signatures.sign(object, SoftwareSigner.fromSecretKey("ed25519", secretKey));
-// The client sends signature.bytes and signature.identity.bytes.
-
-const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const signed = decodeObject(signatureBytes, signatures.schema);
-const read = await signatures.verify(signed, new Map([[linkOf(identityBytes), identityBytes]]));
-const user = read.object === expected.link ? read.identity : undefined;
-```
-
-One identity can sign one object more than once, as a wallet need not sign
-deterministically, and each of those signatures verifies. Finding the
-signatures over an object takes an index by the link they name, so hand an
-object over together with its signatures.

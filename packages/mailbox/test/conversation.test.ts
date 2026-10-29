@@ -1,17 +1,14 @@
-import { SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
-  identitySchema,
   type Json,
   type JsonSchema,
   json,
   type Link,
-  loadSignatures,
   readObject,
   type Schema,
-  signatureSchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { type Index, MemoryBackend, type Rows, Store, scan } from "@estoc/store";
@@ -47,10 +44,7 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   },
   defaultValidator,
 );
-const schemas = [
-  line,
-  ...(await Promise.all([identitySchema, signatureSchema].map((schema) => encodeSchema(schema, defaultValidator)))),
-].map(({ bytes }) => bytes);
+const schemas = [line, signatures.schema].map(({ bytes }) => bytes);
 const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
 const [inbound, outbound] = await Promise.all([delivery(inboundSchema), delivery(outboundSchema)]);
 
@@ -131,7 +125,10 @@ async function chat(faults: Faults = {}) {
   const say = async (from: Person, outbox: Outbox, text: string) => {
     const object = encodeObject(line, { text });
     const signature = await signatures.sign(object, from.signer);
-    await from.store.write({ mine: [signature], blobs: [object.bytes, signature.identity.bytes, ...schemas] });
+    await from.store.write({
+      mine: [signature],
+      blobs: [object.bytes, signature.identity.bytes, signature.identity.schema.bytes, ...schemas],
+    });
     await outbox.send(signature.link);
     return signature;
   };

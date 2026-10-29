@@ -69,7 +69,7 @@ bytes, as an image is, so one that does not verify, or whose scheme the
 reader does not know, is read all the same.
 
 Signatures are verified where they are used: `signatures.read` in
-`@estoc/object` and `readStanding` in `@estoc/authorization` verify what
+`@estoc/identity` and `readStanding` in `@estoc/authorization` verify what
 they read. If reading a bundle verified signatures, it would have to know
 every identity scheme: a reader that predates a scheme could not read even
 the root of a card carrying a signature in it, and one bad signature that

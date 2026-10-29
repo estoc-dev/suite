@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { loadAuthorizations } from "@estoc/authorization";
-import { SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -10,7 +10,6 @@ import {
   json,
   linkOf,
   linkSchema,
-  loadSignatures,
   readObject,
   type Schema,
 } from "@estoc/object";
@@ -113,12 +112,14 @@ describe("a bundle", () => {
     expect(await authorizations.readAuthorization(grant.signature.link, bundle)).toEqual(grant);
   });
 
-  it("reads with a signature that does not verify or whose scheme is unknown, as bytes", async () => {
+  it("reads with a signature that does not verify or whose identity is written to an unknown schema, as bytes", async () => {
     const changed = rewritten(signature.bytes, (fields) => {
       const hex = fields.signature as string;
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
     });
-    const later = rewritten(signature.identity.bytes, (fields) => ({ ...fields, scheme: "a-later-scheme" }));
+    const { data } = json.fields(json.decode(signature.identity.bytes));
+    const laterSchema = linkOf(json.encode({ $schema: DRAFT, title: "A later identity" }));
+    const later = json.encode(json.object(data, laterSchema));
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, identity: { $link: linkOf(later) } }));
     const identityBytes = new Map([signature.identity.bytes, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {

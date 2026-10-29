@@ -21,33 +21,33 @@ const root = signer("eip191", 1);
 const hot = signer("ed25519", 2);
 const deputy = signer("solana-offchain", 3);
 const stranger = signer("ed25519", 4);
-const agent = { $link: identities.encode(hot.identity).link };
+const agent = { $link: identities.encode(hot.key).link };
 const byLink = (blobs: readonly Uint8Array[]) =>
   new Map<string, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const blobsOf = ({ object, signature }: Signed<Authorization>) =>
-  byLink([signature.bytes, object.bytes, object.agent.bytes, signature.identity.bytes]);
-const identityBytes = [root, hot, deputy].map(({ identity }) => identities.encode(identity).bytes);
-const given = (...blobs: Uint8Array[]) => byLink([...identityBytes, ...blobs]);
+  byLink([signature.bytes, object.bytes, ...object.agent.blobs, ...signature.identity.blobs]);
+const identityBlobs = [root, hot, deputy].flatMap(({ key }) => identities.encode(key).blobs);
+const given = (...blobs: Uint8Array[]) => byLink([...identityBlobs, ...blobs]);
 
 describe("an authorization", () => {
   it("reads back from its blobs", async () => {
-    const signed = await authorizations.authorize(hot.identity, root);
+    const signed = await authorizations.authorize(hot.key, root);
     const read = await authorizations.readAuthorization(signed.signature.link, blobsOf(signed));
-    expect(read.signature.identity).toEqual(identities.encode(root.identity));
-    expect(read.object.agent).toEqual(identities.encode(hot.identity));
+    expect(read.signature.identity).toEqual(identities.encode(root.key));
+    expect(read.object.agent).toEqual(identities.encode(hot.key));
     expect(read.object.link).toBe(signed.object.link);
     expect(read.signature.link).toBe(signed.signature.link);
   });
 
   it("is refused when the blob given for its object is another authorization", async () => {
-    const first = await authorizations.authorize(hot.identity, root);
-    const second = await authorizations.authorize(deputy.identity, root);
+    const first = await authorizations.authorize(hot.key, root);
+    const second = await authorizations.authorize(deputy.key, root);
     const blobs = given(first.signature.bytes).set(first.object.link, second.object.bytes);
     await expect(authorizations.readAuthorization(first.signature.link, blobs)).rejects.toThrow(/is another blob/);
   });
 
-  it("is not read without the object of its agent", async () => {
-    const signed = await authorizations.authorize(stranger.identity, root);
+  it("is not read without the blobs of its agent", async () => {
+    const signed = await authorizations.authorize(stranger.key, root);
     await expect(
       authorizations.readAuthorization(signed.signature.link, given(signed.signature.bytes, signed.object.bytes)),
     ).rejects.toThrow(/no blob is given/);
@@ -91,18 +91,18 @@ describe("the proxy schema", () => {
 
 describe("an actor", () => {
   const grants = Promise.all([
-    authorizations.authorize(hot.identity, root),
-    authorizations.authorize(deputy.identity, hot),
-    authorizations.authorize(deputy.identity, stranger),
+    authorizations.authorize(hot.key, root),
+    authorizations.authorize(deputy.key, hot),
+    authorizations.authorize(deputy.key, stranger),
   ]);
 
   it("without a chain stands behind a target for its signer by the signer's own signature", async () => {
     const actor = authorizations.createActor(root);
     const { signature, blobs } = await actor.sign(target.link);
-    expect(actor).toMatchObject({ principal: identities.encode(root.identity), agents: [] });
+    expect(actor).toMatchObject({ principal: identities.encode(root.key), agents: [] });
     expect(signature.object).toBe(target.link);
-    expect(signature.identity).toEqual(identities.encode(root.identity));
-    expect(blobs).toEqual([signature.identity.bytes]);
+    expect(signature.identity).toEqual(identities.encode(root.key));
+    expect(blobs).toEqual(signature.identity.blobs);
   });
 
   it("with a chain stands behind a target for the chain's first authorizer by a proxy over the chain's signatures, in order", async () => {
@@ -110,25 +110,25 @@ describe("an actor", () => {
     const actor = authorizations.createActor(deputy, [toHot, toDeputy]);
     const { signature, blobs } = await actor.sign(target.link);
     expect(actor).toMatchObject({
-      principal: identities.encode(root.identity),
-      agents: [hot, deputy].map(({ identity }) => identities.encode(identity)),
+      principal: identities.encode(root.key),
+      agents: [hot, deputy].map(({ key }) => identities.encode(key)),
     });
     expect((await readObject(byLink(blobs), signature.object, proxy)).data).toEqual({
       chain: [toHot, toDeputy].map(({ signature }) => ({ $link: signature.link })),
       target: { $link: target.link },
     });
-    expect(signature.identity).toEqual(identities.encode(deputy.identity));
+    expect(signature.identity).toEqual(identities.encode(deputy.key));
   });
 
-  it("gives each blob that a reading of its entry takes besides the entry, once, and no other", async () => {
+  it("gives each blob that its entry leads to besides the entry, with the identities' schemas, once, and no other", async () => {
     const [toHot, toDeputy] = await grants;
     const { signature, blobs } = await authorizations.createActor(deputy, [toHot, toDeputy]).sign(target.link);
     const taken = [
       ...[toHot, toDeputy].flatMap(({ object, signature }) => [object.link, signature.link]),
       signature.object,
     ];
-    const identityLinks = [root, hot, deputy].map(({ identity }) => identities.encode(identity).link);
-    expect(blobs.map((blob) => linkOf(blob)).sort()).toEqual([...taken, ...identityLinks].sort());
+    const identityLinks = identityBlobs.map((blob) => linkOf(blob));
+    expect(blobs.map((blob) => linkOf(blob)).sort()).toEqual([...new Set([...taken, ...identityLinks])].sort());
   });
 
   it.each([

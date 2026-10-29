@@ -30,7 +30,7 @@ export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = awai
 );
 
 export const serviceSigner = signer("ed25519", 9);
-export const serviceIdentity = identities.encode(serviceSigner.identity);
+export const serviceIdentity = identities.encode(serviceSigner.key);
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a

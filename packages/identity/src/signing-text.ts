@@ -2,8 +2,8 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 
 /**
  * What every scheme signs for an object's SHA-256 digest, before its
- * framing. An identity signs objects and nothing else; a login or a grant
- * is an object too, so no signature can be passed off as another kind. It
+ * framing. A key signs objects and nothing else; a login or a grant is an
+ * object too, so no signature can be passed off as another kind. It
  * is text because wallets show text, and it says what it is so that a wallet
  * user asked elsewhere to sign it as, say, a login nonce can tell.
  */

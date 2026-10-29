@@ -32,7 +32,7 @@ const mallory = signer("ed25519", 6);
 const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.link } });
 
 const through = async (agent: Signer, principal: Signer) =>
-  authorizations.createActor(agent, [await authorizations.authorize(agent.identity, principal)]);
+  authorizations.createActor(agent, [await authorizations.authorize(agent.key, principal)]);
 
 const servers: { close(): Promise<void> }[] = [];
 afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => server.close()))));
@@ -96,11 +96,10 @@ async function signedService(
   const blobs = [
     service.bytes,
     serviceSchemaRead.bytes,
-    signature.identity.bytes,
-    signature.identity.schema.bytes,
+    ...signature.identity.blobs,
     signatures.schema.bytes,
     ...signed.map(({ bytes }) => bytes),
-    ...signed.flatMap(({ identity }) => [identity.bytes, identity.schema.bytes]),
+    ...signed.flatMap(({ identity }) => identity.blobs),
     ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
   ];
   return packBundle(signature, blobs);
@@ -221,7 +220,7 @@ describe("a service found by its identity", () => {
     const { services } = await client();
     expect(await services.of(serviceIdentity.link)).toBeUndefined();
     await services.at(origin);
-    expect(await services.of(identities.encode(alice.identity).link)).toBeUndefined();
+    expect(await services.of(identities.encode(alice.key).link)).toBeUndefined();
   });
 });
 
@@ -233,7 +232,7 @@ describe("an account offer", () => {
     assert.exists(service.account);
     const account = await service.account.accept(authorizations.createActor(alice));
     expect(account).toEqual({
-      identity: identities.encode(alice.identity),
+      identity: identities.encode(alice.key),
       service: serviceIdentity,
       at: 7_001,
       link: account.link,
@@ -251,7 +250,7 @@ describe("an account offer", () => {
     const { origin } = await running();
     const { services } = await client();
     const account = await (await accountAt(services, origin)).accept(await through(laptop, wallet));
-    expect(account.identity).toEqual(identities.encode(wallet.identity));
+    expect(account.identity).toEqual(identities.encode(wallet.key));
   });
 
   it("accepted again from another device gets the acknowledgement that opened the account, which that device's store then keeps", async () => {
@@ -262,7 +261,7 @@ describe("an account offer", () => {
     expect(again).toEqual(first);
     const kept = await readObject(store, (await signatures.read(again.link, store)).object, acknowledgementSchemaRead);
     const standing = await authorizations.readStanding(offer.link, kept.data.accepted.$link, store);
-    expect(standing.agents).toEqual([identities.encode(laptop.identity)]);
+    expect(standing.agents).toEqual([identities.encode(laptop.key)]);
   });
 
   it("whose service refuses the acceptance throws what the service said, and writes nothing", async () => {
@@ -284,7 +283,7 @@ describe("accepting an account offer", () => {
         at: 1,
       });
       const signature = await signatures.sign(acknowledgement, mallory);
-      return new Response(await packBundle(signature, [acknowledgement.bytes, signature.identity.bytes]), {
+      return new Response(await packBundle(signature, [acknowledgement.bytes, ...signature.identity.blobs]), {
         status: 201,
       });
     });
@@ -297,7 +296,7 @@ describe("accepting an account offer", () => {
   it("refuses the service's acknowledgement of another identity's account, and writes nothing", async () => {
     const bobs = await signatures.sign(offer, bob);
     const { origin } = await running({}, async (service, request) =>
-      service.fetch(new Request(request.url, { method: "POST", body: await packBundle(bobs, [bobs.identity.bytes]) })),
+      service.fetch(new Request(request.url, { method: "POST", body: await packBundle(bobs, bobs.identity.blobs) })),
     );
     const { store, services } = await client();
     const account = await accountAt(services, origin);

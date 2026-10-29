@@ -57,16 +57,16 @@ const login = await encodeSchema(
 );
 
 // The server knows its audience and the nonce it handed out, so it builds the
-// object itself and needs back only the signature, with the object of the
+// object itself and needs back only the signature, with the blobs of the
 // identity that signed.
 async function loggedIn(
   audience: string,
   nonce: string,
   signature: Uint8Array,
-  identity: Uint8Array,
+  identity: readonly Uint8Array[],
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
-  const read = await signatures.verify(decodeObject(signature, signatures.schema), byLink([identity]));
+  const read = await signatures.verify(decodeObject(signature, signatures.schema), byLink(identity));
   return read.object === expected.link ? read.identity : undefined;
 }
 
@@ -75,11 +75,11 @@ describe("a login", () => {
   const signed = signatures.sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
     const { bytes, identity } = await signed;
-    return loggedIn(audience, nonce, bytes, identity.bytes);
+    return loggedIn(audience, nonce, bytes, identity.blobs);
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
-    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.identity));
+    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.key));
   });
 
   it("for another nonce or audience logs no one in", async () => {
@@ -150,14 +150,14 @@ const buyer = signer("eip191", 1);
 const seller = signer("ed25519", 2);
 const witness = signer("solana-offchain", 3);
 const terms = encodeObject(sale, {
-  buyer: { $link: identities.encode(buyer.identity).link },
-  seller: { $link: identities.encode(seller.identity).link },
+  buyer: { $link: identities.encode(buyer.key).link },
+  seller: { $link: identities.encode(seller.key).link },
   goods: "one bicycle",
   price: "120.00 CAD",
 });
 const confirmation = encodeObject(delivery, { sale: { $link: terms.link } });
 const receive = (signed: readonly Signature[]): Received => ({
-  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.map(({ identity }) => identity.bytes)]),
+  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ identity }) => identity.blobs)]),
   signatures: signed.map(({ bytes }) => bytes),
 });
 const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>
@@ -173,7 +173,7 @@ describe("a sale", () => {
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
     const witnessed = await signatures.sign(terms, witness);
     const received = receive([...(await signedBy([terms, buyer])), witnessed]);
-    expect(await signersOf(terms.link, received)).toContainEqual(identities.encode(witness.identity));
+    expect(await signersOf(terms.link, received)).toContainEqual(identities.encode(witness.key));
     expect(await saleInForce(terms.link, received)).toBeUndefined();
   });
 });

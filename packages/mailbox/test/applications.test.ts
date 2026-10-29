@@ -30,7 +30,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.sign(object, by);
-  await mailbox.send(signature, [object.bytes, signature.identity.bytes]);
+  await mailbox.send(signature, [object.bytes, ...signature.identity.blobs]);
   return signature;
 };
 
@@ -83,7 +83,7 @@ describe("a chat line", () => {
     const read = await readSigned(received, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
-      read.identity.bytes,
+      ...read.identity.blobs,
     ]);
     const [passed] = await atCarol.take();
     assert.exists(passed);
@@ -93,18 +93,18 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passed.link).toBe(sent.link);
-    expect(await readChat(passed, identities.encode(carol.identity))).toEqual({
-      author: identities.encode(alice.identity),
+    expect(await readChat(passed, identities.encode(carol.key))).toEqual({
+      author: identities.encode(alice.key),
       text: "lunch at noon?",
       forReader: undefined,
     });
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const line = encodeObject(chat, { to: { $link: identities.encode(bob.identity).link }, text: "lunch at noon?" });
+    const line = encodeObject(chat, { to: { $link: identities.encode(bob.key).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
-    expect((await readChat(received, identities.encode(bob.identity))).forReader).toBe(true);
-    expect((await readChat(passed, identities.encode(carol.identity))).forReader).toBe(false);
+    expect((await readChat(received, identities.encode(bob.key))).forReader).toBe(true);
+    expect((await readChat(passed, identities.encode(carol.key))).forReader).toBe(false);
   });
 });
 
@@ -153,7 +153,7 @@ describe("a one-time invitation", () => {
     const { answer, letIn } = await invite();
     await answer(dave);
     await answer(erin);
-    expect(await letIn()).toEqual([identities.encode(dave.identity)]);
+    expect(await letIn()).toEqual([identities.encode(dave.key)]);
     await answer(erin);
     expect(await letIn()).toEqual([]);
   });
@@ -206,8 +206,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer("eip191", 6);
   const seller = signer("solana-offchain", 7);
   const terms = encodeObject(sale, {
-    buyer: { $link: identities.encode(buyer.identity).link },
-    seller: { $link: identities.encode(seller.identity).link },
+    buyer: { $link: identities.encode(buyer.key).link },
+    seller: { $link: identities.encode(seller.key).link },
     goods: "one bicycle",
     price: "120.00 CAD",
   });

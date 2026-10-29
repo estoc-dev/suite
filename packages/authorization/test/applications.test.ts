@@ -58,17 +58,17 @@ describe("a login", () => {
   const wallet = signer("eip191", 1);
   const browserKey = signer("ed25519", 2);
   const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-  const toKey = authorizations.authorize(browserKey.identity, wallet);
+  const toKey = authorizations.authorize(browserKey.key, wallet);
   const logIn = (entry: Entry) => loggedIn("https://app.estoc.dev", "6f1c0a9e", entry.signature.link, blobs(entry));
 
   it("through a key the wallet authorized logs in the wallet", async () => {
     const throughKey = await authorizations.createActor(browserKey, [await toKey]).sign(object.link);
-    expect(await logIn(throughKey)).toEqual(identities.encode(wallet.identity));
+    expect(await logIn(throughKey)).toEqual(identities.encode(wallet.key));
   });
 
   it("signed by the key directly logs in the key, not the wallet", async () => {
     const direct = await authorizations.createActor(browserKey).sign(object.link);
-    expect(await logIn(direct)).toEqual(identities.encode(browserKey.identity));
+    expect(await logIn(direct)).toEqual(identities.encode(browserKey.key));
   });
 });
 
@@ -120,12 +120,12 @@ describe("a sale", () => {
   const broker = signer("ed25519", 2);
   const seller = signer("solana-offchain", 3);
   const terms = encodeObject(sale, {
-    buyer: { $link: identities.encode(buyer.identity).link },
-    seller: { $link: identities.encode(seller.identity).link },
+    buyer: { $link: identities.encode(buyer.key).link },
+    seller: { $link: identities.encode(seller.key).link },
     goods: "one bicycle",
     price: "120.00 CAD",
   });
-  const toBroker = authorizations.authorize(broker.identity, buyer);
+  const toBroker = authorizations.authorize(broker.key, buyer);
   const directly = (by: SoftwareSigner) => authorizations.createActor(by).sign(terms.link);
   const entriesOf = (...entries: Entry[]) => entries.map(({ signature }) => signature.link);
 

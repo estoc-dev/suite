@@ -1,77 +1,79 @@
-import { decodeObject, encodeSchema, type Json, type JsonObject, json, linkOf, type Schema } from "@estoc/object";
+import { encodeSchema, type JsonObject, json, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
-import {
-  type IdentityData,
-  identitySchemas,
-  loadIdentities,
-  type Scheme,
-  SoftwareSigner,
-  sameIdentity,
-} from "../src/index.ts";
+import { identitySchema, keySchemas, loadIdentities, type Scheme, SoftwareSigner, sameKey } from "../src/index.ts";
 
 const identities = await loadIdentities(defaultValidator);
-const readIdentity = (bytes: Uint8Array) => identities.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
+const { keys } = identities;
+const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
-const secretKey = new Uint8Array(32).fill(1);
-const keyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).identity.publicKey);
-const ed25519Key = keyOf("ed25519");
-const eip191Key = keyOf("eip191");
-const written = (scheme: Scheme, data: JsonObject) =>
-  json.encode(json.object(data, linkOf(json.encode(identitySchemas[scheme]))));
+const key = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill)).key;
+const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
+const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) =>
+  identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
 
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)(
-    "in %s reads back from its object as the same identity",
+    "with a %s root reads back from its blobs with its root",
     async (scheme) => {
-      const identity = SoftwareSigner.fromSecretKey(scheme, secretKey).identity;
-      const object = identities.encode(identity);
-      // Without its label, as bytes read from a file or the network have none.
-      const bytes: Uint8Array = object.bytes;
-      const read = await readIdentity(bytes);
-      expect(sameIdentity(read, identity)).toBe(true);
-      expect(read.link).toBe(object.link);
+      const identity = identities.encode(key(scheme));
+      const read = await identities.read(identity.link, byLink(identity.blobs));
+      expect(read.link).toBe(identity.link);
+      expect(read.root.link).toBe(identity.root.link);
+      expect(sameKey(read.root, key(scheme))).toBe(true);
     },
   );
 
-  it("is written to its scheme's schema, so one key in two schemes is two objects", () => {
-    const { publicKey } = SoftwareSigner.fromSecretKey("ed25519", secretKey).identity;
+  it("names its root by the link of the root's object", () => {
+    const identity = identities.encode(key("ed25519"));
+    expect(identity.data).toEqual({ root: { $link: keys.encode(key("ed25519")).link } });
+  });
+
+  it("is another identity for the same public key in another scheme", () => {
+    const { publicKey } = key("ed25519");
     const plain = identities.encode({ scheme: "ed25519", publicKey });
     const solana = identities.encode({ scheme: "solana-offchain", publicKey });
-    expect(plain.data).toEqual(solana.data);
-    expect(plain.schema.link).not.toBe(solana.schema.link);
+    expect(plain.schema.link).toBe(solana.schema.link);
     expect(plain.link).not.toBe(solana.link);
   });
 
-  it("is not written with a key of another length than its scheme's", () => {
-    expect(() => identities.encode({ scheme: "ed25519", publicKey: new Uint8Array(33) })).toThrow(/does not fit/);
+  it("carries as its blobs its object, its root's, and the schemas they are written to", async () => {
+    const identity = identities.encode(key("eip191"));
+    const schema = await encodeSchema(identitySchema, defaultValidator);
+    const keySchema = await encodeSchema(keySchemas.eip191, defaultValidator);
+    expect(identity.blobs.map((bytes) => linkOf(bytes))).toEqual([
+      identity.link,
+      identity.root.link,
+      schema.link,
+      keySchema.link,
+    ]);
   });
 
-  it.each<[string, Scheme, JsonObject]>([
-    ["a key of another scheme's length", "ed25519", { publicKey: eip191Key }],
-    ["a key shorter than its scheme's", "eip191", { publicKey: ed25519Key }],
-    ["the key in uppercase hex", "ed25519", { publicKey: ed25519Key.toUpperCase() }],
-    ["a field besides publicKey", "ed25519", { publicKey: ed25519Key, role: "buyer" }],
-    ["the scheme written as a field", "ed25519", { publicKey: ed25519Key, scheme: "ed25519" }],
-    ["no key", "ed25519", {}],
-  ])("is refused with %s", async (_, scheme, data) => {
-    await expect(readIdentity(written(scheme, data))).rejects.toThrow(/does not fit/);
+  it("is refused without the blob of its root", async () => {
+    await expect(readFrom(identities.encode(key("ed25519")).bytes)).rejects.toThrow(/no blob is given/);
   });
 
-  it("is refused written to a schema that no scheme it knows writes to, though shaped the same", async () => {
-    const lookalike: Schema<Json, IdentityData> = await encodeSchema(
-      { ...identitySchemas.ed25519, title: "Ed448 identity" },
-      defaultValidator,
+  it("is refused when its root is not a key", async () => {
+    const other = identities.encode(key("ed25519"));
+    await expect(readFrom(written({ root: { $link: other.link } }), other.bytes)).rejects.toThrow(
+      /no scheme writes its keys to/,
     );
-    const bytes = json.encode(json.object({ publicKey: ed25519Key }, lookalike.link));
-    await expect(readIdentity(bytes)).rejects.toThrow(/no scheme writes its identities to/);
-    expect(() => identities.check(decodeObject(bytes, lookalike))).toThrow(/no scheme writes its identities to/);
+  });
+
+  it.each<[string, (root: JsonObject) => JsonObject]>([
+    ["a field besides root", (root) => ({ root, name: "alice" })],
+    ["its root as a bare string", (root) => ({ root: root.$link as string })],
+    ["no root", () => ({})],
+  ])("is refused with %s", async (_, data) => {
+    const root = keys.encode(key("ed25519"));
+    await expect(readFrom(written(data({ $link: root.link })), root.bytes)).rejects.toThrow(/does not fit/);
   });
 
   it("is refused when the reader gives another blob for its link", async () => {
-    const object = identities.encode(SoftwareSigner.fromSecretKey("ed25519", secretKey).identity);
-    const other = identities.encode(SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2)).identity);
-    await expect(identities.read(object.link, new Map([[object.link, other.bytes]]))).rejects.toThrow(/another blob/);
+    const identity = identities.encode(key("ed25519"));
+    const other = identities.encode(key("ed25519", 2));
+    await expect(identities.read(identity.link, new Map([[identity.link, other.bytes]]))).rejects.toThrow(
+      /another blob/,
+    );
   });
 });

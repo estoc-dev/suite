@@ -50,15 +50,15 @@ async function rootOf(service: MailboxService) {
 const accepting = async (service: MailboxService, body: Uint8Array) =>
   post(service, (await rootOf(service)).accept, body);
 
-/** The bundle that accepts `offer` by `by`'s own signature, with its identity. */
+/** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await signatures.sign(offer, by);
-  return { signature, zip: await packBundle(signature, [signature.identity.bytes]) };
+  return { signature, zip: await packBundle(signature, signature.identity.blobs) };
 }
 
 /** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
 async function proxied(offer: { readonly link: Link<unknown> }) {
-  const grant = await authorizations.authorize(device.identity, wallet);
+  const grant = await authorizations.authorize(device.key, wallet);
   const { signature, blobs } = await authorizations.createActor(device, [grant]).sign(offer.link);
   return { signature, zip: await packBundle(signature, blobs) };
 }
@@ -97,7 +97,7 @@ describe("a mailbox service", () => {
     expect(signature.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
     expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle)).toEqual({
-      principal: identities.encode(alice.identity),
+      principal: identities.encode(alice.key),
       agents: [],
     });
   });
@@ -121,8 +121,8 @@ describe("a mailbox service", () => {
     const { accepted: link } = acknowledgement.data;
     expect(link.$link).toBe(accepted.signature.link);
     expect(await authorizations.readStanding(offer.link, link.$link, bundle)).toEqual({
-      principal: identities.encode(wallet.identity),
-      agents: [identities.encode(device.identity)],
+      principal: identities.encode(wallet.key),
+      agents: [identities.encode(device.key)],
     });
   });
 
@@ -239,7 +239,7 @@ describe("a mailbox service", () => {
     const bothRead = new Promise<void>((resolve) => (release = resolve));
     let reading = 2;
     const by: Signer = {
-      identity: serviceSigner.identity,
+      key: serviceSigner.key,
       async sign(digest) {
         if (--reading === 0) release();
         await bothRead;

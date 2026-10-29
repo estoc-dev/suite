@@ -1,99 +1,84 @@
 import {
-  decodeObject,
   type EncodedObject,
   encodeObject,
   encodeSchema,
   type Json,
+  type JsonLink,
   type JsonSchema,
   type JsonSchemaValidator,
-  json,
   type Link,
+  linkSchema,
   type Reader,
+  readObject,
   type Schema,
-  schemaOf,
 } from "@estoc/object";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import type { Identity } from "./identity.ts";
-import { type Scheme, schemes } from "./scheme.ts";
+import type { Key } from "./key.ts";
+import { type KeyObject, type Keys, loadKeys } from "./keys.ts";
 
-/**
- * The schema each scheme writes its identities to, holding the key at the
- * scheme's length. A scheme added later comes with a schema of its own, so
- * identities already written keep their links.
- */
-export const identitySchemas: Readonly<Record<Scheme, JsonSchema>> = {
-  ed25519: schemes.ed25519.identitySchema,
-  eip191: schemes.eip191.identitySchema,
-  "solana-offchain": schemes["solana-offchain"].identitySchema,
+const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+
+/** The schema every identity is written to, whatever the scheme of its root. */
+export const identitySchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Identity",
+  type: "object",
+  properties: { root: linkSchema },
+  required: ["root"],
+  additionalProperties: false,
 };
 
-export type IdentityData = { readonly publicKey: string };
+export type IdentityData = { readonly root: JsonLink<KeyObject> };
 
 /**
- * An identity read from its object, written to the identity schema of its
- * scheme: `{"$describedBy": <link to that schema>, "publicKey": <lowercase
- * hex>}`. A signature, or any object, names an identity by the link of this
- * object.
+ * Someone who signs, as others name them: an object written to
+ * `identitySchema`, `{"$describedBy": <link to identitySchema>, "root":
+ * <link to a key>}`, read with its root, the key that signs for it. A
+ * signature, or any other object, names an identity by the link of this
+ * object. It holds its root and nothing else, so each key has one identity,
+ * with one link, and two identities are the same when their links are.
+ *
+ * `blobs` are what it takes to read the identity again: the bytes of its
+ * object and of its root's, and of the schemas they are written to.
  */
-export interface IdentityObject extends EncodedObject<Json, IdentityData>, Identity {
+export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
+  readonly root: KeyObject;
+  readonly blobs: readonly Uint8Array[];
 }
 
-/**
- * Reads identities written to the identity schemas of the schemes this
- * package knows, and refuses an identity written to any other schema. The
- * schema an identity is written to is its scheme, so each identity has one
- * object and one link.
- */
+/** Reads and writes identities, with their schema and the keys they name. */
 export class Identities {
-  readonly #schemas: Readonly<Record<Scheme, Schema<Json, IdentityData>>>;
-  readonly #schemes: ReadonlyMap<Link<Schema<Json>>, Scheme>;
+  readonly keys: Keys;
+  readonly #schema: Schema<Json, IdentityData>;
 
-  constructor(schemas: Readonly<Record<Scheme, Schema<Json, IdentityData>>>) {
-    this.#schemas = schemas;
-    this.#schemes = new Map(Object.entries(schemas).map(([scheme, { link }]) => [link, scheme as Scheme]));
+  constructor(keys: Keys, schema: Schema<Json, IdentityData>) {
+    this.keys = keys;
+    this.#schema = schema;
   }
 
-  check(object: EncodedObject<Json, IdentityData>): IdentityObject {
-    const scheme = this.#schemeOf(object.schema.link);
-    return {
-      ...object,
-      link: object.link as Link<IdentityObject>,
-      scheme,
-      publicKey: hexToBytes(object.data.publicKey),
-    };
-  }
-
-  /**
-   * Reads the identity that `link` names from `reader`, with the identity
-   * schema it is written to, and checks it.
-   */
+  /** Reads the identity that `link` names from `reader`, with its root. */
   async read(link: Link<IdentityObject>, reader: Reader): Promise<IdentityObject> {
-    const bytes = await reader.get(link);
-    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
-    const object = decodeObject(bytes, this.#schemas[this.#schemeOf(schemaOf(bytes, json))]);
-    if (object.link !== link) throw new Error(`the blob given for ${link} is another blob`);
-    return this.check(object);
+    const object = await readObject(reader, link, this.#schema);
+    return identityOf(object, await this.keys.read(object.data.root.$link, reader));
   }
 
-  /** Writes an identity as its object, to the identity schema of its scheme. */
-  encode({ publicKey, scheme }: Identity): IdentityObject {
-    return this.check(encodeObject(this.#schemas[scheme], { publicKey: bytesToHex(publicKey) }));
-  }
-
-  #schemeOf(schema: Link<Schema<Json>>): Scheme {
-    const scheme = this.#schemes.get(schema);
-    if (scheme === undefined) throw new Error(`no scheme writes its identities to ${schema}`);
-    return scheme;
+  /** Writes the identity whose root is `root`. */
+  encode(root: Key): IdentityObject {
+    const key = this.keys.encode(root);
+    return identityOf(encodeObject(this.#schema, { root: { $link: key.link } }), key);
   }
 }
 
-/** Identities, with the identity schemas compiled by `validator`. */
+function identityOf(object: EncodedObject<Json, IdentityData>, root: KeyObject): IdentityObject {
+  return {
+    ...object,
+    link: object.link as Link<IdentityObject>,
+    root,
+    blobs: [object.bytes, root.bytes, object.schema.bytes, root.schema.bytes],
+  };
+}
+
+/** Identities and the keys they name, with their schemas compiled by `validator`. */
 export async function loadIdentities(validator: JsonSchemaValidator): Promise<Identities> {
-  const compile = (scheme: Scheme) => encodeSchema<JsonSchema, Json, IdentityData>(identitySchemas[scheme], validator);
-  return new Identities({
-    ed25519: await compile("ed25519"),
-    eip191: await compile("eip191"),
-    "solana-offchain": await compile("solana-offchain"),
-  });
+  return new Identities(await loadKeys(validator), await encodeSchema(identitySchema, validator));
 }

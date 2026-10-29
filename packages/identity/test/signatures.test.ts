@@ -35,7 +35,8 @@ const fieldsOf = (object: { readonly bytes: Uint8Array }) => json.fields(json.de
 const dataOf = (object: { readonly bytes: Uint8Array }) => fieldsOf(object).data;
 const written = (signature: Signature, data: JsonObject) => json.encode(json.object(data, fieldsOf(signature).schema));
 const rewritten = (signature: Signature, change: JsonObject) => written(signature, { ...dataOf(signature), ...change });
-const byLink = (...identities: IdentityObject[]) => new Map(identities.map(({ link, bytes }) => [link, bytes]));
+const byLink = (...identities: IdentityObject[]) =>
+  new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.identity);
 
 const note: Schema<Json, { readonly text: string }> = await encodeSchema(
@@ -52,11 +53,11 @@ const goodbye = encodeObject(note, { text: "goodbye" });
 const schemes: Scheme[] = ["ed25519", "eip191", "solana-offchain"];
 
 describe("a signature", () => {
-  it.each(schemes)("by a %s identity reads back with its identity and object", async (scheme) => {
+  it.each(schemes)("by a %s key reads back with its identity and object", async (scheme) => {
     const by = signer(scheme);
     const signature = await signatures.sign(hello, by);
     const read = await verified(signature.bytes, identityOf(signature));
-    expect(read.identity).toEqual(identities.encode(by.identity));
+    expect(read.identity).toEqual(identities.encode(by.key));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -71,9 +72,9 @@ describe("a signature", () => {
 
   it("is refused when it names another identity, even the same key in another scheme", async () => {
     const signature = await signatures.sign(hello, signer("ed25519"));
-    const { publicKey } = signer("ed25519").identity;
+    const { publicKey } = signer("ed25519").key;
     for (const other of [
-      identities.encode(signer("ed25519", 2).identity),
+      identities.encode(signer("ed25519", 2).key),
       identities.encode({ publicKey, scheme: "solana-offchain" }),
     ]) {
       await expect(verified(rewritten(signature, { identity: { $link: other.link } }), byLink(other))).rejects.toThrow(
@@ -89,7 +90,7 @@ describe("a signature", () => {
     ).rejects.toThrow();
   });
 
-  it("is refused without the object of its identity", async () => {
+  it("is refused without the blobs of its identity", async () => {
     const signature = await signatures.sign(hello, signer("ed25519"));
     await expect(verified(signature.bytes)).rejects.toThrow(/no blob is given/);
   });
@@ -106,7 +107,7 @@ describe("a signature", () => {
     ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     [
       "its identity written in place of the link to it",
-      (f) => ({ ...f, identity: dataOf(identities.encode(signer("ed25519").identity)) }),
+      (f) => ({ ...f, identity: dataOf(identities.encode(signer("ed25519").key)) }),
     ],
   ])("is refused with %s", async (_, change) => {
     const signature = await signatures.sign(hello, signer("ed25519"));
@@ -146,34 +147,36 @@ describe("a signature", () => {
 });
 
 describe("sign", () => {
-  it("refuses a signer whose signature does not verify for its identity", async () => {
-    const wrong: Signer = { identity: signer("ed25519", 2).identity, sign: (digest) => signer("ed25519").sign(digest) };
+  it("refuses a signer whose signature does not verify for its key", async () => {
+    const wrong: Signer = { key: signer("ed25519", 2).key, sign: (digest) => signer("ed25519").sign(digest) };
     await expect(signatures.sign(hello, wrong)).rejects.toThrow();
   });
 });
 
 describe("signatures loaded with a validator", () => {
-  // Answers as the default validator does, except that no identity fits.
-  const noIdentity: JsonSchemaValidator = {
+  // Answers as the default validator does, except that nothing written to a schema titled `title` fits.
+  const refusing = (title: RegExp): JsonSchemaValidator => ({
     ...defaultValidator,
     compile: (schema) =>
-      String(schema.title).endsWith(" identity")
-        ? Promise.resolve(() => ["no identity fits"])
-        : defaultValidator.compile(schema),
-  };
-
-  it("refuse a signature whose identity's object it says does not fit", async () => {
-    const strict = await loadSignatures(noIdentity);
-    const signature = await signatures.sign(hello, signer("ed25519"));
-    await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/no identity fits/);
+      title.test(String(schema.title)) ? Promise.resolve(() => ["it does not fit"]) : defaultValidator.compile(schema),
   });
 
-  it("do not ask a signer whose identity it says does not fit", async () => {
-    const strict = await loadSignatures(noIdentity);
+  it.each([
+    ["identity", /^Identity$/],
+    ["root", / key$/],
+  ])("refuse a signature whose %s it says does not fit", async (_, title) => {
+    const strict = await loadSignatures(refusing(title));
+    const signature = await signatures.sign(hello, signer("ed25519"));
+    await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/it does not fit/);
+  });
+
+  it.each([
+    ["identity", /^Identity$/],
+    ["key", / key$/],
+  ])("do not ask a signer whose %s it says does not fit", async (_, title) => {
+    const strict = await loadSignatures(refusing(title));
     const sign = vi.fn(async () => new Uint8Array(64));
-    await expect(strict.sign(hello, { identity: signer("ed25519").identity, sign })).rejects.toThrow(
-      /no identity fits/,
-    );
+    await expect(strict.sign(hello, { key: signer("ed25519").key, sign })).rejects.toThrow(/it does not fit/);
     expect(sign).not.toHaveBeenCalled();
   });
 });

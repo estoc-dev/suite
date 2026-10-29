@@ -5,16 +5,16 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 
 /**
- * How an identity signs: which curve, and how the signing text is wrapped
- * before the curve signs it. A key kept in a chain wallet signs only in that
- * chain's off-chain message framing, so the framing belongs to the identity
- * and a verifier never has to accept a framing its holder did not choose.
+ * How a key signs: which curve, and how the signing text is wrapped before
+ * the curve signs it. A key kept in a chain wallet signs only in that
+ * chain's off-chain message framing, so the framing belongs to the key and
+ * a verifier never has to accept a framing its holder did not choose.
  *
  * - `ed25519`: the text itself, as a software key or a Solana wallet's plain
  *   `signMessage` signs it.
  * - `eip191`: an Ethereum `personal_sign` message.
  * - `solana-offchain`: a Solana off-chain message, version 1, naming this
- *   identity as its one signer, which Ledger's Solana app signs from 1.14.
+ *   key as its one signer, which Ledger's Solana app signs from 1.14.
  */
 export type Scheme = "ed25519" | "eip191" | "solana-offchain";
 
@@ -38,8 +38,8 @@ const ed25519Curve: Curve = {
   verify: (signature, message, publicKey) => ed25519.verify(signature, message, publicKey, { zip215: false }),
 };
 
-// Signatures are compact `r || s` without the recovery byte: the identity
-// already holds the key, and the byte would be one more thing to vary.
+// Signatures are compact `r || s` without the recovery byte: the public key
+// is already known, and the byte would be one more thing to vary.
 const secp256k1Curve: Curve = {
   publicKeyLength: 33,
   publicKeyOf: (secretKey) => secp256k1.getPublicKey(secretKey, true),
@@ -53,9 +53,10 @@ const SOLANA_SIGNING_DOMAIN = concatBytes(Uint8Array.of(0xff), utf8ToBytes("sola
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 // The schema is a blob, so its title is part of its link and of the link of
-// every identity written to it. Where two schemes take keys of one shape, as
+// every key written to it. Where two schemes take keys of one shape, as
 // ed25519 and solana-offchain do, the title naming the scheme is the only
-// thing that sets their schemas, and so one key's identities in them, apart.
+// thing that sets their schemas, and so one public key's objects in them,
+// apart.
 function keySchema(title: string, curve: Curve): JsonSchema {
   return {
     $schema: DRAFT_2020_12,
@@ -70,14 +71,14 @@ function keySchema(title: string, curve: Curve): JsonSchema {
 interface Definition {
   readonly curve: Curve;
   message(text: string, publicKey: Uint8Array): Uint8Array;
-  readonly identitySchema: JsonSchema;
+  readonly keySchema: JsonSchema;
 }
 
 export const schemes: Readonly<Record<Scheme, Definition>> = {
   ed25519: {
     curve: ed25519Curve,
     message: (text) => utf8ToBytes(text),
-    identitySchema: keySchema("Ed25519 identity", ed25519Curve),
+    keySchema: keySchema("Ed25519 key", ed25519Curve),
   },
   eip191: {
     curve: secp256k1Curve,
@@ -86,11 +87,11 @@ export const schemes: Readonly<Record<Scheme, Definition>> = {
       const prefix = utf8ToBytes(`\x19Ethereum Signed Message:\n${body.length}`);
       return keccak_256(concatBytes(prefix, body));
     },
-    identitySchema: keySchema("EIP-191 identity", secp256k1Curve),
+    keySchema: keySchema("EIP-191 key", secp256k1Curve),
   },
   "solana-offchain": {
     curve: ed25519Curve,
     message: (text, publicKey) => concatBytes(SOLANA_SIGNING_DOMAIN, Uint8Array.of(1, 1), publicKey, utf8ToBytes(text)),
-    identitySchema: keySchema("Solana off-chain identity", ed25519Curve),
+    keySchema: keySchema("Solana off-chain key", ed25519Curve),
   },
 };

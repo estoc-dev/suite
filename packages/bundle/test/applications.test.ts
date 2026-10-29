@@ -178,9 +178,9 @@ const standingEnvelope = await schemaFor<{
 
 // A chat message sent from a device travels as an envelope naming the message
 // and the signature by which someone stands behind it, directly or through
-// agents. Reading the standing takes the message as well as the signature, so
-// the envelope names both. The bundle is the blobs that the reading follows
-// that signature into.
+// agents. Reading the standing checks the signature against the message's
+// link, so the envelope names both. The bundle is the blobs that the reading
+// follows that signature into.
 async function readSent(bundle: Bundle) {
   const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
   const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle);

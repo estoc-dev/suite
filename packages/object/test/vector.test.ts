@@ -11,9 +11,9 @@ const schemaText =
   '"required":["audience","nonce"],"title":"Login","type":"object"}';
 const schemaLink = "sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e";
 const objectText =
-  '{"$type":{"$link":"sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e"},' +
+  '{"$describedBy":{"$link":"sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e"},' +
   '"audience":"https://app.estoc.dev","nonce":"6f1c0a9e"}';
-const objectLink = "sha256:5fc34eb199031340371d48949ef89f64587acce9763e6bf38a6cd7d6b80b31de";
+const objectLink = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
 
 const schema = await encodeSchema(
   {

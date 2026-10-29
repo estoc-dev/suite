@@ -28,12 +28,12 @@ bundle.get(message.link); // message.bytes
 A bundle has a root, and the root is an object, so a reader knows what a
 bundle is by the root's schema. Loose files put together would leave it
 guessing. `index.json` has to be the canonical JSON of an object, naming its
-schema in `$type`. An `index.json` formatted by hand, or one that holds a
-schema, makes the whole bundle refused. A signature is an object too, so it
-can be the root, with what it is over carried in the bundle. `writeBundle`
-takes the root as whatever type the program holds it as, such as an
-`Authorization`, and writes its bytes, so the root is written as it was
-signed. It refuses a root that is not an object, since no reader would
+schema in `$describedBy`. An `index.json` formatted by hand, or one that
+holds a schema, makes the whole bundle refused. A signature is an object
+too, so it can be the root, with what it is over carried in the bundle.
+`writeBundle` takes the root as whatever type the program holds it as, such
+as an `Authorization`, and writes its bytes, so the root is written as it
+was signed. It refuses a root that is not an object, since no reader would
 take the bundle.
 
 `index.json` is the object itself, not a pointer to it. So nothing in a

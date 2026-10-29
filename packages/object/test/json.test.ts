@@ -5,7 +5,7 @@ import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/i
 
 const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const objectText = (value: string) => `{"$type":{"$link":"${anything.link}"},"v":${value}}`;
+const objectText = (value: string) => `{"$describedBy":{"$link":"${anything.link}"},"v":${value}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
 
 describe("strict decoding", () => {
@@ -14,9 +14,9 @@ describe("strict decoding", () => {
   });
 
   it.each([
-    ["whitespace between members", `{"$type":{"$link":"${anything.link}"}, "v":1}`],
+    ["whitespace between members", `{"$describedBy":{"$link":"${anything.link}"}, "v":1}`],
     ["a trailing newline", `${objectText("1")}\n`],
-    ["keys out of order", `{"v":1,"$type":{"$link":"${anything.link}"}}`],
+    ["keys out of order", `{"v":1,"$describedBy":{"$link":"${anything.link}"}}`],
     ["a repeated key", objectText('{"a":1,"a":1}')],
     ["a number with a needless fraction", objectText("1.0")],
     ["a number with a needless exponent", objectText("1e2")],

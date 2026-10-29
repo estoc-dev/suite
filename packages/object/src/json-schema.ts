@@ -14,11 +14,11 @@ export interface JsonSchema extends JsonObject {
 
 /**
  * JSON Schema over JSON: a schema is a JSON object naming its dialect in
- * `$schema`, written as JSON is, and with no `$type`, so that no blob reads
- * both as a schema and as an object. A dialect is a version of the language,
- * and a `$ref` is a reference: a `$ref` to anything outside the schema fails
- * compilation, and one in a place the dialect ignores, such as under `then`
- * without `if`, has no effect.
+ * `$schema`, written as JSON is, and with no `$describedBy`, so that no blob
+ * reads both as a schema and as an object. A dialect is a version of the
+ * language, and a `$ref` is a reference: a `$ref` to anything outside the
+ * schema fails compilation, and one in a place the dialect ignores, such as
+ * under `then` without `if`, has no effect.
  */
 export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
   encoding: json,
@@ -28,7 +28,8 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
     if (!isJsonObject(value) || typeof value.$schema !== "string") {
       throw new Error("a schema is a JSON object naming its dialect in $schema");
     }
-    if (Object.hasOwn(value, "$type")) throw new Error("a schema has no $type, which names the schema of an object");
+    if (Object.hasOwn(value, "$describedBy"))
+      throw new Error("a schema has no $describedBy, which names the schema of an object");
     return value as JsonSchema;
   },
 };

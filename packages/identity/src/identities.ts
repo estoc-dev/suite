@@ -31,8 +31,9 @@ export type IdentityData = { readonly publicKey: string };
 
 /**
  * An identity read from its object, written to the identity schema of its
- * scheme: `{"$type": <link to that schema>, "publicKey": <lowercase hex>}`.
- * A signature, or any object, names an identity by the link of this object.
+ * scheme: `{"$describedBy": <link to that schema>, "publicKey": <lowercase
+ * hex>}`. A signature, or any object, names an identity by the link of this
+ * object.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData>, Identity {
   readonly link: Link<IdentityObject>;

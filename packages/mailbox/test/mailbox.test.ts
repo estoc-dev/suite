@@ -60,7 +60,7 @@ describe("a mailbox", () => {
 describe("a mailbox from bytes", () => {
   it("is refused when the bytes are not an object", async () => {
     // @ts-expect-error: refused at compile time too
-    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/\$type/);
+    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/\$describedBy/);
   });
 
   it("is refused when no transport given takes its schema", async () => {

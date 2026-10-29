@@ -25,9 +25,9 @@ const acknowledgementSchemaText =
   '"required":["accepted","at"],"title":"Acknowledgement","type":"object"}';
 const acknowledgementSchemaLink = "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
 const offerText =
-  '{"$type":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
-  '"identity":{"$link":"sha256:25c90970d2a76cc7223d47405f04ec51fd5e0194020014bd6816652bc94383b8"}}';
-const offerLink = "sha256:dea3dfb3de6ebfac18e2db11a56a63902f1f161bdca5c3d8dc19e54418214cd1";
+  '{"$describedBy":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
+  '"identity":{"$link":"sha256:85ec27528b097c6c4b3f41dff76f54c3fe33fc47a7e50fb16878a994d8558065"}}';
+const offerLink = "sha256:bd618f2f6c62c7bcc0a6850514797319f6f8a78a9652f443f79cbbad57130b90";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 

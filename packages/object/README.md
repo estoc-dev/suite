@@ -12,7 +12,7 @@ and JSON Schema. In that pair:
 ```
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
 Schema     a JSON Schema document: a JSON object naming its dialect in $schema
-Object     {"$type": <the Schema's link>, ...<the fields of its data>}
+Object     {"$describedBy": <the Schema's link>, ...<the fields of its data>}
 ```
 
 The encodings, objects, schemas and validators are the substrate that every
@@ -94,16 +94,17 @@ over it, and `defaultValidator` a validator of that language.
   value are the ones these objects hold, the schema an object names among
   them, and no others. In TypeScript a link in JSON data is a
   `JsonLink<T>`, `{ $link: Link<T> }`.
-- An object is the JSON object of the fields of its data and `$type`,
-  which holds the link of its schema. Only there does `$type` name a
-  schema: deeper in the data it is a field like any other, and data with a
-  `$type` of its own is refused. A schema is a JSON object naming its
-  dialect in `$schema`, written as JSON is, and has no `$type`.
+- An object is the JSON object of the fields of its data and
+  `$describedBy`, which holds the link of its schema. Only there does
+  `$describedBy` name a schema: deeper in the data it is a field like any
+  other, and data with a `$describedBy` of its own is refused. A schema is
+  a JSON object naming its dialect in `$schema`, written as JSON is, and
+  has no `$describedBy`.
 - A blob does not say what kind of blob it is, or which version of the
   format. A reader knows which kind it expects, and the kinds cannot pass
-  for one another: an object has `$type`, and a schema has `$schema` and no
-  `$type`. A signature is an object, and like any object it cannot pass for
-  one of another schema.
+  for one another: an object has `$describedBy`, and a schema has
+  `$schema` and no `$describedBy`. A signature is an object, and like any
+  object it cannot pass for one of another schema.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
 
@@ -111,11 +112,11 @@ over it, and `defaultValidator` a validator of that language.
 
 An object holds its data and the link of its schema, and nothing else, and
 its data has to fit the schema. The schema checks the data alone, without
-`$type`, so it does not name the field, and a schema that takes no fields
-beyond its own still takes the object. Reading one takes the schema the
-reader expects and refuses an object written to any other, so an application
-does not mistake another schema's object for one of its own. The same value
-under two schemas is two objects.
+`$describedBy`, so it does not name the field, and a schema that takes no
+fields beyond its own still takes the object. Reading one takes the schema
+the reader expects and refuses an object written to any other, so an
+application does not mistake another schema's object for one of its own.
+The same value under two schemas is two objects.
 
 ```ts
 import { decodeObject, encodeObject, encodeSchema, type Json, type Schema } from "@estoc/object";

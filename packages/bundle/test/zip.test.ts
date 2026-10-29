@@ -15,6 +15,8 @@ import { packBundle, readBundle, unpackBundle, unzipBundle, writeBundle, zipBund
 const pathOf = (blob: Uint8Array) => `blobs/${linkOf(blob).replace(":", "/")}`;
 const sizeOf = (files: ReadonlyMap<string, Uint8Array>) =>
   [...files.values()].reduce((size, bytes) => size + bytes.length, 0);
+const linksOf = (files: ReadonlyMap<string, Uint8Array>) =>
+  new Map([...files].map(([path, bytes]) => [path, linkOf(bytes)]));
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
 const note = await encodeSchema(
@@ -173,7 +175,7 @@ describe("a zipped bundle", () => {
     const stored = await zipBundle(large, { compress: false });
     expect(stored.length).toBeGreaterThan(sizeOf(large));
     expect((await zipBundle(large)).length).toBeLessThan(sizeOf(large));
-    expect(await unzipBundle(stored)).toEqual(large);
+    expect(linksOf(await unzipBundle(stored))).toEqual(linksOf(large));
   });
 
   it("is the same bytes whenever and wherever it is zipped", async () => {
@@ -306,10 +308,12 @@ describe("a zipped bundle", () => {
 describe("a packed bundle", () => {
   it("is the zip of its files without compression, and unpacks to the same bundle", async () => {
     const zip = await packBundle(root, [zeros]);
-    expect(zip).toEqual(await zipBundle(writeBundle(root, [zeros]), { compress: false }));
+    expect(linkOf(zip)).toBe(linkOf(await zipBundle(writeBundle(root, [zeros]), { compress: false })));
     const bundle = await unpackBundle(zip);
     expect(bundle.link).toBe(root.link);
-    expect(bundle.get(linkOf(zeros))).toEqual(zeros);
+    const kept = bundle.get(linkOf(zeros));
+    assert.exists(kept);
+    expect(linkOf(kept)).toBe(linkOf(zeros));
   });
 
   it("is refused when its files come to more bytes than the zip, as only a compressed one's can", async () => {

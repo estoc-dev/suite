@@ -1,5 +1,5 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import { noVersions, type SignedIdentityObject, type Signer } from "@estoc/identity";
+import { ed25519, eip191, noVersions, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -19,11 +19,11 @@ import {
   signer,
 } from "./fixtures.ts";
 
-const alice = signer("ed25519", 1);
-const wallet = signer("eip191", 2);
-const device = signer("ed25519", 3);
-const phone = signer("ed25519", 5);
-const otherService = signer("ed25519", 4);
+const alice = signer(ed25519, 1);
+const wallet = signer(eip191, 2);
+const device = signer(ed25519, 3);
+const phone = signer(ed25519, 5);
+const otherService = signer(ed25519, 4);
 
 const request = (path: string, init?: RequestInit) => new Request(new URL(path, "https://mail.example"), init);
 const getRoot = (service: MailboxService) => service.fetch(request("/"));

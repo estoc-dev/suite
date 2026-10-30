@@ -1,4 +1,4 @@
-import { loadSignatures, noVersions, type SignatureData, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, type SignatureData, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -78,7 +78,7 @@ describe("an index scanned from a store", () => {
         yield [signature.signedIdentity.identity.root.link, signature.object];
       },
     };
-    const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill)));
+    const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
     const hello = encodeObject(note, {});
     const signed = await Promise.all(
       signers.map(async (by) => signatures.actor(by, await signatures.identities.publish(by)).sign(hello)),

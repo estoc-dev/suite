@@ -1,11 +1,14 @@
 import type { Bundle } from "@estoc/bundle";
 import {
+  ed25519,
+  eip191,
   type IdentityObject,
   type KeyObject,
   loadSignatures,
   noVersions,
   type Scheme,
   SoftwareSigner,
+  solanaOffchain,
 } from "@estoc/identity";
 import {
   type EncodedObject,
@@ -80,9 +83,9 @@ async function readChat(bundle: Bundle, reader: IdentityObject) {
 }
 
 describe("a chat line", () => {
-  const alice = signer("ed25519", 1);
-  const bob = signer("ed25519", 2);
-  const carol = signer("ed25519", 3);
+  const alice = signer(ed25519, 1);
+  const bob = signer(ed25519, 2);
+  const carol = signer(ed25519, 3);
 
   const passOn = async (line: EncodedObject<Json>) => {
     const network = await MemoryNetwork.create(defaultValidator);
@@ -135,8 +138,8 @@ const join: Schema<Json, { readonly invitation: JsonLink<never> }> = await encod
 // own. Answering it once is the inviter's own record, so the inviter lets in
 // the first who answers and no one after.
 describe("a one-time invitation", () => {
-  const dave = signer("ed25519", 4);
-  const erin = signer("solana-offchain", 5);
+  const dave = signer(ed25519, 4);
+  const erin = signer(solanaOffchain, 5);
 
   const invite = async () => {
     const network = await MemoryNetwork.create(defaultValidator);
@@ -214,8 +217,8 @@ async function salesInForce(received: readonly Bundle[]): Promise<Sale[]> {
 }
 
 describe("a sale sent to a registry", () => {
-  const buyer = signer("eip191", 6);
-  const seller = signer("solana-offchain", 7);
+  const buyer = signer(eip191, 6);
+  const seller = signer(solanaOffchain, 7);
   const terms = encodeObject(sale, {
     buyer: { $link: identities.keys.encode(buyer.key).link },
     seller: { $link: identities.keys.encode(seller.key).link },

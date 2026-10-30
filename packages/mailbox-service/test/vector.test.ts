@@ -1,3 +1,4 @@
+import { ed25519 } from "@estoc/identity";
 import { encodeObject } from "@estoc/object";
 import { expect, test } from "vitest";
 import { acknowledgementSchemaRead, identities, offerSchema, serviceSchemaRead, signer } from "./fixtures.ts";
@@ -47,7 +48,7 @@ test("the acknowledgement schema encodes to fixed bytes and a fixed link", () =>
 });
 
 test("the offer of a service whose root is an Ed25519 key encodes to fixed bytes and a fixed link", () => {
-  const root = identities.keys.encode(signer("ed25519", 1).key);
+  const root = identities.keys.encode(signer(ed25519, 1).key);
   const offer = encodeObject(offerSchema, { identity: { $link: root.link } });
   expect(text(offer.bytes)).toBe(offerText);
   expect(offer.link).toBe(offerLink);

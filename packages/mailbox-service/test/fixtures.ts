@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { loadSignatures, type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -28,7 +28,7 @@ export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = awai
   defaultValidator,
 );
 
-export const serviceSigner = signer("ed25519", 9);
+export const serviceSigner = signer(ed25519, 9);
 export const serviceIdentity = identities.encode(serviceSigner.key);
 
 /**

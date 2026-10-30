@@ -25,7 +25,7 @@ import {
   type SignedIdentityObject,
   type Versions,
 } from "./identities.ts";
-import type { KeyObject } from "./keys.ts";
+import type { KeyObject } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
 /**

@@ -1,4 +1,4 @@
-import { type Actor, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { type Actor, ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -97,7 +97,7 @@ async function chat(faults: Faults = {}) {
   let now = 0;
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
-    const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
+    const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await signatures.identities.publish(signer));
     const store = new Store(json, new MemoryBackend());
     return { name, actor, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };

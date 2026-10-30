@@ -1,4 +1,4 @@
-import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -13,7 +13,7 @@ const note = await encodeSchema(
   defaultValidator,
 );
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
-const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await signatures.identities.publish(alice)).sign(hello);
 const schemas = [note, signatures.schema].map(({ bytes }) => bytes);

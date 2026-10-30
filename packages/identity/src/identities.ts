@@ -20,9 +20,9 @@ import {
   schemaOf,
 } from "@estoc/object";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
-import { identityInterface, keyInterface } from "./interfaces.ts";
-import { type Key, sameKey, verify } from "./key.ts";
-import { type KeyObject, type Keys, loadKeys } from "./keys.ts";
+import { identityInterface } from "./interfaces.ts";
+import { type Key, type KeyObject, keyInterface, sameKey, verify } from "./key/interface.ts";
+import { type Keys, loadKeys } from "./key/keys.ts";
 import type { Signer } from "./signer.ts";
 
 /** Bytes in lowercase hex, the one way of writing each byte string. */

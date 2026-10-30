@@ -15,10 +15,12 @@ export {
   type Versions,
   versionOf,
 } from "./identities.ts";
-export { identityInterface, keyInterface } from "./interfaces.ts";
-export { type Key, sameKey, verify } from "./key.ts";
-export { type KeyData, type KeyObject, type Keys, keySchemas, loadKeys } from "./keys.ts";
-export type { Scheme } from "./scheme.ts";
+export { identityInterface } from "./interfaces.ts";
+export { ed25519 } from "./key/ed25519.ts";
+export { eip191 } from "./key/eip191.ts";
+export { type Key, type KeyData, type KeyObject, keyInterface, type Scheme, sameKey, verify } from "./key/interface.ts";
+export { type Keys, loadKeys } from "./key/keys.ts";
+export { solanaOffchain } from "./key/solana-offchain.ts";
 export {
   type Actor,
   loadSignatures,

@@ -7,7 +7,6 @@ import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
-  authorizations,
   identities,
   memoryService,
   memoryStore,
@@ -57,11 +56,10 @@ async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
-/** The bundle that accepts `offer` for the wallet, through a proxy that the device signs. */
-async function proxied(offer: { readonly link: Link<unknown> }) {
-  const grant = await authorizations.authorize(device.key, await actorOf(wallet));
-  const { signature, blobs } = await authorizations.createActor(await actorOf(device), [grant]).sign(offer.link);
-  return { signature, zip: await packBundle(signature, blobs) };
+/** The bundle that accepts `offer` for the wallet by the device, which a Delegated Identity of the wallet's lists. */
+async function delegated(offer: { readonly link: Link<unknown> }) {
+  const signature = await signatures.actor(device, await identities.delegate(wallet, [device.key])).sign(offer);
+  return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
 async function acknowledgementIn(response: Response) {
@@ -97,10 +95,17 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
-    expect(await authorizations.readStanding(offer.link, accepted.signature.link, bundle)).toEqual({
-      principal: identities.encode(alice.key),
-      agents: [],
-    });
+    const read = await signatures.read(accepted.signature.link, bundle);
+    expect(read.object).toBe(offer.link);
+    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key));
+  });
+
+  it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {
+    const { service } = await memoryService();
+    const { signature } = await direct((await rootOf(service)).offer, wallet);
+    const { signedIdentity } = signature;
+    const read = [signedIdentity.bytes, signedIdentity.identity.bytes, signedIdentity.identity.root.bytes];
+    expect((await accepting(service, await packBundle(signature, read))).status).toBe(201);
   });
 
   it("answers 200 with the same acknowledgement when the same acceptance comes again", async () => {
@@ -112,26 +117,26 @@ describe("a mailbox service", () => {
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
   });
 
-  it("opens the account of the principal for an agent's signature over a proxy", async () => {
+  it("opens the account of a root for the signature of an agent that a Delegated Identity of the root's lists", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
-    const accepted = await proxied(offer);
+    const accepted = await delegated(offer);
     const response = await accepting(service, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { accepted: link } = acknowledgement.data;
     expect(link.$link).toBe(accepted.signature.link);
-    expect(await authorizations.readStanding(offer.link, link.$link, bundle)).toEqual({
-      principal: identities.encode(wallet.key),
-      agents: [identities.encode(device.key)],
-    });
+    const read = await signatures.read(link.$link, bundle);
+    expect(read.object).toBe(offer.link);
+    expect(read.signedIdentity.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
+    expect(read.key.link).toBe(identities.keys.encode(device.key).link);
   });
 
-  it("answers an identity that accepts again, another way, with the acknowledgement of its first acceptance", async () => {
+  it("answers a root that accepts again, by another identity, with the acknowledgement of its first acceptance", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
     const first = new Uint8Array(await (await accepting(service, (await direct(offer, wallet)).zip)).arrayBuffer());
-    const again = await accepting(service, (await proxied(offer)).zip);
+    const again = await accepting(service, (await delegated(offer)).zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
   });

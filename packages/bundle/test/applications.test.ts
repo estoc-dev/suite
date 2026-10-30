@@ -1,8 +1,6 @@
-import { loadAuthorizations } from "@estoc/authorization";
 import { loadSignatures, type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
-  type EncodedObject,
   encodeObject,
   encodeSchema,
   type Fields,
@@ -168,40 +166,17 @@ describe("a chat message", () => {
       message: { text: "See you at noon." },
     });
   });
-});
 
-const authorizations = await loadAuthorizations(defaultValidator);
-const standingEnvelope = await schemaFor<{
-  readonly message: JsonLink<EncodedObject<Json>>;
-  readonly signature: JsonLink<Signature>;
-}>("Stood behind", { message: linkSchema, signature: linkSchema });
-
-// A chat message sent from a device travels as an envelope naming the message
-// and the signature by which someone stands behind it, directly or through
-// agents. Reading the standing checks the signature against the message's
-// link, so the envelope names both. The bundle is the blobs that the reading
-// follows that signature into.
-async function readSent(bundle: Bundle) {
-  const { message, signature } = decodeObject(bundle.root, standingEnvelope).data;
-  const { principal, agents } = await authorizations.readStanding(message.$link, signature.$link, bundle);
-  return { from: principal, through: agents, message: (await readObject(bundle, message.$link, chat)).data };
-}
-
-describe("a chat message sent through a device key", () => {
-  it("reads as the message from the wallet that authorized the key", async () => {
+  it("signed by a key that a wallet lists as an agent reads as the message from the wallet", async () => {
     const wallet = signer("eip191", 1);
-    const deviceKey = signer("ed25519", 2);
+    const device = signer("ed25519", 2);
     const message = encodeObject(chat, { text: "See you at noon." });
-    const grant = await authorizations.authorize(deviceKey.key, await actorOf(wallet));
-    const { signature, blobs } = await authorizations.createActor(await actorOf(deviceKey), [grant]).sign(message.link);
-    const root = encodeObject(standingEnvelope, {
-      message: { $link: message.link },
-      signature: { $link: signature.link },
-    });
-    expect(await readSent(handOver(root, [message.bytes, signature.bytes, ...blobs]))).toEqual({
-      from: identities.encode(wallet.key),
-      through: [identities.encode(deviceKey.key)],
+    const signature = await signatures.actor(device, await identities.delegate(wallet, [device.key])).sign(message);
+    const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
+    expect(await readMessage(bundle)).toEqual({
+      from: signature.signedIdentity.identity,
       message: { text: "See you at noon." },
     });
+    expect(signature.signedIdentity.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
   });
 });

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { loadAuthorizations } from "@estoc/authorization";
 import { loadSignatures, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
@@ -102,19 +101,12 @@ describe("a bundle", () => {
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 
-  it("takes as its root an authorization as it was read, and writes it as it was signed", async () => {
-    const authorizations = await loadAuthorizations(defaultValidator);
-    const agent = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
-    const grant = await authorizations.authorize(agent.key, asAlice);
-    const bundle = readBundle(
-      writeBundle(grant.object, [
-        grant.signature.bytes,
-        ...grant.object.agent.blobs,
-        ...grant.signature.signedIdentity.blobs,
-      ]),
-    );
-    expect(bundle.link).toBe(grant.object.link);
-    expect(await authorizations.readAuthorization(grant.signature.link, bundle)).toEqual(grant);
+  it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
+    const wallet = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
+    const signed = await identities.delegate(wallet, [alice.key]);
+    const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
+    expect(bundle.link).toBe(signed.link);
+    expect(await identities.read(bundle.link, bundle)).toEqual(signed);
   });
 
   it("reads with a signature that does not verify or whose signed identity is written to an unknown schema, as bytes", async () => {

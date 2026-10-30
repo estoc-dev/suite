@@ -11,7 +11,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@estoc/authorization": "workspace:*",
     "@estoc/bundle": "workspace:*",
     "@estoc/identity": "workspace:*",
     "@estoc/object": "workspace:*",

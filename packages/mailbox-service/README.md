@@ -103,29 +103,32 @@ offer that names another root than that of the identity that signed it is
 refused.
 
 Opening an account is accepting the offer: an identity signs it, and the
-account is the account of whoever signed. A wallet asks its holder to
-confirm each signature, so the wallet can instead authorize a key on the
-device with `@estoc/authorization`, and the device signs a Proxy for the
-offer. The account is still the wallet's.
+account is the account of its root. A wallet asks its holder to confirm
+each signature, so the wallet can instead list a key on the device in a
+Delegated Identity of `@estoc/identity`, and the device signs the offer for
+it. The account is still the wallet's.
 
-`accept` takes an actor of `@estoc/authorization`, made from an identity
-actor of `@estoc/identity`, and opens the account of its principal:
+`accept` takes an actor of `@estoc/identity`, for the wallet's own Identity
+or for one that lists the device's key, and opens the account of its
+identity's root:
 
 ```ts
-const account = await service.account.accept(authorizations.createActor(wallet));
-// or, for the wallet, by a key on the device that it authorized:
-const account = await service.account.accept(authorizations.createActor(device, [grant]));
+const account = await service.account.accept(signatures.actor(wallet, await identities.publish(wallet)));
+// or, for the wallet, by a key on the device that it lists:
+const account = await service.account.accept(
+  signatures.actor(device, await identities.delegate(wallet, [device.key])),
+);
 ```
 
-The actor signs the offer, or a proxy for it, and `accept` posts the
-bundle of that signature to `POST /<id>`, at the id that the Service lists
-with the offer: the signature as the root, with the signed identity, and
-for a proxy the Proxy and its chain. The offer and the schemas are left out,
-since the service has them.
+The actor signs the offer, and `accept` posts the bundle of that signature
+to `POST /<id>`, at the id that the Service lists with the offer: the
+signature as the root, with the blobs of its signed identity. The offer and
+the signature schema are left out, since the service has them.
 
-The service reads who stands behind its offer by the bundle's root, with
-`readStanding`, opens an account for the root of their identity, and
-answers with its signature over an acknowledgement of the bundle's root.
+The service reads the signature at the bundle's root with
+`signatures.read`, refuses it unless it is over the offer, opens an account
+for the root of its identity, and answers with its signature over an
+acknowledgement of the bundle's root.
 `at` is when it received that. The answer is a bundle: the service's
 signature as the root, with the acknowledgement, the acceptance, the offer
 and all they lead to.
@@ -134,15 +137,16 @@ and all they lead to.
 |---|---|
 | 201 | the account opened; the answer is its acknowledgement |
 | 200 | the identity's root had an account; the answer is that account's acknowledgement |
-| 400 | the bundle does not read, or its root does not stand anyone behind this service's offer |
+| 400 | the bundle does not read, or its root is not a signature over this service's offer |
 | 413 | the body is over 64 KiB |
 
 A root has one account at a service. When an acceptance comes again, or
 an identity of the same root accepts again by another device or another
-chain, the service answers with the acknowledgement it sent when the
-account opened, as long as the acceptance stands an identity of that root
-behind the offer. That acknowledgement links to the first acceptance, so a
-second device gets the first device's proxy and chain with it. The client
+identity, the service answers with the acknowledgement it sent when the
+account opened, as long as the acceptance is a signature over the offer for
+an identity of that root. That acknowledgement links to the first
+acceptance, so a second device gets the first device's signature and signed
+identity with it. The client
 reads that acceptance, and refuses an acknowledgement that is signed by
 another root than the service's or that is of another root's account.
 

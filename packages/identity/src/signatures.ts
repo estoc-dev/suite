@@ -75,7 +75,7 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
  * A signer acting for an identity it signs for, as one signed identity of
  * it, which every signature it makes names.
  */
-export interface IdentityActor {
+export interface Actor {
   readonly signedIdentity: SignedIdentityObject;
   /**
    * Signs the link of an object, and so the object, whatever it is read as.
@@ -107,7 +107,7 @@ export class Signatures {
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
-    return signatureOf(signature, await this.identities.readSigned(signature.data.signedIdentity.$link, reader));
+    return signatureOf(signature, await this.identities.read(signature.data.signedIdentity.$link, reader));
   }
 
   /** Reads the signature that `link` names from `reader`, and verifies it. */
@@ -116,7 +116,7 @@ export class Signatures {
   }
 
   /** An actor for `signedIdentity`, which refuses a signer whose key does not sign for its identity. */
-  actor(signer: Signer, signedIdentity: SignedIdentityObject): IdentityActor {
+  actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
     const { identity } = signedIdentity;
     const sign = rulesOf(identity).signing(identity, signer);
     if (sign === undefined) throw new Error(`the signer's key does not sign for ${identity.link}`);

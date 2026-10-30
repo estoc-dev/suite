@@ -223,20 +223,6 @@ export class Identities {
     this.#schemas = new Map([schema, delegated].map((each) => [each.link, each]));
   }
 
-  /**
-   * Reads the identity that `link` names from `reader`, written to either
-   * identity schema, with the keys it names.
-   */
-  async read(link: Link<IdentityObject>, reader: Reader): Promise<IdentityObject> {
-    const bytes = await reader.get(link);
-    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
-    const schema = this.#schemas.get(schemaOf(bytes, json));
-    if (schema === undefined) throw new Error(`${link} is not written to an identity schema`);
-    const object = decodeObject(bytes, schema);
-    if (object.link !== link) throw new Error(`the blob given for ${link} is another blob`);
-    return rulesOf(object).read(object, this.keys, reader);
-  }
-
   /** Writes the Identity whose root is `root`. */
   encode(root: Key): IdentityObject {
     const key = this.keys.encode(root);
@@ -245,11 +231,12 @@ export class Identities {
 
   /**
    * Reads the signed identity that `link` names from `reader`, with its
-   * identity, and refuses it unless the identity's root signed it.
+   * identity, written to either identity schema, and the keys it names, and
+   * refuses it unless the identity's root signed it.
    */
-  async readSigned(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
+  async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
     const object = await readObject(reader, link, this.#signedSchema);
-    return signedOf(object, await this.read(object.data.identity.$link, reader));
+    return signedOf(object, await this.#readIdentity(object.data.identity.$link, reader));
   }
 
   /** Writes the Identity whose root is `root`'s key, and has `root` sign it. */
@@ -266,6 +253,18 @@ export class Identities {
     const agentKeys = agents.map((agent) => this.keys.encode(agent));
     const data = { root: { $link: rootKey.link }, agents: agentKeys.map(({ link }) => ({ $link: link })) };
     return this.#signedBy(root, delegatedIdentityOf(encodeObject(this.#delegatedSchema, data), rootKey, agentKeys));
+  }
+
+  // An identity stands for someone only as its root signed it, so it is read
+  // only as the identity of a signed identity.
+  async #readIdentity(link: Link<IdentityObject>, reader: Reader): Promise<IdentityObject> {
+    const bytes = await reader.get(link);
+    if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+    const schema = this.#schemas.get(schemaOf(bytes, json));
+    if (schema === undefined) throw new Error(`${link} is not written to an identity schema`);
+    const object = decodeObject(bytes, schema);
+    if (object.link !== link) throw new Error(`the blob given for ${link} is another blob`);
+    return rulesOf(object).read(object, this.keys, reader);
   }
 
   // The identity is written before its root is asked to sign, so a root is

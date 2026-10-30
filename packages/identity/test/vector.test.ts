@@ -196,7 +196,7 @@ describe("an Identity with an Ed25519 root, signed, and its signature over the l
       [identityLink, utf8(identityText)],
       [signedIdentityLink, utf8(signedIdentityText)],
     ]);
-    const read = await signatures.identities.readSigned(signedIdentityLink, blobs);
+    const read = await signatures.identities.read(signedIdentityLink, blobs);
     expect(read.identity.link).toBe(identityLink);
     expect(read.identity.root.scheme).toBe("ed25519");
     const keySchema = await decodeSchema(utf8(keySchemaTexts.ed25519), defaultValidator);

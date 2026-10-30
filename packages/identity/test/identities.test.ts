@@ -25,8 +25,15 @@ const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [l
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
 const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
-const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) =>
-  identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
+const writtenSigned = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(signedIdentitySchema))));
+// A signed identity's identity is read before its root's signature is
+// verified, so one that names an identity that does not read is refused for
+// the identity, whatever its signature.
+const unsignedOf = (identity: Link<unknown>) => writtenSigned({ identity: { $link: identity }, signature: "" });
+const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
+  const signed = unsignedOf(linkOf(bytes));
+  return identities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
+};
 
 // The links a store gathers from a blob: every blob it leads to by the links
 // JSON finds in it, past which a blob that is not JSON leads nowhere.
@@ -54,17 +61,6 @@ test.each([
 });
 
 describe("an identity", () => {
-  it.each(["ed25519", "eip191", "solana-offchain"] as const)(
-    "with a %s root reads back from its blobs with its root",
-    async (scheme) => {
-      const identity = identities.encode(key(scheme));
-      const read = await identities.read(identity.link, byLink(identity.blobs));
-      expect(read.link).toBe(identity.link);
-      expect(read.root.link).toBe(identity.root.link);
-      expect(sameKey(read.root, key(scheme))).toBe(true);
-    },
-  );
-
   it("names its root by the link of the root's object", () => {
     const identity = identities.encode(key("ed25519"));
     expect(identity.data).toEqual({ root: { $link: keys.encode(key("ed25519")).link } });
@@ -119,16 +115,18 @@ describe("an identity", () => {
   it("is refused when the reader gives another blob for its link", async () => {
     const identity = identities.encode(key("ed25519"));
     const other = identities.encode(key("ed25519", 2));
-    await expect(identities.read(identity.link, new Map([[identity.link, other.bytes]]))).rejects.toThrow(
-      /another blob/,
-    );
+    const signed = unsignedOf(identity.link);
+    const reader = new Map([
+      [linkOf(signed), signed],
+      [identity.link, other.bytes],
+    ]);
+    await expect(identities.read(linkOf(signed), reader)).rejects.toThrow(/another blob/);
   });
 });
 
 describe("a signed identity", () => {
-  const writtenSigned = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(signedIdentitySchema))));
   const readSignedFrom = (bytes: Uint8Array, ...blobs: readonly Uint8Array[]) =>
-    identities.readSigned(linkOf(bytes), byLink([bytes, ...blobs]));
+    identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
   const signedBy = async (by: SoftwareSigner, identity = identities.encode(by.key)) => ({
     identity: { $link: identity.link },
     signature: bytesToHex(await by.sign(digestOf(identity.link))),
@@ -138,9 +136,10 @@ describe("a signed identity", () => {
     "published by a %s root reads back from its blobs with its identity",
     async (scheme) => {
       const signed = await identities.publish(signer(scheme));
-      const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+      const read = await identities.read(signed.link, byLink(signed.blobs));
       expect(read.link).toBe(signed.link);
       expect(read.identity).toEqual(identities.encode(key(scheme)));
+      expect(sameKey(read.identity.root, key(scheme))).toBe(true);
       expect(read.signature).toEqual(signed.signature);
     },
   );
@@ -204,7 +203,7 @@ describe("a Delegated Identity", () => {
   it("reads back from its blobs with its root and its agents, in the order its root lists them", async () => {
     const agents = [key("ed25519", 3), key("solana-offchain", 2), key("eip191", 4)];
     const signed = await identities.delegate(signer("eip191"), agents);
-    const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+    const read = await identities.read(signed.link, byLink(signed.blobs));
     expect(read.identity).toEqual(signed.identity);
     expect(sameKey(read.identity.root, key("eip191"))).toBe(true);
     expect(agentsOf(read.identity).map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
@@ -265,7 +264,7 @@ describe("a Delegated Identity", () => {
 
   it("can list no agents", async () => {
     const signed = await identities.delegate(signer("ed25519"), []);
-    const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+    const read = await identities.read(signed.link, byLink(signed.blobs));
     expect(agentsOf(read.identity)).toEqual([]);
   });
 

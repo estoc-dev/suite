@@ -125,17 +125,16 @@ a signature names a signed identity of the identity it is made for.
   signs for it only if it lists itself; with no agents no one does. A root
   can write as many as it likes, and every one it signs stands.
 
-`loadIdentities` compiles the two identity schemas and the key schemas with
-the validator the application picks, and gives `identities`, which holds
-`keys`. `identities.read` takes the link of an identity and a `Reader`,
-picks the schema to read the identity's object with by `schemaOf`, reads
-the keys it names with `keys.read`, and gives the identity.
-`identities.encode` writes the Identity whose root is a key. Reading an
-identity takes the blobs of its object and of its keys; an identity carries
-them as `blobs`, with those of the schemas they are written to and of the
-interfaces those name, each once, so where an identity goes, as into a
-store or a bundle, `...identity.blobs` goes along and leads to nothing it
-does not carry.
+`loadIdentities` compiles the two identity schemas, the signed identity
+schema and the key schemas with the validator the application picks, and
+gives `identities`, which holds `keys`. `identities.encode` writes the
+Identity whose root is a key. An identity stands for someone only as its
+root signed it, so it is read only as the identity of a signed identity.
+Reading an identity takes the blobs of its object and of its keys; an
+identity carries them as `blobs`, with those of the schemas they are
+written to and of the interfaces those name, each once, so where an
+identity goes, as into a store or a bundle, `...identity.blobs` goes along
+and leads to nothing it does not carry.
 
 ## Signed identities
 
@@ -155,11 +154,12 @@ once, when the identity is made. `identities.delegate` takes the root's
 `Signer` and the agents' keys, and does the same with the Delegated
 Identity that lists them. Both write the identity before the root signs, so
 a signer is not asked to sign an identity that would not read, such as one
-that lists an agent twice. `identities.readSigned` takes the link of a
-signed identity and a `Reader`, reads the identity with
-`identities.read`, and refuses a signature that its root did not make. A
-signed identity carries as `blobs` its object and its schema with the
-identity's `blobs`.
+that lists an agent twice. `identities.read` takes the link of a signed
+identity and a `Reader`, picks the schema to read its identity's object
+with by `schemaOf`, reads the keys the identity names with `keys.read`, and
+refuses a signature that the identity's root did not make. A signed
+identity carries as `blobs` its object and its schema with the identity's
+`blobs`.
 
 ## Signatures
 
@@ -188,7 +188,7 @@ application picks, and gives `signatures`, which holds the signature
 schema, `identities` and `actor`. `signatures.verify` is the judgment of a
 signature: it takes the signature as an object of `signatures.schema` and a
 `Reader`, reads its signed identity from the reader with
-`identities.readSigned`, and verifies the signature's bytes by the key the
+`identities.read`, and verifies the signature's bytes by the key the
 identity's schema reads from them, over the text for the object by that
 signed identity; `signatures.read` does the same from the link of the
 signature. So verifying a signature takes the blobs of its signed identity,
@@ -201,8 +201,9 @@ objects would, reads its fields without verifying it.
 
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
 signed identity whose identity the signer's key signs for, the root of an
-Identity or an agent of a Delegated Identity, and refuses any other.
-`actor.sign` signs the link of an object, so it takes anything that has
+Identity or an agent of a Delegated Identity, gives an `Actor` for it, and
+refuses any other signer. So a wallet that lists a key on a device as an
+agent does not confirm what the device signs for it. `actor.sign` signs the link of an object, so it takes anything that has
 one, and gives a signature whose `signedIdentity` is
 `actor.signedIdentity`, the signed identity the actor was made for, whose
 `blobs` go along with the signature. It verifies the signature after the

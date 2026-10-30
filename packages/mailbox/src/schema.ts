@@ -1,4 +1,5 @@
 import {
+  DRAFT_2020_12,
   type EncodedObject,
   type Json,
   type JsonLink,
@@ -6,8 +7,6 @@ import {
   type JsonSchema,
   linkSchema,
 } from "@estoc/object";
-
-const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /**
  * The draft 2020-12 schema of one transport's mailboxes. Every mailbox has

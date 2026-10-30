@@ -1,4 +1,5 @@
 import {
+  DRAFT_2020_12,
   decodeObject,
   digestOf,
   type EncodedObject,
@@ -23,8 +24,6 @@ import { identityInterface, keyInterface } from "./interfaces.ts";
 import { type Key, sameKey, verify } from "./key.ts";
 import { type KeyObject, type Keys, loadKeys } from "./keys.ts";
 import type { Signer } from "./signer.ts";
-
-const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /** Bytes in lowercase hex, the one way of writing each byte string. */
 export const hexSchema: JsonObject = { type: "string", pattern: "^(?:[0-9a-f]{2})*$" };

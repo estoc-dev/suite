@@ -190,8 +190,8 @@ without any blob changing.
 `defaultValidator`, from `@estoc/object/default-validator`, wraps
 [`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
 which interprets schemas instead of generating code and so runs under a
-strict content security policy. It takes draft 2020-12 only, in the schema
-and in any schema resource inside it. A schema without `$id` can reference
+strict content security policy. It takes draft 2020-12 only, whose URI is
+`DRAFT_2020_12`, in the schema and in any schema resource inside it. A schema without `$id` can reference
 its own parts by fragment (`#/$defs/name`), and a schema resource inside it
 by its `$id`. Nothing is fetched, so a URL resolves only to a part of the
 schema itself, and not to the draft's meta-schemas either.
@@ -251,8 +251,8 @@ Where a program reads objects of several schemas as one kind of thing, as
 `@estoc/identity` reads a key in any of its schemes as a key, that kind is
 an interface, and each of those schemas can name it. In JSON Schema a
 schema names it by `"x-implements": {"$link": <link>}`, the link of a blob
-that stands for the interface, such as its name as text. One schema names
-one interface.
+that stands for the interface, such as its name as text, which
+`interfaceNamed` gives as an `Interface`. One schema names one interface.
 
 - JSON Schema has no keyword for this. `allOf` with a `$ref` says that the
   data also fits another schema, which is about shape, not kind, and a
@@ -271,6 +271,11 @@ one interface.
 
 The mark does not let a program take a schema it does not know. A program
 still pins the concrete schemas it reads, each with how its data becomes
-the interface's shape, and picks among them by `schemaOf`. What the mark
-adds is that the schemas themselves say what the program's table says,
-which a test can hold the two to.
+the interface's shape, and picks among them by `schemaOf`. That table is
+`Implementations`: each `Implementation` is a compiled schema with a `read`
+that turns an object written to it into the interface's shape, following
+what the object links to through the reader. The table reads an object by
+its link with the implementation of the schema it names, and refuses one
+written to any other schema, whatever interface that schema names. What
+the mark adds is that the schemas themselves say what the program's table
+says, which a test can hold the two to.

@@ -54,8 +54,21 @@ export async function readObject<D, F extends Fields<D>>(
   link: Link<unknown>,
   schema: Schema<D, F>,
 ): Promise<EncodedObject<D, F>> {
+  return decodeObjectAt(link, await getBlob(reader, link), schema);
+}
+
+export async function getBlob(reader: Reader, link: Link<unknown>): Promise<Uint8Array> {
   const bytes = await reader.get(link);
   if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+  return bytes;
+}
+
+/** Reads `bytes` as `decodeObject` does, given for `link`, and refuses them when they are another blob. */
+export function decodeObjectAt<D, F extends Fields<D>>(
+  link: Link<unknown>,
+  bytes: Bytes<EncodedObject<D, F>>,
+  schema: Schema<D, F>,
+): EncodedObject<D, F> {
   const object = decodeObject(bytes, schema);
   if (object.link !== link) throw new Error(`the blob given for ${link} is another blob`);
   return object;

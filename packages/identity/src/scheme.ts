@@ -1,4 +1,4 @@
-import type { JsonSchema } from "@estoc/object";
+import { DRAFT_2020_12, type JsonSchema } from "@estoc/object";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
@@ -50,8 +50,6 @@ const secp256k1Curve: Curve = {
 };
 
 const SOLANA_SIGNING_DOMAIN = concatBytes(Uint8Array.of(0xff), utf8ToBytes("solana offchain"));
-
-const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 // The schema is a blob, so its title is part of its link and of the link of
 // every key written to it. Where two schemes take keys of one shape, as

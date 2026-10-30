@@ -113,16 +113,15 @@ export interface DelegatedIdentityObject extends IdentityObject {
 export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; readonly signature: string };
 
 /**
- * An identity as its root stands behind it: an object written to
+ * An identity as its root publishes it: an object written to
  * `signedIdentitySchema`, `{"$describedBy": <link to signedIdentitySchema>,
  * "identity": <link to the identity>, "signature": <hex>}`, read with the
  * identity and verified, the bytes being the root's signature over the
- * identity's link, whichever identity schema it is written to. A signature
- * names the identity it is made for by the link of this object. A wallet
- * need not sign deterministically, so one identity can have several, and
- * each of them stands for it: two signers are the same someone when the
- * roots of their identities are the same, whichever signed identities they
- * sign by.
+ * identity's link, whichever identity schema it is written to. What the
+ * root publishes is this object as it is, so a signature names the identity
+ * it is made for by the link of this object. Two signers are the same
+ * someone when the roots of their identities are the same, whichever signed
+ * identities they sign by.
  *
  * `blobs` are what it takes to read it again: the bytes of its object and of
  * its schema, and the identity's `blobs`.

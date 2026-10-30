@@ -53,13 +53,13 @@ The first text is signed only when a root signs an identity, and every
 signature for an identity, a root's for its Identity too, is over the
 second. So a signature a root makes for an identity never stands it behind
 another identity, even when the object signed is a Delegated Identity of
-that root listing someone else. The second text names the Signed identity, not only the identity: everything in
-a Signature but its signature is signed, so one signature is one Signature.
-Were only the identity named, a Signature could be given another Signed
-identity of the same identity, as a wallet that does not sign
-deterministically makes, and have another link. And a root lists an agent
-without the agent's leave, so a signature an agent made for one identity
-would otherwise also verify for another that lists it.
+that root listing someone else. The second text names the Signed identity,
+not only the identity: the Signed identity is the identity as its root
+publishes it, and a signature is made for what the root published, as it
+is. Everything in a Signature but its signature is signed, so one signature
+is one Signature. And a root lists an agent without the agent's leave, so a
+signature an agent made for one identity would otherwise also verify for
+another that lists it.
 
 The keys work without objects. A `Key` is a scheme and a public key,
 `verify` checks a signature by one over the text for a digest, and
@@ -138,14 +138,14 @@ and leads to nothing it does not carry.
 
 ## Signed identities
 
-A signed identity is an identity as its root stands behind it, written to
+A signed identity is an identity as its root publishes it, written to
 `signedIdentitySchema`: it names the identity by its link and holds the
 root's signature over the first text for that link, whichever schema the
-identity is written to. A signature names who makes it by the link of a signed identity,
-so reading a signature reads that the root stands behind the identity. A
-wallet need not sign deterministically, so one identity can have several
-signed identities, and each of them stands for it: two signers are the
-same someone when the roots of their identities are, whichever signed
+identity is written to. Signing is taken to be deterministic, so an
+identity has one signed identity. A signature names who makes it by the
+link of a signed identity, what the root published as it is, so reading a
+signature reads that the root stands behind the identity. Two signers are
+the same someone when the roots of their identities are, whichever signed
 identities they sign by.
 
 `identities.publish` takes the root's `Signer`, writes its Identity, has
@@ -230,7 +230,5 @@ const read = await signatures.verify(signed, new Map(identityBlobs.map((bytes) =
 const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 
-One identity can sign one object more than once, as a wallet need not sign
-deterministically, and each of those signatures verifies. Finding the
-signatures over an object takes an index by the link they name, so hand an
-object over together with its signatures.
+Finding the signatures over an object takes an index by the link they
+name, so hand an object over together with its signatures.

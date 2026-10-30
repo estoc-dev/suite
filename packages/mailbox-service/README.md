@@ -208,9 +208,10 @@ Started again with the same store, the service keeps answering with the
 latest Service when what it would sign says the same apart from `at`: the
 same origin and the same offers. At another origin it signs a new Service,
 which lists the offer under the same id with the same signature over it,
-so what a client holds still holds. The new Service's `at` is later than
-that of every Service the store held when it started, even when the
-service's clock is behind. Two started at once on one store can sign the
+so what a client holds still holds. The new Service's `at` is the time the
+service's clock gives, and the clock is the service's to keep: started with
+its clock behind, it signs a Service earlier than the one before, which
+stays the latest. Two started at once on one store can sign the
 same `at`, and the latest of the two is then the one whose signature has
 the greater link.
 

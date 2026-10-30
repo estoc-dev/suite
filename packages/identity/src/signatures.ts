@@ -101,9 +101,7 @@ export class Signatures {
    * names by that signed identity. The signed identity, its identity and the
    * keys it names are read from `reader`. The identity's schema says which
    * key made the signature and how its bytes are laid out, and the key's
-   * scheme how its signature is read. One identity can sign one object many
-   * times, since a wallet need not sign deterministically, and each of those
-   * signatures verifies.
+   * scheme how its signature is read.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);

@@ -13,9 +13,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { keccak_256 } from "@noble/hashes/sha3.js";
-import { bytesToHex, concatBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test, vi } from "vitest";
 import {
   type DelegatedIdentityObject,
@@ -28,7 +26,6 @@ import {
   SoftwareSigner,
   sameKey,
   signatureSchema,
-  signingText,
 } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
@@ -205,22 +202,11 @@ describe("a signature for a Delegated Identity", () => {
 });
 
 describe("what a signature signs", () => {
-  // A wallet that does not sign deterministically, as an EIP-191 wallet need not.
-  const randomizing = (secretKey: Uint8Array): Signer => ({
-    key: SoftwareSigner.fromSecretKey("eip191", secretKey).key,
-    async sign(digest, signedIdentity) {
-      const text = new TextEncoder().encode(signingText(digest, signedIdentity));
-      const prefix = new TextEncoder().encode(`\x19Ethereum Signed Message:\n${text.length}`);
-      return secp256k1.sign(keccak_256(concatBytes(prefix, text)), secretKey, { prehash: false, extraEntropy: true });
-    },
-  });
-
-  it("is the signed identity it names, not only its identity", async () => {
-    const root = randomizing(new Uint8Array(32).fill(1));
-    const [signedIdentity, other] = [await identities.publish(root), await identities.publish(root)];
-    expect(other.identity.link).toBe(signedIdentity.identity.link);
-    expect(other.link).not.toBe(signedIdentity.link);
-    const signature = await signatures.actor(root, signedIdentity).sign(hello);
+  it("is the signed identity it names, not only its root and the index of its agent", async () => {
+    const [root, agent] = [signer("ed25519"), signer("ed25519", 3)];
+    const signedIdentity = await identities.delegate(root, [agent.key, key("ed25519", 2)]);
+    const other = await identities.delegate(root, [agent.key]);
+    const signature = await signatures.actor(agent, signedIdentity).sign(hello);
     expect((await verified(signature.bytes, identityOf(signature))).link).toBe(signature.link);
     await expect(
       verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),

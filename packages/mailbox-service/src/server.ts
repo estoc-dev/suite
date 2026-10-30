@@ -255,9 +255,7 @@ export async function loadMailboxService(
   const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
   const next: ServiceData = {
     origin,
-    // The latest `at` says where the service is, so a clock set back does
-    // not put the new Service behind the one before.
-    at: previous === undefined ? clock() : Math.max(clock(), previous.data.at + 1),
+    at: clock(),
     offers: [{ offer: { $link: signature.link }, accept: offer.link }],
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {

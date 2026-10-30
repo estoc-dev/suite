@@ -113,11 +113,9 @@ or for one that lists the device's key, and opens the account of its
 identity's root:
 
 ```ts
-const account = await service.account.accept(signatures.actor(wallet, await identities.publish(wallet)));
+const account = await service.account.accept(signatures.actor(wallet, await publish(wallet)));
 // or, for the wallet, by a key on the device that it lists:
-const account = await service.account.accept(
-  signatures.actor(device, await identities.delegate(wallet, [device.key])),
-);
+const account = await service.account.accept(signatures.actor(device, await delegate(wallet, [device.key])));
 ```
 
 The actor signs the offer, and `accept` posts the bundle of that signature

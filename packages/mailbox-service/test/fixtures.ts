@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ed25519, loadSignatures, type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -18,9 +18,8 @@ export const signer = (scheme: Scheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(json, new MemoryBackend());
 
-export const signatures = await loadSignatures(defaultValidator);
-export const { identities } = signatures;
-export const actorOf = async (by: Signer) => signatures.actor(by, await identities.publish(by));
+export const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
 export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(

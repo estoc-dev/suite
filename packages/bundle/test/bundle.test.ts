@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ed25519, eip191, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, eip191, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -16,8 +16,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
-const signatures = await loadSignatures(defaultValidator);
-const { identities } = signatures;
+const { identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -39,7 +38,7 @@ const links = await encodeSchema(
 );
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const asAlice = signatures.actor(alice, await identities.publish(alice));
+const asAlice = signatures.actor(alice, await publish(alice));
 const signature = await asAlice.sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
@@ -103,10 +102,10 @@ describe("a bundle", () => {
 
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
-    const signed = await identities.delegate(wallet, [alice.key]);
+    const signed = await delegate(wallet, [alice.key]);
     const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
     expect(bundle.link).toBe(signed.link);
-    expect(await identities.read(bundle.link, bundle)).toEqual(signed);
+    expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signed);
   });
 
   it("reads with a signature that does not verify or whose signed identity is written to an unknown schema, as bytes", async () => {

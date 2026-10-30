@@ -7,7 +7,7 @@ import {
   eip191,
   type KeyData,
   keyInterface,
-  loadKeys,
+  loadIdentity,
   type Scheme,
   SoftwareSigner,
   sameKey,
@@ -15,7 +15,7 @@ import {
 } from "../src/index.ts";
 import { schemes } from "./fixtures.ts";
 
-const keys = await loadKeys(defaultValidator);
+const { keys } = await loadIdentity(defaultValidator);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
 
 const secretKey = new Uint8Array(32).fill(1);

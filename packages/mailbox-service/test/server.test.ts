@@ -7,7 +7,9 @@ import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
+  delegate,
   identities,
+  keys,
   memoryService,
   memoryStore,
   offerSchema,
@@ -59,7 +61,7 @@ async function direct(offer: { readonly link: Link<unknown> }, by = alice) {
 
 /** The bundle that accepts `offer` for the wallet by the device, which a Delegated Identity of the wallet's lists. */
 async function delegated(offer: { readonly link: Link<unknown> }) {
-  const signature = await signatures.actor(device, await identities.delegate(wallet, [device.key])).sign(offer);
+  const signature = await signatures.actor(device, await delegate(wallet, [device.key])).sign(offer);
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
@@ -135,8 +137,8 @@ describe("a mailbox service", () => {
     expect(link.$link).toBe(accepted.signature.link);
     const read = await signatures.read(link.$link, bundle, noVersions);
     expect(read.object).toBe(offer.link);
-    expect(read.signedIdentity.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
-    expect(read.key.link).toBe(identities.keys.encode(device.key).link);
+    expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
+    expect(read.key.link).toBe(keys.encode(device.key).link);
   });
 
   it("answers a root that accepts again, by another identity, with the acknowledgement of its first acceptance", async () => {
@@ -151,8 +153,8 @@ describe("a mailbox service", () => {
   it("answers 400 to an agent that a later version of its root removed, though the root has an account", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
-    const first = await identities.delegate(wallet, [device.key, phone.key], 1_000);
-    const second = await identities.delegate(wallet, [phone.key], 2_000);
+    const first = await delegate(wallet, [device.key, phone.key], 1_000);
+    const second = await delegate(wallet, [phone.key], 2_000);
     expect((await accepting(service, await acceptedBy(phone, second, offer))).status).toBe(201);
     const opened = await mine(store);
     const response = await accepting(service, await acceptedBy(device, first, offer));
@@ -164,10 +166,10 @@ describe("a mailbox service", () => {
   it("answers an agent that signs by a later version than the service knows with the acknowledgement of the root's account", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
-    const first = await identities.delegate(wallet, [device.key], 1_000);
+    const first = await delegate(wallet, [device.key], 1_000);
     const opened = await accepting(service, await acceptedBy(device, first, offer));
     const bytes = new Uint8Array(await opened.arrayBuffer());
-    const second = await identities.delegate(wallet, [device.key, phone.key], 2_000);
+    const second = await delegate(wallet, [device.key, phone.key], 2_000);
     const again = await accepting(service, await acceptedBy(phone, second, offer));
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);

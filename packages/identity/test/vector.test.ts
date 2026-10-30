@@ -8,7 +8,7 @@ import {
   identityInterface,
   identitySchema,
   keyInterface,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   SoftwareSigner,
   signatureSchema,
@@ -16,7 +16,7 @@ import {
   solanaOffchain,
 } from "../src/index.ts";
 
-const signatures = await loadSignatures(defaultValidator);
+const { signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
@@ -186,7 +186,7 @@ test("the signature schema encodes to fixed bytes and a fixed link", async () =>
 describe("an Identity with an Ed25519 root, signed, and its signature over the login object of @estoc/object", () => {
   it("encode to fixed bytes and links", async () => {
     const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
-    const actor = signatures.actor(root, await signatures.identities.publish(root));
+    const actor = signatures.actor(root, await publish(root));
     const signature = await actor.sign({ link: objectLink });
     const { identity } = signature.signedIdentity;
     expect(text(identity.root.bytes)).toBe(keyText);
@@ -205,7 +205,7 @@ describe("an Identity with an Ed25519 root, signed, and its signature over the l
       [identityLink, utf8(identityText)],
       [signedIdentityLink, utf8(signedIdentityText)],
     ]);
-    const read = await signatures.identities.read(signedIdentityLink, blobs);
+    const read = await signedIdentities.read(signedIdentityLink, blobs);
     expect(read.identity.link).toBe(identityLink);
     expect(read.identity.root.scheme).toBe(ed25519);
     const keySchema = await decodeSchema(utf8(ed25519KeySchemaText), defaultValidator);
@@ -225,7 +225,7 @@ describe("a Delegated Identity with that root and two Ed25519 agents at the star
   const at = Date.parse("2026-01-01T00:00:00Z");
 
   it("encode to fixed bytes and links", async () => {
-    const signedIdentity = await signatures.identities.delegate(signer(1), [agents[0].key, agents[1].key], at);
+    const signedIdentity = await delegate(signer(1), [agents[0].key, agents[1].key], at);
     const signature = await signatures.actor(agents[1], signedIdentity).sign({ link: objectLink });
     const { identity } = signedIdentity;
     expect(identity.agents.map(({ bytes }) => text(bytes))).toEqual(agentKeyTexts);

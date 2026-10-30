@@ -18,7 +18,7 @@ import {
   eip191,
   type IdentityObject,
   type KeyObject,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   type Scheme,
   type Signature,
@@ -31,14 +31,13 @@ import {
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const signatures = await loadSignatures(defaultValidator);
-const { identities } = signatures;
+const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await identities.publish(by)).sign(object);
+  signatures.actor(by, await publish(by)).sign(object);
 
 /**
  * What an application holds: blobs by link, the objects of the identities
@@ -103,7 +102,7 @@ describe("a login", () => {
 
   it("signed by a browser key that the user's Delegated Identity lists logs the user in", async () => {
     const browser = signer(ed25519, 5);
-    const actor = signatures.actor(browser, await identities.delegate(user, [browser.key]));
+    const actor = signatures.actor(browser, await delegate(user, [browser.key]));
     const { bytes, signedIdentity } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
@@ -176,8 +175,8 @@ const buyer = signer(eip191, 1);
 const seller = signer(ed25519, 2);
 const witness = signer(solanaOffchain, 3);
 const terms = encodeObject(sale, {
-  buyer: { $link: identities.keys.encode(buyer.key).link },
-  seller: { $link: identities.keys.encode(seller.key).link },
+  buyer: { $link: keys.encode(buyer.key).link },
+  seller: { $link: keys.encode(seller.key).link },
   goods: "one bicycle",
   price: "120.00 CAD",
 });

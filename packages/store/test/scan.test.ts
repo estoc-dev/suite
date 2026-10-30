@@ -1,4 +1,4 @@
-import { ed25519, loadSignatures, noVersions, type SignatureData, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noVersions, type SignatureData, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -70,7 +70,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("gives rows that depend on what an object leads to, read from the store as they are needed", async () => {
-    const signatures = await loadSignatures(defaultValidator);
+    const { signatures, publish } = await loadIdentity(defaultValidator);
     const bySigner: Index<Json, [signer: string, object: string], SignatureData> = {
       reads: [signatures.schema],
       async *rows(object, reader) {
@@ -80,9 +80,7 @@ describe("an index scanned from a store", () => {
     };
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
     const hello = encodeObject(note, {});
-    const signed = await Promise.all(
-      signers.map(async (by) => signatures.actor(by, await signatures.identities.publish(by)).sign(hello)),
-    );
+    const signed = await Promise.all(signers.map(async (by) => signatures.actor(by, await publish(by)).sign(hello)));
     const store = new Store(json, new MemoryBackend());
     await store.write({
       mine: [hello, ...signed],

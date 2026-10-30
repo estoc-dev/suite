@@ -1,7 +1,7 @@
 import {
   ed25519,
   eip191,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   type Scheme,
   type Signature,
@@ -48,9 +48,8 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     defaultValidator,
   );
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
-const signatures = await loadSignatures(defaultValidator);
-const { identities } = signatures;
-const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await identities.publish(by));
+const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 
 const card = await schemaFor<{ readonly mailbox: JsonLink<Signature>; readonly name: JsonLink<Signature> }>("Card", {
@@ -179,12 +178,12 @@ describe("a chat message", () => {
     const wallet = signer(eip191, 1);
     const device = signer(ed25519, 2);
     const message = encodeObject(chat, { text: "See you at noon." });
-    const signature = await signatures.actor(device, await identities.delegate(wallet, [device.key])).sign(message);
+    const signature = await signatures.actor(device, await delegate(wallet, [device.key])).sign(message);
     const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
     expect(await readMessage(bundle)).toEqual({
       from: signature.signedIdentity.identity,
       message: { text: "See you at noon." },
     });
-    expect(signature.signedIdentity.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
+    expect(signature.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
   });
 });

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { loadSignatures } from "@estoc/identity";
+import { loadSignatures, noVersions } from "@estoc/identity";
 import { decodeObject, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -88,6 +88,7 @@ describe("a bundle whose root is a signature over a login object, carrying the o
         [identityLink, utf8(identityText)],
         [keyLink, utf8(keyText)],
       ]),
+      noVersions,
     );
     const written = writeBundle(signature, [utf8(objectText), ...signature.signedIdentity.blobs]);
     expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);

@@ -81,14 +81,17 @@ signature over it as the root, and a card lists the signatures over what it
 holds. The reader goes through each signature to the object it is over.
 
 ```ts
-const signed = await signatures.read(bundle.link, bundle);
+const signed = await signatures.read(bundle.link, bundle, noVersions);
 const message = await readObject(bundle, signed.object, chatSchema);
 // signed.signedIdentity.identity stands behind message
 ```
 
 A `Bundle` is a `Reader`, with the `get` that `readObject` and judgments
 such as `signatures.read` take their blobs by, so a signature is read
-against the bundle that carries its signed identity's blobs.
+against the bundle that carries its signed identity's blobs. The versions
+are the reader's own: one that keeps the versions it has seen passes its
+`Versions` in place of `noVersions`, and an agent its root removed no
+longer reads as the root.
 
 A bundle need not be complete. A blob the root leads to may be left out,
 such as a document a contract names by hash that both parties already hold,

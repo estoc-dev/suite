@@ -16,7 +16,10 @@ import {
   SoftwareSigner,
   sameKey,
   signedIdentitySchema,
+  type Version,
+  versionOf,
 } from "../src/index.ts";
+import { rowsOf } from "./fixtures.ts";
 
 const identities = await loadIdentities(defaultValidator);
 const { keys } = identities;
@@ -210,11 +213,27 @@ describe("a Delegated Identity", () => {
   });
 
   it("names its root and its agents by the links of their objects", async () => {
-    const { identity } = await identities.delegate(signer("ed25519"), [key("ed25519", 2)]);
+    const { identity } = await identities.delegate(signer("ed25519"), [key("ed25519", 2)], 1_000);
     expect(identity.data).toEqual({
       root: { $link: keys.encode(key("ed25519")).link },
       agents: [{ $link: keys.encode(key("ed25519", 2)).link }],
+      at: 1_000,
     });
+  });
+
+  it("is at the time it is given", async () => {
+    const { identity } = await identities.delegate(signer("ed25519"), [], 1_767_225_600_000);
+    expect(identity.data.at).toBe(1_767_225_600_000);
+  });
+
+  it("is at the time of the clock when it is given none", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-30T12:00:00Z"), toFake: ["Date"] });
+    try {
+      const { identity } = await identities.delegate(signer("ed25519"), []);
+      expect(identity.data.at).toBe(Date.parse("2026-10-30T12:00:00Z"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is another identity than its root's Identity, of the same root", async () => {
@@ -257,9 +276,20 @@ describe("a Delegated Identity", () => {
   it("is refused when an agent is not a key", async () => {
     const root = keys.encode(key("ed25519"));
     const other = identities.encode(key("ed25519", 2));
-    const data = { root: { $link: root.link }, agents: [{ $link: other.link }] };
+    const data = { root: { $link: root.link }, agents: [{ $link: other.link }], at: 0 };
     const bytes = json.encode(json.object(data, linkOf(json.encode(delegatedIdentitySchema))));
     await expect(readFrom(bytes, root.bytes, other.bytes)).rejects.toThrow(/no scheme writes its keys to/);
+  });
+
+  it.each<[string, JsonObject]>([
+    ["no at", {}],
+    ["a negative at", { at: -1 }],
+    ["an at that is not a whole number", { at: 1.5 }],
+  ])("is refused with %s", async (_, at) => {
+    const root = keys.encode(key("ed25519"));
+    const data = { root: { $link: root.link }, agents: [], ...at };
+    const bytes = json.encode(json.object(data, linkOf(json.encode(delegatedIdentitySchema))));
+    await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/does not fit/);
   });
 
   it("can list no agents", async () => {
@@ -280,5 +310,48 @@ describe("a Delegated Identity", () => {
     const sign = vi.fn(async () => new Uint8Array(64));
     await expect(identities.delegate({ key: key("ed25519"), sign }, agents)).rejects.toThrow(/does not fit/);
     expect(sign).not.toHaveBeenCalled();
+  });
+});
+
+describe("the version of a signed identity", () => {
+  it("is the root, the at and the link of a Delegated Identity's", async () => {
+    const signed = await identities.delegate(signer("ed25519"), [key("ed25519", 2)], 1_000);
+    expect(versionOf(signed)).toEqual([signed.identity.root.link, 1_000, signed.link]);
+  });
+
+  it("is undefined for an Identity", async () => {
+    expect(versionOf(await identities.publish(signer("ed25519")))).toBeUndefined();
+  });
+});
+
+describe("the versions a reader knows", () => {
+  const wallet = signer("eip191");
+  const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
+    byLink(signed.flatMap(({ blobs }) => blobs));
+
+  it("give as a root's latest the version with the greatest at", async () => {
+    const later = await identities.delegate(wallet, [key("ed25519", 2)], 2_000);
+    const earlier = await identities.delegate(wallet, [key("ed25519", 3)], 1_000);
+    const versions = identities.versions(rowsOf(later, earlier), blobsOf(later, earlier));
+    expect((await versions.latest(later.identity.root.link))?.link).toBe(later.link);
+  });
+
+  it("give no latest for a root they have no version of", async () => {
+    const signed = await identities.delegate(wallet, [key("ed25519", 2)], 1_000);
+    const versions = identities.versions(rowsOf(signed), blobsOf(signed));
+    expect(await versions.latest(keys.encode(key("ed25519", 4)).link)).toBeUndefined();
+  });
+
+  it("refuse a row whose signed identity is not of a Delegated Identity", async () => {
+    const published = await identities.publish(wallet);
+    const root = published.identity.root.link;
+    const rows = {
+      async *range(): AsyncIterable<Version> {
+        yield [root, 1_000, published.link];
+      },
+    };
+    await expect(identities.versions(rows, blobsOf(published)).latest(root)).rejects.toThrow(
+      /is not a version of a Delegated Identity/,
+    );
   });
 });

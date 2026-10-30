@@ -227,7 +227,9 @@ to them. It gives the object together with what it found, as a verified
 signature comes with the identity that made it, and only the judgment
 makes such a value, so a program holding one holds an object that passed.
 A judgment that starts from the link of the object takes the link and the
-reader instead, as `signatures.read` does. The judgments of identities and
+reader instead, as `signatures.read` does. One that also turns on what the
+program has seen besides takes that too, as `signatures.read` takes the
+versions of identities it knows. The judgments of identities and
 signatures are in `@estoc/identity`.
 
 A program reads objects of the schemas it expects, with the type it

@@ -12,7 +12,7 @@ Key                 an Object written to the key schema of its scheme, with the 
 Identity            an Object written to the Identity schema, with the field
                     "root": <the Key's link>
 Delegated Identity  an Object written to the Delegated Identity schema, with the fields
-                    "root": <the Key's link>, "agents": [<a Key's link>, …]
+                    "root": <the Key's link>, "agents": [<a Key's link>, …], "at": <Unix ms>
 Signed identity     an Object written to the signed identity schema, with the fields
                     "identity": <the identity's link>, "signature": <hex>
 Signature           an Object written to the signature schema, with the fields
@@ -122,8 +122,11 @@ a signature names a signed identity of the identity it is made for.
   order, one byte, so it lists at most 256 agents, and each of them once,
   or one signature would verify under two indexes. An agent need not sign
   in its root's scheme, as a browser key can sign for a wallet. The root
-  signs for it only if it lists itself; with no agents no one does. A root
-  can write as many as it likes, and every one it signs stands.
+  signs for it only if it lists itself; with no agents no one does. It
+  holds `at` too, when its root signs it, in milliseconds since the Unix
+  epoch. Each one a root signs is a version, and of a root's versions the
+  current one is that with the greatest `at`, and of those with the same
+  `at`, that whose signed identity has the greater link.
 
 `loadIdentities` compiles the two identity schemas, the signed identity
 schema and the key schemas with the validator the application picks, and
@@ -152,7 +155,10 @@ identities they sign by.
 the root sign it, and gives the signed identity: what a wallet confirms
 once, when the identity is made. `identities.delegate` takes the root's
 `Signer` and the agents' keys, and does the same with the Delegated
-Identity that lists them. Both write the identity before the root signs, so
+Identity that lists them, at `at`, now unless it is given. That is when
+the root signs, by its clock: where a version signed by a clock that is
+off falls among the others is the root's to answer for, as anything else
+it does by that clock. Both write the identity before the root signs, so
 a signer is not asked to sign an identity that would not read, such as one
 that lists an agent twice. `identities.read` takes the link of a signed
 identity and a `Reader`, picks the schema to read its identity's object
@@ -160,6 +166,25 @@ with by `schemaOf`, reads the keys the identity names with `keys.read`, and
 refuses a signature that the identity's root did not make. A signed
 identity carries as `blobs` its object and its schema with the identity's
 `blobs`.
+
+## Versions
+
+A root removes an agent by signing a version that does not list it. A
+reader that has seen that version no longer counts the agent's
+signatures, whichever version they carry; what it accepted before stays
+accepted. A reader knows the versions it has seen, and nothing tells it
+of the others.
+
+`versionOf` gives the version a signed identity is, as a row: its root,
+its `at` and its link, and undefined for an Identity, which has no
+versions. An application keeps the rows of the versions it sees in an
+index of its own, such as one of `@estoc/store`, from the signed
+identities its own objects lead to. In the order of their keys, a root's
+rows end with its current version. `identities.versions` takes those rows
+and a `Reader`, and gives `Versions`, whose `latest` is the signed
+identity of a root's last row, read from the reader, and refused unless
+it is a version of a Delegated Identity. `noVersions` is a reader that
+knows none.
 
 ## Signatures
 
@@ -186,12 +211,19 @@ signatures by it, stay as they are.
 schema, the identity schemas and the key schemas with the validator the
 application picks, and gives `signatures`, which holds the signature
 schema, `identities` and `actor`. `signatures.verify` is the judgment of a
-signature: it takes the signature as an object of `signatures.schema` and a
-`Reader`, reads its signed identity from the reader with
+signature: it takes the signature as an object of `signatures.schema`, a
+`Reader` and `Versions`, reads its signed identity from the reader with
 `identities.read`, and verifies the signature's bytes by the key the
 identity's schema reads from them, over the text for the object by that
 signed identity; `signatures.read` does the same from the link of the
-signature. So verifying a signature takes the blobs of its signed identity,
+signature. For a Delegated Identity it judges the current version as
+well: the later of the one the signature carries and the latest of
+`versions`, and refuses a key that is not one of its agents. The one the
+signature carries counts, as a device a wallet has just listed signs by a
+version the reader has not seen yet. A root's signature through its
+Identity counts whatever the versions. `versions` is not optional, so a
+reader that keeps no versions says so with `noVersions`, and judges by
+the version a signature carries alone. So verifying a signature takes the blobs of its signed identity,
 but not that of the object signed, since the digest it signs is in the
 link. It gives the signature's object with the signed identity it read as
 `signedIdentity`, the key that signed as `key`, the link of what it is over
@@ -214,7 +246,7 @@ in `@estoc/object` itself, and take back only the signature, with the
 signed identity's blobs:
 
 ```ts
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
@@ -226,7 +258,8 @@ const signature = await actor.sign(object);
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 const signed = decodeObject(signatureBytes, signatures.schema);
-const read = await signatures.verify(signed, new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes])));
+const blobs = new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes]));
+const read = await signatures.verify(signed, blobs, noVersions);
 const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 

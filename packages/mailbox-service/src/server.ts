@@ -3,6 +3,7 @@ import {
   type Actor,
   type KeyObject,
   loadSignatures,
+  noVersions,
   type Signature,
   type Signatures,
   type Signer,
@@ -17,7 +18,7 @@ import {
   readObject,
   type Schema,
 } from "@estoc/object";
-import type { Store } from "@estoc/store";
+import { type Store, scan } from "@estoc/store";
 import { readBody, ZIP } from "./http.ts";
 import { type Locations, locations, servicesOf } from "./locations.ts";
 import {
@@ -30,6 +31,7 @@ import {
   type ServiceData,
   serviceSchema,
 } from "./schemas.ts";
+import { type KnownVersions, knownVersions } from "./versions.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and its signed identity.
@@ -98,6 +100,7 @@ class MailboxService {
   readonly #actor: Actor;
   readonly #offer: EncodedObject<Json, AccountOfferData>;
   readonly #locations: Locations;
+  readonly #versions: KnownVersions;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #store: Store;
@@ -114,6 +117,7 @@ class MailboxService {
     this.#actor = actor;
     this.#offer = offer;
     this.#locations = locations;
+    this.#versions = knownVersions(signatures, schemas.acknowledgement);
     this.#signatures = signatures;
     this.#schemas = schemas;
     this.#store = store;
@@ -147,17 +151,21 @@ class MailboxService {
   /**
    * Opens an account for the root of the identity whose signature over the
    * offer is posted, or answers with the acknowledgement that opened theirs.
+   * The signature is judged by the versions the service knows before the
+   * accounts are looked up, so an agent its root removed is refused even
+   * when the root has an account.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const offer = this.#offer;
+    const versions = this.#signatures.identities.versions(await scan(this.#store, this.#versions), this.#store);
     let accepted: Bundle;
     let acceptance: Signature;
     try {
       accepted = await unpackBundle(zip);
-      acceptance = await this.#signatures.read(accepted.link, accepted);
+      acceptance = await this.#signatures.read(accepted.link, accepted, versions);
       if (acceptance.object !== offer.link) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
       if (acceptance.signedIdentity.identity.root.link === offer.data.identity.$link)
         throw new Error("a service opens no account for itself");
@@ -246,7 +254,7 @@ export async function loadMailboxService(
   const index = locations(signatures, schemas.service);
 
   const signed = await Promise.all(
-    (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store)),
+    (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store, noVersions)),
   );
   const [latest] = signed;
   const actor = signatures.actor(signer, latest?.signedIdentity ?? (await signatures.identities.publish(signer)));
@@ -280,7 +288,7 @@ async function readService(
   store: Store,
   service: Schema<Json, ServiceData>,
 ): Promise<EncodedObject<Json, ServiceData>> {
-  return readObject(store, (await signatures.read(link, store)).object, service);
+  return readObject(store, (await signatures.read(link, store, noVersions)).object, service);
 }
 
 /** The service's signature over `offer`, as the first of `services` that lists the offer lists it, when one does. */
@@ -292,7 +300,7 @@ async function signedIn(
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
     for (const { offer: listed } of data.offers) {
-      const signature = await signatures.read(listed.$link, store);
+      const signature = await signatures.read(listed.$link, store, noVersions);
       if (signature.object === offer) return signature;
     }
   }

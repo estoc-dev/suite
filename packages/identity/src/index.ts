@@ -7,9 +7,13 @@ export {
   type IdentityObject,
   identitySchema,
   loadIdentities,
+  noVersions,
   type SignedIdentityData,
   type SignedIdentityObject,
   signedIdentitySchema,
+  type Version,
+  type Versions,
+  versionOf,
 } from "./identities.ts";
 export { type Interface, identityInterface, keyInterface } from "./interfaces.ts";
 export { type Key, sameKey, verify } from "./key.ts";

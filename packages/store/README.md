@@ -29,8 +29,8 @@ const signature = await actor.sign(note);
 // `schemas` are all that the program writes to; the store keeps those named here.
 await store.write({ mine: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
-for await (const link of store.mine()) …;       // note.link, signature.link
-await signatures.read(signature.link, store);   // the signature, verified
+for await (const link of store.mine()) …;                  // note.link, signature.link
+await signatures.read(signature.link, store, noVersions);  // the signature, verified
 ```
 
 ## What is listed

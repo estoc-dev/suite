@@ -1,4 +1,4 @@
-import type { KeyObject, Signature, SignatureData, Signatures } from "@estoc/identity";
+import { type KeyObject, noVersions, type Signature, type SignatureData, type Signatures } from "@estoc/identity";
 import { decodeObject, type Json, json, type Link, type Schema, schemaOf } from "@estoc/object";
 import { type Index, type Store, scan } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
@@ -19,7 +19,7 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
     async *rows(signature, reader) {
       const bytes = await reader.get(signature.data.object.$link);
       if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-      const { signedIdentity, link } = await signatures.verify(signature, reader);
+      const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
       yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
     },
   };

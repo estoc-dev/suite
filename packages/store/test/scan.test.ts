@@ -1,4 +1,4 @@
-import { loadSignatures, type SignatureData, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, type SignatureData, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -74,7 +74,7 @@ describe("an index scanned from a store", () => {
     const bySigner: Index<Json, [signer: string, object: string], SignatureData> = {
       reads: [signatures.schema],
       async *rows(object, reader) {
-        const signature = await signatures.verify(object, reader);
+        const signature = await signatures.verify(object, reader, noVersions);
         yield [signature.signedIdentity.identity.root.link, signature.object];
       },
     };

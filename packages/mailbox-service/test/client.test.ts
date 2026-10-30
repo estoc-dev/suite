@@ -1,5 +1,5 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import type { Signer } from "@estoc/identity";
+import { noVersions, type Signer } from "@estoc/identity";
 import { type EncodedObject, encodeObject, encodeSchema, type Json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
@@ -114,7 +114,9 @@ describe("a service reached at its origin", () => {
     expect(service.account?.service).toEqual(serviceIdentity);
     expect(service.account?.link).toBe(offer.link);
     expect(await mine(store)).toEqual([service.link]);
-    expect((await signatures.read(service.link, store)).signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect((await signatures.read(service.link, store, noVersions)).signedIdentity.identity.link).toBe(
+      serviceIdentity.link,
+    );
   });
 
   it.each([
@@ -196,7 +198,7 @@ describe("a service found by its root", () => {
     await second.services.at(origin);
     const { data } = await readObject(
       first.store,
-      (await signatures.read(link, first.store)).object,
+      (await signatures.read(link, first.store, noVersions)).object,
       serviceSchemaRead,
     );
     const origins = ["https://one.example", "https://two.example"];
@@ -238,10 +240,10 @@ describe("an account offer", () => {
       link: account.link,
     });
     expect(await mine(store)).toEqual([service.link, account.link].sort());
-    const kept = await signatures.read(account.link, store);
+    const kept = await signatures.read(account.link, store, noVersions);
     expect(kept.signedIdentity.identity.link).toBe(serviceIdentity.link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
-    const read = await signatures.read(accepted.$link, store);
+    const read = await signatures.read(accepted.$link, store, noVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.link).toBe(account.identity.link);
   });
@@ -262,8 +264,12 @@ describe("an account offer", () => {
     const { store, services } = await client();
     const again = await (await accountAt(services, origin)).accept(signatures.actor(phone, signed));
     expect(again).toEqual(first);
-    const kept = await readObject(store, (await signatures.read(again.link, store)).object, acknowledgementSchemaRead);
-    const accepted = await signatures.read(kept.data.accepted.$link, store);
+    const kept = await readObject(
+      store,
+      (await signatures.read(again.link, store, noVersions)).object,
+      acknowledgementSchemaRead,
+    );
+    const accepted = await signatures.read(kept.data.accepted.$link, store, noVersions);
     expect(accepted.key.link).toBe(identities.keys.encode(laptop.key).link);
   });
 

@@ -4,6 +4,7 @@ import {
   type IdentityObject,
   type KeyObject,
   loadSignatures,
+  noVersions,
   type Signature,
   type Signatures,
 } from "@estoc/identity";
@@ -118,12 +119,14 @@ export class AccountOffer {
     const body = await packBundle(acceptance, acceptance.signedIdentity.blobs);
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(this.#url, request), [200, 201]);
-    const acknowledgement = await this.#signatures.read(answer.link, answer);
+    const acknowledgement = await this.#signatures.read(answer.link, answer, noVersions);
     if (acknowledgement.signedIdentity.identity.root.link !== this.service.root.link) {
       throw new Error("the acknowledgement is signed by another root than the service's");
     }
     const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
-    const opened = await this.#signatures.read(accepted.$link, answer);
+    // An account stays open after the agent that accepted is removed, so the
+    // acceptance is judged by the version it carries alone.
+    const opened = await this.#signatures.read(accepted.$link, answer, noVersions);
     if (opened.object !== this.link) throw new Error(`the acknowledgement accepts ${opened.object}, not the offer`);
     const { identity } = actor.signedIdentity;
     if (opened.signedIdentity.identity.root.link !== identity.root.link)
@@ -185,14 +188,14 @@ export class Services {
    * does not read are passed over.
    */
   async #read(link: Link<Signature>, reader: Reader): Promise<Service> {
-    const read = await this.#signatures.read(link, reader);
+    const read = await this.#signatures.read(link, reader, noVersions);
     const { identity } = read.signedIdentity;
     const { root } = identity;
     const { origin, at, offers } = (await readObject(reader, read.object, this.#schemas.service)).data;
     checkOrigin(origin);
     let account: AccountOffer | undefined;
     for (const { offer, accept } of offers) {
-      const signature = await this.#signatures.read(offer.$link, reader);
+      const signature = await this.#signatures.read(offer.$link, reader, noVersions);
       if (signature.signedIdentity.identity.root.link !== root.link) {
         throw new Error(`the Service of ${root.link} lists an offer signed by another root`);
       }

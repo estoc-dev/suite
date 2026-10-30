@@ -1,4 +1,4 @@
-import { loadSignatures, type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -81,8 +81,8 @@ function cardOf(root: Uint8Array): Card {
 
 async function readCard(bundle: Bundle) {
   const listed = cardOf(bundle.root);
-  const reachedAt = await signatures.read(listed.mailbox, bundle);
-  const goesBy = await signatures.read(listed.name, bundle);
+  const reachedAt = await signatures.read(listed.mailbox, bundle, noVersions);
+  const goesBy = await signatures.read(listed.name, bundle, noVersions);
   if (reachedAt.signedIdentity.identity.root.link !== goesBy.signedIdentity.identity.root.link)
     throw new Error("a card is signed by the one identity it is for");
   return {
@@ -151,7 +151,7 @@ describe("a card", () => {
 const chat = await schemaFor<{ readonly text: string }>("Chat message", { text: { type: "string" } });
 
 async function readMessage(bundle: Bundle) {
-  const read = await signatures.read(bundle.link, bundle);
+  const read = await signatures.read(bundle.link, bundle, noVersions);
   return { from: read.signedIdentity.identity, message: (await readObject(bundle, read.object, chat)).data };
 }
 

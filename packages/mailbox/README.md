@@ -60,11 +60,13 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 bundle inside. It refuses bytes that do not open with its key, and what
 opens but does not unpack to a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
-`signatures.read` and the bundle as the reader.
+`signatures.read` and the bundle as the reader. A receiver that keeps the
+versions it has seen passes its `Versions` in place of `noVersions`, and an
+agent its root removed no longer reads as the root.
 
 ```ts
 const bundle = await key.open(sealed);
-const signature = await signatures.read(bundle.link, bundle);
+const signature = await signatures.read(bundle.link, bundle, noVersions);
 ```
 
 ## Sending

@@ -2,13 +2,13 @@ import { decodeObject, decodeSchema, encodeSchema, type Link } from "@estoc/obje
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it, test } from "vitest";
 import {
-  type DelegatedIdentityObject,
   delegatedIdentitySchema,
   identityInterface,
   identitySchema,
   keyInterface,
   keySchemas,
   loadSignatures,
+  noVersions,
   type Scheme,
   SoftwareSigner,
   signatureSchema,
@@ -56,12 +56,12 @@ const delegatedIdentitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"agents":{"items":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"maxItems":256,"type":"array","uniqueItems":true},' +
+  '"maxItems":256,"type":"array","uniqueItems":true},"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
-  '"required":["root","agents"],"title":"Delegated Identity","type":"object",' +
+  '"required":["root","agents","at"],"title":"Delegated Identity","type":"object",' +
   '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}';
-const delegatedIdentitySchemaLink = "sha256:9d8b1d1592399f12dc1d6130f3926c8ac875c096bc6032f31a04159897560ffb";
+const delegatedIdentitySchemaLink = "sha256:774505bf3100ca1accd21ace45dbbf45e17240c7a36afcfd40665afeabe7c2b0";
 const keyText =
   '{"$describedBy":{"$link":"sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
@@ -110,25 +110,25 @@ const agentKeyLinks = [
   "sha256:a883261c6730f312d9edae37efbbbb5a247fde743001b6677501a8c064f564b5",
 ] as const;
 const delegatedIdentityText =
-  '{"$describedBy":{"$link":"sha256:9d8b1d1592399f12dc1d6130f3926c8ac875c096bc6032f31a04159897560ffb"},' +
+  '{"$describedBy":{"$link":"sha256:774505bf3100ca1accd21ace45dbbf45e17240c7a36afcfd40665afeabe7c2b0"},' +
   '"agents":[{"$link":"sha256:301a5c2ca31246fe1ae00e0ea57d0a89c8d2b7ec07688792bcd33dd59914db71"},' +
-  '{"$link":"sha256:a883261c6730f312d9edae37efbbbb5a247fde743001b6677501a8c064f564b5"}],' +
+  '{"$link":"sha256:a883261c6730f312d9edae37efbbbb5a247fde743001b6677501a8c064f564b5"}],"at":1767225600000,' +
   '"root":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
-const delegatedIdentityLink = "sha256:5b27ac1d213fd9604c578d69fde4d2981ae18a099d41c50f61ab2a8024ebeb99";
+const delegatedIdentityLink = "sha256:5572fd1cf344ec963c82a4eb856d1c89e73d1c0745cb06478dbf2086a2e99503";
 const delegatedSignedIdentityText =
   '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
-  '"identity":{"$link":"sha256:5b27ac1d213fd9604c578d69fde4d2981ae18a099d41c50f61ab2a8024ebeb99"},' +
-  '"signature":"690f1a13795f722b2bae189603391462fe924a506f86f047a7b21bf5fa73cd18' +
-  'bba5f8274e64f9073a99c32164c4922755752bfca15f4ac0b6b7c9131c40c901"}';
-const delegatedSignedIdentityLink = "sha256:9421e6050b2383e182455934fee9198614ab54a2e54fcd43eafeed57d125c978";
+  '"identity":{"$link":"sha256:5572fd1cf344ec963c82a4eb856d1c89e73d1c0745cb06478dbf2086a2e99503"},' +
+  '"signature":"3d779ab24786011086f97e7eaaeed7b17d0e1004c5b5b864f8851313514db635' +
+  'a3e8b40cacdb4d3736cff3533e177e23aa2aa00194de11303af92942610d1a0e"}';
+const delegatedSignedIdentityLink = "sha256:5994a1c17dabfe1a2238c96a955f3f9d855447e7e6b41bfe0fb6090d9816a87d";
 const delegatedSignatureText =
   '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"01' +
-  "3f9e1556e55f17dd45fb09e0b6888a15c3c5498543f5ccc9e09dea90d33b81cf" +
-  'a486b924eaae89b4d09664e56492c9b317616e7d8edabeea28d6484b24d8830c",' +
-  '"signedIdentity":{"$link":"sha256:9421e6050b2383e182455934fee9198614ab54a2e54fcd43eafeed57d125c978"}}';
-const delegatedSignatureLink = "sha256:de6f133e7f76feb55e9311dd70fc0e81c0298e6162e76780e37ae33c99414abb";
+  "096bac7524d8dc1a88aa2d3ff95df6b7f607d00da4df762a9cf8699f5722c4d8" +
+  '7f2f96c96d832faad228a4aa4ae4c0ea6286b158041f558fb9313f1bb039ec07",' +
+  '"signedIdentity":{"$link":"sha256:5994a1c17dabfe1a2238c96a955f3f9d855447e7e6b41bfe0fb6090d9816a87d"}}';
+const delegatedSignatureLink = "sha256:673d7bd2f282b565742f7d120353d5439ab7ea4943ff8c2fe884bb48ebc4777c";
 
 // The login object of the vector in @estoc/object.
 const objectLink: Link<never> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
@@ -206,18 +206,19 @@ describe("an Identity with an Ed25519 root, signed, and its signature over the l
     const signedSchema = await decodeSchema(utf8(signedIdentitySchemaText), defaultValidator);
     expect(decodeObject(utf8(signedIdentityText), signedSchema).link).toBe(signedIdentityLink);
     const signature = decodeObject(utf8(signatureText), signatures.schema);
-    expect((await signatures.verify(signature, blobs)).link).toBe(signatureLink);
+    expect((await signatures.verify(signature, blobs, noVersions)).link).toBe(signatureLink);
   });
 });
 
-describe("a Delegated Identity with that root and two Ed25519 agents, signed, and the second agent's signature over the login object", () => {
+describe("a Delegated Identity with that root and two Ed25519 agents at the start of 2026, signed, and the second agent's signature over the login object", () => {
   const signer = (fill: number) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
   const agents = [signer(2), signer(3)] as const;
+  const at = Date.parse("2026-01-01T00:00:00Z");
 
   it("encode to fixed bytes and links", async () => {
-    const signedIdentity = await signatures.identities.delegate(signer(1), [agents[0].key, agents[1].key]);
+    const signedIdentity = await signatures.identities.delegate(signer(1), [agents[0].key, agents[1].key], at);
     const signature = await signatures.actor(agents[1], signedIdentity).sign({ link: objectLink });
-    const identity = signedIdentity.identity as DelegatedIdentityObject;
+    const { identity } = signedIdentity;
     expect(identity.agents.map(({ bytes }) => text(bytes))).toEqual(agentKeyTexts);
     expect(identity.agents.map(({ link }) => link)).toEqual(agentKeyLinks);
     expect(text(identity.bytes)).toBe(delegatedIdentityText);
@@ -238,7 +239,11 @@ describe("a Delegated Identity with that root and two Ed25519 agents, signed, an
     ]);
     const schema = await decodeSchema(utf8(delegatedIdentitySchemaText), defaultValidator);
     expect(decodeObject(utf8(delegatedIdentityText), schema).link).toBe(delegatedIdentityLink);
-    const signature = await signatures.verify(decodeObject(utf8(delegatedSignatureText), signatures.schema), blobs);
+    const signature = await signatures.verify(
+      decodeObject(utf8(delegatedSignatureText), signatures.schema),
+      blobs,
+      noVersions,
+    );
     expect(signature.link).toBe(delegatedSignatureLink);
     expect(signature.key.link).toBe(agentKeyLinks[1]);
   });

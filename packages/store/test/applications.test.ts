@@ -1,5 +1,5 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { loadSignatures, type Signer, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, type Signer, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -95,7 +95,7 @@ describe("a signed note", () => {
 
     const [record] = await readListed(bobStore, receivedSchema);
     assert.exists(record);
-    const signed = await signatures.read(record.data.bundle.$link, bobStore);
+    const signed = await signatures.read(record.data.bundle.$link, bobStore, noVersions);
     expect(signed.signedIdentity.identity).toEqual(signatures.identities.encode(alice.key));
     expect((await readObject(bobStore, signed.object, noteSchema)).data.text).toBe("hello");
   });

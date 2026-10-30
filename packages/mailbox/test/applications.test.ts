@@ -1,5 +1,12 @@
 import type { Bundle } from "@estoc/bundle";
-import { type IdentityObject, type KeyObject, loadSignatures, type Scheme, SoftwareSigner } from "@estoc/identity";
+import {
+  type IdentityObject,
+  type KeyObject,
+  loadSignatures,
+  noVersions,
+  type Scheme,
+  SoftwareSigner,
+} from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -35,7 +42,7 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: Sof
 };
 
 async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema<Json, F>) {
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatures.read(bundle.link, bundle, noVersions);
   return {
     signature,
     identity: signature.signedIdentity.identity,

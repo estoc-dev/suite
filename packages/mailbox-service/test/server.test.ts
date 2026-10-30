@@ -1,5 +1,5 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import type { Signer } from "@estoc/identity";
+import { noVersions, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ import {
 const alice = signer("ed25519", 1);
 const wallet = signer("eip191", 2);
 const device = signer("ed25519", 3);
+const phone = signer("ed25519", 5);
 const otherService = signer("ed25519", 4);
 
 const request = (path: string, init?: RequestInit) => new Request(new URL(path, "https://mail.example"), init);
@@ -38,11 +39,11 @@ const mine = async (store: { mine(): AsyncIterable<Link<never>> }) => {
 /** What `GET /` answers, read: the service's signature over its Service, and the offer of an account it lists. */
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatures.read(bundle.link, bundle, noVersions);
   const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
   const [listed] = data.offers;
   assert.exists(listed);
-  const offered = await signatures.read(listed.offer.$link, bundle);
+  const offered = await signatures.read(listed.offer.$link, bundle, noVersions);
   const offer = await readObject(bundle, offered.object, offerSchema);
   return { signature, data, offered, offer, accept: listed.accept };
 }
@@ -62,9 +63,15 @@ async function delegated(offer: { readonly link: Link<unknown> }) {
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
+/** The bundle that accepts `offer` by `agent`, which `version` of the wallet's Delegated Identity lists. */
+async function acceptedBy(agent: Signer, version: SignedIdentityObject, offer: { readonly link: Link<unknown> }) {
+  const signature = await signatures.actor(agent, version).sign(offer);
+  return packBundle(signature, signature.signedIdentity.blobs);
+}
+
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatures.read(bundle.link, bundle, noVersions);
   return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchemaRead) };
 }
 
@@ -95,7 +102,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
-    const read = await signatures.read(accepted.signature.link, bundle);
+    const read = await signatures.read(accepted.signature.link, bundle, noVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key));
   });
@@ -126,7 +133,7 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { accepted: link } = acknowledgement.data;
     expect(link.$link).toBe(accepted.signature.link);
-    const read = await signatures.read(link.$link, bundle);
+    const read = await signatures.read(link.$link, bundle, noVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
     expect(read.key.link).toBe(identities.keys.encode(device.key).link);
@@ -139,6 +146,31 @@ describe("a mailbox service", () => {
     const again = await accepting(service, (await delegated(offer)).zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
+  });
+
+  it("answers 400 to an agent that a later version of its root removed, though the root has an account", async () => {
+    const { service, store } = await memoryService();
+    const { offer } = await rootOf(service);
+    const first = await identities.delegate(wallet, [device.key, phone.key], 1_000);
+    const second = await identities.delegate(wallet, [phone.key], 2_000);
+    expect((await accepting(service, await acceptedBy(phone, second, offer))).status).toBe(201);
+    const opened = await mine(store);
+    const response = await accepting(service, await acceptedBy(device, first, offer));
+    expect(response.status).toBe(400);
+    expect(await response.text()).toMatch(/is not an agent of the current version/);
+    expect(await mine(store)).toEqual(opened);
+  });
+
+  it("answers an agent that signs by a later version than the service knows with the acknowledgement of the root's account", async () => {
+    const { service } = await memoryService();
+    const { offer } = await rootOf(service);
+    const first = await identities.delegate(wallet, [device.key], 1_000);
+    const opened = await accepting(service, await acceptedBy(device, first, offer));
+    const bytes = new Uint8Array(await opened.arrayBuffer());
+    const second = await identities.delegate(wallet, [device.key, phone.key], 2_000);
+    const again = await accepting(service, await acceptedBy(phone, second, offer));
+    expect(again.status).toBe(200);
+    expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
@@ -259,7 +291,7 @@ describe("a mailbox service", () => {
         memoryService({ store, by, origin, start: 10_000 }),
       ),
     );
-    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store, noVersions)));
     const ats = await Promise.all(
       signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
     );
@@ -309,7 +341,7 @@ describe("a mailbox service started again", () => {
     const before = await rootOf(service);
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(moved)).data).toEqual(before.data);
-    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store, noVersions)));
     const services = await Promise.all(
       signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
     );

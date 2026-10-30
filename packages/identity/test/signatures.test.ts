@@ -18,6 +18,7 @@ import { describe, expect, it, test, vi } from "vitest";
 import {
   type DelegatedIdentityObject,
   loadSignatures,
+  noVersions,
   type Scheme,
   type Signature,
   type Signatures,
@@ -26,13 +27,16 @@ import {
   SoftwareSigner,
   sameKey,
   signatureSchema,
+  type Versions,
 } from "../src/index.ts";
+import { rowsOf } from "./fixtures.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
-const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map()) =>
-  by.verify(decodeObject(bytes, by.schema), blobs);
-const verified = (bytes: Uint8Array, blobs?: Reader) => verifiedBy(signatures, bytes, blobs);
+const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map(), versions = noVersions) =>
+  by.verify(decodeObject(bytes, by.schema), blobs, versions);
+const verified = (bytes: Uint8Array, blobs?: Reader, versions?: Versions) =>
+  verifiedBy(signatures, bytes, blobs, versions);
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -44,6 +48,7 @@ const rewritten = (signature: Signature, change: JsonObject) => written(signatur
 const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
+const knowing = (...versions: SignedIdentityObject[]) => identities.versions(rowsOf(...versions), byLink(...versions));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await identities.publish(by)).sign(object);
 
@@ -159,7 +164,7 @@ describe("a signature", () => {
 });
 
 describe("a signature for a Delegated Identity", () => {
-  const agentsOf = ({ identity }: SignedIdentityObject) => (identity as DelegatedIdentityObject).agents;
+  const agentsOf = ({ identity }: SignedIdentityObject<DelegatedIdentityObject>) => identity.agents;
 
   it("by its second agent reads back with that agent as its key", async () => {
     const signedIdentity = await identities.delegate(signer("ed25519"), [key("ed25519", 2), key("ed25519", 3)]);
@@ -198,6 +203,64 @@ describe("a signature for a Delegated Identity", () => {
     await expect(
       verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),
     ).rejects.toThrow(/does not verify/);
+  });
+});
+
+describe("a signature by an agent", () => {
+  const [wallet, laptop, phone] = [signer("eip191"), signer("ed25519", 2), signer("ed25519", 3)];
+
+  it("counts when the latest version the reader knows lists its agent, whichever version it carries", async () => {
+    const first = await identities.delegate(wallet, [laptop.key], 1_000);
+    const second = await identities.delegate(wallet, [phone.key, laptop.key], 2_000);
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    const read = await verified(signature.bytes, identityOf(signature), knowing(first, second));
+    expect(read.signedIdentity).toEqual(first);
+  });
+
+  it("is refused when the latest version the reader knows no longer lists its agent", async () => {
+    const first = await identities.delegate(wallet, [laptop.key, phone.key], 1_000);
+    const second = await identities.delegate(wallet, [phone.key], 2_000);
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    await expect(verified(signature.bytes, identityOf(signature), knowing(first, second))).rejects.toThrow(
+      /is not an agent of the current version/,
+    );
+  });
+
+  it("is judged by the version it carries when that is later than the reader knows", async () => {
+    const first = await identities.delegate(wallet, [laptop.key], 1_000);
+    const second = await identities.delegate(wallet, [laptop.key, phone.key], 2_000);
+    const signature = await signatures.actor(phone, second).sign(hello);
+    const read = await verified(signature.bytes, identityOf(signature), knowing(first));
+    expect(sameKey(read.key, phone.key)).toBe(true);
+  });
+
+  it("is judged, against a version at the same at that drops its agent, by whichever has the greater link", async () => {
+    const listing = await identities.delegate(wallet, [laptop.key, phone.key], 1_000);
+    const dropping = await identities.delegate(wallet, [phone.key], 1_000);
+    const signature = await signatures.actor(laptop, listing).sign(hello);
+    const counts = await verified(signature.bytes, identityOf(signature), knowing(dropping)).then(
+      () => true,
+      () => false,
+    );
+    expect(counts).toBe(listing.link > dropping.link);
+  });
+
+  it("counts by the version it carries when the reader knows no versions", async () => {
+    const first = await identities.delegate(wallet, [laptop.key], 1_000);
+    await identities.delegate(wallet, [phone.key], 2_000);
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    expect((await verified(signature.bytes, identityOf(signature), noVersions)).link).toBe(signature.link);
+  });
+});
+
+describe("a signature by a root through its Identity", () => {
+  it("counts whatever versions of its Delegated Identity the reader knows", async () => {
+    const wallet = signer("eip191");
+    const latest = await identities.delegate(wallet, [key("ed25519", 2)], 1_000);
+    const signature = await sign(hello, wallet);
+    const versions = { latest: vi.fn(async () => latest) };
+    expect((await verified(signature.bytes, identityOf(signature), versions)).link).toBe(signature.link);
+    expect(versions.latest).not.toHaveBeenCalled();
   });
 });
 

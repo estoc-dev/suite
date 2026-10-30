@@ -126,7 +126,8 @@ signature as the root, with the blobs of its signed identity. The offer and
 the signature schema are left out, since the service has them.
 
 The service reads the signature at the bundle's root with
-`signatures.read`, refuses it unless it is over the offer, opens an account
+`signatures.read`, by the versions it knows, refuses it unless it is over
+the offer, opens an account
 for the root of its identity, and answers with its signature over an
 acknowledgement of the bundle's root.
 `at` is when it received that. The answer is a bundle: the service's
@@ -137,7 +138,7 @@ and all they lead to.
 |---|---|
 | 201 | the account opened; the answer is its acknowledgement |
 | 200 | the identity's root had an account; the answer is that account's acknowledgement |
-| 400 | the bundle does not read, or its root is not a signature over this service's offer |
+| 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that the current version of its identity lists |
 | 413 | the body is over 64 KiB |
 
 A root has one account at a service. When an acceptance comes again, or
@@ -149,6 +150,17 @@ acceptance, so a second device gets the first device's signature and signed
 identity with it. The client
 reads that acceptance, and refuses an acknowledgement that is signed by
 another root than the service's or that is of another root's account.
+
+A wallet takes a device out by signing a version of its Delegated Identity
+that does not list it. The service knows the versions that the acceptances
+it acknowledged carry, one for each account, and refuses an acceptance by
+an agent that the current version does not list: the later of the latest
+it knows and the one the acceptance carries. It judges that before it looks
+for the root's account, so a removed device gets no acknowledgement even
+when the wallet has an account. Say the wallet's first version lists a
+laptop and its second only a phone, and the phone opened the account by
+the second: the laptop's acceptance by the first is refused. A version
+signed after the account opened does not reach the service yet.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service opened an

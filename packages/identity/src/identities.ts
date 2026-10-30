@@ -52,6 +52,12 @@ export const identitySchema: JsonSchema = {
  * 256 agents, in the order the root gives. It lists each once, or one signature would verify under two
  * indexes, as two signatures with two links. The root signs for it only if
  * it lists itself, and with no agents no one signs for it.
+ *
+ * `at` is when the root signs it, in milliseconds since the Unix epoch by
+ * the root's clock. Each Delegated Identity a root signs is a version, and
+ * of a root's versions the current one is that with the greatest `at`, and
+ * of those with the same `at`, that whose signed identity has the greater
+ * link.
  */
 export const delegatedIdentitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -61,8 +67,9 @@ export const delegatedIdentitySchema: JsonSchema = {
   properties: {
     root: linkSchema,
     agents: { type: "array", items: linkSchema, maxItems: 256, uniqueItems: true },
+    at: { type: "integer", minimum: 0 },
   },
-  required: ["root", "agents"],
+  required: ["root", "agents", "at"],
   additionalProperties: false,
 };
 
@@ -77,7 +84,10 @@ export const signedIdentitySchema: JsonSchema = {
 };
 
 export type IdentityData = { readonly root: JsonLink<KeyObject> };
-export type DelegatedIdentityData = IdentityData & { readonly agents: readonly JsonLink<KeyObject>[] };
+export type DelegatedIdentityData = IdentityData & {
+  readonly agents: readonly JsonLink<KeyObject>[];
+  readonly at: number;
+};
 
 /**
  * Someone who signs, as others see them: an identity read from its object
@@ -122,12 +132,37 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * `blobs` are what it takes to read it again: the bytes of its object and of
  * its schema, and the identity's `blobs`.
  */
-export interface SignedIdentityObject extends EncodedObject<Json, SignedIdentityData> {
+export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
+  extends EncodedObject<Json, SignedIdentityData> {
   readonly link: Link<SignedIdentityObject>;
-  readonly identity: IdentityObject;
+  readonly identity: I;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];
 }
+
+/**
+ * A version of a root's Delegated Identity, as a row: its root, its `at` and
+ * its signed identity. Signing is taken to be deterministic, so a version
+ * has one signed identity. The rows of a root's versions, in the order of
+ * their keys, end with the current one.
+ */
+export type Version = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
+
+/** The version `signedIdentity` is; undefined for an Identity, which has no versions. */
+export function versionOf(signedIdentity: SignedIdentityObject): Version | undefined {
+  if (!isDelegated(signedIdentity)) return undefined;
+  const { identity } = signedIdentity;
+  return [identity.root.link, identity.data.at, signedIdentity.link];
+}
+
+/** The versions of Delegated Identities a reader knows. */
+export interface Versions {
+  /** The current version of `root`'s Delegated Identity among those the reader knows; undefined when it knows none. */
+  latest(root: Link<KeyObject>): Promise<SignedIdentityObject<DelegatedIdentityObject> | undefined>;
+}
+
+/** A reader that knows no versions, and so judges a signature by the version it carries alone. */
+export const noVersions: Versions = { latest: async () => undefined };
 
 /** Signs the digest of an object by the digest of a signed identity, giving the bytes of a signature for its identity. */
 export type Sign = (object: Uint8Array, signedIdentity: Uint8Array) => Promise<Uint8Array>;
@@ -197,6 +232,13 @@ export function rulesOf(object: EncodedObject<Json, IdentityData>): Rules {
   return found;
 }
 
+/** Whether `signedIdentity` is a version of a Delegated Identity. */
+export function isDelegated(
+  signedIdentity: SignedIdentityObject,
+): signedIdentity is SignedIdentityObject<DelegatedIdentityObject> {
+  return rulesOf(signedIdentity.identity) === delegatedIdentityRules;
+}
+
 /** Reads and writes identities, with their schemas and the keys they name. */
 export class Identities {
   readonly keys: Keys;
@@ -241,13 +283,39 @@ export class Identities {
 
   /**
    * Writes the Delegated Identity whose root is `root`'s key and whose agents
-   * are `agents`, in that order, and has `root` sign it.
+   * are `agents`, in that order, at `at`, and has `root` sign it. Where a
+   * version signed by a clock that is off falls among the others is for the
+   * root to answer for, as anything else it does by that clock.
    */
-  async delegate(root: Signer, agents: readonly Key[]): Promise<SignedIdentityObject> {
+  async delegate(
+    root: Signer,
+    agents: readonly Key[],
+    at = Date.now(),
+  ): Promise<SignedIdentityObject<DelegatedIdentityObject>> {
     const rootKey = this.keys.encode(root.key);
     const agentKeys = agents.map((agent) => this.keys.encode(agent));
-    const data = { root: { $link: rootKey.link }, agents: agentKeys.map(({ link }) => ({ $link: link })) };
+    const data = { root: { $link: rootKey.link }, agents: agentKeys.map(({ link }) => ({ $link: link })), at };
     return this.#signedBy(root, delegatedIdentityOf(encodeObject(this.#delegatedSchema, data), rootKey, agentKeys));
+  }
+
+  /**
+   * The versions a reader knows, from `rows`, the rows of its index of the
+   * versions it has seen, each as `versionOf` gives it. The latest of a root
+   * is the signed identity of its last row, read from `reader`, and refused
+   * unless it is a version of a Delegated Identity.
+   */
+  versions(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): Versions {
+    return {
+      latest: async (root) => {
+        let last: Version | undefined;
+        for await (const version of rows.range([root])) last = version;
+        if (last === undefined) return undefined;
+        const signedIdentity = await this.read(last[2], reader);
+        if (!isDelegated(signedIdentity))
+          throw new Error(`${signedIdentity.link} is not a version of a Delegated Identity`);
+        return signedIdentity;
+      },
+    };
   }
 
   // An identity stands for someone only as its root signed it, so it is read
@@ -264,7 +332,7 @@ export class Identities {
 
   // The identity is written before its root is asked to sign, so a root is
   // not asked to sign an identity that would not read.
-  async #signedBy(root: Signer, identity: IdentityObject): Promise<SignedIdentityObject> {
+  async #signedBy<I extends IdentityObject>(root: Signer, identity: I): Promise<SignedIdentityObject<I>> {
     const signature = await root.sign(digestOf(identity.link));
     const data = { identity: { $link: identity.link }, signature: bytesToHex(signature) };
     return signedOf(encodeObject(this.#signedSchema, data), identity);
@@ -298,7 +366,10 @@ function blobsOf(object: EncodedObject<Json>, keys: readonly KeyObject[]): Uint8
   return [...blobs.values()];
 }
 
-function signedOf(object: EncodedObject<Json, SignedIdentityData>, identity: IdentityObject): SignedIdentityObject {
+function signedOf<I extends IdentityObject>(
+  object: EncodedObject<Json, SignedIdentityData>,
+  identity: I,
+): SignedIdentityObject<I> {
   const signature = hexToBytes(object.data.signature);
   if (!verify(identity.root, digestOf(identity.link), signature)) {
     throw new Error(`the root of ${identity.link} did not sign ${object.link}`);

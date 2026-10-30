@@ -1,4 +1,4 @@
-import { type Actor, loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { type Actor, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -141,7 +141,7 @@ async function chat(faults: Faults = {}) {
     Promise.all(
       (await conversation(await scan(person.store, deliveries), mine.link, theirs.link)).map(
         async ([direction, , , bundle]) => {
-          const signed = await signatures.read(bundle, person.store);
+          const signed = await signatures.read(bundle, person.store, noVersions);
           const { data } = await readObject(person.store, signed.object, line);
           return [direction, names.get(signed.signedIdentity.identity.root.link), data.text];
         },

@@ -1,4 +1,4 @@
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -30,7 +30,9 @@ describe("a mailbox", () => {
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle)).signedIdentity.identity).toEqual(identities.encode(alice.key));
+    expect((await signatures.read(bundle.link, bundle, noVersions)).signedIdentity.identity).toEqual(
+      identities.encode(alice.key),
+    );
   });
 
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -95,8 +95,8 @@ describe("a bundle", () => {
   it("reads with a signature as its root, which leads to the object it is over and to its signed identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
     expect(bundle.link).toBe(signature.link);
-    const signed = await signatures.read(bundle.link, bundle);
-    expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle)).toEqual(signed);
+    const signed = await signatures.read(bundle.link, bundle, noVersions);
+    expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noVersions)).toEqual(signed);
     expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
@@ -121,7 +121,7 @@ describe("a bundle", () => {
     const identityBytes = new Map([...signature.signedIdentity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       await expect(async () =>
-        signatures.verify(decodeObject(blob, signatures.schema), identityBytes),
+        signatures.verify(decodeObject(blob, signatures.schema), identityBytes, noVersions),
       ).rejects.toThrow();
       expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
@@ -179,7 +179,7 @@ describe("a bundle", () => {
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    const signed = await signatures.read(signature.link, bundle);
+    const signed = await signatures.read(signature.link, bundle, noVersions);
     expect(bundle.get(signed.object)).toEqual(hello.bytes);
   });
 });

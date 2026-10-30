@@ -14,7 +14,16 @@ import {
   type Schema,
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { hexSchema, type Identities, loadIdentities, rulesOf, type SignedIdentityObject } from "./identities.ts";
+import {
+  type DelegatedIdentityObject,
+  hexSchema,
+  type Identities,
+  isDelegated,
+  loadIdentities,
+  rulesOf,
+  type SignedIdentityObject,
+  type Versions,
+} from "./identities.ts";
 import type { KeyObject } from "./keys.ts";
 import type { Signer } from "./signer.ts";
 
@@ -100,15 +109,30 @@ export class Signatures {
    * keys it names are read from `reader`. The identity's schema says which
    * key made the signature and how its bytes are laid out, and the key's
    * scheme how its signature is read.
+   *
+   * A signature for a Delegated Identity is refused too when the key that
+   * made it is not an agent of the current version, the later of the one it
+   * carries and the latest of `versions`. A device a wallet has just listed
+   * signs by a version the reader has not seen yet, so the one it carries
+   * counts as well.
    */
-  async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
+  async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader, versions: Versions): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
-    return signatureOf(signature, await this.identities.read(signature.data.signedIdentity.$link, reader));
+    const verified = signatureOf(signature, await this.identities.read(signature.data.signedIdentity.$link, reader));
+    const { signedIdentity, key } = verified;
+    if (!isDelegated(signedIdentity)) return verified;
+    const { root } = signedIdentity.identity;
+    const latest = await versions.latest(root.link);
+    const current = latest !== undefined && later(latest, signedIdentity) ? latest : signedIdentity;
+    if (!current.identity.agents.some(({ link }) => link === key.link)) {
+      throw new Error(`${key.link} is not an agent of the current version of ${root.link}`);
+    }
+    return verified;
   }
 
-  /** Reads the signature that `link` names from `reader`, and verifies it. */
-  async read(link: Link<Signature>, reader: Reader): Promise<Signature> {
-    return this.verify(await readObject(reader, link, this.schema), reader);
+  /** Reads the signature that `link` names from `reader`, and verifies it by `versions`. */
+  async read(link: Link<Signature>, reader: Reader, versions: Versions): Promise<Signature> {
+    return this.verify(await readObject(reader, link, this.schema), reader, versions);
   }
 
   /** An actor for `signedIdentity`, which refuses a signer whose key does not sign for its identity. */
@@ -130,6 +154,15 @@ export class Signatures {
       },
     };
   }
+}
+
+// In the order of the rows of their versions.
+function later(
+  version: SignedIdentityObject<DelegatedIdentityObject>,
+  than: SignedIdentityObject<DelegatedIdentityObject>,
+): boolean {
+  const [at, thanAt] = [version.identity.data.at, than.identity.data.at];
+  return at !== thanAt ? at > thanAt : version.link > than.link;
 }
 
 function signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {

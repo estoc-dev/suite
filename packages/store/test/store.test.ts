@@ -1,4 +1,4 @@
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -207,7 +207,7 @@ describe("a signature read from a store", () => {
       mine: [note, signature],
       blobs: [...signature.signedIdentity.blobs, anything.bytes, ...signatureSchemas],
     });
-    const read = await signatures.read(signature.link, store);
+    const read = await signatures.read(signature.link, store, noVersions);
     expect(read.object).toBe(note.link);
     expect(read.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
@@ -217,12 +217,12 @@ describe("a signature read from a store", () => {
     const note = object({ text: "hello" });
     await store.write({ mine: [note], blobs: [anything.bytes] });
     // @ts-expect-error: refused at compile time too
-    await expect(signatures.read(note.link, store)).rejects.toThrow(/is written to/);
+    await expect(signatures.read(note.link, store, noVersions)).rejects.toThrow(/is written to/);
   });
 
   it("fails to read when the store does not hold it", async () => {
     const store = newStore();
     const link = linkOf(utf8("absent"));
-    await expect(signatures.read(link, store)).rejects.toThrow(`no blob is given for ${link}`);
+    await expect(signatures.read(link, store, noVersions)).rejects.toThrow(`no blob is given for ${link}`);
   });
 });

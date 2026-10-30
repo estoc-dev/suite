@@ -1,4 +1,4 @@
-import { loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -85,7 +85,7 @@ describe("an outbox", () => {
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
-    expect((await signatures.read(bundle.link, bundle)).object).toBe(hello.link);
+    expect((await signatures.read(bundle.link, bundle, noVersions)).object).toBe(hello.link);
   });
 
   it("records nothing when the transport refuses what it sends", async () => {
@@ -134,7 +134,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: mailbox.link, at: 1001 },
     ]);
     expect(await listed(store)).toEqual([mailbox.link, ...received.map(({ link }) => link)]);
-    expect((await signatures.read(signature.link, store)).object).toBe(hello.link);
+    expect((await signatures.read(signature.link, store, noVersions)).object).toBe(hello.link);
   });
 
   it("keeps nothing of a bundle that leaves out a blob its root leads to", async () => {

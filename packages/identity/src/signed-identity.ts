@@ -79,7 +79,8 @@ export class SignedIdentities {
    * Reads the signed identity that `link` names from `reader`, with its
    * identity, written to any of the identity schemas, and the keys it names,
    * and refuses it unless the identity's root signed it. An identity stands
-   * for someone only as its root signed it, so it is read only this way.
+   * for someone only as its root signed it, which reading its object and
+   * keys alone does not verify.
    */
   async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
     const object = await readObject(reader, link, this.schema);

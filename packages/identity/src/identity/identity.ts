@@ -46,7 +46,6 @@ export class Identities implements IdentityImplementation {
     this.#keys = keys;
   }
 
-  /** Writes the Identity whose root is `root`. */
   encode(root: Key): IdentityObject {
     const key = this.#keys.encode(root);
     return identityOf(encodeObject(this.schema, { root: { $link: key.link } }), key);

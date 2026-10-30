@@ -153,8 +153,10 @@ and whether a key signs for it. `identities` is the implementation of
 is a key; `delegatedIdentities` is that of `delegatedIdentitySchema`, and
 `delegatedIdentities.encode` writes the Delegated Identity of a root, its
 agents and its `at`. An identity stands for someone only as its root
-signed it, so it is read only as the identity of a signed identity.
-Reading an identity takes the blobs of its object and of its keys; an
+signed it: `identities.read` and `delegatedIdentities.read` read an
+identity's object with the keys it names and do not authenticate it, and
+`signedIdentities.read` verifies that its root signed it. Reading an
+identity takes the blobs of its object and of its keys; an
 identity carries them as `blobs`, with those of the schemas they are
 written to and of the interfaces those name, each once, so where an
 identity goes, as into a store or a bundle, `...identity.blobs` goes along

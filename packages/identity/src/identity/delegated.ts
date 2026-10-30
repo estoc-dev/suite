@@ -72,7 +72,6 @@ export class DelegatedIdentities implements IdentityImplementation<DelegatedIden
     this.#keys = keys;
   }
 
-  /** Writes the Delegated Identity whose root is `root` and whose agents are `agents`, in that order, at `at`. */
   encode(root: Key, agents: readonly Key[], at: number): DelegatedIdentityObject {
     const rootKey = this.#keys.encode(root);
     const agentKeys = agents.map((agent) => this.#keys.encode(agent));

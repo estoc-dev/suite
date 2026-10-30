@@ -31,10 +31,9 @@ export const hexSchema: JsonObject = { type: "string", pattern: "^(?:[0-9a-f]{2}
 
 /**
  * The schema of an Identity, the identity of a key on its own, whatever the
- * scheme of the key: `{"$describedBy": <link to identitySchema>, "root":
- * <link to a key>}`. It holds its root and nothing else, so each key has one,
- * with one link, and its root alone signs for it. A signature for it is the
- * root's signature.
+ * scheme of the key. It holds its root and nothing else, so each key has
+ * one, with one link, and its root alone signs for it. A signature for it is
+ * the root's signature.
  */
 export const identitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -48,11 +47,9 @@ export const identitySchema: JsonSchema = {
 
 /**
  * The schema of a Delegated Identity, a root and the keys it lists to sign
- * for it, its agents: `{"$describedBy": <link to delegatedIdentitySchema>,
- * "root": <link to a key>, "agents": [<link to a key>, …]}`. A signature for
- * it is the index of the agent that signs, one byte, followed by that
- * agent's signature, so it lists at most 256 agents, in the order the root
- * gives. It lists each once, or one signature would verify under two
+ * for it, its agents. A signature for it is the index of the agent that
+ * signs, one byte, followed by that agent's signature, so it lists at most
+ * 256 agents, in the order the root gives. It lists each once, or one signature would verify under two
  * indexes, as two signatures with two links. The root signs for it only if
  * it lists itself, and with no agents no one signs for it.
  */
@@ -114,10 +111,9 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
 
 /**
  * An identity as its root publishes it: an object written to
- * `signedIdentitySchema`, `{"$describedBy": <link to signedIdentitySchema>,
- * "identity": <link to the identity>, "signature": <hex>}`, read with the
- * identity and verified, the bytes being the root's signature over the
- * identity's link, whichever identity schema it is written to. What the
+ * `signedIdentitySchema`, read with the identity and verified, the bytes
+ * being the root's signature over the identity's link, whichever identity
+ * schema it is written to. What the
  * root publishes is this object as it is, so a signature names the identity
  * it is made for by the link of this object. Two signers are the same
  * someone when the roots of their identities are the same, whichever signed

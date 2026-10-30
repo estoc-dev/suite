@@ -309,6 +309,10 @@ describe("a mailbox service started again", () => {
     const before = await rootOf(service);
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(moved)).data).toEqual(before.data);
-    expect(await mine(store)).toHaveLength(2);
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const services = await Promise.all(
+      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
+    );
+    expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
   });
 });

@@ -53,10 +53,8 @@ export type SignatureData = {
 
 /**
  * An identity standing behind an object, as an object written to
- * `signatureSchema`: `{"$describedBy": <link to signatureSchema>,
- * "signedIdentity": <link to the signed identity>, "object": <link to the
- * object>, "signature": <hex>}`, read and verified, with `key`, the key that
- * signed for the identity. That is all it says.
+ * `signatureSchema`, read and verified, with `key`, the key that signed for
+ * the identity. That is all it says.
  * Who has to sign, in what role and by when are for the application that
  * reads the object to decide. It names the object by link, so it verifies
  * without the object, but not without the blobs of its signed identity. It

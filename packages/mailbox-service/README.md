@@ -159,8 +159,11 @@ it knows and the one the acceptance carries. It judges that before it looks
 for the root's account, so a removed device gets no acknowledgement even
 when the wallet has an account. Say the wallet's first version lists a
 laptop and its second only a phone, and the phone opened the account by
-the second: the laptop's acceptance by the first is refused. A version
-signed after the account opened does not reach the service yet.
+the second: the laptop's acceptance by the first is refused. A version that
+an acceptance carries after the account opened counts for that acceptance
+alone, and the service does not keep it: had the laptop opened the account
+by the first, it would still be answered after the phone accepted by the
+second.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service opened an

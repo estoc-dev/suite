@@ -232,7 +232,6 @@ export function rulesOf(object: EncodedObject<Json, IdentityData>): Rules {
   return found;
 }
 
-/** Whether `signedIdentity` is a version of a Delegated Identity. */
 export function isDelegated(
   signedIdentity: SignedIdentityObject,
 ): signedIdentity is SignedIdentityObject<DelegatedIdentityObject> {

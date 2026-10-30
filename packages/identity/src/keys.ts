@@ -30,9 +30,8 @@ export const keySchemas: Readonly<Record<Scheme, JsonSchema>> = {
 export type KeyData = { readonly publicKey: string };
 
 /**
- * A key read from its object, written to the key schema of its scheme:
- * `{"$describedBy": <link to that schema>, "publicKey": <lowercase hex>}`.
- * An identity names its root by the link of this object.
+ * A key read from its object, written to the key schema of its scheme. An
+ * identity names its root by the link of this object.
  */
 export interface KeyObject extends EncodedObject<Json, KeyData>, Key {
   readonly link: Link<KeyObject>;

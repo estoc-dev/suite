@@ -304,9 +304,15 @@ describe("a mailbox service started again", () => {
     expect(sign).toHaveBeenCalledOnce();
   });
 
-  it("at another origin signs its new Service later than the one before, though its clock is behind", async () => {
-    const { store } = await memoryService({ start: 5_000 });
+  it("at another origin with its clock behind signs a Service earlier than the one before, which stays the latest", async () => {
+    const { service, store } = await memoryService({ start: 5_000 });
+    const before = await rootOf(service);
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
-    expect((await rootOf(moved)).data).toMatchObject({ origin: "https://post.example", at: 5_001 });
+    expect((await rootOf(moved)).data).toEqual(before.data);
+    const signed = await Promise.all((await mine(store)).map((link) => signatures.read(link, store)));
+    const services = await Promise.all(
+      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
+    );
+    expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
   });
 });

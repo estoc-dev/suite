@@ -53,10 +53,8 @@ export type SignatureData = {
 
 /**
  * An identity standing behind an object, as an object written to
- * `signatureSchema`: `{"$describedBy": <link to signatureSchema>,
- * "signedIdentity": <link to the signed identity>, "object": <link to the
- * object>, "signature": <hex>}`, read and verified, with `key`, the key that
- * signed for the identity. That is all it says.
+ * `signatureSchema`, read and verified, with `key`, the key that signed for
+ * the identity. That is all it says.
  * Who has to sign, in what role and by when are for the application that
  * reads the object to decide. It names the object by link, so it verifies
  * without the object, but not without the blobs of its signed identity. It
@@ -101,9 +99,7 @@ export class Signatures {
    * names by that signed identity. The signed identity, its identity and the
    * keys it names are read from `reader`. The identity's schema says which
    * key made the signature and how its bytes are laid out, and the key's
-   * scheme how its signature is read. One identity can sign one object many
-   * times, since a wallet need not sign deterministically, and each of those
-   * signatures verifies.
+   * scheme how its signature is read.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);

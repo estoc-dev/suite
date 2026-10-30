@@ -1,4 +1,4 @@
-import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -13,7 +13,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const network = await MemoryNetwork.create(defaultValidator);
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
-const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const note = await encodeSchema(
   { $schema: DRAFT, type: "object", properties: { text: { type: "string" } } },
   defaultValidator,

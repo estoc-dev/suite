@@ -1,4 +1,4 @@
-import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { type Backend, MemoryBackend, Store } from "../src/index.ts";
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const signatures = await loadSignatures(defaultValidator);
-const signer = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(7));
+const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, signatures.identities.encode(signer.key).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: JsonObject) => encodeObject(anything, data);

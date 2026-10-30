@@ -1,5 +1,4 @@
-import type { Key } from "./key.ts";
-import { type Scheme, schemes } from "./scheme.ts";
+import type { Key, Scheme } from "./key/interface.ts";
 import { signingText } from "./signing-text.ts";
 
 /**
@@ -27,7 +26,7 @@ export class SoftwareSigner implements Signer {
 
   static fromSecretKey(scheme: Scheme, secretKey: Uint8Array): SoftwareSigner {
     const owned = new Uint8Array(secretKey);
-    return new SoftwareSigner(scheme, schemes[scheme].curve.publicKeyOf(owned), owned);
+    return new SoftwareSigner(scheme, scheme.curve.publicKeyOf(owned), owned);
   }
 
   get key(): Key {
@@ -35,7 +34,7 @@ export class SoftwareSigner implements Signer {
   }
 
   async sign(digest: Uint8Array, signedIdentity?: Uint8Array): Promise<Uint8Array> {
-    const { curve, message } = schemes[this.#scheme];
-    return curve.sign(message(signingText(digest, signedIdentity), this.#publicKey), this.#secretKey);
+    const scheme = this.#scheme;
+    return scheme.curve.sign(scheme.message(signingText(digest, signedIdentity), this.#publicKey), this.#secretKey);
   }
 }

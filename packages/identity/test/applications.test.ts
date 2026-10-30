@@ -14,6 +14,8 @@ import {
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import {
+  ed25519,
+  eip191,
   type IdentityObject,
   type KeyObject,
   loadSignatures,
@@ -22,6 +24,7 @@ import {
   type Signature,
   type Signer,
   SoftwareSigner,
+  solanaOffchain,
 } from "../src/index.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
@@ -82,7 +85,7 @@ async function loggedIn(
 }
 
 describe("a login", () => {
-  const user = signer("eip191", 1);
+  const user = signer(eip191, 1);
   const signed = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
     const { bytes, signedIdentity } = await signed;
@@ -99,7 +102,7 @@ describe("a login", () => {
   });
 
   it("signed by a browser key that the user's Delegated Identity lists logs the user in", async () => {
-    const browser = signer("ed25519", 5);
+    const browser = signer(ed25519, 5);
     const actor = signatures.actor(browser, await identities.delegate(user, [browser.key]));
     const { bytes, signedIdentity } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
@@ -169,9 +172,9 @@ async function deliveryConfirmed(link: Link<unknown>, received: Received): Promi
   );
 }
 
-const buyer = signer("eip191", 1);
-const seller = signer("ed25519", 2);
-const witness = signer("solana-offchain", 3);
+const buyer = signer(eip191, 1);
+const seller = signer(ed25519, 2);
+const witness = signer(solanaOffchain, 3);
 const terms = encodeObject(sale, {
   buyer: { $link: identities.keys.encode(buyer.key).link },
   seller: { $link: identities.keys.encode(seller.key).link },

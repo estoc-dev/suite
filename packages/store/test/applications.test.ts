@@ -1,5 +1,5 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { loadSignatures, noVersions, type Signer, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, type Signer, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -41,8 +41,8 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     defaultValidator,
   );
 const signatures = await loadSignatures(defaultValidator);
-const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
-const mallory = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(2));
+const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await signatures.identities.publish(by)).sign(object);
 

@@ -31,11 +31,13 @@ kept in a chain wallet signs only in that chain's off-chain message
 framing, so the framing belongs to the key, and a verifier does not accept
 a framing its holder did not choose.
 
+Each scheme is a `Scheme` value in a file of its own under `src/key/`:
+
 - `ed25519`: the text itself, as a software key or a Solana wallet's plain
   `signMessage` signs it.
 - `eip191`: an Ethereum `personal_sign` message, by a secp256k1 key in its
   compressed form.
-- `solana-offchain`: a Solana off-chain message, version 1, naming the key
+- `solanaOffchain`: a Solana off-chain message, version 1, naming the key
   as its one signer, which Ledger's Solana app signs from 1.14.
 
 Every scheme signs the same texts before its framing, `signingText(digest,
@@ -64,14 +66,17 @@ another that lists it.
 The keys work without objects. A `Key` is a scheme and a public key,
 `verify` checks a signature by one over the text for a digest, and
 `sameKey` holds when both the scheme and the public key bytes are the
-same, so one public key in two schemes is two keys. A `Signer` is the private side of a key, as the
+same, so one public key in two schemes is two keys. The scheme is the same
+when it is the same value, so a program holds one copy of this package. A
+`Key` carries its scheme as that value, so it is not data to clone or send;
+what goes between programs is the key's object. A `Signer` is the private side of a key, as the
 capability to sign with it: a wallet stands behind one the same way
 `SoftwareSigner` does over a key in memory, which is why signing is
 asynchronous.
 
 ## Keys
 
-Each scheme writes its keys to a schema of its own, in `keySchemas`, and
+Each scheme writes its keys to a schema of its own, its `keySchema`, and
 the schema a key's object is written to is its scheme. The schema holds the
 public key, in lowercase hex at its scheme's length, and no other field, so
 each key has one object and one link. The schemas of `ed25519` and
@@ -90,12 +95,15 @@ it knows, as it says which schemas it reads, and refuses one written to any
 other, as it would a key in a scheme it does not know.
 
 `loadKeys` compiles the key schemas with the validator the application
-picks, and gives `keys`. `keys.check` is the judgment of a key: it takes a
-key's object and gives the key, in the scheme of the schema the object is
-written to. `keys.read` does the same from the link of the object and a
-`Reader`, and picks the schema to read the object with by `schemaOf`.
-`keys.encode` writes a key as its object, and refuses a public key that its
-scheme's schema does not take.
+picks, and gives `keys`, which reads keys through an `Implementations` of
+`@estoc/object`, with one implementation for each scheme. `keys.check` is the
+judgment of a key: it takes a key's object and gives the key, in the scheme
+of the schema the object is written to. `keys.read` does the same from the
+link of the object and a `Reader`, and picks the schema to read the object
+with by `schemaOf`. `keys.encode` writes a key as its object, and refuses a
+public key that its scheme's schema does not take, and a scheme that is not
+one of those `loadKeys` compiles. A scheme added later is one more file
+under `src/key/` and one more of those.
 
 ## Identities
 
@@ -246,12 +254,12 @@ in `@estoc/object` itself, and take back only the signature, with the
 signed identity's blobs:
 
 ```ts
-import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const signatures = await loadSignatures(defaultValidator);
-const signer = SoftwareSigner.fromSecretKey("ed25519", secretKey);
+const signer = SoftwareSigner.fromSecretKey(ed25519, secretKey);
 const actor = signatures.actor(signer, await signatures.identities.publish(signer));
 const signature = await actor.sign(object);
 // The client sends signature.bytes and signature.signedIdentity.blobs.

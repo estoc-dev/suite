@@ -2,7 +2,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
-import { type Key, type Scheme, SoftwareSigner, signingText, verify } from "../src/index.ts";
+import { ed25519, eip191, type Key, SoftwareSigner, signingText, solanaOffchain, verify } from "../src/index.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const otherDigest = digest.map((byte) => byte ^ 0xff);
@@ -11,17 +11,16 @@ const otherDigest = digest.map((byte) => byte ^ 0xff);
 // reproduced with any Ethereum tooling.
 const secp256k1Secret = hexToBytes("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
 const ed25519Secret = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
-const secrets: Record<Scheme, Uint8Array> = {
-  ed25519: ed25519Secret,
-  eip191: secp256k1Secret,
-  "solana-offchain": ed25519Secret,
-};
 
-describe.each(["ed25519", "eip191", "solana-offchain"] as const)("a key signing in %s", (scheme) => {
-  const signer = SoftwareSigner.fromSecretKey(scheme, secrets[scheme]);
+describe.each([
+  { scheme: ed25519, secret: ed25519Secret },
+  { scheme: eip191, secret: secp256k1Secret },
+  { scheme: solanaOffchain, secret: ed25519Secret },
+])("a key signing in $scheme.name", ({ scheme, secret }) => {
+  const signer = SoftwareSigner.fromSecretKey(scheme, secret);
   const other = SoftwareSigner.fromSecretKey(
     scheme,
-    secrets[scheme].map((byte) => byte ^ 0x5a),
+    secret.map((byte) => byte ^ 0x5a),
   );
 
   it("verifies what its signer signs", async () => {
@@ -57,14 +56,14 @@ describe.each(["ed25519", "eip191", "solana-offchain"] as const)("a key signing 
 });
 
 test("one Ed25519 key signs differently as ed25519 and as solana-offchain", async () => {
-  const plain = SoftwareSigner.fromSecretKey("ed25519", ed25519Secret);
-  const solana = SoftwareSigner.fromSecretKey("solana-offchain", ed25519Secret);
+  const plain = SoftwareSigner.fromSecretKey(ed25519, ed25519Secret);
+  const solana = SoftwareSigner.fromSecretKey(solanaOffchain, ed25519Secret);
   expect(verify(solana.key, digest, await plain.sign(digest))).toBe(false);
   expect(verify(plain.key, digest, await solana.sign(digest))).toBe(false);
 });
 
 test("an eip191 key rejects the high-s twin of its signature", async () => {
-  const signer = SoftwareSigner.fromSecretKey("eip191", secp256k1Secret);
+  const signer = SoftwareSigner.fromSecretKey(eip191, secp256k1Secret);
   const signature = await signer.sign(digest);
   const s = bytesToNumberBE(signature.subarray(32));
   const twin = Uint8Array.of(...signature.subarray(0, 32), ...numberToBytesBE(secp256k1.Point.CURVE().n - s, 32));
@@ -96,7 +95,7 @@ describe("signingText", () => {
 describe("signatures from chain tooling", () => {
   test("a personal_sign signature verifies, and a software signer makes the same one", async () => {
     const key: Key = {
-      scheme: "eip191",
+      scheme: eip191,
       publicKey: hexToBytes("038318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed75"),
     };
     const withRecovery = hexToBytes(
@@ -105,12 +104,12 @@ describe("signatures from chain tooling", () => {
     );
     const signature = withRecovery.subarray(0, 64);
     expect(verify(key, digest, signature)).toBe(true);
-    expect(await SoftwareSigner.fromSecretKey("eip191", secp256k1Secret).sign(digest)).toEqual(signature);
+    expect(await SoftwareSigner.fromSecretKey(eip191, secp256k1Secret).sign(digest)).toEqual(signature);
   });
 
   test("a version 1 off-chain message signature verifies, and a software signer makes the same one", async () => {
     const key: Key = {
-      scheme: "solana-offchain",
+      scheme: solanaOffchain,
       publicKey: hexToBytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"),
     };
     const signature = hexToBytes(
@@ -118,6 +117,6 @@ describe("signatures from chain tooling", () => {
         "c13c2a6ba57311be775ef5c88deb02a521754a06d241f50c20a71721fa06a600",
     );
     expect(verify(key, digest, signature)).toBe(true);
-    expect(await SoftwareSigner.fromSecretKey("solana-offchain", ed25519Secret).sign(digest)).toEqual(signature);
+    expect(await SoftwareSigner.fromSecretKey(solanaOffchain, ed25519Secret).sign(digest)).toEqual(signature);
   });
 });

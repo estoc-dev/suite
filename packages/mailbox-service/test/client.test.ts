@@ -1,5 +1,5 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import { noVersions, type Signer } from "@estoc/identity";
+import { ed25519, eip191, noVersions, type Signer, solanaOffchain } from "@estoc/identity";
 import { type EncodedObject, encodeObject, encodeSchema, type Json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import type { Store } from "@estoc/store";
@@ -22,12 +22,12 @@ import {
   signer,
 } from "./fixtures.ts";
 
-const alice = signer("ed25519", 1);
-const bob = signer("ed25519", 5);
-const wallet = signer("eip191", 2);
-const laptop = signer("ed25519", 3);
-const phone = signer("solana-offchain", 4);
-const mallory = signer("ed25519", 6);
+const alice = signer(ed25519, 1);
+const bob = signer(ed25519, 5);
+const wallet = signer(eip191, 2);
+const laptop = signer(ed25519, 3);
+const phone = signer(solanaOffchain, 4);
+const mallory = signer(ed25519, 6);
 
 const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.root.link } });
 

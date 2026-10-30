@@ -17,6 +17,8 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test, vi } from "vitest";
 import {
   type DelegatedIdentityObject,
+  ed25519,
+  eip191,
   loadSignatures,
   noVersions,
   type Scheme,
@@ -27,9 +29,10 @@ import {
   SoftwareSigner,
   sameKey,
   signatureSchema,
+  solanaOffchain,
   type Versions,
 } from "../src/index.ts";
-import { rowsOf } from "./fixtures.ts";
+import { rowsOf, schemes } from "./fixtures.ts";
 
 const signatures = await loadSignatures(defaultValidator);
 const { identities } = signatures;
@@ -63,10 +66,9 @@ const note: Schema<Json, { readonly text: string }> = await encodeSchema(
 );
 const hello = encodeObject(note, { text: "hello" });
 const goodbye = encodeObject(note, { text: "goodbye" });
-const schemes: Scheme[] = ["ed25519", "eip191", "solana-offchain"];
 
 describe("a signature", () => {
-  it.each(schemes)("by a %s key reads back with its identity and object", async (scheme) => {
+  it.each(schemes)("by a $name key reads back with its identity and object", async (scheme) => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
     const read = await verified(signature.bytes, identityOf(signature));
@@ -78,17 +80,17 @@ describe("a signature", () => {
   });
 
   it("is refused when its signature is changed", async () => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     const hex = dataOf(signature).signature as string;
     const changed = `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}`;
     await expect(verified(rewritten(signature, { signature: changed }), identityOf(signature))).rejects.toThrow();
   });
 
   it("is refused when it names another identity, even the same key in another scheme", async () => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     for (const other of [
-      await identities.publish(signer("ed25519", 2)),
-      await identities.publish(signer("solana-offchain")),
+      await identities.publish(signer(ed25519, 2)),
+      await identities.publish(signer(solanaOffchain)),
     ]) {
       await expect(
         verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),
@@ -97,14 +99,14 @@ describe("a signature", () => {
   });
 
   it("is refused when it names another object", async () => {
-    const signature = await sign(hello, signer("eip191"));
+    const signature = await sign(hello, signer(eip191));
     await expect(
       verified(rewritten(signature, { object: { $link: goodbye.link } }), identityOf(signature)),
     ).rejects.toThrow();
   });
 
   it("is refused without the blobs of its identity", async () => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     await expect(verified(signature.bytes)).rejects.toThrow(/no blob is given/);
   });
 
@@ -120,14 +122,14 @@ describe("a signature", () => {
     ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     [
       "an identity written in place of the link to its signed identity",
-      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer("ed25519").key)) }),
+      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer(ed25519).key)) }),
     ],
     [
       "its identity in place of its signed identity",
-      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer("ed25519").key).link } }),
+      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer(ed25519).key).link } }),
     ],
   ])("is refused with %s", async (_, change) => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     await expect(async () =>
       verified(written(signature, change(dataOf(signature))), identityOf(signature)),
     ).rejects.toThrow();
@@ -137,12 +139,12 @@ describe("a signature", () => {
     ["written to another schema", (signature) => json.encode(json.object(dataOf(signature), note.link))],
     ["without its $describedBy", (signature) => json.encode(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     await expect(verified(change(signature), identityOf(signature))).rejects.toThrow();
   });
 
   it("is refused in any but the canonical form", async () => {
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     await expect(
       verified(utf8(JSON.stringify(json.decode(signature.bytes), null, 1)), identityOf(signature)),
     ).rejects.toThrow();
@@ -156,7 +158,7 @@ describe("a signature", () => {
       const bytes: Uint8Array = signature.bytes;
       expect(decodeObject(bytes, schema).link).toBe(signature.link);
     }
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     const unverified = rewritten(signature, { object: { $link: goodbye.link } });
     expect(decodeObject(unverified, schema).data).toMatchObject({ object: { $link: goodbye.link } });
     await expect(verified(unverified, identityOf(signature))).rejects.toThrow(/does not verify/);
@@ -167,8 +169,8 @@ describe("a signature for a Delegated Identity", () => {
   const agentsOf = ({ identity }: SignedIdentityObject<DelegatedIdentityObject>) => identity.agents;
 
   it("by its second agent reads back with that agent as its key", async () => {
-    const signedIdentity = await identities.delegate(signer("ed25519"), [key("ed25519", 2), key("ed25519", 3)]);
-    const signature = await signatures.actor(signer("ed25519", 3), signedIdentity).sign(hello);
+    const signedIdentity = await identities.delegate(signer(ed25519), [key(ed25519, 2), key(ed25519, 3)]);
+    const signature = await signatures.actor(signer(ed25519, 3), signedIdentity).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature));
     expect(read.signedIdentity).toEqual(signedIdentity);
     expect(read.key).toEqual(agentsOf(signedIdentity)[1]);
@@ -177,10 +179,10 @@ describe("a signature for a Delegated Identity", () => {
   });
 
   it("by an agent in another scheme than its root is read in the agent's scheme", async () => {
-    const signedIdentity = await identities.delegate(signer("eip191"), [key("ed25519", 2)]);
-    const signature = await signatures.actor(signer("ed25519", 2), signedIdentity).sign(hello);
+    const signedIdentity = await identities.delegate(signer(eip191), [key(ed25519, 2)]);
+    const signature = await signatures.actor(signer(ed25519, 2), signedIdentity).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature));
-    expect(sameKey(read.key, key("ed25519", 2))).toBe(true);
+    expect(sameKey(read.key, key(ed25519, 2))).toBe(true);
   });
 
   it.each<[string, (signature: Uint8Array) => Uint8Array]>([
@@ -189,17 +191,17 @@ describe("a signature for a Delegated Identity", () => {
     ["no index", (signature) => signature.subarray(1)],
     ["no bytes", () => new Uint8Array()],
   ])("is refused with %s", async (_, change) => {
-    const signedIdentity = await identities.delegate(signer("ed25519"), [key("ed25519", 2), key("ed25519", 3)]);
-    const signature = await signatures.actor(signer("ed25519", 3), signedIdentity).sign(hello);
+    const signedIdentity = await identities.delegate(signer(ed25519), [key(ed25519, 2), key(ed25519, 3)]);
+    const signature = await signatures.actor(signer(ed25519, 3), signedIdentity).sign(hello);
     const bytes = rewritten(signature, { signature: bytesToHex(change(signature.signature)) });
     await expect(verified(bytes, identityOf(signature))).rejects.toThrow(/does not verify/);
   });
 
   it("made for one identity does not verify for another that lists the same agent", async () => {
-    const agent = signer("ed25519", 3);
-    const signedIdentity = await identities.delegate(signer("ed25519"), [agent.key]);
+    const agent = signer(ed25519, 3);
+    const signedIdentity = await identities.delegate(signer(ed25519), [agent.key]);
     const signature = await signatures.actor(agent, signedIdentity).sign(hello);
-    const other = await identities.delegate(signer("ed25519", 2), [agent.key]);
+    const other = await identities.delegate(signer(ed25519, 2), [agent.key]);
     await expect(
       verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),
     ).rejects.toThrow(/does not verify/);
@@ -207,7 +209,7 @@ describe("a signature for a Delegated Identity", () => {
 });
 
 describe("a signature by an agent", () => {
-  const [wallet, laptop, phone] = [signer("eip191"), signer("ed25519", 2), signer("ed25519", 3)];
+  const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
 
   it("counts when the latest version the reader knows lists its agent, whichever version it carries", async () => {
     const first = await identities.delegate(wallet, [laptop.key], 1_000);
@@ -255,8 +257,8 @@ describe("a signature by an agent", () => {
 
 describe("a signature by a root through its Identity", () => {
   it("counts whatever versions of its Delegated Identity the reader knows", async () => {
-    const wallet = signer("eip191");
-    const latest = await identities.delegate(wallet, [key("ed25519", 2)], 1_000);
+    const wallet = signer(eip191);
+    const latest = await identities.delegate(wallet, [key(ed25519, 2)], 1_000);
     const signature = await sign(hello, wallet);
     const versions = { latest: vi.fn(async () => latest) };
     expect((await verified(signature.bytes, identityOf(signature), versions)).link).toBe(signature.link);
@@ -266,8 +268,8 @@ describe("a signature by a root through its Identity", () => {
 
 describe("what a signature signs", () => {
   it("is the signed identity it names, not only its root and the index of its agent", async () => {
-    const [root, agent] = [signer("ed25519"), signer("ed25519", 3)];
-    const signedIdentity = await identities.delegate(root, [agent.key, key("ed25519", 2)]);
+    const [root, agent] = [signer(ed25519), signer(ed25519, 3)];
+    const signedIdentity = await identities.delegate(root, [agent.key, key(ed25519, 2)]);
     const other = await identities.delegate(root, [agent.key]);
     const signature = await signatures.actor(agent, signedIdentity).sign(hello);
     expect((await verified(signature.bytes, identityOf(signature))).link).toBe(signature.link);
@@ -277,7 +279,7 @@ describe("what a signature signs", () => {
   });
 
   it("is not the object alone, as a root signs an identity", async () => {
-    const by = signer("ed25519");
+    const by = signer(ed25519);
     const signature = await sign(hello, by);
     const bare = bytesToHex(await by.sign(digestOf(hello.link)));
     await expect(verified(rewritten(signature, { signature: bare }), identityOf(signature))).rejects.toThrow(
@@ -286,8 +288,8 @@ describe("what a signature signs", () => {
   });
 
   it("is not met by the root's signature over its identity", async () => {
-    const signedIdentity = await identities.publish(signer("ed25519"));
-    const signature = await signatures.actor(signer("ed25519"), signedIdentity).sign(hello);
+    const signedIdentity = await identities.publish(signer(ed25519));
+    const signature = await signatures.actor(signer(ed25519), signedIdentity).sign(hello);
     const recast = rewritten(signature, {
       object: { $link: signedIdentity.identity.link },
       signature: bytesToHex(signedIdentity.signature),
@@ -298,29 +300,29 @@ describe("what a signature signs", () => {
 
 describe("an identity actor", () => {
   it("signs as the signed identity it is made for", async () => {
-    const signedIdentity = await identities.publish(signer("ed25519"));
-    const signature = await signatures.actor(signer("ed25519"), signedIdentity).sign(hello);
+    const signedIdentity = await identities.publish(signer(ed25519));
+    const signature = await signatures.actor(signer(ed25519), signedIdentity).sign(hello);
     expect(signature.signedIdentity).toBe(signedIdentity);
     expect(signature.data.signedIdentity.$link).toBe(signedIdentity.link);
   });
 
   it("is not made for a signer that is not the root of an Identity", async () => {
-    const signedIdentity = await identities.publish(signer("ed25519"));
-    expect(() => signatures.actor(signer("ed25519", 2), signedIdentity)).toThrow(/does not sign for/);
-    expect(() => signatures.actor(signer("solana-offchain"), signedIdentity)).toThrow(/does not sign for/);
+    const signedIdentity = await identities.publish(signer(ed25519));
+    expect(() => signatures.actor(signer(ed25519, 2), signedIdentity)).toThrow(/does not sign for/);
+    expect(() => signatures.actor(signer(solanaOffchain), signedIdentity)).toThrow(/does not sign for/);
   });
 
   it("is not made for a signer that a Delegated Identity does not list, though it is its root", async () => {
-    const signedIdentity = await identities.delegate(signer("ed25519"), [key("ed25519", 2)]);
-    expect(() => signatures.actor(signer("ed25519", 3), signedIdentity)).toThrow(/does not sign for/);
-    expect(() => signatures.actor(signer("ed25519"), signedIdentity)).toThrow(/does not sign for/);
+    const signedIdentity = await identities.delegate(signer(ed25519), [key(ed25519, 2)]);
+    expect(() => signatures.actor(signer(ed25519, 3), signedIdentity)).toThrow(/does not sign for/);
+    expect(() => signatures.actor(signer(ed25519), signedIdentity)).toThrow(/does not sign for/);
   });
 
   it("refuses a signature that does not verify for its key", async () => {
-    const signedIdentity = await identities.publish(signer("ed25519", 2));
+    const signedIdentity = await identities.publish(signer(ed25519, 2));
     const wrong: Signer = {
-      key: signer("ed25519", 2).key,
-      sign: (digest, by) => signer("ed25519").sign(digest, by),
+      key: signer(ed25519, 2).key,
+      sign: (digest, by) => signer(ed25519).sign(digest, by),
     };
     await expect(signatures.actor(wrong, signedIdentity).sign(hello)).rejects.toThrow(/does not verify/);
   });
@@ -340,7 +342,7 @@ describe("signatures loaded with a validator", () => {
     ["root", / key$/],
   ])("refuse a signature whose %s it says does not fit", async (_, title) => {
     const strict = await loadSignatures(refusing(title));
-    const signature = await sign(hello, signer("ed25519"));
+    const signature = await sign(hello, signer(ed25519));
     await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/it does not fit/);
   });
 
@@ -350,13 +352,13 @@ describe("signatures loaded with a validator", () => {
   ])("do not ask a signer to publish an identity whose %s it says does not fit", async (_, title) => {
     const strict = await loadSignatures(refusing(title));
     const sign = vi.fn(async () => new Uint8Array(64));
-    await expect(strict.identities.publish({ key: signer("ed25519").key, sign })).rejects.toThrow(/it does not fit/);
+    await expect(strict.identities.publish({ key: signer(ed25519).key, sign })).rejects.toThrow(/it does not fit/);
     expect(sign).not.toHaveBeenCalled();
   });
 });
 
 test("a signature's bytes do not read as an object of another schema, nor an object's as a signature", async () => {
-  const signature = await sign(hello, signer("ed25519"));
+  const signature = await sign(hello, signer(ed25519));
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(signature.bytes, note)).toThrow();
   // @ts-expect-error: refused at compile time too
@@ -366,6 +368,6 @@ test("a signature's bytes do not read as an object of another schema, nor an obj
 });
 
 test("the bytes of objects and signatures are linked together, each to its own link", async () => {
-  const signature = await sign(hello, signer("ed25519"));
+  const signature = await sign(hello, signer(ed25519));
   expect([hello.bytes, signature.bytes].map((bytes) => linkOf(bytes))).toEqual([hello.link, signature.link]);
 });

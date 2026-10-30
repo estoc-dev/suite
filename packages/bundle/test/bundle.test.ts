@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, eip191, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -37,7 +37,7 @@ const links = await encodeSchema(
   { $schema: DRAFT, title: "Links", type: "object", properties: { links: { type: "array", items: linkSchema } } },
   defaultValidator,
 );
-const alice = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
 const asAlice = signatures.actor(alice, await identities.publish(alice));
 const signature = await asAlice.sign(hello);
@@ -102,7 +102,7 @@ describe("a bundle", () => {
   });
 
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
-    const wallet = SoftwareSigner.fromSecretKey("eip191", new Uint8Array(32).fill(2));
+    const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
     const signed = await identities.delegate(wallet, [alice.key]);
     const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
     expect(bundle.link).toBe(signed.link);

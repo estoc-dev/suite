@@ -3,16 +3,17 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it, test } from "vitest";
 import {
   delegatedIdentitySchema,
+  ed25519,
+  eip191,
   identityInterface,
   identitySchema,
   keyInterface,
-  keySchemas,
   loadSignatures,
   noVersions,
-  type Scheme,
   SoftwareSigner,
   signatureSchema,
   signedIdentitySchema,
+  solanaOffchain,
 } from "../src/index.ts";
 
 const signatures = await loadSignatures(defaultValidator);
@@ -23,28 +24,36 @@ const signatures = await loadSignatures(defaultValidator);
 // Python's cryptography package. A change to the format changes them.
 const keyInterfaceLink = "sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160";
 const identityInterfaceLink = "sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f";
-const keySchemaTexts: Record<Scheme, string> = {
-  ed25519:
-    '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-    '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
-    '"required":["publicKey"],"title":"Ed25519 key","type":"object",' +
-    '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
-  eip191:
-    '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-    '"properties":{"publicKey":{"pattern":"^[0-9a-f]{66}$","type":"string"}},' +
-    '"required":["publicKey"],"title":"EIP-191 key","type":"object",' +
-    '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
-  "solana-offchain":
-    '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-    '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
-    '"required":["publicKey"],"title":"Solana off-chain key","type":"object",' +
-    '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
-};
-const keySchemaLinks: Record<Scheme, string> = {
-  ed25519: "sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662",
-  eip191: "sha256:8896cefe124af9a93c39ced7f4190a39a5573928806c256e5af54323a1b38d1a",
-  "solana-offchain": "sha256:c0bee18e26838f2864b6e7864e3a81ab41cc9d95a65c47c3d5ae491522236822",
-};
+const ed25519KeySchemaText =
+  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
+  '"required":["publicKey"],"title":"Ed25519 key","type":"object",' +
+  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}';
+const keySchemas = [
+  {
+    scheme: ed25519,
+    text: ed25519KeySchemaText,
+    link: "sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662",
+  },
+  {
+    scheme: eip191,
+    text:
+      '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{66}$","type":"string"}},' +
+      '"required":["publicKey"],"title":"EIP-191 key","type":"object",' +
+      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
+    link: "sha256:8896cefe124af9a93c39ced7f4190a39a5573928806c256e5af54323a1b38d1a",
+  },
+  {
+    scheme: solanaOffchain,
+    text:
+      '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
+      '"required":["publicKey"],"title":"Solana off-chain key","type":"object",' +
+      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
+    link: "sha256:c0bee18e26838f2864b6e7864e3a81ab41cc9d95a65c47c3d5ae491522236822",
+  },
+];
 const identitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
@@ -144,12 +153,12 @@ test.each([
   expect(link).toBe(expected);
 });
 
-test.each(["ed25519", "eip191", "solana-offchain"] as const)(
-  "the key schema of %s encodes to fixed bytes and a fixed link",
-  async (scheme) => {
-    const schema = await encodeSchema(keySchemas[scheme], defaultValidator);
-    expect(text(schema.bytes)).toBe(keySchemaTexts[scheme]);
-    expect(schema.link).toBe(keySchemaLinks[scheme]);
+test.each(keySchemas)(
+  "the key schema of $scheme.name encodes to fixed bytes and a fixed link",
+  async ({ scheme, text: expected, link }) => {
+    const schema = await encodeSchema(scheme.keySchema, defaultValidator);
+    expect(text(schema.bytes)).toBe(expected);
+    expect(schema.link).toBe(link);
   },
 );
 
@@ -176,7 +185,7 @@ test("the signature schema encodes to fixed bytes and a fixed link", async () =>
 
 describe("an Identity with an Ed25519 root, signed, and its signature over the login object of @estoc/object", () => {
   it("encode to fixed bytes and links", async () => {
-    const root = SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(1));
+    const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
     const actor = signatures.actor(root, await signatures.identities.publish(root));
     const signature = await actor.sign({ link: objectLink });
     const { identity } = signature.signedIdentity;
@@ -198,8 +207,8 @@ describe("an Identity with an Ed25519 root, signed, and its signature over the l
     ]);
     const read = await signatures.identities.read(signedIdentityLink, blobs);
     expect(read.identity.link).toBe(identityLink);
-    expect(read.identity.root.scheme).toBe("ed25519");
-    const keySchema = await decodeSchema(utf8(keySchemaTexts.ed25519), defaultValidator);
+    expect(read.identity.root.scheme).toBe(ed25519);
+    const keySchema = await decodeSchema(utf8(ed25519KeySchemaText), defaultValidator);
     expect(decodeObject(utf8(keyText), keySchema).link).toBe(keyLink);
     const schema = await decodeSchema(utf8(identitySchemaText), defaultValidator);
     expect(decodeObject(utf8(identityText), schema).link).toBe(identityLink);
@@ -211,7 +220,7 @@ describe("an Identity with an Ed25519 root, signed, and its signature over the l
 });
 
 describe("a Delegated Identity with that root and two Ed25519 agents at the start of 2026, signed, and the second agent's signature over the login object", () => {
-  const signer = (fill: number) => SoftwareSigner.fromSecretKey("ed25519", new Uint8Array(32).fill(fill));
+  const signer = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
   const agents = [signer(2), signer(3)] as const;
   const at = Date.parse("2026-01-01T00:00:00Z");
 

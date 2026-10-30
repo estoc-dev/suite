@@ -1,4 +1,12 @@
-import { loadSignatures, noVersions, type Scheme, type Signature, SoftwareSigner } from "@estoc/identity";
+import {
+  ed25519,
+  eip191,
+  loadSignatures,
+  noVersions,
+  type Scheme,
+  type Signature,
+  SoftwareSigner,
+} from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -93,7 +101,7 @@ async function readCard(bundle: Bundle) {
 }
 
 describe("a card", () => {
-  const alice = signer("ed25519", 1);
+  const alice = signer(ed25519, 1);
   const inbox = encodeObject(mailbox, { url: "https://mail.example/alice" });
   const called = encodeObject(name, { name: "Alice" });
   const signed = Promise.all([sign(inbox, alice), sign(called, alice)]);
@@ -134,7 +142,7 @@ describe("a card", () => {
 
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await signed;
-    const byOther = await sign(called, signer("eip191", 2));
+    const byOther = await sign(called, signer(eip191, 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
     const bundle = handOver(root, [
       byMailbox.bytes,
@@ -157,7 +165,7 @@ async function readMessage(bundle: Bundle) {
 
 describe("a chat message", () => {
   it("reads through the signature at its root as the message from its signer", async () => {
-    const alice = signer("ed25519", 1);
+    const alice = signer(ed25519, 1);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await sign(message, alice);
     const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
@@ -168,8 +176,8 @@ describe("a chat message", () => {
   });
 
   it("signed by a key that a wallet lists as an agent reads as the message from the wallet", async () => {
-    const wallet = signer("eip191", 1);
-    const device = signer("ed25519", 2);
+    const wallet = signer(eip191, 1);
+    const device = signer(ed25519, 2);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await signatures.actor(device, await identities.delegate(wallet, [device.key])).sign(message);
     const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);

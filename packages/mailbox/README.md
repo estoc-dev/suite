@@ -60,7 +60,7 @@ const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: que
 bundle inside. It refuses bytes that do not open with its key, and what
 opens but does not unpack to a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
-`signatures.read` or `readStanding` and the bundle as the reader.
+`signatures.read` and the bundle as the reader.
 
 ```ts
 const bundle = await key.open(sealed);
@@ -155,9 +155,9 @@ says and who signed it are read from its root when it is shown.
 ## Messages
 
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
-blobs it leads to, which `readObject` and judgments such as `readStanding`
-in `@estoc/authorization` take their blobs from. Nothing in it names the
-sender. It travels packed, as a bundle travels between programs:
+blobs it leads to, which `readObject` and judgments such as
+`signatures.read` in `@estoc/identity` take their blobs from. Nothing in it
+names the sender. It travels packed, as a bundle travels between programs:
 `send` packs it with `packBundle`, and `open` reads it with `unpackBundle`.
 A packed bundle holds the same files as a bundle handed over as a file, so
 a message can be kept as one and a bundle sent as a message.

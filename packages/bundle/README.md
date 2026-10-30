@@ -32,9 +32,9 @@ schema in `$describedBy`. An `index.json` formatted by hand, or one that
 holds a schema, makes the whole bundle refused. A signature is an object
 too, so it can be the root, with what it is over carried in the bundle.
 `writeBundle` takes the root as whatever type the program holds it as, such
-as an `Authorization`, and writes its bytes, so the root is written as it
-was signed. It refuses a root that is not an object, since no reader would
-take the bundle.
+as a signed identity of `@estoc/identity`, and writes its bytes, so the root
+is written as it was signed. It refuses a root that is not an object, since
+no reader would take the bundle.
 
 `index.json` is the object itself, not a pointer to it. So nothing in a
 bundle is both unsigned and unaddressed: what the bundle has to say is
@@ -69,8 +69,7 @@ bytes, as an image is, so one that does not verify, or whose scheme the
 reader does not know, is read all the same.
 
 Signatures are verified where they are used: `signatures.read` in
-`@estoc/identity` and `readStanding` in `@estoc/authorization` verify what
-they read. If reading a bundle verified signatures, it would have to know
+`@estoc/identity` verifies what it reads. If reading a bundle verified signatures, it would have to know
 every identity scheme: a reader that predates a scheme could not read even
 the root of a card carrying a signature in it, and one bad signature that
 nothing refers to would refuse the whole bundle.
@@ -88,9 +87,8 @@ const message = await readObject(bundle, signed.object, chatSchema);
 ```
 
 A `Bundle` is a `Reader`, with the `get` that `readObject` and judgments
-such as `readStanding` take their blobs by, so a signature is read against the bundle that carries its signed
-identity's blobs, and a signature made through agents against the bundle that carries
-the proxy and its chain as well.
+such as `signatures.read` take their blobs by, so a signature is read
+against the bundle that carries its signed identity's blobs.
 
 A bundle need not be complete. A blob the root leads to may be left out,
 such as a document a contract names by hash that both parties already hold,

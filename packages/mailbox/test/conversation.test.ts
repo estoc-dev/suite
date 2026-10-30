@@ -1,4 +1,4 @@
-import { type IdentityActor, loadSignatures, SoftwareSigner } from "@estoc/identity";
+import { type Actor, loadSignatures, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -85,7 +85,7 @@ async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbo
 
 interface Person {
   readonly name: string;
-  readonly actor: IdentityActor;
+  readonly actor: Actor;
   readonly store: Store;
   readonly post: Post;
 }

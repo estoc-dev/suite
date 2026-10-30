@@ -22,8 +22,8 @@ The packages fall on the two sides of that line.
   Like JSON or zip, it has to be shared, and it gives no meaning and no
   reader an advantage.
 - Semantics are everything that carries meaning: identities, signatures,
-  authorizations, mailboxes. Estoc writes them, and they do nothing that a
-  semantics written elsewhere could not.
+  mailboxes. Estoc writes them, and they do nothing that a semantics
+  written elsewhere could not.
 
 Nor are objects tied to one encoding. Data is in an encoding and schemas
 in a language over it, here JSON and JSON Schema; deterministic CBOR with
@@ -38,11 +38,10 @@ computer can run.
 A program reads an object with the schema it expects and the type it
 declares for that schema's data, and refuses the object unless its data
 fits. What a schema cannot say is left to judgments: whether a signature
-verifies, or who stands behind an object through a chain of
-authorizations. A judgment is worked out from an object and the objects it
-links to, read by link as it comes to them, each time the object is read,
-and gives a value, such as a `Signature` or an `Authorization`, that only
-it can make.
+verifies, or whether an identity is signed by its root. A judgment is
+worked out from an object and the objects it links to, read by link as it
+comes to them, each time the object is read, and gives a value, such as a
+`Signature` or a `SignedIdentityObject`, that only it can make.
 
 - Objects are what a program keeps, indexes and shows. It need not turn
   each into a type of its own first.
@@ -84,7 +83,6 @@ fresh, such as a nonce.
 - `@estoc/identity`: keys in their schemes, an identity written as an
   object that names its root key and signed by that key, which signs for
   it itself or through the agents it lists, and the signatures made for it.
-- `@estoc/authorization`: one identity letting another act for it, offline.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in, and packed to travel between programs.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the

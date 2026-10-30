@@ -1,6 +1,12 @@
-import { type Actor, type Authorizations, loadAuthorizations } from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { IdentityObject, KeyObject, Signature } from "@estoc/identity";
+import {
+  type Actor,
+  type IdentityObject,
+  type KeyObject,
+  loadSignatures,
+  type Signature,
+  type Signatures,
+} from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -48,7 +54,7 @@ type Schemas = {
 
 /** An identity's account at a service, written to the store. */
 export interface Account {
-  /** The identity whose account it is: the principal of the actor that accepted the offer. */
+  /** The identity whose account it is: the identity of the actor that accepted the offer. */
   readonly identity: IdentityObject;
   /** The service's identity, which signed the offer and the acknowledgement. */
   readonly service: IdentityObject;
@@ -82,46 +88,48 @@ export class AccountOffer {
   readonly link: Link<EncodedObject<Json, AccountOfferData>>;
   readonly #url: URL;
   readonly #store: Store;
-  readonly #authorizations: Authorizations;
+  readonly #signatures: Signatures;
   readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
 
   constructor(
     { service, offer, url }: { readonly service: IdentityObject; readonly offer: Link<never>; readonly url: URL },
     store: Store,
-    authorizations: Authorizations,
+    signatures: Signatures,
     acknowledgement: Schema<Json, AcknowledgementData>,
   ) {
     this.service = service;
     this.link = offer;
     this.#url = url;
     this.#store = store;
-    this.#authorizations = authorizations;
+    this.#signatures = signatures;
     this.#acknowledgementSchema = acknowledgement;
   }
 
   /**
-   * Opens an account for the actor's principal by accepting the offer: the
-   * actor signs the offer, or a proxy for it. Writes the service's signature
-   * over the acknowledgement to the store as mine, with all it leads to. An
-   * identity that has an account there already gets the acknowledgement of
-   * the acceptance that opened it, which may have come from another device.
+   * Opens an account for the root of the actor's identity by accepting the
+   * offer: the actor signs it. Writes the service's signature over the
+   * acknowledgement to the store as mine, with all it leads to. A root that
+   * has an account there already gets the acknowledgement of the acceptance
+   * that opened it, which may have come from another device.
    */
   async accept(actor: Actor): Promise<Account> {
-    // The service holds the offer and the schemas, so they are left out.
-    const acceptance = await actor.sign(this.link);
-    const body = await packBundle(acceptance.signature, acceptance.blobs);
+    // The service holds the offer and the signature schema, so they are left out.
+    const acceptance = await actor.sign({ link: this.link });
+    const body = await packBundle(acceptance, acceptance.signedIdentity.blobs);
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(this.#url, request), [200, 201]);
-    const acknowledgement = await this.#authorizations.signatures.read(answer.link, answer);
+    const acknowledgement = await this.#signatures.read(answer.link, answer);
     if (acknowledgement.signedIdentity.identity.root.link !== this.service.root.link) {
       throw new Error("the acknowledgement is signed by another root than the service's");
     }
     const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
-    const { principal } = await this.#authorizations.readStanding(this.link, accepted.$link, answer);
-    if (principal.root.link !== actor.principal.root.link)
+    const opened = await this.#signatures.read(accepted.$link, answer);
+    if (opened.object !== this.link) throw new Error(`the acknowledgement accepts ${opened.object}, not the offer`);
+    const { identity } = actor.signedIdentity;
+    if (opened.signedIdentity.identity.root.link !== identity.root.link)
       throw new Error("the acknowledgement is of another root's account");
     await this.#store.write({ mine: [acknowledgement], blobs: answer.blobs() });
-    return { identity: actor.principal, service: this.service, at, link: acknowledgement.link };
+    return { identity, service: this.service, at, link: acknowledgement.link };
   }
 }
 
@@ -131,15 +139,15 @@ export class AccountOffer {
  */
 export class Services {
   readonly #store: Store;
-  readonly #authorizations: Authorizations;
+  readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #locations: Locations;
 
-  constructor(store: Store, authorizations: Authorizations, schemas: Schemas) {
+  constructor(store: Store, signatures: Signatures, schemas: Schemas) {
     this.#store = store;
-    this.#authorizations = authorizations;
+    this.#signatures = signatures;
     this.#schemas = schemas;
-    this.#locations = locations(authorizations.signatures, schemas.service);
+    this.#locations = locations(signatures, schemas.service);
   }
 
   /**
@@ -177,15 +185,14 @@ export class Services {
    * does not read are passed over.
    */
   async #read(link: Link<Signature>, reader: Reader): Promise<Service> {
-    const { signatures } = this.#authorizations;
-    const read = await signatures.read(link, reader);
+    const read = await this.#signatures.read(link, reader);
     const { identity } = read.signedIdentity;
     const { root } = identity;
     const { origin, at, offers } = (await readObject(reader, read.object, this.#schemas.service)).data;
     checkOrigin(origin);
     let account: AccountOffer | undefined;
     for (const { offer, accept } of offers) {
-      const signature = await signatures.read(offer.$link, reader);
+      const signature = await this.#signatures.read(offer.$link, reader);
       if (signature.signedIdentity.identity.root.link !== root.link) {
         throw new Error(`the Service of ${root.link} lists an offer signed by another root`);
       }
@@ -199,7 +206,7 @@ export class Services {
       account = new AccountOffer(
         { service: identity, offer: signature.object, url },
         this.#store,
-        this.#authorizations,
+        this.#signatures,
         this.#schemas.acknowledgement,
       );
     }
@@ -233,9 +240,9 @@ export async function loadServices(
   store: Store,
   { validator }: { readonly validator: JsonSchemaValidator },
 ): Promise<Services> {
-  const authorizations = await loadAuthorizations(validator);
+  const signatures = await loadSignatures(validator);
   const service: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, validator);
   const offer: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
   const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);
-  return new Services(store, authorizations, { service, offer, acknowledgement });
+  return new Services(store, signatures, { service, offer, acknowledgement });
 }

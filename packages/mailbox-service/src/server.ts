@@ -1,19 +1,18 @@
-import {
-  type Authorizations,
-  authorizationSchema,
-  loadAuthorizations,
-  proxySchema,
-  type Standing,
-} from "@estoc/authorization";
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
-import type { IdentityActor, KeyObject, Signature, Signatures, Signer } from "@estoc/identity";
+import {
+  type Actor,
+  type KeyObject,
+  loadSignatures,
+  type Signature,
+  type Signatures,
+  type Signer,
+} from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
   type Json,
   type JsonSchemaValidator,
-  jsonSchema,
   type Link,
   readObject,
   type Schema,
@@ -33,17 +32,13 @@ import {
 } from "./schemas.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
-// signature and an identity, or a proxy and its chain.
+// signature and its signed identity.
 const REQUEST_LIMIT = 64 * 1024;
 
 type Schemas = {
   readonly service: Schema<Json, ServiceData>;
   readonly acknowledgement: Schema<Json, AcknowledgementData>;
 };
-
-// An acceptance through a proxy leads to these schemas, which a client need
-// not send, since the service has them.
-const CHAIN_SCHEMAS = [proxySchema, authorizationSchema].map((schema) => jsonSchema.encode(schema));
 
 /**
  * The accounts of a service, one for each root of an identity, as the link
@@ -100,26 +95,26 @@ export interface ServiceOptions {
  * offer of an account opens one for whoever signed the offer.
  */
 class MailboxService {
-  readonly #actor: IdentityActor;
+  readonly #actor: Actor;
   readonly #offer: EncodedObject<Json, AccountOfferData>;
   readonly #locations: Locations;
-  readonly #authorizations: Authorizations;
+  readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #store: Store;
   readonly #accounts: Accounts;
   readonly #clock: () => number;
 
   constructor(
-    actor: IdentityActor,
+    actor: Actor,
     { offer, locations }: { readonly offer: EncodedObject<Json, AccountOfferData>; readonly locations: Locations },
-    authorizations: Authorizations,
+    signatures: Signatures,
     schemas: Schemas,
     { store, accounts, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "clock">>,
   ) {
     this.#actor = actor;
     this.#offer = offer;
     this.#locations = locations;
-    this.#authorizations = authorizations;
+    this.#signatures = signatures;
     this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
@@ -145,14 +140,13 @@ class MailboxService {
   }
 
   async #lists(link: Link<Signature>, id: string): Promise<boolean> {
-    const { signatures } = this.#authorizations;
-    const { offers } = (await readService(link, signatures, this.#store, this.#schemas.service)).data;
+    const { offers } = (await readService(link, this.#signatures, this.#store, this.#schemas.service)).data;
     return offers.some(({ accept }) => accept === id);
   }
 
   /**
-   * Opens an account for whoever the posted acceptance stands behind the
-   * offer, or answers with the acknowledgement that opened theirs.
+   * Opens an account for the root of the identity whose signature over the
+   * offer is posted, or answers with the acknowledgement that opened theirs.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
@@ -160,23 +154,27 @@ class MailboxService {
     const at = this.#clock();
     const offer = this.#offer;
     let accepted: Bundle;
-    let standing: Standing;
+    let acceptance: Signature;
     try {
       accepted = await unpackBundle(zip);
-      standing = await this.#authorizations.readStanding(offer.link, accepted.link, accepted);
-      if (standing.principal.root.link === offer.data.identity.$link)
+      acceptance = await this.#signatures.read(accepted.link, accepted);
+      if (acceptance.object !== offer.link) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
+      if (acceptance.signedIdentity.identity.root.link === offer.data.identity.$link)
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, error instanceof Error ? error.message : String(error));
     }
-    const root = standing.principal.root.link;
+    const { signedIdentity } = acceptance;
+    const root = signedIdentity.identity.root.link;
 
     const kept = await this.#accounts.get(root);
     if (kept !== undefined) return this.#answerWith(kept, 200);
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#actor.sign(acknowledgement);
-    const identities = [standing.principal, ...standing.agents].flatMap(({ blobs }) => blobs);
-    const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...CHAIN_SCHEMAS, ...identities];
+    // Reading the acceptance takes neither the schemas its signed identity
+    // leads to nor the interfaces they name, so the bundle need not hold
+    // them, and the store takes a blob in only with all it leads to.
+    const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...signedIdentity.blobs];
     await this.#store.write({ mine: [signature], blobs: [...blobs, ...accepted.blobs()] });
     if (await this.#accounts.add(root, signature.link)) return this.#answerWith(signature.link, 201);
     const opened = await this.#accounts.get(root);
@@ -237,8 +235,7 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const authorizations = await loadAuthorizations(validator);
-  const { signatures } = authorizations;
+  const signatures = await loadSignatures(validator);
   const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
   const schemas: Schemas = {
     service: await encodeSchema(serviceSchema, validator),
@@ -276,7 +273,7 @@ export async function loadMailboxService(
     ];
     await store.write({ mine: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, { offer, locations: index }, authorizations, schemas, { ...options, clock });
+  return new MailboxService(actor, { offer, locations: index }, signatures, schemas, { ...options, clock });
 }
 
 async function readService(

@@ -16,7 +16,7 @@ export { type Key, sameKey, verify } from "./key.ts";
 export { type KeyData, type KeyObject, type Keys, keySchemas, loadKeys } from "./keys.ts";
 export type { Scheme } from "./scheme.ts";
 export {
-  type IdentityActor,
+  type Actor,
   loadSignatures,
   type Signature,
   type SignatureData,

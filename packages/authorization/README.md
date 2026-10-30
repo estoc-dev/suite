@@ -143,9 +143,11 @@ and the reading does not recurse. A chain has no length limit: whether to
 accept agents, and how many, is up to the application, as is who has to
 stand behind an object for it to hold.
 
-Two identities are the same when their links are. A signer is read as the
-identity its signed identity leads to, so two signatures by one identity
-stand for it alike, whichever of its signed identities they name.
+Two identities are of the same someone when their roots are, as in
+`@estoc/identity`. An agent signs the next authorization, or the Proxy, by
+whichever identity of its root, its Identity or a Delegated Identity that
+lists the key that signs, so two signatures by one someone stand for them
+alike, whichever of their identities and signed identities they name.
 
 ### Blobs
 

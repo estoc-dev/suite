@@ -92,6 +92,13 @@ describe("a standing", () => {
     expect(await readEntry(await through([rootToHot], hot))).toEqual(way(root, hot));
   });
 
+  it("through a proxy that a key listed in a Delegated Identity of the last agent signs is as through the agent", async () => {
+    const laptop = signer("ed25519", 5);
+    const actor = signatures.actor(laptop, await identities.delegate(hot, [laptop.key]));
+    const entry = await authorizations.createActor(actor, [rootToHot]).sign(target.link);
+    expect(await readEntry(entry)).toEqual(way(root, hot));
+  });
+
   it("passes along a chain of authorizations", async () => {
     expect(await readEntry(await through([rootToHot, hotToDeputy], deputy))).toEqual(way(root, hot, deputy));
   });

@@ -242,10 +242,10 @@ describe("a mailbox service", () => {
     let reading = 2;
     const by: Signer = {
       key: serviceSigner.key,
-      async sign(digest) {
+      async sign(digest, signedIdentity) {
         if (--reading === 0) release();
         await bothRead;
-        return serviceSigner.sign(digest);
+        return serviceSigner.sign(digest, signedIdentity);
       },
     };
     const store = memoryStore();
@@ -290,7 +290,7 @@ describe("a mailbox service started again", () => {
   it("signs as the signed identity of its latest Service, which its signer does not sign again", async () => {
     const { service, store } = await memoryService();
     const before = await rootOf(service);
-    const sign = vi.fn((digest: Uint8Array) => serviceSigner.sign(digest));
+    const sign = vi.fn((digest: Uint8Array, signedIdentity?: Uint8Array) => serviceSigner.sign(digest, signedIdentity));
     const by = { key: serviceSigner.key, sign };
     const { service: moved } = await memoryService({ store, by, origin: "https://post.example", start: 9_000 });
     const after = await rootOf(moved);

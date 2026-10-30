@@ -9,7 +9,9 @@ import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
+  delegate,
   identities,
+  keys,
   memoryService,
   memoryStore,
   offerSchema,
@@ -31,8 +33,7 @@ const mallory = signer(ed25519, 6);
 
 const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.root.link } });
 
-const agentOf = async (agent: Signer, root: Signer) =>
-  signatures.actor(agent, await identities.delegate(root, [agent.key]));
+const agentOf = async (agent: Signer, root: Signer) => signatures.actor(agent, await delegate(root, [agent.key]));
 
 const servers: { close(): Promise<void> }[] = [];
 afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => server.close()))));
@@ -222,7 +223,7 @@ describe("a service found by its root", () => {
     const { services } = await client();
     expect(await services.of(serviceIdentity.root.link)).toBeUndefined();
     await services.at(origin);
-    expect(await services.of(identities.keys.encode(alice.key).link)).toBeUndefined();
+    expect(await services.of(keys.encode(alice.key).link)).toBeUndefined();
   });
 });
 
@@ -254,12 +255,12 @@ describe("an account offer", () => {
     const actor = await agentOf(laptop, wallet);
     const account = await (await accountAt(services, origin)).accept(actor);
     expect(account.identity).toEqual(actor.signedIdentity.identity);
-    expect(account.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
+    expect(account.identity.root.link).toBe(keys.encode(wallet.key).link);
   });
 
   it("accepted again from another device gets the acknowledgement that opened the account, which that device's store then keeps", async () => {
     const { origin } = await running();
-    const signed = await identities.delegate(wallet, [laptop.key, phone.key]);
+    const signed = await delegate(wallet, [laptop.key, phone.key]);
     const first = await (await accountAt((await client()).services, origin)).accept(signatures.actor(laptop, signed));
     const { store, services } = await client();
     const again = await (await accountAt(services, origin)).accept(signatures.actor(phone, signed));
@@ -270,20 +271,20 @@ describe("an account offer", () => {
       acknowledgementSchemaRead,
     );
     const accepted = await signatures.read(kept.data.accepted.$link, store, noVersions);
-    expect(accepted.key.link).toBe(identities.keys.encode(laptop.key).link);
+    expect(accepted.key.link).toBe(keys.encode(laptop.key).link);
   });
 
   it("accepted by keys that two Delegated Identities of one wallet list gets the wallet's one account", async () => {
     const { origin } = await running();
     const first = await (await accountAt((await client()).services, origin)).accept(
-      signatures.actor(laptop, await identities.delegate(wallet, [laptop.key])),
+      signatures.actor(laptop, await delegate(wallet, [laptop.key])),
     );
-    const later = await identities.delegate(wallet, [laptop.key, phone.key]);
+    const later = await delegate(wallet, [laptop.key, phone.key]);
     const again = await (await accountAt((await client()).services, origin)).accept(signatures.actor(phone, later));
     expect(again.link).toBe(first.link);
     expect(again.identity).toEqual(later.identity);
     expect(again.identity.link).not.toBe(first.identity.link);
-    expect(again.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
+    expect(again.identity.root.link).toBe(keys.encode(wallet.key).link);
   });
 
   it("whose service refuses the acceptance throws what the service said, and writes nothing", async () => {

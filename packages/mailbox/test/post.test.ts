@@ -1,4 +1,4 @@
-import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { loadPost, MailboxKey, mailboxFrom, outboundSchema } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const signatures = await loadSignatures(defaultValidator);
+const { signatures, publish } = await loadIdentity(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const note = await encodeSchema(
   { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
@@ -15,7 +15,7 @@ const note = await encodeSchema(
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await signatures.identities.publish(alice)).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice)).sign(hello);
 const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 

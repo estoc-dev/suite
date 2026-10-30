@@ -1,4 +1,4 @@
-import { type Actor, ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { type Actor, ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -31,7 +31,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // reads a conversation out of those records alone, through an index of all
 // that its user wrote, and reads each line from its bundle when it shows it.
 
-const signatures = await loadSignatures(defaultValidator);
+const { signatures, publish } = await loadIdentity(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   {
@@ -98,7 +98,7 @@ async function chat(faults: Faults = {}) {
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
-    const actor = signatures.actor(signer, await signatures.identities.publish(signer));
+    const actor = signatures.actor(signer, await publish(signer));
     const store = new Store(json, new MemoryBackend());
     return { name, actor, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
   };

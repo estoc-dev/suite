@@ -1,22 +1,16 @@
 import {
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Implementation,
   Implementations,
   type Json,
-  type JsonSchema,
-  type JsonSchemaValidator,
   json,
   type Link,
   type Reader,
   type Schema,
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { ed25519 } from "./ed25519.ts";
-import { eip191 } from "./eip191.ts";
 import type { Key, KeyData, KeyObject, Scheme } from "./interface.ts";
-import { solanaOffchain } from "./solana-offchain.ts";
 
 interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
   readonly scheme: Scheme;
@@ -64,12 +58,4 @@ export class Keys {
     if (implementation === undefined) throw new Error(`the ${scheme.name} scheme is not one written here`);
     return implementation.read(encodeObject(implementation.schema, { publicKey: bytesToHex(publicKey) }));
   }
-}
-
-/** Keys in the schemes this package knows, with their key schemas compiled by `validator`. */
-export async function loadKeys(validator: JsonSchemaValidator): Promise<Keys> {
-  const schemas = new Map<Scheme, Schema<Json, KeyData>>();
-  for (const scheme of [ed25519, eip191, solanaOffchain])
-    schemas.set(scheme, await encodeSchema<JsonSchema, Json, KeyData>(scheme.keySchema, validator));
-  return new Keys(schemas);
 }

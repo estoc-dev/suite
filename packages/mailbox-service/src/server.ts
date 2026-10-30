@@ -1,8 +1,10 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
   type Actor,
+  type DelegatedVersions,
+  type IdentityKit,
   type KeyObject,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   type Signature,
   type Signatures,
@@ -101,6 +103,7 @@ class MailboxService {
   readonly #offer: EncodedObject<Json, AccountOfferData>;
   readonly #locations: Locations;
   readonly #versions: KnownVersions;
+  readonly #delegatedVersions: DelegatedVersions;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #store: Store;
@@ -110,15 +113,16 @@ class MailboxService {
   constructor(
     actor: Actor,
     { offer, locations }: { readonly offer: EncodedObject<Json, AccountOfferData>; readonly locations: Locations },
-    signatures: Signatures,
+    kit: IdentityKit,
     schemas: Schemas,
     { store, accounts, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "clock">>,
   ) {
     this.#actor = actor;
     this.#offer = offer;
     this.#locations = locations;
-    this.#versions = knownVersions(signatures, schemas.acknowledgement);
-    this.#signatures = signatures;
+    this.#versions = knownVersions(kit, schemas.acknowledgement);
+    this.#delegatedVersions = kit.versions;
+    this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
@@ -160,7 +164,7 @@ class MailboxService {
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const offer = this.#offer;
-    const versions = this.#signatures.identities.versions(await scan(this.#store, this.#versions), this.#store);
+    const versions = this.#delegatedVersions.known(await scan(this.#store, this.#versions), this.#store);
     let accepted: Bundle;
     let acceptance: Signature;
     try {
@@ -243,13 +247,14 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const signatures = await loadSignatures(validator);
+  const kit = await loadIdentity(validator);
+  const { keys, signatures, publish } = kit;
   const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
   const schemas: Schemas = {
     service: await encodeSchema(serviceSchema, validator),
     acknowledgement: await encodeSchema(acknowledgementSchema, validator),
   };
-  const root = signatures.identities.keys.encode(signer.key);
+  const root = keys.encode(signer.key);
   const offer = encodeObject(offerSchema, { identity: { $link: root.link } });
   const index = locations(signatures, schemas.service);
 
@@ -257,7 +262,7 @@ export async function loadMailboxService(
     (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store, noVersions)),
   );
   const [latest] = signed;
-  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await signatures.identities.publish(signer)));
+  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer)));
   const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
@@ -279,7 +284,7 @@ export async function loadMailboxService(
     ];
     await store.write({ mine: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, { offer, locations: index }, signatures, schemas, { ...options, clock });
+  return new MailboxService(actor, { offer, locations: index }, kit, schemas, { ...options, clock });
 }
 
 async function readService(

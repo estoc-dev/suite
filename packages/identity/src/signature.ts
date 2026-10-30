@@ -1,13 +1,10 @@
 import {
   DRAFT_2020_12,
-  digestOf,
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Json,
   type JsonLink,
   type JsonSchema,
-  type JsonSchemaValidator,
   type Link,
   linkSchema,
   type Reader,
@@ -15,17 +12,9 @@ import {
   type Schema,
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import {
-  type DelegatedIdentityObject,
-  hexSchema,
-  type Identities,
-  isDelegated,
-  loadIdentities,
-  rulesOf,
-  type SignedIdentityObject,
-  type Versions,
-} from "./identities.ts";
+import { hexSchema } from "./hex.ts";
 import type { KeyObject } from "./key/interface.ts";
+import type { SignedIdentities, SignedIdentityObject, Versions } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 
 /**
@@ -91,14 +80,14 @@ export interface Actor {
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
 }
 
-/** Signatures, verified and made with their schema and the identities they name. */
+/** Signatures, verified and made with their schema and the signed identities they name. */
 export class Signatures {
   readonly schema: Schema<Json, SignatureData>;
-  readonly identities: Identities;
+  readonly #signedIdentities: SignedIdentities;
 
-  constructor(identities: Identities, signature: Schema<Json, SignatureData>) {
-    this.identities = identities;
-    this.schema = signature;
+  constructor(schema: Schema<Json, SignatureData>, signedIdentities: SignedIdentities) {
+    this.schema = schema;
+    this.#signedIdentities = signedIdentities;
   }
 
   /**
@@ -109,22 +98,18 @@ export class Signatures {
    * key made the signature and how its bytes are laid out, and the key's
    * scheme how its signature is read.
    *
-   * A signature for a Delegated Identity is refused too when the key that
-   * made it is not an agent of the current version, the later of the one it
-   * carries and the latest of `versions`. A device a wallet has just listed
-   * signs by a version the reader has not seen yet, so the one it carries
-   * counts as well.
+   * It is refused too when the key that made it does not sign for the
+   * current version of the identity, by `versions`. A device a wallet has
+   * just listed signs by a version the reader has not seen yet, so the one
+   * it carries counts as well.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader, versions: Versions): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
-    const verified = signatureOf(signature, await this.identities.read(signature.data.signedIdentity.$link, reader));
-    const { signedIdentity, key } = verified;
-    if (!isDelegated(signedIdentity)) return verified;
-    const { root } = signedIdentity.identity;
-    const latest = await versions.latest(root.link);
-    const current = latest !== undefined && later(latest, signedIdentity) ? latest : signedIdentity;
-    if (!current.identity.agents.some(({ link }) => link === key.link)) {
-      throw new Error(`${key.link} is not an agent of the current version of ${root.link}`);
+    const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
+    const verified = this.#signatureOf(signature, signedIdentity);
+    const current = await versions.current(signedIdentity);
+    if (!this.#signedIdentities.signs(current, verified.key)) {
+      throw new Error(`${verified.key.link} is not an agent of the current version of ${current.identity.root.link}`);
     }
     return verified;
   }
@@ -136,44 +121,26 @@ export class Signatures {
 
   /** An actor for `signedIdentity`, which refuses a signer whose key does not sign for its identity. */
   actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
-    const { identity } = signedIdentity;
-    const sign = rulesOf(identity).signing(identity, signer);
-    if (sign === undefined) throw new Error(`the signer's key does not sign for ${identity.link}`);
-    const schema = this.schema;
-    const by = digestOf(signedIdentity.link);
+    const sign = this.#signedIdentities.signing(signedIdentity, signer);
+    if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);
     return {
       signedIdentity,
-      async sign(object) {
+      sign: async (object) => {
         const data = {
           signedIdentity: { $link: signedIdentity.link },
           object: { $link: object.link as Link<never> },
-          signature: bytesToHex(await sign(digestOf(object.link), by)),
+          signature: bytesToHex(await sign(object.link)),
         };
-        return signatureOf(encodeObject(schema, data), signedIdentity);
+        return this.#signatureOf(encodeObject(this.schema, data), signedIdentity);
       },
     };
   }
-}
 
-// In the order of the rows of their versions.
-function later(
-  version: SignedIdentityObject<DelegatedIdentityObject>,
-  than: SignedIdentityObject<DelegatedIdentityObject>,
-): boolean {
-  const [at, thanAt] = [version.identity.data.at, than.identity.data.at];
-  return at !== thanAt ? at > thanAt : version.link > than.link;
-}
-
-function signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
-  const object = signature.data.object.$link;
-  const value = hexToBytes(signature.data.signature);
-  const { identity } = signedIdentity;
-  const key = rulesOf(identity).verify(identity, digestOf(object), value, digestOf(signedIdentity.link));
-  if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
-  return { ...signature, link: signature.link as Link<Signature>, signedIdentity, key, object, signature: value };
-}
-
-/** Signatures and the identities they name, with their schemas compiled by `validator`. */
-export async function loadSignatures(validator: JsonSchemaValidator): Promise<Signatures> {
-  return new Signatures(await loadIdentities(validator), await encodeSchema(signatureSchema, validator));
+  #signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
+    const object = signature.data.object.$link;
+    const value = hexToBytes(signature.data.signature);
+    const key = this.#signedIdentities.verify(signedIdentity, object, value);
+    if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
+    return { ...signature, link: signature.link as Link<Signature>, signedIdentity, key, object, signature: value };
+  }
 }

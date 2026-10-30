@@ -4,7 +4,7 @@ import {
   eip191,
   type IdentityObject,
   type KeyObject,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   type Scheme,
   SoftwareSigner,
@@ -33,13 +33,12 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const signatures = await loadSignatures(defaultValidator);
-const { identities } = signatures;
+const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
-  const signature = await signatures.actor(by, await identities.publish(by)).sign(object);
+  const signature = await signatures.actor(by, await publish(by)).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
@@ -115,7 +114,7 @@ describe("a chat line", () => {
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const line = encodeObject(chat, { to: { $link: identities.keys.encode(bob.key).link }, text: "lunch at noon?" });
+    const line = encodeObject(chat, { to: { $link: keys.encode(bob.key).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
     expect((await readChat(received, identities.encode(bob.key))).forReader).toBe(true);
     expect((await readChat(passed, identities.encode(carol.key))).forReader).toBe(false);
@@ -220,8 +219,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer(eip191, 6);
   const seller = signer(solanaOffchain, 7);
   const terms = encodeObject(sale, {
-    buyer: { $link: identities.keys.encode(buyer.key).link },
-    seller: { $link: identities.keys.encode(seller.key).link },
+    buyer: { $link: keys.encode(buyer.key).link },
+    seller: { $link: keys.encode(seller.key).link },
     goods: "one bicycle",
     price: "120.00 CAD",
   });

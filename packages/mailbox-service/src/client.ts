@@ -3,7 +3,7 @@ import {
   type Actor,
   type IdentityObject,
   type KeyObject,
-  loadSignatures,
+  loadIdentity,
   noVersions,
   type Signature,
   type Signatures,
@@ -243,7 +243,7 @@ export async function loadServices(
   store: Store,
   { validator }: { readonly validator: JsonSchemaValidator },
 ): Promise<Services> {
-  const signatures = await loadSignatures(validator);
+  const { signatures } = await loadIdentity(validator);
   const service: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, validator);
   const offer: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, validator);
   const acknowledgement: Schema<Json, AcknowledgementData> = await encodeSchema(acknowledgementSchema, validator);

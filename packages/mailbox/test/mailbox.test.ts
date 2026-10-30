@@ -1,12 +1,11 @@
-import { ed25519, loadSignatures, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, encodeSchema, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const signatures = await loadSignatures(defaultValidator);
-const { identities } = signatures;
+const { identities, signatures, publish } = await loadIdentity(defaultValidator);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
@@ -19,7 +18,7 @@ const note = await encodeSchema(
   defaultValidator,
 );
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await identities.publish(alice)).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice)).sign(hello);
 
 describe("a mailbox", () => {
   it("carries a bundle to the queue it names, sealed so that its key opens it", async () => {

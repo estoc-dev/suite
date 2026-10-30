@@ -1,4 +1,4 @@
-import { type SignatureData, type Signatures, type Version, versionOf } from "@estoc/identity";
+import type { IdentityKit, SignatureData, Version } from "@estoc/identity";
 import { decodeObject, type Json, json, readObject, type Schema, schemaOf } from "@estoc/object";
 import type { Index } from "@estoc/store";
 import type { AcknowledgementData } from "./schemas.ts";
@@ -12,7 +12,7 @@ export type KnownVersions = Index<Json, Version, SignatureData>;
  * acceptance was judged when its account opened, so it is not judged again.
  */
 export function knownVersions(
-  signatures: Signatures,
+  { signatures, signedIdentities, versions }: IdentityKit,
   acknowledgement: Schema<Json, AcknowledgementData>,
 ): KnownVersions {
   return {
@@ -25,7 +25,7 @@ export function knownVersions(
         decodeObject(bytes, acknowledgement).data.accepted.$link,
         signatures.schema,
       );
-      const version = versionOf(await signatures.identities.read(acceptance.data.signedIdentity.$link, reader));
+      const version = versions.of(await signedIdentities.read(acceptance.data.signedIdentity.$link, reader));
       if (version !== undefined) yield version;
     },
   };

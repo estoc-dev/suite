@@ -12,19 +12,18 @@ import {
   identitySchema,
   type Key,
   keyInterface,
-  loadIdentities,
+  loadIdentity,
   type Scheme,
+  type SignedIdentityObject,
   SoftwareSigner,
   sameKey,
   signedIdentitySchema,
   solanaOffchain,
   type Version,
-  versionOf,
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const identities = await loadIdentities(defaultValidator);
-const { keys } = identities;
+const { keys, identities, signedIdentities, versions, publish, delegate } = await loadIdentity(defaultValidator);
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -37,7 +36,7 @@ const writtenSigned = (data: JsonObject) => json.encode(json.object(data, linkOf
 const unsignedOf = (identity: Link<unknown>) => writtenSigned({ identity: { $link: identity }, signature: "" });
 const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
   const signed = unsignedOf(linkOf(bytes));
-  return identities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
+  return signedIdentities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
 };
 
 // The links a store gathers from a blob: every blob it leads to by the links
@@ -114,7 +113,8 @@ describe("an identity", () => {
   });
 
   it("is refused when it is written to a schema that is not an identity schema", async () => {
-    await expect(readFrom(keys.encode(key(ed25519)).bytes)).rejects.toThrow(/not written to an identity schema/);
+    const other = keys.encode(key(ed25519));
+    await expect(readFrom(other.bytes)).rejects.toThrow(`${other.schema.link} is not a schema read here`);
   });
 
   it("is refused when the reader gives another blob for its link", async () => {
@@ -125,21 +125,21 @@ describe("an identity", () => {
       [linkOf(signed), signed],
       [identity.link, other.bytes],
     ]);
-    await expect(identities.read(linkOf(signed), reader)).rejects.toThrow(/another blob/);
+    await expect(signedIdentities.read(linkOf(signed), reader)).rejects.toThrow(/another blob/);
   });
 });
 
 describe("a signed identity", () => {
   const readSignedFrom = (bytes: Uint8Array, ...blobs: readonly Uint8Array[]) =>
-    identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
+    signedIdentities.read(linkOf(bytes), byLink([bytes, ...blobs]));
   const signedBy = async (by: SoftwareSigner, identity = identities.encode(by.key)) => ({
     identity: { $link: identity.link },
     signature: bytesToHex(await by.sign(digestOf(identity.link))),
   });
 
   it.each(schemes)("published by a $name root reads back from its blobs with its identity", async (scheme) => {
-    const signed = await identities.publish(signer(scheme));
-    const read = await identities.read(signed.link, byLink(signed.blobs));
+    const signed = await publish(signer(scheme));
+    const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
     expect(read.link).toBe(signed.link);
     expect(read.identity).toEqual(identities.encode(key(scheme)));
     expect(sameKey(read.identity.root, key(scheme))).toBe(true);
@@ -147,7 +147,7 @@ describe("a signed identity", () => {
   });
 
   it("carries as its blobs its object, its schema, and its identity's blobs", async () => {
-    const signed = await identities.publish(signer(ed25519));
+    const signed = await publish(signer(ed25519));
     const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
     expect(signed.blobs.map((bytes) => linkOf(bytes))).toEqual([
       signed.link,
@@ -159,7 +159,7 @@ describe("a signed identity", () => {
   it.each(schemes)(
     "published by a $name root carries as its blobs all it leads to and nothing else",
     async (scheme) => {
-      const signed = await identities.publish(signer(scheme));
+      const signed = await publish(signer(scheme));
       const blobs = byLink(signed.blobs);
       expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
     },
@@ -204,15 +204,15 @@ describe("a Delegated Identity", () => {
 
   it("reads back from its blobs with its root and its agents, in the order its root lists them", async () => {
     const agents = [key(ed25519, 3), key(solanaOffchain, 2), key(eip191, 4)];
-    const signed = await identities.delegate(signer(eip191), agents);
-    const read = await identities.read(signed.link, byLink(signed.blobs));
+    const signed = await delegate(signer(eip191), agents);
+    const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
     expect(read.identity).toEqual(signed.identity);
     expect(sameKey(read.identity.root, key(eip191))).toBe(true);
     expect(agentsOf(read.identity).map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
   });
 
   it("names its root and its agents by the links of their objects", async () => {
-    const { identity } = await identities.delegate(signer(ed25519), [key(ed25519, 2)], 1_000);
+    const { identity } = await delegate(signer(ed25519), [key(ed25519, 2)], 1_000);
     expect(identity.data).toEqual({
       root: { $link: keys.encode(key(ed25519)).link },
       agents: [{ $link: keys.encode(key(ed25519, 2)).link }],
@@ -221,14 +221,14 @@ describe("a Delegated Identity", () => {
   });
 
   it("is at the time it is given", async () => {
-    const { identity } = await identities.delegate(signer(ed25519), [], 1_767_225_600_000);
+    const { identity } = await delegate(signer(ed25519), [], 1_767_225_600_000);
     expect(identity.data.at).toBe(1_767_225_600_000);
   });
 
   it("is at the time of the clock when it is given none", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-30T12:00:00Z"), toFake: ["Date"] });
     try {
-      const { identity } = await identities.delegate(signer(ed25519), []);
+      const { identity } = await delegate(signer(ed25519), []);
       expect(identity.data.at).toBe(Date.parse("2026-10-30T12:00:00Z"));
     } finally {
       vi.useRealTimers();
@@ -236,7 +236,7 @@ describe("a Delegated Identity", () => {
   });
 
   it("is another identity than its root's Identity, of the same root", async () => {
-    const { identity } = await identities.delegate(signer(ed25519), [key(ed25519, 2)]);
+    const { identity } = await delegate(signer(ed25519), [key(ed25519, 2)]);
     const own = identities.encode(key(ed25519));
     expect(identity.link).not.toBe(own.link);
     expect(identity.root.link).toBe(own.root.link);
@@ -246,7 +246,7 @@ describe("a Delegated Identity", () => {
     ["that lists its root among its agents", signer(ed25519), [key(ed25519, 2), key(ed25519)]],
     ["whose agents sign in another scheme than its root", signer(eip191), [key(ed25519, 2), key(ed25519, 3)]],
   ])("%s carries each blob it leads to once, and nothing else", async (_, root, agents) => {
-    const signed = await identities.delegate(root, agents);
+    const signed = await delegate(root, agents);
     const links = linksOf(signed.identity.blobs);
     expect(new Set(links).size).toBe(links.length);
     const blobs = byLink(signed.blobs);
@@ -254,7 +254,7 @@ describe("a Delegated Identity", () => {
   });
 
   it("carries as its blobs its object, its keys', the schemas they are written to and the interfaces those name", async () => {
-    const { identity } = await identities.delegate(signer(eip191), [key(ed25519, 2), key(ed25519, 3)]);
+    const { identity } = await delegate(signer(eip191), [key(ed25519, 2), key(ed25519, 3)]);
     const schema = await encodeSchema(delegatedIdentitySchema, defaultValidator);
     const [first, second] = agentsOf(identity);
     assert.exists(first);
@@ -294,13 +294,13 @@ describe("a Delegated Identity", () => {
   });
 
   it("can list no agents", async () => {
-    const signed = await identities.delegate(signer(ed25519), []);
-    const read = await identities.read(signed.link, byLink(signed.blobs));
+    const signed = await delegate(signer(ed25519), []);
+    const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
     expect(agentsOf(read.identity)).toEqual([]);
   });
 
   it("can list 256 agents", async () => {
-    const signed = await identities.delegate(signer(ed25519), distinctKeys(256));
+    const signed = await delegate(signer(ed25519), distinctKeys(256));
     expect(agentsOf(signed.identity)).toHaveLength(256);
   });
 
@@ -309,19 +309,19 @@ describe("a Delegated Identity", () => {
     ["257 agents", distinctKeys(257)],
   ])("with %s is refused before its root is asked to sign", async (_, agents) => {
     const sign = vi.fn(async () => new Uint8Array(64));
-    await expect(identities.delegate({ key: key(ed25519), sign }, agents)).rejects.toThrow(/does not fit/);
+    await expect(delegate({ key: key(ed25519), sign }, agents)).rejects.toThrow(/does not fit/);
     expect(sign).not.toHaveBeenCalled();
   });
 });
 
 describe("the version of a signed identity", () => {
   it("is the root, the at and the link of a Delegated Identity's", async () => {
-    const signed = await identities.delegate(signer(ed25519), [key(ed25519, 2)], 1_000);
-    expect(versionOf(signed)).toEqual([signed.identity.root.link, 1_000, signed.link]);
+    const signed = await delegate(signer(ed25519), [key(ed25519, 2)], 1_000);
+    expect(versions.of(signed)).toEqual([signed.identity.root.link, 1_000, signed.link]);
   });
 
   it("is undefined for an Identity", async () => {
-    expect(versionOf(await identities.publish(signer(ed25519)))).toBeUndefined();
+    expect(versions.of(await publish(signer(ed25519)))).toBeUndefined();
   });
 });
 
@@ -329,29 +329,54 @@ describe("the versions a reader knows", () => {
   const wallet = signer(eip191);
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
     byLink(signed.flatMap(({ blobs }) => blobs));
+  const knowing = (...signed: SignedIdentityObject[]) =>
+    versions.known(rowsOf(versions, ...signed), blobsOf(...signed));
 
-  it("give as a root's latest the version with the greatest at", async () => {
-    const later = await identities.delegate(wallet, [key(ed25519, 2)], 2_000);
-    const earlier = await identities.delegate(wallet, [key(ed25519, 3)], 1_000);
-    const versions = identities.versions(rowsOf(later, earlier), blobsOf(later, earlier));
-    expect((await versions.latest(later.identity.root.link))?.link).toBe(later.link);
+  it("give as current the version of a root with the greatest at", async () => {
+    const later = await delegate(wallet, [key(ed25519, 2)], 2_000);
+    const earlier = await delegate(wallet, [key(ed25519, 3)], 1_000);
+    expect((await knowing(later, earlier).current(earlier)).link).toBe(later.link);
   });
 
-  it("give no latest for a root they have no version of", async () => {
-    const signed = await identities.delegate(wallet, [key(ed25519, 2)], 1_000);
-    const versions = identities.versions(rowsOf(signed), blobsOf(signed));
-    expect(await versions.latest(keys.encode(key(ed25519, 4)).link)).toBeUndefined();
+  it("give as current of two versions at the same at that whose signed identity has the greater link", async () => {
+    const [one, other] = await Promise.all([
+      delegate(wallet, [key(ed25519, 2)], 1_000),
+      delegate(wallet, [key(ed25519, 3)], 1_000),
+    ]);
+    const greater = one.link > other.link ? one : other;
+    const lesser = greater === one ? other : one;
+    expect((await knowing(lesser, greater).current(lesser)).link).toBe(greater.link);
+    expect((await knowing(lesser).current(greater)).link).toBe(greater.link);
+  });
+
+  it("give the version given as current when it is later than they know", async () => {
+    const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
+    const later = await delegate(wallet, [key(ed25519, 3)], 2_000);
+    expect((await knowing(earlier).current(later)).link).toBe(later.link);
+  });
+
+  it("give the version given as current when they know none of its root", async () => {
+    const signed = await delegate(wallet, [key(ed25519, 2)], 1_000);
+    const other = await delegate(signer(ed25519, 4), [key(ed25519, 2)], 2_000);
+    expect((await knowing(other).current(signed)).link).toBe(signed.link);
+  });
+
+  it("give an Identity as its own current version, whatever versions of its root they know", async () => {
+    const published = await publish(wallet);
+    const version = await delegate(wallet, [key(ed25519, 2)], 1_000);
+    expect((await knowing(version).current(published)).link).toBe(published.link);
   });
 
   it("refuse a row whose signed identity is not of a Delegated Identity", async () => {
-    const published = await identities.publish(wallet);
+    const published = await publish(wallet);
+    const version = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const root = published.identity.root.link;
     const rows = {
       async *range(): AsyncIterable<Version> {
-        yield [root, 1_000, published.link];
+        yield [root, 2_000, published.link];
       },
     };
-    await expect(identities.versions(rows, blobsOf(published)).latest(root)).rejects.toThrow(
+    await expect(versions.known(rows, blobsOf(published, version)).current(version)).rejects.toThrow(
       /is not a version of a Delegated Identity/,
     );
   });

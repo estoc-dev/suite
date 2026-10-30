@@ -184,7 +184,7 @@ describe("signatures loaded with a validator", () => {
 
   it.each([
     ["signed identity", /^Signed Identity$/],
-    ["identity", /^Identity$/],
+    ["identity", /^Key Identity$/],
     ["root", / key$/],
   ])("refuse a signature whose %s it says does not fit", async (_, title) => {
     const strict = await loadSignatures(refusing(title));
@@ -193,7 +193,7 @@ describe("signatures loaded with a validator", () => {
   });
 
   it.each([
-    ["identity", /^Identity$/],
+    ["identity", /^Key Identity$/],
     ["key", / key$/],
   ])("do not ask a signer to publish an identity whose %s it says does not fit", async (_, title) => {
     const strict = await loadSignatures(refusing(title));

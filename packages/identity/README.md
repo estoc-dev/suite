@@ -8,7 +8,7 @@ signature are written as objects, which another object names by its link.
 ```
 Key              an Object written to the key schema of its scheme, with the field
                  "publicKey": <hex>
-Identity         an Object written to the identity schema, with the field
+Identity         an Object written to the Key Identity schema, with the field
                  "root": <the Key's link>
 Signed identity  an Object written to the signed identity schema, with the fields
                  "identity": <the Identity's link>, "signature": <hex>
@@ -56,6 +56,11 @@ each key has one object and one link. The schemas of `ed25519` and
 their titles, which name the schemes: one public key in the two schemes is
 two objects, with two links, as it is two keys.
 
+Each key schema names what its objects read as, the Key interface, by
+`"x-implements": {"$link": <link>}`, the link of `keyInterface`, whose
+bytes are the UTF-8 text `Key`. Whatever the scheme, a key reads as a
+`Key`, and the schemas say so in the same way.
+
 A scheme added later comes with a schema of its own, so keys already
 written keep their links. A program reads keys written to the key schemas
 it knows, as it says which schemas it reads, and refuses one written to any
@@ -71,23 +76,27 @@ scheme's schema does not take.
 
 ## Identities
 
-An identity is written to `identitySchema`, whatever the scheme of its
-root, and names its root by the link of the root's object. It holds its
-root and nothing else, so each key has one identity, with one link.
-Someone is their root: two identities are of the same someone when the
-links of their roots are the same, and an object that names someone names
-their root by that link, while a signature names a signed identity of the
-identity that makes it.
+An identity is written to `keyIdentitySchema`, the Key Identity schema,
+whatever the scheme of its root, and names its root by the link of the
+root's object. It holds its root and nothing else, so each key has one
+identity, with one link: the identity of a key on its own. The schema
+names the Identity interface in `x-implements`, the link of
+`identityInterface`, whose bytes are the UTF-8 text `Identity`, as the key
+schemas name the Key interface. Someone is their root: two identities are
+of the same someone when the links of their roots are the same, and an
+object that names someone names their root by that link, while a
+signature names a signed identity of the identity that makes it.
 
-`loadIdentities` compiles the identity schema and the key schemas with the
-validator the application picks, and gives `identities`, which holds
+`loadIdentities` compiles the Key Identity schema and the key schemas with
+the validator the application picks, and gives `identities`, which holds
 `keys`. `identities.read` takes the link of an identity and a `Reader`,
 reads the identity's object and then its root with `keys.read`, and gives
 the identity with its root as `root`. `identities.encode` writes the
 identity whose root is a key. Reading an identity takes the blobs of both
 objects; an identity carries them as `blobs`, with those of the schemas
-they are written to, so where an identity goes, as into a store or a
-bundle, `...identity.blobs` goes along.
+they are written to and of the interfaces those name, so where an
+identity goes, as into a store or a bundle, `...identity.blobs` goes along
+and leads to nothing it does not carry.
 
 ## Signed identities
 
@@ -130,7 +139,7 @@ lays it out in the bytes its own way, and the signature schema, and what
 reads signatures by it, stay as they are.
 
 `loadSignatures` compiles the signature schema, the signed identity
-schema, the identity schema and the key schemas with the validator the
+schema, the Key Identity schema and the key schemas with the validator the
 application picks, and gives `signatures`, which holds the signature
 schema, `identities` and `actor`. `signatures.verify` is the judgment of a
 signature: it takes the signature as an object of `signatures.schema` and a

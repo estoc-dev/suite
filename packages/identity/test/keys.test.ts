@@ -2,7 +2,15 @@ import { decodeObject, encodeSchema, type Json, type JsonObject, json, linkOf, t
 import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
-import { type KeyData, keySchemas, loadKeys, type Scheme, SoftwareSigner, sameKey } from "../src/index.ts";
+import {
+  type KeyData,
+  keyInterface,
+  keySchemas,
+  loadKeys,
+  type Scheme,
+  SoftwareSigner,
+  sameKey,
+} from "../src/index.ts";
 
 const keys = await loadKeys(defaultValidator);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
@@ -61,6 +69,13 @@ describe("a key", () => {
     await expect(readKey(bytes)).rejects.toThrow(/no scheme writes its keys to/);
     expect(() => keys.check(decodeObject(bytes, lookalike))).toThrow(/no scheme writes its keys to/);
   });
+
+  it.each(["ed25519", "eip191", "solana-offchain"] as const)(
+    "in %s is written to a schema that names the Key interface",
+    (scheme) => {
+      expect(keySchemas[scheme]["x-implements"]).toEqual({ $link: keyInterface.link });
+    },
+  );
 
   it("is refused when the reader gives another blob for its link", async () => {
     const object = keys.encode(SoftwareSigner.fromSecretKey("ed25519", secretKey).key);

@@ -15,6 +15,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { identityInterface, keyInterface } from "./interfaces.ts";
 import { type Key, verify } from "./key.ts";
 import { type KeyObject, type Keys, loadKeys } from "./keys.ts";
 import type { Signer } from "./signer.ts";
@@ -24,10 +25,14 @@ const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 /** Bytes in lowercase hex, the one way of writing each byte string. */
 export const hexSchema: JsonObject = { type: "string", pattern: "^(?:[0-9a-f]{2})*$" };
 
-/** The schema every identity is written to, whatever the scheme of its root. */
-export const identitySchema: JsonSchema = {
+/**
+ * The schema of a Key Identity, the identity of a key on its own, whatever
+ * the scheme of the key: it holds its root and nothing else.
+ */
+export const keyIdentitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
-  title: "Identity",
+  title: "Key Identity",
+  "x-implements": { $link: identityInterface.link },
   type: "object",
   properties: { root: linkSchema },
   required: ["root"],
@@ -48,7 +53,7 @@ export type IdentityData = { readonly root: JsonLink<KeyObject> };
 
 /**
  * Someone who signs, as others see them: an object written to
- * `identitySchema`, `{"$describedBy": <link to identitySchema>, "root":
+ * `keyIdentitySchema`, `{"$describedBy": <link to keyIdentitySchema>, "root":
  * <link to a key>}`, read with its root, the key that signs for it. It holds
  * its root and nothing else, so each key has one identity, with one link.
  * Someone is their root: two identities are of the same someone when the
@@ -57,7 +62,9 @@ export type IdentityData = { readonly root: JsonLink<KeyObject> };
  * identity that makes it.
  *
  * `blobs` are what it takes to read the identity again: the bytes of its
- * object and of its root's, and of the schemas they are written to.
+ * object and of its root's, and of the schemas they are written to. Reading
+ * does not need the interfaces those schemas name, but a store takes in a
+ * blob only with all it leads to, so their bytes come along as well.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
@@ -135,7 +142,14 @@ function identityOf(object: EncodedObject<Json, IdentityData>, root: KeyObject):
     ...object,
     link: object.link as Link<IdentityObject>,
     root,
-    blobs: [object.bytes, root.bytes, object.schema.bytes, root.schema.bytes],
+    blobs: [
+      object.bytes,
+      root.bytes,
+      object.schema.bytes,
+      root.schema.bytes,
+      identityInterface.bytes,
+      keyInterface.bytes,
+    ],
   };
 }
 
@@ -157,7 +171,7 @@ function signedOf(object: EncodedObject<Json, SignedIdentityData>, identity: Ide
 export async function loadIdentities(validator: JsonSchemaValidator): Promise<Identities> {
   return new Identities(
     await loadKeys(validator),
-    await encodeSchema(identitySchema, validator),
+    await encodeSchema(keyIdentitySchema, validator),
     await encodeSchema(signedIdentitySchema, validator),
   );
 }

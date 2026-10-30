@@ -1,9 +1,11 @@
-import { digestOf, encodeSchema, type JsonObject, json, linkOf } from "@estoc/object";
+import { digestOf, encodeSchema, type Json, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
-  identitySchema,
+  identityInterface,
+  keyIdentitySchema,
+  keyInterface,
   keySchemas,
   loadIdentities,
   type Scheme,
@@ -18,9 +20,33 @@ const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [l
 
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
-const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
+const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(keyIdentitySchema))));
 const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) =>
   identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
+
+// The links a store gathers from a blob: every blob it leads to by the links
+// JSON finds in it, past which a blob that is not JSON leads nowhere.
+function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
+  const reached = new Set([link]);
+  for (const next of reached) {
+    const bytes = blobs.get(next);
+    if (bytes === undefined) continue;
+    let value: Json;
+    try {
+      value = json.decode(bytes);
+    } catch {
+      continue;
+    }
+    for (const linked of json.links(value)) reached.add(linked);
+  }
+  return reached;
+}
+
+describe("the Key Identity schema", () => {
+  it("names the Identity interface", () => {
+    expect(keyIdentitySchema["x-implements"]).toEqual({ $link: identityInterface.link });
+  });
+});
 
 describe("an identity", () => {
   it.each(["ed25519", "eip191", "solana-offchain"] as const)(
@@ -47,15 +73,17 @@ describe("an identity", () => {
     expect(plain.link).not.toBe(solana.link);
   });
 
-  it("carries as its blobs its object, its root's, and the schemas they are written to", async () => {
+  it("carries as its blobs its object, its root's, the schemas they are written to and the interfaces those name", async () => {
     const identity = identities.encode(key("eip191"));
-    const schema = await encodeSchema(identitySchema, defaultValidator);
+    const schema = await encodeSchema(keyIdentitySchema, defaultValidator);
     const keySchema = await encodeSchema(keySchemas.eip191, defaultValidator);
     expect(identity.blobs.map((bytes) => linkOf(bytes))).toEqual([
       identity.link,
       identity.root.link,
       schema.link,
       keySchema.link,
+      identityInterface.link,
+      keyInterface.link,
     ]);
   });
 
@@ -117,6 +145,15 @@ describe("a signed identity", () => {
       ...signed.identity.blobs.map((bytes) => linkOf(bytes)),
     ]);
   });
+
+  it.each(["ed25519", "eip191", "solana-offchain"] as const)(
+    "published by a %s root carries as its blobs all it leads to and nothing else",
+    async (scheme) => {
+      const signed = await identities.publish(signer(scheme));
+      const blobs = byLink(signed.blobs);
+      expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
+    },
+  );
 
   it("is refused when another key signed it", async () => {
     const identity = identities.encode(key("ed25519"));

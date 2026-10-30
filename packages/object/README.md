@@ -242,3 +242,30 @@ Reading an object does not write it again, so what a program makes of it
 can keep its link, and the signatures over the object still apply. Written
 again to another schema, the same content would be another object, which
 no one has signed.
+
+## Interfaces
+
+Where a program reads objects of several schemas as one kind of thing, as
+`@estoc/identity` reads a key in any of its schemes as a key, that kind is
+an interface, and each of those schemas can name it. In JSON Schema a
+schema names it by `"x-implements": {"$link": <link>}`, the link of a blob
+that stands for the interface, such as its name as text. One schema names
+one interface.
+
+- JSON Schema has no keyword for this. `allOf` with a `$ref` says that the
+  data also fits another schema, which is about shape, not kind, and a
+  `$ref` reaches nothing outside the schema anyway. Keywords that start
+  with `x-` are left to annotations of one's own: a validator collects
+  them and checks nothing by them, and later drafts do not take the names.
+- The value is a link, not a string, so a store or a bundle that follows a
+  schema's links carries the interface along with it, and whoever holds
+  the schema holds the interface too. An object's closure includes it,
+  and a batch written to a store has to carry it.
+- A schema has no `$describedBy`, so the mark goes in a keyword of its own
+  rather than there.
+
+The mark does not let a program take a schema it does not know. A program
+still pins the concrete schemas it reads, each with how its data becomes
+the interface's shape, and picks among them by `schemaOf`. What the mark
+adds is that the schemas themselves say what the program's table says,
+which a test can hold the two to.

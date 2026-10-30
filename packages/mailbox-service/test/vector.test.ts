@@ -26,8 +26,8 @@ const acknowledgementSchemaText =
 const acknowledgementSchemaLink = "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
 const offerText =
   '{"$describedBy":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
-  '"identity":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
-const offerLink = "sha256:29eed5808328bb8ccad3d911b6c5790ecd0588942ed3041cb406ffb88a5f6246";
+  '"identity":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
+const offerLink = "sha256:70268cbdf530023b939e533b17e5b7b772a881af97de568984903616ef2dd4e5";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 

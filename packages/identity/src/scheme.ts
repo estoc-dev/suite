@@ -3,6 +3,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { keyInterface } from "./interfaces.ts";
 
 /**
  * How a key signs: which curve, and how the signing text is wrapped before
@@ -61,6 +62,7 @@ function keySchema(title: string, curve: Curve): JsonSchema {
   return {
     $schema: DRAFT_2020_12,
     title,
+    "x-implements": { $link: keyInterface.link },
     type: "object",
     properties: { publicKey: { type: "string", pattern: `^[0-9a-f]{${2 * curve.publicKeyLength}}$` } },
     required: ["publicKey"],

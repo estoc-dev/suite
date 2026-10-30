@@ -16,25 +16,29 @@ const objectText =
   '{"$describedBy":{"$link":"sha256:ed3c6fdbbb01a4093bf529293bc6e65f3d56d00f5729fdde619ea9fb1a8ec90e"},' +
   '"audience":"https://app.estoc.dev","nonce":"6f1c0a9e"}';
 const objectLink = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
+const keyInterfaceLink = "sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160";
+const identityInterfaceLink = "sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f";
 const keySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
-  '"required":["publicKey"],"title":"Ed25519 key","type":"object"}';
-const keySchemaLink = "sha256:56ba2935043425c303dcf4d2b68ad608ab724b342a8a4c78665829549917912a";
-const identitySchemaText =
+  '"required":["publicKey"],"title":"Ed25519 key","type":"object",' +
+  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}';
+const keySchemaLink = "sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662";
+const keyIdentitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
-  '"required":["root"],"title":"Identity","type":"object"}';
-const identitySchemaLink = "sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526";
+  '"required":["root"],"title":"Key Identity","type":"object",' +
+  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}';
+const keyIdentitySchemaLink = "sha256:bffc12f8ae0d1515e678ceca43c4d2a1b05ce53ee822500fd30c868d0210f362";
 const keyText =
-  '{"$describedBy":{"$link":"sha256:56ba2935043425c303dcf4d2b68ad608ab724b342a8a4c78665829549917912a"},' +
+  '{"$describedBy":{"$link":"sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
-const keyLink = "sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22";
+const keyLink = "sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358";
 const identityText =
-  '{"$describedBy":{"$link":"sha256:5d77ddabc0855936a22068491f9a0d14ac6a32146334371283edb284a336a526"},' +
-  '"root":{"$link":"sha256:a6394ae7524f9c1ba37d4a86bdc80de04e38d98e0308df12a51a932763e64b22"}}';
-const identityLink = "sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364";
+  '{"$describedBy":{"$link":"sha256:bffc12f8ae0d1515e678ceca43c4d2a1b05ce53ee822500fd30c868d0210f362"},' +
+  '"root":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
+const identityLink = "sha256:e36a63b250c8e05258d06aa68b0b1ead71b255ad08a96f426c9ee52ef6e34b99";
 const signedIdentitySchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
@@ -44,17 +48,17 @@ const signedIdentitySchemaText =
 const signedIdentitySchemaLink = "sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa";
 const signedIdentityText =
   '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
-  '"identity":{"$link":"sha256:dd31cd36c973940ddcfe6e5a688cf5d33b887b2693d82bae6b9fd359cabda364"},' +
-  '"signature":"5cfaf21fdc8c442905a85577e8346727cd635d5042bbe45331b861c3444aef6e' +
-  'aa149e6de2bf1543316e69bee4cf66c80056a3f25cb315cc621ae439d8386f01"}';
-const signedIdentityLink = "sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe";
+  '"identity":{"$link":"sha256:e36a63b250c8e05258d06aa68b0b1ead71b255ad08a96f426c9ee52ef6e34b99"},' +
+  '"signature":"879c083c555339acf377ad210b00c9ea74740e6f197e696baf5f128506eb0927' +
+  '4276759c728e131a40270acd15491537fa50f0818301b49c4759f3ba72514c03"}';
+const signedIdentityLink = "sha256:85dd9e2207b1a986cde3784d467879bd7d9ce952d70c37acce9dce617a4576d2";
 const signatureText =
   '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
   '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
   '"signature":"6c029e975d7ae1f996fe751a8f0df35c068603921b63067ba9e66ddb18f08545' +
   'b36d69a64229c7ec4b0bb2ee45c44e7d79dca56de14b02d2076e318e70cd150e",' +
-  '"signedIdentity":{"$link":"sha256:3499b42ad3b10174ceac2b6d308326e7fb2f0678782c579595d7083a3b3beefe"}}';
-const signatureLink = "sha256:5f7b0b3af90bb61a512241aaa46f65ca66349791272d91a3aff23a8e4c849f9b";
+  '"signedIdentity":{"$link":"sha256:85dd9e2207b1a986cde3784d467879bd7d9ce952d70c37acce9dce617a4576d2"}}';
+const signatureLink = "sha256:b836107915964928489dc710ded994b19f7aff1ac3fcae4ee22eb6e9529b09f3";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -64,8 +68,10 @@ const blobs = new Map<Link<unknown>, string>([
   [signedIdentitySchemaLink, signedIdentitySchemaText],
   [identityLink, identityText],
   [keyLink, keyText],
-  [identitySchemaLink, identitySchemaText],
+  [keyIdentitySchemaLink, keyIdentitySchemaText],
   [keySchemaLink, keySchemaText],
+  [identityInterfaceLink, "Identity"],
+  [keyInterfaceLink, "Key"],
 ]);
 const files = new Map([
   ["index.json", signatureText],

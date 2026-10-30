@@ -1,10 +1,14 @@
 import { digestOf, encodeSchema, type Json, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it, test, vi } from "vitest";
 import {
+  type DelegatedIdentityObject,
+  delegatedIdentitySchema,
+  type IdentityObject,
   identityInterface,
-  keyIdentitySchema,
+  identitySchema,
+  type Key,
   keyInterface,
   keySchemas,
   loadIdentities,
@@ -20,7 +24,7 @@ const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [l
 
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
-const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(keyIdentitySchema))));
+const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
 const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) =>
   identities.read(linkOf(bytes), byLink([bytes, ...blobs]));
 
@@ -42,10 +46,11 @@ function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Arr
   return reached;
 }
 
-describe("the Key Identity schema", () => {
-  it("names the Identity interface", () => {
-    expect(keyIdentitySchema["x-implements"]).toEqual({ $link: identityInterface.link });
-  });
+test.each([
+  ["Identity", identitySchema],
+  ["Delegated Identity", delegatedIdentitySchema],
+])("the %s schema names the Identity interface", (_, schema) => {
+  expect(schema["x-implements"]).toEqual({ $link: identityInterface.link });
 });
 
 describe("an identity", () => {
@@ -75,7 +80,7 @@ describe("an identity", () => {
 
   it("carries as its blobs its object, its root's, the schemas they are written to and the interfaces those name", async () => {
     const identity = identities.encode(key("eip191"));
-    const schema = await encodeSchema(keyIdentitySchema, defaultValidator);
+    const schema = await encodeSchema(identitySchema, defaultValidator);
     const keySchema = await encodeSchema(keySchemas.eip191, defaultValidator);
     expect(identity.blobs.map((bytes) => linkOf(bytes))).toEqual([
       identity.link,
@@ -105,6 +110,10 @@ describe("an identity", () => {
   ])("is refused with %s", async (_, data) => {
     const root = keys.encode(key("ed25519"));
     await expect(readFrom(written(data({ $link: root.link })), root.bytes)).rejects.toThrow(/does not fit/);
+  });
+
+  it("is refused when it is written to a schema that is not an identity schema", async () => {
+    await expect(readFrom(keys.encode(key("ed25519")).bytes)).rejects.toThrow(/not written to an identity schema/);
   });
 
   it("is refused when the reader gives another blob for its link", async () => {
@@ -179,5 +188,98 @@ describe("a signed identity", () => {
     const identity = identities.encode(key("ed25519"));
     const bytes = writtenSigned(change(await signedBy(signer("ed25519"))));
     await expect(readSignedFrom(bytes, ...identity.blobs)).rejects.toThrow(/does not fit/);
+  });
+});
+
+describe("a Delegated Identity", () => {
+  const distinctKeys = (count: number) =>
+    Array.from({ length: count }, (_, i) => {
+      const secretKey = new Uint8Array(32).fill(9);
+      new DataView(secretKey.buffer).setUint16(30, i);
+      return SoftwareSigner.fromSecretKey("ed25519", secretKey).key;
+    });
+  const agentsOf = (identity: IdentityObject) => (identity as DelegatedIdentityObject).agents;
+  const linksOf = (blobs: readonly Uint8Array[]) => blobs.map((bytes) => linkOf(bytes));
+
+  it("reads back from its blobs with its root and its agents, in the order its root lists them", async () => {
+    const agents = [key("ed25519", 3), key("solana-offchain", 2), key("eip191", 4)];
+    const signed = await identities.delegate(signer("eip191"), agents);
+    const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+    expect(read.identity).toEqual(signed.identity);
+    expect(sameKey(read.identity.root, key("eip191"))).toBe(true);
+    expect(agentsOf(read.identity).map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
+  });
+
+  it("names its root and its agents by the links of their objects", async () => {
+    const { identity } = await identities.delegate(signer("ed25519"), [key("ed25519", 2)]);
+    expect(identity.data).toEqual({
+      root: { $link: keys.encode(key("ed25519")).link },
+      agents: [{ $link: keys.encode(key("ed25519", 2)).link }],
+    });
+  });
+
+  it("is another identity than its root's Identity, of the same root", async () => {
+    const { identity } = await identities.delegate(signer("ed25519"), [key("ed25519", 2)]);
+    const own = identities.encode(key("ed25519"));
+    expect(identity.link).not.toBe(own.link);
+    expect(identity.root.link).toBe(own.root.link);
+  });
+
+  it.each<[string, SoftwareSigner, Key[]]>([
+    ["that lists its root among its agents", signer("ed25519"), [key("ed25519", 2), key("ed25519")]],
+    ["whose agents sign in another scheme than its root", signer("eip191"), [key("ed25519", 2), key("ed25519", 3)]],
+  ])("%s carries each blob it leads to once, and nothing else", async (_, root, agents) => {
+    const signed = await identities.delegate(root, agents);
+    const links = linksOf(signed.identity.blobs);
+    expect(new Set(links).size).toBe(links.length);
+    const blobs = byLink(signed.blobs);
+    expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
+  });
+
+  it("carries as its blobs its object, its keys', the schemas they are written to and the interfaces those name", async () => {
+    const { identity } = await identities.delegate(signer("eip191"), [key("ed25519", 2), key("ed25519", 3)]);
+    const schema = await encodeSchema(delegatedIdentitySchema, defaultValidator);
+    const [first, second] = agentsOf(identity);
+    assert.exists(first);
+    assert.exists(second);
+    expect(linksOf(identity.blobs)).toEqual([
+      identity.link,
+      identity.root.link,
+      first.link,
+      second.link,
+      schema.link,
+      identity.root.schema.link,
+      first.schema.link,
+      identityInterface.link,
+      keyInterface.link,
+    ]);
+  });
+
+  it("is refused when an agent is not a key", async () => {
+    const root = keys.encode(key("ed25519"));
+    const other = identities.encode(key("ed25519", 2));
+    const data = { root: { $link: root.link }, agents: [{ $link: other.link }] };
+    const bytes = json.encode(json.object(data, linkOf(json.encode(delegatedIdentitySchema))));
+    await expect(readFrom(bytes, root.bytes, other.bytes)).rejects.toThrow(/no scheme writes its keys to/);
+  });
+
+  it("can list no agents", async () => {
+    const signed = await identities.delegate(signer("ed25519"), []);
+    const read = await identities.readSigned(signed.link, byLink(signed.blobs));
+    expect(agentsOf(read.identity)).toEqual([]);
+  });
+
+  it("can list 256 agents", async () => {
+    const signed = await identities.delegate(signer("ed25519"), distinctKeys(256));
+    expect(agentsOf(signed.identity)).toHaveLength(256);
+  });
+
+  it.each<[string, Key[]]>([
+    ["one agent twice", [key("ed25519", 2), key("ed25519", 3), key("ed25519", 2)]],
+    ["257 agents", distinctKeys(257)],
+  ])("with %s is refused before its root is asked to sign", async (_, agents) => {
+    const sign = vi.fn(async () => new Uint8Array(64));
+    await expect(identities.delegate({ key: key("ed25519"), sign }, agents)).rejects.toThrow(/does not fit/);
+    expect(sign).not.toHaveBeenCalled();
   });
 });

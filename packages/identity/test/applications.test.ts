@@ -96,6 +96,17 @@ describe("a login", () => {
     expect(await logIn("https://app.estoc.dev", "0b5e7d21")).toBeUndefined();
     expect(await logIn("https://other.example", "6f1c0a9e")).toBeUndefined();
   });
+
+  it("signed by a browser key that the user's Delegated Identity lists logs the user in", async () => {
+    const browser = signer("ed25519", 5);
+    const actor = signatures.actor(browser, await identities.delegate(user, [browser.key]));
+    const { bytes, signedIdentity } = await actor.sign(
+      encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
+    );
+    const identity = await loggedIn("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
+    expect(identity?.link).not.toBe(identities.encode(user.key).link);
+    expect(identity?.root.link).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.root.link);
+  });
 });
 
 // A sale names its parties by the links of their roots, and a signature its

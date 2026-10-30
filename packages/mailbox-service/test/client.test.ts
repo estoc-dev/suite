@@ -268,6 +268,21 @@ describe("an account offer", () => {
     expect(standing.agents).toEqual([identities.encode(laptop.key)]);
   });
 
+  it("accepted by keys that two Delegated Identities of one wallet list gets the wallet's one account", async () => {
+    const { origin } = await running();
+    const first = await (await accountAt((await client()).services, origin)).accept(
+      authorizations.createActor(signatures.actor(laptop, await identities.delegate(wallet, [laptop.key]))),
+    );
+    const later = await identities.delegate(wallet, [laptop.key, phone.key]);
+    const again = await (await accountAt((await client()).services, origin)).accept(
+      authorizations.createActor(signatures.actor(phone, later)),
+    );
+    expect(again.link).toBe(first.link);
+    expect(again.identity).toEqual(later.identity);
+    expect(again.identity.link).not.toBe(first.identity.link);
+    expect(again.identity.root.link).toBe(identities.keys.encode(wallet.key).link);
+  });
+
   it("whose service refuses the acceptance throws what the service said, and writes nothing", async () => {
     const { origin } = await running();
     const { store, services } = await client();

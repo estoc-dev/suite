@@ -150,7 +150,7 @@ export class Authorizations {
     const proxy = proxyOf(await readObject(reader, signature.object, this.#proxySchema));
     const chain: Signed<Authorization>[] = [];
     for (const link of proxy.chain) chain.push(await this.readAuthorization(link, reader));
-    checkChain(chain, signature.signedIdentity.identity.link);
+    checkChain(chain, signature.signedIdentity.identity);
     return {
       target: proxy.target,
       principal: chain[0].signature.signedIdentity.identity,
@@ -195,7 +195,7 @@ export class Actor implements Standing {
       this.principal = actor.signedIdentity.identity;
       this.agents = [];
     } else {
-      checkChain(chain, actor.signedIdentity.identity.link);
+      checkChain(chain, actor.signedIdentity.identity);
       this.principal = first.signature.signedIdentity.identity;
       this.agents = chain.map(({ object }) => object.agent);
     }
@@ -247,16 +247,19 @@ function byLink(blobs: readonly Uint8Array[]): Map<Link<unknown>, Uint8Array> {
   return new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 }
 
+// An agent is someone, so it signs by whichever identity of its root.
 function checkChain(
   chain: readonly Signed<Authorization>[],
-  signer: Link<IdentityObject>,
+  signer: IdentityObject,
 ): asserts chain is readonly [Signed<Authorization>, ...Signed<Authorization>[]] {
   const last = chain.at(-1);
   if (last === undefined) throw new Error("a proxy names at least one authorization");
   const linked = chain.every(({ object }, i) => {
     const next = chain[i + 1];
-    return next === undefined || object.agent.link === next.signature.signedIdentity.identity.link;
+    return next === undefined || object.agent.root.link === next.signature.signedIdentity.identity.root.link;
   });
   if (!linked) throw new Error("each authorization in the chain has to be signed by the agent of the one before it");
-  if (last.object.agent.link !== signer) throw new Error("a proxy is signed by the last agent in its chain");
+  if (last.object.agent.root.link !== signer.root.link) {
+    throw new Error("a proxy is signed by the last agent in its chain");
+  }
 }

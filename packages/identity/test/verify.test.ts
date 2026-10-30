@@ -41,6 +41,14 @@ describe.each(["ed25519", "eip191", "solana-offchain"] as const)("a key signing 
     expect(verify(signer.key, digest, signature)).toBe(false);
   });
 
+  it("verifies what its signer signs by a signed identity only by that signed identity", async () => {
+    const signature = await signer.sign(digest, otherDigest);
+    expect(verify(signer.key, digest, signature, otherDigest)).toBe(true);
+    expect(verify(signer.key, digest, signature)).toBe(false);
+    expect(verify(signer.key, digest, signature, digest)).toBe(false);
+    expect(verify(signer.key, digest, await signer.sign(digest), otherDigest)).toBe(false);
+  });
+
   it("rejects a signature of the wrong length", async () => {
     const signature = await signer.sign(digest);
     expect(verify(signer.key, digest, signature.subarray(0, 63))).toBe(false);
@@ -70,8 +78,16 @@ describe("signingText", () => {
     );
   });
 
+  it("names the signed identity it is signed by, by the digest of its link in hex", () => {
+    expect(signingText(digest, otherDigest)).toBe(
+      "Estoc Object (sha256:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f) " +
+        "by (sha256:fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0)",
+    );
+  });
+
   it("refuses a digest that is not 32 bytes", () => {
     expect(() => signingText(digest.subarray(1))).toThrow(TypeError);
+    expect(() => signingText(digest, otherDigest.subarray(1))).toThrow(TypeError);
   });
 });
 

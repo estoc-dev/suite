@@ -1,8 +1,11 @@
 export {
+  type DelegatedIdentityData,
+  type DelegatedIdentityObject,
+  delegatedIdentitySchema,
   type Identities,
   type IdentityData,
   type IdentityObject,
-  keyIdentitySchema,
+  identitySchema,
   loadIdentities,
   type SignedIdentityData,
   type SignedIdentityObject,

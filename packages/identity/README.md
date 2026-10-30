@@ -1,20 +1,27 @@
 # @estoc/identity
 
-Someone who signs, as others see them: an identity, and the key that signs
-for it, its root. A key signs the links of objects of `@estoc/object`. The
-key, the identity, the root's signature over the identity and each
+Someone who signs, as others see them: an identity, the key that stands
+behind it, its root, and the keys that sign for it, the root itself or the
+agents it lists. A key signs the links of objects of `@estoc/object`. The
+keys, the identity, the root's signature over the identity and each
 signature are written as objects, which another object names by its link.
 
 ```
-Key              an Object written to the key schema of its scheme, with the field
-                 "publicKey": <hex>
-Identity         an Object written to the Key Identity schema, with the field
-                 "root": <the Key's link>
-Signed identity  an Object written to the signed identity schema, with the fields
-                 "identity": <the Identity's link>, "signature": <hex>
-Signature        an Object written to the signature schema, with the fields
-                 "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
+Key                 an Object written to the key schema of its scheme, with the field
+                    "publicKey": <hex>
+Identity            an Object written to the Identity schema, with the field
+                    "root": <the Key's link>
+Delegated Identity  an Object written to the Delegated Identity schema, with the fields
+                    "root": <the Key's link>, "agents": [<a Key's link>, …]
+Signed identity     an Object written to the signed identity schema, with the fields
+                    "identity": <the identity's link>, "signature": <hex>
+Signature           an Object written to the signature schema, with the fields
+                    "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
 ```
+
+The bytes of a Signature are read as the schema of its identity says: an
+Identity's are its root's signature, a Delegated Identity's the index of
+the agent that signed and that agent's signature.
 
 ## Schemes
 
@@ -31,17 +38,33 @@ a framing its holder did not choose.
 - `solana-offchain`: a Solana off-chain message, version 1, naming the key
   as its one signer, which Ledger's Solana app signs from 1.14.
 
-Every scheme signs the same text for an object's SHA-256 digest before its
-framing, `signingText(digest)`: `Estoc Object (sha256:<hex>)`. A key signs
-objects and nothing else, and a login or a grant is an object too, so no
-signature can be passed off as another kind. It is text because wallets
-show text, and it says what it is so that a wallet user asked elsewhere to
-sign it as, say, a login nonce can tell.
+Every scheme signs the same texts before its framing, `signingText(digest,
+signedIdentity?)`. A key signs objects and nothing else, and a login or a
+grant is an object too, so no signature can be passed off as another kind.
+It is text because wallets show text, and it says what it is so that a
+wallet user asked elsewhere to sign it as, say, a login nonce can tell.
+
+```
+a root signs an identity:                Estoc Object (sha256:<the identity's digest>)
+a key signs an object for an identity:  Estoc Object (sha256:<the object's digest>) by (sha256:<the Signed identity's digest>)
+```
+
+The first text is signed only when a root signs an identity, and every
+signature for an identity, a root's for its Identity too, is over the
+second. So a signature a root makes for an identity never stands it behind
+another identity, even when the object signed is a Delegated Identity of
+that root listing someone else. The second text names the Signed identity, not only the identity: everything in
+a Signature but its signature is signed, so one signature is one Signature.
+Were only the identity named, a Signature could be given another Signed
+identity of the same identity, as a wallet that does not sign
+deterministically makes, and have another link. And a root lists an agent
+without the agent's leave, so a signature an agent made for one identity
+would otherwise also verify for another that lists it.
 
 The keys work without objects. A `Key` is a scheme and a public key,
-`verify` checks a signature over a digest by one, and `sameKey` holds when
-both the scheme and the public key bytes are the same, so one public key in
-two schemes is two keys. A `Signer` is the private side of a key, as the
+`verify` checks a signature by one over the text for a digest, and
+`sameKey` holds when both the scheme and the public key bytes are the
+same, so one public key in two schemes is two keys. A `Signer` is the private side of a key, as the
 capability to sign with it: a wallet stands behind one the same way
 `SoftwareSigner` does over a key in memory, which is why signing is
 asynchronous.
@@ -76,48 +99,67 @@ scheme's schema does not take.
 
 ## Identities
 
-An identity is written to `keyIdentitySchema`, the Key Identity schema,
-whatever the scheme of its root, and names its root by the link of the
-root's object. It holds its root and nothing else, so each key has one
-identity, with one link: the identity of a key on its own. The schema
-names the Identity interface in `x-implements`, the link of
+An identity is written to one of two schemas, whatever the scheme of its
+root, and names its root by the link of the root's object. Both schemas
+name the Identity interface in `x-implements`, the link of
 `identityInterface`, whose bytes are the UTF-8 text `Identity`, as the key
-schemas name the Key interface. Someone is their root: two identities are
-of the same someone when the links of their roots are the same, and an
-object that names someone names their root by that link, while a
-signature names a signed identity of the identity that makes it.
+schemas name the Key interface. Whichever schema it is written to, an
+identity reads as an `IdentityObject`, with its root as `root`, and that is
+all a reader that does not sign needs. Someone is their root: two
+identities are of the same someone when the links of their roots are the
+same, so a wallet's Identity and its Delegated Identities are all the
+wallet. An object that names someone names their root by that link, while
+a signature names a signed identity of the identity it is made for.
 
-`loadIdentities` compiles the Key Identity schema and the key schemas with
+- An Identity, written to `identitySchema`, holds its root and nothing
+  else, so each key has one, with one link: the identity of a key on its
+  own. Its root alone signs for it. A wallet, a service or a device that
+  signs for itself uses one.
+- A Delegated Identity, written to `delegatedIdentitySchema`, holds its
+  root and its agents, the keys the root lists to sign for it, and reads as
+  a `DelegatedIdentityObject` with `agents` in the order the root lists
+  them. A signature for it names the agent that signed by its index in that
+  order, one byte, so it lists at most 256 agents, and each of them once,
+  or one signature would verify under two indexes. An agent need not sign
+  in its root's scheme, as a browser key can sign for a wallet. The root
+  signs for it only if it lists itself; with no agents no one does. A root
+  can write as many as it likes, and every one it signs stands.
+
+`loadIdentities` compiles the two identity schemas and the key schemas with
 the validator the application picks, and gives `identities`, which holds
 `keys`. `identities.read` takes the link of an identity and a `Reader`,
-reads the identity's object and then its root with `keys.read`, and gives
-the identity with its root as `root`. `identities.encode` writes the
-identity whose root is a key. Reading an identity takes the blobs of both
-objects; an identity carries them as `blobs`, with those of the schemas
-they are written to and of the interfaces those name, so where an
-identity goes, as into a store or a bundle, `...identity.blobs` goes along
-and leads to nothing it does not carry.
+picks the schema to read the identity's object with by `schemaOf`, reads
+the keys it names with `keys.read`, and gives the identity.
+`identities.encode` writes the Identity whose root is a key. Reading an
+identity takes the blobs of its object and of its keys; an identity carries
+them as `blobs`, with those of the schemas they are written to and of the
+interfaces those name, each once, so where an identity goes, as into a
+store or a bundle, `...identity.blobs` goes along and leads to nothing it
+does not carry.
 
 ## Signed identities
 
 A signed identity is an identity as its root stands behind it, written to
 `signedIdentitySchema`: it names the identity by its link and holds the
-root's signature over that link, which the root signs as it signs any
-object. A signature names who makes it by the link of a signed identity,
+root's signature over the first text for that link, whichever schema the
+identity is written to. A signature names who makes it by the link of a signed identity,
 so reading a signature reads that the root stands behind the identity. A
 wallet need not sign deterministically, so one identity can have several
 signed identities, and each of them stands for it: two signers are the
 same someone when the roots of their identities are, whichever signed
 identities they sign by.
 
-`identities.publish` takes the root's `Signer`, writes the identity, has
+`identities.publish` takes the root's `Signer`, writes its Identity, has
 the root sign it, and gives the signed identity: what a wallet confirms
-once, when the identity is made. It writes the identity before the root
-signs, so a signer is not asked to sign an identity that would not read.
-`identities.readSigned` takes the link of a signed identity and a
-`Reader`, reads the identity with `identities.read`, and refuses a
-signature that its root did not make. A signed identity carries as `blobs`
-its object and its schema with the identity's `blobs`.
+once, when the identity is made. `identities.delegate` takes the root's
+`Signer` and the agents' keys, and does the same with the Delegated
+Identity that lists them. Both write the identity before the root signs, so
+a signer is not asked to sign an identity that would not read, such as one
+that lists an agent twice. `identities.readSigned` takes the link of a
+signed identity and a `Reader`, reads the identity with
+`identities.read`, and refuses a signature that its root did not make. A
+signed identity carries as `blobs` its object and its schema with the
+identity's `blobs`.
 
 ## Signatures
 
@@ -129,33 +171,37 @@ Each signature is a blob of its own, collected and passed on apart from the
 others over the same object.
 
 A signature is itself an object, written to `signatureSchema` whatever the
-scheme of the key that signs, so a format that holds an object can hold a
-signature. It names a signed identity and the object it is over by their
+identity and the key that signs, so a format that holds an object can hold
+a signature. It names a signed identity and the object it is over by their
 links, and holds the signature as bytes, in lowercase hex, which writes
-each byte string one way. What the bytes hold is for the key's scheme to
-say: in each scheme here, one signature of 64 bytes. A scheme whose signature holds
-more, such as a passkey's authenticator data or the shares of a threshold,
-lays it out in the bytes its own way, and the signature schema, and what
-reads signatures by it, stay as they are.
+each byte string one way. The schema of the identity says which key signs
+and how the bytes are laid out, and that key's scheme how its signature in
+them reads: in each scheme here, one signature of 64 bytes. Signing with a
+threshold of keys would be another identity schema; a scheme whose
+signature holds more, such as a passkey's authenticator data, lays it out
+in its own bytes. Either way the signature schema, and what reads
+signatures by it, stay as they are.
 
 `loadSignatures` compiles the signature schema, the signed identity
-schema, the Key Identity schema and the key schemas with the validator the
+schema, the identity schemas and the key schemas with the validator the
 application picks, and gives `signatures`, which holds the signature
 schema, `identities` and `actor`. `signatures.verify` is the judgment of a
 signature: it takes the signature as an object of `signatures.schema` and a
 `Reader`, reads its signed identity from the reader with
-`identities.readSigned`, and verifies the signature's bytes by the root of
-that identity, as the root's scheme reads them; `signatures.read` does the
-same from the link of the signature. So verifying a signature takes the
-blobs of its signed identity, but not that of the object signed, since the
-digest it signs is in the link. It gives the signature's object with the
-signed identity it read as `signedIdentity`, the link of what it is over
+`identities.readSigned`, and verifies the signature's bytes by the key the
+identity's schema reads from them, over the text for the object by that
+signed identity; `signatures.read` does the same from the link of the
+signature. So verifying a signature takes the blobs of its signed identity,
+but not that of the object signed, since the digest it signs is in the
+link. It gives the signature's object with the signed identity it read as
+`signedIdentity`, the key that signed as `key`, the link of what it is over
 as `object`, and the signature as bytes. Reading a signature with
 `decodeObject` and the signature schema alone, as a viewer of arbitrary
 objects would, reads its fields without verifying it.
 
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
-signed identity whose root is the signer's key, and refuses any other.
+signed identity whose identity the signer's key signs for, the root of an
+Identity or an agent of a Delegated Identity, and refuses any other.
 `actor.sign` signs the link of an object, so it takes anything that has
 one, and gives a signature whose `signedIdentity` is
 `actor.signedIdentity`, the signed identity the actor was made for, whose

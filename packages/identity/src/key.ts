@@ -15,16 +15,17 @@ export interface Key {
 }
 
 /**
- * Whether `signature` is `key`'s signature over `digest`. A key that is not
- * a usable key in its scheme's form verifies nothing.
+ * Whether `signature` is `key`'s signature over `signingText(digest,
+ * signedIdentity)`. A key that is not a usable key in its scheme's form
+ * verifies nothing.
  */
-export function verify(key: Key, digest: Uint8Array, signature: Uint8Array): boolean {
+export function verify(key: Key, digest: Uint8Array, signature: Uint8Array, signedIdentity?: Uint8Array): boolean {
   const { curve, message } = schemes[key.scheme];
   const { publicKey } = key;
   return (
     publicKey.length === curve.publicKeyLength &&
     signature.length === 64 &&
-    curve.verify(signature, message(signingText(digest), publicKey), publicKey)
+    curve.verify(signature, message(signingText(digest, signedIdentity), publicKey), publicKey)
   );
 }
 

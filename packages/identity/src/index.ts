@@ -15,7 +15,7 @@ export {
   type Versions,
   versionOf,
 } from "./identities.ts";
-export { type Interface, identityInterface, keyInterface } from "./interfaces.ts";
+export { identityInterface, keyInterface } from "./interfaces.ts";
 export { type Key, sameKey, verify } from "./key.ts";
 export { type KeyData, type KeyObject, type Keys, keySchemas, loadKeys } from "./keys.ts";
 export type { Scheme } from "./scheme.ts";

@@ -1,7 +1,14 @@
 import type { KeyObject, Signature } from "@estoc/identity";
-import { type JsonLink, type JsonObject, type JsonSchema, json, type Link, linkOf, linkSchema } from "@estoc/object";
-
-const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+import {
+  DRAFT_2020_12,
+  type JsonLink,
+  type JsonObject,
+  type JsonSchema,
+  json,
+  type Link,
+  linkOf,
+  linkSchema,
+} from "@estoc/object";
 
 /**
  * An id that a service gives out in an address. The id of an offer is the

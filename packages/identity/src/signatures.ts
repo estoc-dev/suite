@@ -1,4 +1,5 @@
 import {
+  DRAFT_2020_12,
   digestOf,
   type EncodedObject,
   encodeObject,
@@ -26,8 +27,6 @@ import {
 } from "./identities.ts";
 import type { KeyObject } from "./keys.ts";
 import type { Signer } from "./signer.ts";
-
-const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 /**
  * The schema every signature is written to, whatever the scheme of the key

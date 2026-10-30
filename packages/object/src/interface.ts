@@ -24,11 +24,11 @@ export function interfaceNamed(name: string): Interface {
 
 /**
  * A concrete schema that a program reads as an interface, with how an
- * object written to it becomes the interface's shape `T`. What the object
- * links to is read from `reader`.
+ * object written to it becomes the interface's shape `T`.
  */
 export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
   readonly schema: Schema<D, F>;
+  /** Takes an object already read with `schema`, and reads what it links to from `reader`. */
   read(object: EncodedObject<D, F>, reader: Reader): T | Promise<T>;
 }
 
@@ -42,8 +42,9 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
   readonly #encoding: Encoding<D>;
   readonly #implementations: ReadonlyMap<Link<Schema<D>>, I>;
 
+  // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
   /** `encoding` is that of the schemas, in which an object names its schema. */
-  constructor(encoding: Encoding<D>, implementations: Iterable<I>) {
+  constructor(encoding: Encoding<D>, implementations: Iterable<I & Implementation<D, T>>) {
     const byLink = new Map<Link<Schema<D>>, I>();
     for (const implementation of implementations) {
       const { link } = implementation.schema;
@@ -54,7 +55,10 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
     this.#implementations = byLink;
   }
 
-  /** The implementation of `schema`; throws for a schema that is not one of these. */
+  /**
+   * The implementation of `schema`, for what a program does with objects of
+   * it beyond reading them. Throws for a schema that is not one of these.
+   */
   of(schema: Link<Schema<D>>): I {
     const implementation = this.#implementations.get(schema);
     if (implementation === undefined) throw new Error(`${schema} is not a schema read here`);

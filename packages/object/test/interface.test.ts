@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
   DRAFT_2020_12,
@@ -60,7 +60,7 @@ const quotedText: Implementation<Json, Text, QuoteData> = {
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations<Json, Text>(json, [plainText, quotedText]);
+const texts = new Implementations(json, [plainText, quotedText]);
 
 const hello = encodeObject(plain, { text: "hello" });
 const echo = encodeObject(quote, { quotes: { $link: textAt(hello) } });
@@ -80,6 +80,10 @@ describe("implementations", () => {
     const reader = blobs(hello, echo);
     await expect(texts.read(textAt(hello), reader)).resolves.toEqual({ link: hello.link, text: "hello" });
     await expect(texts.read(textAt(echo), reader)).resolves.toEqual({ link: echo.link, text: '"hello"' });
+  });
+
+  it("read as the shape their implementations give, with no type named for it", () => {
+    expectTypeOf(texts.read).returns.toEqualTypeOf<Promise<Text>>();
   });
 
   it("give the implementation of a schema by its link", () => {
@@ -111,7 +115,7 @@ describe("implementations", () => {
   });
 
   it("refuse two implementations of one schema", () => {
-    expect(() => new Implementations<Json, Text>(json, [plainText, { ...plainText }])).toThrow(
+    expect(() => new Implementations(json, [plainText, { ...plainText }])).toThrow(
       `${plain.link} is given two implementations`,
     );
   });

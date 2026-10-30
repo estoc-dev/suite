@@ -271,11 +271,37 @@ that stands for the interface, such as its name as text, which
 
 The mark does not let a program take a schema it does not know. A program
 still pins the concrete schemas it reads, each with how its data becomes
-the interface's shape, and picks among them by `schemaOf`. That table is
-`Implementations`: each `Implementation` is a compiled schema with a `read`
-that turns an object written to it into the interface's shape, following
-what the object links to through the reader. The table reads an object by
-its link with the implementation of the schema it names, and refuses one
-written to any other schema, whatever interface that schema names. What
-the mark adds is that the schemas themselves say what the program's table
-says, which a test can hold the two to.
+the interface's shape, and picks among them by `schemaOf`. What the mark
+adds is that the schemas themselves say what the program's table says,
+which a test can hold the two to.
+
+That table is `Implementations`. Each `Implementation` is a compiled schema
+with a `read` that turns an object written to it into the interface's
+shape, following what the object links to through the reader. The table
+reads an object by its link with the implementation of the schema it
+names, and refuses one written to any other schema, whatever interface
+that schema names. Here `plain` and `quote` are two schemas of one
+interface, and an object of `quote` links to the text it quotes:
+
+```ts
+type Text = { readonly link: Link<unknown>; readonly text: string };
+
+const plainText: Implementation<Json, Text, { readonly text: string }> = {
+  schema: plain,
+  read: ({ link, data }) => ({ link, text: data.text }),
+};
+const quotedText: Implementation<Json, Text, { readonly quotes: JsonLink<Text> }> = {
+  schema: quote,
+  async read({ link, data }, reader) {
+    const quoted = await texts.read(data.quotes.$link, reader);
+    return { link, text: `"${quoted.text}"` };
+  },
+};
+const texts = new Implementations(json, [plainText, quotedText]);
+await texts.read(link, reader); // a Text, whichever of the two schemas the object names
+```
+
+The table takes the shape from its implementations, so it is not named
+again. `of` gives the implementation of a schema, for what a program does
+with objects of it beyond reading them. Its `read` takes an object already
+read with that schema, as the table's `read` gives it.

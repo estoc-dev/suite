@@ -255,8 +255,11 @@ one interface.
 - JSON Schema has no keyword for this. `allOf` with a `$ref` says that the
   data also fits another schema, which is about shape, not kind, and a
   `$ref` reaches nothing outside the schema anyway. Keywords that start
-  with `x-` are left to annotations of one's own: a validator collects
-  them and checks nothing by them, and later drafts do not take the names.
+  with `x-` are left to annotations of one's own, and later drafts do not
+  take the names. In draft 2020-12 a keyword the dialect does not know
+  has no effect on validation, and an implementation that collects
+  annotations can report its value; `JsonSchemaValidator` reports only
+  what does not fit, so here the mark is read from the schema itself.
 - The value is a link, not a string, so a store or a bundle that follows a
   schema's links carries the interface along with it, and whoever holds
   the schema holds the interface too. An object's closure includes it,

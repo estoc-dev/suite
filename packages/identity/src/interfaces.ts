@@ -21,7 +21,6 @@ function named(name: string): Interface {
   return { bytes, link: linkOf(bytes) };
 }
 
-/** What the objects of each key schema read as: a `Key`. */
 export const keyInterface: Interface = named("Key");
 
 /** What the objects of each identity schema read as: an identity with its root. */

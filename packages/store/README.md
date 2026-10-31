@@ -138,6 +138,42 @@ application keeps in a fold of its own, which then has to come to the same
 whatever the order and however often an object comes. The rows are kept in
 memory and worked out again on each scan.
 
+## Views
+
+What depends on what else is written is worked out from the rows when they
+are read, and a `View` does it: an index, and `read`, which works a value
+out from the rows of that index, reading what they name from a `Reader`.
+The index says which objects are read, and `read` what their rows come to,
+so an application can give the one and a module that knows what the objects
+mean the other. The two meet in the type of a row.
+
+```ts
+import { readObject } from "@estoc/object";
+import { view, type View } from "@estoc/store";
+
+// The latest note of a tag, from the rows of `byTag`.
+type Latest = { of(tag: string): Promise<Note | undefined> };
+
+const latest: View<Json, [tag: string, at: number, note: Link<unknown>], Latest, Note> = {
+  index: byTag,
+  read: (rows, reader) => ({
+    async of(tag) {
+      let last: Link<unknown> | undefined;
+      for await (const [, , note] of rows.range([tag])) last = note;
+      return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
+    },
+  }),
+};
+
+const notes = await view(store, latest);
+await notes.of("lunch");
+```
+
+`view(store, view)` scans the store for the index and reads the rows with
+the store as the reader, so the rows and the objects they name come from
+one store. The value is of what the store held when it was viewed: what is
+written later is taken in when it is viewed again.
+
 ## Backends
 
 A store keeps its blobs and its list in a backend, which keeps bytes and

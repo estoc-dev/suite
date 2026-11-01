@@ -149,19 +149,20 @@ identity with it. The client
 reads that acceptance, and refuses an acknowledgement that is signed by
 another root than the service's or that is of another root's account.
 
-A wallet takes a device out by signing a version of its Delegated Identity
+A wallet takes a device out by signing a later version of its identity
 that does not list it. The service knows the versions that the acceptances
-it acknowledged carry, one for each account, and refuses an acceptance by
-an agent that the current version does not list: the later of the latest
-it knows and the one the acceptance carries. It judges that before it looks
-for the root's account, so a removed device gets no acknowledgement even
-when the wallet has an account. Say the wallet's first version lists a
-laptop and its second only a phone, and the phone opened the account by
-the second: the laptop's acceptance by the first is refused. A version that
-an acceptance carries after the account opened counts for that acceptance
-alone, and the service does not keep it: had the laptop opened the account
-by the first, it would still be answered after the phone accepted by the
-second.
+it acknowledged carry, and refuses an acceptance by an agent that the
+current version does not list: the later of the latest it knows and the
+one the acceptance carries. It judges that before it looks for the root's
+account, so a removed device gets no acknowledgement even when the wallet
+has an account. An acceptance that carries a version the service does not
+know is acknowledged even when the root has an account, though the service
+answers with the account's acknowledgement, so the version counts from
+then on. Say the wallet's first version lists a laptop and its second only
+a phone: once the phone has accepted by the second, the laptop's acceptance
+by the first is refused, whichever of them opened the account. Two
+acceptances that open one account at once are both acknowledged, and the
+account keeps one of the two acknowledgements, which answers both.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service opened an

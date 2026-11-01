@@ -13,6 +13,7 @@ import {
   memoryService,
   memoryStore,
   offerSchema,
+  publish,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -71,6 +72,24 @@ async function delegated(offer: { readonly link: Link<unknown> }) {
 async function acceptedBy(agent: Signer, version: SignedIdentityObject, offer: { readonly link: Link<unknown> }) {
   const signature = await signatures.actor(agent, version).sign(offer);
   return packBundle(signature, signature.signedIdentity.blobs);
+}
+
+/** A signer as `signer` that, while `holding`, holds each signature back until it is released, the first asked first. */
+function heldSigner(signer: Signer) {
+  const signing: (() => void)[] = [];
+  const held = {
+    holding: false,
+    signing,
+    signer: {
+      key: signer.key,
+      async sign(digest: Uint8Array, signedIdentity?: Uint8Array) {
+        if (held.holding) await new Promise<void>((release) => signing.push(release));
+        return signer.sign(digest, signedIdentity);
+      },
+    },
+    release: () => signing.shift()?.(),
+  };
+  return held;
 }
 
 async function acknowledgementIn(response: Response) {
@@ -175,6 +194,50 @@ describe("a mailbox service", () => {
     const again = await accepting(service, await acceptedBy(phone, second, offer));
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("answers 400 to an agent that a later version removed, though the agent opened the account before it came", async () => {
+    const { service, store } = await memoryService();
+    const { offer } = await rootOf(service);
+    const removed = await acceptedBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    expect((await accepting(service, removed)).status).toBe(201);
+    const second = await delegate(wallet, [phone.key], 2_000);
+    expect((await accepting(service, await acceptedBy(phone, second, offer))).status).toBe(200);
+    expect((await accepting(service, removed)).status).toBe(400);
+    const { service: again } = await memoryService({ store });
+    expect((await accepting(again, removed)).status).toBe(400);
+  });
+
+  it("acknowledges a version it does not know once, however many acceptances carry it", async () => {
+    const { service, store } = await memoryService();
+    const { offer } = await rootOf(service);
+    await accepting(service, await acceptedBy(device, await delegate(wallet, [device.key, phone.key], 1_000), offer));
+    const opened = await mine(store);
+    const second = await delegate(wallet, [device.key, phone.key], 2_000);
+    await accepting(service, await acceptedBy(phone, second, offer));
+    await accepting(service, await acceptedBy(device, second, offer));
+    expect(await mine(store)).toHaveLength(opened.length + 1);
+  });
+
+  it("answers two acceptances that open one account at once alike, and knows the versions of both", async () => {
+    const held = heldSigner(serviceSigner);
+    const { service } = await memoryService({ by: held.signer });
+    const { offer } = await rootOf(service);
+    const earlier = await acceptedBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    const later = await acceptedBy(wallet, await publish(wallet, 2_000), offer);
+    held.holding = true;
+    const opening = accepting(service, earlier);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
+    const racing = accepting(service, later);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
+    held.holding = false;
+    held.release();
+    const opened = await opening;
+    held.release();
+    const answered = await racing;
+    expect([opened.status, answered.status]).toEqual([201, 200]);
+    expect(new Uint8Array(await answered.arrayBuffer())).toEqual(new Uint8Array(await opened.arrayBuffer()));
+    expect((await accepting(service, earlier)).status).toBe(400);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([

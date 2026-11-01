@@ -241,9 +241,10 @@ signed identity it is given.
 A person is worked out from the rows when they are read and is not
 written: their root names them, but what they hold changes as the reader
 sees more. Two people are one when the links of their roots are. Two taken
-from different signed identities of a root differ only when the one in
-hand is later than the reader knows, which a signature carrying it counts
-as well.
+from different signed identities of a root may differ in `versions()`,
+since each holds the one it was taken from, but their `current()` differs
+only when the one in hand is later than the reader knows, which a
+signature carrying it counts as well.
 
 A person reads no signatures. What a signature is read from, and whether
 it is judged by the versions a reader knows or by `noVersions` alone, are

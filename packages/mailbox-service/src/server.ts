@@ -8,6 +8,7 @@ import {
   noVersions,
   type Signature,
   type Signatures,
+  type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
 import {
@@ -33,7 +34,7 @@ import {
   type ServiceData,
   serviceSchema,
 } from "./schemas.ts";
-import { type KnownVersions, knownVersions } from "./versions.ts";
+import { type KnownVersions, knownVersions, knows } from "./versions.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and its signed identity.
@@ -157,14 +158,17 @@ class MailboxService {
    * offer is posted, or answers with the acknowledgement that opened theirs.
    * The signature is judged by the versions the service knows before the
    * accounts are looked up, so an agent its root removed is refused even
-   * when the root has an account.
+   * when the root has an account. An acceptance that carries a version the
+   * service does not know is acknowledged either way, so the version counts
+   * for every acceptance after it.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const offer = this.#offer;
-    const versions = this.#identityVersions.known(await scan(this.#store, this.#versions), this.#store);
+    const known = await scan(this.#store, this.#versions);
+    const versions = this.#identityVersions.known(known, this.#store);
     let accepted: Bundle;
     let acceptance: Signature;
     try {
@@ -180,7 +184,24 @@ class MailboxService {
     const root = signedIdentity.identity.root.link;
 
     const kept = await this.#accounts.get(root);
-    if (kept !== undefined) return this.#answerWith(kept, 200);
+    if (kept !== undefined) {
+      if (!(await knows(known, this.#identityVersions.of(signedIdentity))))
+        await this.#acknowledge(accepted, signedIdentity, at);
+      return this.#answerWith(kept, 200);
+    }
+    const signature = await this.#acknowledge(accepted, signedIdentity, at);
+    if (await this.#accounts.add(root, signature.link)) return this.#answerWith(signature.link, 201);
+    const opened = await this.#accounts.get(root);
+    if (opened === undefined) throw new Error(`the accounts refused to add ${root} and hold no account for it`);
+    return this.#answerWith(opened, 200);
+  }
+
+  /**
+   * Signs an acknowledgement of the acceptance `accepted` holds, received
+   * `at`, and writes it to the store as mine, so the service knows the
+   * version the acceptance carries from then on.
+   */
+  async #acknowledge(accepted: Bundle, signedIdentity: SignedIdentityObject, at: number): Promise<Signature> {
     const acknowledgement = encodeObject(this.#schemas.acknowledgement, { accepted: { $link: accepted.link }, at });
     const signature = await this.#actor.sign(acknowledgement);
     // Reading the acceptance takes neither the schemas its signed identity
@@ -188,10 +209,7 @@ class MailboxService {
     // them, and the store takes a blob in only with all it leads to.
     const blobs = [acknowledgement.bytes, this.#schemas.acknowledgement.bytes, ...signedIdentity.blobs];
     await this.#store.write({ mine: [signature], blobs: [...blobs, ...accepted.blobs()] });
-    if (await this.#accounts.add(root, signature.link)) return this.#answerWith(signature.link, 201);
-    const opened = await this.#accounts.get(root);
-    if (opened === undefined) throw new Error(`the accounts refused to add ${root} and hold no account for it`);
-    return this.#answerWith(opened, 200);
+    return signature;
   }
 
   /** Answers with the bundle of one of the service's signatures and all it leads to in the store. */

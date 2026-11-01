@@ -19,7 +19,6 @@ export class IdentityVersions {
     this.#signedIdentities = signedIdentities;
   }
 
-  /** The version `signedIdentity` is. */
   of(signedIdentity: SignedIdentityObject): Version {
     const { identity } = signedIdentity;
     return [identity.root.link, identity.data.at, signedIdentity.link];

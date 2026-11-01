@@ -30,7 +30,6 @@ export function knownVersions(
   };
 }
 
-/** Whether `rows` of the versions the service knows hold `version`. */
 export async function knows(rows: Rows<Version>, version: Version): Promise<boolean> {
   for await (const _ of rows.range(version)) return true;
   return false;

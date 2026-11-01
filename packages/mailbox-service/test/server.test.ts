@@ -208,7 +208,7 @@ describe("a mailbox service", () => {
     expect((await accepting(again, removed)).status).toBe(400);
   });
 
-  it("acknowledges a version it does not know once, however many acceptances carry it", async () => {
+  it("does not acknowledge an already known version again", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     await accepting(service, await acceptedBy(device, await delegate(wallet, [device.key, phone.key], 1_000), offer));

@@ -2,10 +2,9 @@ import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
   type Actor,
   type IdentityKit,
-  type IdentityVersions,
   type KeyObject,
   loadIdentity,
-  noVersions,
+  type People,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -21,9 +20,11 @@ import {
   readObject,
   type Schema,
 } from "@estoc/object";
-import { type Store, scan } from "@estoc/store";
+import { type Store, view } from "@estoc/store";
+import { type Acknowledgements, acknowledgementOf, acknowledgements } from "./acknowledgements.ts";
 import { readBody, ZIP } from "./http.ts";
 import { type Locations, locations, servicesOf } from "./locations.ts";
+import { type KnownPeople, knownPeople } from "./people.ts";
 import {
   type AccountOfferData,
   type AcknowledgementData,
@@ -34,7 +35,6 @@ import {
   type ServiceData,
   serviceSchema,
 } from "./schemas.ts";
-import { type KnownVersions, knownVersions, knows } from "./versions.ts";
 
 // Anyone can post to a service, and an acceptance is a few small blobs: a
 // signature and its signed identity.
@@ -47,11 +47,10 @@ type Schemas = {
 
 /**
  * The accounts of a service, one for each root of an identity, as the link
- * of the service's signature over the acknowledgement that opened it.
+ * of the service's signature over the acknowledgement of the acceptance that
+ * opened it.
  */
 export interface Accounts {
-  /** The acknowledgement of `root`'s account, or `undefined` when it has none. */
-  get(root: Link<KeyObject>): Promise<Link<Signature> | undefined>;
   /**
    * Keeps `acknowledgement` as `root`'s unless it has an account already, in
    * one step, and resolves to whether it was kept.
@@ -62,10 +61,6 @@ export interface Accounts {
 /** Keeps accounts in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryAccounts implements Accounts {
   readonly #accounts = new Map<Link<KeyObject>, Link<Signature>>();
-
-  async get(root: Link<KeyObject>): Promise<Link<Signature> | undefined> {
-    return this.#accounts.get(root);
-  }
 
   async add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean> {
     if (this.#accounts.has(root)) return false;
@@ -102,9 +97,9 @@ export interface ServiceOptions {
 class MailboxService {
   readonly #actor: Actor;
   readonly #offer: EncodedObject<Json, AccountOfferData>;
-  readonly #locations: Locations;
-  readonly #versions: KnownVersions;
-  readonly #identityVersions: IdentityVersions;
+  readonly #services: ReturnType<typeof servicesOf>;
+  readonly #people: KnownPeople;
+  readonly #acknowledgements: Acknowledgements;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #store: Store;
@@ -120,9 +115,9 @@ class MailboxService {
   ) {
     this.#actor = actor;
     this.#offer = offer;
-    this.#locations = locations;
-    this.#versions = knownVersions(kit, schemas.acknowledgement);
-    this.#identityVersions = kit.versions;
+    this.#services = servicesOf(locations, offer.data.identity.$link);
+    this.#people = knownPeople(kit, schemas);
+    this.#acknowledgements = acknowledgements(kit.signatures, schemas.acknowledgement);
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#store = store;
@@ -136,64 +131,56 @@ class MailboxService {
    */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    const [latest, ...earlier] = await servicesOf(this.#store, this.#locations, this.#offer.data.identity.$link);
+    const [latest, ...earlier] = await view(this.#store, this.#services);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
     const id = pathname.slice(1);
     if (!ID.test(id)) return answer(404);
-    if (id === this.#offer.link && (await this.#lists(latest, id))) {
+    const people = await view(this.#store, this.#people);
+    if (id === this.#offer.link && (await this.#lists(latest, id, people))) {
       return answerTo(request, "POST", () => this.#open(request));
     }
-    for (const link of earlier) if (await this.#lists(link, id)) return answer(410);
+    for (const link of earlier) if (await this.#lists(link, id, people)) return answer(410);
     return answer(404);
   }
 
-  async #lists(link: Link<Signature>, id: string): Promise<boolean> {
-    const { offers } = (await readService(link, this.#signatures, this.#store, this.#schemas.service)).data;
+  async #lists(link: Link<Signature>, id: string, people: People): Promise<boolean> {
+    const { object } = await this.#signatures.read(link, this.#store, people);
+    const { offers } = (await readObject(this.#store, object, this.#schemas.service)).data;
     return offers.some(({ accept }) => accept === id);
   }
 
   /**
-   * Opens an account for the root of the identity whose signature over the
-   * offer is posted, or answers with the acknowledgement that opened theirs.
-   * The signature is judged by the versions the service knows before the
-   * accounts are looked up, so an agent its root removed is refused even
-   * when the root has an account. An acceptance that carries a version the
-   * service does not know is acknowledged either way, so the version counts
-   * for every acceptance after it.
+   * Acknowledges the signature over the offer that is posted, and opens an
+   * account for the root of its identity unless the root has one. Either way
+   * the answer is an acknowledgement of this acceptance, one that the store
+   * holds or a new one. The signature is judged by the people the service
+   * knows once the whole body has come in, however long the sender took to
+   * send it, so an agent its root removed is refused even when the root has
+   * an account, and even for an acceptance that was acknowledged before.
    */
   async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
-    const offer = this.#offer;
-    const known = await scan(this.#store, this.#versions);
-    const versions = this.#identityVersions.known(known, this.#store);
+    const people = await view(this.#store, this.#people);
     let accepted: Bundle;
     let acceptance: Signature;
     try {
       accepted = await unpackBundle(zip);
-      acceptance = await this.#signatures.read(accepted.link, accepted, versions);
-      if (acceptance.object !== offer.link) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (acceptance.signedIdentity.identity.root.link === offer.data.identity.$link)
+      acceptance = await this.#signatures.read(accepted.link, accepted, people);
+      if (acceptance.object !== this.#offer.link)
+        throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
+      if (people.of(this.#actor.signedIdentity).signed(acceptance))
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, error instanceof Error ? error.message : String(error));
     }
-    const { signedIdentity } = acceptance;
-    const root = signedIdentity.identity.root.link;
-
-    const kept = await this.#accounts.get(root);
-    if (kept !== undefined) {
-      if (!(await knows(known, this.#identityVersions.of(signedIdentity))))
-        await this.#acknowledge(accepted, signedIdentity, at);
-      return this.#answerWith(kept, 200);
-    }
-    const signature = await this.#acknowledge(accepted, signedIdentity, at);
-    if (await this.#accounts.add(root, signature.link)) return this.#answerWith(signature.link, 201);
-    const opened = await this.#accounts.get(root);
-    if (opened === undefined) throw new Error(`the accounts refused to add ${root} and hold no account for it`);
-    return this.#answerWith(opened, 200);
+    const acknowledgement =
+      (await view(this.#store, acknowledgementOf(this.#acknowledgements, acceptance.link))) ??
+      (await this.#acknowledge(accepted, acceptance.signedIdentity, at)).link;
+    const opened = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
+    return this.#answerWith(acknowledgement, opened ? 201 : 200);
   }
 
   /**
@@ -276,15 +263,16 @@ export async function loadMailboxService(
   const offer = encodeObject(offerSchema, { identity: { $link: root.link } });
   const index = locations(signatures, schemas.service);
 
+  const people = await view(store, knownPeople(kit, schemas));
   const signed = await Promise.all(
-    (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store, noVersions)),
+    (await view(store, servicesOf(index, root.link))).map((link) => signatures.read(link, store, people)),
   );
   const [latest] = signed;
   const at = clock();
   const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, at)));
   const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
-  const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
+  const signature = (await signedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
   const next: ServiceData = {
     origin,
     at,
@@ -306,25 +294,17 @@ export async function loadMailboxService(
   return new MailboxService(actor, { offer, locations: index }, kit, schemas, { ...options, clock });
 }
 
-async function readService(
-  link: Link<Signature>,
-  signatures: Signatures,
-  store: Store,
-  service: Schema<Json, ServiceData>,
-): Promise<EncodedObject<Json, ServiceData>> {
-  return readObject(store, (await signatures.read(link, store, noVersions)).object, service);
-}
-
 /** The service's signature over `offer`, as the first of `services` that lists the offer lists it, when one does. */
 async function signedIn(
   services: readonly EncodedObject<Json, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,
   store: Store,
+  people: People,
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
     for (const { offer: listed } of data.offers) {
-      const signature = await signatures.read(listed.$link, store, noVersions);
+      const signature = await signatures.read(listed.$link, store, people);
       if (signature.object === offer) return signature;
     }
   }

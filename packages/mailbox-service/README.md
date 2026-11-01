@@ -65,9 +65,10 @@ the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
 offer signed by an identity of another root. It writes the service's
 signature over the Service to the store as mine, with all it leads to, and
-gives a `Service`: the service's identity, its origin, `at`, the link of
-the signature, and `account`, the offer of an account when the Service
-lists one. Offers of schemas the client does not read are passed over.
+gives a `Service`: the service's signed identity that signed it, its
+origin, `at`, the link of the signature, and `account`, the offer of an
+account when the Service lists one. Offers of schemas the client does not
+read are passed over.
 
 `at` takes an origin alone, a scheme, a host and a port, and refuses a url
 with a path. It takes `https://`, or `http://` to the client's own
@@ -76,11 +77,11 @@ follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
 After first contact the service is its root. `of` gives the latest
-Service of a root that the store holds, whichever channel brought it, and
-reaches nothing:
+Service that the store holds of the root that signed a signed identity,
+whichever channel brought it, and reaches nothing:
 
 ```ts
-const service = await services.of(account.service.root.link);
+const service = await services.of(account.service);
 ```
 
 Another device that syncs the store goes back to the service that way, and
@@ -124,49 +125,54 @@ signature as the root, with the blobs of its signed identity. The offer and
 the signature schema are left out, since the service has them.
 
 The service reads the signature at the bundle's root with
-`signatures.read`, by the versions it knows, refuses it unless it is over
-the offer, opens an account
-for the root of its identity, and answers with its signature over an
-acknowledgement of the bundle's root.
-`at` is when it received that. The answer is a bundle: the service's
-signature as the root, with the acknowledgement, the acceptance, the offer
-and all they lead to.
+`signatures.read`, by the people it knows, refuses it unless it is over
+the offer, opens an account for the root of its identity unless the root
+has one, and answers with its signature over an acknowledgement of the
+bundle's root. `at` is when it received that. The answer is a bundle: the
+service's signature as the root, with the acknowledgement, the acceptance,
+the offer and all they lead to.
 
 | Status | Meaning |
 |---|---|
-| 201 | the account opened; the answer is its acknowledgement |
-| 200 | the identity's root had an account; the answer is that account's acknowledgement |
+| 201 | the account opened; the answer is the acknowledgement of this acceptance |
+| 200 | the identity's root had an account; the answer is the acknowledgement of this acceptance |
 | 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that the current version of its identity lists |
 | 413 | the body is over 64 KiB |
 
-A root has one account at a service. When an acceptance comes again, or
-an identity of the same root accepts again by another device or another
-identity, the service answers with the acknowledgement it sent when the
-account opened, as long as the acceptance is a signature over the offer for
-an identity of that root. That acknowledgement links to the first
-acceptance, so a second device gets the first device's signature and signed
-identity with it. The client
-reads that acceptance, and refuses an acknowledgement that is signed by
-another root than the service's or that is of another root's account.
+A root has one account at a service. When an identity of a root that has
+an account accepts again, by another device or another identity, the
+service answers 200 with an acknowledgement of that acceptance. When the
+same acceptance comes again, and the store holds an acknowledgement of it,
+the service answers with that one. Requests of one acceptance that arrive
+together, as when a client tries again before it hears back, can each
+sign an acknowledgement of it, and each answer acknowledges that
+acceptance. Of more than one, the service answers with the one whose
+signature has the least link, compared as ASCII strings, so services that
+share a store answer alike. Either way a device gets an acknowledgement of
+its own acceptance. The client refuses an
+acknowledgement that is signed by another root than the service's or that
+acknowledges another acceptance than the one it sent.
 
-A wallet takes a device out by signing a later version of its identity
-that does not list it. The service knows the versions that the acceptances
-it acknowledged carry, and refuses an acceptance by an agent that the
-current version does not list: the later of the latest it knows and the
-one the acceptance carries. It judges that before it looks for the root's
-account, so a removed device gets no acknowledgement even when the wallet
-has an account. An acceptance that carries a version the service does not
-know is acknowledged even when the root has an account, though the service
-answers with the account's acknowledgement, so the version counts from
-then on. Say the wallet's first version lists a laptop and its second only
-a phone: once the phone has accepted by the second, the laptop's acceptance
-by the first is refused, whichever of them opened the account. Two
-acceptances that open one account at once are both acknowledged, and the
-account keeps one of the two acknowledgements, which answers both.
+The service knows people by what it gave out: the versions that signed its
+Services and its acknowledgements, and those that the acceptances it
+acknowledged carry. Each acceptance it takes is acknowledged, so the
+version it carries counts from then on. A wallet takes a device out by
+signing a later version of its identity that does not list it, and the
+service refuses an acceptance by an agent that the current version does
+not list: the later of the latest it knows and the one the acceptance
+carries. It judges that first, so a removed device is refused even when the
+wallet has an account, and even for an acceptance that the service
+acknowledged before. Say the wallet's first version lists a laptop and its
+second only a phone: once the phone has accepted by the second, the
+laptop's acceptance by the first is refused, whichever of them opened the
+account. What a removed key signed stops counting for a reader that knows
+of the later version; what has to keep counting is signed again by a key
+that the current version lists. Two acceptances that open one account at
+once are both acknowledged, and one of them is answered 201, the other 200.
 
 The service signed the offer and the acknowledgement, and the identity
-signed the offer, so together they show anyone that this service opened an
-account for this identity.
+signed the offer, so together they show anyone that this service took this
+identity's acceptance of its offer.
 
 ### What the client keeps
 
@@ -178,9 +184,26 @@ services the identity has accounts at, by their roots, and where they
 are, without asking them. When the service refuses, or its answer is
 refused, `accept` writes nothing.
 
-`accept` gives the `Account`: the identity whose account it is, the
-service's identity, `at`, and the link of the service's signature over the
-acknowledgement.
+The client knows people as the service does, from the same records in its
+store: the versions that signed the Services and the acknowledgements, and
+those that the acknowledged acceptances carry. `at`, `of` and `accept` read
+the service's signatures by them, so a Service, an offer or an
+acknowledgement signed by a key that a later version of the service's
+identity does not list is refused once the store knows that version.
+
+A Service vouches for the offers it lists by the version that signed it,
+which the store knows once it keeps the Service. So an offer is read by
+the later of that version and the latest the store knows, not by the
+version its own signature carries, and `at` refuses a Service whose
+offers `of` would refuse once the store keeps it. A service that signs a
+Service by a version that does not list the key that signed an offer
+signs the offer again by a key that the version lists. The offer stays
+the same object, so its id and the acceptances of it stay as they were.
+
+`accept` gives the `Account`: the actor's signed identity, whose root the
+account is of, the service's signed identity that signed the
+acknowledgement, `at`, when the service received this acceptance, and the
+link of the service's signature over the acknowledgement.
 
 ## The service
 
@@ -231,9 +254,11 @@ the greater link.
 
 `accounts` holds one row for each root: the link of the root of an
 identity, and the link of the service's signature over the acknowledgement
-of its account. Its `add` keeps a row only for a root without one, in one
-step, so two acceptances of one root that arrive together open one
-account. `MemoryAccounts` keeps the rows in memory.
+of the acceptance that opened its account. Its `add` keeps a row only for a
+root without one, in one step, so two acceptances of one root that arrive
+together open one account, and the service answers 201 to the acceptance
+whose row was kept and 200 to any other. `MemoryAccounts` keeps the rows in
+memory.
 
 `fetch` takes a `Request` and gives a `Response`, as a fetch handler does.
 It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and

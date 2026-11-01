@@ -82,9 +82,10 @@ export const accountOfferSchema: JsonSchema = {
 export type AccountOfferData = { readonly identity: JsonLink<KeyObject> };
 
 /**
- * What a service signs once it opens an account: `accepted` is the link of
- * the signature that accepted its offer, and `at` when the service received
- * it, in milliseconds since the Unix epoch by the service's clock.
+ * What a service signs to acknowledge an acceptance of its offer: `accepted`
+ * is the link of the signature that accepted its offer, and `at` when the
+ * service received it, in milliseconds since the Unix epoch by the service's
+ * clock.
  */
 export const acknowledgementSchema: JsonSchema = {
   $schema: DRAFT_2020_12,

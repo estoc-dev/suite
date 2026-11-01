@@ -22,17 +22,16 @@ import {
 
 /**
  * The schema of an Identity, the identity of a key on its own, whatever the
- * scheme of the key. It holds its root and nothing else, so each key has
- * one, with one link, and its root alone signs for it. A signature for it is
- * the root's signature.
+ * scheme of the key. It holds its root and `at`, and its root alone signs
+ * for it. A signature for it is the root's signature.
  */
 export const identitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
   title: "Identity",
   "x-implements": { $link: identityInterface.link },
   type: "object",
-  properties: { root: linkSchema },
-  required: ["root"],
+  properties: { root: linkSchema, at: { type: "integer", minimum: 0 } },
+  required: ["root", "at"],
   additionalProperties: false,
 };
 
@@ -46,9 +45,9 @@ export class Identities implements IdentityImplementation {
     this.#keys = keys;
   }
 
-  encode(root: Key): IdentityObject {
+  encode(root: Key, at: number): IdentityObject {
     const key = this.#keys.encode(root);
-    return identityOf(encodeObject(this.schema, { root: { $link: key.link } }), key);
+    return identityOf(encodeObject(this.schema, { root: { $link: key.link }, at }), key);
   }
 
   async read(object: EncodedObject<Json, IdentityData>, reader: Reader): Promise<IdentityObject> {

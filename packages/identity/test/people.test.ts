@@ -30,46 +30,45 @@ describe("a person", () => {
   const wallet = signer(eip191);
 
   it("is the root of the signed identity they are known by", async () => {
-    const published = await publish(wallet);
+    const published = await publish(wallet, 1_000);
     expect(knowing().of(published).root).toBe(published.identity.root);
   });
 
   it("has the versions of their root the reader knows and the one in hand, in order, each once", async () => {
-    const first = await delegate(wallet, [key(ed25519, 2)], 1_000);
-    const second = await delegate(wallet, [key(ed25519, 3)], 2_000);
-    const third = await delegate(wallet, [key(ed25519, 4)], 3_000);
+    const first = await publish(wallet, 1_000);
+    const second = await delegate(wallet, [key(ed25519, 2)], 2_000);
+    const third = await delegate(wallet, [key(ed25519, 3)], 3_000);
     const other = await delegate(signer(ed25519, 9), [key(ed25519, 2)], 1_500);
     const people = knowing(third, first, other);
     expect(linksOf(await people.of(second).versions())).toEqual(linksOf([first, second, third]));
     expect(linksOf(await people.of(first).versions())).toEqual(linksOf([first, third]));
   });
 
-  it("has as current the latest version the reader knows, when known by their Identity too", async () => {
-    const version = await delegate(wallet, [key(ed25519, 2)], 1_000);
-    const person = knowing(version).of(await publish(wallet));
-    expect(linksOf(await person.versions())).toEqual([version.link]);
-    expect((await person.current()).link).toBe(version.link);
+  it("has as current the latest version the reader knows, when the one in hand is earlier", async () => {
+    const published = await publish(wallet, 1_000);
+    const later = await delegate(wallet, [key(ed25519, 2)], 2_000);
+    expect((await knowing(later).of(published).current()).link).toBe(later.link);
   });
 
   it("has as current the version in hand, when it is later than the reader knows", async () => {
     const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
-    const later = await delegate(wallet, [key(ed25519, 3)], 2_000);
+    const later = await publish(wallet, 2_000);
     expect((await knowing(earlier).of(later).current()).link).toBe(later.link);
   });
 
-  it("has as current their Identity in hand, and no versions, when the reader knows none", async () => {
-    const published = await publish(wallet);
-    const person = knowing(await delegate(signer(ed25519, 9), [key(ed25519, 2)], 1_000)).of(published);
-    expect(await person.versions()).toEqual([]);
+  it("has the version in hand alone, when the reader knows none of their root", async () => {
+    const published = await publish(wallet, 1_000);
+    const person = knowing(await delegate(signer(ed25519, 9), [key(ed25519, 2)], 2_000)).of(published);
+    expect(linksOf(await person.versions())).toEqual([published.link]);
     expect((await person.current()).link).toBe(published.link);
   });
 
   it("signed a signature made for any identity of their root, and no other", async () => {
     const laptop = signer(ed25519, 2);
-    const [published, version] = [await publish(wallet), await delegate(wallet, [laptop.key], 1_000)];
+    const [published, version] = [await publish(wallet, 1_000), await delegate(wallet, [laptop.key], 2_000)];
     const person = knowing().of(published);
     expect(person.signed(await signatures.actor(wallet, published).sign(hello))).toBe(true);
     expect(person.signed(await signatures.actor(laptop, version).sign(hello))).toBe(true);
-    expect(person.signed(await signatures.actor(laptop, await publish(laptop)).sign(hello))).toBe(false);
+    expect(person.signed(await signatures.actor(laptop, await publish(laptop, 1_000)).sign(hello))).toBe(false);
   });
 });

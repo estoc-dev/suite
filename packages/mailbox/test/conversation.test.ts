@@ -98,7 +98,7 @@ async function chat(faults: Faults = {}) {
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
-    const actor = signatures.actor(signer, await publish(signer));
+    const actor = signatures.actor(signer, await publish(signer, 0));
     const store = new Store(json, new MemoryBackend());
     return { name, actor, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
   };

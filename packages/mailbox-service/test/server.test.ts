@@ -13,7 +13,9 @@ import {
   memoryService,
   memoryStore,
   offerSchema,
+  serviceActor,
   serviceIdentity,
+  serviceRoot,
   serviceSchemaRead,
   serviceSigner,
   signatures,
@@ -84,15 +86,15 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     const { signature, data, offered, offer, accept } = await rootOf(service);
-    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
       offers: [{ offer: { $link: offered.link }, accept }],
     });
     expect(accept).toBe(offer.link);
-    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity.link);
-    expect(offer.data).toEqual({ identity: { $link: serviceIdentity.root.link } });
+    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
+    expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
@@ -102,11 +104,11 @@ describe("a mailbox service", () => {
     const response = await post(service, accept, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
-    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
     const read = await signatures.read(accepted.signature.link, bundle, noVersions);
     expect(read.object).toBe(offer.link);
-    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key));
+    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
   });
 
   it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {
@@ -159,7 +161,7 @@ describe("a mailbox service", () => {
     const opened = await mine(store);
     const response = await accepting(service, await acceptedBy(device, first, offer));
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/is not an agent of the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current version/);
     expect(await mine(store)).toEqual(opened);
   });
 
@@ -237,8 +239,8 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.root.link } });
-    const asService = await actorOf(serviceSigner);
+    const dropped = encodeObject(schema, { identity: { $link: serviceRoot.link } });
+    const asService = await serviceActor(3_000);
     const offered = await asService.sign(dropped);
     const earlier = encodeObject(serviceSchemaRead, {
       origin: "https://mail.example",

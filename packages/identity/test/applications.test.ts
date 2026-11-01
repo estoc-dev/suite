@@ -37,7 +37,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by)).sign(object);
+  signatures.actor(by, await publish(by, 0)).sign(object);
 
 /**
  * What an application holds: blobs by link, the objects of the identities
@@ -92,7 +92,7 @@ describe("a login", () => {
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
-    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.key));
+    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.key, 0));
   });
 
   it("for another nonce or audience logs no one in", async () => {
@@ -107,7 +107,7 @@ describe("a login", () => {
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
     const identity = await loggedIn("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
-    expect(identity?.link).not.toBe(identities.encode(user.key).link);
+    expect(identity?.link).not.toBe(identities.encode(user.key, 0).link);
     expect(identity?.root.link).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.root.link);
   });
 });
@@ -198,7 +198,7 @@ describe("a sale", () => {
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
     const witnessed = await sign(terms, witness);
     const received = receive([...(await signedBy([terms, buyer])), witnessed]);
-    expect(await signersOf(terms.link, received)).toContainEqual(identities.encode(witness.key));
+    expect(await signersOf(terms.link, received)).toContainEqual(identities.encode(witness.key, 0));
     expect(await saleInForce(terms.link, received)).toBeUndefined();
   });
 });

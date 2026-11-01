@@ -38,7 +38,7 @@ const { keys, identities, signatures, publish } = await loadIdentity(defaultVali
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
-  const signature = await signatures.actor(by, await publish(by)).sign(object);
+  const signature = await signatures.actor(by, await publish(by, 0)).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
@@ -106,8 +106,8 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passed.link).toBe(sent.link);
-    expect(await readChat(passed, identities.encode(carol.key))).toEqual({
-      author: identities.encode(alice.key),
+    expect(await readChat(passed, identities.encode(carol.key, 0))).toEqual({
+      author: identities.encode(alice.key, 0),
       text: "lunch at noon?",
       forReader: undefined,
     });
@@ -116,8 +116,8 @@ describe("a chat line", () => {
   it("written to Bob shows at Carol's that it is not for her", async () => {
     const line = encodeObject(chat, { to: { $link: keys.encode(bob.key).link }, text: "lunch at noon?" });
     const { received, passed } = await passOn(line);
-    expect((await readChat(received, identities.encode(bob.key))).forReader).toBe(true);
-    expect((await readChat(passed, identities.encode(carol.key))).forReader).toBe(false);
+    expect((await readChat(received, identities.encode(bob.key, 0))).forReader).toBe(true);
+    expect((await readChat(passed, identities.encode(carol.key, 0))).forReader).toBe(false);
   });
 });
 
@@ -166,7 +166,7 @@ describe("a one-time invitation", () => {
     const { answer, letIn } = await invite();
     await answer(dave);
     await answer(erin);
-    expect(await letIn()).toEqual([identities.encode(dave.key)]);
+    expect(await letIn()).toEqual([identities.encode(dave.key, 0)]);
     await answer(erin);
     expect(await letIn()).toEqual([]);
   });

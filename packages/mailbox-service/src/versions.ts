@@ -6,7 +6,7 @@ import type { AcknowledgementData } from "./schemas.ts";
 export type KnownVersions = Index<Json, Version, SignatureData>;
 
 /**
- * The versions of Delegated Identities that the acceptances the service
+ * The versions of identities that the acceptances the service
  * acknowledged carry, from its signatures over the acknowledgements written
  * as mine. A version stands on its root's signature alone, and each
  * acceptance was judged when its account opened, so it is not judged again.
@@ -25,8 +25,7 @@ export function knownVersions(
         decodeObject(bytes, acknowledgement).data.accepted.$link,
         signatures.schema,
       );
-      const version = versions.of(await signedIdentities.read(acceptance.data.signedIdentity.$link, reader));
-      if (version !== undefined) yield version;
+      yield versions.of(await signedIdentities.read(acceptance.data.signedIdentity.$link, reader));
     },
   };
 }

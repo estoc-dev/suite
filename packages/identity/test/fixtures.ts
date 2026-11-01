@@ -1,8 +1,8 @@
 import type { Link } from "@estoc/object";
 import {
-  type DelegatedVersions,
   ed25519,
   eip191,
+  type IdentityVersions,
   type KeyObject,
   type Scheme,
   type SignedIdentityObject,
@@ -13,8 +13,8 @@ import {
 export const schemes: readonly Scheme[] = [ed25519, eip191, solanaOffchain];
 
 /** The rows of the versions `signedIdentities` are, in the order of their keys, as an index of a store gives them. */
-export function rowsOf(versions: DelegatedVersions, ...signedIdentities: readonly SignedIdentityObject[]) {
-  const rows = signedIdentities.map((signedIdentity) => versions.of(signedIdentity)).filter((row) => row !== undefined);
+export function rowsOf(versions: IdentityVersions, ...signedIdentities: readonly SignedIdentityObject[]) {
+  const rows = signedIdentities.map((signedIdentity) => versions.of(signedIdentity));
   rows.sort(
     ([, at, link], [, otherAt, otherLink]) => at - otherAt || (link < otherLink ? -1 : link > otherLink ? 1 : 0),
   );

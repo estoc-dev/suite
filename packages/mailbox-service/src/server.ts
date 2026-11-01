@@ -1,8 +1,8 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
   type Actor,
-  type DelegatedVersions,
   type IdentityKit,
+  type IdentityVersions,
   type KeyObject,
   loadIdentity,
   noVersions,
@@ -103,7 +103,7 @@ class MailboxService {
   readonly #offer: EncodedObject<Json, AccountOfferData>;
   readonly #locations: Locations;
   readonly #versions: KnownVersions;
-  readonly #delegatedVersions: DelegatedVersions;
+  readonly #identityVersions: IdentityVersions;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #store: Store;
@@ -121,7 +121,7 @@ class MailboxService {
     this.#offer = offer;
     this.#locations = locations;
     this.#versions = knownVersions(kit, schemas.acknowledgement);
-    this.#delegatedVersions = kit.versions;
+    this.#identityVersions = kit.versions;
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#store = store;
@@ -164,7 +164,7 @@ class MailboxService {
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const offer = this.#offer;
-    const versions = this.#delegatedVersions.known(await scan(this.#store, this.#versions), this.#store);
+    const versions = this.#identityVersions.known(await scan(this.#store, this.#versions), this.#store);
     let accepted: Bundle;
     let acceptance: Signature;
     try {
@@ -262,13 +262,14 @@ export async function loadMailboxService(
     (await servicesOf(store, index, root.link)).map((link) => signatures.read(link, store, noVersions)),
   );
   const [latest] = signed;
-  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer)));
+  const at = clock();
+  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, at)));
   const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signature = (await signedIn(services, offer.link, signatures, store)) ?? (await actor.sign(offer));
   const next: ServiceData = {
     origin,
-    at: clock(),
+    at,
     offers: [{ offer: { $link: signature.link }, accept: offer.link }],
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {

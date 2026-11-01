@@ -52,7 +52,7 @@ const byLink = (...identities: SignedIdentityObject[]) =>
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const knowing = (...signed: SignedIdentityObject[]) => versions.known(rowsOf(versions, ...signed), byLink(...signed));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by)).sign(object);
+  signatures.actor(by, await publish(by, 0)).sign(object);
 
 const note: Schema<Json, { readonly text: string }> = await encodeSchema(
   {
@@ -72,7 +72,7 @@ describe("a signature", () => {
     const signature = await sign(hello, by);
     const read = await verified(signature.bytes, identityOf(signature));
     expect(read.signedIdentity).toEqual(signature.signedIdentity);
-    expect(read.signedIdentity.identity).toEqual(identities.encode(by.key));
+    expect(read.signedIdentity.identity).toEqual(identities.encode(by.key, 0));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -118,11 +118,11 @@ describe("a signature", () => {
     ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     [
       "an identity written in place of the link to its signed identity",
-      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer(ed25519).key)) }),
+      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer(ed25519).key, 0)) }),
     ],
     [
       "its identity in place of its signed identity",
-      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer(ed25519).key).link } }),
+      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer(ed25519).key, 0).link } }),
     ],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer(ed25519));
@@ -220,7 +220,7 @@ describe("a signature by an agent", () => {
     const second = await delegate(wallet, [phone.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
     await expect(verified(signature.bytes, identityOf(signature), knowing(first, second))).rejects.toThrow(
-      /is not an agent of the current version/,
+      /does not sign for the current version/,
     );
   });
 
@@ -252,11 +252,34 @@ describe("a signature by an agent", () => {
 });
 
 describe("a signature by a root through its Identity", () => {
-  it("counts whatever versions of its Delegated Identity the reader knows", async () => {
-    const wallet = signer(eip191);
-    const latest = await delegate(wallet, [key(ed25519, 2)], 1_000);
-    const signature = await sign(hello, wallet);
-    expect((await verified(signature.bytes, identityOf(signature), knowing(latest))).link).toBe(signature.link);
+  const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+
+  it("is refused once the reader knows a later version that does not list the root", async () => {
+    const published = await publish(wallet, 1_000);
+    const later = await delegate(wallet, [laptop.key], 2_000);
+    const signature = await signatures.actor(wallet, published).sign(hello);
+    await expect(verified(signature.bytes, identityOf(signature), knowing(published, later))).rejects.toThrow(
+      /does not sign for the current version/,
+    );
+  });
+
+  it("counts when the later version the reader knows lists the root", async () => {
+    const published = await publish(wallet, 1_000);
+    const later = await delegate(wallet, [laptop.key, wallet.key], 2_000);
+    const signature = await signatures.actor(wallet, published).sign(hello);
+    expect((await verified(signature.bytes, identityOf(signature), knowing(later))).link).toBe(signature.link);
+  });
+});
+
+describe("a signature by an agent of a version before the root's Identity", () => {
+  it("is refused once the reader knows the Identity", async () => {
+    const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+    const earlier = await delegate(wallet, [laptop.key], 1_000);
+    const published = await publish(wallet, 2_000);
+    const signature = await signatures.actor(laptop, earlier).sign(hello);
+    await expect(verified(signature.bytes, identityOf(signature), knowing(published))).rejects.toThrow(
+      /does not sign for the current version/,
+    );
   });
 });
 

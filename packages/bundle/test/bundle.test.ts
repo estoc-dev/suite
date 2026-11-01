@@ -38,7 +38,7 @@ const links = await encodeSchema(
 );
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const asAlice = signatures.actor(alice, await publish(alice));
+const asAlice = signatures.actor(alice, await publish(alice, 0));
 const signature = await asAlice.sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
@@ -96,7 +96,7 @@ describe("a bundle", () => {
     expect(bundle.link).toBe(signature.link);
     const signed = await signatures.read(bundle.link, bundle, noVersions);
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noVersions)).toEqual(signed);
-    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key));
+    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 

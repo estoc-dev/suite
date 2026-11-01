@@ -24,4 +24,4 @@ export {
 } from "./signed-identity.ts";
 export { type Signer, SoftwareSigner } from "./signer.ts";
 export { signingText } from "./signing-text.ts";
-export type { DelegatedVersions, Version } from "./versions.ts";
+export type { IdentityVersions, Version } from "./versions.ts";

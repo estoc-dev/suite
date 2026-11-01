@@ -13,7 +13,10 @@ import {
   memoryService,
   memoryStore,
   offerSchema,
+  publish,
+  serviceActor,
   serviceIdentity,
+  serviceRoot,
   serviceSchemaRead,
   serviceSigner,
   signatures,
@@ -71,6 +74,24 @@ async function acceptedBy(agent: Signer, version: SignedIdentityObject, offer: {
   return packBundle(signature, signature.signedIdentity.blobs);
 }
 
+/** A signer as `signer` that, while `holding`, holds each signature back until it is released, the first asked first. */
+function heldSigner(signer: Signer) {
+  const signing: (() => void)[] = [];
+  const held = {
+    holding: false,
+    signing,
+    signer: {
+      key: signer.key,
+      async sign(digest: Uint8Array, signedIdentity?: Uint8Array) {
+        if (held.holding) await new Promise<void>((release) => signing.push(release));
+        return signer.sign(digest, signedIdentity);
+      },
+    },
+    release: () => signing.shift()?.(),
+  };
+  return held;
+}
+
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
   const signature = await signatures.read(bundle.link, bundle, noVersions);
@@ -84,15 +105,15 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     const { signature, data, offered, offer, accept } = await rootOf(service);
-    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
       offers: [{ offer: { $link: offered.link }, accept }],
     });
     expect(accept).toBe(offer.link);
-    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity.link);
-    expect(offer.data).toEqual({ identity: { $link: serviceIdentity.root.link } });
+    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
+    expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
@@ -102,11 +123,11 @@ describe("a mailbox service", () => {
     const response = await post(service, accept, accepted.zip);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
-    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ accepted: { $link: accepted.signature.link }, at: 5_001 });
     const read = await signatures.read(accepted.signature.link, bundle, noVersions);
     expect(read.object).toBe(offer.link);
-    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key));
+    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
   });
 
   it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {
@@ -159,7 +180,7 @@ describe("a mailbox service", () => {
     const opened = await mine(store);
     const response = await accepting(service, await acceptedBy(device, first, offer));
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/is not an agent of the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current version/);
     expect(await mine(store)).toEqual(opened);
   });
 
@@ -173,6 +194,50 @@ describe("a mailbox service", () => {
     const again = await accepting(service, await acceptedBy(phone, second, offer));
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("answers 400 to an agent that a later version removed, though the agent opened the account before it came", async () => {
+    const { service, store } = await memoryService();
+    const { offer } = await rootOf(service);
+    const removed = await acceptedBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    expect((await accepting(service, removed)).status).toBe(201);
+    const second = await delegate(wallet, [phone.key], 2_000);
+    expect((await accepting(service, await acceptedBy(phone, second, offer))).status).toBe(200);
+    expect((await accepting(service, removed)).status).toBe(400);
+    const { service: again } = await memoryService({ store });
+    expect((await accepting(again, removed)).status).toBe(400);
+  });
+
+  it("does not acknowledge an already known version again", async () => {
+    const { service, store } = await memoryService();
+    const { offer } = await rootOf(service);
+    await accepting(service, await acceptedBy(device, await delegate(wallet, [device.key, phone.key], 1_000), offer));
+    const opened = await mine(store);
+    const second = await delegate(wallet, [device.key, phone.key], 2_000);
+    await accepting(service, await acceptedBy(phone, second, offer));
+    await accepting(service, await acceptedBy(device, second, offer));
+    expect(await mine(store)).toHaveLength(opened.length + 1);
+  });
+
+  it("answers two acceptances that open one account at once alike, and knows the versions of both", async () => {
+    const held = heldSigner(serviceSigner);
+    const { service } = await memoryService({ by: held.signer });
+    const { offer } = await rootOf(service);
+    const earlier = await acceptedBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    const later = await acceptedBy(wallet, await publish(wallet, 2_000), offer);
+    held.holding = true;
+    const opening = accepting(service, earlier);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
+    const racing = accepting(service, later);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
+    held.holding = false;
+    held.release();
+    const opened = await opening;
+    held.release();
+    const answered = await racing;
+    expect([opened.status, answered.status]).toEqual([201, 200]);
+    expect(new Uint8Array(await answered.arrayBuffer())).toEqual(new Uint8Array(await opened.arrayBuffer()));
+    expect((await accepting(service, earlier)).status).toBe(400);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
@@ -237,8 +302,8 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const dropped = encodeObject(schema, { identity: { $link: serviceIdentity.root.link } });
-    const asService = await actorOf(serviceSigner);
+    const dropped = encodeObject(schema, { identity: { $link: serviceRoot.link } });
+    const asService = await serviceActor(3_000);
     const offered = await asService.sign(dropped);
     const earlier = encodeObject(serviceSchemaRead, {
       origin: "https://mail.example",

@@ -30,12 +30,6 @@ import {
  * signature would verify under two indexes, as two signatures with two
  * links. The root signs for it only if it lists itself, and with no agents
  * no one signs for it.
- *
- * `at` is when the root signs it, in milliseconds since the Unix epoch by
- * the root's clock. Each Delegated Identity a root signs is a version, and
- * of a root's versions the current one is that with the greatest `at`, and
- * of those with the same `at`, that whose signed identity has the greater
- * link.
  */
 export const delegatedIdentitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -51,10 +45,7 @@ export const delegatedIdentitySchema: JsonSchema = {
   additionalProperties: false,
 };
 
-export type DelegatedIdentityData = IdentityData & {
-  readonly agents: readonly JsonLink<KeyObject>[];
-  readonly at: number;
-};
+export type DelegatedIdentityData = IdentityData & { readonly agents: readonly JsonLink<KeyObject>[] };
 
 /** An identity written to `delegatedIdentitySchema`, with its agents in the order its root lists them. */
 export interface DelegatedIdentityObject extends IdentityObject {

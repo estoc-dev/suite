@@ -17,6 +17,7 @@ import {
   offerSchema,
   serve,
   serviceIdentity,
+  serviceRoot,
   serviceSchemaRead,
   serviceSigner,
   signatures,
@@ -31,7 +32,7 @@ const laptop = signer(ed25519, 3);
 const phone = signer(solanaOffchain, 4);
 const mallory = signer(ed25519, 6);
 
-const offer = encodeObject(offerSchema, { identity: { $link: serviceIdentity.root.link } });
+const offer = encodeObject(offerSchema, { identity: { $link: serviceRoot.link } });
 
 const agentOf = async (agent: Signer, root: Signer) => signatures.actor(agent, await delegate(root, [agent.key]));
 
@@ -111,12 +112,12 @@ describe("a service reached at its origin", () => {
     const { origin } = await running({ start: 2_000 });
     const { store, services } = await client();
     const service = await services.at(origin);
-    expect(service).toMatchObject({ identity: serviceIdentity, origin, at: 2_000 });
-    expect(service.account?.service).toEqual(serviceIdentity);
+    expect(service).toMatchObject({ identity: serviceIdentity(2_000), origin, at: 2_000 });
+    expect(service.account?.service).toEqual(serviceIdentity(2_000));
     expect(service.account?.link).toBe(offer.link);
     expect(await mine(store)).toEqual([service.link]);
     expect((await signatures.read(service.link, store, noVersions)).signedIdentity.identity.link).toBe(
-      serviceIdentity.link,
+      serviceIdentity(2_000).link,
     );
   });
 
@@ -154,7 +155,7 @@ describe("a service reached at its origin", () => {
 
   it("passes over an offer of a schema it does not read", async () => {
     const other = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const unread = encodeObject(other, { identity: { $link: serviceIdentity.root.link } });
+    const unread = encodeObject(other, { identity: { $link: serviceRoot.link } });
     const { origin } = await serving(
       async (_, origin) =>
         new Response(
@@ -177,7 +178,7 @@ describe("a service found by its root", () => {
     await services.at(moved.origin);
     await services.at(first.origin);
     await Promise.all([first.close(), moved.close()]);
-    expect(await services.of(serviceIdentity.root.link)).toMatchObject({ origin: moved.origin, at: 5_000 });
+    expect(await services.of(serviceRoot.link)).toMatchObject({ origin: moved.origin, at: 5_000 });
   });
 
   it("gives the offer of an account that the latest Service lists, taken at its origin", async () => {
@@ -187,7 +188,7 @@ describe("a service found by its root", () => {
     const moved = await running({ store: first.store, start: 5_000 });
     await services.at(moved.origin);
     await first.close();
-    const account = (await services.of(serviceIdentity.root.link))?.account;
+    const account = (await services.of(serviceRoot.link))?.account;
     assert.exists(account);
     expect((await account.accept(await actorOf(alice))).at).toBe(5_001);
   });
@@ -211,7 +212,7 @@ describe("a service found by its root", () => {
     for (const { object, signature } of [lesser, greater])
       await second.store.write({ mine: [signature], blobs: [object.bytes] });
     for (const { services } of [first, second]) {
-      expect(await services.of(serviceIdentity.root.link)).toMatchObject({
+      expect(await services.of(serviceRoot.link)).toMatchObject({
         origin: greater.object.data.origin,
         link: greater.signature.link,
       });
@@ -221,7 +222,7 @@ describe("a service found by its root", () => {
   it("is undefined for a root of which the store holds no Service", async () => {
     const { origin } = await running();
     const { services } = await client();
-    expect(await services.of(serviceIdentity.root.link)).toBeUndefined();
+    expect(await services.of(serviceRoot.link)).toBeUndefined();
     await services.at(origin);
     expect(await services.of(keys.encode(alice.key).link)).toBeUndefined();
   });
@@ -235,14 +236,14 @@ describe("an account offer", () => {
     assert.exists(service.account);
     const account = await service.account.accept(await actorOf(alice));
     expect(account).toEqual({
-      identity: identities.encode(alice.key),
-      service: serviceIdentity,
+      identity: identities.encode(alice.key, 0),
+      service: serviceIdentity(7_000),
       at: 7_001,
       link: account.link,
     });
     expect(await mine(store)).toEqual([service.link, account.link].sort());
     const kept = await signatures.read(account.link, store, noVersions);
-    expect(kept.signedIdentity.identity.link).toBe(serviceIdentity.link);
+    expect(kept.signedIdentity.identity.link).toBe(serviceIdentity(7_000).link);
     const { accepted } = (await readObject(store, kept.object, acknowledgementSchemaRead)).data;
     const read = await signatures.read(accepted.$link, store, noVersions);
     expect(read.object).toBe(offer.link);

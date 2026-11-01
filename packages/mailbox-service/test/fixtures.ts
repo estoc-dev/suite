@@ -18,8 +18,9 @@ export const signer = (scheme: Scheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(json, new MemoryBackend());
 
-export const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
-export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by));
+export const { keys, identities, signedIdentities, signatures, publish, delegate } =
+  await loadIdentity(defaultValidator);
+export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, 0));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
 export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(
@@ -28,7 +29,12 @@ export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = awai
 );
 
 export const serviceSigner = signer(ed25519, 9);
-export const serviceIdentity = identities.encode(serviceSigner.key);
+export const serviceRoot = keys.encode(serviceSigner.key);
+/** The Identity a service by `serviceSigner` signs when it first starts, at `start`. */
+export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, start);
+/** An actor for that Identity, which signs as the service does. */
+export const serviceActor = async (start: number) =>
+  signatures.actor(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a
@@ -58,14 +64,16 @@ export async function memoryService({
 }
 
 /**
- * The service's signatures over a Service like `service` at each of
- * `origins`, each with its Service, the greater link first.
+ * The signatures over a Service like `service` at each of `origins`, each
+ * with its Service, the greater link first, of a service that first started
+ * at 1000, as `memoryService` starts one unless it is given another start.
  */
 export async function signedAtOrigins(service: ServiceData, origins: readonly string[]) {
+  const actor = await serviceActor(1_000);
   const signed = await Promise.all(
     origins.map(async (origin) => {
       const object = encodeObject(serviceSchemaRead, { ...service, origin });
-      return { object, signature: await (await actorOf(serviceSigner)).sign(object) };
+      return { object, signature: await actor.sign(object) };
     }),
   );
   return signed.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));

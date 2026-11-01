@@ -13,7 +13,7 @@ import type { Signer } from "../signer.ts";
 /** What the objects of each identity schema read as: an identity with its root. */
 export const identityInterface: Interface = interfaceNamed("Identity");
 
-export type IdentityData = { readonly root: JsonLink<KeyObject> };
+export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: number };
 
 /**
  * Someone who signs, as others see them: an identity read from its object
@@ -25,6 +25,13 @@ export type IdentityData = { readonly root: JsonLink<KeyObject> };
  * names a signed identity of the identity it is made for. Which keys sign
  * for an identity, and how their signatures are laid out, is for its schema
  * to say.
+ *
+ * `at` is when the root signs it, in milliseconds since the Unix epoch by
+ * the root's clock. Each identity a root signs is a version, whatever schema
+ * it is written to, and of a root's versions the current one is that with
+ * the greatest `at`, and of those with the same `at`, that whose signed
+ * identity has the greater link. The current version says who signs for the
+ * root, the root itself included.
  *
  * `blobs` are what it takes to read the identity again: the bytes of its
  * object and of the keys it names, and of the schemas they are written to,

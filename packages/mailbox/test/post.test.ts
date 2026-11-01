@@ -15,7 +15,7 @@ const note = await encodeSchema(
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await publish(alice)).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice, 0)).sign(hello);
 const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 

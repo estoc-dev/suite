@@ -109,7 +109,7 @@ export class Signatures {
     const verified = this.#signatureOf(signature, signedIdentity);
     const current = await versions.current(signedIdentity);
     if (!this.#signedIdentities.signs(current, verified.key)) {
-      throw new Error(`${verified.key.link} is not an agent of the current version of ${current.identity.root.link}`);
+      throw new Error(`${verified.key.link} does not sign for the current version of ${current.identity.root.link}`);
     }
     return verified;
   }

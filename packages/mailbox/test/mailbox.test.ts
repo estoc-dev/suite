@@ -18,7 +18,7 @@ const note = await encodeSchema(
   defaultValidator,
 );
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await publish(alice)).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice, 0)).sign(hello);
 
 describe("a mailbox", () => {
   it("carries a bundle to the queue it names, sealed so that its key opens it", async () => {
@@ -30,7 +30,7 @@ describe("a mailbox", () => {
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
     expect((await signatures.read(bundle.link, bundle, noVersions)).signedIdentity.identity).toEqual(
-      identities.encode(alice.key),
+      identities.encode(alice.key, 0),
     );
   });
 

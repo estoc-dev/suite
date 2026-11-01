@@ -44,7 +44,7 @@ const { identities, signatures, publish } = await loadIdentity(defaultValidator)
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by)).sign(object);
+  signatures.actor(by, await publish(by, 0)).sign(object);
 
 const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
 // A record that a bundle was received, naming it by its root.
@@ -96,7 +96,7 @@ describe("a signed note", () => {
     const [record] = await readListed(bobStore, receivedSchema);
     assert.exists(record);
     const signed = await signatures.read(record.data.bundle.$link, bobStore, noVersions);
-    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key));
+    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
     expect((await readObject(bobStore, signed.object, noteSchema)).data.text).toBe("hello");
   });
 });

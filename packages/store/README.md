@@ -171,8 +171,10 @@ await notes.of("lunch");
 
 `view(store, view)` scans the store for the index and reads the rows with
 the store as the reader, so the rows and the objects they name come from
-one store. The value is of what the store held when it was viewed: what is
-written later is taken in when it is viewed again.
+one store. When `read` gives a promise, as it does when it works the value
+out from all the rows at once, `view` gives what the promise resolves to.
+The value is of what the store held when it was viewed: what is written
+later is taken in when it is viewed again.
 
 ## Backends
 

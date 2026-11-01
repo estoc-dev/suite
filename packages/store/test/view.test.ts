@@ -69,4 +69,18 @@ describe("the value of a view", () => {
     expect(await before.of("lunch")).toMatchObject({ text: "soup" });
     expect(await (await view(store, latest)).of("lunch")).toMatchObject({ text: "salad" });
   });
+
+  it("is what `read` resolves to, when it gives a promise", async () => {
+    const tags: View<Json, Row, Promise<Set<string>>, Note> = {
+      index: byTag,
+      async read(rows) {
+        const tags = new Set<string>();
+        for await (const [tag] of rows.range([])) tags.add(tag);
+        return tags;
+      },
+    };
+    const store = new Store(json, new MemoryBackend());
+    await write(store, { text: "soup", tags: ["lunch"], at: 1 }, { text: "salad", tags: ["lunch", "dinner"], at: 2 });
+    expect(await view(store, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
+  });
 });

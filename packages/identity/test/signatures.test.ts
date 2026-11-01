@@ -35,8 +35,12 @@ import {
 import { rowsOf, schemes } from "./fixtures.ts";
 
 const { identities, signatures, versions, publish, delegate } = await loadIdentity(defaultValidator);
-const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map(), versions = noVersions) =>
-  by.verify(decodeObject(bytes, by.schema), blobs, versions);
+const verifiedBy = async (
+  by: Signatures,
+  bytes: Uint8Array,
+  blobs: Reader = new Map(),
+  versions: Versions = noVersions,
+) => by.verify(decodeObject(bytes, by.schema), blobs, versions);
 const verified = (bytes: Uint8Array, blobs?: Reader, versions?: Versions) =>
   verifiedBy(signatures, bytes, blobs, versions);
 

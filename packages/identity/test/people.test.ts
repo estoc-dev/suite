@@ -1,7 +1,15 @@
 import { encodeObject, encodeSchema, type Json, linkOf, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { ed25519, eip191, loadIdentity, type Scheme, type SignedIdentityObject, SoftwareSigner } from "../src/index.ts";
+import {
+  ed25519,
+  eip191,
+  loadIdentity,
+  noVersions,
+  type Scheme,
+  type SignedIdentityObject,
+  SoftwareSigner,
+} from "../src/index.ts";
 import { rowsOf } from "./fixtures.ts";
 
 const { signatures, versions, publish, delegate } = await loadIdentity(defaultValidator);
@@ -63,12 +71,21 @@ describe("a person", () => {
     expect((await person.current()).link).toBe(published.link);
   });
 
-  it("signed a signature made for any identity of their root, and no other", async () => {
+  it("has the version in hand alone, when the reader knows no versions", async () => {
+    const published = await publish(wallet, 1_000);
+    const person = noVersions.of(published);
+    expect(person.root).toBe(published.identity.root);
+    expect(linksOf(await person.versions())).toEqual([published.link]);
+    expect((await person.current()).link).toBe(published.link);
+  });
+
+  it("signed a signature made for any identity of their root, and no other, whatever the reader knows", async () => {
     const laptop = signer(ed25519, 2);
     const [published, version] = [await publish(wallet, 1_000), await delegate(wallet, [laptop.key], 2_000)];
-    const person = knowing().of(published);
-    expect(person.signed(await signatures.actor(wallet, published).sign(hello))).toBe(true);
-    expect(person.signed(await signatures.actor(laptop, version).sign(hello))).toBe(true);
-    expect(person.signed(await signatures.actor(laptop, await publish(laptop, 1_000)).sign(hello))).toBe(false);
+    for (const person of [knowing().of(published), noVersions.of(published)]) {
+      expect(person.signed(await signatures.actor(wallet, published).sign(hello))).toBe(true);
+      expect(person.signed(await signatures.actor(laptop, version).sign(hello))).toBe(true);
+      expect(person.signed(await signatures.actor(laptop, await publish(laptop, 1_000)).sign(hello))).toBe(false);
+    }
   });
 });

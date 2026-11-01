@@ -1,6 +1,6 @@
 import type { Link, Reader } from "@estoc/object";
 import type { KeyObject } from "./key/interface.ts";
-import type { People, Person } from "./person.ts";
+import { type People, type Person, personOf } from "./person.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
@@ -35,8 +35,7 @@ export class IdentityVersions {
       compare(this.of(version), this.of(other));
     const of = (signedIdentity: SignedIdentityObject): Person => {
       const { root } = signedIdentity.identity;
-      return {
-        root,
+      return personOf(signedIdentity, {
         versions: async () => {
           const versions: SignedIdentityObject[] = [];
           for await (const [, , link] of rows.range([root.link])) versions.push(await read(link));
@@ -48,8 +47,7 @@ export class IdentityVersions {
           for await (const version of rows.range([root.link])) last = version;
           return last === undefined || compare(this.of(signedIdentity), last) >= 0 ? signedIdentity : read(last[2]);
         },
-        signed: (signature) => signature.signedIdentity.identity.root.link === root.link,
-      };
+      });
     };
     return { of, current: (signedIdentity) => of(signedIdentity).current() };
   }

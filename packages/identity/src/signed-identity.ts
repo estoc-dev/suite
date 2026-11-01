@@ -58,9 +58,6 @@ export interface Versions {
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
 }
 
-/** A reader that knows no versions, and so judges a signature by the version it carries alone. */
-export const noVersions: Versions = { current: async (signedIdentity) => signedIdentity };
-
 /**
  * Signed identities, with the identity schemas their identities are read
  * with. A signature is made by a signed identity, so what a signature asks of

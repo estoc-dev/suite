@@ -215,8 +215,8 @@ rows end with its current version. `versions.known` takes those rows and
 a `Reader`, and gives the `People` the reader knows, which are `Versions`
 too: their `current` gives the current version of a signed identity's
 identity, the later of the one given and the signed identity of its root's
-last row, read from the reader. `noVersions` is a reader that knows none,
-for which the current version is the one given.
+last row, read from the reader. `noVersions` are the people of a reader
+that knows none, for which the current version is the one given.
 
 ## People
 
@@ -257,6 +257,10 @@ const people = await view(store, { index: seen, read: (rows, reader) => versions
 const signature = await signatures.read(link, store, people);
 const author = people.of(signature.signedIdentity);
 ```
+
+A person of `noVersions` has the version in hand alone. A reader that
+keeps no versions, such as one that reads a bundle it was handed, takes
+its people from there and compares roots by `signed` all the same.
 
 ## Signatures
 

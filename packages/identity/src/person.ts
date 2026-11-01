@@ -33,3 +33,24 @@ export interface People extends Versions {
   /** The person whose root signed `signedIdentity`, which counts among their versions. */
   of(signedIdentity: SignedIdentityObject): Person;
 }
+
+/**
+ * The people of a reader that knows no versions: each has the version in
+ * hand alone, so a signature is judged by the version it carries.
+ */
+export const noVersions: People = {
+  of: (signedIdentity) =>
+    personOf(signedIdentity, { versions: async () => [signedIdentity], current: async () => signedIdentity }),
+  current: async (signedIdentity) => signedIdentity,
+};
+
+/** The person of `signedIdentity`'s root, whose versions, with the one in hand, `known` gives. */
+export function personOf(signedIdentity: SignedIdentityObject, known: Pick<Person, "versions" | "current">): Person {
+  const { root } = signedIdentity.identity;
+  return {
+    root,
+    versions: known.versions,
+    current: known.current,
+    signed: (signature) => signature.signedIdentity.identity.root.link === root.link,
+  };
+}

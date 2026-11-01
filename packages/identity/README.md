@@ -122,11 +122,12 @@ name the Identity interface in `x-implements`, the link of
 `identityInterface`, whose bytes are the UTF-8 text `Identity`, as the key
 schemas name the Key interface. Whichever schema it is written to, an
 identity reads as an `IdentityObject`, with its root as `root`, and that is
-all a reader that does not sign needs. Someone is their root: two
-identities are of the same someone when the links of their roots are the
-same, so a wallet's Identity and its Delegated Identities are all the
-wallet. An object that names someone names their root by that link, while
-a signature names a signed identity of the identity it is made for.
+all a reader that does not sign needs. Someone who signs is a person by
+their root, a wallet as much as a device or a service: two identities are
+of the same person when the links of their roots are the same, so a
+wallet's Identity and its Delegated Identities are all the wallet. An
+object that names someone names their root by that link, while a
+signature names a signed identity of the identity it is made for.
 
 - An Identity, written to `identitySchema`, holds its root and nothing
   else, so each key has one, with one link: the identity of a key on its
@@ -208,12 +209,55 @@ versions. An application keeps the rows of the versions it sees in an
 index of its own, such as one of `@estoc/store`, from the signed
 identities its own objects lead to. In the order of their keys, a root's
 rows end with its current version. `versions.known` takes those rows and
-a `Reader`, and gives `Versions`, whose `current` gives the current
-version of a signed identity's identity. For a Delegated Identity that is
-the later of the one given and the signed identity of its root's last row,
-read from the reader and refused unless it is a version of a Delegated
-Identity; an Identity is its own. `noVersions` is a reader that knows
-none, for which the current version is the one given.
+a `Reader`, and gives the `People` the reader knows, which are `Versions`
+too: their `current` gives the current version of a signed identity's
+identity. For a Delegated Identity that is the later of the one given and
+the signed identity of its root's last row, read from the reader and
+refused unless it is a version of a Delegated Identity; an Identity is its
+own. `noVersions` is a reader that knows none, for which the current
+version is the one given.
+
+## People
+
+A person is a root and the versions of its Delegated Identity that a
+reader has seen. `people.of` takes a signed identity in hand, such as that
+of a signature just read, and gives the `Person` of its root:
+
+- `root`, the root's key, as the signed identity holds it.
+- `versions()`, the versions of the root's Delegated Identity the reader
+  knows, with the one in hand when it is one, each once and in the order
+  of their rows. Each is read from the reader, signed by the root.
+- `current()`, the last of them, which says who signs for the person now,
+  or the signed identity in hand when there is none.
+- `signed(signature)`, whether a signature already read was made for an
+  identity of the root.
+
+The versions are those the reader has seen, in the order of the root's
+clock, and none of them names the one before, so one between two of them
+may be missing, and `current()` is the latest the reader knows, not the
+latest the root signed. Known by an Identity, a person's current version
+is still their latest Delegated Identity the reader knows, while
+`current` of `People` gives the Identity itself, as a root's signature
+through its Identity counts whatever the versions.
+
+A person is worked out from the rows when they are read and is not
+written: their root names them, but what they hold changes as the reader
+sees more. Two people are one when the links of their roots are. Two taken
+from different signed identities of a root differ only when the one in
+hand is later than the reader knows, which a signature carrying it counts
+as well.
+
+A person reads no signatures. What a signature is read from, and whether
+it is judged by the versions a reader knows or by `noVersions` alone, are
+for the caller to choose, so `signed` takes one already read. With
+`@estoc/store`, an application gives the index and `versions.known`
+reads its rows:
+
+```ts
+const people = await view(store, { index: seen, read: (rows, reader) => versions.known(rows, reader) });
+const signature = await signatures.read(link, store, people);
+const author = people.of(signature.signedIdentity);
+```
 
 ## Signatures
 

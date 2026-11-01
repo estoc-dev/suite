@@ -1,7 +1,8 @@
 import type { Link, Reader } from "@estoc/object";
 import type { DelegatedIdentities, DelegatedIdentityObject } from "./identity/delegated.ts";
 import type { KeyObject } from "./key/interface.ts";
-import type { SignedIdentities, SignedIdentityObject, Versions } from "./signed-identity.ts";
+import type { People, Person } from "./person.ts";
+import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
  * A version of a root's Delegated Identity, as a row: its root, its `at` and
@@ -11,7 +12,9 @@ import type { SignedIdentities, SignedIdentityObject, Versions } from "./signed-
  */
 export type Version = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
 
-/** The versions of Delegated Identities: the row each is, and the current one of a root among those a reader knows. */
+type Delegated = SignedIdentityObject<DelegatedIdentityObject>;
+
+/** The versions of Delegated Identities: the row each is, and the people a reader knows by those it has seen. */
 export class DelegatedVersions {
   readonly #signedIdentities: SignedIdentities;
   readonly #delegatedIdentities: DelegatedIdentities;
@@ -29,36 +32,52 @@ export class DelegatedVersions {
   }
 
   /**
-   * The versions a reader knows, from `rows`, the rows of its index of the
-   * versions it has seen, each as `of` gives it. The current version of a
-   * Delegated Identity is the later of the one given and the signed identity
-   * of its root's last row, read from `reader`, and refused unless it is a
-   * version of a Delegated Identity.
+   * The people a reader knows, from `rows`, the rows of its index of the
+   * versions it has seen, each as `of` gives it. A version a row names is
+   * read from `reader`, and refused unless it is a version of a Delegated
+   * Identity.
    */
-  known(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): Versions {
+  known(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
+    const read = async (link: Link<SignedIdentityObject>) => {
+      const version = await this.#signedIdentities.read(link, reader);
+      if (!this.#isDelegated(version)) throw new Error(`${version.link} is not a version of a Delegated Identity`);
+      return version;
+    };
+    const of = (signedIdentity: SignedIdentityObject): Person => {
+      const { root } = signedIdentity.identity;
+      const given = this.#isDelegated(signedIdentity) ? signedIdentity : undefined;
+      return {
+        root,
+        versions: async () => {
+          const versions: Delegated[] = [];
+          for await (const [, , link] of rows.range([root.link])) versions.push(await read(link));
+          if (given !== undefined && !versions.some(({ link }) => link === given.link)) versions.push(given);
+          return versions.sort(order);
+        },
+        current: async () => {
+          let last: Version | undefined;
+          for await (const version of rows.range([root.link])) last = version;
+          if (last === undefined) return signedIdentity;
+          const latest = await read(last[2]);
+          return given !== undefined && order(given, latest) > 0 ? given : latest;
+        },
+        signed: (signature) => signature.signedIdentity.identity.root.link === root.link,
+      };
+    };
     return {
-      current: async (signedIdentity) => {
-        if (!this.#isDelegated(signedIdentity)) return signedIdentity;
-        let last: Version | undefined;
-        for await (const version of rows.range([signedIdentity.identity.root.link])) last = version;
-        if (last === undefined) return signedIdentity;
-        const latest = await this.#signedIdentities.read(last[2], reader);
-        if (!this.#isDelegated(latest)) throw new Error(`${latest.link} is not a version of a Delegated Identity`);
-        return later(latest, signedIdentity) ? latest : signedIdentity;
-      },
+      of,
+      current: async (signedIdentity) =>
+        this.#isDelegated(signedIdentity) ? of(signedIdentity).current() : signedIdentity,
     };
   }
 
-  #isDelegated(signedIdentity: SignedIdentityObject): signedIdentity is SignedIdentityObject<DelegatedIdentityObject> {
+  #isDelegated(signedIdentity: SignedIdentityObject): signedIdentity is Delegated {
     return signedIdentity.identity.schema.link === this.#delegatedIdentities.schema.link;
   }
 }
 
-// In the order of the rows of their versions.
-function later(
-  version: SignedIdentityObject<DelegatedIdentityObject>,
-  than: SignedIdentityObject<DelegatedIdentityObject>,
-): boolean {
-  const [at, thanAt] = [version.identity.data.at, than.identity.data.at];
-  return at !== thanAt ? at > thanAt : version.link > than.link;
+// The order of the rows of their versions.
+function order(version: Delegated, other: Delegated): number {
+  const [at, otherAt] = [version.identity.data.at, other.identity.data.at];
+  return at !== otherAt ? at - otherAt : version.link < other.link ? -1 : version.link > other.link ? 1 : 0;
 }

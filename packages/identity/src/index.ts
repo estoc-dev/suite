@@ -12,6 +12,7 @@ export { type Key, type KeyData, type KeyObject, keyInterface, type Scheme, same
 export type { Keys } from "./key/keys.ts";
 export { solanaOffchain } from "./key/solana-offchain.ts";
 export { type IdentityKit, loadIdentity } from "./load.ts";
+export type { People, Person } from "./person.ts";
 export { type Actor, type Signature, type SignatureData, type Signatures, signatureSchema } from "./signature.ts";
 export {
   noVersions,

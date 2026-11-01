@@ -23,8 +23,10 @@ export function acknowledgements(
 }
 
 /**
- * The link of a signature that a store holds as mine over an
+ * The least link of the signatures that a store holds as mine over an
  * acknowledgement of `accepted`, or `undefined` when it holds none.
+ * Requests of one acceptance at once can each sign one, and the least is
+ * the one that every service sharing the store answers with.
  */
 export function acknowledgementOf(
   acknowledgements: Acknowledgements,

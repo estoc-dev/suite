@@ -199,6 +199,37 @@ describe("a mailbox service", () => {
     expect((await accepting(again, removed)).status).toBe(400);
   });
 
+  it("answers 400 to an agent whose body comes in only after a later version removed it, and signs nothing for it", async () => {
+    const { service, store } = await memoryService();
+    const { offer, accept } = await rootOf(service);
+    const removed = await acceptedBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    let reading = () => {};
+    const read = new Promise<void>((resolve) => (reading = resolve));
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const body = new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          reading();
+          await released;
+          controller.enqueue(removed);
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const sending = service.fetch(request(`/${accept}`, { method: "POST", body, duplex: "half" } as RequestInit));
+    await read;
+    const second = await delegate(wallet, [phone.key], 2_000);
+    expect((await accepting(service, await acceptedBy(phone, second, offer))).status).toBe(201);
+    const opened = await mine(store);
+    release();
+    const response = await sending;
+    expect(response.status).toBe(400);
+    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await mine(store)).toEqual(opened);
+  });
+
   it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and knows the versions of both", async () => {
     const held = heldSigner(serviceSigner);
     const { service } = await memoryService({ by: held.signer });
@@ -224,6 +255,31 @@ describe("a mailbox service", () => {
       expect(acknowledgement.data.accepted.$link).toBe((await unpackBundle(zip)).link);
     }
     expect((await accepting(service, earlier)).status).toBe(400);
+  });
+
+  it("answers one acceptance posted twice at once with 201 and 200, each acknowledging it, and later with the acknowledgement whose signature has the least link", async () => {
+    const held = heldSigner(serviceSigner);
+    const { service, store } = await memoryService({ by: held.signer });
+    const { signature: acceptance, zip } = await direct((await rootOf(service)).offer);
+    held.holding = true;
+    const opening = accepting(service, zip);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
+    const racing = accepting(service, zip);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
+    held.holding = false;
+    held.release();
+    const opened = await opening;
+    held.release();
+    const answered = await racing;
+    expect([opened.status, answered.status]).toEqual([201, 200]);
+    const answers = await Promise.all([opened, answered].map(acknowledgementIn));
+    for (const { acknowledgement } of answers) expect(acknowledgement.data.accepted.$link).toBe(acceptance.link);
+    const kept = await mine(store);
+    const again = await accepting(service, zip);
+    expect(again.status).toBe(200);
+    const [least] = answers.map(({ signature }) => signature.link).sort();
+    expect((await acknowledgementIn(again)).signature.link).toBe(least);
+    expect(await mine(store)).toEqual(kept);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([

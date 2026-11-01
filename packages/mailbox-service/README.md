@@ -139,12 +139,17 @@ the offer and all they lead to.
 | 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that the current version of its identity lists |
 | 413 | the body is over 64 KiB |
 
-A root has one account at a service, and the service acknowledges each
-acceptance once. When an identity of a root that has an account accepts
-again, by another device or another identity, the service answers 200 with
-an acknowledgement of that acceptance, and when the same acceptance comes
-again, with the acknowledgement it signed for it before. Either way a
-device gets an acknowledgement of its own acceptance. The client refuses an
+A root has one account at a service. When an identity of a root that has
+an account accepts again, by another device or another identity, the
+service answers 200 with an acknowledgement of that acceptance. When the
+same acceptance comes again, and the store holds an acknowledgement of it,
+the service answers with that one. Requests of one acceptance that arrive
+together, as when a client tries again before it hears back, can each
+sign an acknowledgement of it, and each answer acknowledges that
+acceptance. Of more than one, the service answers with the one whose
+signature has the least link, compared as ASCII strings, so services that
+share a store answer alike. Either way a device gets an acknowledgement of
+its own acceptance. The client refuses an
 acknowledgement that is signed by another root than the service's or that
 acknowledges another acceptance than the one it sent.
 
@@ -185,6 +190,15 @@ those that the acknowledged acceptances carry. `at`, `of` and `accept` read
 the service's signatures by them, so a Service, an offer or an
 acknowledgement signed by a key that a later version of the service's
 identity does not list is refused once the store knows that version.
+
+A Service vouches for the offers it lists by the version that signed it,
+which the store knows once it keeps the Service. So an offer is read by
+the later of that version and the latest the store knows, not by the
+version its own signature carries, and `at` refuses a Service whose
+offers `of` would refuse once the store keeps it. A service that signs a
+Service by a version that does not list the key that signed an offer
+signs the offer again by a key that the version lists. The offer stays
+the same object, so its id and the acceptances of it stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
 account is of, the service's signed identity that signed the

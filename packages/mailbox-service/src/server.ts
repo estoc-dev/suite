@@ -138,7 +138,7 @@ class MailboxService {
     if (!ID.test(id)) return answer(404);
     const people = await view(this.#store, this.#people);
     if (id === this.#offer.link && (await this.#lists(latest, id, people))) {
-      return answerTo(request, "POST", () => this.#open(request, people));
+      return answerTo(request, "POST", () => this.#open(request));
     }
     for (const link of earlier) if (await this.#lists(link, id, people)) return answer(410);
     return answer(404);
@@ -151,17 +151,19 @@ class MailboxService {
   }
 
   /**
-   * Acknowledges the signature over the offer that is posted, once for each
-   * acceptance, and opens an account for the root of its identity unless
-   * the root has one. Either way the answer is the acknowledgement of this
-   * acceptance. The signature is judged by the people the service knows, so
-   * an agent its root removed is refused even when the root has an account,
-   * and even for an acceptance that was acknowledged before.
+   * Acknowledges the signature over the offer that is posted, and opens an
+   * account for the root of its identity unless the root has one. Either way
+   * the answer is an acknowledgement of this acceptance, one that the store
+   * holds or a new one. The signature is judged by the people the service
+   * knows once the whole body has come in, however long the sender took to
+   * send it, so an agent its root removed is refused even when the root has
+   * an account, and even for an acceptance that was acknowledged before.
    */
-  async #open(request: Request, people: People): Promise<Response> {
+  async #open(request: Request): Promise<Response> {
     const zip = await readBody(request.body, REQUEST_LIMIT);
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
+    const people = await view(this.#store, this.#people);
     let accepted: Bundle;
     let acceptance: Signature;
     try {

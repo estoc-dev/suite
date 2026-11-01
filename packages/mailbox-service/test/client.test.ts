@@ -154,6 +154,23 @@ describe("a service reached at its origin", () => {
     await expect(services.at(origin)).rejects.toThrow(/lists an offer signed by another root/);
   });
 
+  it("refuses a Service that lists an offer by an agent that the version signing the Service does not list, until the offer is signed again", async () => {
+    const [removed, listed] = [signer(ed25519, 7), signer(ed25519, 8)];
+    const earlier = signatures.actor(removed, await delegate(serviceSigner, [removed.key], 1_000));
+    const later = signatures.actor(listed, await delegate(serviceSigner, [listed.key], 2_000));
+    let signedBy = earlier;
+    const { origin } = await serving(
+      async (_, origin) => new Response(await signedService(origin, [[offer, signedBy]], later)),
+    );
+    const { store, services } = await client();
+    await expect(services.at(origin)).rejects.toThrow(/does not sign for the current version/);
+    expect(await mine(store)).toEqual([]);
+    signedBy = later;
+    const service = await services.at(origin);
+    expect(service.account?.link).toBe(offer.link);
+    expect((await services.of(service.signedIdentity))?.link).toBe(service.link);
+  });
+
   it("refuses an account offer that names another root than that of the identity that signed it", async () => {
     const zip = async (origin: string) => {
       const actor = await actorOf(mallory);

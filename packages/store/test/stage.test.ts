@@ -28,7 +28,7 @@ async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise
 }
 
 describe("a staged batch", () => {
-  it("gives the blobs of the batch that what it writes as mine leads to, and those the store holds", async () => {
+  it("gives the blobs of the batch that its records lead to, and those the store holds", async () => {
     const store = newStore();
     const held = object({ text: "held" });
     await store.write({ records: [held], blobs: [anything.bytes] });
@@ -41,7 +41,7 @@ describe("a staged batch", () => {
     expect(await staged.get(anything.link)).toEqual(anything.bytes);
   });
 
-  it("gives none of the blobs of the batch that nothing it writes as mine leads to", async () => {
+  it("gives none of the blobs of the batch that none of its records lead to", async () => {
     const store = newStore();
     const stray = utf8("led to by nothing written");
     const carried = object({ text: "carried" });
@@ -53,7 +53,7 @@ describe("a staged batch", () => {
     expect(await staged.get(carried.link)).toBeUndefined();
   });
 
-  it("lists what the store lists and what the batch writes as mine, each once", async () => {
+  it("lists the records of the store and of the batch, each once", async () => {
     const store = newStore();
     const [first, second, third] = [object({ text: "first" }), object({ text: "second" }), object({ text: "third" })];
     await store.write({ records: [first], blobs: [anything.bytes] });

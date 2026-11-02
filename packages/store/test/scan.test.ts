@@ -20,7 +20,7 @@ async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
 const whole = <K extends Key>(rows: Rows<K>) => all(rows.range([]));
 
 describe("an index scanned from a store", () => {
-  it("holds the rows of what is written as mine, of the schemas it reads", async () => {
+  it("holds the rows of the store's records, of the schemas it reads", async () => {
     const store = new Store(json, new MemoryBackend());
     const unlisted = encodeObject(note, { keys: [["unlisted"]] });
     await store.write({

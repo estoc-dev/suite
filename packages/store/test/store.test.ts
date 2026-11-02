@@ -44,7 +44,7 @@ describe("a store", () => {
     await expect(store.get(kept.link)).rejects.toThrow(`another blob under ${kept.link}`);
   });
 
-  it("lists what is written as mine, and not the blobs written with it", async () => {
+  it("lists its records, and not the blobs written with them", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
@@ -53,7 +53,7 @@ describe("a store", () => {
     expect(await store.get(linkOf(image))).toEqual(image);
   });
 
-  it("keeps of the blobs written with what is mine only those it leads to", async () => {
+  it("keeps of the blobs written with its records only those they lead to", async () => {
     const store = newStore();
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
@@ -78,7 +78,7 @@ describe("a store", () => {
     expect(await listed(store)).toEqual([note.link]);
   });
 
-  it("lists an object that came in with another once it is written as mine", async () => {
+  it("lists an object that came in with another once it is written as a record", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const record = object({ received: { $link: note.link } });
@@ -88,7 +88,7 @@ describe("a store", () => {
     expect((await listed(store)).sort()).toEqual([record.link, note.link].sort());
   });
 
-  it("refuses a batch with something written as mine that is not an object, and keeps none of it", async () => {
+  it("refuses a batch with a record that is not an object, and keeps none of it", async () => {
     const store = newStore();
     const carried = object({ text: "carried" });
     const notCanonical = utf8(` ${new TextDecoder().decode(object({ text: "hello" }).bytes)}`);

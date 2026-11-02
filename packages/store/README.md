@@ -2,9 +2,10 @@
 
 A store keeps what a user writes and what comes to them, on one device. Its
 truth is objects: a record of each thing the user did, such as writing a
-note or receiving a bundle, and the blobs those lead to. Secrets belong in
-a keystore and the state of a running program in its own place, and neither
-is an object.
+note or receiving a bundle, and the blobs those lead to. What the user
+keeps to themselves, such as a secret key, is an object too, kept in a
+private store beside the store. The state of a running program is kept in
+its own place and is not an object.
 
 A store holds two things.
 
@@ -175,6 +176,43 @@ one store. When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
 The value is of what the store held when it was viewed: what is written
 later is taken in when it is viewed again.
+
+## Private stores
+
+Some objects are the user's alone, such as the secret key of a mailbox.
+They are written to a `PrivateStore`, which is kept beside a store, in a
+backend of its own, and is written to and read like one. Being private is
+where an object is kept, not something its schema says: an object of any
+schema can be kept on either side.
+
+```ts
+import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
+
+const store = new Store(json, new MemoryBackend());
+const kept = new PrivateStore(store, new MemoryBackend());
+await kept.write({ mine: [key], blobs: [keySchema.bytes] });
+
+await kept.get(mailbox.link);  // from the store beside
+await store.get(key.link);     // undefined
+```
+
+The private store reads the store beside it, so what it keeps can link to
+what the store holds, and its `get` gives both. The store does not read the
+private store. A blob that only the private store keeps is not one the
+store holds, so the store refuses to write an object that leads to one, and
+its `get` and `closure` do not give one. A private store has no `closure`
+and is not a `Store`, so it cannot be given where a store is asked for, as
+by what gathers bundles. Being private is where bytes are kept, not a mark
+on them: bytes that are also written to the store are the store's as well.
+
+A write follows the rules of a store's, with what the store beside holds
+counted as held: a blob that either side holds need not come in the batch,
+and one that the store holds already is not kept again. `scan` and `view`
+take a private store as they take a store.
+
+A private store is only on the device that keeps it. Like a store, it only
+grows, so a key that is no longer used is still kept. Whether it is
+encrypted is up to its backend.
 
 ## Backends
 

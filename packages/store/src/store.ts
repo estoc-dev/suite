@@ -19,7 +19,10 @@ export interface Backend {
    * and then adds `mine` to the list of what was written. The store gives
    * each blob after the blobs it leads to, and a link is listed only once
    * its blob is in, so a write cut short leaves no blob without what it
-   * leads to and no listed link without its blob.
+   * leads to and no listed link without its blob. The backend of a
+   * `PrivateStore` is not given what the store beside it holds, so there
+   * these hold of the two together: what a blob leads to, or the blob of a
+   * listed link, may be in the store beside instead.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void>;
   /** The links listed by `put`, each once. */
@@ -124,6 +127,26 @@ class StoreOf<D> implements Store {
     return this.#backend.mine();
   }
 
+  /**
+   * A store that writes to `backend` and holds besides all that `store`
+   * holds, of the same encoding. What `store` holds already is not put in
+   * `backend` again.
+   */
+  static beside(store: Store, backend: Backend): Store {
+    if (!(#backend in store)) throw new TypeError("a private store is kept beside a store made by `new Store`");
+    const shared = store.#backend;
+    return new StoreOf(store.#encoding, {
+      get: async (link) => (await backend.get(link)) ?? shared.get(link),
+      has: async (link) => (await backend.has(link)) || shared.has(link),
+      put: async (blobs, mine) => {
+        const own = new Map<Link<unknown>, Uint8Array>();
+        for (const [link, bytes] of blobs) if (!(await shared.has(link))) own.set(link, bytes);
+        await backend.put(own, mine);
+      },
+      mine: () => backend.mine(),
+    });
+  }
+
   async closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
     const gathered = new Map<Link<unknown>, Uint8Array>();
     const seen = new Set([link]);
@@ -204,3 +227,54 @@ class StoreOf<D> implements Store {
  * a blob it holds to come with all that the encoding finds it leads to.
  */
 export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = StoreOf;
+
+/**
+ * What the user keeps to themselves: objects they write, and the blobs those
+ * lead to, kept apart from the store that bundles are gathered from. It is
+ * kept beside a store, in a backend of its own, and reads that store too, so
+ * what is kept here can link to what the store holds. The store does not
+ * read it: a blob that only this keeps is not held by the store, so the store
+ * refuses to write anything that leads to one, and neither its `get` nor its
+ * `closure` gives one. There is no `closure` here, and this is not a `Store`,
+ * so it cannot be given to what gathers bundles from a store. Bytes that are
+ * also written to the store are the store's as well.
+ *
+ * Whether what is kept here is encrypted is up to the backend.
+ */
+export class PrivateStore {
+  // A private field makes the type nominal, unlike the interface `Store`, so a
+  // store, which has every method of this one, cannot be given in its place.
+  readonly #store: Store;
+
+  /**
+   * Keeps what is written to it in `backend`, beside `store`, whose encoding
+   * it finds links by. Throws for a store not made by `new Store`.
+   */
+  constructor(store: Store, backend: Backend) {
+    this.#store = StoreOf.beside(store, backend);
+  }
+
+  /**
+   * A blob by its link, kept here or held by the store beside. Throws when a
+   * backend gives other bytes under the link.
+   */
+  get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
+    return this.#store.get(link);
+  }
+
+  /**
+   * Keeps what the batch writes as mine and the blobs it leads to, as a
+   * store writes them. A blob led to may be held by the store beside, and
+   * then is not kept here again.
+   */
+  write(batch: Batch): Promise<void> {
+    return this.#store.write(batch);
+  }
+
+  /** The links of the objects written here as mine, each once, in no particular order. */
+  mine(): AsyncIterable<Link<never>> {
+    return this.#store.mine();
+  }
+}

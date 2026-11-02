@@ -107,12 +107,18 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@estoc/mailbox':
+        specifier: workspace:*
+        version: link:../mailbox
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
       '@estoc/store':
         specifier: workspace:*
         version: link:../store
+      '@scure/base':
+        specifier: ^2.4.0
+        version: 2.4.0
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

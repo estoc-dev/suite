@@ -9,10 +9,21 @@ import {
   type AcknowledgementData,
   accountOfferSchema,
   acknowledgementSchema,
+  type MailboxAcknowledgementData,
+  type MailboxOfferData,
+  type MailboxRequestData,
+  type MailboxTerms,
+  mailboxAcknowledgementSchema,
+  mailboxOfferSchema,
+  mailboxRequestSchema,
+  type PickupRequestData,
+  pickupRequestSchema,
   type ServiceData,
   serviceSchema,
+  type WaitingData,
+  waitingSchema,
 } from "../src/index.ts";
-import { loadMailboxService, MemoryAccounts } from "../src/server.ts";
+import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
 
 export const signer = (scheme: Scheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -27,6 +38,26 @@ export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = awai
   acknowledgementSchema,
   defaultValidator,
 );
+export const mailboxOfferSchemaRead: Schema<Json, MailboxOfferData> = await encodeSchema(
+  mailboxOfferSchema,
+  defaultValidator,
+);
+export const mailboxRequestSchemaRead: Schema<Json, MailboxRequestData> = await encodeSchema(
+  mailboxRequestSchema,
+  defaultValidator,
+);
+export const mailboxAcknowledgementSchemaRead: Schema<Json, MailboxAcknowledgementData> = await encodeSchema(
+  mailboxAcknowledgementSchema,
+  defaultValidator,
+);
+export const pickupRequestSchemaRead: Schema<Json, PickupRequestData> = await encodeSchema(
+  pickupRequestSchema,
+  defaultValidator,
+);
+export const waitingSchemaRead: Schema<Json, WaitingData> = await encodeSchema(waitingSchema, defaultValidator);
+
+/** The terms that `memoryService` offers mailboxes on unless it is given others. */
+export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 
 export const serviceSigner = signer(ed25519, 9);
 export const serviceRoot = keys.encode(serviceSigner.key);
@@ -38,29 +69,40 @@ export const serviceActor = async (start: number) =>
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a
- * millisecond a reading from `start`. Given the store of another, it is
- * that service started again.
+ * millisecond a reading from `start`, or stands at `clock.now` when it is
+ * given, which a test moves. Given the store of another, with its accounts
+ * and its mailboxes, it is that service started again.
  */
 export async function memoryService({
   start = 1_000,
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
+  offered = terms,
+  clock,
+  accounts = new MemoryAccounts(),
+  mailboxes = new MemoryMailboxes(),
 }: {
   readonly start?: number;
   readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
+  readonly offered?: MailboxTerms;
+  readonly clock?: { now: number };
+  readonly accounts?: Accounts;
+  readonly mailboxes?: Mailboxes;
 } = {}) {
   let now = start;
   const service = await loadMailboxService(by, {
     origin,
     store,
-    accounts: new MemoryAccounts(),
+    accounts,
+    mailboxes,
+    terms: offered,
     validator: defaultValidator,
-    clock: () => now++,
+    clock: clock === undefined ? () => now++ : () => clock.now,
   });
-  return { service, store };
+  return { service, store, accounts, mailboxes };
 }
 
 /**

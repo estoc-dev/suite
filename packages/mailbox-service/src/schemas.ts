@@ -97,3 +97,120 @@ export const acknowledgementSchema: JsonSchema = {
 };
 
 export type AcknowledgementData = { readonly accepted: JsonLink<Signature>; readonly at: number };
+
+/**
+ * An id that a service makes up for a mailbox it opens, 16 random bytes in
+ * lowercase hex: one that senders post to, and one that the account picks
+ * up at. Neither can be worked out from the other, nor from what the
+ * mailbox is.
+ */
+export const MAILBOX_ID = /^[0-9a-f]{32}$/;
+
+const mailboxIdSchema: JsonObject = { type: "string", pattern: MAILBOX_ID.source };
+
+/**
+ * What a service signs to offer mailboxes, under an account it opened, on
+ * these terms: what waits is kept for `retention` milliseconds, a mailbox
+ * holds at most `quota` bytes waiting, and a message is at most `size`
+ * bytes. It names the root of the service's identity, as the offer of an
+ * account does, so a request for it asks this service alone.
+ */
+export const mailboxOfferSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Mailbox offer",
+  type: "object",
+  properties: {
+    identity: linkSchema,
+    retention: { type: "integer", minimum: 1 },
+    quota: { type: "integer", minimum: 1 },
+    size: { type: "integer", minimum: 1 },
+  },
+  required: ["identity", "retention", "quota", "size"],
+  additionalProperties: false,
+};
+
+/** The terms of the mailboxes that an offer of mailboxes opens. */
+export type MailboxTerms = { readonly retention: number; readonly quota: number; readonly size: number };
+
+export type MailboxOfferData = MailboxTerms & { readonly identity: JsonLink<KeyObject> };
+
+/**
+ * What an identity signs to ask a service for a mailbox under the account
+ * of its root: `offer` is the link of the offer of mailboxes, and `key` the
+ * x25519 public key that messages to the mailbox are sealed to, as 32 bytes
+ * in lowercase hex. Each mailbox has a key of its own, so each request is
+ * one of its own too.
+ */
+export const mailboxRequestSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Mailbox request",
+  type: "object",
+  properties: { offer: linkSchema, key: { type: "string", pattern: "^[0-9a-f]{64}$" } },
+  required: ["offer", "key"],
+  additionalProperties: false,
+};
+
+export type MailboxRequestData = { readonly offer: JsonLink<never>; readonly key: string };
+
+/**
+ * What a service signs to acknowledge a request for a mailbox, which it
+ * opened: `accepted` is the link of the signature over the request, `at`
+ * when the service received it, in milliseconds since the Unix epoch by the
+ * service's clock, `send` the id that senders post to, and `pickup` the id
+ * that the account picks up at.
+ */
+export const mailboxAcknowledgementSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Mailbox acknowledgement",
+  type: "object",
+  properties: {
+    accepted: linkSchema,
+    at: { type: "integer", minimum: 0 },
+    send: mailboxIdSchema,
+    pickup: mailboxIdSchema,
+  },
+  required: ["accepted", "at", "send", "pickup"],
+  additionalProperties: false,
+};
+
+export type MailboxAcknowledgementData = {
+  readonly accepted: JsonLink<Signature>;
+  readonly at: number;
+  readonly send: string;
+  readonly pickup: string;
+};
+
+/**
+ * What an identity signs to pick up at a mailbox: `mailbox` is the link of
+ * the service's signature over the mailbox's acknowledgement, and `done`
+ * the links of the sealed bytes that the receiver is done with, which no
+ * longer wait.
+ */
+export const pickupRequestSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Pickup request",
+  type: "object",
+  properties: { mailbox: linkSchema, done: { type: "array", items: linkSchema } },
+  required: ["mailbox", "done"],
+  additionalProperties: false,
+};
+
+export type PickupRequestData = {
+  readonly mailbox: JsonLink<Signature>;
+  readonly done: readonly JsonLink<Uint8Array>[];
+};
+
+/**
+ * What a service answers a pickup with, unsigned: the links of sealed bytes
+ * that wait at the mailbox, the earliest first, which come with it.
+ */
+export const waitingSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Waiting",
+  type: "object",
+  properties: { sealed: { type: "array", items: linkSchema } },
+  required: ["sealed"],
+  additionalProperties: false,
+};
+
+export type WaitingData = { readonly sealed: readonly JsonLink<Uint8Array>[] };

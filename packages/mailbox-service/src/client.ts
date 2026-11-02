@@ -16,7 +16,6 @@ import {
   type JsonSchemaValidator,
   json,
   type Link,
-  type Reader,
   readObject,
   type Schema,
   schemaOf,
@@ -120,15 +119,16 @@ export class AccountOffer {
     const body = await packBundle(acceptance, acceptance.signedIdentity.blobs);
     const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
     const answer = await bundleIn(await fetch(this.#url, request), [200, 201]);
-    const people = await view(this.#store, this.#people);
-    const acknowledgement = await this.#signatures.read(answer.link, answer, people);
+    const staged = await this.#store.stage({ mine: [{ bytes: answer.root }], blobs: answer.blobs() });
+    const people = await view(staged, this.#people);
+    const acknowledgement = await this.#signatures.read(answer.link, staged, people);
     if (!people.of(this.service).signed(acknowledgement)) {
       throw new Error("the acknowledgement is signed by another root than the service's");
     }
-    const { accepted, at } = (await readObject(answer, acknowledgement.object, this.#acknowledgementSchema)).data;
+    const { accepted, at } = (await readObject(staged, acknowledgement.object, this.#acknowledgementSchema)).data;
     if (accepted.$link !== acceptance.link)
       throw new Error(`the acknowledgement accepts ${accepted.$link}, not the acceptance sent`);
-    await this.#store.write({ mine: [acknowledgement], blobs: answer.blobs() });
+    await staged.commit();
     return {
       signedIdentity: actor.signedIdentity,
       service: acknowledgement.signedIdentity,
@@ -167,9 +167,10 @@ export class Services {
   async at(origin: string): Promise<Service> {
     checkOrigin(origin);
     const bundle = await bundleIn(await fetch(new URL("/", origin), REQUEST), [200]);
-    const service = await this.#read(bundle.link, bundle);
+    const staged = await this.#store.stage({ mine: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+    const service = await this.#read(bundle.link, staged);
     if (service.origin !== origin) throw new Error(`the Service at ${origin} names ${service.origin}`);
-    await this.#store.write({ mine: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+    await staged.commit();
     return service;
   }
 
@@ -185,17 +186,18 @@ export class Services {
   }
 
   /**
-   * Reads the Service that `link` names the service's signature over, by
-   * the people the store knows, and the offers it lists by the later of
-   * the version that signed the Service and the latest the store knows. The
-   * store knows that version once it keeps the Service, so a Service that
-   * `at` takes reads alike by `of`. Refuses it when its origin is not one
-   * that a client reaches, when an offer it lists is signed by an identity
-   * of another root, or when its offer of an account names another root.
-   * Offers of schemas the client does not read are passed over.
+   * Reads the Service that `link` names the service's signature over from
+   * `reader`, by the people it knows, and the offers it lists by the later
+   * of the version that signed the Service and the latest it knows. `at`
+   * reads it on the store as it will be once it keeps the Service, so a
+   * Service that `at` takes reads alike by `of` until the store knows a
+   * later version of the service's identity. Refuses it when its origin is
+   * not one that a client reaches, when an offer it lists is signed by an
+   * identity of another root, or when its offer of an account names another
+   * root. Offers of schemas the client does not read are passed over.
    */
-  async #read(link: Link<Signature>, reader: Reader): Promise<Service> {
-    const people = await view(this.#store, this.#people);
+  async #read(link: Link<Signature>, reader: Pick<Store, "get" | "mine">): Promise<Service> {
+    const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.of(signedIdentity);
     const { root } = service;

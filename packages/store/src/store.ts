@@ -71,6 +71,13 @@ export interface Store {
    * any other link in it.
    */
   write(batch: Batch): Promise<void>;
+  /**
+   * The store as it will be once `batch` is written, to read before writing
+   * it. Refuses the batch as `write` does, before anything reads it, and
+   * keeps of its blobs those that `write` would. `write(batch)` writes as
+   * `(await store.stage(batch)).commit()` does.
+   */
+  stage(batch: Batch): Promise<Staged>;
   /** The links of the objects written as mine, each once, in no particular order. */
   mine(): AsyncIterable<Link<never>>;
   /**
@@ -81,6 +88,37 @@ export interface Store {
    * does.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
+}
+
+/**
+ * A store as it will be once a batch is written, read before the batch is
+ * written: the blobs the store holds and those of the batch that `write`
+ * keeps, and the links the store lists with those the batch writes as mine.
+ * The batch is fixed when it is staged, and the store is read as it is at
+ * each read, so what is written to the store afterwards shows here too.
+ * What is judged on it reads the same from the store once it is committed
+ * when nothing else is written in between. A write in between, such as of a
+ * version that takes an agent out, can change what a view comes to when it
+ * is viewed again, here as on the store, and `commit` does not judge the
+ * batch again. A store only grows, so the batch can still be committed
+ * after other writes, and what it leads to is still held.
+ */
+export interface Staged {
+  /**
+   * A blob by its link, of the batch or held by the store, in an array the
+   * caller may change without changing what `commit` writes. Throws as the
+   * store's `get` does.
+   */
+  get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
+  /**
+   * The links the store lists and those the batch writes as mine, each once,
+   * in no particular order. Those of the batch are listed here before
+   * anything has judged them.
+   */
+  mine(): AsyncIterable<Link<never>>;
+  /** Writes the batch as `write` writes it. Committing again writes nothing more. */
+  commit(): Promise<void>;
 }
 
 class StoreOf<D> implements Store {
@@ -100,7 +138,11 @@ class StoreOf<D> implements Store {
     return bytes;
   }
 
-  async write({ mine = [], blobs = [] }: Batch): Promise<void> {
+  async write(batch: Batch): Promise<void> {
+    await (await this.stage(batch)).commit();
+  }
+
+  async stage({ mine = [], blobs = [] }: Batch): Promise<Staged> {
     // Each blob is copied before it is hashed, so that what is kept is what
     // was hashed, whatever happens to the given arrays afterwards.
     const given = new Map<Link<unknown>, Uint8Array>();
@@ -120,7 +162,7 @@ class StoreOf<D> implements Store {
       given.set(link, owned);
       written.push(link);
     }
-    await this.#backend.put(await this.#leavesFirst(written, given), written);
+    return new StagedOf(this, this.#backend, await this.#leavesFirst(written, given), written);
   }
 
   mine(): AsyncIterable<Link<never>> {
@@ -216,6 +258,45 @@ class StoreOf<D> implements Store {
       return [];
     }
     return this.#encoding.links(value);
+  }
+}
+
+class StagedOf implements Staged {
+  readonly #store: Pick<Store, "get">;
+  readonly #backend: Backend;
+  readonly #kept: ReadonlyMap<Link<unknown>, Uint8Array>;
+  readonly #written: readonly Link<never>[];
+
+  constructor(
+    store: Pick<Store, "get">,
+    backend: Backend,
+    kept: ReadonlyMap<Link<unknown>, Uint8Array>,
+    written: readonly Link<never>[],
+  ) {
+    this.#store = store;
+    this.#backend = backend;
+    this.#kept = kept;
+    this.#written = written;
+  }
+
+  get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
+  async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
+    const bytes = this.#kept.get(link);
+    return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
+  }
+
+  async *mine(): AsyncIterable<Link<never>> {
+    const unlisted = new Set(this.#written);
+    for await (const link of this.#backend.mine()) {
+      unlisted.delete(link);
+      yield link;
+    }
+    yield* unlisted;
+  }
+
+  commit(): Promise<void> {
+    return this.#backend.put(this.#kept, this.#written);
   }
 }
 

@@ -81,6 +81,55 @@ check that something is missing before writing it will both write it, and
 when their stores are joined there are two. What has to come out as one is
 written so that every device writes the same object, with the same link.
 
+## Staging
+
+What comes from elsewhere is judged before it is written, as a client
+reads who signed a Service it reaches, and read again later from the
+store. For the two to come out the same, the first is read from the store
+as it will be once the batch is written. `stage(batch)` gives that, a
+`Staged`: the blobs the store holds and those of the batch that `write`
+keeps, and the links the store lists with those the batch writes as mine.
+`commit` writes the batch, as `write` does.
+
+```ts
+const staged = await store.stage({ mine: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+const people = await view(staged, { index: seen, read: (rows, reader) => versions.known(rows, reader) });
+const signature = await signatures.read(bundle.link, staged, people);
+// … whether whoever signed is someone to take it from …
+await staged.commit();
+```
+
+A batch that `write` refuses is refused when it is staged, before
+anything reads it. A staged batch gives the blobs that will be kept and no
+others, so what is judged leads to nothing the store will not hold.
+`scan` and `view` take a staged batch as they take a store, so the rows
+and the objects they name come from the store as it will be.
+
+Staged on a store that holds nothing, a batch is read by what it holds
+alone, which is what its sender chose to show. Staged on the user's
+store, it is read by what the user has seen as well, so a version of an
+identity that took an agent out counts even when the batch leaves it out.
+
+What a staged batch writes as mine is listed before anything has judged
+it. A row stands on its object and what that leads to, as a version
+stands on its root's signature, and not on whether the user took the
+object.
+
+The batch is fixed when it is staged, and the store is read as it is at
+each read, so what is written to the store afterwards shows on the staged
+batch too. What is judged on it reads the same from the store once it is
+committed when nothing else is written in between. A write in between,
+such as of a version of an identity that took an agent out, can change
+what a view comes to when it is viewed again, on the staged batch as on
+the store. A value already viewed stays as it was, and `commit` does not
+judge the batch again: as with a write, there is no transaction that
+reads and then writes.
+
+A store only grows, so what a staged batch found held is still held when
+it is committed, whatever was written in between. A batch that is not
+committed leaves nothing, and committing it again writes nothing more. A
+staged batch is not a store: it has no `write`, `closure` or `stage`.
+
 ## Reading
 
 `closure(link)` gathers the blob that `link` names and every blob it leads

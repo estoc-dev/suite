@@ -83,6 +83,7 @@ describe("a private store", () => {
     const lookalike: Store = {
       get: <T>(link: Link<T>) => store.get(link),
       write: (batch) => store.write(batch),
+      stage: (batch) => store.stage(batch),
       mine: () => store.mine(),
       closure: (link) => store.closure(link),
     };

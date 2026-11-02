@@ -47,7 +47,6 @@ const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, 0)).sign(object);
 
 const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
-// A record that a bundle was received, naming it by its root.
 const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", { bundle: linkSchema });
 const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { name: { type: "string" } });
 

@@ -67,10 +67,11 @@ async function sendingTo(network: MemoryNetwork) {
   return { ...at, queue, mailbox };
 }
 
-async function receivingAt(network: MemoryNetwork) {
-  const at = await postAt(network);
+async function receivingAt(network: MemoryNetwork, store?: Store) {
+  const at = await postAt(network, store);
   const queue = network.queue();
-  return { ...at, queue, inbox: await at.post.openInbox(queue.mailbox) };
+  const inbox = await at.post.openInbox(queue.mailbox);
+  return { ...at, queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
 async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject<Json>>, blobs: Uint8Array[]) {
@@ -181,19 +182,72 @@ describe("an inbox", () => {
     expect(await again.receive(queue.takeOne())).toMatchObject({ bundle: signature.link, mailbox: inbox.mailbox });
   });
 
-  it("keeps what arrives with a record that it came in, once for each time it came", async () => {
+  it("collects what waits at its mailbox, done with each once it is kept with a record that it came in", async () => {
     const network = await MemoryNetwork.create(defaultValidator, { twice: true });
-    const { store, queue, inbox } = await receivingAt(network);
+    const { store, queue, inbox, pickup } = await receivingAt(network);
     await sendTo(network, store, inbox.mailbox, signed);
 
-    const received = [];
-    for (const sealed of queue.take()) received.push(await inbox.receive(sealed));
-    expect(received.map(({ link, ...delivery }) => delivery)).toEqual([
+    const collected = await inbox.collect(pickup);
+    expect(collected.map(({ link, ...delivery }) => delivery)).toEqual([
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1000 },
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1001 },
     ]);
-    expect(await listed(store)).toEqual([inbox.mailbox, ...received.map(({ link }) => link)]);
+    expect(await listed(store)).toEqual([inbox.mailbox, ...collected.map(({ link }) => link)]);
     expect((await signatures.read(signature.link, store, noVersions)).object).toBe(hello.link);
+    expect(queue.take()).toEqual([]);
+  });
+
+  it("is done with what it collects and refuses, which leaves no record", async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    const { store, queue, inbox, pickup } = await receivingAt(network);
+    const sealedToBob = queue.mailbox(bob.publicKey);
+    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(signature, signed);
+    await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
+    await sendTo(network, store, inbox.mailbox, signed);
+
+    const collected = await inbox.collect(pickup);
+    expect(collected.map(({ bundle }) => bundle)).toEqual([signature.link]);
+    expect(await listed(store)).toEqual([inbox.mailbox, ...collected.map(({ link }) => link)]);
+    expect(queue.take()).toEqual([]);
+  });
+
+  it("stops collecting when the store fails to write, and leaves what it was keeping to collect again", async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    let full = false;
+    const backend = new (class extends MemoryBackend {
+      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void> {
+        return full ? Promise.reject(new Error("the disk is full")) : super.put(blobs, mine);
+      }
+    })();
+    const { store, inbox, pickup } = await receivingAt(network, new Store(json, backend));
+    await sendTo(network, store, inbox.mailbox, signed);
+    await sendTo(network, store, inbox.mailbox, signed);
+
+    full = true;
+    await expect(inbox.collect(pickup)).rejects.toThrow("the disk is full");
+    full = false;
+    expect(await inbox.collect(pickup)).toHaveLength(2);
+  });
+
+  it("collects nothing once its signal has aborted, and leaves what waits", async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    const { store, inbox, pickup } = await receivingAt(network);
+    await sendTo(network, store, inbox.mailbox, signed);
+
+    expect(await inbox.collect(pickup, AbortSignal.abort())).toEqual([]);
+    expect(await inbox.collect(pickup)).toHaveLength(1);
+  });
+
+  it("refuses a pickup of another mailbox, and is done with nothing", async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    const { inbox } = await receivingAt(network);
+    const other = await receivingAt(network);
+    await sendTo(network, other.store, other.inbox.mailbox, signed);
+
+    await expect(inbox.collect(other.pickup)).rejects.toThrow(
+      `a pickup of ${other.inbox.mailbox} is not collected at ${inbox.mailbox}`,
+    );
+    expect(await other.inbox.collect(other.pickup)).toHaveLength(1);
   });
 
   it("keeps nothing of a bundle that leaves out a blob its root leads to", async () => {

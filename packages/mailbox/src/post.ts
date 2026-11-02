@@ -1,3 +1,4 @@
+import type { Bundle } from "@estoc/bundle";
 import {
   type Bytes,
   type EncodedObject,
@@ -12,10 +13,11 @@ import {
   readObject,
   type Schema,
 } from "@estoc/object";
-import type { PrivateStore, Store } from "@estoc/store";
+import { type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
+import type { Pickup } from "./pickup.ts";
 import { type DeliveryData, inboundSchema, type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
@@ -206,6 +208,42 @@ export class Inbox {
   async receive(sealed: Uint8Array): Promise<Delivery> {
     const bundle = await this.#opener.open(sealed);
     return this.#written(bundle.link, bundle.blobs());
+  }
+
+  /**
+   * Receives what waits at the mailbox, one arrival at a time, and is done
+   * with each once it is kept. Gives back the records it wrote. What does
+   * not open, and a bundle that the store refuses, are done with too and
+   * leave no record, rather than wait for the blobs a bundle leaves out to
+   * reach the store. When the store fails to write, stops and rejects, and
+   * that arrival waits to be collected again. Refuses a pickup of another
+   * mailbox, and is done with nothing.
+   */
+  async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
+    if (pickup.mailbox !== this.mailbox)
+      throw new Error(`a pickup of ${pickup.mailbox} is not collected at ${this.mailbox}`);
+    const written: Delivery[] = [];
+    for await (const arrival of pickup.arrivals(signal)) {
+      const delivery = await this.#kept(arrival.sealed);
+      if (delivery !== undefined) written.push(delivery);
+      await arrival.done();
+    }
+    return written;
+  }
+
+  async #kept(sealed: Uint8Array): Promise<Delivery | undefined> {
+    let bundle: Bundle;
+    try {
+      bundle = await this.#opener.open(sealed);
+    } catch {
+      return undefined;
+    }
+    try {
+      return await this.#written(bundle.link, bundle.blobs());
+    } catch (error) {
+      if (error instanceof RefusedBatch) return undefined;
+      throw error;
+    }
   }
 }
 

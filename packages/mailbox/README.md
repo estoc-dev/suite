@@ -7,9 +7,9 @@ turns its bytes into a `Mailbox` that can `send`, and the sender does not
 deal with keys, encryption or transports.
 
 ```
-Mailbox  {"key": <x25519 public key>, <the transport's fields>…}
-Message  a bundle of @estoc/bundle, packed
-Sealed   the HPKE encapsulated key, 32 bytes, followed by the ciphertext of a Message
+Mailbox     {"key": <x25519 public key>, <the transport's fields>…}
+Message     a bundle of @estoc/bundle, packed
+Ciphertext  the HPKE encapsulated key, 32 bytes, followed by HPKE's ciphertext of a Message
 ```
 
 ## Mailboxes
@@ -73,20 +73,20 @@ interface Pickup {
 }
 
 interface Arrival {
-  readonly sealed: Uint8Array;
-  done(): Promise<void>;
+  readonly ciphertext: Uint8Array;
+  drop(): Promise<void>;
 }
 ```
 
 `arrivals` gives what waits at the mailbox, each until it is done. It ends
 once `signal` aborts, and, unless the transport waits for more to come,
-once nothing more waits. `done` lets the transport drop the sealed bytes.
+once nothing more waits. `drop` lets the transport drop the ciphertext.
 A receiver is done with an arrival once it has kept what it holds, so one
 that stops in between is given it again. A message so arrives at least
 once, and one given again reads as one that arrived twice.
 
-`open` takes the sealed bytes that a transport received and gives back the
-bundle inside. It refuses bytes that do not open with its key, and what
+`open` takes a ciphertext that a transport received and gives back the
+bundle inside. It refuses a ciphertext that does not open with its key, and what
 opens but does not unpack to a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.read` and the bundle as the reader. A receiver that keeps the
@@ -94,7 +94,7 @@ versions it has seen passes its `Versions` in place of `noVersions`, and an
 agent its root removed no longer reads as the root.
 
 ```ts
-const bundle = await key.open(sealed);
+const bundle = await key.open(ciphertext);
 const signature = await signatures.read(bundle.link, bundle, noVersions);
 ```
 
@@ -116,15 +116,15 @@ transport's schema to, and binds the key and the transport once. The
 
 `send` takes a root and blobs as `writeBundle` does, and refuses a root
 that is not an object. It packs the bundle with `packBundle`, seals the
-zip to the key and hands the sealed bytes to the transport. It resolves
-once they are handed on. Nothing confirms that a message arrived and
+zip to the key and hands the ciphertext to the transport. It resolves
+once it is handed on. Nothing confirms that a message arrived and
 nothing is sent again: a message can be lost, arrive twice, or arrive out
 of order. That is harmless to a reader, since blobs are named by their
 content and a reading only grows with what arrives; an application that
 needs a message to be fresh puts a nonce in its object, as a login does.
 
-When the transport cannot hand the sealed bytes on, `send` rejects with an
-`Undelivered`, whose `kind` tells the sender what it can do:
+When the transport cannot hand the ciphertext on, `send` rejects with an
+`UndeliveredMessage`, whose `kind` tells the sender what it can do:
 
 | `kind`    | The sender                                                                 |
 |-----------|----------------------------------------------------------------------------|
@@ -156,8 +156,8 @@ The three schemas are `inboundSchema`, `outboundSchema` and
 import { loadPost } from "@estoc/mailbox";
 import { MemoryBackend, PrivateStore } from "@estoc/store";
 
-const kept = new PrivateStore(store, new MemoryBackend());
-const post = await loadPost(store, kept, { transports: [transport], validator: defaultValidator });
+const keys = new PrivateStore(store, new MemoryBackend());
+const post = await loadPost(store, keys, { transports: [transport], validator: defaultValidator });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and all it leads to in the store
@@ -175,10 +175,10 @@ mailbox and a store takes in nothing without all it leads to. The sender
 writes a mailbox handed to it, alone or in whatever record of the handing
 the application keeps.
 
-`openInbox` makes a new key and gives its public key to `make`, which gives
-back a mailbox sealed to it, of one of the post's transports. The post
-writes the mailbox to the store as the user's, and then the key to the
-private store. A key is one mailbox's, so a key used at two transports
+`openInbox` makes a new key and gives its public key to `makeMailbox`,
+which gives back a mailbox sealed to it, of one of the post's transports.
+The post writes the mailbox to the store as a record, and then the key to
+the private store. A key is one mailbox's, so a key used at two transports
 would be two. If the post stops in between, what is left is a mailbox that
 nobody receives at and nobody was handed. The inbox's `mailbox` is the
 link of the mailbox to hand out, and its `key` the link of the key.
@@ -195,9 +195,9 @@ with an index of `@estoc/store` over the private store that reads
 what came in is sending its root. It bundles the closure of the root,
 schemas included, and writes `Outbound` once the transport takes the
 bundle. When the transport cannot hand it on, `send` rejects with its
-`Undelivered` and nothing is written, and the root is still there to send
-again. Neither the zip nor the sealed bytes are kept: sending again seals
-the same bundle afresh.
+`UndeliveredMessage` and nothing is written, and the root is still there to
+send again. Neither the zip nor the ciphertext is kept: sending again
+seals the same bundle afresh.
 
 `receive` keeps the bundle and its `Inbound` record in one write. What does
 not open with the key is refused, and so is a bundle that leaves out a
@@ -212,7 +212,7 @@ taken once the blob reaches the store, but `collect` does not keep it
 waiting for that: a sender whose store holds the bundle can send it
 again. When the store fails to write, `collect` stops and rejects without
 being done with that arrival, which waits to be collected again. A stop
-after the write and before `done` leaves the arrival waiting as well, and
+after the write and before `drop` leaves the arrival waiting as well, and
 collecting it again writes a second record of the same bundle.
 
 ### Reading what came and went
@@ -241,7 +241,7 @@ names the sender. It travels packed, as a bundle travels between programs:
 A packed bundle holds the same files as a bundle handed over as a file, so
 a message can be kept as one and a bundle sent as a message.
 
-A packed bundle is not compressed, so the length of the sealed bytes
+A packed bundle is not compressed, so the length of the ciphertext
 depends on the sizes of its files alone, and anyone who seals to a
 mailbox's key cannot make `open` unzip far more than arrived. `open` also
 refuses a zip of more than 10,000 entries, though `send` sends it: what a
@@ -252,18 +252,18 @@ receiver takes is its own to limit, and a sender does not know it.
 Messages are sealed with HPKE ([RFC 9180](https://www.rfc-editor.org/rfc/rfc9180))
 in base mode, with DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and AES-128-GCM.
 The `info` is the UTF-8 of `Estoc Message` and the additional data is
-empty. Sealed bytes are the 32-byte encapsulated key followed by the
+empty. A ciphertext is the 32-byte encapsulated key followed by HPKE's
 ciphertext of the zip. `@hpke/core` does the work, on Web Crypto.
 
-Every transport carries sealed bytes, even one that encrypts on its own:
+Every transport carries ciphertexts, even one that encrypts on its own:
 a message is stored, passed on and can arrive late, so the layer from end
 to end is the same whatever carries it.
 
 ## Who sent a message
 
-Base mode seals to the receiver's key alone, so the sealed bytes do not say
-who sealed them, and only the receiver's key opens them. A transport can
-still learn who hands it sealed bytes, from the connection or from the
+Base mode seals to the receiver's key alone, so a ciphertext does not say
+who sealed it, and only the receiver's key opens it. A transport can
+still learn who hands it a ciphertext, from the connection or from the
 credentials it asks for.
 
 A signature does not say who sent a message either. Anyone can pass on what
@@ -285,16 +285,16 @@ A transport is a plugin:
 ```ts
 interface Transport {
   readonly schema: Schema<Json>;
-  deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void>;
+  deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
 }
 ```
 
-`deliver` takes the data of a mailbox written to `schema` and the sealed
-bytes, and resolves once they are handed on. When they cannot be, it
-rejects with an `Undelivered` of the kind that it can tell from what
-turned them back. How the receiver gets them, such as listening for
+`deliver` takes the data of a mailbox written to `schema` and the
+ciphertext, and resolves once it is handed on. When it cannot be, it
+rejects with an `UndeliveredMessage` of the kind that it can tell from what
+turned it back. How the receiver gets them, such as listening for
 requests or fetching from a mailbox service, is the transport's own. Its
-receiving side gives a `Pickup` for `Inbox.collect`, or hands sealed bytes
+receiving side gives a `Pickup` for `Inbox.collect`, or hands ciphertexts
 one at a time to `Inbox.receive`, or to `MailboxKey.open` without a store.
 This package ships one transport, over HTTP, with no receiving side; its
 tests also run on one in memory, whose queues give a pickup.
@@ -314,13 +314,13 @@ HTTP mailbox  {"key": <x25519 public key>, "url": <URL>}
 
 The schema is titled `HTTP mailbox`. Its url starts with `https://`, or
 with `http://` to the receiver's own machine: `localhost`, `127.0.0.1` or
-`[::1]`, with or without a port. Sealed bytes cannot be read on the way,
+`[::1]`, with or without a port. A ciphertext cannot be read on the way,
 but over plain http whoever is on the way sees when messages arrive and how
 large they are, and can hold them back unnoticed. On one machine, as in
 development or for a daemon beside the sender, no one is on the way.
 
-`deliver` posts the sealed bytes to the url as `application/octet-stream`.
-A 2xx response means they were handed on. 404 and 410 reject as `gone`,
+`deliver` posts the ciphertext to the url as `application/octet-stream`.
+A 2xx response means it was handed on. 404 and 410 reject as `gone`,
 408, 429 and 5xx as `later`, and any other response as `refused`. No response
 rejects as `later`, and so does a redirect: it is not followed, since it
 would take the bytes to a url the mailbox does not name, and a browser

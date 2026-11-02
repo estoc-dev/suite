@@ -16,12 +16,12 @@ import {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type PickupAnswerData,
   type PickupRequestData,
+  pickupAnswerSchema,
   pickupRequestSchema,
   type ServiceData,
   serviceSchema,
-  type WaitingData,
-  waitingSchema,
 } from "../src/index.ts";
 import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
 
@@ -54,7 +54,10 @@ export const pickupRequestSchemaRead: Schema<Json, PickupRequestData> = await en
   pickupRequestSchema,
   defaultValidator,
 );
-export const waitingSchemaRead: Schema<Json, WaitingData> = await encodeSchema(waitingSchema, defaultValidator);
+export const pickupAnswerSchemaRead: Schema<Json, PickupAnswerData> = await encodeSchema(
+  pickupAnswerSchema,
+  defaultValidator,
+);
 
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 

@@ -20,11 +20,11 @@ async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
 const whole = <K extends Key>(rows: Rows<K>) => all(rows.range([]));
 
 describe("an index scanned from a store", () => {
-  it("holds the rows of what is written as mine, of the schemas it reads", async () => {
+  it("holds the rows of the store's records, of the schemas it reads", async () => {
     const store = new Store(json, new MemoryBackend());
     const unlisted = encodeObject(note, { keys: [["unlisted"]] });
     await store.write({
-      mine: [
+      records: [
         encodeObject(note, { keys: [["b"], ["a"]] }),
         encodeObject(tag, { keys: [["tag"]], of: { $link: unlisted.link } }),
       ],
@@ -36,7 +36,7 @@ describe("an index scanned from a store", () => {
   it("holds a row once, however many objects give it", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      mine: [encodeObject(note, { keys: [["a"]], n: 1 }), encodeObject(note, { keys: [["a"], ["a"]], n: 2 })],
+      records: [encodeObject(note, { keys: [["a"]], n: 1 }), encodeObject(note, { keys: [["a"], ["a"]], n: 2 })],
       blobs: schemas,
     });
     expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
@@ -45,7 +45,7 @@ describe("an index scanned from a store", () => {
   it("gives the rows that start with a prefix, a key before longer ones and a number before a string", async () => {
     const store = new Store(json, new MemoryBackend());
     const keys = [["b", 2], ["a", "x"], ["a", 10], ["a", 9], ["a"], [1], ["ab"]];
-    await store.write({ mine: [encodeObject(note, { keys })], blobs: schemas });
+    await store.write({ records: [encodeObject(note, { keys })], blobs: schemas });
     const rows = await scan(store, byKeys);
     expect(await whole(rows)).toEqual([[1], ["a"], ["a", 9], ["a", 10], ["a", "x"], ["ab"], ["b", 2]]);
     expect(await all(rows.range(["a"]))).toEqual([["a"], ["a", 9], ["a", 10], ["a", "x"]]);
@@ -58,7 +58,7 @@ describe("an index scanned from a store", () => {
     const paths: Index<Json, Path> = { reads: [note], rows: ({ data }) => (data as { keys: Path[] }).keys };
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      mine: [encodeObject(note, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })],
+      records: [encodeObject(note, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })],
       blobs: schemas,
     });
     const rows = await scan(store, paths);
@@ -83,7 +83,7 @@ describe("an index scanned from a store", () => {
     const signed = await Promise.all(signers.map(async (by) => signatures.actor(by, await publish(by, 0)).sign(hello)));
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      mine: [hello, ...signed],
+      records: [hello, ...signed],
       blobs: [...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs), signatures.schema.bytes, ...schemas],
     });
     const expected = signed
@@ -97,7 +97,7 @@ describe("an index scanned from a store", () => {
     const numbers: Index<Json, Key> = { reads: [note], rows: ({ data }) => [[Number(data.number)]] };
     for (const number of ["-Infinity", "Infinity", "NaN"]) {
       const store = new Store(json, new MemoryBackend());
-      await store.write({ mine: [encodeObject(note, { number })], blobs: schemas });
+      await store.write({ records: [encodeObject(note, { number })], blobs: schemas });
       await expect(scan(store, numbers)).rejects.toThrow("a number that is not finite");
     }
   });
@@ -109,12 +109,12 @@ describe("an index scanned from a store", () => {
     const backend = new MemoryBackend();
     const store = new Store(json, backend);
     const [listed, other] = [encodeObject(note, { keys: [["a"]] }), encodeObject(schema, { keys: [["b"]] })];
-    await store.write({ mine: [listed, other], blobs: schemas });
+    await store.write({ records: [listed, other], blobs: schemas });
     const swapped: Backend = {
       get: (link) => backend.get(link === listed.link ? other.link : link),
       has: (link) => backend.has(link),
-      put: (blobs, mine) => backend.put(blobs, mine),
-      mine: () => backend.mine(),
+      put: (blobs, records) => backend.put(blobs, records),
+      records: () => backend.records(),
     };
     await expect(scan(new Store(json, swapped), byKeys)).rejects.toThrow(`another blob under ${listed.link}`);
   });

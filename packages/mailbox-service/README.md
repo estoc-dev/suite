@@ -35,20 +35,20 @@ object it acts on by link, so where the service moves, neither a request
 nor a signature changes.
 
 ```
-Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <link of the offer>}, …]}, signed by the service
+Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "acceptId": <link of the offer>}, …]}, signed by the service
 Account offer            {"identity": <link of the service's root>}, signed by the service
-Acknowledgement          {"accepted": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
+Acknowledgement          {"acceptance": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 Mailbox offer            {"identity": <link of the service's root>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
 Mailbox request          {"offer": <link of the mailbox offer>, "key": <x25519 public key>}, signed by an identity with an account
-Mailbox acknowledgement  {"accepted": <link of the signature over the request>, "at": <milliseconds>, "send": <id>, "pickup": <id>}, signed by the service
-Pickup request           {"mailbox": <link of the service's signature over the mailbox acknowledgement>, "done": [<link of sealed bytes>, …]}, signed by an identity of the account
-Waiting                  {"sealed": [<link of sealed bytes>, …]}, unsigned
+Mailbox acknowledgement  {"request": <link of the signature over the request>, "at": <milliseconds>, "sendId": <id>, "pickupId": <id>}, signed by the service
+Pickup request           {"mailbox": <link of the service's signature over the mailbox acknowledgement>, "receipts": [<link of a ciphertext>, …]}, signed by an identity of the account
+Pickup answer            {"ciphertexts": [<link of a ciphertext>, …]}, unsigned
 ```
 
 All are objects of `@estoc/object`, written to fixed draft 2020-12 schemas,
 `serviceSchema`, `accountOfferSchema`, `acknowledgementSchema`,
 `mailboxOfferSchema`, `mailboxRequestSchema`,
-`mailboxAcknowledgementSchema`, `pickupRequestSchema` and `waitingSchema`,
+`mailboxAcknowledgementSchema`, `pickupRequestSchema` and `pickupAnswerSchema`,
 which the client and the service share. The client is
 `@estoc/mailbox-service`, and the service `@estoc/mailbox-service/server`.
 
@@ -62,40 +62,40 @@ import { loadServices } from "@estoc/mailbox-service";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const services = await loadServices(store, { validator: defaultValidator });
-const service = await services.at("https://mail.example");
+const service = await services.fetch("https://mail.example");
 ```
 
-`at` gets the Service at an origin, from `GET /`: a bundle with the
+`fetch` gets the Service at an origin, from `GET /`: a bundle with the
 service's signature over the Service as the root, and the offers it lists,
 the service's signatures over them, the service's identity and their
-schemas. What the origin answers over TLS is the service's, so `at` takes
+schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
 offer signed by an identity of another root. It writes the service's
-signature over the Service to the store as mine, with all it leads to, and
+signature over the Service to the store as a record, with all it leads to, and
 gives a `Service`: the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
 lists one. Offers of schemas the client does not read are passed over.
 
-`at` takes an origin alone, a scheme, a host and a port, and refuses a url
+`fetch` takes an origin alone, a scheme, a host and a port, and refuses a url
 with a path. It takes `https://`, or `http://` to the client's own
 machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
-After first contact the service is its root. `of` gives the latest
+After first contact the service is its root. `latestOf` gives the latest
 Service that the store holds of the root that signed a signed identity,
 whichever channel brought it, and reaches nothing:
 
 ```ts
-const service = await services.of(account.service);
+const service = await services.latestOf(account.service);
 ```
 
 Another device that syncs the store goes back to the service that way, and
-to where it moved, once the store holds the newer Service. `of` checks a
-Service it reads from the store as `at` does, save that no origin was
-asked: its origin is still to be one that `at` takes. It reads every
+to where it moved, once the store holds the newer Service. `latestOf` checks a
+Service it reads from the store as `fetch` does, save that no origin was
+asked: its origin is still to be one that `fetch` takes. It reads every
 Service in the store, through an index of `@estoc/store`.
 
 ## Opening an account
@@ -184,24 +184,24 @@ identity's acceptance of its offer.
 
 ### What the client keeps
 
-`at` writes the service's signature over the Service, which leads to the
+`fetch` writes the service's signature over the Service, which leads to the
 offers and the service's signatures over them, and `accept` and `open`
 write the service's signature over the acknowledgement, each to the store
-as mine, with all they lead to. Another device that syncs the store learns
+as a record, with all they lead to. Another device that syncs the store learns
 which services the identity has accounts and mailboxes at, by their roots,
 and where they are, without asking them. When the service refuses, or its
 answer is refused, `accept` and `open` write nothing.
 
 The client knows people as the service does, from the same records in its
 store: the versions that signed the Services and the acknowledgements, and
-those that the acknowledged acceptances and requests carry. `at`, `of` and `accept` read
-the service's signatures by them, so a Service, an offer or an
+those that the acknowledged acceptances and requests carry. `fetch`,
+`latestOf` and `accept` read the service's signatures by them, so a Service, an offer or an
 acknowledgement signed by a key that a later version of the service's
 identity does not list is refused once the store knows that version.
 
-`at` reads the Service, and `accept` the acknowledgement, on the store as
+`fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is written, as `stage` of `@estoc/store` gives it. So
-a Service that `at` takes reads alike by `of` until the store knows a later
+a Service that `fetch` takes reads alike by `latestOf` until the store knows a later
 version of the service's identity. The offers a Service lists are read as
 any signature is, and the store then knows the version that signed the
 Service, so an offer is read by that version or a later one. When a
@@ -221,8 +221,8 @@ A mailbox opens under an account. An identity of a root that has an
 account signs a request for one, which names the service's offer of
 mailboxes and the key that messages to the mailbox are sealed to. The
 service answers with its signature over an acknowledgement of the request,
-which names two ids it made up: `send`, which senders post to, and
-`pickup`, which the account picks up at. Neither tells the other, and a
+which names two ids it made up: `sendId`, which senders post to, and
+`pickupId`, which the account picks up at. Neither tells the other, and a
 sender, who holds the send id alone, learns nothing of the account.
 
 Each mailbox has a key of its own, so each request is one of its own too,
@@ -241,7 +241,7 @@ The actor signs the request, and `open` posts the bundle of that signature
 to `POST /<id>`, at the id that the Service lists with the offer: the
 signature as the root, with the request and the blobs of its signed
 identity. It writes the service's signature over the acknowledgement to
-the store as mine, with all it leads to, and gives the HTTP mailbox of
+the store as a record, with all it leads to, and gives the HTTP mailbox of
 `@estoc/mailbox` that senders post to, `{"key", "url"}`, whose url is the
 origin the offer was taken at and the send id. `Post.openInbox` writes the
 mailbox to the store, and its key to the private store. The client refuses
@@ -273,19 +273,20 @@ any other 200.
 ## Sending to a mailbox
 
 Senders post to the mailbox as to any HTTP mailbox, at its url,
-`POST /<send id>`, with the sealed bytes as the body. Whoever holds the
+`POST /<send id>`, with the ciphertext as the body. Whoever holds the
 mailbox can.
 
 | Status | Meaning |
 |---|---|
-| 204 | the sealed bytes wait at the mailbox |
+| 204 | the ciphertext waits at the mailbox |
 | 404 | no mailbox has this id |
-| 413 | the sealed bytes are over the size that the offer names |
-| 429 | with them, what waits would come to more than the quota; more is taken once some is picked up |
+| 413 | the ciphertext is over the size that the offer names |
+| 429 | with it, what waits would come to more than the quota; more is taken once some is picked up |
 
-What waits stays until a pickup is done with it, or for the retention that
-the offer names, after which it no longer waits and no longer counts
-toward the quota. Sealed bytes that arrive while the same wait, wait once.
+What waits stays until a pickup has a receipt for it, or for the
+retention that the offer names, after which it no longer waits and no
+longer counts toward the quota. A ciphertext that arrives while the same
+waits, waits once.
 A sender of `@estoc/mailbox` turns back a 404 as `gone`, a 429 as `later`
 and a 413 as `refused`.
 
@@ -316,10 +317,10 @@ mailbox names.
 
 Each request is a pickup request that the actor signs. It names the
 mailbox by the service's signature over the acknowledgement, and lists by
-link the sealed bytes that the receiver was done with since the request
-before. The service lets those wait no more, and answers with a bundle
-whose root is a Waiting, unsigned, which lists by link what waits, the
-earliest first, with those bytes: 100 at most, coming to 1 MiB at most,
+link, as receipts, the ciphertexts that the receiver was done with since
+the request before. The service lets those wait no more, and answers with
+a bundle whose root is a Pickup answer, unsigned, which lists by link what
+waits, the earliest first, with those ciphertexts: 100 at most, coming to 1 MiB at most,
 but one at least however large. `arrivals` hands out each that it has not
 handed out yet, and once it handed out an answer, asks again. It ends once
 an answer brings nothing that it has not handed out, and once the signal
@@ -331,7 +332,7 @@ more.
 
 | Status | Meaning |
 |---|---|
-| 200 | the answer is what waits, once what the request is done with no longer does |
+| 200 | the answer is what waits, once what the request has receipts for no longer does |
 | 400 | the bundle does not read, or its root is not a signature over a pickup request of this mailbox |
 | 403 | the request is signed for another root than the account's, or by a key that the current version of the root's identity does not list |
 | 413 | the body is over 64 KiB and 128 bytes for each of the 100 messages that an answer holds at most |
@@ -375,7 +376,7 @@ a service is, and the ids they list are the ids it gave out: one that the
 latest lists takes what is posted for the offer under it, one that only an
 earlier one lists is answered 410, and one that none lists 404. The
 service works this out from the store on each request, through the same
-index of `@estoc/store` that `of` reads, and reads the offer there too, so
+index of `@estoc/store` that `latestOf` reads, and reads the offer there too, so
 services that share a store answer alike, with the latest Service that any
 of them signed, and open mailboxes on the terms that it lists.
 
@@ -404,9 +405,9 @@ in memory.
 `mailboxes` holds the mailboxes the service opened, each with the request
 that opened it, the link of the service's signature over its
 acknowledgement, the root of its account, its two ids and its terms, and
-the sealed bytes that wait at each. Its `open` keeps a mailbox only for a
+the ciphertexts that wait at each. Its `open` keeps a mailbox only for a
 request without one, in one step, so requests of one mailbox that arrive
-together open one. Its `put` keeps sealed bytes unless what waits would
+together open one. Its `put` keeps a ciphertext unless what waits would
 then come to more than the quota, in one step. The service passes it
 `since`, the time that the retention reaches back to, and what was
 received before then waits no more. `MemoryMailboxes` keeps them in
@@ -417,11 +418,11 @@ It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and
 at any other path, and 410 at the id of an offer that only an earlier
 Service lists. No request carries credentials, so it answers any origin,
 and it answers the CORS preflight that a browser sends before it posts a
-zip or sealed bytes to another origin. A request is read up to 64 KiB. A
+zip or a ciphertext to another origin. A request is read up to 64 KiB. A
 pickup request is read up to 128 bytes more for each of the 100 messages
 that an answer holds at most, so that it lists the links of all that the
-receiver is done with of the answer before. Sealed bytes are read up to the
-size that the offer of their mailbox names.
+receiver is done with of the answer before. A ciphertext is read up to the
+size that the offer of its mailbox names.
 
 Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to

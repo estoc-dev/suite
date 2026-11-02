@@ -108,7 +108,7 @@ export class Signatures {
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
     const verified = this.#signatureOf(signature, signedIdentity);
     const current = await versions.current(signedIdentity);
-    if (!this.#signedIdentities.signs(current, verified.key)) {
+    if (!this.#signedIdentities.hasSigner(current, verified.key)) {
       throw new Error(`${verified.key.link} does not sign for the current version of ${current.identity.root.link}`);
     }
     return verified;
@@ -121,7 +121,7 @@ export class Signatures {
 
   /** An actor for `signedIdentity`, which refuses a signer whose key does not sign for its identity. */
   actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
-    const sign = this.#signedIdentities.signing(signedIdentity, signer);
+    const sign = this.#signedIdentities.signingFunction(signedIdentity, signer);
     if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);
     return {
       signedIdentity,

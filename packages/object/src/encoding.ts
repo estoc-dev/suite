@@ -38,7 +38,7 @@ export interface Encoding<D> {
   links(value: D): Iterable<Link<unknown>>;
 }
 
-export interface Decoded<T> {
+export interface DecodedBlob<T> {
   readonly value: T;
   readonly bytes: Uint8Array;
   readonly link: Link<never>;
@@ -48,7 +48,7 @@ export interface Decoded<T> {
  * Decodes a copy of `bytes`, so that what was read is what is kept, whatever
  * happens to the given array afterwards.
  */
-export function decodeBlob<T>(codec: { decode(bytes: Uint8Array): T }, bytes: Uint8Array): Decoded<T> {
+export function decodeBlob<T>(codec: { decode(bytes: Uint8Array): T }, bytes: Uint8Array): DecodedBlob<T> {
   const owned = new Uint8Array(bytes);
   return { value: codec.decode(owned), bytes: owned, link: linkOf(owned) };
 }

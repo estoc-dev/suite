@@ -10,7 +10,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { concatBytes } from "@noble/hashes/utils.js";
-import { type Key, type KeyObject, sameKey, verify } from "../key/interface.ts";
+import { isSameKey, type Key, type KeyObject, verify } from "../key/interface.ts";
 import type { Keys } from "../key/keys.ts";
 import type { Signer } from "../signer.ts";
 import {
@@ -19,7 +19,7 @@ import {
   type IdentityObject,
   identityInterface,
   identityOf,
-  type Sign,
+  type SigningFunction,
 } from "./interface.ts";
 
 /**
@@ -87,14 +87,14 @@ export class DelegatedIdentities implements IdentityImplementation<DelegatedIden
     return agent !== undefined && verify(agent, object, signature.subarray(1), signedIdentity) ? agent : undefined;
   }
 
-  signing({ agents }: DelegatedIdentityObject, signer: Signer): Sign | undefined {
-    const index = agents.findIndex((agent) => sameKey(agent, signer.key));
+  signingFunction({ agents }: DelegatedIdentityObject, signer: Signer): SigningFunction | undefined {
+    const index = agents.findIndex((agent) => isSameKey(agent, signer.key));
     if (index < 0) return undefined;
     return async (object, signedIdentity) =>
       concatBytes(Uint8Array.of(index), await signer.sign(object, signedIdentity));
   }
 
-  signs({ agents }: DelegatedIdentityObject, key: KeyObject): boolean {
+  hasSigner({ agents }: DelegatedIdentityObject, key: KeyObject): boolean {
     return agents.some(({ link }) => link === key.link);
   }
 }

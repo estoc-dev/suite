@@ -28,9 +28,9 @@ const store = new Store(json, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
 // `schemas` are all that the program writes to; the store keeps those named here.
-await store.write({ mine: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
+await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
-for await (const link of store.mine()) …;                  // note.link, signature.link
+for await (const link of store.records()) …;               // note.link, signature.link
 await signatures.read(signature.link, store, noVersions);  // the signature, verified
 ```
 
@@ -54,20 +54,20 @@ them. So the store keeps the list itself rather than working it out.
 
 ## Writing
 
-A write puts in a batch: objects written as the user's, under `mine`, and
+A write puts in a batch: objects the user writes, under `records`, and
 the blobs that go with them, under `blobs`. Each is copied and hashed as it
-comes in, so the store keeps blobs under the links it computed. What is
-written as mine has to be an object of the store's encoding, or the whole
-batch is refused.
+comes in, so the store keeps blobs under the links it computed. A record
+has to be an object of the store's encoding, or the whole batch is
+refused.
 
-Of the blobs, it keeps those that what is written as mine leads to, and
-drops the rest. Nothing listed would reach them, so they could only wait to
+Of the blobs, it keeps those that the records lead to, and drops the
+rest. Nothing listed would reach them, so they could only wait to
 be collected. A program can then give the schemas it writes to with every
 write, and a bundle can carry blobs that its root does not lead to, without
 either leaving anything behind.
 
-A batch is refused whole, too, when what is written as mine leads to a blob
-that neither the batch nor the store holds: the schema of an object, or a
+A batch is refused whole, too, when a record leads to a blob that neither
+the batch nor the store holds: the schema of an object, or a
 blob its data links to. So the schemas of objects come with them unless the
 store holds them already, and a bundle is taken in only with all that its
 objects lead to, apart from what the receiver holds already.
@@ -92,13 +92,13 @@ What comes from elsewhere is judged before it is written, as a client
 reads who signed a Service it reaches, and read again later from the
 store. For the two to come out the same, the first is read from the store
 as it will be once the batch is written. `stage(batch)` gives that, a
-`Staged`: the blobs the store holds and those of the batch that `write`
-keeps, and the links the store lists with those the batch writes as mine.
+`StagedStore`: the blobs the store holds and those of the batch that `write`
+keeps, and the links of the store's records with those of the batch.
 `commit` writes the batch, as `write` does.
 
 ```ts
-const staged = await store.stage({ mine: [{ bytes: bundle.root }], blobs: bundle.blobs() });
-const people = await view(staged, { index: seen, read: (rows, reader) => versions.known(rows, reader) });
+const staged = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+const people = await view(staged, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
 const signature = await signatures.read(bundle.link, staged, people);
 // … whether whoever signed is someone to take it from …
 await staged.commit();
@@ -115,8 +115,8 @@ alone, which is what its sender chose to show. Staged on the user's
 store, it is read by what the user has seen as well, so a version of an
 identity that took an agent out counts even when the batch leaves it out.
 
-What a staged batch writes as mine is listed before anything has judged
-it. A row stands on its object and what that leads to, as a version
+The records of a staged batch are listed before anything has judged
+them. A row stands on its object and what that leads to, as a version
 stands on its root's signature, and not on whether the user took the
 object.
 
@@ -207,12 +207,12 @@ import { readObject } from "@estoc/object";
 import { view, type View } from "@estoc/store";
 
 // The latest note of a tag, from the rows of `byTag`.
-type Latest = { of(tag: string): Promise<Note | undefined> };
+type Latest = { noteTagged(tag: string): Promise<Note | undefined> };
 
 const latest: View<Json, [tag: string, at: number, note: Link<unknown>], Latest, Note> = {
   index: byTag,
   read: (rows, reader) => ({
-    async of(tag) {
+    async noteTagged(tag) {
       let last: Link<unknown> | undefined;
       for await (const [, , note] of rows.range([tag])) last = note;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
@@ -221,7 +221,7 @@ const latest: View<Json, [tag: string, at: number, note: Link<unknown>], Latest,
 };
 
 const notes = await view(store, latest);
-await notes.of("lunch");
+await notes.noteTagged("lunch");
 ```
 
 `view(store, view)` scans the store for the index and reads the rows with
@@ -243,10 +243,10 @@ schema can be kept on either side.
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
-const kept = new PrivateStore(store, new MemoryBackend());
-await kept.write({ mine: [key], blobs: [keySchema.bytes] });
+const keys = new PrivateStore(store, new MemoryBackend());
+await keys.write({ records: [key], blobs: [keySchema.bytes] });
 
-await kept.get(mailbox.link);  // from the store beside
+await keys.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined
 ```
 

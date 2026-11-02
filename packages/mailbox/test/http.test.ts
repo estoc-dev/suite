@@ -6,7 +6,7 @@ import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
-import { loadPost, MailboxKey, mailboxFrom, Undelivered } from "../src/index.ts";
+import { loadPost, MailboxKey, mailboxFrom, UndeliveredMessage } from "../src/index.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -61,12 +61,12 @@ const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
 
-async function rejectedAs(sending: Promise<unknown>): Promise<Undelivered["kind"]> {
+async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage["kind"]> {
   const error = await sending.then(
     () => undefined,
     (error: unknown) => error,
   );
-  assert.instanceOf(error, Undelivered);
+  assert.instanceOf(error, UndeliveredMessage);
   return error.kind;
 }
 
@@ -80,7 +80,7 @@ describe("an HTTP mailbox", () => {
     expect((await bob.open(request.body)).root).toEqual(hello.bytes);
   });
 
-  it.each<[number, Undelivered["kind"]]>([
+  it.each<[number, UndeliveredMessage["kind"]]>([
     [404, "gone"],
     [410, "gone"],
     [408, "later"],
@@ -114,7 +114,7 @@ describe("an HTTP outbox", () => {
     const kept = new PrivateStore(store, new MemoryBackend());
     const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
-    await store.write({ mine: [mailbox, hello], blobs: [http.schema.bytes, note.bytes] });
+    await store.write({ records: [mailbox, hello], blobs: [http.schema.bytes, note.bytes] });
     const outbox = await post.outbox(mailbox.link);
     const before = await listed(store);
 
@@ -133,7 +133,7 @@ describe("an HTTP outbox", () => {
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.mine()) links.push(link);
+  for await (const link of store.records()) links.push(link);
   return links;
 }
 

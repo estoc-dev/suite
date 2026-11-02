@@ -1,8 +1,9 @@
-import type { IdentityKit, People, SignatureData, Version } from "@estoc/identity";
+import type { IdentityKit, People, Signature, SignatureData, Version } from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
   type Json,
+  type JsonLink,
   json,
   type Reader,
   readObject,
@@ -12,26 +13,27 @@ import {
 import type { View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
-export type KnownPeople = View<Json, Version, People, SignatureData>;
+export type PeopleView = View<Json, Version, People, SignatureData>;
 
 /**
  * The people that a store of a service's, or of a client's of it, knows,
- * from what the service gave out that the store holds as mine: the versions
+ * from what the service gave out among the store's records: the versions
  * that signed the Services and the acknowledgements, of accounts and of
- * mailboxes, and those that the acknowledged acceptances and requests carry. The service and its client keep the same
- * records, so they know the people of one another alike. A version stands on
- * its root's signature alone, so none is judged here.
+ * mailboxes, and those that the acknowledged acceptances and requests
+ * carry. The service and its client keep the same records, so they know
+ * the people of one another alike. A version stands on its root's
+ * signature alone, so none is judged here.
  */
-export function knownPeople(
+export function peopleView(
   { signatures, signedIdentities, versions }: IdentityKit,
   schemas: {
     readonly service: Schema<Json, ServiceData>;
     readonly acknowledgement: Schema<Json, AcknowledgementData>;
     readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
   },
-): KnownPeople {
+): PeopleView {
   const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
-    versions.of(await signedIdentities.read(data.signedIdentity.$link, reader));
+    versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   return {
     index: {
       reads: [signatures.schema],
@@ -39,16 +41,17 @@ export function knownPeople(
         const bytes = await reader.get(signature.data.object.$link);
         if (bytes === undefined) return;
         const schema = schemaOf(bytes, json);
-        const acknowledgement = [schemas.acknowledgement, schemas.mailboxAcknowledgement].find(
-          ({ link }) => link === schema,
-        );
-        if (schema !== schemas.service.link && acknowledgement === undefined) return;
+        let acknowledgedSignature: JsonLink<Signature> | undefined;
+        if (schema === schemas.acknowledgement.link)
+          acknowledgedSignature = decodeObject(bytes, schemas.acknowledgement).data.acceptance;
+        else if (schema === schemas.mailboxAcknowledgement.link)
+          acknowledgedSignature = decodeObject(bytes, schemas.mailboxAcknowledgement).data.request;
+        else if (schema !== schemas.service.link) return;
         yield await versionOf(signature, reader);
-        if (acknowledgement === undefined) return;
-        const { accepted } = decodeObject(bytes, acknowledgement).data;
-        yield await versionOf(await readObject(reader, accepted.$link, signatures.schema), reader);
+        if (acknowledgedSignature === undefined) return;
+        yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);
       },
     },
-    read: (rows, reader) => versions.known(rows, reader),
+    read: (rows, reader) => versions.people(rows, reader),
   };
 }

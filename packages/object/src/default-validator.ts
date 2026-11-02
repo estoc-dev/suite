@@ -23,7 +23,7 @@ setShouldValidateFormat(true);
 // Where a schema is registered while it compiles, and so the base a schema
 // without `$id` resolves against. A URN admits fragments only, so a relative
 // reference names nothing.
-const anonymous = "urn:estoc:schema";
+const anonymousUri = "urn:estoc:schema";
 
 // A schema compiles while it sits in the registry, where another schema
 // compiling at the same time could reach it; so schemas take turns.
@@ -37,21 +37,21 @@ let turn: Promise<unknown> = Promise.resolve();
 export const defaultValidator: JsonSchemaValidator = {
   language: jsonSchema,
   compile(schema) {
-    const check = turn.then(() => compileRegistered(schema));
+    const check = turn.then(() => compileInRegistry(schema));
     turn = check.catch(() => undefined);
     return check;
   },
 };
 
-async function compileRegistered(schema: JsonSchema): Promise<Check<Json>> {
+async function compileInRegistry(schema: JsonSchema): Promise<Check<Json>> {
   if (schema.$schema !== DRAFT_2020_12) throw new Error(`unsupported dialect ${schema.$schema}`);
-  registerSchema(schema as SchemaObject, anonymous);
+  registerSchema(schema as SchemaObject, anonymousUri);
   try {
-    const root = await getSchema(anonymous);
+    const root = await getSchema(anonymousUri);
     const resources = Object.entries(root.document.embedded ?? {}) as [string, SchemaDocument][];
     for (const [uri, resource] of resources) {
       // The registry resolves a URI before the schema's own resources do.
-      if (uri !== anonymous && hasSchema(uri)) throw new Error(`the schema takes the $id ${uri} of another schema`);
+      if (uri !== anonymousUri && hasSchema(uri)) throw new Error(`the schema takes the $id ${uri} of another schema`);
       if (resource.dialectId !== DRAFT_2020_12) throw new Error(`unsupported dialect ${resource.dialectId} in ${uri}`);
     }
 
@@ -74,6 +74,6 @@ async function compileRegistered(schema: JsonSchema): Promise<Check<Json>> {
       return problems.length > 0 ? problems : ["#: does not fit"];
     };
   } finally {
-    unregisterSchema(anonymous);
+    unregisterSchema(anonymousUri);
   }
 }

@@ -72,7 +72,7 @@ const login = await encodeSchema(
 // The server knows its audience and the nonce it handed out, so it builds the
 // object itself and needs back only the signature, with the blobs of the
 // identity that signed.
-async function loggedIn(
+async function loggedInIdentity(
   audience: string,
   nonce: string,
   signature: Uint8Array,
@@ -88,7 +88,7 @@ describe("a login", () => {
   const signed = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
     const { bytes, signedIdentity } = await signed;
-    return loggedIn(audience, nonce, bytes, signedIdentity.blobs);
+    return loggedInIdentity(audience, nonce, bytes, signedIdentity.blobs);
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
@@ -106,7 +106,7 @@ describe("a login", () => {
     const { bytes, signedIdentity } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
-    const identity = await loggedIn("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
+    const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
     expect(identity?.link).not.toBe(identities.encode(user.key, 0).link);
     expect(identity?.root.link).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.root.link);
   });
@@ -161,7 +161,7 @@ async function saleInForce(link: Link<EncodedObject<Json, Sale>>, received: Rece
 }
 
 // A delivery is confirmed once the buyer of a sale in force signs for it.
-async function deliveryConfirmed(link: Link<unknown>, received: Received): Promise<boolean> {
+async function isDeliveryConfirmed(link: Link<unknown>, received: Received): Promise<boolean> {
   const bytes = await received.blobs.get(link);
   if (bytes === undefined) return false;
   const terms = await saleInForce(decodeObject(bytes, delivery).data.sale.$link, received);
@@ -206,16 +206,16 @@ describe("a sale", () => {
 describe("a delivery", () => {
   it("is confirmed when the buyer of a sale in force signs for it", async () => {
     const received = receive(await signedBy([terms, buyer], [terms, seller], [confirmation, buyer]));
-    expect(await deliveryConfirmed(confirmation.link, received)).toBe(true);
+    expect(await isDeliveryConfirmed(confirmation.link, received)).toBe(true);
   });
 
   it("is not confirmed when only the seller signs for it", async () => {
     const received = receive(await signedBy([terms, buyer], [terms, seller], [confirmation, seller]));
-    expect(await deliveryConfirmed(confirmation.link, received)).toBe(false);
+    expect(await isDeliveryConfirmed(confirmation.link, received)).toBe(false);
   });
 
   it("is not confirmed while the sale is not in force", async () => {
     const received = receive(await signedBy([terms, buyer], [confirmation, buyer]));
-    expect(await deliveryConfirmed(confirmation.link, received)).toBe(false);
+    expect(await isDeliveryConfirmed(confirmation.link, received)).toBe(false);
   });
 });

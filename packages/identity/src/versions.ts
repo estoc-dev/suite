@@ -19,21 +19,21 @@ export class IdentityVersions {
     this.#signedIdentities = signedIdentities;
   }
 
-  of(signedIdentity: SignedIdentityObject): Version {
+  versionOf(signedIdentity: SignedIdentityObject): Version {
     const { identity } = signedIdentity;
     return [identity.root.link, identity.data.at, signedIdentity.link];
   }
 
   /**
    * The people a reader knows, from `rows`, the rows of its index of the
-   * versions it has seen, each as `of` gives it. A version a row names is
+   * versions it has seen, each as `versionOf` gives it. A version a row names is
    * read from `reader`.
    */
-  known(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
+  people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
     const order = (version: SignedIdentityObject, other: SignedIdentityObject) =>
-      compare(this.of(version), this.of(other));
-    const of = (signedIdentity: SignedIdentityObject): Person => {
+      compare(this.versionOf(version), this.versionOf(other));
+    const personOf = (signedIdentity: SignedIdentityObject): Person => {
       const { root } = signedIdentity.identity;
       return {
         root,
@@ -46,12 +46,14 @@ export class IdentityVersions {
         current: async () => {
           let last: Version | undefined;
           for await (const version of rows.range([root.link])) last = version;
-          return last === undefined || compare(this.of(signedIdentity), last) >= 0 ? signedIdentity : read(last[2]);
+          return last === undefined || compare(this.versionOf(signedIdentity), last) >= 0
+            ? signedIdentity
+            : read(last[2]);
         },
-        signed: (signature) => signature.signedIdentity.identity.root.link === root.link,
+        hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
     };
-    return { of, current: (signedIdentity) => of(signedIdentity).current() };
+    return { personOf, current: (signedIdentity) => personOf(signedIdentity).current() };
   }
 }
 

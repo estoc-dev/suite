@@ -24,7 +24,7 @@ interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
  */
 export class Keys {
   readonly #implementations: Implementations<Json, KeyObject, KeyImplementation>;
-  readonly #ofScheme: ReadonlyMap<Scheme, KeyImplementation>;
+  readonly #byScheme: ReadonlyMap<Scheme, KeyImplementation>;
 
   constructor(schemas: ReadonlyMap<Scheme, Schema<Json, KeyData>>) {
     const implementations = [...schemas].map(
@@ -40,11 +40,11 @@ export class Keys {
       }),
     );
     this.#implementations = new Implementations(json, implementations);
-    this.#ofScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
+    this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
   }
 
   check(object: EncodedObject<Json, KeyData>): KeyObject {
-    return this.#implementations.of(object.schema.link).read(object);
+    return this.#implementations.implementationOf(object.schema.link).read(object);
   }
 
   /** Reads the key that `link` names from `reader`, with the key schema it is written to. */
@@ -54,7 +54,7 @@ export class Keys {
 
   /** Writes a key as its object, to the key schema of its scheme. */
   encode({ scheme, publicKey }: Key): KeyObject {
-    const implementation = this.#ofScheme.get(scheme);
+    const implementation = this.#byScheme.get(scheme);
     if (implementation === undefined) throw new Error(`the ${scheme.name} scheme is not one written here`);
     return implementation.read(encodeObject(implementation.schema, { publicKey: bytesToHex(publicKey) }));
   }

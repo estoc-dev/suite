@@ -196,11 +196,11 @@ it will be once that is written, as `stage` of `@estoc/store` gives it. So
 a Service that `at` takes reads alike by `of` until the store knows a later
 version of the service's identity. The offers a Service lists are read as
 any signature is, and the store then knows the version that signed the
-Service, so an offer is read by that version or a later one. A service
-that signs a Service by a version that
-does not list the key that signed an offer signs the offer again by a key
-that the version lists. The offer stays the same object, so its id and the
-acceptances of it stay as they were.
+Service, so an offer is read by that version or a later one. When a
+service signs a Service by a version that takes out the key that signed an
+offer by an earlier one, it signs the offer again by a key that the version
+lists. The offer stays the same object, so its id and the acceptances of it
+stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
 account is of, the service's signed identity that signed the

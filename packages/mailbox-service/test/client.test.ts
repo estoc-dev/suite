@@ -163,7 +163,7 @@ describe("a service reached at its origin", () => {
     await expect(services.at(origin)).rejects.toThrow(/lists an offer signed by another root/);
   });
 
-  it("refuses a Service that lists an offer by an agent that the version signing the Service does not list, until the offer is signed again", async () => {
+  it("refuses a Service that lists an offer by an agent that the version signing the Service takes out, until the offer is signed again", async () => {
     const [removed, listed] = [signer(ed25519, 7), signer(ed25519, 8)];
     const earlier = signatures.actor(removed, await delegate(serviceSigner, [removed.key], 1_000));
     const later = signatures.actor(listed, await delegate(serviceSigner, [listed.key], 2_000));

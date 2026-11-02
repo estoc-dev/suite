@@ -9,11 +9,14 @@ import {
 } from "@estoc/object";
 
 /**
- * The draft 2020-12 schema of one transport's mailboxes. Every mailbox has
- * `key`, the x25519 public key that messages to it are sealed to, as 32
- * bytes in lowercase hex. `properties` and `required` add the transport's
- * own fields, and no other field is allowed. The title tells apart two
- * transports whose fields look the same.
+ * The draft 2020-12 schema of one transport's mailboxes.
+ *
+ * - Every mailbox has `key`, the x25519 public key that messages to it are sealed to, as 32 bytes
+ *   in lowercase hex.
+ * - `properties` and `required` add the transport's own fields, and no other field is allowed.
+ * - The title tells apart two transports whose fields look the same.
+ *
+ * @throws when `properties` names a field `key`.
  */
 export function mailboxSchema(
   title: string,

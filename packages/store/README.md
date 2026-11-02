@@ -2,10 +2,10 @@
 
 A store keeps what a user writes and what comes to them, on one device. Its
 truth is objects: a record of each thing the user did, such as writing a
-note or receiving a bundle, and the blobs those lead to. What the user
-keeps to themselves, such as a secret key, is an object too, kept in a
-private store beside the store. The state of a running program is kept in
-its own place and is not an object.
+note or receiving a bundle, and the blobs in the closures of those records.
+What the user keeps to themselves, such as a secret key, is an object too,
+kept in a private store beside the store. The state of a running program
+is kept in its own place and is not an object.
 
 A store holds two things.
 
@@ -14,11 +14,15 @@ A store holds two things.
   not listed. Blobs from anyone can be kept together: a link names one
   blob, so a blob someone sends can neither replace nor change one already
   kept.
-- **What was written here**: the links of the objects the user wrote. It is
-  the one thing in a store that is not a blob.
+- **Records**: the links of the objects the user wrote. They are the one
+  thing in a store that is not a blob.
 
-Every blob it holds comes with all that it leads to, and a write adds only
-the blobs that what it writes here leads to.
+A blob of the store's encoding links to the blobs whose links the encoding
+finds in it, the schema of an object among them; a blob of another
+encoding, such as an image, links to nothing. The closure of a blob is the
+blob and every blob it links to, directly or through others. Every blob a
+store holds comes with its closure, and a write adds only the blobs in the
+closures of its records.
 
 ```ts
 import { encodeObject, json } from "@estoc/object";
@@ -48,38 +52,40 @@ are read by following links from the record. A reader then knows they came
 from elsewhere without any query having to say so. Something signed carries
 its authority in its signature, and reads the same when reached by a link.
 
-An unsigned object has no author to tell who wrote it, and what a bundle
-leads to can include the user's own objects, as when someone replies to
-them. So the store keeps the list itself rather than working it out.
+An unsigned object has no author to tell who wrote it, and the closure of
+a bundle's root can include the user's own objects, as when someone replies
+to them. So the store keeps the list itself rather than working it out.
 
 ## Writing
 
 A write puts in a batch: objects the user writes, under `records`, and
 the blobs that go with them, under `blobs`. Each is copied and hashed as it
-comes in, so the store keeps blobs under the links it computed. A record
-has to be an object of the store's encoding, or the whole batch is
-refused.
+comes in, so the store keeps blobs under the links it computed.
 
-Of the blobs, it keeps those that the records lead to, and drops the
+Of the blobs, it keeps those in the closures of the records, and drops the
 rest. Nothing listed would reach them, so they could only wait to
 be collected. A program can then give the schemas it writes to with every
-write, and a bundle can carry blobs that its root does not lead to, without
+write, and a bundle can carry blobs outside its root's closure, without
 either leaving anything behind.
 
-A batch is refused whole, too, when a record leads to a blob that neither
-the batch nor the store holds: the schema of an object, or a
-blob its data links to. So the schemas of objects come with them unless the
-store holds them already, and a bundle is taken in only with all that its
-objects lead to, apart from what the receiver holds already.
+The whole batch is refused when:
+
+- a record is not an object of the store's encoding, or
+- a blob in a record's closure is neither in the batch nor held by the
+  store: the schema of an object, or a blob its data links to.
+
+So the schemas of objects come with them unless the store holds them
+already, and a bundle is taken in only with the closures of its objects,
+apart from what the receiver holds already.
 
 A refused batch rejects with a `RefusedBatch`, and the same batch is
-refused again until the store holds what it leads to. A backend that fails
+refused again until the store holds what was missing. A backend that fails
 rejects with an error of its own, so a receiver can tell a bundle it will
 not take from a write that may go through the next time.
 
-Each blob goes in after the blobs it leads to, and before the links that
+Each blob goes in after the blobs it links to, and before the links that
 list it, so a write cut short leaves at worst blobs that nothing lists,
-each with all it leads to.
+each with its closure.
 
 There is no transaction that reads and then writes. Two devices that each
 check that something is missing before writing it will both write it, and
@@ -88,7 +94,7 @@ written so that every device writes the same object, with the same link.
 
 ## Staging
 
-What comes from elsewhere is judged before it is written, as a client
+What comes from elsewhere is verified before it is written, as a client
 reads who signed a Service it reaches, and read again later from the
 store. For the two to come out the same, the first is read from the store
 as it will be once the batch is written. `stage(batch)` gives that, a
@@ -106,28 +112,28 @@ await staged.commit();
 
 A batch that `write` refuses is refused when it is staged, before
 anything reads it. A staged batch gives the blobs that will be kept and no
-others, so what is judged leads to nothing the store will not hold.
-`scan` and `view` take a staged batch as they take a store, so the rows
-and the objects they name come from the store as it will be.
+others, so nothing verified on it has a blob in its closure that the store
+will not hold. `scan` and `view` take a staged batch as they take a store,
+so the rows and the objects they name come from the store as it will be.
 
 Staged on a store that holds nothing, a batch is read by what it holds
 alone, which is what its sender chose to show. Staged on the user's
 store, it is read by what the user has seen as well, so a version of an
 identity that took an agent out counts even when the batch leaves it out.
 
-The records of a staged batch are listed before anything has judged
-them. A row stands on its object and what that leads to, as a version
+The records of a staged batch are listed before anything has verified
+them. A row stands on its object and its closure, as a version
 stands on its root's signature, and not on whether the user took the
 object.
 
 The batch is fixed when it is staged, and the store is read as it is at
 each read, so what is written to the store afterwards shows on the staged
-batch too. What is judged on it reads the same from the store once it is
+batch too. What is verified on it reads the same from the store once it is
 committed when nothing else is written in between. A write in between,
 such as of a version of an identity that took an agent out, can change
 what a view comes to when it is viewed again, on the staged batch as on
 the store. A value already viewed stays as it was, and `commit` does not
-judge the batch again: as with a write, there is no transaction that
+verify the batch again: as with a write, there is no transaction that
 reads and then writes.
 
 A store only grows, so what a staged batch found held is still held when
@@ -137,18 +143,16 @@ staged batch is not a store: it has no `write`, `closure` or `stage`.
 
 ## Reading
 
-`closure(link)` gathers the blob that `link` names and every blob it leads
-to, all of which the store holds. A blob of the store's encoding leads to
-the links that the encoding finds in it, the schema of an object among
-them, and a blob of another encoding, such as an image, leads nowhere. The
-closure of an object is what a bundle carrying it holds:
+`closure(link)` gathers the closure of the blob that `link` names, all of
+which the store holds. The closure of an object is what a bundle carrying
+it holds:
 
 ```ts
 const files = writeBundle(signature, (await store.closure(signature.link)).values());
 ```
 
 A store is a `Reader`: `readObject` reads an object from it by link, and a
-judgment such as `signatures.read` reads from it the blobs it needs, each
+verifier such as `signatures.read` reads from it the blobs it needs, each
 when it comes to it, without gathering a closure first. Like every reader,
 it gives under a link only the blob that the link names: `get` and
 `closure` hash what the backend gives back, and throw when the backend
@@ -160,8 +164,8 @@ A store keeps no index. An application keeps its own, of the objects the
 user writes: an `Index` says which schemas it reads and which rows each
 object of them gives. A row is a key of strings and finite numbers,
 compared one by one, a number before a string and a key before the longer
-keys that start with it. The rows of an object depend on it and on what it
-leads to, which `rows` reads by link from the `Reader` it is given, and on
+keys that start with it. The rows of an object depend on it and its
+closure, which `rows` reads by link from the `Reader` it is given, and on
 nothing else. An index is the set of the rows its objects give, so the
 order they come in and how often make no difference. What depends on what
 else is written, such as whether something replaced an object, is worked
@@ -253,11 +257,12 @@ await store.get(key.link);     // undefined
 The private store reads the store beside it, so what it keeps can link to
 what the store holds, and its `get` gives both. The store does not read the
 private store. A blob that only the private store keeps is not one the
-store holds, so the store refuses to write an object that leads to one, and
-its `get` and `closure` do not give one. A private store has no `closure`
-and is not a `Store`, so it cannot be given where a store is asked for, as
-by what gathers bundles. Being private is where bytes are kept, not a mark
-on them: bytes that are also written to the store are the store's as well.
+store holds, so the store refuses to write an object with one in its
+closure, and its `get` and `closure` do not give one. A private store has
+no `closure` and is not a `Store`, so it cannot be given where a store is
+asked for, as by what gathers bundles. Being private is where bytes are
+kept, not a mark on them: bytes that are also written to the store are the
+store's as well.
 
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,

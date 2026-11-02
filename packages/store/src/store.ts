@@ -1,10 +1,9 @@
 import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
 
 /**
- * Where a store keeps its blobs and the list of what was written to it:
- * memory, a folder, or storage in a browser. It keeps bytes and links as it
- * is given them; the store hashes and decodes, and hashes again what it gets
- * back, so a backend that was damaged makes reading fail.
+ * Where a store keeps its blobs and its records: memory, a folder, or storage in a browser. It
+ * keeps bytes and links as it is given them; the store hashes and decodes, and hashes again what it
+ * gets back, so a backend that was damaged makes reading fail.
  */
 export interface Backend {
   /**
@@ -15,14 +14,14 @@ export interface Backend {
   /** Whether bytes were put under `link`. */
   has(link: Link<unknown>): Promise<boolean>;
   /**
-   * Puts each blob under its link, one after another in the order given,
-   * and then adds `records` to the list of what was written. The store gives
-   * each blob after the blobs it leads to, and a link is listed only once
-   * its blob is in, so a write cut short leaves no blob without what it
-   * leads to and no listed link without its blob. The backend of a
-   * `PrivateStore` is not given what the store beside it holds, so there
-   * these hold of the two together: what a blob leads to, or the blob of a
-   * listed link, may be in the store beside instead.
+   * Puts each blob under its link, one after another in the order given, and then lists `records`.
+   *
+   * - The store gives each blob after the blobs it links to, and a link is listed only once its
+   *   blob is in, so a write cut short leaves no blob without its closure and no listed link
+   *   without its blob.
+   * - The backend of a `PrivateStore` is not given what the store beside it holds, so there these
+   *   hold of the two together: part of a blob's closure, or the blob of a listed link, may be in
+   *   the store beside instead.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void>;
   /** The links listed by `put`, each once. */
@@ -39,82 +38,91 @@ export interface Batch {
   /**
    * Blobs that come with them and are not listed: what the objects link to,
    * or the blobs of a bundle received along with an object that notes its
-   * arrival. Only those that a record leads to are kept.
+   * arrival. Only those in the closure of a record are kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
 
 /**
- * The objects a user writes and the blobs that come with them. Blobs are
- * kept by link, whoever wrote them, and got by link; they are not listed.
- * What is listed is what the user wrote, and anything else is reached by
- * following links from it, so an object that someone else slipped into a
- * bundle is read only as part of what it came with. Every blob a store holds
- * comes with all that it leads to, and a write adds only the blobs that its
- * records lead to.
+ * The objects a user writes and the blobs that come with them.
+ *
+ * - Blobs are kept by link, whoever wrote them, and are not listed.
+ * - Only records are listed, and anything else is reached by following links from them, so an
+ *   object that someone else slipped into a bundle is read only as part of what it came with.
+ * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
+ *   or through others.
+ * - A write adds only the blobs in the closures of its records.
  */
 export interface Store {
   /**
-   * A blob by its link, a record or not. Throws when the
-   * backend gives other bytes under the link.
+   * A blob by its link, a record or not.
+   *
+   * @throws when the backend gives other bytes under the link.
    */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   // For links of several kinds at once, as in an array of the links of objects
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * Puts in the batch's records and the blobs they lead to, and drops the
-   * other blobs. Refuses the whole batch with a `RefusedBatch` when a record
-   * is not an object of the store's encoding, or
-   * when it leads to a blob that neither the batch nor the store holds: the
-   * schema of an object, or any other link in it. A backend that fails
-   * rejects with an error of its own.
+   * Puts in the batch's records and the blobs in their closures, and drops the other blobs. A
+   * refused batch writes nothing.
+   *
+   * @throws {RefusedBatch} when a record is not an object of the store's encoding.
+   * @throws {RefusedBatch} when a blob in a record's closure is neither in the batch nor held by
+   *   the store, such as the schema of an object or a blob its data links to.
+   * @throws the backend's own error when the backend fails.
    */
   write(batch: Batch): Promise<void>;
   /**
-   * The store as it will be once `batch` is written, to read before writing
-   * it. Refuses the batch as `write` does, before anything reads it, and
-   * keeps of its blobs those that `write` would. `write(batch)` writes as
-   * `(await store.stage(batch)).commit()` does.
+   * The store as it will be once `batch` is written, to read before writing it.
+   *
+   * - Of the batch's blobs, it keeps those that `write` would.
+   * - `write(batch)` writes as `(await store.stage(batch)).commit()` does.
+   *
+   * @throws {RefusedBatch} for a batch that `write` refuses, before anything reads it.
    */
   stage(batch: Batch): Promise<StagedStore>;
   /** The links of the records, each once, in no particular order. */
   records(): AsyncIterable<Link<never>>;
   /**
-   * The blob that `link` names and every blob it leads to, or nothing when
-   * the store does not hold it. A blob of the store's encoding leads to the
-   * links that the encoding finds in it, the schema of an object included,
-   * and any other blob, such as an image, leads nowhere. Throws as `get`
-   * does.
+   * The closure of the blob that `link` names: the blob and every blob it links to, directly or
+   * through others. It is empty when the store does not hold the blob.
+   *
+   * - A blob of the store's encoding links to the blobs whose links the encoding finds in it, the
+   *   schema of an object among them.
+   * - A blob of any other encoding, such as an image, links to nothing.
+   *
+   * @throws when the backend gives other bytes under a link in the closure.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
 }
 
 /**
- * A store as it will be once a batch is written, read before the batch is
- * written: the blobs the store holds and those of the batch that `write`
- * keeps, and the links of the store's records with those of the batch.
- * The batch is fixed when it is staged, and the store is read as it is at
- * each read, so what is written to the store afterwards shows here too.
- * What is judged on it reads the same from the store once it is committed
- * when nothing else is written in between. A write in between, such as of a
- * version that takes an agent out, can change what a view comes to when it
- * is viewed again, here as on the store, and `commit` does not judge the
- * batch again. A store only grows, so the batch can still be committed
- * after other writes, and what it leads to is still held.
+ * A store as it will be once a batch is written, to read before the batch is written: the blobs
+ * the store holds and those of the batch that `write` keeps, and the store's records with the
+ * batch's.
+ *
+ * - The batch is fixed when it is staged, and the store is read as it is at each read, so what is
+ *   written to the store afterwards shows here too.
+ * - What a verifier or a view reads from it reads the same from the store once it is committed,
+ *   when nothing else is written in between.
+ * - A write in between, such as of a version that takes an agent out, can change what a view comes
+ *   to when it is viewed again, here as on the store. `commit` does not verify the batch again.
+ * - A store only grows, so the batch can still be committed after other writes, and what it found
+ *   held is still held.
  */
 export interface StagedStore {
   /**
-   * A blob by its link, of the batch or held by the store, in an array the
-   * caller may change without changing what `commit` writes. Throws as the
-   * store's `get` does.
+   * A blob by its link, of the batch or held by the store, in an array the caller may change
+   * without changing what `commit` writes.
+   *
+   * @throws as the store's `get` does.
    */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * The links of the store's records and of the batch's, each once, in no
-   * particular order. Those of the batch are listed here before
-   * anything has judged them.
+   * The links of the store's records and of the batch's, each once, in no particular order. Those
+   * of the batch are listed here before anything has verified them.
    */
   records(): AsyncIterable<Link<never>>;
   /** Writes the batch as `write` writes it. Committing again writes nothing more. */
@@ -122,11 +130,10 @@ export interface StagedStore {
 }
 
 /**
- * A batch that a store refuses for what it is: a record that is not an
- * object, or a link to a blob that neither the batch nor the
- * store holds. The same batch is refused again until the store holds what it
- * leads to, while a backend that fails, which rejects with an error of its
- * own, may write it the next time.
+ * A batch that a store refuses for what it is: a record that is not an object, or a blob in a
+ * record's closure that neither the batch nor the store holds. The same batch is refused again
+ * until the store holds what was missing, while a backend that fails, which rejects with an error
+ * of its own, may write it the next time.
  */
 export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
@@ -218,11 +225,10 @@ class StoreOf<D> implements Store {
   }
 
   /**
-   * `records` and the blobs of `blobs` they lead to, each after those it
-   * leads to. Throws when one leads to a blob that is neither in `blobs` nor
-   * held.
-   * A held blob comes with all it leads to, so what it leads to is not looked
-   * at again.
+   * `records` and the blobs of `blobs` in their closures, each after the blobs it links to. A held
+   * blob comes with its closure, so its links are not followed.
+   *
+   * @throws {RefusedBatch} when a blob in a record's closure is neither in `blobs` nor held.
    */
   async #leavesFirst(
     records: readonly Link<unknown>[],
@@ -237,7 +243,7 @@ class StoreOf<D> implements Store {
     });
     for (const start of records) {
       if (ordered.has(start)) continue;
-      // A link is a hash of its blob, so no blob leads back to one on the path.
+      // A link is a hash of its blob, so no blob on the path is in the closure of one after it.
       // biome-ignore lint/style/noNonNullAssertion: each record is among the blobs
       const path = [frame(start, blobs.get(start)!)];
       for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
@@ -255,7 +261,7 @@ class StoreOf<D> implements Store {
         } else if (await this.#backend.has(linked)) {
           held.add(linked);
         } else {
-          throw new RefusedBatch(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
+          throw new RefusedBatch(`${top.link} links to ${linked}, which neither the batch nor the store holds`);
         }
       }
     }
@@ -313,26 +319,26 @@ class StagedStoreOf implements StagedStore {
 }
 
 /**
- * Makes a store that keeps its blobs and its list in `backend`, and finds
- * the links in a blob by `encoding`. The encoding is the one of the records,
- * and a blob of any other encoding leads nowhere. A
- * backend is to be used with one encoding throughout, since the store takes
- * a blob it holds to come with all that the encoding finds it leads to.
+ * Makes a store that keeps its blobs and its records in `backend`, and finds the links in a blob by
+ * `encoding`. The encoding is the one of the records, and a blob of any other encoding links to
+ * nothing. A backend is to be used with one encoding throughout, since the store takes a blob it
+ * holds to come with its closure under that encoding.
  */
 export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = StoreOf;
 
 /**
- * What the user keeps to themselves: objects they write, and the blobs those
- * lead to, kept apart from the store that bundles are gathered from. It is
- * kept beside a store, in a backend of its own, and reads that store too, so
- * what is kept here can link to what the store holds. The store does not
- * read it: a blob that only this keeps is not held by the store, so the store
- * refuses to write anything that leads to one, and neither its `get` nor its
- * `closure` gives one. There is no `closure` here, and this is not a `Store`,
- * so it cannot be given to what gathers bundles from a store. Bytes that are
- * also written to the store are the store's as well.
+ * What the user keeps to themselves: objects they write and the blobs in their closures, kept
+ * apart from the store that bundles are gathered from.
  *
- * Whether what is kept here is encrypted is up to the backend.
+ * - It is kept beside a store, in a backend of its own, and reads that store too, so what is kept
+ *   here can link to what the store holds.
+ * - The store does not read it: a blob that only this keeps is not held by the store, so the store
+ *   refuses to write anything with one in its closure, and neither its `get` nor its `closure`
+ *   gives one.
+ * - There is no `closure` here, and this is not a `Store`, so it cannot be given to what gathers
+ *   bundles from a store.
+ * - Bytes that are also written to the store are the store's as well.
+ * - Whether what is kept here is encrypted is up to the backend.
  */
 export class PrivateStore {
   // A private field makes the type nominal, unlike the interface `Store`, so a
@@ -340,16 +346,18 @@ export class PrivateStore {
   readonly #store: Store;
 
   /**
-   * Keeps what is written to it in `backend`, beside `store`, whose encoding
-   * it finds links by. Throws for a store not made by `new Store`.
+   * Keeps what is written to it in `backend`, beside `store`, whose encoding it finds links by.
+   *
+   * @throws {TypeError} for a store not made by `new Store`.
    */
   constructor(store: Store, backend: Backend) {
     this.#store = StoreOf.beside(store, backend);
   }
 
   /**
-   * A blob by its link, kept here or held by the store beside. Throws when a
-   * backend gives other bytes under the link.
+   * A blob by its link, kept here or held by the store beside.
+   *
+   * @throws when a backend gives other bytes under the link.
    */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
@@ -358,9 +366,8 @@ export class PrivateStore {
   }
 
   /**
-   * Keeps the batch's records and the blobs they lead to, as a store writes
-   * them. A blob led to may be held by the store beside, and
-   * then is not kept here again.
+   * Keeps the batch's records and the blobs in their closures, as a store writes them. A blob of a
+   * closure that the store beside holds counts as held and is not kept here again.
    */
   write(batch: Batch): Promise<void> {
     return this.#store.write(batch);

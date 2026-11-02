@@ -17,20 +17,21 @@ export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
   readonly schema: Schema<Json>;
   /**
-   * Hands `ciphertext` on toward a mailbox whose data fits `schema`.
-   * Resolving says only that it was handed on: nothing confirms that a
-   * message arrived, and none is sent again. Rejects with an
-   * `UndeliveredMessage` when it cannot be.
+   * Hands `ciphertext` on toward a mailbox whose data fits `schema`. Resolving says only that it
+   * was handed on: nothing confirms that a message arrived, and none is sent again.
+   *
+   * @throws {UndeliveredMessage} when the ciphertext cannot be handed on.
    */
   deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
 }
 
 /**
- * A ciphertext that a transport could not hand on toward a mailbox, with
- * what the sender can do about it. `later`: the same can be sent again
- * later, as when the network is down or the mailbox is full. `gone`: the
- * mailbox takes nothing more, and another is needed. `refused`: the mailbox
- * takes others but not this one, as when it is too large.
+ * A ciphertext that a transport could not hand on toward a mailbox, with what the sender can do
+ * about it.
+ *
+ * - `later`: the same can be sent again later, as when the network is down or the mailbox is full.
+ * - `gone`: the mailbox takes nothing more, and another is needed.
+ * - `refused`: the mailbox takes others but not this one, as when it is too large.
  */
 export class UndeliveredMessage extends Error {
   override readonly name = "UndeliveredMessage";
@@ -63,9 +64,11 @@ export class Mailbox {
   }
 
   /**
-   * Sends the bundle of `root` and `blobs`, packed as `packBundle` packs it,
-   * sealed to the mailbox's key and handed to the transport. Rejects with
-   * the transport's `UndeliveredMessage` when it cannot hand them on.
+   * Sends the bundle of `root` and `blobs`, packed as `packBundle` packs it, sealed to the
+   * mailbox's key and handed to the transport.
+   *
+   * @throws when `root` is not an object.
+   * @throws {UndeliveredMessage} when the transport cannot hand the ciphertext on.
    */
   async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
     const zip = await packBundle(root, blobs);
@@ -74,8 +77,11 @@ export class Mailbox {
 }
 
 /**
- * Reads the bytes of a mailbox with the transport whose schema it is written
- * to, and binds it once to its key and that transport.
+ * Reads the bytes of a mailbox with the transport whose schema it is written to, and binds it once
+ * to its key and that transport.
+ *
+ * @throws when no transport given takes the mailbox's schema, or its data does not fit that schema
+ *   or holds no x25519 public key as `key`.
  */
 export async function mailboxFrom(bytes: Bytes<EncodedObject<Json>>, { transports }: Options): Promise<Mailbox> {
   const { data, transport } = readMailbox(bytes, transports);

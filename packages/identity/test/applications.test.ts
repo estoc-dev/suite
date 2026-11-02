@@ -113,7 +113,7 @@ describe("a login", () => {
 });
 
 // A sale names its parties by the links of their roots, and a signature its
-// signer by a signed identity that leads to one.
+// signer by a signed identity whose closure holds one.
 type Sale = {
   readonly buyer: JsonLink<KeyObject>;
   readonly seller: JsonLink<KeyObject>;

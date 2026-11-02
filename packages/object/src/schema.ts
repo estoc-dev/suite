@@ -12,9 +12,13 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
 export interface SchemaLanguage<S, D> {
   /** The encoding of the data that the schemas describe, and so of the objects written to them. */
   readonly encoding: Encoding<D>;
-  /** Throws for a schema the language cannot write. */
+  /** @throws when the language cannot write `schema`. */
   encode(schema: S): Uint8Array;
-  /** Reads bytes that are exactly what `encode` writes for the schema they hold, and refuses any other. */
+  /**
+   * Reads the schema that `bytes` hold.
+   *
+   * @throws when the bytes are not exactly what `encode` writes for that schema.
+   */
   decode(bytes: Uint8Array): S;
 }
 
@@ -33,7 +37,7 @@ export interface SchemaLanguage<S, D> {
  */
 export interface SchemaValidator<S, D> {
   readonly language: SchemaLanguage<S, D>;
-  /** Rejects when the schema cannot be compiled. */
+  /** @throws when `schema` cannot be compiled. */
   compile(schema: S): Promise<Check<D>>;
 }
 
@@ -57,7 +61,11 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
     this.#check = check;
   }
 
-  /** Gives back `data` as an `F` when it fits this schema, and throws saying what does not fit otherwise. */
+  /**
+   * Gives back `data` as an `F`.
+   *
+   * @throws when `data` does not fit this schema, saying what does not fit.
+   */
   validate(data: Fields<D>): F {
     const problems = this.#check(data);
     if (problems.length > 0) throw new Error(`the data does not fit its schema: ${problems.join("; ")}`);

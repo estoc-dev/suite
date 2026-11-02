@@ -33,11 +33,11 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  * identity has the greater link. The current version says who signs for the
  * root, the root itself included.
  *
- * `blobs` are what it takes to read the identity again: the bytes of its
- * object and of the keys it names, and of the schemas they are written to,
- * each once. Reading does not need the interfaces those schemas name, but a
- * store takes in a blob only with all it leads to, so their bytes come along
- * as well.
+ * `blobs` are the identity's closure: the bytes of its object and of the
+ * keys it names, of the schemas they are written to, and of the interfaces
+ * those schemas name, each once. Reading the identity again does not need
+ * the interfaces, but a store takes in a blob only with its whole closure,
+ * so their bytes come along as well.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;

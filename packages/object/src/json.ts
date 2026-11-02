@@ -50,14 +50,14 @@ function checkLinks(value: Json): void {
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /**
- * JSON values, each written as its JCS (RFC 8785) encoding in UTF-8. Bytes
- * that are anything else are refused, not normalized: invalid UTF-8,
- * whitespace, keys out of order or repeated, and numbers or escapes not
- * written the shortest way. A link is written `{"$link": <link>}`, and any
- * other object with a `$link` member is refused. An object is the JSON object
- * of the fields of its data and `"$describedBy": {"$link": <link>}`, the
- * link of its schema. Only there does `$describedBy` name a schema: deeper in
- * the data it is a field like any other.
+ * JSON values, each written as its JCS (RFC 8785) encoding in UTF-8.
+ *
+ * - Bytes that are anything else are refused, not normalized: invalid UTF-8, whitespace, keys
+ *   out of order or repeated, and numbers or escapes not written the shortest way.
+ * - A link is written `{"$link": <link>}`, and any other object with a `$link` member is refused.
+ * - An object is the JSON object of the fields of its data and `"$describedBy": {"$link": <link>}`,
+ *   the link of its schema. Only there does `$describedBy` name a schema: deeper in the data it is
+ *   a field like any other.
  */
 export const json: Encoding<Json> = {
   encode(value) {

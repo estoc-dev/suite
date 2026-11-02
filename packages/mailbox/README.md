@@ -160,7 +160,7 @@ const keys = new PrivateStore(store, new MemoryBackend());
 const post = await loadPost(store, keys, { transports: [transport], validator: defaultValidator });
 
 const outbox = await post.outbox(theirs.link);
-await outbox.send(signature.link); // the root and all it leads to in the store
+await outbox.send(signature.link); // the root and its closure in the store
 
 const inbox = await post.openInbox((publicKey) =>
   encodeObject(schema, { key: hex.encode(publicKey), name: queueName }),
@@ -171,7 +171,7 @@ const again = await post.inbox(inbox.key); // after a restart
 ```
 
 Both mailboxes have to be in the store, since a record links to its
-mailbox and a store takes in nothing without all it leads to. The sender
+mailbox and a store takes in nothing without its closure. The sender
 writes a mailbox handed to it, alone or in whatever record of the handing
 the application keeps.
 
@@ -201,19 +201,22 @@ seals the same bundle afresh.
 
 `receive` keeps the bundle and its `Inbound` record in one write. What does
 not open with the key is refused, and so is a bundle that leaves out a
-blob its root leads to and the store does not hold, record and all. Blobs
-the root does not lead to are dropped.
+blob in its root's closure that the store does not hold, record and all.
+Blobs outside the root's closure are dropped.
 
 `collect` takes a pickup of the inbox's mailbox, and refuses one of
-another. It receives each arrival in turn, is done with it once the write
-is through, and gives back the records it wrote. What it refuses is done
-with too and leaves no record. A bundle that leaves out a blob would be
-taken once the blob reaches the store, but `collect` does not keep it
-waiting for that: a sender whose store holds the bundle can send it
-again. When the store fails to write, `collect` stops and rejects without
-being done with that arrival, which waits to be collected again. A stop
-after the write and before `drop` leaves the arrival waiting as well, and
-collecting it again writes a second record of the same bundle.
+another. It receives each arrival in turn and gives back the records it
+wrote.
+
+- It is done with an arrival once the write is through.
+- What it refuses is done with too and leaves no record. A bundle that
+  leaves out a blob would be taken once the blob reaches the store, but
+  `collect` does not keep it waiting for that: a sender whose store holds
+  the bundle can send it again.
+- When the store fails to write, `collect` stops and rejects without being
+  done with that arrival, which waits to be collected again.
+- A stop after the write and before `drop` leaves the arrival waiting as
+  well, and collecting it again writes a second record of the same bundle.
 
 ### Reading what came and went
 
@@ -234,7 +237,7 @@ says and who signed it are read from its root when it is shown.
 ## Messages
 
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
-blobs it leads to, which `readObject` and judgments such as
+blobs in its closure, which `readObject` and verifiers such as
 `signatures.read` in `@estoc/identity` take their blobs from. Nothing in it
 names the sender. It travels packed, as a bundle travels between programs:
 `send` packs it with `packBundle`, and `open` reads it with `unpackBundle`.
@@ -320,12 +323,15 @@ large they are, and can hold them back unnoticed. On one machine, as in
 development or for a daemon beside the sender, no one is on the way.
 
 `deliver` posts the ciphertext to the url as `application/octet-stream`.
-A 2xx response means it was handed on. 404 and 410 reject as `gone`,
-408, 429 and 5xx as `later`, and any other response as `refused`. No response
-rejects as `later`, and so does a redirect: it is not followed, since it
-would take the bytes to a url the mailbox does not name, and a browser
-does not tell it from no response. Nothing is sent again. No cookies or
-other credentials and no referrer go with the request.
+No cookies or other credentials and no referrer go with the request, and
+nothing is sent again.
+
+- A 2xx response means it was handed on.
+- 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other
+  response as `refused`.
+- No response rejects as `later`, and so does a redirect: it is not
+  followed, since it would take the bytes to a url the mailbox does not
+  name, and a browser does not tell it from no response.
 
 The receiving side is whatever serves the url, and this package ships none.
 A mailbox service that keeps the bytes until the receiver fetches them

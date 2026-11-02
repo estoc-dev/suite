@@ -52,13 +52,16 @@ export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
   readonly blobs: readonly Uint8Array[];
 }
 
-/** What a reader knows beyond a signed identity: which signed identity of its root is current, of those it has seen. */
+/** Which signed identity of a root is current, of the versions a reader has seen. */
 export interface Versions {
-  /** The current version of `signedIdentity`'s identity among those the reader knows, `signedIdentity` itself when none is later. */
+  /**
+   * The current version of `signedIdentity`'s identity among those the reader
+   * has seen, `signedIdentity` itself when none is later.
+   */
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
 }
 
-/** A reader that knows no versions, and so judges a signature by the version it carries alone. */
+/** A reader that has seen no versions, so a signature is verified by the version it carries alone. */
 export const noVersions: Versions = { current: async (signedIdentity) => signedIdentity };
 
 /**
@@ -77,10 +80,11 @@ export class SignedIdentities {
 
   /**
    * Reads the signed identity that `link` names from `reader`, with its
-   * identity, written to any of the identity schemas, and the keys it names,
-   * and refuses it unless the identity's root signed it. An identity stands
-   * for someone only as its root signed it, which reading its object and
-   * keys alone does not verify.
+   * identity, written to any of the identity schemas, and the keys it names.
+   * An identity stands for someone only as its root signed it, which reading
+   * its object and keys alone does not verify.
+   *
+   * @throws when the identity's root did not sign it.
    */
   async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
     const object = await readObject(reader, link, this.schema);

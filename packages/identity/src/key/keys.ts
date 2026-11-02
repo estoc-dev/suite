@@ -18,7 +18,7 @@ interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
 }
 
 /**
- * Reads keys written to the key schemas of the schemes this package knows,
+ * Reads keys written to the key schemas of the schemes this package supports,
  * and refuses a key written to any other schema. The schema a key is
  * written to is its scheme, so each key has one object and one link.
  */

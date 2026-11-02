@@ -91,7 +91,7 @@ describe("a bundle", () => {
     expect(() => writeBundle({ bytes: image }, [hello.bytes])).toThrow(/not an object/);
   });
 
-  it("reads with a signature as its root, which leads to the object it is over and to its signed identity", async () => {
+  it("reads with a signature as its root, which links to the object it is over and to its signed identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
     expect(bundle.link).toBe(signature.link);
     const signed = await signatures.read(bundle.link, bundle, noVersions);

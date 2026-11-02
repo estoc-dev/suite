@@ -38,8 +38,8 @@ const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
   return signedIdentities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
 };
 
-// The links a store gathers from a blob: every blob it leads to by the links
-// JSON finds in it, past which a blob that is not JSON leads nowhere.
+// The closure a store gathers from a blob: the blob and every blob reached by
+// the links JSON finds in it, past which a blob that is not JSON links to nothing.
 function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
   const reached = new Set([link]);
   for (const next of reached) {
@@ -158,14 +158,11 @@ describe("a signed identity", () => {
     ]);
   });
 
-  it.each(schemes)(
-    "published by a $name root carries as its blobs all it leads to and nothing else",
-    async (scheme) => {
-      const signed = await publish(signer(scheme));
-      const blobs = byLink(signed.blobs);
-      expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
-    },
-  );
+  it.each(schemes)("published by a $name root carries its closure as its blobs, and nothing else", async (scheme) => {
+    const signed = await publish(signer(scheme));
+    const blobs = byLink(signed.blobs);
+    expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
+  });
 
   it("is refused when another key signed it", async () => {
     const identity = identities.encode(key(ed25519), 0);
@@ -252,7 +249,7 @@ describe("a Delegated Identity", () => {
   it.each<[string, SoftwareSigner, Key[]]>([
     ["that lists its root among its agents", signer(ed25519), [key(ed25519, 2), key(ed25519)]],
     ["whose agents sign in another scheme than its root", signer(eip191), [key(ed25519, 2), key(ed25519, 3)]],
-  ])("%s carries each blob it leads to once, and nothing else", async (_, root, agents) => {
+  ])("%s carries each blob in its closure once, and nothing else", async (_, root, agents) => {
     const signed = await delegate(root, agents);
     const links = linksOf(signed.identity.blobs);
     expect(new Set(links).size).toBe(links.length);
@@ -331,7 +328,7 @@ describe("the version of a signed identity", () => {
   });
 });
 
-describe("the versions a reader knows", () => {
+describe("the versions a reader has seen", () => {
   const wallet = signer(eip191);
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
     byLink(signed.flatMap(({ blobs }) => blobs));
@@ -355,13 +352,13 @@ describe("the versions a reader knows", () => {
     expect((await knowing(lesser).current(greater)).link).toBe(greater.link);
   });
 
-  it("give the version given as current when it is later than they know", async () => {
+  it("give the version given as current when it is later than any of them", async () => {
     const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const later = await delegate(wallet, [key(ed25519, 3)], 2_000);
     expect((await knowing(earlier).current(later)).link).toBe(later.link);
   });
 
-  it("give the version given as current when they know none of its root", async () => {
+  it("give the version given as current when none of them is of its root", async () => {
     const signed = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const other = await delegate(signer(ed25519, 4), [key(ed25519, 2)], 2_000);
     expect((await knowing(other).current(signed)).link).toBe(signed.link);

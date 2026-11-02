@@ -207,7 +207,7 @@ describe("a signature for a Delegated Identity", () => {
 describe("a signature by an agent", () => {
   const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
 
-  it("counts when the latest version the reader knows lists its agent, whichever version it carries", async () => {
+  it("counts when the latest version the reader has seen lists its agent, whichever version it carries", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     const second = await delegate(wallet, [phone.key, laptop.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
@@ -215,7 +215,7 @@ describe("a signature by an agent", () => {
     expect(read.signedIdentity).toEqual(first);
   });
 
-  it("is refused when the latest version the reader knows no longer lists its agent", async () => {
+  it("is refused when the latest version the reader has seen no longer lists its agent", async () => {
     const first = await delegate(wallet, [laptop.key, phone.key], 1_000);
     const second = await delegate(wallet, [phone.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
@@ -224,7 +224,7 @@ describe("a signature by an agent", () => {
     );
   });
 
-  it("is judged by the version it carries when that is later than the reader knows", async () => {
+  it("is verified against the version it carries when that is later than any the reader has seen", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     const second = await delegate(wallet, [laptop.key, phone.key], 2_000);
     const signature = await signatures.actor(phone, second).sign(hello);
@@ -232,7 +232,7 @@ describe("a signature by an agent", () => {
     expect(isSameKey(read.key, phone.key)).toBe(true);
   });
 
-  it("is judged, against a version at the same at that drops its agent, by whichever has the greater link", async () => {
+  it("is verified, against a version at the same at that drops its agent, by whichever has the greater link", async () => {
     const listing = await delegate(wallet, [laptop.key, phone.key], 1_000);
     const dropping = await delegate(wallet, [phone.key], 1_000);
     const signature = await signatures.actor(laptop, listing).sign(hello);
@@ -243,7 +243,7 @@ describe("a signature by an agent", () => {
     expect(counts).toBe(listing.link > dropping.link);
   });
 
-  it("counts by the version it carries when the reader knows no versions", async () => {
+  it("counts by the version it carries when the reader has seen no versions", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     await delegate(wallet, [phone.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
@@ -254,7 +254,7 @@ describe("a signature by an agent", () => {
 describe("a signature by a root through its Identity", () => {
   const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
 
-  it("is refused once the reader knows a later version that does not list the root", async () => {
+  it("is refused once the reader has seen a later version that does not list the root", async () => {
     const published = await publish(wallet, 1_000);
     const later = await delegate(wallet, [laptop.key], 2_000);
     const signature = await signatures.actor(wallet, published).sign(hello);
@@ -263,7 +263,7 @@ describe("a signature by a root through its Identity", () => {
     );
   });
 
-  it("counts when the later version the reader knows lists the root", async () => {
+  it("counts when the later version the reader has seen lists the root", async () => {
     const published = await publish(wallet, 1_000);
     const later = await delegate(wallet, [laptop.key, wallet.key], 2_000);
     const signature = await signatures.actor(wallet, published).sign(hello);
@@ -272,7 +272,7 @@ describe("a signature by a root through its Identity", () => {
 });
 
 describe("a signature by an agent of a version before the root's Identity", () => {
-  it("is refused once the reader knows the Identity", async () => {
+  it("is refused once the reader has seen the Identity", async () => {
     const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
     const earlier = await delegate(wallet, [laptop.key], 1_000);
     const published = await publish(wallet, 2_000);

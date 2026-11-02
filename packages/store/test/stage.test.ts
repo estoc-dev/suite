@@ -28,7 +28,7 @@ async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise
 }
 
 describe("a staged batch", () => {
-  it("gives the blobs of the batch that its records lead to, and those the store holds", async () => {
+  it("gives the blobs of the batch in its records' closures, and those the store holds", async () => {
     const store = newStore();
     const held = object({ text: "held" });
     await store.write({ records: [held], blobs: [anything.bytes] });
@@ -41,7 +41,7 @@ describe("a staged batch", () => {
     expect(await staged.get(anything.link)).toEqual(anything.bytes);
   });
 
-  it("gives none of the blobs of the batch that none of its records lead to", async () => {
+  it("gives none of the blobs of the batch outside its records' closures", async () => {
     const store = newStore();
     const stray = utf8("led to by nothing written");
     const carried = object({ text: "carried" });
@@ -70,7 +70,7 @@ describe("a staged batch", () => {
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
     await expect(store.stage({ records: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
-      `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
+      `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);

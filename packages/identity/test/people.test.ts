@@ -29,12 +29,12 @@ const hello = encodeObject(note, { text: "hello" });
 describe("a person", () => {
   const wallet = signer(eip191);
 
-  it("is the root of the signed identity they are known by", async () => {
+  it("is the root of the signed identity they are taken from", async () => {
     const published = await publish(wallet, 1_000);
     expect(knowing().personOf(published).root).toBe(published.identity.root);
   });
 
-  it("has the versions of their root the reader knows and the one in hand, in order, each once", async () => {
+  it("has the versions of their root the reader has seen and the one in hand, in order, each once", async () => {
     const first = await publish(wallet, 1_000);
     const second = await delegate(wallet, [key(ed25519, 2)], 2_000);
     const third = await delegate(wallet, [key(ed25519, 3)], 3_000);
@@ -44,19 +44,19 @@ describe("a person", () => {
     expect(linksOf(await people.personOf(first).versions())).toEqual(linksOf([first, third]));
   });
 
-  it("has as current the latest version the reader knows, when the one in hand is earlier", async () => {
+  it("has as current the latest version the reader has seen, when the one in hand is earlier", async () => {
     const published = await publish(wallet, 1_000);
     const later = await delegate(wallet, [key(ed25519, 2)], 2_000);
     expect((await knowing(later).personOf(published).current()).link).toBe(later.link);
   });
 
-  it("has as current the version in hand, when it is later than the reader knows", async () => {
+  it("has as current the version in hand, when it is later than any the reader has seen", async () => {
     const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const later = await publish(wallet, 2_000);
     expect((await knowing(earlier).personOf(later).current()).link).toBe(later.link);
   });
 
-  it("has the version in hand alone, when the reader knows none of their root", async () => {
+  it("has the version in hand alone, when the reader has seen none of their root", async () => {
     const published = await publish(wallet, 1_000);
     const person = knowing(await delegate(signer(ed25519, 9), [key(ed25519, 2)], 2_000)).personOf(published);
     expect(linksOf(await person.versions())).toEqual([published.link]);

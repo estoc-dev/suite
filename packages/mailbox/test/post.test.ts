@@ -253,12 +253,12 @@ describe("an inbox", () => {
     expect(await other.inbox.collect(other.pickup)).toHaveLength(1);
   });
 
-  it("keeps nothing of a bundle that leaves out a blob its root leads to", async () => {
+  it("keeps nothing of a bundle that leaves out a blob in its root's closure", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, queue, inbox } = await receivingAt(network);
     await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
 
-    await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`leads to ${hello.link}`);
+    await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`links to ${hello.link}`);
     expect(await listed(store)).toEqual([inbox.mailbox]);
     expect(await store.get(signature.link)).toBeUndefined();
   });

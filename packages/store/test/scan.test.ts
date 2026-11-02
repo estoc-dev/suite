@@ -69,7 +69,7 @@ describe("an index scanned from a store", () => {
     expect(await all(rows.range([1]))).toEqual([]);
   });
 
-  it("gives rows that depend on what an object leads to, read from the store as they are needed", async () => {
+  it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
     const { signatures, publish } = await loadIdentity(defaultValidator);
     const bySigner: Index<Json, [signer: string, object: string], SignatureData> = {
       reads: [signatures.schema],

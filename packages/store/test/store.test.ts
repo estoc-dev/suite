@@ -53,7 +53,7 @@ describe("a store", () => {
     expect(await store.get(linkOf(image))).toEqual(image);
   });
 
-  it("keeps of the blobs written with its records only those they lead to", async () => {
+  it("keeps of the blobs written with its records only those in their closures", async () => {
     const store = newStore();
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
@@ -100,17 +100,17 @@ describe("a store", () => {
     expect(await listed(store)).toEqual([]);
   });
 
-  it("refuses a batch in which a blob leads to one that neither the batch nor the store holds, and keeps none of it", async () => {
+  it("refuses a batch in which a blob links to one that neither the batch nor the store holds, and keeps none of it", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     const carried = object({ text: "carried" });
     await expect(store.write({ records: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
-      `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
+      `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     const unheld = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
     const written = encodeObject(unheld, { text: "hello" });
-    await expect(store.write({ records: [written] })).rejects.toThrow(`${written.link} leads to ${unheld.link}`);
+    await expect(store.write({ records: [written] })).rejects.toThrow(`${written.link} links to ${unheld.link}`);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
   });
@@ -134,7 +134,7 @@ describe("a store", () => {
     await expect(failing.write({ records: [note], blobs: [image, anything.bytes] })).rejects.toBe(gone);
   });
 
-  it("takes a batch whose blobs lead to blobs it holds from an earlier write", async () => {
+  it("takes a batch whose blobs link to blobs it holds from an earlier write", async () => {
     const store = newStore();
     const image = utf8("an image");
     const first = object({ text: "first", image: { $link: linkOf(image) } });
@@ -152,7 +152,7 @@ describe("a store", () => {
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual([commitment.link, anything.link].sort());
   });
 
-  it("puts each blob in after the blobs it leads to, so that a write cut short leaves none without them", async () => {
+  it("puts each blob in after the blobs it links to, so that a write cut short leaves none without its closure", async () => {
     let order: Link<unknown>[] = [];
     const store = newStore(
       new (class extends MemoryBackend {
@@ -208,7 +208,7 @@ describe("the closure of a blob", () => {
     expect(await store.get(target.link)).toBeUndefined();
   });
 
-  it("is refused when the backend gives other bytes under a link it leads to", async () => {
+  it("is refused when the backend gives other bytes under a link in it", async () => {
     const backend = new MemoryBackend();
     const [inner, other] = [object({ text: "inner" }), object({ text: "other" })];
     const outer = object({ inner: { $link: inner.link } });

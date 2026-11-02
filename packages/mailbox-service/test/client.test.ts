@@ -87,7 +87,7 @@ async function accountAt(services: Services, origin: string) {
 
 /**
  * The bundle of `by`'s signature over a Service at `origin` that lists
- * `offers`, each signed by the actor given with it, with all it leads to.
+ * `offers`, each signed by the actor given with it, with its closure.
  */
 async function signedService(origin: string, offers: readonly (readonly [EncodedObject<Json>, Actor])[], by: Actor) {
   const signed = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
@@ -107,7 +107,7 @@ async function signedService(origin: string, offers: readonly (readonly [Encoded
   return packBundle(signature, blobs);
 }
 
-/** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with all it leads to. */
+/** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with its closure. */
 async function acknowledgementBy(by: Actor, request: Request) {
   const acceptance = await unpackBundle(new Uint8Array(await request.arrayBuffer()));
   const acknowledgement = encodeObject(acknowledgementSchemaRead, { acceptance: { $link: acceptance.link }, at: 1 });
@@ -344,7 +344,7 @@ describe("accepting an account offer", () => {
     expect(await records(store)).toHaveLength(1);
   });
 
-  it("refuses an acknowledgement by an agent that a later version of the service's, which the store knows, does not list", async () => {
+  it("refuses an acknowledgement by an agent that a later version of the service's, which the store holds, does not list", async () => {
     const [removed, listed] = [signer(ed25519, 7), signer(ed25519, 8)];
     const earlier = signatures.actor(removed, await delegate(serviceSigner, [removed.key], 1_000));
     const later = signatures.actor(listed, await delegate(serviceSigner, [listed.key], 2_000));

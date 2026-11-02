@@ -4,15 +4,18 @@ export const ROOT = "index.json";
 export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
 
 /**
- * An object, the root, and blobs carried with it, held by link. Holding one
- * means its files were checked: `index.json` is an object in canonical JSON,
- * and every blob under `blobs/sha256/` has the link its name says. Nothing
- * else about the blobs is read, signatures included.
+ * An object, the root, and blobs carried with it, held by link. Holding one means its files were
+ * checked:
+ *
+ * - `index.json` is an object in canonical JSON.
+ * - Every blob under `blobs/sha256/` has the link its name says.
+ *
+ * Nothing else about the blobs is read, signatures included.
  */
 export class Bundle {
   /**
-   * `index.json`: an object of any schema, a signature included, so neither its
-   * bytes nor its link carry a label, and they read as either.
+   * `index.json`: an object of any schema, a signature included, so neither its bytes nor its link
+   * name a type, and they can be read as either.
    */
   readonly root: Uint8Array;
   readonly link: Link<never>;
@@ -64,19 +67,20 @@ function checkRoot(bytes: Uint8Array): void {
 }
 
 /**
- * Reads a bundle from its files by path: a folder read into memory, or a zip
- * unzipped. Refuses it when `index.json` is missing or is not an object, or
- * when a blob does not have the link its name says.
+ * Reads a bundle from its files by path: a folder read into memory, or a zip unzipped.
+ *
+ * @throws when `index.json` is missing or is not an object in canonical JSON.
+ * @throws when a blob does not have the link its name says.
  */
 export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
   return new Bundle(files);
 }
 
 /**
- * The files of a bundle with `root` as its `index.json`, carrying `blobs`.
- * `root` is an object of whatever type the caller holds it as: only its
- * bytes are written. Refuses a root that is not an object in canonical JSON,
- * since no reader would take the bundle.
+ * The files of a bundle with `root` as its `index.json`, carrying `blobs`. `root` is an object of
+ * whatever type the caller holds it as: only its bytes are written.
+ *
+ * @throws when `root` is not an object in canonical JSON, since no reader would take the bundle.
  */
 export function writeBundle(
   root: { readonly bytes: Bytes<unknown> },

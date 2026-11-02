@@ -34,7 +34,7 @@ export interface IdentityKit {
   delegate(root: Signer, agents: readonly Key[], at?: number): Promise<SignedIdentityObject<DelegatedIdentityObject>>;
 }
 
-/** The schemas of this package compiled by `validator`, with the keys of each scheme it knows. */
+/** The schemas of this package compiled by `validator`, with the keys of each scheme this package supports. */
 export async function loadIdentity(validator: JsonSchemaValidator): Promise<IdentityKit> {
   const schemes = new Map<Scheme, Schema<Json, KeyData>>();
   for (const scheme of [ed25519, eip191, solanaOffchain])

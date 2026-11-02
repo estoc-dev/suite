@@ -12,7 +12,10 @@ export function publicKeyFrom(bytes: Uint8Array): Promise<CryptoKey> {
   return suite.kem.deserializePublicKey(bytes);
 }
 
-/** Seals `plaintext` to `publicKey`, giving the encapsulated key, `enc`, followed by HPKE's own ciphertext. */
+/**
+ * Seals `plaintext` to `publicKey`, giving the encapsulated key, `enc`, followed by HPKE's own
+ * ciphertext.
+ */
 export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array> {
   const { enc, ct } = await suite.seal({ recipientPublicKey: publicKey, info }, plaintext);
   const ciphertext = new Uint8Array(enc.byteLength + ct.byteLength);
@@ -50,8 +53,10 @@ export class MailboxKey {
   }
 
   /**
-   * Opens `ciphertext` to the bundle inside. Refuses a ciphertext that does
-   * not open with this key, and what opens but does not unpack to a bundle.
+   * Opens `ciphertext` to the bundle inside.
+   *
+   * @throws when the ciphertext does not open with this key, or opens to bytes that do not unpack
+   *   to a bundle.
    */
   async open(ciphertext: Uint8Array): Promise<Bundle> {
     const { encSize } = suite.kem;

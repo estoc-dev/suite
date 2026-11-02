@@ -100,20 +100,20 @@ describe("a signed note", () => {
   });
 });
 
-describe("a bundle that leaves out a blob its objects lead to", () => {
+describe("a bundle that leaves out a blob in its objects' closures", () => {
   it("is refused, with the record of receiving it", async () => {
     const bobStore = newStore();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await sign(note, alice);
     const files = writeBundle(signature, signature.signedIdentity.blobs);
-    await expect(receive(bobStore, files)).rejects.toThrow(`${signature.link} leads to ${note.link}`);
+    await expect(receive(bobStore, files)).rejects.toThrow(`${signature.link} links to ${note.link}`);
     expect(await bobStore.get(signature.link)).toBeUndefined();
     expect(await listed(bobStore)).toEqual([]);
   });
 });
 
 describe("an object slipped into a bundle", () => {
-  it("is not kept when nothing in the bundle leads to it", async () => {
+  it("is not kept when it is outside the closure of the bundle's root", async () => {
     const bobStore = newStore();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await sign(note, mallory);
@@ -123,7 +123,7 @@ describe("an object slipped into a bundle", () => {
     expect(await bobStore.get(slipped.link)).toBeUndefined();
   });
 
-  it("is not listed among the receiver's own when the bundle leads to it, though it is of a schema the receiver writes", async () => {
+  it("is not listed among the receiver's own when it is in the closure of the bundle's root, though it is of a schema the receiver writes", async () => {
     const bobStore = newStore();
     await bobStore.write({ records: [encodeObject(contactSchema, { name: "Alice" })], blobs: schemas });
 

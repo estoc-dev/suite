@@ -5,7 +5,7 @@ import type { Schema } from "./schema.ts";
 /**
  * Data bound to the schema it is written to, as one blob in the encoding of
  * that schema. The same data under another schema is another object, with
- * another link. The data is of the type the schema declares.
+ * another link.
  */
 export interface EncodedObject<D, F extends Fields<D> = Fields<D>> {
   readonly schema: Schema<D, F>;
@@ -15,20 +15,24 @@ export interface EncodedObject<D, F extends Fields<D> = Fields<D>> {
 }
 
 /**
- * Blobs got by link: a store, a bundle, or a Map of blobs in memory. A reader
- * gives under a link only the blob that the link names, or nothing, so what
- * reads from it can look at the bytes before choosing how to read them. A
- * reader whose bytes come from where they may have changed, such as a disk or
- * the network, hashes them before it gives them.
+ * Blobs got by link: a store, a bundle, or a Map of blobs in memory.
+ *
+ * - A reader gives under a link only the blob that the link names, or nothing, so what reads from
+ *   it can look at the bytes before choosing how to read them.
+ * - A reader whose bytes come from where they may have changed, such as a disk or the network,
+ *   hashes them before it gives them.
  */
 export interface Reader {
   get(link: Link<unknown>): Uint8Array | undefined | Promise<Uint8Array | undefined>;
 }
 
 /**
- * Reads an object written to `schema`, and refuses it unless its data fits.
- * The caller names the schema it expects, so an object written to any other
- * is refused instead of read as one of these.
+ * Reads an object written to `schema`. The caller names the schema it
+ * expects, so an object written to any other is refused instead of read as
+ * one of these.
+ *
+ * @throws when the bytes are not an object in the schema's encoding, when the
+ * object is written to another schema, or when its data does not fit.
  */
 export function decodeObject<D, F extends Fields<D>>(
   bytes: Bytes<EncodedObject<D, F>>,
@@ -47,7 +51,9 @@ export function encodeObject<D, F extends Fields<D>>(schema: Schema<D, F>, data:
 
 /**
  * Reads the object that `link` names from `reader`, as `decodeObject` would.
- * Throws when the reader gives no blob for the link, or another blob.
+ *
+ * @throws when the reader gives no blob for `link`, or another blob, and
+ * wherever `decodeObject` throws.
  */
 export async function readObject<D, F extends Fields<D>>(
   reader: Reader,
@@ -63,7 +69,11 @@ export async function readBlob(reader: Reader, link: Link<unknown>): Promise<Uin
   return bytes;
 }
 
-/** Reads `bytes` as `decodeObject` does, given for `link`, and refuses them when they are another blob. */
+/**
+ * Reads `bytes`, given for `link`, as `decodeObject` does.
+ *
+ * @throws when the bytes are another blob than the one `link` names.
+ */
 export function decodeObjectAt<D, F extends Fields<D>>(
   link: Link<unknown>,
   bytes: Bytes<EncodedObject<D, F>>,
@@ -76,7 +86,7 @@ export function decodeObjectAt<D, F extends Fields<D>>(
 
 /**
  * The link of the schema an object names, read before the object is: a
- * reader that takes objects of several schemas picks by it which schema to
+ * program that takes objects of several schemas picks by it which schema to
  * read the object with. With no schema yet to say so, the caller names the
  * encoding of the object.
  */

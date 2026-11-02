@@ -3,17 +3,20 @@ import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
+  type Fields,
   type Json,
   type JsonSchema,
   type JsonSchemaValidator,
   type Link,
+  linkOf,
+  readObject,
   type Schema,
 } from "@estoc/object";
-import type { Store } from "@estoc/store";
+import type { PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
-import type { MailboxKey } from "./key.ts";
+import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
-import { type DeliveryData, inboundSchema, outboundSchema } from "./schema.ts";
+import { type DeliveryData, inboundSchema, type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
   /** The validator that the schemas of the records are compiled with. */
@@ -38,26 +41,37 @@ export interface Delivery {
 
 type Written = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promise<Delivery>;
 
+type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Json>> };
+
+interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>> {
+  readonly key: Schema<Json, MailboxKeyData>;
+}
+
 /**
  * Sending and receiving with a store. What is sent is taken from the store,
  * what arrives is kept in it, and each is recorded there as a delivery that
  * the user writes, an object of `inboundSchema` or `outboundSchema`. The
  * records are listed with the rest of what the user wrote, for the
- * application to read into its indexes.
+ * application to read into its indexes. The keys that open what arrives are
+ * objects of `mailboxKeySchema` in a private store beside the store, so no
+ * bundle gathered from the store carries one.
  */
 export class Post {
   readonly #store: Store;
+  readonly #kept: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
-  readonly #schemas: Readonly<Record<Direction, Schema<Json, DeliveryData>>>;
+  readonly #schemas: Schemas;
 
   constructor(
     store: Store,
+    kept: PrivateStore,
     transports: readonly Transport[],
     clock: () => number,
-    schemas: Readonly<Record<Direction, Schema<Json, DeliveryData>>>,
+    schemas: Schemas,
   ) {
     this.#store = store;
+    this.#kept = kept;
     this.#transports = transports;
     this.#clock = clock;
     this.#schemas = schemas;
@@ -70,14 +84,45 @@ export class Post {
   }
 
   /**
-   * A mailbox of the user's that the store holds, bound to the key that opens
-   * what arrives there. Refuses a key other than the one the mailbox names:
-   * what that key opened was sealed to another mailbox.
+   * Opens a mailbox of the user's with a new key, to receive at. `make` is
+   * given the public key and gives back a mailbox sealed to it, as the
+   * transport makes one. The mailbox is written to the store and then its
+   * key to the private store, so a stop in between leaves at most a mailbox
+   * that nobody receives at. Refuses a mailbox of a transport the post was
+   * not given, or one that names another key, and writes nothing.
    */
-  async inbox(mailbox: Link<EncodedObject<Json>>, key: MailboxKey): Promise<Inbox> {
-    const { data } = readMailbox(await this.#held(mailbox), this.#transports);
-    if (data.key !== hex.encode(key.publicKey)) throw new Error(`${mailbox} names another key than the one given`);
-    return new Inbox(key, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
+  async openInbox(make: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
+    const secret = crypto.getRandomValues(new Uint8Array(32));
+    const key = await MailboxKey.fromSecretKey(secret);
+    const { bytes } = await make(key.publicKey);
+    const { data, transport } = readMailbox(bytes, this.#transports);
+    if (data.key !== hex.encode(key.publicKey))
+      throw new Error("the mailbox made names another key than the one given");
+    const mailbox = linkOf(bytes);
+    await this.#store.write({ mine: [{ bytes }], blobs: [transport.schema.bytes] });
+    const schema = this.#schemas.key;
+    const object = encodeObject(schema, { mailbox: { $link: mailbox }, secret: hex.encode(secret) });
+    await this.#kept.write({ mine: [object], blobs: [schema.bytes] });
+    return this.#inbox(mailbox, object.link, key);
+  }
+
+  /**
+   * The inbox of a key that the private store keeps, at the mailbox the key
+   * names, which the store holds. Refuses a key whose secret is not of the
+   * public key the mailbox names: what it opens was sealed to another
+   * mailbox.
+   */
+  async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
+    const { data } = await readObject(this.#kept, key, this.#schemas.key);
+    const mailbox = data.mailbox.$link;
+    const named = readMailbox(await this.#held(mailbox), this.#transports).data.key;
+    const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
+    if (named !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
+    return this.#inbox(mailbox, key, opener);
+  }
+
+  #inbox(mailbox: Link<EncodedObject<Json>>, key: Link<EncodedObject<Json, MailboxKeyData>>, opener: MailboxKey) {
+    return new Inbox(mailbox, key, opener, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
   }
 
   async #held(link: Link<unknown>): Promise<Uint8Array> {
@@ -132,11 +177,22 @@ export class Outbox {
 
 /** A mailbox of the user's bound to its key and a store, to keep what arrives there. */
 export class Inbox {
-  readonly #key: MailboxKey;
+  /** The link of the mailbox, which the store holds. */
+  readonly mailbox: Link<EncodedObject<Json>>;
+  /** The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this inbox again. */
+  readonly key: Link<EncodedObject<Json, MailboxKeyData>>;
+  readonly #opener: MailboxKey;
   readonly #written: Written;
 
-  constructor(key: MailboxKey, written: Written) {
-    this.#key = key;
+  constructor(
+    mailbox: Link<EncodedObject<Json>>,
+    key: Link<EncodedObject<Json, MailboxKeyData>>,
+    opener: MailboxKey,
+    written: Written,
+  ) {
+    this.mailbox = mailbox;
+    this.key = key;
+    this.#opener = opener;
     this.#written = written;
   }
 
@@ -148,14 +204,27 @@ export class Inbox {
    * each time it came in.
    */
   async receive(sealed: Uint8Array): Promise<Delivery> {
-    const bundle = await this.#key.open(sealed);
+    const bundle = await this.#opener.open(sealed);
     return this.#written(bundle.link, bundle.blobs());
   }
 }
 
-/** Makes a post that sends and receives with `store`, through `transports`. */
-export async function loadPost(store: Store, { transports, validator, clock = Date.now }: PostOptions): Promise<Post> {
-  const compile = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, validator);
-  const [inbound, outbound] = await Promise.all([compile(inboundSchema), compile(outboundSchema)]);
-  return new Post(store, transports, clock, { inbound, outbound });
+/**
+ * Makes a post that sends and receives with `store`, through `transports`,
+ * and keeps the keys of the user's mailboxes in `kept`, a private store
+ * beside `store`.
+ */
+export async function loadPost(
+  store: Store,
+  kept: PrivateStore,
+  { transports, validator, clock = Date.now }: PostOptions,
+): Promise<Post> {
+  const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
+    encodeSchema(schema, validator);
+  const [inbound, outbound, key] = await Promise.all([
+    compile<DeliveryData>(inboundSchema),
+    compile<DeliveryData>(outboundSchema),
+    compile<MailboxKeyData>(mailboxKeySchema),
+  ]);
+  return new Post(store, kept, transports, clock, { inbound, outbound, key });
 }

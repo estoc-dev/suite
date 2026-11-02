@@ -11,25 +11,25 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Index, MemoryBackend, type Rows, Store, scan } from "@estoc/store";
+import { type Index, MemoryBackend, PrivateStore, type Rows, Store, scan } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type DeliveryData,
   type Inbox,
   inboundSchema,
   loadPost,
-  MailboxKey,
   type Outbox,
   outboundSchema,
   type Post,
 } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
-// A chat between two people, each with a store and a mailbox for the other.
-// What one sends is a signed line from their store, recorded there as gone
-// out; what arrives is kept with a record that it came in. The application
-// reads a conversation out of those records alone, through an index of all
-// that its user wrote, and reads each line from its bundle when it shows it.
+// A chat between two people, each with a store and a mailbox for the other,
+// whose key they keep in a private store beside it. What one sends is a
+// signed line from their store, recorded there as gone out; what arrives is
+// kept with a record that it came in. The application reads a conversation
+// out of those records alone, through an index of all that its user wrote,
+// and reads each line from its bundle when it shows it.
 
 const { signatures, publish } = await loadIdentity(defaultValidator);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -100,26 +100,27 @@ async function chat(faults: Faults = {}) {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await publish(signer, 0));
     const store = new Store(json, new MemoryBackend());
-    return { name, actor, store, post: await loadPost(store, { transports, validator: defaultValidator, clock }) };
+    const kept = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, kept, { transports, validator: defaultValidator, clock });
+    return { name, actor, store, post };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
   const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.root.link, name]));
 
-  // `owner` makes a mailbox for `peer` and hands it over. Each keeps it in
-  // their store: the owner to receive at it, the peer to send to it.
-  const mailboxFor = async (owner: Person, peer: Person, fill: number) => {
-    const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
+  // `owner` opens a mailbox for `peer` and hands it over, and the peer keeps
+  // it in their store to send to it.
+  const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
-    const mailbox = queue.mailbox(key.publicKey);
-    for (const { store } of [owner, peer])
-      await store.write({ mine: [mailbox], blobs: [network.transport.schema.bytes] });
-    const inbox = await owner.post.inbox(mailbox.link, key);
-    const outbox = await peer.post.outbox(mailbox.link);
-    return { mailbox, inbox, outbox, take: queue.take };
+    const inbox = await owner.post.openInbox(queue.mailbox);
+    const handedOver = await owner.store.get(inbox.mailbox);
+    assert.exists(handedOver);
+    await peer.store.write({ mine: [{ bytes: handedOver }], blobs: [network.transport.schema.bytes] });
+    const outbox = await peer.post.outbox(inbox.mailbox);
+    return { mailbox: inbox.mailbox, inbox, outbox, take: queue.take };
   };
-  const atAlice = await mailboxFor(alice, bob, 11);
-  const atBob = await mailboxFor(bob, alice, 12);
+  const atAlice = await mailboxFor(alice, bob);
+  const atBob = await mailboxFor(bob, alice);
 
   const say = async (from: Person, outbox: Outbox, text: string) => {
     const object = encodeObject(line, { text });
@@ -137,15 +138,13 @@ async function chat(faults: Faults = {}) {
 
   // What the person sees of their conversation with the other: each line,
   // which way it went and who wrote it.
-  const show = async (person: Person, mine: EncodedObject<Json>, theirs: EncodedObject<Json>) =>
+  const show = async (person: Person, mine: Mailbox, theirs: Mailbox) =>
     Promise.all(
-      (await conversation(await scan(person.store, deliveries), mine.link, theirs.link)).map(
-        async ([direction, , , bundle]) => {
-          const signed = await signatures.read(bundle, person.store, noVersions);
-          const { data } = await readObject(person.store, signed.object, line);
-          return [direction, names.get(signed.signedIdentity.identity.root.link), data.text];
-        },
-      ),
+      (await conversation(await scan(person.store, deliveries), mine, theirs)).map(async ([direction, , , bundle]) => {
+        const signed = await signatures.read(bundle, person.store, noVersions);
+        const { data } = await readObject(person.store, signed.object, line);
+        return [direction, names.get(signed.signedIdentity.identity.root.link), data.text];
+      }),
     );
   // What the person's store records as having come in, or gone out, at any mailbox.
   const recorded = async ({ store }: Person, direction: Direction) =>
@@ -159,8 +158,7 @@ async function chat(faults: Faults = {}) {
       recorded: (direction: Direction) => recorded(alice, direction),
       resend: (root: Link<unknown>) => atBob.outbox.send(root),
       store: alice.store,
-      conversation: async (store: Store) =>
-        conversation(await scan(store, deliveries), atAlice.mailbox.link, atBob.mailbox.link),
+      conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox, atBob.mailbox),
     },
     bob: {
       say: (text: string) => say(bob, atAlice.outbox, text),

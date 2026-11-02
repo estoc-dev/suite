@@ -42,10 +42,12 @@ be. Moving is handing out a new mailbox.
 
 ### The receiving side
 
-The receiver keeps 32 random secret bytes, makes a `MailboxKey` from them,
-and writes its public key into the mailbox. It hands out the mailbox's
-bytes as it sees fit: by hand or in a QR code, alone or with the signature
-of whoever stands behind the mailbox.
+The receiver makes a key for each mailbox, writes its public key into the
+mailbox and keeps its secret. With a store, its post does both, as told
+under "Through a store". Without one, the receiver keeps 32 random secret
+bytes and makes a `MailboxKey` from them. It hands out the mailbox's bytes
+as it sees fit: by hand or in a QR code, alone or with the signature of
+whoever stands behind the mailbox.
 
 ```ts
 import { encodeObject } from "@estoc/object";
@@ -96,35 +98,58 @@ needs a message to be fresh puts a nonce in its object, as a login does.
 
 ## Through a store
 
-`loadPost` binds sending and receiving to a store of `@estoc/store`. What
+`loadPost` binds sending and receiving to a store of `@estoc/store`, and
+keeps the keys of the user's mailboxes in a private store beside it. What
 is sent is taken from the store, what arrives is kept there, and each is
 recorded as an object the user writes:
 
 ```
-Inbound   {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
-Outbound  the same fields, under a schema of its own
+Inbound      {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
+Outbound     the same fields, under a schema of its own
+Mailbox key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the private store
 ```
 
-The two schemas are `inboundSchema` and `outboundSchema`.
+The three schemas are `inboundSchema`, `outboundSchema` and
+`mailboxKeySchema`. A key's `secret` is 32 bytes in lowercase hex.
 
 ```ts
 import { loadPost } from "@estoc/mailbox";
+import { MemoryBackend, PrivateStore } from "@estoc/store";
 
-const post = await loadPost(store, { transports: [transport], validator: defaultValidator });
+const kept = new PrivateStore(store, new MemoryBackend());
+const post = await loadPost(store, kept, { transports: [transport], validator: defaultValidator });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and all it leads to in the store
 
-const inbox = await post.inbox(mine.link, key);
+const inbox = await post.openInbox((publicKey) =>
+  encodeObject(schema, { key: hex.encode(publicKey), name: queueName }),
+);
 await inbox.receive(sealed); // the bundle, kept with an Inbound record
+
+const again = await post.inbox(inbox.key); // after a restart
 ```
 
 Both mailboxes have to be in the store, since a record links to its
-mailbox and a store takes in nothing without all it leads to. The receiver
-writes its own mailbox when it makes it, and the sender writes a mailbox
-handed to it, alone or in whatever record of the handing the application
-keeps. `inbox` refuses a key other than the one the mailbox names: what
-that key opens was sealed to another mailbox.
+mailbox and a store takes in nothing without all it leads to. The sender
+writes a mailbox handed to it, alone or in whatever record of the handing
+the application keeps.
+
+`openInbox` makes a new key and gives its public key to `make`, which gives
+back a mailbox sealed to it, of one of the post's transports. The post
+writes the mailbox to the store as the user's, and then the key to the
+private store. A key is one mailbox's, so a key used at two transports
+would be two. If the post stops in between, what is left is a mailbox that
+nobody receives at and nobody was handed. The inbox's `mailbox` is the
+link of the mailbox to hand out, and its `key` the link of the key.
+
+`inbox` makes an inbox again from the link of its key, and refuses a key
+whose secret is not of the public key its mailbox names: what that key
+opens was sealed to another mailbox. The caller holds the link of a key and
+not its secret, and no bundle gathered from the store carries one. The
+package keeps no list of the user's mailboxes: an application finds them
+with an index of `@estoc/store` over the private store that reads
+`mailboxKeySchema`.
 
 `send` takes a root that the store holds, whoever wrote it, so passing on
 what came in is sending its root. It bundles the closure of the root,
@@ -216,8 +241,9 @@ interface Transport {
 bytes, resolves once they are handed on and rejects when they cannot be.
 How the receiver gets them, such as listening for requests or fetching from
 a mailbox service, is the transport's own; it ends with the sealed bytes
-handed to `MailboxKey.open`. This package ships one transport, over HTTP;
-its tests also run on one in memory.
+handed to `Inbox.receive`, or to `MailboxKey.open` without a store. This
+package ships one transport, over HTTP; its tests also run on one in
+memory.
 
 ### HTTP
 
@@ -245,9 +271,10 @@ rejects, and nothing is sent again. A redirect is not followed, since it
 would take the bytes to a url the mailbox does not name. No cookies or
 other credentials and no referrer go with the request.
 
-The receiving side is whatever serves the url, and this package ships
-none. It passes the body of each POST to `MailboxKey.open` and answers 2xx
-once it has kept the bytes. Anyone can post to it, so it limits how large a
-body it takes. One that browsers send to answers their CORS preflight for a
-POST with `Content-Type: application/octet-stream`, since browsers ask
-before sending that type to another origin.
+The receiving side is whatever serves the url, and this package ships none.
+It passes the body of each POST to `Inbox.receive`, or to
+`MailboxKey.open`, and answers 2xx once it has kept the bytes. Anyone can
+post to it, so it limits how large a body it takes. One that browsers send
+to answers their CORS preflight for a POST with
+`Content-Type: application/octet-stream`, since browsers ask before sending
+that type to another origin.

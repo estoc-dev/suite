@@ -31,6 +31,27 @@ export function mailboxSchema(
   };
 }
 
+/**
+ * The draft 2020-12 schema of the key that opens what arrives at a mailbox
+ * of the user's: the link of the mailbox, and `secret`, the x25519 secret
+ * key as 32 bytes in lowercase hex. One is kept in a private store for each
+ * mailbox, so a key used at two transports is two objects.
+ */
+export const mailboxKeySchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Mailbox key",
+  type: "object",
+  properties: { mailbox: linkSchema, secret: { type: "string", pattern: "^[0-9a-f]{64}$" } },
+  required: ["mailbox", "secret"],
+  additionalProperties: false,
+};
+
+/** The data of a key, as `mailboxKeySchema` describes it. */
+export type MailboxKeyData = {
+  readonly mailbox: JsonLink<EncodedObject<Json>>;
+  readonly secret: string;
+};
+
 /** The draft 2020-12 schema of a record that a bundle came in at a mailbox of the user's. */
 export const inboundSchema: JsonSchema = deliverySchema("Inbound");
 

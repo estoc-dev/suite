@@ -1,3 +1,4 @@
+import { ed25519, loadIdentity, type People, type SignatureData, SoftwareSigner, type Version } from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -166,8 +167,22 @@ const texts: View<Json, Row, Promise<[tag: string, text: string][]>, Note> = {
   },
 };
 
+const { signatures, signedIdentities, versions, delegate, publish } = await loadIdentity(defaultValidator);
+const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
+
+const people: View<Json, Version, People, SignatureData> = {
+  index: {
+    reads: [signatures.schema],
+    async *rows({ data }, reader) {
+      yield versions.of(await signedIdentities.read(data.signedIdentity.$link, reader));
+    },
+  },
+  read: (rows, reader) => versions.known(rows, reader),
+};
+
 describe("a view of a staged batch", () => {
-  it("is the view of the store once the batch is committed", async () => {
+  it("is the view of the store once the batch is committed, when nothing else is written in between", async () => {
     const store = newStore();
     await store.write({ mine: [note({ text: "soup", tags: ["lunch"], at: 1 })], blobs: [noteSchema.bytes] });
     const staged = await store.stage({
@@ -182,5 +197,32 @@ describe("a view of a staged batch", () => {
       ["lunch", "soup"],
       ["lunch", "salad"],
     ]);
+  });
+
+  it("takes in, when viewed again, what is written to the store after the batch was staged, and the batch is still committed", async () => {
+    const store = newStore();
+    const hello = object({ text: "hello" });
+    const byAgent = await signatures.actor(agent, await delegate(root, [agent.key], 1_000)).sign(hello);
+    const staged = await store.stage({
+      mine: [byAgent],
+      blobs: [hello.bytes, anything.bytes, signatures.schema.bytes, ...byAgent.signedIdentity.blobs],
+    });
+    const before = await view(staged, people);
+    expect((await signatures.read(byAgent.link, staged, before)).object).toBe(hello.link);
+
+    const agentsOut = object({ text: "agents out" });
+    const byRoot = await signatures.actor(root, await publish(root, 2_000)).sign(agentsOut);
+    await store.write({
+      mine: [byRoot],
+      blobs: [agentsOut.bytes, anything.bytes, signatures.schema.bytes, ...byRoot.signedIdentity.blobs],
+    });
+    await expect(signatures.read(byAgent.link, staged, await view(staged, people))).rejects.toThrow(
+      "does not sign for the current version",
+    );
+    expect((await signatures.read(byAgent.link, staged, before)).object).toBe(hello.link);
+
+    await staged.commit();
+    expect(await store.get(byAgent.link)).toEqual(byAgent.bytes);
+    expect(await store.get(hello.link)).toEqual(hello.bytes);
   });
 });

@@ -85,8 +85,8 @@ written so that every device writes the same object, with the same link.
 
 What comes from elsewhere is judged before it is written, as a client
 reads who signed a Service it reaches, and read again later from the
-store. The two come out the same when the first is read from the store as
-it will be once the batch is written. `stage(batch)` gives that, a
+store. For the two to come out the same, the first is read from the store
+as it will be once the batch is written. `stage(batch)` gives that, a
 `Staged`: the blobs the store holds and those of the batch that `write`
 keeps, and the links the store lists with those the batch writes as mine.
 `commit` writes the batch, as `write` does.
@@ -114,6 +114,16 @@ What a staged batch writes as mine is listed before anything has judged
 it. A row stands on its object and what that leads to, as a version
 stands on its root's signature, and not on whether the user took the
 object.
+
+The batch is fixed when it is staged, and the store is read as it is at
+each read, so what is written to the store afterwards shows on the staged
+batch too. What is judged on it reads the same from the store once it is
+committed when nothing else is written in between. A write in between,
+such as of a version of an identity that took an agent out, can change
+what a view comes to when it is viewed again, on the staged batch as on
+the store. A value already viewed stays as it was, and `commit` does not
+judge the batch again: as with a write, there is no transaction that
+reads and then writes.
 
 A store only grows, so what a staged batch found held is still held when
 it is committed, whatever was written in between. A batch that is not

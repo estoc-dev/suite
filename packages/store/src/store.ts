@@ -94,9 +94,14 @@ export interface Store {
  * A store as it will be once a batch is written, read before the batch is
  * written: the blobs the store holds and those of the batch that `write`
  * keeps, and the links the store lists with those the batch writes as mine.
- * What is judged on it reads the same from the store once it is committed.
- * A store only grows, so it stays so until it is committed, whatever is
- * written in between.
+ * The batch is fixed when it is staged, and the store is read as it is at
+ * each read, so what is written to the store afterwards shows here too.
+ * What is judged on it reads the same from the store once it is committed
+ * when nothing else is written in between. A write in between, such as of a
+ * version that takes an agent out, can change what a view comes to when it
+ * is viewed again, here as on the store, and `commit` does not judge the
+ * batch again. A store only grows, so the batch can still be committed
+ * after other writes, and what it leads to is still held.
  */
 export interface Staged {
   /**

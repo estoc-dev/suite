@@ -24,10 +24,10 @@ export interface View<D, K extends Key, V, F extends Fields<D> = Fields<D>> {
  * store and read with the store as the reader, so that the rows and the
  * objects they name come from one store. When `read` gives a promise, the
  * value is what it resolves to. Later writes do not change the value; it
- * takes them in when viewed again.
+ * takes them in when viewed again. The store may be a `PrivateStore`.
  */
 export async function view<D, K extends Key, V, F extends Fields<D>>(
-  store: Store,
+  store: Pick<Store, "get" | "mine">,
   view: View<D, K, V, F>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);

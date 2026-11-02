@@ -7,9 +7,8 @@ import type { Schema } from "./schema.ts";
 /**
  * What the objects of a schema read as, whichever of several schemas they
  * are written to: a blob that each such schema names by link, in JSON
- * Schema by `x-implements`. The link goes along with the schema wherever
- * its links are followed, so whoever holds the schema can get the interface
- * too.
+ * Schema by `x-implements`. The interface is in the closure of each such
+ * schema, so whoever holds the schema can get the interface too.
  */
 export interface Interface {
   readonly bytes: Bytes<Interface>;
@@ -57,7 +56,9 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
 
   /**
    * The implementation of `schema`, for what a program does with objects of
-   * it beyond reading them. Throws for a schema that is not one of these.
+   * it beyond reading them.
+   *
+   * @throws when `schema` is not one of these.
    */
   implementationOf(schema: Link<Schema<D>>): I {
     const implementation = this.#implementations.get(schema);

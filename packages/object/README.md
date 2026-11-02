@@ -24,15 +24,18 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
 - A blob's link is `sha256:` followed by the SHA-256 of its bytes in
   lowercase hex, whatever the bytes are.
 - An `Encoding<D>` is a model of data `D` and the one way each value is
-  written as bytes. Decoding refuses any bytes but those the encoding writes
-  for the value they hold, so that a value has one encoding and one link,
-  and it needs no schema, so that the schema an object names can be read
-  before the schema is. The data of an object is fields, values of the
-  encoding by name (`Fields<D>`), and the encoding writes an object as one
-  value, those fields and one more for the link of its schema, and refuses
-  any other value as an object. And it finds the links in a value, so that
-  what a blob leads to can be gathered without a schema to read it by, as a
-  store gathers what it carries along with an object.
+  written as bytes.
+  - Decoding refuses any bytes but those the encoding writes for the value
+    they hold, so that a value has one encoding and one link.
+  - Decoding needs no schema, so that the schema an object names can be read
+    before the schema is.
+  - The data of an object is fields, values of the encoding by name
+    (`Fields<D>`). The encoding writes an object as one value, those fields
+    and one more for the link of its schema, and refuses any other value as
+    an object.
+  - The encoding finds the links in a value, so that the blobs in a blob's
+    closure can be gathered without a schema to read it by, as a store
+    gathers the closure it carries along with an object.
 - A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
   data of one encoding, which it names. A schema is a blob of its own, with
   one way of being written and a link.
@@ -43,9 +46,8 @@ A validator names its language and a language names its encoding, so a
 schema read with a validator knows the encoding of the objects written to
 it: reading or writing an object takes the schema and nothing more. The
 types tie them too: a language and its validators share the data type `D`
-of the encoding. `schemaOf`, which
-reads the link of the schema an object names before any schema is picked,
-is given the encoding.
+of the encoding. `schemaOf`, which reads the link of the schema an object
+names before any schema is picked, is given the encoding.
 
 An encoding is one object, shared by the languages over its data: a
 language over JSON names `json`. Encodings are told apart as objects, so
@@ -60,10 +62,10 @@ translating old ones.
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
   bytes of a signature handed to `decodeObject` with a schema whose data is
-  declared otherwise. A link to a blob of no known
-  kind, such as the object a signature is over, is a `Link<never>`, and
-  reads as any. The type is a label, not a check: bytes read from a file or
-  the network pass as any `Bytes<T>`, and decoding them is what checks them.
+  declared otherwise. A link to a blob of no known kind, such as the object
+  a signature is over, is a `Link<never>`, and reads as any. The type is a
+  label, not a check: bytes read from a file or the network pass as any
+  `Bytes<T>`, and decoding them is what checks them.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 
@@ -151,7 +153,7 @@ with `get(link)` that gives the bytes at once or as a promise, such as a
 the link names, or nothing: a bundle checks its blobs when it is made, a
 store hashes what it gets back from where it keeps them, and a `Map` holds
 what was filed in it by `linkOf`. So what reads from a reader, such as a
-judgment that looks at an object's schema before choosing how to read it,
+verifier that looks at an object's schema before choosing how to read it,
 takes the bytes as the blob of the link. `readObject` fails when the reader
 gives no blob, and refuses one whose bytes have another link all the same,
 since decoding them gives their link anyway.
@@ -191,13 +193,14 @@ without any blob changing.
 [`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
 which interprets schemas instead of generating code and so runs under a
 strict content security policy. It takes draft 2020-12 only, whose URI is
-`DRAFT_2020_12`, in the schema and in any schema resource inside it. A schema without `$id` can reference
-its own parts by fragment (`#/$defs/name`), and a schema resource inside it
-by its `$id`. Nothing is fetched, so a URL resolves only to a part of the
-schema itself, and not to the draft's meta-schemas either.
-It asserts the formats hyperjump's lite set knows (dates, times and
-durations, email, IP addresses, URIs and IRIs, UUIDs, URI templates, JSON
-pointers and regular expressions) and passes the rest.
+`DRAFT_2020_12`, in the schema and in any schema resource inside it. A
+schema without `$id` can reference its own parts by fragment
+(`#/$defs/name`), and a schema resource inside it by its `$id`. Nothing is
+fetched, so a URL resolves only to a part of the schema itself, and not to
+the draft's meta-schemas either. It asserts the formats hyperjump's lite
+set supports (dates, times and durations, email, IP addresses, URIs and
+IRIs, UUIDs, URI templates, JSON pointers and regular expressions) and
+passes the rest.
 
 hyperjump keeps one schema registry and one configuration for a JavaScript
 realm. Importing the default validator turns off hyperjump's fetching over
@@ -216,24 +219,24 @@ the strings they test have been reviewed to keep validation cheap. A viewer
 of arbitrary objects, which also runs schemas someone else wrote, needs the
 worker in any case.
 
-## Judgments
+## Verifiers
 
-A schema says what the data of an object may hold, and no more. The rules
-it cannot say, such as whether a signature verifies, are judgments: worked
-out from an object and what it links to, each time the object is read. A
-judgment takes the object it judges, already checked against its schema,
-and a `Reader`, and reads by link the other objects it needs when it comes
-to them. It gives the object together with what it found, as a verified
-signature comes with the identity that made it, and only the judgment
+A schema says what the data of an object may hold, and no more. A verifier
+checks the rules it cannot say, such as whether a signature verifies, from
+an object and what it links to, each time the object is read. A verifier
+takes the object it verifies, already validated against its schema, and a
+`Reader`, and reads by link the other objects it needs when it comes to
+them. It gives the object together with what it found, as a verified
+signature comes with the identity that made it, and only the verifier
 makes such a value, so a program holding one holds an object that passed.
-A judgment that starts from the link of the object takes the link and the
+A verifier that starts from the link of the object takes the link and the
 reader instead, as `signatures.read` does. One that also turns on what the
 program has seen besides takes that too, as `signatures.read` takes the
-versions of identities it knows. The judgments of identities and
+identity versions the program has seen. The verifiers of identities and
 signatures are in `@estoc/identity`.
 
 A program reads objects of the schemas it expects, with the type it
-declares for each, and judges those that need it. Which schemas those are
+declares for each, and verifies those that need it. Which schemas those are
 is the program's to say, and not anything an object or a schema says of
 itself. A program that takes objects of several schemas, such as a
 transport for each kind of mailbox, or an identity in each scheme, reads
@@ -258,7 +261,7 @@ that stands for the interface, such as its name as text, which
   data also fits another schema, which is about shape, not kind, and a
   `$ref` reaches nothing outside the schema anyway. Keywords that start
   with `x-` are left to annotations of one's own, and later drafts do not
-  take the names. In draft 2020-12 a keyword the dialect does not know
+  take the names. In draft 2020-12 a keyword the dialect does not define
   has no effect on validation, and an implementation that collects
   annotations can report its value; `JsonSchemaValidator` reports only
   what does not fit, so here the mark is read from the schema itself.
@@ -303,5 +306,5 @@ await texts.read(link, reader); // a Text, whichever of the two schemas the obje
 
 The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
-program does with objects of it beyond reading them. Its `read` takes an object already
-read with that schema, as the table's `read` gives it.
+program does with objects of it beyond reading them. Its `read` takes an
+object already read with that schema, as the table's `read` gives it.

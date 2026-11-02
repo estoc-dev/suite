@@ -32,7 +32,7 @@ let turn: Promise<unknown> = Promise.resolve();
 /**
  * Validates draft 2020-12 with `@hyperjump/json-schema`, which interprets
  * schemas instead of generating code and so runs under a strict content
- * security policy. It asserts `format`, and passes formats it does not know.
+ * security policy. It asserts `format`, and passes formats it does not support.
  */
 export const defaultValidator: JsonSchemaValidator = {
   language: jsonSchema,

@@ -8,10 +8,12 @@ import { mailboxSchema } from "./schema.ts";
 const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?([/?#]|$))";
 
 /**
- * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts
- * the ciphertext to the mailbox's url, and a 2xx response means it was
- * handed on. 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, any
- * other response as `refused`, and no response as `later`.
+ * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts the ciphertext to the
+ * mailbox's url.
+ *
+ * - A 2xx response means the ciphertext was handed on.
+ * - 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other response as `refused`.
+ * - No response rejects as `later`, and so does a redirect.
  */
 export async function loadHttpTransport(validator: JsonSchemaValidator): Promise<Transport> {
   const url = { type: "string", format: "uri", pattern: URL_PATTERN };

@@ -51,12 +51,14 @@ export type SignatureData = {
 /**
  * An identity standing behind an object, as an object written to
  * `signatureSchema`, read and verified, with `key`, the key that signed for
- * the identity. That is all it says.
- * Who has to sign, in what role and by when are for the application that
- * reads the object to decide. It names the object by link, so it verifies
- * without the object, but not without the blobs of its signed identity. It
- * travels apart from other signatures over the same object. It does not
- * say what the object is, so its link reads as any.
+ * the identity.
+ *
+ * - That is all it says: who has to sign, in what role and by when are for
+ *   the application that reads the object to decide.
+ * - It names the object by link, so it verifies without the object, but not
+ *   without the blobs of its signed identity.
+ * - It travels apart from other signatures over the same object.
+ * - It does not say what the object is, so its link reads as any.
  */
 export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly link: Link<Signature>;
@@ -74,8 +76,9 @@ export interface Actor {
   readonly signedIdentity: SignedIdentityObject;
   /**
    * Signs the link of an object, and so the object, whatever it is read as.
-   * The signature's `signedIdentity.blobs` go along with it. A signature that does
-   * not verify is refused.
+   * The signature's `signedIdentity.blobs` go along with it.
+   *
+   * @throws when the signer's signature does not verify.
    */
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
 }
@@ -91,17 +94,22 @@ export class Signatures {
   }
 
   /**
-   * Gives a signature with its signed identity and the key that made it, and
-   * refuses it unless a key that signs for that identity signed the object it
-   * names by that signed identity. The signed identity, its identity and the
-   * keys it names are read from `reader`. The identity's schema says which
-   * key made the signature and how its bytes are laid out, and the key's
-   * scheme how its signature is read.
+   * Verifies `signature`, giving it with its signed identity and the key that
+   * made it.
    *
-   * It is refused too when the key that made it does not sign for the
-   * current version of the identity, by `versions`. A device a wallet has
-   * just listed signs by a version the reader has not seen yet, so the one
-   * it carries counts as well.
+   * - The signed identity, its identity and the keys it names are read from
+   *   `reader`.
+   * - The identity's schema says which key made the signature and how its
+   *   bytes are laid out, and the key's scheme how its signature is read.
+   * - The current version of the identity is the later of the one the
+   *   signature carries and the latest in `versions`: a device a wallet has
+   *   just listed signs by a version the reader has not seen yet.
+   *
+   * @throws when `signature` is not written to the signature schema.
+   * @throws when no key that signs for the identity signed the object it
+   *   names by that signed identity.
+   * @throws when the key that made it does not sign for the current version
+   *   of the identity.
    */
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader, versions: Versions): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
@@ -119,7 +127,11 @@ export class Signatures {
     return this.verify(await readObject(reader, link, this.schema), reader, versions);
   }
 
-  /** An actor for `signedIdentity`, which refuses a signer whose key does not sign for its identity. */
+  /**
+   * An actor for `signedIdentity`.
+   *
+   * @throws when `signer`'s key does not sign for its identity.
+   */
   actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
     const sign = this.#signedIdentities.signingFunction(signedIdentity, signer);
     if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);

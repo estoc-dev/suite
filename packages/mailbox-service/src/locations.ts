@@ -19,9 +19,9 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
     async *rows(signature, reader) {
       const bytes = await reader.get(signature.data.object.$link);
       if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-      // A row depends on the signature and what it leads to alone, so it is
+      // A row depends on the signature and its closure alone, so it is
       // verified by the version it carries; whether that version still
-      // counts is for whoever reads the Service to judge.
+      // counts is for whoever reads the Service to check.
       const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
       yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
     },

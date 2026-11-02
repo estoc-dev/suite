@@ -20,12 +20,14 @@ export interface View<D, K extends Key, V, F extends Fields<D> = Fields<D>> {
 }
 
 /**
- * The value of `view` for what `store` holds now: its index scanned from the
- * store and read with the store as the reader, so that the rows and the
- * objects they name come from one store. When `read` gives a promise, the
- * value is what it resolves to. Later writes do not change the value; it
- * takes them in when viewed again. The store may be a `PrivateStore` or a
+ * The value of `view` for what `store` holds now. The store may also be a `PrivateStore` or a
  * `StagedStore`.
+ *
+ * - The index is scanned from the store and read with the store as the reader, so the rows and
+ *   the objects they name come from one store.
+ * - Later writes do not change the value; it takes them in when viewed again.
+ *
+ * @throws as `scan` does.
  */
 export async function view<D, K extends Key, V, F extends Fields<D>>(
   store: Pick<Store, "get" | "records">,

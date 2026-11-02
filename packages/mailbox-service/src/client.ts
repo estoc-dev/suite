@@ -136,9 +136,15 @@ export class AccountOffer {
 
   /**
    * Accepts the offer for the root of the actor's identity, which opens its
-   * account unless the root has one there: the actor signs the offer, and
-   * the service acknowledges that signature. Writes the service's signature
-   * over the acknowledgement to the store as a record, with all it leads to.
+   * account unless the root has one there.
+   *
+   * - The actor signs the offer, and the service acknowledges that signature.
+   * - The service's signature over the acknowledgement is written to the
+   *   store as a record, with its closure.
+   *
+   * @throws when the service refuses the acceptance, or when its
+   *   acknowledgement is signed by another root than the service's or is of
+   *   another signature. Nothing is written then.
    */
   async accept(actor: Actor): Promise<Account> {
     // The service holds the offer and the signature schema, so they are left out.
@@ -195,13 +201,19 @@ export class MailboxOffer {
 
   /**
    * Opens a mailbox sealed to `key`, an x25519 public key, under the account
-   * of the root of the actor's identity, which the service opened before:
-   * the actor signs a request for it, and the service acknowledges that
-   * signature. Writes the service's signature over the acknowledgement to
-   * the store as a record, with all it leads to, and gives the HTTP mailbox of
-   * `@estoc/mailbox` that senders post to, at the origin the offer was
-   * taken at. It is what `Post.openInbox` is to be given, as
-   * `(publicKey) => offer.open(actor, publicKey)`.
+   * of the root of the actor's identity, which the service opened before.
+   *
+   * - The actor signs a request for it, and the service acknowledges that
+   *   signature.
+   * - The service's signature over the acknowledgement is written to the
+   *   store as a record, with its closure.
+   * - It gives the HTTP mailbox of `@estoc/mailbox` that senders post to, at
+   *   the origin the offer was taken at. It is what `Post.openInbox` is to be
+   *   given, as `(publicKey) => offer.open(actor, publicKey)`.
+   *
+   * @throws when the service refuses the request, or when its
+   *   acknowledgement is signed by another root than the service's or is of
+   *   another signature. Nothing is written then.
    */
   async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<Json, HttpMailboxData>> {
     const request = encodeObject(this.#schemas.mailboxRequest, { offer: { $link: this.link }, key: hex.encode(key) });
@@ -222,11 +234,15 @@ export class MailboxOffer {
 
 /**
  * Posts the bundle of `signature` to `url`, with `blobs` and the blobs of
- * its signed identity, and reads the answer as `service`'s signature over an
- * acknowledgement of it, written to `schema`, whose `field` links to it,
- * which is written to the store as a record with all it leads to. Refuses an
- * acknowledgement signed by another root, or of another signature, and
- * writes nothing then.
+ * its signed identity, and writes the answer to the store as a record, with
+ * its closure.
+ *
+ * The answer is read as `service`'s signature over an acknowledgement of
+ * `signature`, written to `schema`, whose `field` links to it.
+ *
+ * @throws when the service answers another status than 200 or 201, or when
+ *   the acknowledgement is signed by another root than the service's or is
+ *   of another signature. Nothing is written then.
  */
 async function post<K extends string, F extends Readonly<Record<K, JsonLink<Signature>>> & Fields<Json>>(
   to: {
@@ -258,9 +274,10 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
 
 /**
  * What waits at a mailbox that a service opened, which an actor for the
- * root of the mailbox's account picks up. Each request is signed, and
- * carries receipts for what was dropped since the one before, which the
- * service drops before it answers with what waits.
+ * root of the mailbox's account picks up.
+ *
+ * Each request is signed, and carries receipts for what was dropped since
+ * the one before, which the service drops before it answers with what waits.
  */
 class ServicePickup implements Pickup {
   readonly mailbox: Link<EncodedObject<Json>>;
@@ -290,8 +307,14 @@ class ServicePickup implements Pickup {
   }
 
   /**
-   * Ends once an answer brings nothing that it has not handed out, and once
-   * `signal` aborts. What is done once the last request is sent still waits.
+   * Hands out each ciphertext that waits once, and asks again after each
+   * answer.
+   *
+   * - It ends once an answer brings nothing that it has not handed out, and
+   *   once `signal` aborts.
+   * - What is dropped once the last request is sent still waits.
+   *
+   * @throws when a pickup fails before `signal` aborts.
    */
   async *arrivals(signal?: AbortSignal): AsyncGenerator<Arrival> {
     const handed = new Set<Link<Uint8Array>>();
@@ -356,10 +379,16 @@ export class Services {
 
   /**
    * Fetches the Service at `origin`, such as `https://mail.example`, and
-   * writes the service's signature over it to the store as a record, with
-   * all it leads to. What the origin answers over TLS is the service's, so
-   * the identity that signed the Service is taken as the service's. A Service that names
-   * another origin is refused.
+   * writes the service's signature over it to the store as a record, with its
+   * closure.
+   *
+   * What the origin answers over TLS is the service's, so the identity that
+   * signed the Service is taken as the service's.
+   *
+   * @throws when `origin` is not an https origin or an http one on this
+   *   machine, when the service answers another status than 200, when the
+   *   Service names another origin, or when it lists an offer signed by
+   *   another root or one that names another root. Nothing is written then.
    */
   async fetch(origin: string): Promise<Service> {
     checkOrigin(origin);
@@ -376,6 +405,9 @@ export class Services {
    * store holds, read without reaching the service, or `undefined` when the
    * store holds none. A Service gets there by `fetch`, on this device or on
    * another whose store this one syncs with.
+   *
+   * @throws when the latest Service is one that `fetch` refuses, apart from
+   *   naming another origin than the one asked.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
     const [latest] = await view(this.#store, servicesOf(this.#locations, signedIdentity.identity.root.link));
@@ -383,12 +415,15 @@ export class Services {
   }
 
   /**
-   * What waits at `mailbox`, an HTTP mailbox that the store holds and that
-   * a service opened, picked up by `actor`, an actor for the root of the
-   * mailbox's account. The store holds the acknowledgement of the mailbox,
-   * whose signer is the service; it is picked up where the latest Service
-   * of the service that the store holds says, wherever the mailbox was
-   * opened.
+   * What waits at `mailbox`, an HTTP mailbox that a service opened, picked
+   * up by `actor`, an actor for the root of the mailbox's account.
+   *
+   * It is picked up where the latest Service that the store holds of the
+   * service that signed the mailbox's acknowledgement says, wherever the
+   * mailbox was opened.
+   *
+   * @throws when the store does not hold `mailbox`, its acknowledgement, or
+   *   a Service of the service that signed the acknowledgement.
    */
   async pickup(mailbox: Link<EncodedObject<Json>>, actor: Actor): Promise<Pickup> {
     const { key, url } = (await readObject(this.#store, mailbox, this.#schemas.http)).data;
@@ -397,10 +432,10 @@ export class Services {
       mailboxAcknowledgementAt(this.#mailboxes, new URL(url).pathname.slice(1), key),
     );
     if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox}`);
-    // The acknowledgement was read by the people the store knew once it
-    // came. Here it says only where to pick up, which a later version of the
-    // service's identity that does not list the key that signed it does not
-    // change.
+    // The acknowledgement was verified against the identity versions the
+    // store held when it came. Here it says only where to pick up, which a
+    // later version of the service's identity that does not list the key that
+    // signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noVersions);
     const { request, pickupId } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
     const { object: requestObject } = (await readObject(this.#store, request.$link, this.#signatures.schema)).data;
@@ -413,16 +448,20 @@ export class Services {
   }
 
   /**
-   * Reads the Service that `link` names the service's signature over, and
-   * the offers it lists, from `reader`, by the people it knows. `fetch`
-   * reads it on the store as it will be once it keeps the Service, so the
-   * version that signed the Service is among them, and an offer is read by
-   * that version or a later one. A Service that `fetch` takes so reads alike
-   * by `latestOf` until the store knows a later version of the service's
-   * identity. Refuses it when its origin is not one that a client reaches,
-   * when an offer it lists is signed by an identity of another root, or when
-   * its offer of an account or of mailboxes names another root. Offers of
-   * schemas the client does not read are passed over.
+   * Reads the Service that the service's signature at `link` is over, and the
+   * offers it lists, from `reader`, verified against the identity versions
+   * that `reader` holds.
+   *
+   * - `fetch` reads it on the store as it will be once it keeps the Service,
+   *   so the version that signed the Service is among those, and an offer is
+   *   verified by that version or a later one.
+   * - A Service that `fetch` takes so reads alike by `latestOf` until the
+   *   store holds a later version of the service's identity.
+   * - Offers of schemas the client does not read are passed over.
+   *
+   * @throws when the Service's origin is not one that a client reaches, when
+   *   an offer it lists is signed by an identity of another root, or when its
+   *   offer of an account or of mailboxes names another root.
    */
   async #read(link: Link<Signature>, reader: Pick<Store, "get" | "records">): Promise<Service> {
     const people = await view(reader, this.#people);

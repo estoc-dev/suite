@@ -49,7 +49,7 @@ describe("a key", () => {
     expect(() => keys.encode({ scheme: ed25519, publicKey: new Uint8Array(33) })).toThrow(/does not fit/);
   });
 
-  it("is not written in a scheme other than those the keys know, even a copy of one", () => {
+  it("is not written in a scheme other than those the keys support, even a copy of one", () => {
     const { publicKey } = SoftwareSigner.fromSecretKey(ed25519, secretKey).key;
     expect(() => keys.encode({ scheme: { ...ed25519 }, publicKey })).toThrow(
       "the ed25519 scheme is not one written here",
@@ -67,7 +67,7 @@ describe("a key", () => {
     await expect(readKey(written(scheme, data))).rejects.toThrow(/does not fit/);
   });
 
-  it("is refused written to a schema that no scheme it knows writes to, though shaped the same", async () => {
+  it("is refused written to a schema that no scheme it supports writes to, though shaped the same", async () => {
     const lookalike: Schema<Json, KeyData> = await encodeSchema(
       { ...ed25519.keySchema, title: "Ed448 key" },
       defaultValidator,

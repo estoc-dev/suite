@@ -16,13 +16,15 @@ import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } fro
 export type PeopleView = View<Json, Version, People, SignatureData>;
 
 /**
- * The people that a store of a service's, or of a client's of it, knows,
- * from what the service gave out among the store's records: the versions
- * that signed the Services and the acknowledgements, of accounts and of
- * mailboxes, and those that the acknowledged acceptances and requests
- * carry. The service and its client keep the same records, so they know
- * the people of one another alike. A version stands on its root's
- * signature alone, so none is judged here.
+ * The people of a service's store, or of a client's of it, by the versions
+ * the store has seen in what the service gave out among its records.
+ *
+ * - The versions are those that signed the Services and the acknowledgements,
+ *   of accounts and of mailboxes, and those that the acknowledged acceptances
+ *   and requests carry.
+ * - The service and its client keep the same records, so they have seen the
+ *   same versions of one another.
+ * - A version stands on its root's signature alone, so none is verified here.
  */
 export function peopleView(
   { signatures, signedIdentities, versions }: IdentityKit,

@@ -259,7 +259,7 @@ describe("a mailbox service", () => {
     expect(await records(store)).toEqual(opened);
   });
 
-  it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and knows the versions of both", async () => {
+  it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and has seen the versions of both", async () => {
     const held = heldSigner(serviceSigner);
     const { service } = await memoryService({ by: held.signer });
     const { offer } = await rootOf(service);
@@ -854,7 +854,7 @@ describe("a mailbox that a service opened", () => {
     expect(await queueAt(service, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
-  it("answers 403 to a pickup by an agent that a later version of the root, which it knows, takes out", async () => {
+  it("answers 403 to a pickup by an agent that a later version of the root, which it has seen, takes out", async () => {
     const { service } = await memoryService();
     const removed = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
     await openAccount(service, removed);

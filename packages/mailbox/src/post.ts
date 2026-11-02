@@ -50,13 +50,14 @@ interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>
 }
 
 /**
- * Sending and receiving with a store. What is sent is taken from the store,
- * what arrives is kept in it, and each is recorded there as a delivery that
- * the user writes, an object of `inboundSchema` or `outboundSchema`. The
- * records are listed with the rest of what the user wrote, for the
- * application to read into its indexes. The keys that open what arrives are
- * objects of `mailboxKeySchema` in a private store beside the store, so no
- * bundle gathered from the store carries one.
+ * Sending and receiving with a store.
+ *
+ * - What is sent is taken from the store, and what arrives is kept in it.
+ * - Each is recorded there as a delivery that the user writes, an object of `inboundSchema` or
+ *   `outboundSchema`, listed with the store's other records for the application to read into its
+ *   indexes.
+ * - The keys that open what arrives are objects of `mailboxKeySchema` in a private store beside the
+ *   store, so no bundle gathered from the store carries one.
  */
 export class Post {
   readonly #store: Store;
@@ -86,12 +87,13 @@ export class Post {
   }
 
   /**
-   * Opens a mailbox of the user's with a new key, to receive at.
-   * `makeMailbox` is given the public key and gives back a mailbox sealed
-   * to it, as the transport makes one. The mailbox is written to the store and then its
-   * key to the private store, so a stop in between leaves at most a mailbox
-   * that nobody receives at. Refuses a mailbox of a transport the post was
-   * not given, or one that names another key, and writes nothing.
+   * Opens a mailbox of the user's with a new key, to receive at. `makeMailbox` is given the public
+   * key and gives back a mailbox sealed to it, as the transport makes one. The mailbox is written
+   * to the store and then its key to the private store, so a stop in between leaves at most a
+   * mailbox that nobody receives at.
+   *
+   * @throws when the mailbox is of a transport the post was not given, or names another key;
+   *   nothing is written then.
    */
   async openInbox(makeMailbox: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
     const secret = crypto.getRandomValues(new Uint8Array(32));
@@ -109,10 +111,11 @@ export class Post {
   }
 
   /**
-   * The inbox of a key that the private store keeps, at the mailbox the key
-   * names, which the store holds. Refuses a key whose secret is not of the
-   * public key the mailbox names: what it opens was sealed to another
-   * mailbox.
+   * The inbox of a key that the private store keeps, at the mailbox the key names, which the store
+   * holds.
+   *
+   * @throws when the key's secret is not of the public key the mailbox names: what it opens was
+   *   sealed to another mailbox.
    */
   async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#keys, key, this.#schemas.key);
@@ -160,11 +163,13 @@ export class Outbox {
   }
 
   /**
-   * Sends the bundle of `root` and all it leads to in the store, whoever
-   * wrote it. Once the transport takes the bundle, writes that it went out.
-   * When the transport cannot hand it on, rejects with its
-   * `UndeliveredMessage` and writes nothing. Sending a root again sends the
-   * same bundle and writes another record.
+   * Sends `root` and its closure in the store as a bundle, whoever wrote it, and once the transport
+   * takes the bundle, writes that it went out. Sending a root again sends the same bundle and
+   * writes another record.
+   *
+   * @throws when the store does not hold `root`.
+   * @throws {UndeliveredMessage} when the transport cannot hand the bundle on; nothing is written
+   *   then.
    */
   async send(root: Link<unknown>): Promise<Delivery> {
     const closure = await this.#store.closure(root);
@@ -182,7 +187,10 @@ export class Outbox {
 export class Inbox {
   /** The link of the mailbox, which the store holds. */
   readonly mailbox: Link<EncodedObject<Json>>;
-  /** The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this inbox again. */
+  /**
+   * The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this
+   * inbox again.
+   */
   readonly key: Link<EncodedObject<Json, MailboxKeyData>>;
   readonly #opener: MailboxKey;
   readonly #record: DeliveryRecorder;
@@ -200,11 +208,12 @@ export class Inbox {
   }
 
   /**
-   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle
-   * inside with a record that it came in. Keeps nothing when it does not
-   * open, or when the bundle leaves out a blob that its root leads to and
-   * the store does not hold. What arrives twice is recorded twice, once for
-   * each time it came in.
+   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle inside with a record that
+   * it came in. What arrives twice is recorded twice, once for each time it came in.
+   *
+   * @throws when the ciphertext does not open with the mailbox's key; nothing is kept then.
+   * @throws {RefusedBatch} when the bundle leaves out a blob in its root's closure that the store
+   *   does not hold; nothing is kept then.
    */
   async receive(ciphertext: Uint8Array): Promise<Delivery> {
     const bundle = await this.#opener.open(ciphertext);
@@ -212,13 +221,15 @@ export class Inbox {
   }
 
   /**
-   * Receives what waits at the mailbox, one arrival at a time, and is done
-   * with each once it is kept. Gives back the records it wrote. What does
-   * not open, and a bundle that the store refuses, are done with too and
-   * leave no record, rather than wait for the blobs a bundle leaves out to
-   * reach the store. When the store fails to write, stops and rejects, and
-   * that arrival waits to be collected again. Refuses a pickup of another
-   * mailbox, and is done with nothing.
+   * Receives what waits at the mailbox, one arrival at a time, and gives back the records it wrote.
+   *
+   * - It is done with each arrival once it is kept.
+   * - What does not open, and a bundle that the store refuses, are done with too and leave no
+   *   record, rather than wait for the blobs a bundle leaves out to reach the store.
+   *
+   * @throws when `pickup` is of another mailbox; nothing is done with then.
+   * @throws when the store fails to write; that arrival is not done with, and waits to be
+   *   collected again.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
     if (pickup.mailbox !== this.mailbox)

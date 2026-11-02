@@ -11,7 +11,7 @@ import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.t
  */
 export type Version = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
 
-/** The versions of identities: the row each is, and the people a reader knows by those it has seen. */
+/** The versions of identities: the row each is, and the people of the versions a reader has seen. */
 export class IdentityVersions {
   readonly #signedIdentities: SignedIdentities;
 
@@ -25,9 +25,9 @@ export class IdentityVersions {
   }
 
   /**
-   * The people a reader knows, from `rows`, the rows of its index of the
-   * versions it has seen, each as `versionOf` gives it. A version a row names is
-   * read from `reader`.
+   * The people of the versions a reader has seen, from `rows`, the rows of
+   * its index of those versions, each as `versionOf` gives it. A version a
+   * row names is read from `reader`.
    */
   people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);

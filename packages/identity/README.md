@@ -79,10 +79,10 @@ The keys work without objects. A `Key` is a scheme and a public key,
 same, so one public key in two schemes is two keys. The scheme is the same
 when it is the same value, so a program holds one copy of this package. A
 `Key` carries its scheme as that value, so it is not data to clone or send;
-what goes between programs is the key's object. A `Signer` is the private side of a key, as the
-capability to sign with it: a wallet stands behind one the same way
-`SoftwareSigner` does over a key in memory, which is why signing is
-asynchronous.
+what goes between programs is the key's object. A `Signer` is the private
+side of a key, as the capability to sign with it: a wallet stands behind one
+the same way `SoftwareSigner` does over a key in memory, which is why
+signing is asynchronous.
 
 ## Keys
 
@@ -101,13 +101,13 @@ bytes are the UTF-8 text `Key`. Whatever the scheme, a key reads as a
 
 A scheme added later comes with a schema of its own, so keys already
 written keep their links. A program reads keys written to the key schemas
-it knows, as it says which schemas it reads, and refuses one written to any
-other, as it would a key in a scheme it does not know.
+it supports, as it says which schemas it reads, and refuses one written to
+any other, as it would a key in a scheme it does not support.
 
 `keys` reads keys through an `Implementations` of `@estoc/object`, with
-one implementation for each scheme. `keys.check` is the
-judgment of a key: it takes a key's object and gives the key, in the scheme
-of the schema the object is written to. `keys.read` does the same from the
+one implementation for each scheme. `keys.check` is the verifier of a key:
+it takes a key's object and gives the key, in the scheme of the schema the
+object is written to. `keys.read` does the same from the
 link of the object and a `Reader`, and picks the schema to read the object
 with by `schemaOf`. `keys.encode` writes a key as its object, and refuses a
 public key that its scheme's schema does not take, and a scheme that is not
@@ -162,11 +162,11 @@ agents and its `at`. An identity stands for someone only as its root
 signed it: `identities.read` and `delegatedIdentities.read` read an
 identity's object with the keys it names and do not authenticate it, and
 `signedIdentities.read` verifies that its root signed it. Reading an
-identity takes the blobs of its object and of its keys; an
-identity carries them as `blobs`, with those of the schemas they are
-written to and of the interfaces those name, each once, so where an
-identity goes, as into a store or a bundle, `...identity.blobs` goes along
-and leads to nothing it does not carry.
+identity takes the blobs of its object and of its keys; an identity
+carries them as `blobs`, with those of the schemas they are written to and
+of the interfaces those name, each once. That is the identity's closure, so
+where an identity goes, as into a store or a bundle, `...identity.blobs`
+goes along and carries all it links to.
 
 ## Signed identities
 
@@ -197,26 +197,28 @@ object and its schema with the identity's `blobs`.
 
 A signature is made by a signed identity, so `signedIdentities` asks the
 schema of the identity what the signature needs of it, and `signatures`
-knows signed identities and no identity schema.
+depends on signed identities and on no identity schema.
 
 ## Versions
 
 A root removes an agent by signing a version that does not list it, and
 every agent by signing an Identity. A reader that has seen that version no
 longer counts the agent's signatures, whichever version they carry; what
-it accepted before stays accepted. A reader knows the versions it has seen, and nothing tells it
-of the others.
+it accepted before stays accepted. A reader holds only the versions it has
+seen, and nothing tells it of the others.
 
-`versions.versionOf` gives the version a signed identity is, as a row: its root,
-its `at` and its link. An application keeps the rows of the versions it sees in an
-index of its own, such as one of `@estoc/store`, from the signed
-identities its own objects lead to. In the order of their keys, a root's
-rows end with its current version. `versions.people` takes those rows and
-a `Reader`, and gives the `People` the reader knows, which are `Versions`
-too: their `current` gives the current version of a signed identity's
-identity, the later of the one given and the signed identity of its root's
-last row, read from the reader. `noVersions` is a reader that knows none,
-for which the current version is the one given.
+`versions.versionOf` gives the version a signed identity is, as a row: its
+root, its `at` and its link. An application keeps the rows of the versions
+it sees in an index of its own, such as one of `@estoc/store`, from the
+signed identities in the closures of its own objects. In the order of their
+keys, a root's rows end with its current version. `versions.people` takes
+those rows and a `Reader`, and gives the `People` of the versions the
+reader has seen, which are `Versions` too: their `current` gives the
+current version of a signed identity's identity, the later of the one given
+and the signed identity of its root's last row, read from the reader.
+`noVersions` is a reader that has seen no versions, so the current version
+is the one given and a signature is verified by the version it carries
+alone.
 
 ## People
 
@@ -225,7 +227,7 @@ seen. `people.personOf` takes a signed identity in hand, such as that
 of a signature just read, and gives the `Person` of its root:
 
 - `root`, the root's key, as the signed identity holds it.
-- `versions()`, the versions of the root's identity the reader knows, with
+- `versions()`, the versions of the root's identity the reader has seen, with
   the one in hand, each once and in the order of their rows. Each is read
   from the reader, signed by the root.
 - `current()`, the last of them, which says who signs for the person now.
@@ -234,7 +236,7 @@ of a signature just read, and gives the `Person` of its root:
 
 The versions are those the reader has seen, in the order of the root's
 clock, and none of them names the one before, so one between two of them
-may be missing, and `current()` is the latest the reader knows, not the
+may be missing, and `current()` is the latest the reader has seen, not the
 latest the root signed. `current` of `People` is that of the person of the
 signed identity it is given.
 
@@ -243,12 +245,12 @@ written: their root names them, but what they hold changes as the reader
 sees more. Two people are one when the links of their roots are. Two taken
 from different signed identities of a root may differ in `versions()`,
 since each holds the one it was taken from, but their `current()` differs
-only when the one in hand is later than the reader knows, which a
+only when the one in hand is later than any the reader has seen, which a
 signature carrying it counts as well.
 
 A person reads no signatures. What a signature is read from, and whether
-it is judged by the versions a reader knows or by `noVersions` alone, are
-for the caller to choose, so `hasSigned` takes one already read. With
+it is verified against the versions a store holds or by `noVersions` alone,
+are for the caller to choose, so `hasSigned` takes one already read. With
 `@estoc/store`, an application gives the index and `versions.people`
 reads its rows:
 
@@ -280,21 +282,22 @@ in its own bytes. Either way the signature schema, and what reads
 signatures by it, stay as they are.
 
 `signatures` holds the signature schema and `actor`. `signatures.verify`
-is the judgment of a signature: it takes the signature as an object of
+is the verifier of a signature: it takes the signature as an object of
 `signatures.schema`, a `Reader` and `Versions`, reads its signed identity
 from the reader with `signedIdentities.read`, and verifies the signature's
 bytes by the key the identity's schema reads from them, over the text for
 the object by that signed identity; `signatures.read` does the same from
-the link of the signature. It judges the current version as well, as
-`current` of the `Versions` gives it, the later of the one the signature
-carries and the latest the reader knows, and refuses a key that does not
-sign for it: the root of an Identity, or an agent of a Delegated Identity.
-The one the signature carries counts, as a device a wallet has just listed
-signs by a version the reader has not seen yet. The `Versions` are not optional,
-so a reader that keeps no versions says so with `noVersions`, and judges
-by the version a signature carries alone. So verifying a signature takes the blobs of its signed identity,
-but not that of the object signed, since the digest it signs is in the
-link. It gives the signature's object with the signed identity it read as
+the link of the signature. It also checks the key against the current
+version, as `current` of the `Versions` gives it, the later of the one the
+signature carries and the latest the reader has seen, and refuses a key
+that does not sign for it: the root of an Identity, or an agent of a
+Delegated Identity. The one the signature carries counts, as a device a
+wallet has just listed signs by a version the reader has not seen yet. The
+`Versions` are not optional, so a reader that keeps no versions says so
+with `noVersions`, and a signature is then verified by the version it
+carries alone. Verifying a signature takes the blobs of its signed
+identity, but not that of the object signed, since the digest it signs is
+in the link. It gives the signature's object with the signed identity it read as
 `signedIdentity`, the key that signed as `key`, the link of what it is over
 as `object`, and the signature as bytes. Reading a signature with
 `decodeObject` and the signature schema alone, as a viewer of arbitrary
@@ -304,8 +307,9 @@ Signing goes through an actor. `signatures.actor` takes a `Signer` and a
 signed identity whose identity the signer's key signs for, the root of an
 Identity or an agent of a Delegated Identity, gives an `Actor` for it, and
 refuses any other signer. So a wallet that lists a key on a device as an
-agent does not confirm what the device signs for it. `actor.sign` signs the link of an object, so it takes anything that has
-one, and gives a signature whose `signedIdentity` is
+agent does not confirm what the device signs for it. `actor.sign` signs the
+link of an object, so it takes anything that has one, and gives a signature
+whose `signedIdentity` is
 `actor.signedIdentity`, the signed identity the actor was made for, whose
 `blobs` go along with the signature. It verifies the signature after the
 signer signs, so a signer whose signature does not verify is refused.

@@ -18,11 +18,11 @@ private, and vouches for the service on first contact alone. A refusal is
 plain text, and a client keeps nothing of it.
 
 Of the Services that identities of one root signed, the latest says where
-the service is now:
-the one with the greatest `at`, and of those with the same `at`, the one
-whose signature has the greater link, compared as ASCII strings. Services
-started at once can sign the same `at`, and every reader takes the same one
-of them for the latest, whatever order its store took them in.
+the service is now: the one with the greatest `at`, and of those with the
+same `at`, the one whose signature has the greater link, compared as ASCII
+strings. Services started at once can sign the same `at`, and every reader
+takes the same one of them for the latest, whatever order its store took
+them in.
 
 What a client posts to, the service gives it: each offer in a Service comes
 with an id, and the address is the origin and the id, `<origin>/<id>`.
@@ -72,7 +72,7 @@ schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
 offer signed by an identity of another root. It writes the service's
-signature over the Service to the store as a record, with all it leads to, and
+signature over the Service to the store as a record, with its closure, and
 gives a `Service`: the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
@@ -132,13 +132,13 @@ to `POST /<id>`, at the id that the Service lists with the offer: the
 signature as the root, with the blobs of its signed identity. The offer and
 the signature schema are left out, since the service has them.
 
-The service reads the signature at the bundle's root with
-`signatures.read`, by the people it knows, refuses it unless it is over
-the offer, opens an account for the root of its identity unless the root
-has one, and answers with its signature over an acknowledgement of the
-bundle's root. `at` is when it received that. The answer is a bundle: the
-service's signature as the root, with the acknowledgement, the acceptance,
-the offer and all they lead to.
+The service reads the signature at the bundle's root with `signatures.read`,
+against the identity versions it holds, refuses it unless it is over the
+offer, opens an account for the root of its identity unless the root has
+one, and answers with its signature over an acknowledgement of the bundle's
+root. `at` is when it received that. The answer is a bundle: the service's
+signature as the root, with the acknowledgement, the acceptance, the offer
+and their closure.
 
 | Status | Meaning |
 |---|---|
@@ -161,22 +161,23 @@ its own acceptance. The client refuses an
 acknowledgement that is signed by another root than the service's or that
 acknowledges another acceptance than the one it sent.
 
-The service knows people by what it gave out: the versions that signed its
-Services and its acknowledgements, and those that the acceptances and the
-requests for mailboxes it acknowledged carry. Each acceptance it takes is
-acknowledged, so the version it carries counts from then on. A wallet takes a device out by
-signing a later version of its identity that does not list it, and the
-service refuses an acceptance by an agent that the current version does
-not list: the later of the latest it knows and the one the acceptance
-carries. It judges that first, so a removed device is refused even when the
-wallet has an account, and even for an acceptance that the service
-acknowledged before. Say the wallet's first version lists a laptop and its
-second only a phone: once the phone has accepted by the second, the
-laptop's acceptance by the first is refused, whichever of them opened the
-account. What a removed key signed stops counting for a reader that knows
-of the later version; what has to keep counting is signed again by a key
-that the current version lists. Two acceptances that open one account at
-once are both acknowledged, and one of them is answered 201, the other 200.
+The identity versions the service holds come from what it gave out: the
+versions that signed its Services and its acknowledgements, and those that
+the acceptances and the requests for mailboxes it acknowledged carry. Each
+acceptance it takes is acknowledged, so the version it carries counts from
+then on. A wallet takes a device out by signing a later version of its
+identity that does not list it, and the service refuses an acceptance by an
+agent that the current version does not list: the later of the latest it has
+seen and the one the acceptance carries. It verifies that first, so a
+removed device is refused even when the wallet has an account, and even for
+an acceptance that the service acknowledged before. Say the wallet's first
+version lists a laptop and its second only a phone: once the phone has
+accepted by the second, the laptop's acceptance by the first is refused,
+whichever of them opened the account. What a removed key signed stops
+counting for a reader that has seen the later version; what has to keep
+counting is signed again by a key that the current version lists. Two
+acceptances that open one account at once are both acknowledged, and one of
+them is answered 201, the other 200.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service took this
@@ -184,27 +185,28 @@ identity's acceptance of its offer.
 
 ### What the client keeps
 
-`fetch` writes the service's signature over the Service, which leads to the
-offers and the service's signatures over them, and `accept` and `open`
+`fetch` writes the service's signature over the Service, whose closure holds
+the offers and the service's signatures over them, and `accept` and `open`
 write the service's signature over the acknowledgement, each to the store
-as a record, with all they lead to. Another device that syncs the store learns
+as a record, with their closure. Another device that syncs the store learns
 which services the identity has accounts and mailboxes at, by their roots,
 and where they are, without asking them. When the service refuses, or its
 answer is refused, `accept` and `open` write nothing.
 
-The client knows people as the service does, from the same records in its
-store: the versions that signed the Services and the acknowledgements, and
-those that the acknowledged acceptances and requests carry. `fetch`,
-`latestOf` and `accept` read the service's signatures by them, so a Service, an offer or an
-acknowledgement signed by a key that a later version of the service's
-identity does not list is refused once the store knows that version.
+The client holds identity versions as the service does, from the same
+records in its store: the versions that signed the Services and the
+acknowledgements, and those that the acknowledged acceptances and requests
+carry. `fetch`, `latestOf` and `accept` verify the service's signatures
+against them, so a Service, an offer or an acknowledgement signed by a key
+that a later version of the service's identity does not list is refused once
+the store holds that version.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
-it will be once that is written, as `stage` of `@estoc/store` gives it. So
-a Service that `fetch` takes reads alike by `latestOf` until the store knows a later
-version of the service's identity. The offers a Service lists are read as
-any signature is, and the store then knows the version that signed the
-Service, so an offer is read by that version or a later one. When a
+it will be once that is written, as `stage` of `@estoc/store` gives it. So a
+Service that `fetch` takes reads alike by `latestOf` until the store holds a
+later version of the service's identity. The offers a Service lists are read
+as any signature is, and the store then holds the version that signed the
+Service, so an offer is verified by that version or a later one. When a
 service signs a Service by a version that takes out the key that signed an
 offer by an earlier one, it signs the offer again by a key that the version
 lists. The offer stays the same object, so its id and the acceptances of it
@@ -241,7 +243,7 @@ The actor signs the request, and `open` posts the bundle of that signature
 to `POST /<id>`, at the id that the Service lists with the offer: the
 signature as the root, with the request and the blobs of its signed
 identity. It writes the service's signature over the acknowledgement to
-the store as a record, with all it leads to, and gives the HTTP mailbox of
+the store as a record, with its closure, and gives the HTTP mailbox of
 `@estoc/mailbox` that senders post to, `{"key", "url"}`, whose url is the
 origin the offer was taken at and the send id. `Post.openInbox` writes the
 mailbox to the store, and its key to the private store. The client refuses
@@ -253,8 +255,8 @@ wait, and a message is at most `size` bytes. `terms` gives them. Other
 terms are another offer, which a new Service lists, and a mailbox keeps
 the terms of the offer that opened it.
 
-The service reads the signature over the request as it reads an
-acceptance, by the people it knows, and refuses it when its root has no
+The service reads the signature over the request as it reads an acceptance,
+against the identity versions it holds, and refuses it when its root has no
 account.
 
 | Status | Meaning |
@@ -299,11 +301,11 @@ of `@estoc/mailbox`, for an inbox to collect:
 const delivered = await inbox.collect(await services.pickup(inbox.mailbox, actor));
 ```
 
-The actor is any of the root of the account. The service judges each
-pickup by the current version of the root's identity, as it judges an
+The actor is any of the root of the account. The service verifies each
+pickup by the current version of the root's identity, as it verifies an
 acceptance: an agent that the root lists picks up without opening the
 mailbox again, and one that a later version takes out picks up no more
-once the service knows that version, from an acceptance or a request that
+once the service has seen that version, in an acceptance or a request that
 it acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
@@ -315,20 +317,19 @@ the origin of the latest Service of the service that the store holds, so
 at wherever the service moved. Senders still post to the url that the
 mailbox names.
 
-Each request is a pickup request that the actor signs. It names the
-mailbox by the service's signature over the acknowledgement, and lists by
-link, as receipts, the ciphertexts that the receiver was done with since
-the request before. The service lets those wait no more, and answers with
-a bundle whose root is a Pickup answer, unsigned, which lists by link what
-waits, the earliest first, with those ciphertexts: 100 at most, coming to 1 MiB at most,
-but one at least however large. `arrivals` hands out each that it has not
-handed out yet, and once it handed out an answer, asks again. It ends once
-an answer brings nothing that it has not handed out, and once the signal
-aborts. What the receiver is done with once the last request is sent
-still waits, and is picked up again. A request posted again drops what
-was dropped before and answers with what waits now, which only the
-mailbox's key opens: whoever posts it again sees how much waits, and no
-more.
+Each request is a pickup request that the actor signs. It names the mailbox
+by the service's signature over the acknowledgement, and lists by link, as
+receipts, the ciphertexts that the receiver was done with since the request
+before. The service lets those wait no more, and answers with a bundle whose
+root is a Pickup answer, unsigned, which lists by link what waits, the
+earliest first, with those ciphertexts: 100 at most, coming to 1 MiB at
+most, but one at least however large. `arrivals` hands out each that it has
+not handed out yet, and once it handed out an answer, asks again. It ends
+once an answer brings nothing that it has not handed out, and once the
+signal aborts. What the receiver is done with once the last request is sent
+still waits, and is picked up again. A request posted again drops what was
+dropped before and answers with what waits now, which only the mailbox's key
+opens: whoever posts it again sees how much waits, and no more.
 
 | Status | Meaning |
 |---|---|
@@ -362,13 +363,12 @@ request, whose host is the requester's to choose. Started with an empty
 store, it has the signer sign the service's identity, then the offer of an
 account, the offer of mailboxes on `terms`, and a Service at that origin
 that lists each offer under its link, and writes the signature over the
-Service to `store`, a store of `@estoc/store`, as the service's own, with
-all it leads to. Started with a store that holds a
-Service of its, it signs as the signed identity that the latest Service
-names, and the signer does not sign the identity again. Each
-acknowledgement it signs is written there too, as the service's own, with
-the acceptance or the request and all it leads to, and what the bundle
-holds besides is dropped.
+Service to `store`, a store of `@estoc/store`, as a record, with its
+closure. Started with a store that holds a Service of its, it signs as the
+signed identity that the latest Service names, and the signer does not sign
+the identity again. Each acknowledgement it signs is written there too, as a
+record, with the acceptance or the request and its closure, and what the
+bundle holds besides is dropped.
 
 The Services in the store are what the service gave out. Of them, the
 latest is the one it answers `GET /` with, as a client takes it for where
@@ -384,14 +384,14 @@ Started again with the same store, the service keeps answering with the
 latest Service when what it would sign says the same apart from `at`: the
 same origin and the same offers. At another origin it signs a new Service,
 which lists the offers under the same ids with the same signatures over
-them, so what a client holds still holds. With other terms it signs
-another offer of mailboxes, which the new Service lists in place of the
-one before, whose id is then answered 410. The new Service's `at` is the time the
+them, so what a client holds still holds. With other terms it signs another
+offer of mailboxes, which the new Service lists in place of the one before,
+whose id is then answered 410. The new Service's `at` is the time the
 service's clock gives, and the clock is the service's to keep: started with
 its clock behind, it signs a Service earlier than the one before, which
-stays the latest. Two started at once on one store can sign the
-same `at`, and the latest of the two is then the one whose signature has
-the greater link.
+stays the latest. Two started at once on one store can sign the same `at`,
+and the latest of the two is then the one whose signature has the greater
+link.
 
 `accounts` holds one row for each root: the link of the root of an
 identity, and the link of the service's signature over the acknowledgement
@@ -418,11 +418,13 @@ It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and
 at any other path, and 410 at the id of an offer that only an earlier
 Service lists. No request carries credentials, so it answers any origin,
 and it answers the CORS preflight that a browser sends before it posts a
-zip or a ciphertext to another origin. A request is read up to 64 KiB. A
-pickup request is read up to 128 bytes more for each of the 100 messages
-that an answer holds at most, so that it lists the links of all that the
-receiver is done with of the answer before. A ciphertext is read up to the
-size that the offer of its mailbox names.
+zip or a ciphertext to another origin. It reads a body up to a limit:
+
+- a request, up to 64 KiB;
+- a pickup request, up to 128 bytes more for each of the 100 messages that
+  an answer holds at most, so that it lists the links of all that the
+  receiver is done with of the answer before;
+- a ciphertext, up to the size that the offer of its mailbox names.
 
 Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to

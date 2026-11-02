@@ -2,10 +2,11 @@ import { decodeObject, type EncodedObject, type Fields, type Reader, type Schema
 import type { Store } from "./store.ts";
 
 /**
- * The key of a row: strings and numbers, compared one by one, a number
- * before a string, and a key before every longer key that starts with it.
- * The keys that start with a prefix therefore come together. Numbers are
- * finite, as in JSON, and a scan fails on a row that holds any other.
+ * The key of a row: strings and numbers.
+ *
+ * - Keys are compared one part at a time, a number before a string, and a key before every longer
+ *   key that starts with it, so the keys that start with a prefix come together.
+ * - Numbers are finite, as in JSON.
  */
 export type Key = readonly (string | number)[];
 
@@ -30,10 +31,9 @@ export interface Index<D, K extends Key, F extends Fields<D> = Fields<D>> {
   /** The schemas of the objects the index reads. It passes over objects of any other. */
   readonly reads: readonly Schema<D, F>[];
   /**
-   * The rows of an object of one of those schemas, whose data fits it. They
-   * depend on the object and what it leads to, which `reader` gives by link,
-   * and on nothing else; what depends on what else is written, such as
-   * whether something replaced it, is worked out from the rows when they are
+   * The rows of an object of one of those schemas, whose data fits it. They depend on the object
+   * and its closure, which `reader` gives by link, and on nothing else; what depends on what else
+   * is written, such as whether something replaced it, is worked out from the rows when they are
    * read.
    */
   rows(object: EncodedObject<D, F>, reader: Reader): Iterable<K> | AsyncIterable<K>;
@@ -46,12 +46,16 @@ export interface Rows<K extends Key> {
 }
 
 /**
- * Fills `index` from the records of `store`, going through all of them; the
- * store may be a `PrivateStore` or a `StagedStore`. Only records reach an
- * index, and on a staged batch the batch's records as well: what came from
- * elsewhere is reached by following links from them. Each object is read
- * once and checked against its schema before the index sees it, and the
- * scan fails on one whose data does not fit.
+ * Fills `index` from all the records of `store`, which may also be a `PrivateStore` or a
+ * `StagedStore`.
+ *
+ * - Only records reach an index, and on a staged batch the batch's records as well: what came
+ *   from elsewhere is reached by following links from them.
+ * - Each object is read once and validated against its schema before the index sees it.
+ *
+ * @throws when the index reads no schema or schemas of more than one encoding.
+ * @throws when the data of an object does not fit its schema.
+ * @throws when a row holds a number that is not finite.
  */
 export async function scan<D, K extends Key, F extends Fields<D>>(
   store: Pick<Store, "get" | "records">,

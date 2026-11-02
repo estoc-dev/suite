@@ -55,12 +55,12 @@ describe("a private store", () => {
     expect(await backend.has(anything.link)).toBe(false);
   });
 
-  it("refuses a batch that leads to a blob that neither the batch, it nor the store beside it holds", async () => {
+  it("refuses a batch with a blob in a record's closure that neither the batch, it nor the store beside it holds", async () => {
     const { kept } = sides();
     const absent = object({ name: "absent" });
     const secret = object({ card: { $link: absent.link } });
     await expect(kept.write({ records: [secret], blobs: [anything.bytes] })).rejects.toThrow(
-      `${secret.link} leads to ${absent.link}, which neither the batch nor the store holds`,
+      `${secret.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
     expect(await listed(kept)).toEqual([]);
   });
@@ -131,13 +131,13 @@ describe("the store beside a private store", () => {
     expect(await listed(store)).toEqual([card.link]);
   });
 
-  it("refuses to write anything that leads to a blob kept in the private store", async () => {
+  it("refuses to write anything with a blob kept in the private store in its closure", async () => {
     const { store, kept } = sides();
     const secret = object({ secret: "00" });
     await kept.write({ records: [secret], blobs: [anything.bytes] });
     const leak = object({ secret: { $link: secret.link } });
     await expect(store.write({ records: [leak], blobs: [anything.bytes] })).rejects.toThrow(
-      `${leak.link} leads to ${secret.link}, which neither the batch nor the store holds`,
+      `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,
     );
     expect(await listed(store)).toEqual([]);
   });

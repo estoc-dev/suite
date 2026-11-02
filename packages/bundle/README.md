@@ -64,21 +64,23 @@ be under `blobs/` as well, and does no harm there.
 
 A bundle is only a container. Reading one checks the root as above and that
 each blob matches its name, and nothing more: it does not parse the other
-blobs, look at a clock, or check a schema. A signature under `blobs/` is
-bytes, as an image is, so one that does not verify, or whose scheme the
-reader does not know, is read all the same.
+blobs, look at a clock, or validate against a schema. A signature under
+`blobs/` is bytes, as an image is, so one that does not verify, or whose
+scheme the reader does not support, is read all the same.
 
 Signatures are verified where they are used: `signatures.read` in
-`@estoc/identity` verifies what it reads. If reading a bundle verified signatures, it would have to know
-every identity scheme: a reader that predates a scheme could not read even
-the root of a card carrying a signature in it, and one bad signature that
-nothing refers to would refuse the whole bundle.
+`@estoc/identity` verifies what it reads. If reading a bundle verified
+signatures, it would have to support every identity scheme: a reader that
+predates a scheme could not read even the root of a card carrying a
+signature in it, and one bad signature that nothing refers to would refuse
+the whole bundle.
 
 A reader starts at the root, reads it with the schema it expects, or picks
-among several by `schemaOf`, and follows its links with `get`. To carry signed content, the root is the
-signature over it, or refers to signatures: a chat message travels with the
-signature over it as the root, and a card lists the signatures over what it
-holds. The reader goes through each signature to the object it is over.
+among several by `schemaOf`, and follows its links with `get`. To carry
+signed content, the root is the signature over it, or refers to signatures:
+a chat message travels with the signature over it as the root, and a card
+lists the signatures over what it holds. The reader goes through each
+signature to the object it is over.
 
 ```ts
 const signed = await signatures.read(bundle.link, bundle, noVersions);
@@ -86,19 +88,19 @@ const message = await readObject(bundle, signed.object, chatSchema);
 // signed.signedIdentity.identity stands behind message
 ```
 
-A `Bundle` is a `Reader`, with the `get` that `readObject` and judgments
+A `Bundle` is a `Reader`, with the `get` that `readObject` and verifiers
 such as `signatures.read` take their blobs by, so a signature is read
 against the bundle that carries its signed identity's blobs. The versions
 are the reader's own: one that keeps the versions it has seen passes its
 `Versions` in place of `noVersions`, and an agent its root removed no
 longer reads as the root.
 
-A bundle need not be complete. A blob the root leads to may be left out,
-such as a document a contract names by hash that both parties already hold,
-and the reader finds out when `get` gives `undefined`. Which blobs to carry
-is up to the application that writes the bundle. A blob the root does not
-lead to is kept and `get` returns it, but it means nothing: a bundle does
-not say which signatures are over an object.
+A bundle need not be complete. A blob in the root's closure may be left
+out, such as a document a contract names by hash that both parties already
+hold, and the reader finds out when `get` gives `undefined`. Which blobs to
+carry is up to the application that writes the bundle. A blob outside the
+root's closure is kept and `get` returns it, but it means nothing: a bundle
+does not say which signatures are over an object.
 
 ## Zip
 
@@ -135,11 +137,14 @@ A zip comes from someone else, so unzipping has limits: 64 MiB unzipped and
 read, 4 KiB at a time, and the bytes are counted as they come out, since the
 sizes a zip gives for its entries can be false. DEFLATE makes at most about a
 thousand times its size, so a few MiB at most come out before the count stops
-them. Other methods can make far more, so `index.json` or a blob compressed
-with one, such as Deflate64, is refused rather than unzipped. At the limit
-unzipping stops and the whole zip is refused, as it is when an entry does not
-unzip to the size or the CRC the zip gives. A zip that holds a path twice is
-refused as well, since two tools could each take a different one.
+them. The whole zip is refused when:
+
+- it goes over a limit; unzipping stops there.
+- `index.json` or a blob is compressed with a method other than DEFLATE,
+  such as Deflate64. Other methods can make far more, so the entry is
+  refused rather than unzipped.
+- an entry does not unzip to the size or the CRC the zip gives.
+- it holds a path twice, since two tools could each take a different one.
 
 zip.js takes the size of the pieces it unzips from a setting shared by all of
 zip.js in the program, and reads it for each entry. `unzipBundle` sets it to

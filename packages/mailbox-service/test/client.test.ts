@@ -98,18 +98,27 @@ async function signedService(origin: string, offers: readonly (readonly [Encoded
     ...signed.map(({ bytes }) => bytes),
     ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs),
     ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
+    serviceRoot.bytes,
   ];
   return packBundle(signature, blobs);
 }
 
-/** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it. */
+/** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with all it leads to. */
 async function acknowledgedBy(by: Actor, request: Request) {
-  const acknowledgement = encodeObject(acknowledgementSchemaRead, {
-    accepted: { $link: (await unpackBundle(new Uint8Array(await request.arrayBuffer()))).link },
-    at: 1,
-  });
+  const acceptance = await unpackBundle(new Uint8Array(await request.arrayBuffer()));
+  const acknowledgement = encodeObject(acknowledgementSchemaRead, { accepted: { $link: acceptance.link }, at: 1 });
   const signature = await by.sign(acknowledgement);
-  const blobs = [acknowledgement.bytes, ...signature.signedIdentity.blobs];
+  const blobs = [
+    acknowledgement.bytes,
+    acknowledgementSchemaRead.bytes,
+    ...signature.signedIdentity.blobs,
+    signatures.schema.bytes,
+    acceptance.root,
+    ...acceptance.blobs(),
+    offer.bytes,
+    offerSchema.bytes,
+    serviceRoot.bytes,
+  ];
   return new Response(await packBundle(signature, blobs), { status: 201 });
 }
 

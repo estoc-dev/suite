@@ -37,9 +37,9 @@ computer can run.
 
 A program reads an object with the schema it expects and the type it
 declares for that schema's data, and refuses the object unless its data
-fits. What a schema cannot say is left to judgments: whether a signature
-verifies, or whether an identity is signed by its root. A judgment is
-worked out from an object and the objects it links to, read by link as it
+fits. What a schema cannot say is left to verifiers: whether a signature
+verifies, or whether an identity is signed by its root. A verifier works
+it out from an object and the objects it links to, read by link as it
 comes to them, each time the object is read, and gives a value, such as a
 `Signature` or a `SignedIdentityObject`, that only it can make.
 
@@ -60,15 +60,15 @@ then alike: each is one more schema for the program to read. Keeping up
 with one's own past and reading another application's objects are the same
 work.
 
-What one program asks of another, and what the other answers, is a
-bundle: an object as the root, with the blobs it leads to. What is asked is said by the root's schema, and who asks by
-whoever stands behind the root, read with the same judgments as any
-object, so neither rests on the connection, a session or a credential.
-The same bundle can go over HTTP, through a mailbox, or as a file, and
-both sides can keep what was asked and answered, an answer linking to what
-it answers. Reading what is public, such as an object by its link, asks
-with nothing but where to look; a refusal changes nothing and is no
-object.
+What one program asks of another, and what the other answers, is a bundle:
+an object as the root, with the blobs in its closure. What is asked is
+said by the root's schema, and who asks by whoever stands behind the root,
+read with the same verifiers as any object, so neither rests on the
+connection, a session or a credential. The same bundle can go over HTTP,
+through a mailbox, or as a file, and both sides can keep what was asked
+and answered, an answer linking to what it answers. Reading what is
+public, such as an object by its link, asks with nothing but where to
+look; a refusal changes nothing and is no object.
 
 A signature says that an identity stands behind an object, but not when,
 or over which connection, and whoever holds the bundle can send it again.

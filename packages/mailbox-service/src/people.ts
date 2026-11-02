@@ -24,7 +24,8 @@ export type PeopleView = View<Json, Version, People, SignatureData>;
  *   and requests carry.
  * - The service and its client keep the same records, so they have seen the
  *   same versions of one another.
- * - A version stands on its root's signature alone, so none is verified here.
+ * - Each version's root signature is verified; the signatures that carry it
+ *   are not checked here against the versions seen.
  */
 export function peopleView(
   { signatures, signedIdentities, versions }: IdentityKit,

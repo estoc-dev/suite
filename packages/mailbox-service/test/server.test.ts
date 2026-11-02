@@ -1,6 +1,14 @@
 import { packBundle, unpackBundle } from "@estoc/bundle";
-import { ed25519, eip191, noVersions, type SignedIdentityObject, type Signer } from "@estoc/identity";
-import { encodeObject, encodeSchema, type Link, readObject } from "@estoc/object";
+import {
+  type Actor,
+  ed25519,
+  eip191,
+  noVersions,
+  type Signature,
+  type SignedIdentityObject,
+  type Signer,
+} from "@estoc/identity";
+import { decodeObject, encodeObject, encodeSchema, type Link, linkOf, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it, vi } from "vitest";
 import type { MailboxService } from "../src/server.ts";
@@ -10,9 +18,13 @@ import {
   delegate,
   identities,
   keys,
+  mailboxAcknowledgementSchemaRead,
+  mailboxOfferSchemaRead,
+  mailboxRequestSchemaRead,
   memoryService,
   memoryStore,
   offerSchema,
+  pickupRequestSchemaRead,
   publish,
   serviceActor,
   serviceIdentity,
@@ -22,6 +34,8 @@ import {
   signatures,
   signedAtOrigins,
   signer,
+  terms,
+  waitingSchemaRead,
 } from "./fixtures.ts";
 
 const alice = signer(ed25519, 1);
@@ -41,16 +55,26 @@ const mine = async (store: { mine(): AsyncIterable<Link<never>> }) => {
   return links.sort();
 };
 
-/** What `GET /` answers, read: the service's signature over its Service, and the offer of an account it lists. */
+/**
+ * What `GET /` answers, read: the service's signature over its Service, the
+ * offer of an account it lists, and its offer of mailboxes.
+ */
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
   const signature = await signatures.read(bundle.link, bundle, noVersions);
   const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
-  const [listed] = data.offers;
+  const [listed, listedMailbox] = data.offers;
   assert.exists(listed);
+  assert.exists(listedMailbox);
   const offered = await signatures.read(listed.offer.$link, bundle, noVersions);
   const offer = await readObject(bundle, offered.object, offerSchema);
-  return { signature, data, offered, offer, accept: listed.accept };
+  const mailboxOffered = await signatures.read(listedMailbox.offer.$link, bundle, noVersions);
+  const mailbox = {
+    offered: mailboxOffered,
+    offer: await readObject(bundle, mailboxOffered.object, mailboxOfferSchemaRead),
+    accept: listedMailbox.accept,
+  };
+  return { signature, data, offered, offer, accept: listed.accept, mailbox };
 }
 
 const accepting = async (service: MailboxService, body: Uint8Array) =>
@@ -99,21 +123,26 @@ async function acknowledgementIn(response: Response) {
 }
 
 describe("a mailbox service", () => {
-  it("answers GET / with its signature over a Service at its origin, which lists its offer of an account under the offer's link", async () => {
+  it("answers GET / with its signature over a Service at its origin, which lists its offers of an account and of mailboxes, each under the offer's link", async () => {
     const { service } = await memoryService({ start: 3_000 });
     const response = await getRoot(service);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
-    const { signature, data, offered, offer, accept } = await rootOf(service);
+    const { signature, data, offered, offer, accept, mailbox } = await rootOf(service);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
-      offers: [{ offer: { $link: offered.link }, accept }],
+      offers: [
+        { offer: { $link: offered.link }, accept },
+        { offer: { $link: mailbox.offered.link }, accept: mailbox.accept },
+      ],
     });
-    expect(accept).toBe(offer.link);
-    expect(offered.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
+    expect([accept, mailbox.accept]).toEqual([offer.link, mailbox.offer.link]);
+    for (const { signedIdentity } of [offered, mailbox.offered])
+      expect(signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
+    expect(mailbox.offer.data).toEqual({ identity: { $link: serviceRoot.link }, ...terms });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
@@ -455,5 +484,407 @@ describe("a mailbox service started again", () => {
       signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
     );
     expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
+  });
+});
+
+const bob = signer(ed25519, 6);
+const keyOf = (fill: number) => fill.toString(16).padStart(2, "0").repeat(32);
+const sealedOf = (fill: number, length = 64) => new Uint8Array(length).fill(fill);
+
+/** The status that `service` answers `actor`'s acceptance of its offer of an account with. */
+async function acceptAccount(service: MailboxService, actor: Actor) {
+  const signature = await actor.sign((await rootOf(service)).offer);
+  return (await accepting(service, await packBundle(signature, signature.signedIdentity.blobs))).status;
+}
+
+/** Opens the account of `actor`'s root at `service`, by the actor's acceptance of its offer. */
+const openAccount = async (service: MailboxService, actor: Actor) =>
+  expect(await acceptAccount(service, actor)).toBe(201);
+
+/** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
+async function requesting(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
+  const request = encodeObject(mailboxRequestSchemaRead, { offer: { $link: offer.link as Link<never> }, key });
+  const signature = await actor.sign(request);
+  return { signature, zip: await packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
+}
+
+const askingForMailbox = async (service: MailboxService, body: Uint8Array) =>
+  post(service, (await rootOf(service)).mailbox.accept, body);
+
+async function mailboxAcknowledgementIn(response: Response) {
+  const bundle = await bundleOf(response);
+  const signature = await signatures.read(bundle.link, bundle, noVersions);
+  return {
+    bundle,
+    signature,
+    acknowledgement: await readObject(bundle, signature.object, mailboxAcknowledgementSchemaRead),
+  };
+}
+
+/**
+ * A mailbox sealed to `key` that `actor` opens at `service`, under the
+ * account of its root, which is open already: the link of the service's
+ * signature over the acknowledgement, and what the acknowledgement says.
+ */
+async function openMailbox(service: MailboxService, actor: Actor, key = keyOf(0x11)) {
+  const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer, key);
+  const response = await askingForMailbox(service, zip);
+  expect(response.status).toBe(201);
+  const { signature, acknowledgement } = await mailboxAcknowledgementIn(response);
+  return { link: signature.link, ...acknowledgement.data };
+}
+
+/** The bundle of `actor`'s request to pick up at the mailbox `mailbox` acknowledges, done with `done`. */
+async function pickupRequest(actor: Actor, mailbox: Link<Signature>, done: readonly Uint8Array[] = []) {
+  const request = encodeObject(pickupRequestSchemaRead, {
+    mailbox: { $link: mailbox },
+    done: done.map((sealed) => ({ $link: linkOf(sealed) })),
+  });
+  const signature = await actor.sign(request);
+  return packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
+}
+
+type Opened = Awaited<ReturnType<typeof openMailbox>>;
+
+/** What waits at `mailbox` once `done` no longer waits, as `actor` picks it up. */
+async function waitingAt(service: MailboxService, mailbox: Opened, actor: Actor, done: readonly Uint8Array[] = []) {
+  const response = await post(service, mailbox.pickup, await pickupRequest(actor, mailbox.link, done));
+  expect(response.status).toBe(200);
+  const bundle = await bundleOf(response);
+  return decodeObject(bundle.root, waitingSchemaRead).data.sealed.map(({ $link }) => {
+    const sealed = bundle.get($link);
+    assert.exists(sealed);
+    return sealed;
+  });
+}
+
+describe("a mailbox service's offer of mailboxes", () => {
+  it("opens a mailbox under the account of the root whose identity signs a request for one, and answers 201 with its signature over an acknowledgement", async () => {
+    const { service } = await memoryService({ start: 5_000 });
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { mailbox } = await rootOf(service);
+    const { signature, zip } = await requesting(actor, mailbox.offer);
+    const response = await askingForMailbox(service, zip);
+    expect(response.status).toBe(201);
+    const { bundle, signature: signed, acknowledgement } = await mailboxAcknowledgementIn(response);
+    expect(signed.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
+    const { send, pickup } = acknowledgement.data;
+    expect(acknowledgement.data).toEqual({ accepted: { $link: signature.link }, at: 5_002, send, pickup });
+    expect(send).toMatch(/^[0-9a-f]{32}$/);
+    expect(pickup).toMatch(/^[0-9a-f]{32}$/);
+    expect(send).not.toBe(pickup);
+    const read = await signatures.read(signature.link, bundle, noVersions);
+    const request = await readObject(bundle, read.object, mailboxRequestSchemaRead);
+    expect(request.data).toEqual({ offer: { $link: mailbox.offer.link }, key: keyOf(0x11) });
+    expect((await readObject(bundle, request.data.offer.$link, mailboxOfferSchemaRead)).data).toEqual(
+      mailbox.offer.data,
+    );
+  });
+
+  it("opens a mailbox for an agent that a Delegated Identity of the root lists, under the account its wallet opened", async () => {
+    const { service } = await memoryService();
+    await openAccount(service, await actorOf(wallet));
+    const agent = signatures.actor(device, await delegate(wallet, [device.key]));
+    const { zip } = await requesting(agent, (await rootOf(service)).mailbox.offer);
+    expect((await askingForMailbox(service, zip)).status).toBe(201);
+  });
+
+  it("opens a mailbox of its own for each key that one account asks for one", async () => {
+    const { service } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const [first, second] = [await openMailbox(service, actor, keyOf(1)), await openMailbox(service, actor, keyOf(2))];
+    expect(new Set([first.send, first.pickup, second.send, second.pickup]).size).toBe(4);
+  });
+
+  it("answers the same request again with 200 and the acknowledgement it signed for it, and signs no other", async () => {
+    const { service, store } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    const first = new Uint8Array(await (await askingForMailbox(service, zip)).arrayBuffer());
+    const opened = await mine(store);
+    const again = await askingForMailbox(service, zip);
+    expect(again.status).toBe(200);
+    expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
+    expect(await mine(store)).toEqual(opened);
+  });
+
+  it("answers one request posted twice at once with 201 and 200, each with the acknowledgement of the mailbox it opened", async () => {
+    const held = heldSigner(serviceSigner);
+    const { service } = await memoryService({ by: held.signer });
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    held.holding = true;
+    const opening = askingForMailbox(service, zip);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
+    const racing = askingForMailbox(service, zip);
+    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
+    held.holding = false;
+    held.release();
+    const opened = await opening;
+    held.release();
+    const answered = await racing;
+    expect([opened.status, answered.status]).toEqual([201, 200]);
+    const [first, second] = await Promise.all([opened, answered].map(mailboxAcknowledgementIn));
+    expect(second?.signature.link).toBe(first?.signature.link);
+    expect((await mailboxAcknowledgementIn(await askingForMailbox(service, zip))).signature.link).toBe(
+      first?.signature.link,
+    );
+  });
+
+  it("answers 403 to a request by a root that has no account, and opens no mailbox", async () => {
+    const { service, store } = await memoryService();
+    const { zip } = await requesting(await actorOf(alice), (await rootOf(service)).mailbox.offer);
+    const response = await askingForMailbox(service, zip);
+    expect(response.status).toBe(403);
+    expect(await response.text()).toMatch(/has no account here/);
+    expect(await mine(store)).toEqual([(await rootOf(service)).signature.link]);
+  });
+
+  it("answers 400 to a request by an agent that a later version of its root removed, though the root has an account", async () => {
+    const { service } = await memoryService();
+    const { mailbox } = await rootOf(service);
+    const removed = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    await openAccount(service, removed);
+    expect(await acceptAccount(service, signatures.actor(phone, await delegate(wallet, [phone.key], 2_000)))).toBe(200);
+    const response = await askingForMailbox(service, (await requesting(removed, mailbox.offer)).zip);
+    expect(response.status).toBe(400);
+    expect(await response.text()).toMatch(/does not sign for the current version/);
+  });
+
+  it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
+    [
+      "for the offer of an account",
+      async (service, actor) => (await requesting(actor, (await rootOf(service)).offer)).zip,
+    ],
+    [
+      "for another service's offer of mailboxes",
+      async (_, actor) => {
+        const { service: other } = await memoryService({ by: otherService });
+        return (await requesting(actor, (await rootOf(other)).mailbox.offer)).zip;
+      },
+    ],
+    [
+      "that is an acceptance of the offer of mailboxes",
+      async (service, actor) => {
+        const signature = await actor.sign((await rootOf(service)).mailbox.offer);
+        return packBundle(signature, signature.signedIdentity.blobs);
+      },
+    ],
+  ])("answers 400 to a request %s, and opens no mailbox", async (_, body) => {
+    const { service, store } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const opened = await mine(store);
+    const response = await askingForMailbox(service, await body(service, actor));
+    expect(response.status).toBe(400);
+    expect(await response.text()).not.toBe("");
+    expect(await mine(store)).toEqual(opened);
+  });
+
+  it("keeps the mailboxes it opened on the terms of their offer once it offers other terms", async () => {
+    const { service, store, accounts, mailboxes } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const before = await rootOf(service);
+    const mailbox = await openMailbox(service, actor);
+    const offered = { ...terms, size: 100 };
+    const { service: again } = await memoryService({ store, accounts, mailboxes, offered, start: 9_000 });
+    const after = await rootOf(again);
+    expect(after.mailbox.offer.data.size).toBe(100);
+    expect(after.offered.link).toBe(before.offered.link);
+    expect((await post(again, mailbox.send, sealedOf(1, 1_000))).status).toBe(204);
+    expect((await post(again, before.mailbox.accept, (await requesting(actor, before.mailbox.offer)).zip)).status).toBe(
+      410,
+    );
+  });
+
+  it("opens a mailbox on the terms of the offer that the latest Service lists, though another start on its store signed it", async () => {
+    const { service, ...shared } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { service: newer } = await memoryService({ ...shared, offered: { ...terms, size: 100 }, start: 9_000 });
+    expect((await rootOf(service)).mailbox.offer.data.size).toBe(100);
+    const mailbox = await openMailbox(service, actor);
+    expect((await post(newer, mailbox.send, sealedOf(1, 101))).status).toBe(413);
+    expect((await post(service, mailbox.send, sealedOf(1, 100))).status).toBe(204);
+  });
+
+  it("started again with its clock behind takes requests for the offer that the latest Service lists, and answers 410 at its own", async () => {
+    const { service, ...shared } = await memoryService({ start: 5_000 });
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    const first = new Uint8Array(await (await askingForMailbox(service, zip)).arrayBuffer());
+    const offered = { ...terms, size: 100 };
+    const { service: behind } = await memoryService({ ...shared, offered, start: 1_000 });
+    const again = await askingForMailbox(behind, zip);
+    expect(again.status).toBe(200);
+    expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
+    const opened = await openMailbox(behind, actor, keyOf(0x22));
+    expect((await post(behind, opened.send, sealedOf(1, 1_000))).status).toBe(204);
+    const own = encodeObject(mailboxOfferSchemaRead, { identity: { $link: serviceRoot.link }, ...offered });
+    expect((await post(behind, own.link, (await requesting(actor, own)).zip)).status).toBe(410);
+  });
+});
+
+describe("a mailbox that a service opened", () => {
+  async function opened(options: Parameters<typeof memoryService>[0] = {}) {
+    const loaded = await memoryService(options);
+    const actor = await actorOf(alice);
+    await openAccount(loaded.service, actor);
+    return { ...loaded, actor, mailbox: await openMailbox(loaded.service, actor) };
+  }
+
+  it("keeps sealed bytes posted to its send id, answering 204, which wait until a pickup is done with them", async () => {
+    const { service, actor, mailbox } = await opened();
+    const [first, second] = [sealedOf(1), sealedOf(2)];
+    for (const sealed of [first, second]) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([first, second]);
+    expect(await waitingAt(service, mailbox, actor, [first])).toEqual([second]);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([second]);
+    expect(await waitingAt(service, mailbox, actor, [second])).toEqual([]);
+  });
+
+  it("keeps sealed bytes that arrive twice once, and takes them again when what waits is at its quota", async () => {
+    const { service, actor, mailbox } = await opened();
+    const full = [1, 2, 3, 4].map((fill) => sealedOf(fill, terms.quota / 4));
+    for (const sealed of [...full, ...full]) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    expect(await waitingAt(service, mailbox, actor)).toEqual(full);
+  });
+
+  it("answers 413 to sealed bytes over the size its offer names, and keeps nothing of them", async () => {
+    const { service, actor, mailbox } = await opened();
+    expect((await post(service, mailbox.send, sealedOf(1, terms.size))).status).toBe(204);
+    expect((await post(service, mailbox.send, sealedOf(2, terms.size + 1))).status).toBe(413);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([sealedOf(1, terms.size)]);
+  });
+
+  it("answers 429 once what waits would come to more than its quota, and takes sealed bytes again once a pickup is done with some", async () => {
+    const { service, actor, mailbox } = await opened();
+    const full = [1, 2, 3, 4].map((fill) => sealedOf(fill, terms.quota / 4));
+    for (const sealed of full) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    const over = await post(service, mailbox.send, sealedOf(5));
+    expect(over.status).toBe(429);
+    expect(await over.text()).toMatch(/holds at most 4096 bytes/);
+    await waitingAt(service, mailbox, actor, full.slice(0, 1));
+    expect((await post(service, mailbox.send, sealedOf(5))).status).toBe(204);
+  });
+
+  it("lets what waited longer than the retention its offer names wait no more", async () => {
+    const clock = { now: 1_000 };
+    const { service, actor, mailbox } = await opened({ clock });
+    expect((await post(service, mailbox.send, sealedOf(1))).status).toBe(204);
+    clock.now += terms.retention;
+    expect(await waitingAt(service, mailbox, actor)).toEqual([sealedOf(1)]);
+    clock.now += 1;
+    expect(await waitingAt(service, mailbox, actor)).toEqual([]);
+  });
+
+  it("does not count what waited longer than the retention its offer names toward its quota", async () => {
+    const clock = { now: 1_000 };
+    const { service, actor, mailbox } = await opened({ clock });
+    const full = [1, 2, 3, 4].map((fill) => sealedOf(fill, terms.quota / 4));
+    for (const sealed of full) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    clock.now += terms.retention;
+    expect((await post(service, mailbox.send, sealedOf(5))).status).toBe(429);
+    clock.now += 1;
+    expect((await post(service, mailbox.send, sealedOf(5))).status).toBe(204);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([sealedOf(5)]);
+  });
+
+  it("answers a pickup with 100 sealed messages at most, the earliest first", async () => {
+    const { service, actor, mailbox } = await opened({ offered: { ...terms, size: 2, quota: 2 * 101 } });
+    const sent = Array.from({ length: 101 }, (_, n) => new Uint8Array([n >> 8, n & 0xff]));
+    for (const sealed of sent) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    const first = await waitingAt(service, mailbox, actor);
+    expect(first).toEqual(sent.slice(0, 100));
+    expect(await waitingAt(service, mailbox, actor, sent.slice(0, 100))).toEqual(sent.slice(100));
+  });
+
+  it("answers a pickup with sealed messages that come to 1 MiB at most, but with the earliest alone when it is larger", async () => {
+    const KiB = 1024;
+    const { service, actor, mailbox } = await opened({ offered: { ...terms, size: 1_536 * KiB, quota: 4_096 * KiB } });
+    const [a, b, c, d] = [
+      sealedOf(1, 600 * KiB),
+      sealedOf(2, 300 * KiB),
+      sealedOf(3, 200 * KiB),
+      sealedOf(4, 1_536 * KiB),
+    ];
+    for (const sealed of [a, b, c, d]) expect((await post(service, mailbox.send, sealed)).status).toBe(204);
+    // Compared by link, since a difference between bytes this large takes long to print.
+    const linksAt = async (done: readonly Uint8Array[]) =>
+      (await waitingAt(service, mailbox, actor, done)).map((sealed) => linkOf(sealed));
+    expect(await linksAt([])).toEqual([linkOf(a), linkOf(b)]);
+    expect(await linksAt([a, b])).toEqual([linkOf(c)]);
+    expect(await linksAt([c])).toEqual([linkOf(d)]);
+  });
+
+  it("answers a pickup by an agent that a version of the root lists which it has not seen, by the version that the request carries", async () => {
+    const { service, mailbox } = await opened();
+    const listed = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
+    expect((await post(service, mailbox.send, sealedOf(1))).status).toBe(204);
+    expect(await waitingAt(service, mailbox, listed)).toEqual([sealedOf(1)]);
+  });
+
+  it("answers 403 to a pickup signed for another root, and is done with nothing", async () => {
+    const { service, actor, mailbox } = await opened();
+    expect((await post(service, mailbox.send, sealedOf(1))).status).toBe(204);
+    const other = await actorOf(bob);
+    await openAccount(service, other);
+    const response = await post(service, mailbox.pickup, await pickupRequest(other, mailbox.link, [sealedOf(1)]));
+    expect(response.status).toBe(403);
+    expect(await response.text()).toMatch(/another root/);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([sealedOf(1)]);
+  });
+
+  it("answers 403 to a pickup by an agent that a later version of the root, which it knows, takes out", async () => {
+    const { service } = await memoryService();
+    const removed = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    await openAccount(service, removed);
+    const mailbox = await openMailbox(service, removed);
+    const listed = signatures.actor(phone, await delegate(wallet, [phone.key], 2_000));
+    expect(await acceptAccount(service, listed)).toBe(200);
+    const response = await post(service, mailbox.pickup, await pickupRequest(removed, mailbox.link));
+    expect(response.status).toBe(403);
+    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await waitingAt(service, mailbox, listed)).toEqual([]);
+  });
+
+  it.each<[string, (actor: Actor, mailbox: Opened, other: Opened) => Promise<Uint8Array>]>([
+    ["that names another mailbox", (actor, _, other) => pickupRequest(actor, other.link)],
+    [
+      "that is not a pickup request",
+      async (actor, mailbox) => {
+        const signature = await actor.sign({ link: mailbox.link });
+        return packBundle(signature, signature.signedIdentity.blobs);
+      },
+    ],
+    ["that is not a zip", async () => new TextEncoder().encode("hello")],
+  ])("answers 400 to a body %s, and is done with nothing", async (_, body) => {
+    const { service, actor, mailbox } = await opened();
+    const other = await openMailbox(service, actor, keyOf(0x22));
+    expect((await post(service, mailbox.send, sealedOf(1))).status).toBe(204);
+    expect((await post(service, mailbox.pickup, await body(actor, mailbox, other))).status).toBe(400);
+    expect(await waitingAt(service, mailbox, actor)).toEqual([sealedOf(1)]);
+  });
+
+  it("answers 404 at a mailbox id it did not make up", async () => {
+    const { service } = await opened();
+    expect((await post(service, "0".repeat(32), sealedOf(1))).status).toBe(404);
+  });
+
+  it("answers a browser's preflight for posting sealed bytes to its send id from another origin", async () => {
+    const { service, mailbox } = await opened();
+    const response = await service.fetch(request(`/${mailbox.send}`, { method: "OPTIONS" }));
+    expect(response.status).toBe(204);
+    expect(Object.fromEntries(response.headers)).toMatchObject({
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST",
+      "access-control-allow-headers": "content-type",
+    });
   });
 });

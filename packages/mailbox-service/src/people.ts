@@ -10,15 +10,15 @@ import {
   schemaOf,
 } from "@estoc/object";
 import type { View } from "@estoc/store";
-import type { AcknowledgementData, ServiceData } from "./schemas.ts";
+import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
 export type KnownPeople = View<Json, Version, People, SignatureData>;
 
 /**
  * The people that a store of a service's, or of a client's of it, knows,
  * from what the service gave out that the store holds as mine: the versions
- * that signed the Services and the acknowledgements, and those that the
- * acknowledged acceptances carry. The service and its client keep the same
+ * that signed the Services and the acknowledgements, of accounts and of
+ * mailboxes, and those that the acknowledged acceptances and requests carry. The service and its client keep the same
  * records, so they know the people of one another alike. A version stands on
  * its root's signature alone, so none is judged here.
  */
@@ -27,6 +27,7 @@ export function knownPeople(
   schemas: {
     readonly service: Schema<Json, ServiceData>;
     readonly acknowledgement: Schema<Json, AcknowledgementData>;
+    readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
   },
 ): KnownPeople {
   const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
@@ -38,10 +39,13 @@ export function knownPeople(
         const bytes = await reader.get(signature.data.object.$link);
         if (bytes === undefined) return;
         const schema = schemaOf(bytes, json);
-        if (schema !== schemas.service.link && schema !== schemas.acknowledgement.link) return;
+        const acknowledgement = [schemas.acknowledgement, schemas.mailboxAcknowledgement].find(
+          ({ link }) => link === schema,
+        );
+        if (schema !== schemas.service.link && acknowledgement === undefined) return;
         yield await versionOf(signature, reader);
-        if (schema !== schemas.acknowledgement.link) return;
-        const { accepted } = decodeObject(bytes, schemas.acknowledgement).data;
+        if (acknowledgement === undefined) return;
+        const { accepted } = decodeObject(bytes, acknowledgement).data;
         yield await versionOf(await readObject(reader, accepted.$link, signatures.schema), reader);
       },
     },

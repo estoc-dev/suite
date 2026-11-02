@@ -2,7 +2,7 @@ import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identi
 import { encodeObject, encodeSchema, type JsonObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { MailboxKey, mailboxFrom, type Transport } from "../src/index.ts";
+import { MailboxKey, mailboxFrom, type Transport, Undelivered } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 const { identities, signatures, publish } = await loadIdentity(defaultValidator);
@@ -51,10 +51,12 @@ describe("a mailbox", () => {
     expect(queue.take()).toEqual([]);
   });
 
-  it("rejects a send to a queue that its network does not have", async () => {
+  it("rejects a send to a queue that its network does not have, as undelivered to a mailbox that is gone", async () => {
     const elsewhere = await MemoryNetwork.create(defaultValidator);
     const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send(hello, [])).rejects.toThrow(/no queue is named/);
+    const sending = mailbox.send(hello, []);
+    await expect(sending).rejects.toThrow(Undelivered);
+    await expect(sending).rejects.toMatchObject({ kind: "gone" });
   });
 });
 

@@ -161,9 +161,10 @@ export class Outbox {
 
   /**
    * Sends the bundle of `root` and all it leads to in the store, whoever
-   * wrote it. Once the transport takes the bundle, writes that it went out,
-   * and writes nothing when the transport refuses it. Sending a root again
-   * sends the same bundle and writes another record.
+   * wrote it. Once the transport takes the bundle, writes that it went out.
+   * When the transport cannot hand it on, rejects with its `Undelivered` and
+   * writes nothing. Sending a root again sends the same bundle and writes
+   * another record.
    */
   async send(root: Link<unknown>): Promise<Delivery> {
     const closure = await this.#store.closure(root);

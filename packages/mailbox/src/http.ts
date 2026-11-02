@@ -10,8 +10,8 @@ const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0
 /**
  * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts
  * sealed bytes to the mailbox's url, and a 2xx response means they were
- * handed on. 404 and 410 reject as `gone`, 429 and 5xx as `later`, any other
- * response as `refused`, and no response as `later`.
+ * handed on. 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, any
+ * other response as `refused`, and no response as `later`.
  */
 export async function loadHttpTransport(validator: JsonSchemaValidator): Promise<Transport> {
   const url = { type: "string", format: "uri", pattern: URL_PATTERN };
@@ -42,6 +42,6 @@ async function deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void> {
 
 function kindOf(status: number): Undelivered["kind"] {
   if (status === 404 || status === 410) return "gone";
-  if (status === 429 || status >= 500) return "later";
+  if (status === 408 || status === 429 || status >= 500) return "later";
   return "refused";
 }

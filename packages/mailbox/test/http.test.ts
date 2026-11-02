@@ -1,15 +1,17 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, encodeSchema, json } from "@estoc/object";
+import { encodeObject, encodeSchema, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
-import { MailboxKey, mailboxFrom, Undelivered } from "../src/index.ts";
+import { loadPost, MailboxKey, mailboxFrom, Undelivered } from "../src/index.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
-// /answer/<status> is answered with that status.
+// /answer/<status> is answered with that status, and one to /late-once 408
+// the first time in a test, as when the body came too slowly, and 202 after.
 
 interface Request {
   readonly method: string | undefined;
@@ -18,7 +20,7 @@ interface Request {
   readonly body: Uint8Array;
 }
 
-const answers: Readonly<Record<string, number>> = { "/inbox": 202, "/moved": 307 };
+const answers: Readonly<Record<string, number>> = { "/inbox": 202, "/moved": 307, "/late-once": 202 };
 const requests: Request[] = [];
 const server = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
@@ -30,7 +32,8 @@ const server = createServer(async (request, response) => {
     type: request.headers["content-type"],
     body: new Uint8Array(Buffer.concat(chunks)),
   });
-  const status = answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404);
+  const late = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
+  const status = late ? 408 : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
 const port = await listen(server);
@@ -80,6 +83,7 @@ describe("an HTTP mailbox", () => {
   it.each<[number, Undelivered["kind"]]>([
     [404, "gone"],
     [410, "gone"],
+    [408, "later"],
     [429, "later"],
     [500, "later"],
     [503, "later"],
@@ -103,6 +107,35 @@ describe("an HTTP mailbox", () => {
     expect(await rejectedAs((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, []))).toBe("later");
   });
 });
+
+describe("an HTTP outbox", () => {
+  it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
+    const store = new Store(json, new MemoryBackend());
+    const kept = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
+    const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
+    await store.write({ mine: [mailbox, hello], blobs: [http.schema.bytes, note.bytes] });
+    const outbox = await post.outbox(mailbox.link);
+    const before = await listed(store);
+
+    expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
+    expect(await listed(store)).toEqual(before);
+
+    const sent = await outbox.send(hello.link);
+    expect(new Set(await listed(store))).toEqual(new Set([...before, sent.link]));
+    const requested = take();
+    expect(requested.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
+    const through = requested.at(-1);
+    assert.exists(through);
+    expect((await bob.open(through.body)).link).toBe(hello.link);
+  });
+});
+
+async function listed(store: Store): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.mine()) links.push(link);
+  return links;
+}
 
 describe("an HTTP mailbox's url", () => {
   it.each([

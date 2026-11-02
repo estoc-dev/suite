@@ -37,8 +37,10 @@ transport or key is another mailbox.
 
 A mailbox has no end written in it, and there is no revocation. Whoever
 receives at a mailbox retires it by no longer receiving there: what is sent
-to it afterwards is turned back as `gone`, or lost, as any message can be.
-Moving is handing out a new mailbox.
+to it afterwards is turned back or lost, as any message can be. A
+transport that knows the mailbox is retired turns it back as `gone`, and
+one that finds nothing answering there as `later`. Moving is handing out a
+new mailbox.
 
 ### The receiving side
 
@@ -319,7 +321,7 @@ development or for a daemon beside the sender, no one is on the way.
 
 `deliver` posts the sealed bytes to the url as `application/octet-stream`.
 A 2xx response means they were handed on. 404 and 410 reject as `gone`,
-429 and 5xx as `later`, and any other response as `refused`. No response
+408, 429 and 5xx as `later`, and any other response as `refused`. No response
 rejects as `later`, and so does a redirect: it is not followed, since it
 would take the bytes to a url the mailbox does not name, and a browser
 does not tell it from no response. Nothing is sent again. No cookies or

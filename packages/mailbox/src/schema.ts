@@ -39,14 +39,13 @@ export function mailboxSchema(
  */
 export const mailboxKeySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
-  title: "Mailbox key",
+  title: "Mailbox Key",
   type: "object",
   properties: { mailbox: linkSchema, secret: { type: "string", pattern: "^[0-9a-f]{64}$" } },
   required: ["mailbox", "secret"],
   additionalProperties: false,
 };
 
-/** The data of a key, as `mailboxKeySchema` describes it. */
 export type MailboxKeyData = {
   readonly mailbox: JsonLink<EncodedObject<Json>>;
   readonly secret: string;

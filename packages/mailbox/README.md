@@ -106,7 +106,7 @@ recorded as an object the user writes:
 ```
 Inbound      {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
 Outbound     the same fields, under a schema of its own
-Mailbox key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the private store
+Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the private store
 ```
 
 The three schemas are `inboundSchema`, `outboundSchema` and

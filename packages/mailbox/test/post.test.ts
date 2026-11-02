@@ -67,7 +67,6 @@ async function sendingTo(network: MemoryNetwork) {
   return { ...at, queue, mailbox };
 }
 
-// A post with an inbox that it opened at a new queue.
 async function receivingAt(network: MemoryNetwork) {
   const at = await postAt(network);
   const queue = network.queue();

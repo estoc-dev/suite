@@ -191,13 +191,13 @@ the service's signatures by them, so a Service, an offer or an
 acknowledgement signed by a key that a later version of the service's
 identity does not list is refused once the store knows that version.
 
-A Service vouches for the offers it lists by the version that signed it,
-so an offer is read by the later of that version and the latest the store
-knows, not by the version its own signature carries. `at` reads the
-Service, and `accept` the acknowledgement, on the store as it will be once
-that is written, as `stage` of `@estoc/store` gives it. So a Service that
-`at` takes reads alike by `of` until the store knows a later version of
-the service's identity. A service that signs a Service by a version that
+`at` reads the Service, and `accept` the acknowledgement, on the store as
+it will be once that is written, as `stage` of `@estoc/store` gives it. So
+a Service that `at` takes reads alike by `of` until the store knows a later
+version of the service's identity. The offers a Service lists are read as
+any signature is, and the store then knows the version that signed the
+Service, so an offer is read by that version or a later one. A service
+that signs a Service by a version that
 does not list the key that signed an offer signs the offer again by a key
 that the version lists. The offer stays the same object, so its id and the
 acceptances of it stay as they were.

@@ -1,5 +1,5 @@
 import { encodeSchema, type JsonObject, type JsonSchemaValidator } from "@estoc/object";
-import { type Transport, Undelivered } from "./mailbox.ts";
+import { type Transport, UndeliveredMessage } from "./mailbox.ts";
 import { mailboxSchema } from "./schema.ts";
 
 // Plain http is for the receiver's own machine alone, as in development or
@@ -34,13 +34,14 @@ async function deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void> {
       referrerPolicy: "no-referrer",
     });
   } catch (error) {
-    throw new Undelivered("later", "the mailbox's server did not answer", { cause: error });
+    throw new UndeliveredMessage("later", "the mailbox's server did not answer", { cause: error });
   }
   await response.body?.cancel();
-  if (!response.ok) throw new Undelivered(kindOf(response.status), `the mailbox's server answered ${response.status}`);
+  if (!response.ok)
+    throw new UndeliveredMessage(kindOf(response.status), `the mailbox's server answered ${response.status}`);
 }
 
-function kindOf(status: number): Undelivered["kind"] {
+function kindOf(status: number): UndeliveredMessage["kind"] {
   if (status === 404 || status === 410) return "gone";
   if (status === 408 || status === 429 || status >= 500) return "later";
   return "refused";

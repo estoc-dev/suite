@@ -19,8 +19,8 @@ export interface Transport {
   /**
    * Hands sealed bytes on toward a mailbox whose data fits `schema`.
    * Resolving says only that they were handed on: nothing confirms that a
-   * message arrived, and none is sent again. Rejects with an `Undelivered`
-   * when they cannot be.
+   * message arrived, and none is sent again. Rejects with an
+   * `UndeliveredMessage` when they cannot be.
    */
   deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void>;
 }
@@ -32,11 +32,11 @@ export interface Transport {
  * mailbox takes nothing more, and another is needed. `refused`: the mailbox
  * takes others but not these, as when they are too large.
  */
-export class Undelivered extends Error {
-  override readonly name = "Undelivered";
+export class UndeliveredMessage extends Error {
+  override readonly name = "UndeliveredMessage";
   readonly kind: "later" | "gone" | "refused";
 
-  constructor(kind: Undelivered["kind"], message: string, options?: ErrorOptions) {
+  constructor(kind: UndeliveredMessage["kind"], message: string, options?: ErrorOptions) {
     super(message, options);
     this.kind = kind;
   }
@@ -65,7 +65,7 @@ export class Mailbox {
   /**
    * Sends the bundle of `root` and `blobs`, packed as `packBundle` packs it,
    * sealed to the mailbox's key and handed to the transport. Rejects with
-   * the transport's `Undelivered` when it cannot hand them on.
+   * the transport's `UndeliveredMessage` when it cannot hand them on.
    */
   async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
     const zip = await packBundle(root, blobs);

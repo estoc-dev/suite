@@ -9,7 +9,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { hex } from "@scure/base";
-import { type Arrival, mailboxSchema, type Pickup, type Transport, Undelivered } from "../src/index.ts";
+import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMessage } from "../src/index.ts";
 
 /** Faults a network puts in the way of every message, as a real channel may. */
 export interface Faults {
@@ -110,11 +110,11 @@ export class MemoryNetwork {
       const next = this.#faults.reversed ? left.at(-1) : left[0];
       if (next === undefined) return;
       handed.add(next);
-      yield { sealed: next.sealed.slice(), done: async () => this.#done(waiting, next) };
+      yield { sealed: next.sealed.slice(), drop: async () => this.#drop(waiting, next) };
     }
   }
 
-  #done(waiting: Waiting[], arrival: Waiting): void {
+  #drop(waiting: Waiting[], arrival: Waiting): void {
     if (this.#faults.cut?.(this.#dones++)) throw new Error("the network was cut before the queue heard it was done");
     const at = waiting.indexOf(arrival);
     if (at !== -1) waiting.splice(at, 1);
@@ -122,7 +122,7 @@ export class MemoryNetwork {
 
   #deliver({ name }: JsonObject, sealed: Uint8Array): void {
     const waiting = typeof name === "string" ? this.#queues.get(name) : undefined;
-    if (waiting === undefined) throw new Undelivered("gone", `no queue is named ${String(name)}`);
+    if (waiting === undefined) throw new UndeliveredMessage("gone", `no queue is named ${String(name)}`);
     if (this.#faults.lost?.(this.#deliveries++)) return;
     // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
     waiting.push({ sealed: sealed.slice() });

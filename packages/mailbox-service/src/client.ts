@@ -30,7 +30,7 @@ import {
 } from "@estoc/object";
 import { type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
-import { type OpenedMailboxes, openedAt, openedMailboxes } from "./acknowledgements.ts";
+import { acknowledgementAt, type OpenedMailboxes, openedMailboxes } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
 import { type Locations, locations, servicesOf } from "./locations.ts";
 import { type KnownPeople, knownPeople } from "./people.ts";
@@ -143,8 +143,8 @@ export class AccountOffer {
   async accept(actor: Actor): Promise<Account> {
     // The service holds the offer and the signature schema, so they are left out.
     const acceptance = await actor.sign({ link: this.link });
-    const { signature, data } = await acknowledged(
-      { url: this.#url, service: this.service, schema: this.#acknowledgementSchema },
+    const { signature, data } = await post(
+      { url: this.#url, service: this.service, schema: this.#acknowledgementSchema, field: "acceptance" },
       acceptance,
       [],
       this.#posting,
@@ -207,8 +207,8 @@ export class MailboxOffer {
     const request = encodeObject(this.#schemas.mailboxRequest, { offer: { $link: this.link }, key: hex.encode(key) });
     // The service holds the offer and the schemas, so they are left out.
     const signature = await actor.sign(request);
-    const { data } = await acknowledged(
-      { url: this.#url, service: this.service, schema: this.#schemas.mailboxAcknowledgement },
+    const { data } = await post(
+      { url: this.#url, service: this.service, schema: this.#schemas.mailboxAcknowledgement, field: "request" },
       signature,
       [request.bytes],
       this.#posting,
@@ -223,12 +223,18 @@ export class MailboxOffer {
 /**
  * Posts the bundle of `signature` to `url`, with `blobs` and the blobs of
  * its signed identity, and reads the answer as `service`'s signature over an
- * acknowledgement of it, written to `schema`, which is written to the store
- * as mine with all it leads to. Refuses an acknowledgement signed by another
- * root, or of another signature, and writes nothing then.
+ * acknowledgement of it, written to `schema`, whose `field` links to it,
+ * which is written to the store as mine with all it leads to. Refuses an
+ * acknowledgement signed by another root, or of another signature, and
+ * writes nothing then.
  */
-async function acknowledged<F extends { readonly accepted: JsonLink<Signature> } & Fields<Json>>(
-  to: { readonly url: URL; readonly service: SignedIdentityObject; readonly schema: Schema<Json, F> },
+async function post<K extends string, F extends Readonly<Record<K, JsonLink<Signature>>> & Fields<Json>>(
+  to: {
+    readonly url: URL;
+    readonly service: SignedIdentityObject;
+    readonly schema: Schema<Json, F>;
+    readonly field: K;
+  },
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
   { store, signatures, people }: Posting,
@@ -239,12 +245,13 @@ async function acknowledged<F extends { readonly accepted: JsonLink<Signature> }
   const staged = await store.stage({ mine: [{ bytes: answer.root }], blobs: answer.blobs() });
   const known = await view(staged, people);
   const acknowledgement = await signatures.read(answer.link, staged, known);
-  if (!known.of(to.service).signed(acknowledgement)) {
+  if (!known.personOf(to.service).signed(acknowledgement)) {
     throw new Error("the acknowledgement is signed by another root than the service's");
   }
   const { data } = await readObject(staged, acknowledgement.object, to.schema);
-  if (data.accepted.$link !== signature.link)
-    throw new Error(`the acknowledgement accepts ${data.accepted.$link}, not the one sent`);
+  const acknowledgedSignature = data[to.field].$link;
+  if (acknowledgedSignature !== signature.link)
+    throw new Error(`the acknowledgement is of ${acknowledgedSignature}, not the one sent`);
   await staged.commit();
   return { signature: acknowledgement, data };
 }
@@ -303,7 +310,7 @@ class ServicePickup implements Pickup {
         if (signal?.aborted) return;
         const link = linkOf(sealed);
         handed.add(link);
-        yield { sealed, done: async () => void done.push(link) };
+        yield { sealed, drop: async () => void done.push(link) };
       }
     }
   }
@@ -335,7 +342,7 @@ export class Services {
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #locations: Locations;
-  readonly #opened: OpenedMailboxes;
+  readonly #mailboxes: OpenedMailboxes;
   readonly #people: KnownPeople;
 
   constructor(store: Store, kit: IdentityKit, schemas: Schemas) {
@@ -343,18 +350,18 @@ export class Services {
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#locations = locations(kit.signatures, schemas.service);
-    this.#opened = openedMailboxes(kit.signatures, schemas);
+    this.#mailboxes = openedMailboxes(kit.signatures, schemas);
     this.#people = knownPeople(kit, schemas);
   }
 
   /**
-   * Gets the Service at `origin`, such as `https://mail.example`, and writes
+   * Fetches the Service at `origin`, such as `https://mail.example`, and writes
    * the service's signature over it to the store as mine, with all it leads
    * to. What the origin answers over TLS is the service's, so the identity
    * that signed the Service is taken as the service's. A Service that names
    * another origin is refused.
    */
-  async at(origin: string): Promise<Service> {
+  async fetch(origin: string): Promise<Service> {
     checkOrigin(origin);
     const bundle = await bundleIn(await fetch(new URL("/", origin), REQUEST), [200]);
     const staged = await this.#store.stage({ mine: [{ bytes: bundle.root }], blobs: bundle.blobs() });
@@ -367,10 +374,10 @@ export class Services {
   /**
    * The latest Service of the root that signed `signedIdentity` that the
    * store holds, read without reaching the service, or `undefined` when the
-   * store holds none. A Service gets there by `at`, on this device or on
+   * store holds none. A Service gets there by `fetch`, on this device or on
    * another whose store this one syncs with.
    */
-  async of(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
+  async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
     const [latest] = await view(this.#store, servicesOf(this.#locations, signedIdentity.identity.root.link));
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
@@ -385,18 +392,18 @@ export class Services {
    */
   async pickup(mailbox: Link<EncodedObject<Json>>, actor: Actor): Promise<Pickup> {
     const { key, url } = (await readObject(this.#store, mailbox, this.#schemas.http)).data;
-    const link = await view(this.#store, openedAt(this.#opened, new URL(url).pathname.slice(1), key));
+    const link = await view(this.#store, acknowledgementAt(this.#mailboxes, new URL(url).pathname.slice(1), key));
     if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox}`);
     // The acknowledgement was read by the people the store knew once it
     // came. Here it says only where to pick up, which a later version of the
     // service's identity that does not list the key that signed it does not
     // change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noVersions);
-    const { accepted, pickup } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
-    const request = await readObject(this.#store, accepted.$link, this.#signatures.schema);
-    const { offer } = (await readObject(this.#store, request.data.object.$link, this.#schemas.mailboxRequest)).data;
+    const { request, pickup } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
+    const { object: requestObject } = (await readObject(this.#store, request.$link, this.#signatures.schema)).data;
+    const { offer } = (await readObject(this.#store, requestObject.$link, this.#schemas.mailboxRequest)).data;
     const { size } = (await readObject(this.#store, offer.$link, this.#schemas.mailboxOffer)).data;
-    const service = await this.of(signedIdentity);
+    const service = await this.latestOf(signedIdentity);
     if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.root.link}`);
     const at = { mailbox, acknowledgement: link, url: new URL(`/${pickup}`, service.origin), size };
     return new ServicePickup(at, actor, this.#schemas);
@@ -404,21 +411,20 @@ export class Services {
 
   /**
    * Reads the Service that `link` names the service's signature over, and
-   * the offers it lists, from `reader`, by the people it knows. `at` reads
-   * it on the store as it will be once it keeps the Service, so the version
-   * that signed the Service is among them, and an offer is read by that
-   * version or a later one. A Service that `at` takes so reads alike by `of`
-   * until the store knows a later version of the service's identity.
-   * Refuses it when its origin is
-   * not one that a client reaches, when an offer it lists is signed by an
-   * identity of another root, or when its offer of an account or of
-   * mailboxes names another root. Offers of schemas the client does not
-   * read are passed over.
+   * the offers it lists, from `reader`, by the people it knows. `fetch`
+   * reads it on the store as it will be once it keeps the Service, so the
+   * version that signed the Service is among them, and an offer is read by
+   * that version or a later one. A Service that `fetch` takes so reads alike
+   * by `latestOf` until the store knows a later version of the service's
+   * identity. Refuses it when its origin is not one that a client reaches,
+   * when an offer it lists is signed by an identity of another root, or when
+   * its offer of an account or of mailboxes names another root. Offers of
+   * schemas the client does not read are passed over.
    */
   async #read(link: Link<Signature>, reader: Pick<Store, "get" | "mine">): Promise<Service> {
     const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
-    const service = people.of(signedIdentity);
+    const service = people.personOf(signedIdentity);
     const { root } = service;
     const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
     checkOrigin(origin);

@@ -189,7 +189,7 @@ class MailboxService {
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
     const id = pathname.slice(1);
     if (MAILBOX_ID.test(id)) {
-      const mailbox = await this.#mailboxes.named(id);
+      const mailbox = await this.#mailboxes.mailboxNamed(id);
       if (mailbox === undefined) return answer(404);
       return answerTo(request, "POST", () =>
         id === mailbox.send ? this.#receive(request, mailbox) : this.#pickUp(request, mailbox),
@@ -235,13 +235,13 @@ class MailboxService {
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const people = await view(this.#store, this.#people);
-    let accepted: Bundle;
+    let bundle: Bundle;
     let acceptance: Signature;
     try {
-      accepted = await unpackBundle(zip);
-      acceptance = await this.#signatures.read(accepted.link, accepted, people);
+      bundle = await unpackBundle(zip);
+      acceptance = await this.#signatures.read(bundle.link, bundle, people);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (people.of(this.#actor.signedIdentity).signed(acceptance))
+      if (people.personOf(this.#actor.signedIdentity).signed(acceptance))
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, reasonOf(error));
@@ -250,13 +250,13 @@ class MailboxService {
       (await view(this.#store, acknowledgementOf(this.#acknowledgements, acceptance.link))) ??
       (
         await this.#acknowledge(
-          encodeObject(this.#schemas.acknowledgement, { accepted: { $link: acceptance.link }, at }),
-          accepted,
+          encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
+          bundle,
           acceptance.signedIdentity,
         )
       ).link;
-    const opened = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
-    return this.#answerWith(acknowledgement, opened ? 201 : 200);
+    const isNewAccount = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
+    return this.#answerWith(acknowledgement, isNewAccount ? 201 : 200);
   }
 
   /**
@@ -271,28 +271,28 @@ class MailboxService {
     if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const people = await view(this.#store, this.#people);
-    let requested: Bundle;
+    let bundle: Bundle;
     let signature: Signature;
     try {
-      requested = await unpackBundle(zip);
-      signature = await this.#signatures.read(requested.link, requested, people);
-      const { data } = await readObject(requested, signature.object, this.#schemas.mailboxRequest);
+      bundle = await unpackBundle(zip);
+      signature = await this.#signatures.read(bundle.link, bundle, people);
+      const { data } = await readObject(bundle, signature.object, this.#schemas.mailboxRequest);
       if (data.offer.$link !== offer.link) throw new Error(`the request asks for ${data.offer.$link}, not the offer`);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
     const root = signature.signedIdentity.identity.root.link;
     if (!(await this.#accounts.has(root))) return answer(403, `${root} has no account here`);
-    const opened = await this.#mailboxes.openedBy(signature.link);
+    const opened = await this.#mailboxes.mailboxOpenedBy(signature.link);
     if (opened !== undefined) return this.#answerWith(opened.acknowledgement, 200);
     const [send, pickup] = [newId(), newId()];
     const acknowledgement = encodeObject(this.#schemas.mailboxAcknowledgement, {
-      accepted: { $link: signature.link },
+      request: { $link: signature.link },
       at,
       send,
       pickup,
     });
-    const signed = await this.#acknowledge(acknowledgement, requested, signature.signedIdentity, [
+    const signed = await this.#acknowledge(acknowledgement, bundle, signature.signedIdentity, [
       this.#schemas.mailboxRequest.bytes,
     ]);
     const { identity: _, ...terms } = offer.data;
@@ -304,13 +304,13 @@ class MailboxService {
   }
 
   /**
-   * Signs `acknowledgement` of what `accepted` holds at its root, and writes
+   * Signs `acknowledgement` of what `bundle` holds at its root, and writes
    * it to the store as mine, with `blobs` that what it acknowledges leads
    * to, so the service knows the version that signed it from then on.
    */
   async #acknowledge(
     acknowledgement: EncodedObject<Json>,
-    accepted: Bundle,
+    bundle: Bundle,
     signedIdentity: SignedIdentityObject,
     blobs: readonly Bytes<unknown>[] = [],
   ): Promise<Signature> {
@@ -319,7 +319,7 @@ class MailboxService {
     // identity leads to nor the interfaces they name, so the bundle need not hold
     // them, and the store takes a blob in only with all it leads to.
     const own = [acknowledgement.bytes, acknowledgement.schema.bytes, ...signedIdentity.blobs, ...blobs];
-    await this.#store.write({ mine: [signature], blobs: [...own, ...accepted.blobs()] });
+    await this.#store.write({ mine: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
   }
 
@@ -472,7 +472,8 @@ export async function loadMailboxService(
   const [previous] = services;
   const listed: (readonly [EncodedObject<Json>, Signature])[] = [];
   for (const offer of offers) {
-    const signature = (await signedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
+    const signature =
+      (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
     listed.push([offer, signature]);
   }
   const next: ServiceData = {
@@ -495,7 +496,7 @@ export async function loadMailboxService(
 }
 
 /** The service's signature over `offer`, as the first of `services` that lists the offer lists it, when one does. */
-async function signedIn(
+async function signatureListedIn(
   services: readonly EncodedObject<Json, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,

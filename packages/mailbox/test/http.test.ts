@@ -6,7 +6,7 @@ import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
-import { loadPost, MailboxKey, mailboxFrom, Undelivered } from "../src/index.ts";
+import { loadPost, MailboxKey, mailboxFrom, UndeliveredMessage } from "../src/index.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -61,12 +61,12 @@ const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
 
-async function rejectedAs(sending: Promise<unknown>): Promise<Undelivered["kind"]> {
+async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage["kind"]> {
   const error = await sending.then(
     () => undefined,
     (error: unknown) => error,
   );
-  assert.instanceOf(error, Undelivered);
+  assert.instanceOf(error, UndeliveredMessage);
   return error.kind;
 }
 
@@ -80,7 +80,7 @@ describe("an HTTP mailbox", () => {
     expect((await bob.open(request.body)).root).toEqual(hello.bytes);
   });
 
-  it.each<[number, Undelivered["kind"]]>([
+  it.each<[number, UndeliveredMessage["kind"]]>([
     [404, "gone"],
     [410, "gone"],
     [408, "later"],

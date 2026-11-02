@@ -78,7 +78,7 @@ export interface Store {
    * keeps of its blobs those that `write` would. `write(batch)` writes as
    * `(await store.stage(batch)).commit()` does.
    */
-  stage(batch: Batch): Promise<Staged>;
+  stage(batch: Batch): Promise<StagedStore>;
   /** The links of the objects written as mine, each once, in no particular order. */
   mine(): AsyncIterable<Link<never>>;
   /**
@@ -104,7 +104,7 @@ export interface Store {
  * batch again. A store only grows, so the batch can still be committed
  * after other writes, and what it leads to is still held.
  */
-export interface Staged {
+export interface StagedStore {
   /**
    * A blob by its link, of the batch or held by the store, in an array the
    * caller may change without changing what `commit` writes. Throws as the
@@ -154,7 +154,7 @@ class StoreOf<D> implements Store {
     await (await this.stage(batch)).commit();
   }
 
-  async stage({ mine = [], blobs = [] }: Batch): Promise<Staged> {
+  async stage({ mine = [], blobs = [] }: Batch): Promise<StagedStore> {
     // Each blob is copied before it is hashed, so that what is kept is what
     // was hashed, whatever happens to the given arrays afterwards.
     const given = new Map<Link<unknown>, Uint8Array>();
@@ -174,7 +174,7 @@ class StoreOf<D> implements Store {
       given.set(link, owned);
       written.push(link);
     }
-    return new StagedOf(this, this.#backend, await this.#leavesFirst(written, given), written);
+    return new StagedStoreOf(this, this.#backend, await this.#leavesFirst(written, given), written);
   }
 
   mine(): AsyncIterable<Link<never>> {
@@ -273,33 +273,33 @@ class StoreOf<D> implements Store {
   }
 }
 
-class StagedOf implements Staged {
+class StagedStoreOf implements StagedStore {
   readonly #store: Pick<Store, "get">;
   readonly #backend: Backend;
-  readonly #kept: ReadonlyMap<Link<unknown>, Uint8Array>;
-  readonly #written: readonly Link<never>[];
+  readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
+  readonly #mine: readonly Link<never>[];
 
   constructor(
     store: Pick<Store, "get">,
     backend: Backend,
-    kept: ReadonlyMap<Link<unknown>, Uint8Array>,
-    written: readonly Link<never>[],
+    blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+    mine: readonly Link<never>[],
   ) {
     this.#store = store;
     this.#backend = backend;
-    this.#kept = kept;
-    this.#written = written;
+    this.#blobs = blobs;
+    this.#mine = mine;
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
-    const bytes = this.#kept.get(link);
+    const bytes = this.#blobs.get(link);
     return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
   }
 
   async *mine(): AsyncIterable<Link<never>> {
-    const unlisted = new Set(this.#written);
+    const unlisted = new Set(this.#mine);
     for await (const link of this.#backend.mine()) {
       unlisted.delete(link);
       yield link;
@@ -308,7 +308,7 @@ class StagedOf implements Staged {
   }
 
   commit(): Promise<void> {
-    return this.#backend.put(this.#kept, this.#written);
+    return this.#backend.put(this.#blobs, this.#mine);
   }
 }
 

@@ -19,5 +19,5 @@ export interface Pickup {
 export interface Arrival {
   readonly sealed: Uint8Array;
   /** Lets the transport drop the sealed bytes, which then no longer wait. */
-  done(): Promise<void>;
+  drop(): Promise<void>;
 }

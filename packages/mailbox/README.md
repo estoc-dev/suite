@@ -74,13 +74,13 @@ interface Pickup {
 
 interface Arrival {
   readonly sealed: Uint8Array;
-  done(): Promise<void>;
+  drop(): Promise<void>;
 }
 ```
 
 `arrivals` gives what waits at the mailbox, each until it is done. It ends
 once `signal` aborts, and, unless the transport waits for more to come,
-once nothing more waits. `done` lets the transport drop the sealed bytes.
+once nothing more waits. `drop` lets the transport drop the sealed bytes.
 A receiver is done with an arrival once it has kept what it holds, so one
 that stops in between is given it again. A message so arrives at least
 once, and one given again reads as one that arrived twice.
@@ -124,7 +124,7 @@ content and a reading only grows with what arrives; an application that
 needs a message to be fresh puts a nonce in its object, as a login does.
 
 When the transport cannot hand the sealed bytes on, `send` rejects with an
-`Undelivered`, whose `kind` tells the sender what it can do:
+`UndeliveredMessage`, whose `kind` tells the sender what it can do:
 
 | `kind`    | The sender                                                                 |
 |-----------|----------------------------------------------------------------------------|
@@ -156,8 +156,8 @@ The three schemas are `inboundSchema`, `outboundSchema` and
 import { loadPost } from "@estoc/mailbox";
 import { MemoryBackend, PrivateStore } from "@estoc/store";
 
-const kept = new PrivateStore(store, new MemoryBackend());
-const post = await loadPost(store, kept, { transports: [transport], validator: defaultValidator });
+const keys = new PrivateStore(store, new MemoryBackend());
+const post = await loadPost(store, keys, { transports: [transport], validator: defaultValidator });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and all it leads to in the store
@@ -195,8 +195,8 @@ with an index of `@estoc/store` over the private store that reads
 what came in is sending its root. It bundles the closure of the root,
 schemas included, and writes `Outbound` once the transport takes the
 bundle. When the transport cannot hand it on, `send` rejects with its
-`Undelivered` and nothing is written, and the root is still there to send
-again. Neither the zip nor the sealed bytes are kept: sending again seals
+`UndeliveredMessage` and nothing is written, and the root is still there to
+send again. Neither the zip nor the sealed bytes are kept: sending again seals
 the same bundle afresh.
 
 `receive` keeps the bundle and its `Inbound` record in one write. What does
@@ -291,7 +291,7 @@ interface Transport {
 
 `deliver` takes the data of a mailbox written to `schema` and the sealed
 bytes, and resolves once they are handed on. When they cannot be, it
-rejects with an `Undelivered` of the kind that it can tell from what
+rejects with an `UndeliveredMessage` of the kind that it can tell from what
 turned them back. How the receiver gets them, such as listening for
 requests or fetching from a mailbox service, is the transport's own. Its
 receiving side gives a `Pickup` for `Inbox.collect`, or hands sealed bytes

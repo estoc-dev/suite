@@ -175,7 +175,7 @@ const people: View<Json, Version, People, SignatureData> = {
   index: {
     reads: [signatures.schema],
     async *rows({ data }, reader) {
-      yield versions.of(await signedIdentities.read(data.signedIdentity.$link, reader));
+      yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
     },
   },
   read: (rows, reader) => versions.known(rows, reader),

@@ -33,9 +33,9 @@ const offerSchemaText =
 const offerSchemaLink = "sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d";
 const acknowledgementSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"accepted":${linkText},"at":{"minimum":0,"type":"integer"}},` +
-  '"required":["accepted","at"],"title":"Acknowledgement","type":"object"}';
-const acknowledgementSchemaLink = "sha256:4e0f482aebf1cbc62db021aab83b61a62c11ccf79e0a0969a1e283631fbc591e";
+  `"properties":{"acceptance":${linkText},"at":{"minimum":0,"type":"integer"}},` +
+  '"required":["acceptance","at"],"title":"Acknowledgement","type":"object"}';
+const acknowledgementSchemaLink = "sha256:a6f5260e29ece9b0a3aefe53e59aca509d491a77a9f0d5ff614699f3fbf80a48";
 const offerText =
   '{"$describedBy":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
   '"identity":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
@@ -54,10 +54,10 @@ const mailboxRequestSchemaText =
 const mailboxRequestSchemaLink = "sha256:4bc433acf28fc6b61a5368358448d604df093f58bf449749b16937eaaa3fb259";
 const mailboxAcknowledgementSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"accepted":${linkText},"at":{"minimum":0,"type":"integer"},` +
-  `"pickup":${mailboxIdText},"send":${mailboxIdText}},` +
-  '"required":["accepted","at","send","pickup"],"title":"Mailbox acknowledgement","type":"object"}';
-const mailboxAcknowledgementSchemaLink = "sha256:c576837157d2818d468337cc36be01229a4d4b6aee674624262ba60204664462";
+  `"properties":{"at":{"minimum":0,"type":"integer"},"pickup":${mailboxIdText},` +
+  `"request":${linkText},"send":${mailboxIdText}},` +
+  '"required":["request","at","send","pickup"],"title":"Mailbox acknowledgement","type":"object"}';
+const mailboxAcknowledgementSchemaLink = "sha256:2e11a6fb908570b6fb5f0a9b72654db36d6d930c8f309bac82d9f171e0fd2402";
 const pickupRequestSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"done":{"items":${linkText},"type":"array"},"mailbox":${linkText}},` +

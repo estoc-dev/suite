@@ -47,9 +47,9 @@ export interface Rows<K extends Key> {
 
 /**
  * Fills `index` from the objects written to `store` as mine, going through
- * all of them; the store may be a `PrivateStore` or a `Staged`. Only what
- * the store lists as mine reaches an index, and on a staged batch what the
- * batch writes as mine as well: what came from elsewhere is reached by
+ * all of them; the store may be a `PrivateStore` or a `StagedStore`. Only
+ * what the store lists as mine reaches an index, and on a staged batch what
+ * the batch writes as mine as well: what came from elsewhere is reached by
  * following links from it. Each object is read once and checked against its
  * schema before the index sees it, and the scan fails on one whose data does
  * not fit.

@@ -31,5 +31,5 @@ export interface Person {
 /** The people a reader knows. They are the versions it knows too: the current version of a signed identity is its person's. */
 export interface People extends Versions {
   /** The person whose root signed `signedIdentity`, which counts among their versions. */
-  of(signedIdentity: SignedIdentityObject): Person;
+  personOf(signedIdentity: SignedIdentityObject): Person;
 }

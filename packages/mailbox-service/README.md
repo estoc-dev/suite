@@ -37,10 +37,10 @@ nor a signature changes.
 ```
 Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "accept": <link of the offer>}, …]}, signed by the service
 Account offer            {"identity": <link of the service's root>}, signed by the service
-Acknowledgement          {"accepted": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
+Acknowledgement          {"acceptance": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 Mailbox offer            {"identity": <link of the service's root>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
 Mailbox request          {"offer": <link of the mailbox offer>, "key": <x25519 public key>}, signed by an identity with an account
-Mailbox acknowledgement  {"accepted": <link of the signature over the request>, "at": <milliseconds>, "send": <id>, "pickup": <id>}, signed by the service
+Mailbox acknowledgement  {"request": <link of the signature over the request>, "at": <milliseconds>, "send": <id>, "pickup": <id>}, signed by the service
 Pickup request           {"mailbox": <link of the service's signature over the mailbox acknowledgement>, "done": [<link of sealed bytes>, …]}, signed by an identity of the account
 Waiting                  {"sealed": [<link of sealed bytes>, …]}, unsigned
 ```
@@ -62,13 +62,13 @@ import { loadServices } from "@estoc/mailbox-service";
 import { defaultValidator } from "@estoc/object/default-validator";
 
 const services = await loadServices(store, { validator: defaultValidator });
-const service = await services.at("https://mail.example");
+const service = await services.fetch("https://mail.example");
 ```
 
-`at` gets the Service at an origin, from `GET /`: a bundle with the
+`fetch` gets the Service at an origin, from `GET /`: a bundle with the
 service's signature over the Service as the root, and the offers it lists,
 the service's signatures over them, the service's identity and their
-schemas. What the origin answers over TLS is the service's, so `at` takes
+schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
 offer signed by an identity of another root. It writes the service's
@@ -78,24 +78,24 @@ origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
 lists one. Offers of schemas the client does not read are passed over.
 
-`at` takes an origin alone, a scheme, a host and a port, and refuses a url
+`fetch` takes an origin alone, a scheme, a host and a port, and refuses a url
 with a path. It takes `https://`, or `http://` to the client's own
 machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
-After first contact the service is its root. `of` gives the latest
+After first contact the service is its root. `latestOf` gives the latest
 Service that the store holds of the root that signed a signed identity,
 whichever channel brought it, and reaches nothing:
 
 ```ts
-const service = await services.of(account.service);
+const service = await services.latestOf(account.service);
 ```
 
 Another device that syncs the store goes back to the service that way, and
-to where it moved, once the store holds the newer Service. `of` checks a
-Service it reads from the store as `at` does, save that no origin was
-asked: its origin is still to be one that `at` takes. It reads every
+to where it moved, once the store holds the newer Service. `latestOf` checks a
+Service it reads from the store as `fetch` does, save that no origin was
+asked: its origin is still to be one that `fetch` takes. It reads every
 Service in the store, through an index of `@estoc/store`.
 
 ## Opening an account
@@ -184,7 +184,7 @@ identity's acceptance of its offer.
 
 ### What the client keeps
 
-`at` writes the service's signature over the Service, which leads to the
+`fetch` writes the service's signature over the Service, which leads to the
 offers and the service's signatures over them, and `accept` and `open`
 write the service's signature over the acknowledgement, each to the store
 as mine, with all they lead to. Another device that syncs the store learns
@@ -194,14 +194,14 @@ answer is refused, `accept` and `open` write nothing.
 
 The client knows people as the service does, from the same records in its
 store: the versions that signed the Services and the acknowledgements, and
-those that the acknowledged acceptances and requests carry. `at`, `of` and `accept` read
+those that the acknowledged acceptances and requests carry. `fetch`, `latestOf` and `accept` read
 the service's signatures by them, so a Service, an offer or an
 acknowledgement signed by a key that a later version of the service's
 identity does not list is refused once the store knows that version.
 
-`at` reads the Service, and `accept` the acknowledgement, on the store as
+`fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is written, as `stage` of `@estoc/store` gives it. So
-a Service that `at` takes reads alike by `of` until the store knows a later
+a Service that `fetch` takes reads alike by `latestOf` until the store knows a later
 version of the service's identity. The offers a Service lists are read as
 any signature is, and the store then knows the version that signed the
 Service, so an offer is read by that version or a later one. When a
@@ -375,7 +375,7 @@ a service is, and the ids they list are the ids it gave out: one that the
 latest lists takes what is posted for the offer under it, one that only an
 earlier one lists is answered 410, and one that none lists 404. The
 service works this out from the store on each request, through the same
-index of `@estoc/store` that `of` reads, and reads the offer there too, so
+index of `@estoc/store` that `latestOf` reads, and reads the offer there too, so
 services that share a store answer alike, with the latest Service that any
 of them signed, and open mailboxes on the terms that it lists.
 

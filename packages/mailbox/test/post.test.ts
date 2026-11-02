@@ -20,7 +20,7 @@ import {
   mailboxFrom,
   mailboxKeySchema,
   outboundSchema,
-  Undelivered,
+  UndeliveredMessage,
 } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -132,7 +132,7 @@ describe("an outbox", () => {
     const before = await listed(store);
 
     const sending = (await post.outbox(elsewhere.link)).send(signature.link);
-    await expect(sending).rejects.toThrow(Undelivered);
+    await expect(sending).rejects.toThrow(UndeliveredMessage);
     await expect(sending).rejects.toMatchObject({ kind: "gone" });
     expect(await listed(store)).toEqual(before);
   });

@@ -327,7 +327,7 @@ describe("the version of a signed identity", () => {
     ["a Delegated Identity", () => delegate(signer(ed25519), [key(ed25519, 2)], 1_000)],
   ])("is the root, the at and the link of %s", async (_, signed) => {
     const signedIdentity = await signed();
-    expect(versions.of(signedIdentity)).toEqual([signedIdentity.identity.root.link, 1_000, signedIdentity.link]);
+    expect(versions.versionOf(signedIdentity)).toEqual([signedIdentity.identity.root.link, 1_000, signedIdentity.link]);
   });
 });
 

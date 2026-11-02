@@ -92,7 +92,7 @@ What comes from elsewhere is judged before it is written, as a client
 reads who signed a Service it reaches, and read again later from the
 store. For the two to come out the same, the first is read from the store
 as it will be once the batch is written. `stage(batch)` gives that, a
-`Staged`: the blobs the store holds and those of the batch that `write`
+`StagedStore`: the blobs the store holds and those of the batch that `write`
 keeps, and the links the store lists with those the batch writes as mine.
 `commit` writes the batch, as `write` does.
 
@@ -243,10 +243,10 @@ schema can be kept on either side.
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
-const kept = new PrivateStore(store, new MemoryBackend());
-await kept.write({ mine: [key], blobs: [keySchema.bytes] });
+const keys = new PrivateStore(store, new MemoryBackend());
+await keys.write({ mine: [key], blobs: [keySchema.bytes] });
 
-await kept.get(mailbox.link);  // from the store beside
+await keys.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined
 ```
 

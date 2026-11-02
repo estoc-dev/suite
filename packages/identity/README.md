@@ -255,7 +255,7 @@ reads its rows:
 ```ts
 const people = await view(store, { index: seen, read: (rows, reader) => versions.known(rows, reader) });
 const signature = await signatures.read(link, store, people);
-const author = people.of(signature.signedIdentity);
+const author = people.personOf(signature.signedIdentity);
 ```
 
 ## Signatures

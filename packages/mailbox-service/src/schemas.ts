@@ -82,21 +82,21 @@ export const accountOfferSchema: JsonSchema = {
 export type AccountOfferData = { readonly identity: JsonLink<KeyObject> };
 
 /**
- * What a service signs to acknowledge an acceptance of its offer: `accepted`
- * is the link of the signature that accepted its offer, and `at` when the
- * service received it, in milliseconds since the Unix epoch by the service's
- * clock.
+ * What a service signs to acknowledge an acceptance of its offer:
+ * `acceptance` is the link of the signature that accepted its offer, and
+ * `at` when the service received it, in milliseconds since the Unix epoch
+ * by the service's clock.
  */
 export const acknowledgementSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
   title: "Acknowledgement",
   type: "object",
-  properties: { accepted: linkSchema, at: { type: "integer", minimum: 0 } },
-  required: ["accepted", "at"],
+  properties: { acceptance: linkSchema, at: { type: "integer", minimum: 0 } },
+  required: ["acceptance", "at"],
   additionalProperties: false,
 };
 
-export type AcknowledgementData = { readonly accepted: JsonLink<Signature>; readonly at: number };
+export type AcknowledgementData = { readonly acceptance: JsonLink<Signature>; readonly at: number };
 
 /**
  * An id that a service makes up for a mailbox it opens, 16 random bytes in
@@ -153,7 +153,7 @@ export type MailboxRequestData = { readonly offer: JsonLink<never>; readonly key
 
 /**
  * What a service signs to acknowledge a request for a mailbox, which it
- * opened: `accepted` is the link of the signature over the request, `at`
+ * opened: `request` is the link of the signature over the request, `at`
  * when the service received it, in milliseconds since the Unix epoch by the
  * service's clock, `send` the id that senders post to, and `pickup` the id
  * that the account picks up at.
@@ -163,17 +163,17 @@ export const mailboxAcknowledgementSchema: JsonSchema = {
   title: "Mailbox acknowledgement",
   type: "object",
   properties: {
-    accepted: linkSchema,
+    request: linkSchema,
     at: { type: "integer", minimum: 0 },
     send: mailboxIdSchema,
     pickup: mailboxIdSchema,
   },
-  required: ["accepted", "at", "send", "pickup"],
+  required: ["request", "at", "send", "pickup"],
   additionalProperties: false,
 };
 
 export type MailboxAcknowledgementData = {
-  readonly accepted: JsonLink<Signature>;
+  readonly request: JsonLink<Signature>;
   readonly at: number;
   readonly send: string;
   readonly pickup: string;

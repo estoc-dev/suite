@@ -41,7 +41,7 @@ export interface Delivery {
   readonly link: Link<EncodedObject<Json>>;
 }
 
-type Written = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promise<Delivery>;
+type DeliveryRecorder = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promise<Delivery>;
 
 type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Json>> };
 
@@ -60,20 +60,20 @@ interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>
  */
 export class Post {
   readonly #store: Store;
-  readonly #kept: PrivateStore;
+  readonly #keys: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
   readonly #schemas: Schemas;
 
   constructor(
     store: Store,
-    kept: PrivateStore,
+    keys: PrivateStore,
     transports: readonly Transport[],
     clock: () => number,
     schemas: Schemas,
   ) {
     this.#store = store;
-    this.#kept = kept;
+    this.#keys = keys;
     this.#transports = transports;
     this.#clock = clock;
     this.#schemas = schemas;
@@ -81,7 +81,7 @@ export class Post {
 
   /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject<Json>>): Promise<Outbox> {
-    const bound = await mailboxFrom(await this.#held(mailbox), { transports: this.#transports });
+    const bound = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
     return new Outbox(bound, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
   }
 
@@ -104,7 +104,7 @@ export class Post {
     await this.#store.write({ mine: [{ bytes }], blobs: [transport.schema.bytes] });
     const schema = this.#schemas.key;
     const object = encodeObject(schema, { mailbox: { $link: mailbox }, secret: hex.encode(secret) });
-    await this.#kept.write({ mine: [object], blobs: [schema.bytes] });
+    await this.#keys.write({ mine: [object], blobs: [schema.bytes] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -115,9 +115,9 @@ export class Post {
    * mailbox.
    */
   async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
-    const { data } = await readObject(this.#kept, key, this.#schemas.key);
+    const { data } = await readObject(this.#keys, key, this.#schemas.key);
     const mailbox = data.mailbox.$link;
-    const named = readMailbox(await this.#held(mailbox), this.#transports).data.key;
+    const named = readMailbox(await this.#bytesAt(mailbox), this.#transports).data.key;
     const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
     if (named !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
@@ -127,7 +127,7 @@ export class Post {
     return new Inbox(mailbox, key, opener, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
   }
 
-  async #held(link: Link<unknown>): Promise<Uint8Array> {
+  async #bytesAt(link: Link<unknown>): Promise<Uint8Array> {
     const bytes = await this.#store.get(link);
     if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
     return bytes;
@@ -151,20 +151,20 @@ export class Post {
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
-  readonly #written: Written;
+  readonly #record: DeliveryRecorder;
 
-  constructor(mailbox: Mailbox, store: Store, written: Written) {
+  constructor(mailbox: Mailbox, store: Store, record: DeliveryRecorder) {
     this.#mailbox = mailbox;
     this.#store = store;
-    this.#written = written;
+    this.#record = record;
   }
 
   /**
    * Sends the bundle of `root` and all it leads to in the store, whoever
    * wrote it. Once the transport takes the bundle, writes that it went out.
-   * When the transport cannot hand it on, rejects with its `Undelivered` and
-   * writes nothing. Sending a root again sends the same bundle and writes
-   * another record.
+   * When the transport cannot hand it on, rejects with its
+   * `UndeliveredMessage` and writes nothing. Sending a root again sends the
+   * same bundle and writes another record.
    */
   async send(root: Link<unknown>): Promise<Delivery> {
     const closure = await this.#store.closure(root);
@@ -174,7 +174,7 @@ export class Outbox {
       { bytes },
       [...closure].filter(([link]) => link !== root).map(([, blob]) => blob),
     );
-    return this.#written(root as Link<never>);
+    return this.#record(root as Link<never>);
   }
 }
 
@@ -185,18 +185,18 @@ export class Inbox {
   /** The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this inbox again. */
   readonly key: Link<EncodedObject<Json, MailboxKeyData>>;
   readonly #opener: MailboxKey;
-  readonly #written: Written;
+  readonly #record: DeliveryRecorder;
 
   constructor(
     mailbox: Link<EncodedObject<Json>>,
     key: Link<EncodedObject<Json, MailboxKeyData>>,
     opener: MailboxKey,
-    written: Written,
+    record: DeliveryRecorder,
   ) {
     this.mailbox = mailbox;
     this.key = key;
     this.#opener = opener;
-    this.#written = written;
+    this.#record = record;
   }
 
   /**
@@ -208,7 +208,7 @@ export class Inbox {
    */
   async receive(sealed: Uint8Array): Promise<Delivery> {
     const bundle = await this.#opener.open(sealed);
-    return this.#written(bundle.link, bundle.blobs());
+    return this.#record(bundle.link, bundle.blobs());
   }
 
   /**
@@ -223,16 +223,16 @@ export class Inbox {
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
     if (pickup.mailbox !== this.mailbox)
       throw new Error(`a pickup of ${pickup.mailbox} is not collected at ${this.mailbox}`);
-    const written: Delivery[] = [];
+    const deliveries: Delivery[] = [];
     for await (const arrival of pickup.arrivals(signal)) {
-      const delivery = await this.#kept(arrival.sealed);
-      if (delivery !== undefined) written.push(delivery);
-      await arrival.done();
+      const delivery = await this.#tryReceive(arrival.sealed);
+      if (delivery !== undefined) deliveries.push(delivery);
+      await arrival.drop();
     }
-    return written;
+    return deliveries;
   }
 
-  async #kept(sealed: Uint8Array): Promise<Delivery | undefined> {
+  async #tryReceive(sealed: Uint8Array): Promise<Delivery | undefined> {
     let bundle: Bundle;
     try {
       bundle = await this.#opener.open(sealed);
@@ -240,7 +240,7 @@ export class Inbox {
       return undefined;
     }
     try {
-      return await this.#written(bundle.link, bundle.blobs());
+      return await this.#record(bundle.link, bundle.blobs());
     } catch (error) {
       if (error instanceof RefusedBatch) return undefined;
       throw error;
@@ -250,12 +250,12 @@ export class Inbox {
 
 /**
  * Makes a post that sends and receives with `store`, through `transports`,
- * and keeps the keys of the user's mailboxes in `kept`, a private store
+ * and keeps the keys of the user's mailboxes in `keys`, a private store
  * beside `store`.
  */
 export async function loadPost(
   store: Store,
-  kept: PrivateStore,
+  keys: PrivateStore,
   { transports, validator, clock = Date.now }: PostOptions,
 ): Promise<Post> {
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
@@ -265,5 +265,5 @@ export async function loadPost(
     compile<DeliveryData>(outboundSchema),
     compile<MailboxKeyData>(mailboxKeySchema),
   ]);
-  return new Post(store, kept, transports, clock, { inbound, outbound, key });
+  return new Post(store, keys, transports, clock, { inbound, outbound, key });
 }

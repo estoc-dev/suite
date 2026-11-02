@@ -20,6 +20,7 @@ import {
   mailboxFrom,
   mailboxKeySchema,
   outboundSchema,
+  Undelivered,
 } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -122,7 +123,7 @@ describe("an outbox", () => {
     expect((await signatures.read(bundle.link, bundle, noVersions)).object).toBe(hello.link);
   });
 
-  it("records nothing when the transport refuses what it sends", async () => {
+  it("records nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post } = await sendingTo(network);
     await store.write({ mine: [signature], blobs: signed });
@@ -130,7 +131,9 @@ describe("an outbox", () => {
     await store.write({ mine: [elsewhere], blobs: [network.transport.schema.bytes] });
     const before = await listed(store);
 
-    await expect((await post.outbox(elsewhere.link)).send(signature.link)).rejects.toThrow(/no queue is named/);
+    const sending = (await post.outbox(elsewhere.link)).send(signature.link);
+    await expect(sending).rejects.toThrow(Undelivered);
+    await expect(sending).rejects.toMatchObject({ kind: "gone" });
     expect(await listed(store)).toEqual(before);
   });
 

@@ -37,8 +37,10 @@ transport or key is another mailbox.
 
 A mailbox has no end written in it, and there is no revocation. Whoever
 receives at a mailbox retires it by no longer receiving there: what is sent
-to it afterwards is refused by the transport or lost, as any message can
-be. Moving is handing out a new mailbox.
+to it afterwards is turned back or lost, as any message can be. A
+transport that knows the mailbox is retired turns it back as `gone`, and
+one that finds nothing answering there as `later`. Moving is handing out a
+new mailbox.
 
 ### The receiving side
 
@@ -121,6 +123,19 @@ of order. That is harmless to a reader, since blobs are named by their
 content and a reading only grows with what arrives; an application that
 needs a message to be fresh puts a nonce in its object, as a login does.
 
+When the transport cannot hand the sealed bytes on, `send` rejects with an
+`Undelivered`, whose `kind` tells the sender what it can do:
+
+| `kind`    | The sender                                                                 |
+|-----------|----------------------------------------------------------------------------|
+| `later`   | can send the same again later, as when the network is down or the box full |
+| `gone`    | needs another mailbox, since this one takes nothing more                   |
+| `refused` | cannot send this one there, as when it is too large, though others can go  |
+
+When to send again is the application's to choose. A message turned back
+for want of an answer may have arrived all the same, and sending it again
+does no harm, as arriving twice does none.
+
 ## Through a store
 
 `loadPost` binds sending and receiving to a store of `@estoc/store`, and
@@ -179,9 +194,10 @@ with an index of `@estoc/store` over the private store that reads
 `send` takes a root that the store holds, whoever wrote it, so passing on
 what came in is sending its root. It bundles the closure of the root,
 schemas included, and writes `Outbound` once the transport takes the
-bundle. When the transport refuses it, nothing is written, and the root is
-still there to send again. Neither the zip nor the sealed bytes are kept:
-sending again seals the same bundle afresh.
+bundle. When the transport cannot hand it on, `send` rejects with its
+`Undelivered` and nothing is written, and the root is still there to send
+again. Neither the zip nor the sealed bytes are kept: sending again seals
+the same bundle afresh.
 
 `receive` keeps the bundle and its `Inbound` record in one write. What does
 not open with the key is refused, and so is a bundle that leaves out a
@@ -274,13 +290,14 @@ interface Transport {
 ```
 
 `deliver` takes the data of a mailbox written to `schema` and the sealed
-bytes, resolves once they are handed on and rejects when they cannot be.
-How the receiver gets them, such as listening for requests or fetching from
-a mailbox service, is the transport's own. Its receiving side gives a
-`Pickup` for `Inbox.collect`, or hands sealed bytes one at a time to
-`Inbox.receive`, or to `MailboxKey.open` without a store. This package
-ships one transport, over HTTP, with no receiving side; its tests also run
-on one in memory, whose queues give a pickup.
+bytes, and resolves once they are handed on. When they cannot be, it
+rejects with an `Undelivered` of the kind that it can tell from what
+turned them back. How the receiver gets them, such as listening for
+requests or fetching from a mailbox service, is the transport's own. Its
+receiving side gives a `Pickup` for `Inbox.collect`, or hands sealed bytes
+one at a time to `Inbox.receive`, or to `MailboxKey.open` without a store.
+This package ships one transport, over HTTP, with no receiving side; its
+tests also run on one in memory, whose queues give a pickup.
 
 ### HTTP
 
@@ -303,16 +320,20 @@ large they are, and can hold them back unnoticed. On one machine, as in
 development or for a daemon beside the sender, no one is on the way.
 
 `deliver` posts the sealed bytes to the url as `application/octet-stream`.
-A 2xx response means they were handed on. Any other response, or none,
-rejects, and nothing is sent again. A redirect is not followed, since it
-would take the bytes to a url the mailbox does not name. No cookies or
+A 2xx response means they were handed on. 404 and 410 reject as `gone`,
+408, 429 and 5xx as `later`, and any other response as `refused`. No response
+rejects as `later`, and so does a redirect: it is not followed, since it
+would take the bytes to a url the mailbox does not name, and a browser
+does not tell it from no response. Nothing is sent again. No cookies or
 other credentials and no referrer go with the request.
 
 The receiving side is whatever serves the url, and this package ships none.
 A mailbox service that keeps the bytes until the receiver fetches them
 gives a `Pickup` of its own. A server of the receiver's passes the body of
 each POST to `Inbox.receive`, or to `MailboxKey.open`, and answers 2xx
-once it has kept the bytes. Anyone can post to it, so it limits how large
-a body it takes. One that browsers send to answers their CORS preflight
-for a POST with `Content-Type: application/octet-stream`, since browsers
-ask before sending that type to another origin.
+once it has kept the bytes, 503 while it cannot keep them, and 410 once it
+no longer receives there. Anyone can post to it, so it limits how large a
+body it takes, and answers 413 to one larger. One that browsers send to
+answers their CORS preflight for a POST with
+`Content-Type: application/octet-stream`, since browsers ask before
+sending that type to another origin.

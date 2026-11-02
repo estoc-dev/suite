@@ -1,14 +1,17 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, encodeSchema, json } from "@estoc/object";
+import { encodeObject, encodeSchema, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
-import { MailboxKey, mailboxFrom } from "../src/index.ts";
+import { loadPost, MailboxKey, mailboxFrom, Undelivered } from "../src/index.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
-// one: what is posted to it is what goes to MailboxKey.open.
+// one: what is posted to it is what goes to MailboxKey.open. A POST to
+// /answer/<status> is answered with that status, and one to /late-once 408
+// the first time in a test, as when the body came too slowly, and 202 after.
 
 interface Request {
   readonly method: string | undefined;
@@ -17,7 +20,7 @@ interface Request {
   readonly body: Uint8Array;
 }
 
-const answers: Readonly<Record<string, number>> = { "/inbox": 202, "/full": 503, "/moved": 307 };
+const answers: Readonly<Record<string, number>> = { "/inbox": 202, "/moved": 307, "/late-once": 202 };
 const requests: Request[] = [];
 const server = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
@@ -29,7 +32,8 @@ const server = createServer(async (request, response) => {
     type: request.headers["content-type"],
     body: new Uint8Array(Buffer.concat(chunks)),
   });
-  const status = answers[path ?? ""] ?? 404;
+  const late = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
+  const status = late ? 408 : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
 const port = await listen(server);
@@ -57,6 +61,15 @@ const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
 
+async function rejectedAs(sending: Promise<unknown>): Promise<Undelivered["kind"]> {
+  const error = await sending.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  assert.instanceOf(error, Undelivered);
+  return error.kind;
+}
+
 describe("an HTTP mailbox", () => {
   it("takes a message to its url in a POST, sealed so that its key opens it", async () => {
     await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, []);
@@ -67,24 +80,62 @@ describe("an HTTP mailbox", () => {
     expect((await bob.open(request.body)).root).toEqual(hello.bytes);
   });
 
-  it("rejects a send that the server answers with other than 2xx", async () => {
-    const mailbox = await mailboxAt(`http://127.0.0.1:${port}/full`);
-    await expect(mailbox.send(hello, [])).rejects.toThrow(/answered 503/);
+  it.each<[number, Undelivered["kind"]]>([
+    [404, "gone"],
+    [410, "gone"],
+    [408, "later"],
+    [429, "later"],
+    [500, "later"],
+    [503, "later"],
+    [400, "refused"],
+    [413, "refused"],
+  ])("rejects a send that the server answers %i as undelivered, %s", async (status, kind) => {
+    const mailbox = await mailboxAt(`http://127.0.0.1:${port}/answer/${status}`);
+    expect(await rejectedAs(mailbox.send(hello, []))).toBe(kind);
   });
 
-  it("rejects a send that the server redirects, and the message goes no further", async () => {
+  it("rejects a send that the server redirects as one to send later, and the message goes no further", async () => {
     const mailbox = await mailboxAt(`http://127.0.0.1:${port}/moved`);
-    await expect(mailbox.send(hello, [])).rejects.toThrow();
+    expect(await rejectedAs(mailbox.send(hello, []))).toBe("later");
     expect(take().map(({ path }) => path)).toEqual(["/moved"]);
   });
 
-  it("rejects a send when nothing listens at its url", async () => {
+  it("rejects a send as one to send later when nothing listens at its url", async () => {
     const gone = createServer();
     const closed = await listen(gone);
     await close(gone);
-    await expect((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, [])).rejects.toThrow();
+    expect(await rejectedAs((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, []))).toBe("later");
   });
 });
+
+describe("an HTTP outbox", () => {
+  it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
+    const store = new Store(json, new MemoryBackend());
+    const kept = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
+    const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
+    await store.write({ mine: [mailbox, hello], blobs: [http.schema.bytes, note.bytes] });
+    const outbox = await post.outbox(mailbox.link);
+    const before = await listed(store);
+
+    expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
+    expect(await listed(store)).toEqual(before);
+
+    const sent = await outbox.send(hello.link);
+    expect(new Set(await listed(store))).toEqual(new Set([...before, sent.link]));
+    const requested = take();
+    expect(requested.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
+    const through = requested.at(-1);
+    assert.exists(through);
+    expect((await bob.open(through.body)).link).toBe(hello.link);
+  });
+});
+
+async function listed(store: Store): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.mine()) links.push(link);
+  return links;
+}
 
 describe("an HTTP mailbox's url", () => {
   it.each([

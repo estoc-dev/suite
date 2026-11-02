@@ -9,7 +9,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { hex } from "@scure/base";
-import { type Arrival, mailboxSchema, type Pickup, type Transport } from "../src/index.ts";
+import { type Arrival, mailboxSchema, type Pickup, type Transport, Undelivered } from "../src/index.ts";
 
 /** Faults a network puts in the way of every message, as a real channel may. */
 export interface Faults {
@@ -122,7 +122,7 @@ export class MemoryNetwork {
 
   #deliver({ name }: JsonObject, sealed: Uint8Array): void {
     const waiting = typeof name === "string" ? this.#queues.get(name) : undefined;
-    if (waiting === undefined) throw new Error(`no queue is named ${String(name)}`);
+    if (waiting === undefined) throw new Undelivered("gone", `no queue is named ${String(name)}`);
     if (this.#faults.lost?.(this.#deliveries++)) return;
     // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
     waiting.push({ sealed: sealed.slice() });

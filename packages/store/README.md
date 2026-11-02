@@ -72,6 +72,11 @@ blob its data links to. So the schemas of objects come with them unless the
 store holds them already, and a bundle is taken in only with all that its
 objects lead to, apart from what the receiver holds already.
 
+A refused batch rejects with a `RefusedBatch`, and the same batch is
+refused again until the store holds what it leads to. A backend that fails
+rejects with an error of its own, so a receiver can tell a bundle it will
+not take from a write that may go through the next time.
+
 Each blob goes in after the blobs it leads to, and before the links that
 list it, so a write cut short leaves at worst blobs that nothing lists,
 each with all it leads to.

@@ -65,10 +65,11 @@ export interface Store {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
    * Puts in what the batch writes as mine and the blobs it leads to, and
-   * drops the other blobs. Refuses the whole batch when something written as
-   * mine is not an object of the store's encoding, or when it leads to a blob
-   * that neither the batch nor the store holds: the schema of an object, or
-   * any other link in it.
+   * drops the other blobs. Refuses the whole batch with a `RefusedBatch` when
+   * something written as mine is not an object of the store's encoding, or
+   * when it leads to a blob that neither the batch nor the store holds: the
+   * schema of an object, or any other link in it. A backend that fails
+   * rejects with an error of its own.
    */
   write(batch: Batch): Promise<void>;
   /**
@@ -121,6 +122,17 @@ export interface Staged {
   commit(): Promise<void>;
 }
 
+/**
+ * A batch that a store refuses for what it is: something written as mine
+ * that is not an object, or a link to a blob that neither the batch nor the
+ * store holds. The same batch is refused again until the store holds what it
+ * leads to, while a backend that fails, which rejects with an error of its
+ * own, may write it the next time.
+ */
+export class RefusedBatch extends Error {
+  override readonly name = "RefusedBatch";
+}
+
 class StoreOf<D> implements Store {
   readonly #encoding: Encoding<D>;
   readonly #backend: Backend;
@@ -157,7 +169,7 @@ class StoreOf<D> implements Store {
       try {
         schemaOf(owned, this.#encoding);
       } catch (cause) {
-        throw new Error(`${link} is written as mine but is not an object`, { cause });
+        throw new RefusedBatch(`${link} is written as mine but is not an object`, { cause });
       }
       given.set(link, owned);
       written.push(link);
@@ -243,7 +255,7 @@ class StoreOf<D> implements Store {
         } else if (await this.#backend.has(linked)) {
           held.add(linked);
         } else {
-          throw new Error(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
+          throw new RefusedBatch(`${top.link} leads to ${linked}, which neither the batch nor the store holds`);
         }
       }
     }

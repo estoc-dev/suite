@@ -58,6 +58,31 @@ const key = await MailboxKey.fromSecretKey(secretKey);
 const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: queueName });
 ```
 
+What is sent to a mailbox waits with its transport until the receiver is
+done with it. The transport's receiving side hands it over as a `Pickup`
+of one mailbox, which it makes with whatever it takes to receive there.
+That differs from one transport to another, so a `Transport` is the
+sending half alone.
+
+```ts
+interface Pickup {
+  readonly mailbox: Link<EncodedObject<Json>>;
+  arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
+}
+
+interface Arrival {
+  readonly sealed: Uint8Array;
+  done(): Promise<void>;
+}
+```
+
+`arrivals` gives what waits at the mailbox, each until it is done. It ends
+once `signal` aborts, and, unless the transport waits for more to come,
+once nothing more waits. `done` lets the transport drop the sealed bytes.
+A receiver is done with an arrival once it has kept what it holds, so one
+that stops in between is given it again. A message so arrives at least
+once, and one given again reads as one that arrived twice.
+
 `open` takes the sealed bytes that a transport received and gives back the
 bundle inside. It refuses bytes that do not open with its key, and what
 opens but does not unpack to a bundle. It does not read who stands behind
@@ -125,7 +150,7 @@ await outbox.send(signature.link); // the root and all it leads to in the store
 const inbox = await post.openInbox((publicKey) =>
   encodeObject(schema, { key: hex.encode(publicKey), name: queueName }),
 );
-await inbox.receive(sealed); // the bundle, kept with an Inbound record
+await inbox.collect(pickup); // each bundle that waits, kept with an Inbound record
 
 const again = await post.inbox(inbox.key); // after a restart
 ```
@@ -162,6 +187,16 @@ sending again seals the same bundle afresh.
 not open with the key is refused, and so is a bundle that leaves out a
 blob its root leads to and the store does not hold, record and all. Blobs
 the root does not lead to are dropped.
+
+`collect` takes a pickup of the inbox's mailbox, and refuses one of
+another. It receives each arrival in turn, is done with it once the write
+is through, and gives back the records it wrote. What it refuses is done
+with too and leaves no record, since it would be refused again each time;
+a sender whose store holds a bundle can send it again. When the store
+fails to write, `collect` stops and rejects without being done with that
+arrival, which waits to be collected again. A stop after the write and
+before `done` leaves the arrival waiting as well, and collecting it again
+writes a second record of the same bundle.
 
 ### Reading what came and went
 
@@ -240,10 +275,11 @@ interface Transport {
 `deliver` takes the data of a mailbox written to `schema` and the sealed
 bytes, resolves once they are handed on and rejects when they cannot be.
 How the receiver gets them, such as listening for requests or fetching from
-a mailbox service, is the transport's own; it ends with the sealed bytes
-handed to `Inbox.receive`, or to `MailboxKey.open` without a store. This
-package ships one transport, over HTTP; its tests also run on one in
-memory.
+a mailbox service, is the transport's own. Its receiving side gives a
+`Pickup` for `Inbox.collect`, or hands sealed bytes one at a time to
+`Inbox.receive`, or to `MailboxKey.open` without a store. This package
+ships one transport, over HTTP, with no receiving side; its tests also run
+on one in memory, whose queues give a pickup.
 
 ### HTTP
 
@@ -272,9 +308,10 @@ would take the bytes to a url the mailbox does not name. No cookies or
 other credentials and no referrer go with the request.
 
 The receiving side is whatever serves the url, and this package ships none.
-It passes the body of each POST to `Inbox.receive`, or to
-`MailboxKey.open`, and answers 2xx once it has kept the bytes. Anyone can
-post to it, so it limits how large a body it takes. One that browsers send
-to answers their CORS preflight for a POST with
-`Content-Type: application/octet-stream`, since browsers ask before sending
-that type to another origin.
+A mailbox service that keeps the bytes until the receiver fetches them
+gives a `Pickup` of its own. A server of the receiver's passes the body of
+each POST to `Inbox.receive`, or to `MailboxKey.open`, and answers 2xx
+once it has kept the bytes. Anyone can post to it, so it limits how large
+a body it takes. One that browsers send to answers their CORS preflight
+for a POST with `Content-Type: application/octet-stream`, since browsers
+ask before sending that type to another origin.

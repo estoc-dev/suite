@@ -20,6 +20,7 @@ import {
   loadPost,
   type Outbox,
   outboundSchema,
+  type Pickup,
   type Post,
 } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
@@ -117,7 +118,7 @@ async function chat(faults: Faults = {}) {
     assert.exists(handedOver);
     await peer.store.write({ mine: [{ bytes: handedOver }], blobs: [network.transport.schema.bytes] });
     const outbox = await peer.post.outbox(inbox.mailbox);
-    return { mailbox: inbox.mailbox, inbox, outbox, take: queue.take };
+    return { mailbox: inbox.mailbox, inbox, outbox, pickup: queue.pickup(inbox.mailbox) };
   };
   const atAlice = await mailboxFor(alice, bob);
   const atBob = await mailboxFor(bob, alice);
@@ -132,9 +133,7 @@ async function chat(faults: Faults = {}) {
     await outbox.send(signature.link);
     return signature;
   };
-  const collect = async ({ inbox, take }: { inbox: Inbox; take: () => Uint8Array[] }) => {
-    for (const sealed of take()) await inbox.receive(sealed);
-  };
+  const collect = ({ inbox, pickup }: { inbox: Inbox; pickup: Pickup }) => inbox.collect(pickup);
 
   // What the person sees of their conversation with the other: each line,
   // which way it went and who wrote it.
@@ -202,6 +201,17 @@ describe("a conversation", () => {
       ["inbound", "Alice", "hi Bob"],
       ["inbound", "Alice", "lunch at noon?"],
     ]);
+  });
+
+  it("shows a line once that was collected again because the network was cut before it was done, though each time is recorded", async () => {
+    const { alice, bob } = await chat({ cut: (n) => n === 0 });
+    await alice.say("hi Bob");
+    await expect(bob.collect()).rejects.toThrow(/cut/);
+    expect(await bob.show()).toEqual([["inbound", "Alice", "hi Bob"]]);
+
+    await bob.collect();
+    expect(await bob.recorded("inbound")).toHaveLength(2);
+    expect(await bob.show()).toEqual([["inbound", "Alice", "hi Bob"]]);
   });
 
   it("shows a line that was lost and sent again once, when it first went out and when it came in", async () => {

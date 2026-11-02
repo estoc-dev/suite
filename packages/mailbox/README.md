@@ -191,12 +191,13 @@ the root does not lead to are dropped.
 `collect` takes a pickup of the inbox's mailbox, and refuses one of
 another. It receives each arrival in turn, is done with it once the write
 is through, and gives back the records it wrote. What it refuses is done
-with too and leaves no record, since it would be refused again each time;
-a sender whose store holds a bundle can send it again. When the store
-fails to write, `collect` stops and rejects without being done with that
-arrival, which waits to be collected again. A stop after the write and
-before `done` leaves the arrival waiting as well, and collecting it again
-writes a second record of the same bundle.
+with too and leaves no record. A bundle that leaves out a blob would be
+taken once the blob reaches the store, but `collect` does not keep it
+waiting for that: a sender whose store holds the bundle can send it
+again. When the store fails to write, `collect` stops and rejects without
+being done with that arrival, which waits to be collected again. A stop
+after the write and before `done` leaves the arrival waiting as well, and
+collecting it again writes a second record of the same bundle.
 
 ### Reading what came and went
 

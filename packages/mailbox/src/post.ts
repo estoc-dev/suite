@@ -213,10 +213,11 @@ export class Inbox {
   /**
    * Receives what waits at the mailbox, one arrival at a time, and is done
    * with each once it is kept. Gives back the records it wrote. What does
-   * not open, and a bundle that the store refuses, would be refused again
-   * each time, so they are done with too and leave no record. When the store
-   * fails to write, stops and rejects, and that arrival waits to be collected
-   * again. Refuses a pickup of another mailbox, and is done with nothing.
+   * not open, and a bundle that the store refuses, are done with too and
+   * leave no record, rather than wait for the blobs a bundle leaves out to
+   * reach the store. When the store fails to write, stops and rejects, and
+   * that arrival waits to be collected again. Refuses a pickup of another
+   * mailbox, and is done with nothing.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
     if (pickup.mailbox !== this.mailbox)

@@ -2,7 +2,7 @@ import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identi
 import { encodeObject, encodeSchema, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Backend, MemoryBackend, Store } from "../src/index.ts";
+import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
@@ -110,6 +110,25 @@ describe("a store", () => {
     await expect(store.write({ mine: [written] })).rejects.toThrow(`${written.link} leads to ${unheld.link}`);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
+  });
+
+  it("refuses a batch for what it is with a RefusedBatch, and passes on a backend's own failure as it is", async () => {
+    const image = utf8("an image");
+    const note = object({ text: "hello", image: { $link: linkOf(image) } });
+    const store = newStore();
+    await expect(store.write({ mine: [note], blobs: [anything.bytes] })).rejects.toThrow(RefusedBatch);
+    await expect(store.write({ mine: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(RefusedBatch);
+
+    const gone = new Error("the disk is gone");
+    const backend = new MemoryBackend();
+    const failing = newStore({
+      get: (link) => backend.get(link),
+      has: () => Promise.reject(gone),
+      put: () => Promise.reject(gone),
+      mine: () => backend.mine(),
+    });
+    await expect(failing.write({ mine: [note], blobs: [anything.bytes] })).rejects.toBe(gone);
+    await expect(failing.write({ mine: [note], blobs: [image, anything.bytes] })).rejects.toBe(gone);
   });
 
   it("takes a batch whose blobs lead to blobs it holds from an earlier write", async () => {

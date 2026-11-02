@@ -19,7 +19,10 @@ export interface Backend {
    * and then adds `mine` to the list of what was written. The store gives
    * each blob after the blobs it leads to, and a link is listed only once
    * its blob is in, so a write cut short leaves no blob without what it
-   * leads to and no listed link without its blob.
+   * leads to and no listed link without its blob. The backend of a
+   * `PrivateStore` is not given what the store beside it holds, so there
+   * these hold of the two together: what a blob leads to, or the blob of a
+   * listed link, may be in the store beside instead.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void>;
   /** The links listed by `put`, each once. */
@@ -227,12 +230,14 @@ export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = 
 
 /**
  * What the user keeps to themselves: objects they write, and the blobs those
- * lead to, that no bundle carries. It is kept beside a store, in a backend of
- * its own, and reads that store too, so what is kept here can link to what
- * the store holds. The store does not read it: a link to a blob kept here
- * names nothing in the store, so the store refuses to write anything that
- * leads to one, and neither its `get` nor its `closure` gives one. There is
- * no `closure` here, so nothing kept here is gathered into a bundle.
+ * lead to, kept apart from the store that bundles are gathered from. It is
+ * kept beside a store, in a backend of its own, and reads that store too, so
+ * what is kept here can link to what the store holds. The store does not
+ * read it: a blob that only this keeps is not held by the store, so the store
+ * refuses to write anything that leads to one, and neither its `get` nor its
+ * `closure` gives one. There is no `closure` here, and this is not a `Store`,
+ * so it cannot be given to what gathers bundles from a store. Bytes that are
+ * also written to the store are the store's as well.
  *
  * Whether what is kept here is encrypted is up to the backend.
  */

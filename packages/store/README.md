@@ -198,11 +198,12 @@ await store.get(key.link);     // undefined
 
 The private store reads the store beside it, so what it keeps can link to
 what the store holds, and its `get` gives both. The store does not read the
-private store. A link to a blob kept privately names nothing the store
-holds, so the store refuses to write an object that leads to one, and its
-`get` and `closure` do not give one. A private store has no `closure`, so
-nothing kept in it goes into a bundle, and it is not a `Store`, so it
-cannot be given where a store is asked for, as by what sends bundles.
+private store. A blob that only the private store keeps is not one the
+store holds, so the store refuses to write an object that leads to one, and
+its `get` and `closure` do not give one. A private store has no `closure`
+and is not a `Store`, so it cannot be given where a store is asked for, as
+by what gathers bundles. Being private is where bytes are kept, not a mark
+on them: bytes that are also written to the store are the store's as well.
 
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,

@@ -129,7 +129,6 @@ export const mailboxOfferSchema: JsonSchema = {
   additionalProperties: false,
 };
 
-/** The terms of the mailboxes that an offer of mailboxes opens. */
 export type MailboxTerms = { readonly retention: number; readonly quota: number; readonly size: number };
 
 export type MailboxOfferData = MailboxTerms & { readonly identity: JsonLink<KeyObject> };

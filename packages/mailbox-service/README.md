@@ -334,7 +334,7 @@ more.
 | 200 | the answer is what waits, once what the request is done with no longer does |
 | 400 | the bundle does not read, or its root is not a signature over a pickup request of this mailbox |
 | 403 | the request is signed for another root than the account's, or by a key that the current version of the root's identity does not list |
-| 413 | the body is over 64 KiB |
+| 413 | the body is over 64 KiB and 128 bytes for each of the 100 messages that an answer holds at most |
 
 Devices that pick up at once each get what waits, so each receives it, as
 a receiver that picks up again does.
@@ -372,11 +372,12 @@ holds besides is dropped.
 The Services in the store are what the service gave out. Of them, the
 latest is the one it answers `GET /` with, as a client takes it for where
 a service is, and the ids they list are the ids it gave out: one that the
-latest lists takes acceptances, one that only an earlier one lists is
-answered 410, and one that none lists 404. The service
-works this out from the store on each request, through the same index of
-`@estoc/store` that `of` reads, so services that share a store answer
-alike, with the latest Service that any of them signed.
+latest lists takes what is posted for the offer under it, one that only an
+earlier one lists is answered 410, and one that none lists 404. The
+service works this out from the store on each request, through the same
+index of `@estoc/store` that `of` reads, and reads the offer there too, so
+services that share a store answer alike, with the latest Service that any
+of them signed, and open mailboxes on the terms that it lists.
 
 Started again with the same store, the service keeps answering with the
 latest Service when what it would sign says the same apart from `at`: the
@@ -416,8 +417,11 @@ It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and
 at any other path, and 410 at the id of an offer that only an earlier
 Service lists. No request carries credentials, so it answers any origin,
 and it answers the CORS preflight that a browser sends before it posts a
-zip or sealed bytes to another origin. A request is read up to 64 KiB, and
-sealed bytes up to the size that the offer of their mailbox names.
+zip or sealed bytes to another origin. A request is read up to 64 KiB. A
+pickup request is read up to 128 bytes more for each of the 100 messages
+that an answer holds at most, so that it lists the links of all that the
+receiver is done with of the answer before. Sealed bytes are read up to the
+size that the offer of their mailbox names.
 
 Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to

@@ -56,7 +56,6 @@ export const pickupRequestSchemaRead: Schema<Json, PickupRequestData> = await en
 );
 export const waitingSchemaRead: Schema<Json, WaitingData> = await encodeSchema(waitingSchema, defaultValidator);
 
-/** The terms that `memoryService` offers mailboxes on unless it is given others. */
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 
 export const serviceSigner = signer(ed25519, 9);

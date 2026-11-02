@@ -485,8 +485,24 @@ describe("a mailbox that a service opened", () => {
     expect(await picked(await services.pickup(mailbox.link, actor))).toEqual([new Uint8Array([1])]);
   });
 
-  it("is picked up a batch at a time, each request done with the batch before", async () => {
-    const actor = await actorOf(alice);
+  it.each<[string, () => Promise<Actor>]>([
+    ["by an identity", () => actorOf(alice)],
+    [
+      "by an agent of a root that lists so many that a request for a mailbox comes near 64 KiB",
+      async () => {
+        const [agent, ...more] = Array.from({ length: 120 }, (_, n) => signer(ed25519, 16 + n));
+        assert.exists(agent);
+        return signatures.actor(
+          agent,
+          await delegate(
+            wallet,
+            [agent, ...more].map(({ key }) => key),
+          ),
+        );
+      },
+    ],
+  ])("is picked up a batch at a time %s, each request done with the batch before", async (_, actorFor) => {
+    const actor = await actorFor();
     const { run, store, services, offer } = await withAccount(actor);
     const mailbox = await openedIn(store, offer, actor);
     const send = new URL(mailbox.data.url).pathname;

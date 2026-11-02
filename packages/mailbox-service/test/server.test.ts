@@ -701,6 +701,34 @@ describe("a mailbox service's offer of mailboxes", () => {
       410,
     );
   });
+
+  it("opens a mailbox on the terms of the offer that the latest Service lists, though another start on its store signed it", async () => {
+    const { service, ...shared } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { service: newer } = await memoryService({ ...shared, offered: { ...terms, size: 100 }, start: 9_000 });
+    expect((await rootOf(service)).mailbox.offer.data.size).toBe(100);
+    const mailbox = await openMailbox(service, actor);
+    expect((await post(newer, mailbox.send, sealedOf(1, 101))).status).toBe(413);
+    expect((await post(service, mailbox.send, sealedOf(1, 100))).status).toBe(204);
+  });
+
+  it("started again with its clock behind takes requests for the offer that the latest Service lists, and answers 410 at its own", async () => {
+    const { service, ...shared } = await memoryService({ start: 5_000 });
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    const first = new Uint8Array(await (await askingForMailbox(service, zip)).arrayBuffer());
+    const offered = { ...terms, size: 100 };
+    const { service: behind } = await memoryService({ ...shared, offered, start: 1_000 });
+    const again = await askingForMailbox(behind, zip);
+    expect(again.status).toBe(200);
+    expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
+    const opened = await openMailbox(behind, actor, keyOf(0x22));
+    expect((await post(behind, opened.send, sealedOf(1, 1_000))).status).toBe(204);
+    const own = encodeObject(mailboxOfferSchemaRead, { identity: { $link: serviceRoot.link }, ...offered });
+    expect((await post(behind, own.link, (await requesting(actor, own)).zip)).status).toBe(410);
+  });
 });
 
 describe("a mailbox that a service opened", () => {

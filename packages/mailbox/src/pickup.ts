@@ -15,9 +15,9 @@ export interface Pickup {
   arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
 }
 
-/** Sealed bytes that wait at a mailbox until the receiver is done with them. */
+/** A ciphertext that waits at a mailbox until the receiver is done with it. */
 export interface Arrival {
-  readonly sealed: Uint8Array;
-  /** Lets the transport drop the sealed bytes, which then no longer wait. */
+  readonly ciphertext: Uint8Array;
+  /** Lets the transport drop the ciphertext, which then no longer waits. */
   drop(): Promise<void>;
 }

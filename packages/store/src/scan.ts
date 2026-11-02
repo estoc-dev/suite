@@ -46,16 +46,15 @@ export interface Rows<K extends Key> {
 }
 
 /**
- * Fills `index` from the objects written to `store` as mine, going through
- * all of them; the store may be a `PrivateStore` or a `StagedStore`. Only
- * what the store lists as mine reaches an index, and on a staged batch what
- * the batch writes as mine as well: what came from elsewhere is reached by
- * following links from it. Each object is read once and checked against its
- * schema before the index sees it, and the scan fails on one whose data does
- * not fit.
+ * Fills `index` from the records of `store`, going through all of them; the
+ * store may be a `PrivateStore` or a `StagedStore`. Only records reach an
+ * index, and on a staged batch the batch's records as well: what came from
+ * elsewhere is reached by following links from them. Each object is read
+ * once and checked against its schema before the index sees it, and the
+ * scan fails on one whose data does not fit.
  */
 export async function scan<D, K extends Key, F extends Fields<D>>(
-  store: Pick<Store, "get" | "mine">,
+  store: Pick<Store, "get" | "records">,
   index: Index<D, K, F>,
 ): Promise<Rows<K>> {
   const encodings = new Set(index.reads.map(({ encoding }) => encoding));
@@ -64,7 +63,7 @@ export async function scan<D, K extends Key, F extends Fields<D>>(
     throw new Error("an index reads schemas of one encoding, and at least one");
   const schemas = new Map(index.reads.map((schema) => [schema.link, schema]));
   const rows = new Map<string, K>();
-  for await (const link of store.mine()) {
+  for await (const link of store.records()) {
     const bytes = await store.get(link);
     if (bytes === undefined) throw new Error(`the store lists ${link} but does not hold it`);
     const schema = schemas.get(schemaOf(bytes, encoding));

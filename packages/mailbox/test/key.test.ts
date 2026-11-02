@@ -15,32 +15,32 @@ const note = await encodeSchema(
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
 const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);
-const sealed = await sealTo(bob, await zipBundle(writeBundle(root, [blob]), { compress: false }));
+const ciphertext = await sealTo(bob, await zipBundle(writeBundle(root, [blob]), { compress: false }));
 
 describe("a mailbox key", () => {
   it("opens what was sealed to it to the bundle inside, as many times as it arrives", async () => {
-    for (const bundle of [await bob.open(sealed), await bob.open(sealed)]) {
+    for (const bundle of [await bob.open(ciphertext), await bob.open(ciphertext)]) {
       expect(bundle.link).toBe(root.link);
       expect(bundle.get(linkOf(blob))).toEqual(blob);
     }
   });
 
   it("does not open what was sealed to another key", async () => {
-    await expect(carol.open(sealed)).rejects.toThrow(/do not open with this key/);
+    await expect(carol.open(ciphertext)).rejects.toThrow(/does not open with this key/);
   });
 
   it.each([
     ["the first byte of enc", 0],
     ["the last byte of enc", 31],
     ["the first byte of the ciphertext", 32],
-    ["the last byte of the tag", sealed.length - 1],
-  ])("does not open sealed bytes with %s changed", async (_, at) => {
-    const changed = sealed.map((byte, i) => (i === at ? byte ^ 1 : byte));
-    await expect(bob.open(changed)).rejects.toThrow(/do not open with this key/);
+    ["the last byte of the tag", ciphertext.length - 1],
+  ])("does not open a ciphertext with %s changed", async (_, at) => {
+    const changed = ciphertext.map((byte, i) => (i === at ? byte ^ 1 : byte));
+    await expect(bob.open(changed)).rejects.toThrow(/does not open with this key/);
   });
 
-  it.each([0, 31, 32 + 15])("does not open sealed bytes cut to %i bytes", async (length) => {
-    await expect(bob.open(sealed.subarray(0, length))).rejects.toThrow(/do not open with this key/);
+  it.each([0, 31, 32 + 15])("does not open a ciphertext cut to %i bytes", async (length) => {
+    await expect(bob.open(ciphertext.subarray(0, length))).rejects.toThrow(/does not open with this key/);
   });
 
   it("refuses what opens but is not the zip of a bundle", async () => {

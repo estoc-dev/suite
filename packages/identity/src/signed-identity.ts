@@ -84,7 +84,7 @@ export class SignedIdentities {
    */
   async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
     const object = await readObject(reader, link, this.schema);
-    return signedOf(object, await this.#identities.read(object.data.identity.$link, reader));
+    return signedIdentityOf(object, await this.#identities.read(object.data.identity.$link, reader));
   }
 
   /**
@@ -95,39 +95,44 @@ export class SignedIdentities {
   async sign<I extends IdentityObject>(root: Signer, identity: I): Promise<SignedIdentityObject<I>> {
     const signature = await root.sign(digestOf(identity.link));
     const data = { identity: { $link: identity.link }, signature: bytesToHex(signature) };
-    return signedOf(encodeObject(this.schema, data), identity);
+    return signedIdentityOf(encodeObject(this.schema, data), identity);
   }
 
   /** The key that signs for `signedIdentity`'s identity and made `signature` over `object` by it; undefined when none did. */
   verify(signedIdentity: SignedIdentityObject, object: Link<never>, signature: Uint8Array): KeyObject | undefined {
     const { identity } = signedIdentity;
-    return this.#of(identity).verify(identity, digestOf(object), signature, digestOf(signedIdentity.link));
+    return this.#implementationOf(identity).verify(
+      identity,
+      digestOf(object),
+      signature,
+      digestOf(signedIdentity.link),
+    );
   }
 
   /** How `signer` signs an object by `signedIdentity`; undefined when its key does not sign for its identity. */
-  signing(
+  signingFunction(
     signedIdentity: SignedIdentityObject,
     signer: Signer,
   ): ((object: Link<unknown>) => Promise<Uint8Array>) | undefined {
     const { identity } = signedIdentity;
-    const sign = this.#of(identity).signing(identity, signer);
+    const sign = this.#implementationOf(identity).signingFunction(identity, signer);
     if (sign === undefined) return undefined;
     const by = digestOf(signedIdentity.link);
     return (object) => sign(digestOf(object), by);
   }
 
   /** Whether `key` signs for `signedIdentity`'s identity. */
-  signs(signedIdentity: SignedIdentityObject, key: KeyObject): boolean {
+  hasSigner(signedIdentity: SignedIdentityObject, key: KeyObject): boolean {
     const { identity } = signedIdentity;
-    return this.#of(identity).signs(identity, key);
+    return this.#implementationOf(identity).hasSigner(identity, key);
   }
 
-  #of(identity: IdentityObject): IdentityImplementation {
-    return this.#identities.of(identity.schema.link);
+  #implementationOf(identity: IdentityObject): IdentityImplementation {
+    return this.#identities.implementationOf(identity.schema.link);
   }
 }
 
-function signedOf<I extends IdentityObject>(
+function signedIdentityOf<I extends IdentityObject>(
   object: EncodedObject<Json, SignedIdentityData>,
   identity: I,
 ): SignedIdentityObject<I> {

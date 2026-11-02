@@ -51,11 +51,11 @@ const [inbound, outbound] = await Promise.all([delivery(inboundSchema), delivery
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
-type Delivered = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
+type DeliveryRow = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
 
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle.
-const deliveries: Index<Json, Delivered, DeliveryData> = {
+const deliveries: Index<Json, DeliveryRow, DeliveryData> = {
   reads: [inbound, outbound],
   rows: ({ schema, data: { mailbox, at, bundle } }) => [
     [schema.link === inbound.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link],
@@ -71,8 +71,8 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // What came in at `mine` and went out to `theirs`, in the order of when. A
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
-async function conversation(rows: Rows<Delivered>, mine: Mailbox, theirs: Mailbox): Promise<Delivered[]> {
-  const first = async (range: AsyncIterable<Delivered>) => {
+async function conversation(rows: Rows<DeliveryRow>, mine: Mailbox, theirs: Mailbox): Promise<DeliveryRow[]> {
+  const first = async (range: AsyncIterable<DeliveryRow>) => {
     const seen = new Set<Link<never>>();
     return (await all(range)).filter(([, , , bundle]) => {
       const fresh = !seen.has(bundle);
@@ -116,7 +116,7 @@ async function chat(faults: Faults = {}) {
     const inbox = await owner.post.openInbox(queue.mailbox);
     const handedOver = await owner.store.get(inbox.mailbox);
     assert.exists(handedOver);
-    await peer.store.write({ mine: [{ bytes: handedOver }], blobs: [network.transport.schema.bytes] });
+    await peer.store.write({ records: [{ bytes: handedOver }], blobs: [network.transport.schema.bytes] });
     const outbox = await peer.post.outbox(inbox.mailbox);
     return { mailbox: inbox.mailbox, inbox, outbox, pickup: queue.pickup(inbox.mailbox) };
   };
@@ -127,7 +127,7 @@ async function chat(faults: Faults = {}) {
     const object = encodeObject(line, { text });
     const signature = await from.actor.sign(object);
     await from.store.write({
-      mine: [signature],
+      records: [signature],
       blobs: [object.bytes, ...signature.signedIdentity.blobs, ...schemas],
     });
     await outbox.send(signature.link);
@@ -243,12 +243,12 @@ describe("a conversation", () => {
 
     // What Alice wrote, written again to another store, last first and twice.
     const copy = new Store(json, new MemoryBackend());
-    const written = await all(alice.store.mine());
+    const written = await all(alice.store.records());
     for (const link of [...written, ...written].reverse()) {
       const closure = await alice.store.closure(link);
       const bytes = closure.get(link);
       assert.exists(bytes);
-      await copy.write({ mine: [{ bytes }], blobs: closure.values() });
+      await copy.write({ records: [{ bytes }], blobs: closure.values() });
     }
     expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });

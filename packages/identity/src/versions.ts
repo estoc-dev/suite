@@ -29,7 +29,7 @@ export class IdentityVersions {
    * versions it has seen, each as `versionOf` gives it. A version a row names is
    * read from `reader`.
    */
-  known(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
+  people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
     const order = (version: SignedIdentityObject, other: SignedIdentityObject) =>
       compare(this.versionOf(version), this.versionOf(other));
@@ -50,7 +50,7 @@ export class IdentityVersions {
             ? signedIdentity
             : read(last[2]);
         },
-        signed: (signature) => signature.signedIdentity.identity.root.link === root.link,
+        hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
     };
     return { personOf, current: (signedIdentity) => personOf(signedIdentity).current() };

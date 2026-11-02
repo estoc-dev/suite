@@ -34,7 +34,7 @@ import { type Acknowledgements, acknowledgementOf, acknowledgements } from "./ac
 import { PICKUP, readBody, ZIP } from "./http.ts";
 import { type Locations, locations, servicesOf } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
-import { type KnownPeople, knownPeople } from "./people.ts";
+import { type PeopleView, peopleView } from "./people.ts";
 import {
   type AccountOfferData,
   type AcknowledgementData,
@@ -50,12 +50,12 @@ import {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type PickupAnswerData,
   type PickupRequestData,
+  pickupAnswerSchema,
   pickupRequestSchema,
   type ServiceData,
   serviceSchema,
-  type WaitingData,
-  waitingSchema,
 } from "./schemas.ts";
 
 export { type Mailboxes, MemoryMailboxes, type OpenMailbox } from "./mailboxes.ts";
@@ -76,7 +76,7 @@ type Schemas = {
   readonly mailboxRequest: Schema<Json, MailboxRequestData>;
   readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
   readonly pickupRequest: Schema<Json, PickupRequestData>;
-  readonly waiting: Schema<Json, WaitingData>;
+  readonly pickupAnswer: Schema<Json, PickupAnswerData>;
 };
 
 /**
@@ -142,13 +142,13 @@ export interface ServiceOptions {
  * service's signed Service. A `POST` to the id that it lists for the offer
  * of an account opens one for whoever signed the offer, and to the id of
  * the offer of mailboxes opens a mailbox under that account. A `POST` to a
- * mailbox's send id leaves sealed bytes there, and to its pickup id picks
+ * mailbox's send id leaves a ciphertext there, and to its pickup id picks
  * up what waits.
  */
 class MailboxService {
   readonly #actor: Actor;
   readonly #services: ReturnType<typeof servicesOf>;
-  readonly #people: KnownPeople;
+  readonly #people: PeopleView;
   readonly #acknowledgements: Acknowledgements;
   readonly #signatures: Signatures;
   readonly #signedIdentities: SignedIdentities;
@@ -167,7 +167,7 @@ class MailboxService {
   ) {
     this.#actor = actor;
     this.#services = servicesOf(locations, root);
-    this.#people = knownPeople(kit, schemas);
+    this.#people = peopleView(kit, schemas);
     this.#acknowledgements = acknowledgements(kit.signatures, schemas.acknowledgement);
     this.#signatures = kit.signatures;
     this.#signedIdentities = kit.signedIdentities;
@@ -192,20 +192,21 @@ class MailboxService {
       const mailbox = await this.#mailboxes.mailboxNamed(id);
       if (mailbox === undefined) return answer(404);
       return answerTo(request, "POST", () =>
-        id === mailbox.send ? this.#receive(request, mailbox) : this.#pickUp(request, mailbox),
+        id === mailbox.sendId ? this.#receive(request, mailbox) : this.#pickUp(request, mailbox),
       );
     }
     if (!ID.test(id)) return answer(404);
     const people = await view(this.#store, this.#people);
-    if (await this.#lists(latest, id, people)) return answerTo(request, "POST", () => this.#take(request, id));
-    for (const link of earlier) if (await this.#lists(link, id, people)) return answer(410);
+    if (await this.#serviceListsOffer(latest, id, people))
+      return answerTo(request, "POST", () => this.#acceptOffer(request, id));
+    for (const link of earlier) if (await this.#serviceListsOffer(link, id, people)) return answer(410);
     return answer(404);
   }
 
-  async #lists(link: Link<Signature>, id: string, people: People): Promise<boolean> {
+  async #serviceListsOffer(link: Link<Signature>, id: string, people: People): Promise<boolean> {
     const { object } = await this.#signatures.read(link, this.#store, people);
     const { offers } = (await readObject(this.#store, object, this.#schemas.service)).data;
-    return offers.some(({ accept }) => accept === id);
+    return offers.some(({ acceptId }) => acceptId === id);
   }
 
   /**
@@ -213,7 +214,7 @@ class MailboxService {
    * lists, which is the offer's link, by the offer that the store holds
    * there, whichever start of the service signed it.
    */
-  async #take(request: Request, id: string): Promise<Response> {
+  async #acceptOffer(request: Request, id: string): Promise<Response> {
     const offer = id as Link<EncodedObject<Json>>;
     const bytes = await this.#store.get(offer);
     if (bytes === undefined) throw new Error(`the store does not hold ${offer}`);
@@ -241,7 +242,7 @@ class MailboxService {
       bundle = await unpackBundle(zip);
       acceptance = await this.#signatures.read(bundle.link, bundle, people);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (people.personOf(this.#actor.signedIdentity).signed(acceptance))
+      if (people.personOf(this.#actor.signedIdentity).hasSigned(acceptance))
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, reasonOf(error));
@@ -285,18 +286,18 @@ class MailboxService {
     if (!(await this.#accounts.has(root))) return answer(403, `${root} has no account here`);
     const opened = await this.#mailboxes.mailboxOpenedBy(signature.link);
     if (opened !== undefined) return this.#answerWith(opened.acknowledgement, 200);
-    const [send, pickup] = [newId(), newId()];
+    const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = encodeObject(this.#schemas.mailboxAcknowledgement, {
       request: { $link: signature.link },
       at,
-      send,
-      pickup,
+      sendId,
+      pickupId,
     });
     const signed = await this.#acknowledge(acknowledgement, bundle, signature.signedIdentity, [
       this.#schemas.mailboxRequest.bytes,
     ]);
     const { identity: _, ...terms } = offer.data;
-    const mailbox = { request: signature.link, acknowledgement: signed.link, root, send, pickup, terms };
+    const mailbox = { request: signature.link, acknowledgement: signed.link, root, sendId, pickupId, terms };
     // Requests of one mailbox at once can each sign an acknowledgement, and
     // each is answered with the one that opened it.
     const kept = await this.#mailboxes.open(mailbox);
@@ -305,8 +306,8 @@ class MailboxService {
 
   /**
    * Signs `acknowledgement` of what `bundle` holds at its root, and writes
-   * it to the store as mine, with `blobs` that what it acknowledges leads
-   * to, so the service knows the version that signed it from then on.
+   * it to the store as a record, with `blobs` that what it acknowledges
+   * leads to, so the service knows the version that signed it from then on.
    */
   async #acknowledge(
     acknowledgement: EncodedObject<Json>,
@@ -319,55 +320,62 @@ class MailboxService {
     // identity leads to nor the interfaces they name, so the bundle need not hold
     // them, and the store takes a blob in only with all it leads to.
     const own = [acknowledgement.bytes, acknowledgement.schema.bytes, ...signedIdentity.blobs, ...blobs];
-    await this.#store.write({ mine: [signature], blobs: [...own, ...bundle.blobs()] });
+    await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
   }
 
   /**
-   * Keeps the sealed bytes posted to a mailbox's send id waiting there,
-   * unless they are over its size or would take what waits over its quota.
+   * Keeps the ciphertext posted to a mailbox's send id waiting there,
+   * unless it is over its size or would take what waits over its quota.
    * Anyone can post there, as to any HTTP mailbox.
    */
-  async #receive(request: Request, { send, terms }: OpenMailbox): Promise<Response> {
-    const sealed = await readBody(request.body, terms.size);
-    if (sealed === undefined) return answer(413, `a message to this mailbox holds at most ${terms.size} bytes`);
+  async #receive(request: Request, { sendId, terms }: OpenMailbox): Promise<Response> {
+    const ciphertext = await readBody(request.body, terms.size);
+    if (ciphertext === undefined) return answer(413, `a message to this mailbox holds at most ${terms.size} bytes`);
     const at = this.#clock();
-    const waits = await this.#mailboxes.put(send, sealed, { at, since: at - terms.retention, quota: terms.quota });
+    const waits = await this.#mailboxes.put(sendId, ciphertext, {
+      at,
+      since: at - terms.retention,
+      quota: terms.quota,
+    });
     return waits ? answer(204) : answer(429, `this mailbox holds at most ${terms.quota} bytes that wait`);
   }
 
   /**
-   * Lets the sealed bytes that the posted pickup request is done with wait
-   * no more, and answers with what waits then. The request is judged as signed for the
-   * root of the mailbox's account by a key that the current version of its
-   * identity lists, and is refused with 403 when it is not, though it reads.
+   * Lets the ciphertexts that the posted pickup request has receipts for
+   * wait no more, and answers with what waits then. The request is judged
+   * as signed for the root of the mailbox's account by a key that the
+   * current version of its identity lists, and is refused with 403 when it
+   * is not, though it reads.
    */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
     const zip = await readBody(request.body, PICKUP_LIMIT);
     if (zip === undefined) return answer(413, `a pickup request holds at most ${PICKUP_LIMIT} bytes`);
     const people = await view(this.#store, this.#people);
     let signature: Signature;
-    let done: Link<Uint8Array>[];
+    let receipts: Link<Uint8Array>[];
     try {
       const bundle = await unpackBundle(zip);
       signature = await this.#signatures.read(bundle.link, bundle, noVersions);
       const { data } = await readObject(bundle, signature.object, this.#schemas.pickupRequest);
       if (data.mailbox.$link !== mailbox.acknowledgement)
         throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
-      done = data.done.map(({ $link }) => $link);
+      receipts = data.receipts.map(({ $link }) => $link);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
     const { signedIdentity, key } = signature;
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
-    if (!this.#signedIdentities.signs(await people.current(signedIdentity), key))
+    if (!this.#signedIdentities.hasSigner(await people.current(signedIdentity), key))
       return answer(403, `${key.link} does not sign for the current version of ${mailbox.root}`);
     const at = this.#clock();
-    await this.#mailboxes.drop(mailbox.send, done);
-    const sealed = await batchOf(this.#mailboxes.waiting(mailbox.send, at - mailbox.terms.retention));
-    const waiting = encodeObject(this.#schemas.waiting, { sealed: sealed.map((bytes) => ({ $link: linkOf(bytes) })) });
-    return bundleAnswer(200, await packBundle(waiting, sealed));
+    await this.#mailboxes.drop(mailbox.sendId, receipts);
+    const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
+    const pickupAnswer = encodeObject(this.#schemas.pickupAnswer, {
+      ciphertexts: ciphertexts.map((bytes) => ({ $link: linkOf(bytes) })),
+    });
+    return bundleAnswer(200, await packBundle(pickupAnswer, ciphertexts));
   }
 
   /** Answers with the bundle of one of the service's signatures and all it leads to in the store. */
@@ -386,20 +394,20 @@ const newId = () => hex.encode(crypto.getRandomValues(new Uint8Array(16)));
 
 const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** As much of `waiting` as one pickup answers with, from the earliest. */
-async function batchOf(waiting: AsyncIterable<Uint8Array>): Promise<Uint8Array[]> {
+/** As much of `queue` as one pickup answers with, from the earliest. */
+async function batchOf(queue: AsyncIterable<Uint8Array>): Promise<Uint8Array[]> {
   const batch: Uint8Array[] = [];
   let bytes = 0;
-  for await (const sealed of waiting) {
-    if (batch.length === PICKUP.count || (batch.length > 0 && bytes + sealed.length > PICKUP.bytes)) break;
-    batch.push(sealed);
-    bytes += sealed.length;
+  for await (const ciphertext of queue) {
+    if (batch.length === PICKUP.count || (batch.length > 0 && bytes + ciphertext.length > PICKUP.bytes)) break;
+    batch.push(ciphertext);
+    bytes += ciphertext.length;
   }
   return batch;
 }
 
 function answerTo(request: Request, method: string, handle: () => Promise<Response>): Promise<Response> | Response {
-  // A browser asks before it posts a zip, or sealed bytes, to another origin.
+  // A browser asks before it posts a zip, or a ciphertext, to another origin.
   if (request.method === "OPTIONS") {
     return answer(204, null, {
       "access-control-allow-methods": method,
@@ -452,7 +460,7 @@ export async function loadMailboxService(
     mailboxRequest: await compile(mailboxRequestSchema),
     mailboxAcknowledgement: await compile(mailboxAcknowledgementSchema),
     pickupRequest: await compile(pickupRequestSchema),
-    waiting: await compile(waitingSchema),
+    pickupAnswer: await compile(pickupAnswerSchema),
   };
   const identity = { $link: keys.encode(signer.key).link };
   const offers = [
@@ -461,7 +469,7 @@ export async function loadMailboxService(
   ];
   const index = locations(signatures, schemas.service);
 
-  const people = await view(store, knownPeople(kit, schemas));
+  const people = await view(store, peopleView(kit, schemas));
   const signed = await Promise.all(
     (await view(store, servicesOf(index, identity.$link))).map((link) => signatures.read(link, store, people)),
   );
@@ -479,7 +487,7 @@ export async function loadMailboxService(
   const next: ServiceData = {
     origin,
     at,
-    offers: listed.map(([offer, signature]) => ({ offer: { $link: signature.link }, accept: offer.link })),
+    offers: listed.map(([offer, signature]) => ({ offer: { $link: signature.link }, acceptId: offer.link })),
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
     const object = encodeObject(schemas.service, next);
@@ -490,7 +498,7 @@ export async function loadMailboxService(
       signatures.schema.bytes,
       ...actor.signedIdentity.blobs,
     ];
-    await store.write({ mine: [await actor.sign(object)], blobs });
+    await store.write({ records: [await actor.sign(object)], blobs });
   }
   return new MailboxService(actor, { root: identity.$link, locations: index }, kit, schemas, { ...options, clock });
 }

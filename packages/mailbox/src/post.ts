@@ -86,25 +86,25 @@ export class Post {
   }
 
   /**
-   * Opens a mailbox of the user's with a new key, to receive at. `make` is
-   * given the public key and gives back a mailbox sealed to it, as the
-   * transport makes one. The mailbox is written to the store and then its
+   * Opens a mailbox of the user's with a new key, to receive at.
+   * `makeMailbox` is given the public key and gives back a mailbox sealed
+   * to it, as the transport makes one. The mailbox is written to the store and then its
    * key to the private store, so a stop in between leaves at most a mailbox
    * that nobody receives at. Refuses a mailbox of a transport the post was
    * not given, or one that names another key, and writes nothing.
    */
-  async openInbox(make: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
+  async openInbox(makeMailbox: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const key = await MailboxKey.fromSecretKey(secret);
-    const { bytes } = await make(key.publicKey);
+    const { bytes } = await makeMailbox(key.publicKey);
     const { data, transport } = readMailbox(bytes, this.#transports);
     if (data.key !== hex.encode(key.publicKey))
       throw new Error("the mailbox made names another key than the one given");
     const mailbox = linkOf(bytes);
-    await this.#store.write({ mine: [{ bytes }], blobs: [transport.schema.bytes] });
+    await this.#store.write({ records: [{ bytes }], blobs: [transport.schema.bytes] });
     const schema = this.#schemas.key;
     const object = encodeObject(schema, { mailbox: { $link: mailbox }, secret: hex.encode(secret) });
-    await this.#keys.write({ mine: [object], blobs: [schema.bytes] });
+    await this.#keys.write({ records: [object], blobs: [schema.bytes] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -142,7 +142,7 @@ export class Post {
     const schema = this.#schemas[direction];
     const at = this.#clock();
     const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ mine: [record], blobs: [schema.bytes, ...blobs] });
+    await this.#store.write({ records: [record], blobs: [schema.bytes, ...blobs] });
     return { direction, bundle, mailbox, at, link: record.link };
   }
 }
@@ -200,14 +200,14 @@ export class Inbox {
   }
 
   /**
-   * Opens sealed bytes that arrived at the mailbox, and keeps the bundle
-   * inside with a record that it came in. Keeps nothing when they do not
+   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle
+   * inside with a record that it came in. Keeps nothing when it does not
    * open, or when the bundle leaves out a blob that its root leads to and
    * the store does not hold. What arrives twice is recorded twice, once for
    * each time it came in.
    */
-  async receive(sealed: Uint8Array): Promise<Delivery> {
-    const bundle = await this.#opener.open(sealed);
+  async receive(ciphertext: Uint8Array): Promise<Delivery> {
+    const bundle = await this.#opener.open(ciphertext);
     return this.#record(bundle.link, bundle.blobs());
   }
 
@@ -225,17 +225,17 @@ export class Inbox {
       throw new Error(`a pickup of ${pickup.mailbox} is not collected at ${this.mailbox}`);
     const deliveries: Delivery[] = [];
     for await (const arrival of pickup.arrivals(signal)) {
-      const delivery = await this.#tryReceive(arrival.sealed);
+      const delivery = await this.#tryReceive(arrival.ciphertext);
       if (delivery !== undefined) deliveries.push(delivery);
       await arrival.drop();
     }
     return deliveries;
   }
 
-  async #tryReceive(sealed: Uint8Array): Promise<Delivery | undefined> {
+  async #tryReceive(ciphertext: Uint8Array): Promise<Delivery | undefined> {
     let bundle: Bundle;
     try {
-      bundle = await this.#opener.open(sealed);
+      bundle = await this.#opener.open(ciphertext);
     } catch {
       return undefined;
     }

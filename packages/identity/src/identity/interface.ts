@@ -46,7 +46,7 @@ export interface IdentityObject extends EncodedObject<Json, IdentityData> {
 }
 
 /** Signs the digest of an object by the digest of a signed identity, giving the bytes of a signature for its identity. */
-export type Sign = (object: Uint8Array, signedIdentity: Uint8Array) => Promise<Uint8Array>;
+export type SigningFunction = (object: Uint8Array, signedIdentity: Uint8Array) => Promise<Uint8Array>;
 
 /**
  * One identity schema, as a program reads it as the Identity interface: how
@@ -63,9 +63,9 @@ export interface IdentityImplementation<I extends IdentityObject = IdentityObjec
    */
   verify(identity: I, object: Uint8Array, signature: Uint8Array, signedIdentity: Uint8Array): KeyObject | undefined;
   /** How `signer` signs for `identity`; undefined when its key does not. */
-  signing(identity: I, signer: Signer): Sign | undefined;
+  signingFunction(identity: I, signer: Signer): SigningFunction | undefined;
   /** Whether `key` signs for `identity`. */
-  signs(identity: I, key: KeyObject): boolean;
+  hasSigner(identity: I, key: KeyObject): boolean;
 }
 
 /** The identity `object` is, whose root is `root` and which names `keys`. */

@@ -17,13 +17,13 @@ const newStore = (backend: Backend = new MemoryBackend()) => new Store(json, bac
 const giving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
   get: (link) => backend.get(link === under ? other : link),
   has: (link) => backend.has(link),
-  put: (blobs, mine) => backend.put(blobs, mine),
-  mine: () => backend.mine(),
+  put: (blobs, records) => backend.put(blobs, records),
+  records: () => backend.records(),
 });
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.mine()) links.push(link);
+  for await (const link of store.records()) links.push(link);
   return links;
 }
 
@@ -31,7 +31,7 @@ describe("a store", () => {
   it("gives a blob back by its link, and nothing for a link it does not hold", async () => {
     const store = newStore();
     const image = utf8("not an object");
-    await store.write({ mine: [object({ image: { $link: linkOf(image) } })], blobs: [image, anything.bytes] });
+    await store.write({ records: [object({ image: { $link: linkOf(image) } })], blobs: [image, anything.bytes] });
     expect(await store.get(linkOf(image))).toEqual(image);
     expect(await store.get(linkOf(utf8("never written")))).toBeUndefined();
   });
@@ -39,7 +39,7 @@ describe("a store", () => {
   it("refuses to give a blob when its backend gives other bytes under the link", async () => {
     const backend = new MemoryBackend();
     const [kept, other] = [object({ text: "kept" }), object({ text: "other" })];
-    await newStore(backend).write({ mine: [kept, other], blobs: [anything.bytes] });
+    await newStore(backend).write({ records: [kept, other], blobs: [anything.bytes] });
     const store = newStore(giving(backend, kept.link, other.link));
     await expect(store.get(kept.link)).rejects.toThrow(`another blob under ${kept.link}`);
   });
@@ -48,7 +48,7 @@ describe("a store", () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    await store.write({ mine: [note], blobs: [image, anything.bytes] });
+    await store.write({ records: [note], blobs: [image, anything.bytes] });
     expect(await listed(store)).toEqual([note.link]);
     expect(await store.get(linkOf(image))).toEqual(image);
   });
@@ -59,7 +59,10 @@ describe("a store", () => {
     const stray = utf8("led to by nothing written");
     const incomplete = object({ image: { $link: linkOf(utf8("held nowhere")) } });
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    await store.write({ mine: [note], blobs: [image, stray, incomplete.bytes, anything.bytes, ...signatureSchemas] });
+    await store.write({
+      records: [note],
+      blobs: [image, stray, incomplete.bytes, anything.bytes, ...signatureSchemas],
+    });
     expect(await store.get(linkOf(image))).toEqual(image);
     for (const link of [linkOf(stray), incomplete.link, ...signatureSchemas.map(linkOf)])
       expect(await store.get(link)).toBeUndefined();
@@ -70,8 +73,8 @@ describe("a store", () => {
   it("lists an object once, however many times it is written", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    await store.write({ mine: [note, note], blobs: [anything.bytes] });
-    await store.write({ mine: [note] });
+    await store.write({ records: [note, note], blobs: [anything.bytes] });
+    await store.write({ records: [note] });
     expect(await listed(store)).toEqual([note.link]);
   });
 
@@ -79,9 +82,9 @@ describe("a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const record = object({ received: { $link: note.link } });
-    await store.write({ mine: [record], blobs: [note.bytes, anything.bytes] });
+    await store.write({ records: [record], blobs: [note.bytes, anything.bytes] });
     expect(await listed(store)).toEqual([record.link]);
-    await store.write({ mine: [note] });
+    await store.write({ records: [note] });
     expect((await listed(store)).sort()).toEqual([record.link, note.link].sort());
   });
 
@@ -89,10 +92,10 @@ describe("a store", () => {
     const store = newStore();
     const carried = object({ text: "carried" });
     const notCanonical = utf8(` ${new TextDecoder().decode(object({ text: "hello" }).bytes)}`);
-    await expect(store.write({ mine: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(
+    await expect(store.write({ records: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(
       /is not an object/,
     );
-    await expect(store.write({ mine: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(/is not an object/);
+    await expect(store.write({ records: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(/is not an object/);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
   });
@@ -102,12 +105,12 @@ describe("a store", () => {
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     const carried = object({ text: "carried" });
-    await expect(store.write({ mine: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
+    await expect(store.write({ records: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
       `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     const unheld = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
     const written = encodeObject(unheld, { text: "hello" });
-    await expect(store.write({ mine: [written] })).rejects.toThrow(`${written.link} leads to ${unheld.link}`);
+    await expect(store.write({ records: [written] })).rejects.toThrow(`${written.link} leads to ${unheld.link}`);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
   });
@@ -116,8 +119,8 @@ describe("a store", () => {
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     const store = newStore();
-    await expect(store.write({ mine: [note], blobs: [anything.bytes] })).rejects.toThrow(RefusedBatch);
-    await expect(store.write({ mine: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(RefusedBatch);
+    await expect(store.write({ records: [note], blobs: [anything.bytes] })).rejects.toThrow(RefusedBatch);
+    await expect(store.write({ records: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(RefusedBatch);
 
     const gone = new Error("the disk is gone");
     const backend = new MemoryBackend();
@@ -125,26 +128,26 @@ describe("a store", () => {
       get: (link) => backend.get(link),
       has: () => Promise.reject(gone),
       put: () => Promise.reject(gone),
-      mine: () => backend.mine(),
+      records: () => backend.records(),
     });
-    await expect(failing.write({ mine: [note], blobs: [anything.bytes] })).rejects.toBe(gone);
-    await expect(failing.write({ mine: [note], blobs: [image, anything.bytes] })).rejects.toBe(gone);
+    await expect(failing.write({ records: [note], blobs: [anything.bytes] })).rejects.toBe(gone);
+    await expect(failing.write({ records: [note], blobs: [image, anything.bytes] })).rejects.toBe(gone);
   });
 
   it("takes a batch whose blobs lead to blobs it holds from an earlier write", async () => {
     const store = newStore();
     const image = utf8("an image");
     const first = object({ text: "first", image: { $link: linkOf(image) } });
-    await store.write({ mine: [first], blobs: [image, anything.bytes] });
+    await store.write({ records: [first], blobs: [image, anything.bytes] });
     const second = object({ text: "second", image: { $link: linkOf(image) } });
-    await store.write({ mine: [second] });
+    await store.write({ records: [second] });
     expect((await listed(store)).sort()).toEqual([first.link, second.link].sort());
   });
 
   it("takes a string that is a link as a whole as a string, and does not ask for the blob it names", async () => {
     const store = newStore();
     const commitment = object({ hash: linkOf(utf8("a secret")) });
-    await store.write({ mine: [commitment], blobs: [anything.bytes] });
+    await store.write({ records: [commitment], blobs: [anything.bytes] });
     expect(await listed(store)).toEqual([commitment.link]);
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual([commitment.link, anything.link].sort());
   });
@@ -153,16 +156,19 @@ describe("a store", () => {
     let order: Link<unknown>[] = [];
     const store = newStore(
       new (class extends MemoryBackend {
-        override async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void> {
+        override async put(
+          blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+          records: Iterable<Link<never>>,
+        ): Promise<void> {
           order = [...blobs.keys()];
-          await super.put(blobs, mine);
+          await super.put(blobs, records);
         }
       })(),
     );
     const image = utf8("an image");
     const inner = object({ image: { $link: linkOf(image) } });
     const outer = object({ inner: { $link: inner.link } });
-    await store.write({ mine: [outer], blobs: [inner.bytes, image, anything.bytes] });
+    await store.write({ records: [outer], blobs: [inner.bytes, image, anything.bytes] });
     expect(order).toEqual([anything.link, linkOf(image), inner.link, outer.link]);
   });
 
@@ -170,7 +176,7 @@ describe("a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const given = new Uint8Array(note.bytes);
-    await store.write({ mine: [{ bytes: given }], blobs: [anything.bytes] });
+    await store.write({ records: [{ bytes: given }], blobs: [anything.bytes] });
     given.fill(0);
     const gotten = await store.get(note.link);
     gotten?.fill(0);
@@ -184,7 +190,7 @@ describe("the closure of a blob", () => {
     const image = utf8("an image");
     const inner = object({ image: { $link: linkOf(image) } });
     const outer = object({ inner: { $link: inner.link } });
-    await store.write({ mine: [outer], blobs: [inner.bytes, image, anything.bytes] });
+    await store.write({ records: [outer], blobs: [inner.bytes, image, anything.bytes] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, inner.link, linkOf(image), anything.link].sort());
     expect(closure.get(inner.link)).toEqual(inner.bytes);
@@ -196,7 +202,7 @@ describe("the closure of a blob", () => {
     const text = utf8(`see ${target.link}`);
     const indented = utf8(` ${JSON.stringify([{ $link: target.link }])}`);
     const outer = object({ text: { $link: linkOf(text) }, indented: { $link: linkOf(indented) } });
-    await store.write({ mine: [outer], blobs: [text, indented, target.bytes, anything.bytes] });
+    await store.write({ records: [outer], blobs: [text, indented, target.bytes, anything.bytes] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual([outer.link, linkOf(text), linkOf(indented), anything.link].sort());
     expect(await store.get(target.link)).toBeUndefined();
@@ -206,7 +212,7 @@ describe("the closure of a blob", () => {
     const backend = new MemoryBackend();
     const [inner, other] = [object({ text: "inner" }), object({ text: "other" })];
     const outer = object({ inner: { $link: inner.link } });
-    await newStore(backend).write({ mine: [outer, other], blobs: [inner.bytes, anything.bytes] });
+    await newStore(backend).write({ records: [outer, other], blobs: [inner.bytes, anything.bytes] });
     const store = newStore(giving(backend, inner.link, other.link));
     await expect(store.closure(outer.link)).rejects.toThrow(`another blob under ${inner.link}`);
   });
@@ -223,7 +229,7 @@ describe("a signature read from a store", () => {
     const note = object({ text: "hello" });
     const signature = await signatures.actor(signer, await publish(signer, 0)).sign(note);
     await store.write({
-      mine: [note, signature],
+      records: [note, signature],
       blobs: [...signature.signedIdentity.blobs, anything.bytes, ...signatureSchemas],
     });
     const read = await signatures.read(signature.link, store, noVersions);
@@ -234,7 +240,7 @@ describe("a signature read from a store", () => {
   it("is refused when the store holds another kind of object under its link", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    await store.write({ mine: [note], blobs: [anything.bytes] });
+    await store.write({ records: [note], blobs: [anything.bytes] });
     // @ts-expect-error: refused at compile time too
     await expect(signatures.read(note.link, store, noVersions)).rejects.toThrow(/is written to/);
   });

@@ -10,13 +10,13 @@ import {
   type IdentityObject,
   identityInterface,
   identitySchema,
+  isSameKey,
   type Key,
   keyInterface,
   loadIdentity,
   type Scheme,
   type SignedIdentityObject,
   SoftwareSigner,
-  sameKey,
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
@@ -144,7 +144,7 @@ describe("a signed identity", () => {
     const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
     expect(read.link).toBe(signed.link);
     expect(read.identity).toEqual(identities.encode(key(scheme), 1_000));
-    expect(sameKey(read.identity.root, key(scheme))).toBe(true);
+    expect(isSameKey(read.identity.root, key(scheme))).toBe(true);
     expect(read.signature).toEqual(signed.signature);
   });
 
@@ -229,7 +229,7 @@ describe("a Delegated Identity", () => {
     const signed = await delegate(signer(eip191), agents);
     const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
     expect(read.identity).toEqual(signed.identity);
-    expect(sameKey(read.identity.root, key(eip191))).toBe(true);
+    expect(isSameKey(read.identity.root, key(eip191))).toBe(true);
     expect(agentsOf(read.identity).map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
   });
 
@@ -336,7 +336,7 @@ describe("the versions a reader knows", () => {
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
     byLink(signed.flatMap(({ blobs }) => blobs));
   const knowing = (...signed: SignedIdentityObject[]) =>
-    versions.known(rowsOf(versions, ...signed), blobsOf(...signed));
+    versions.people(rowsOf(versions, ...signed), blobsOf(...signed));
 
   it("give as current the version of a root with the greatest at", async () => {
     const later = await delegate(wallet, [key(ed25519, 2)], 2_000);

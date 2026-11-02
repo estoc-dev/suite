@@ -1,7 +1,7 @@
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import type { Encoding, Fields } from "./encoding.ts";
 import { type Bytes, type Link, linkOf } from "./link.ts";
-import { decodeObjectAt, type EncodedObject, getBlob, type Reader, schemaOf } from "./object.ts";
+import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -59,7 +59,7 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
    * The implementation of `schema`, for what a program does with objects of
    * it beyond reading them. Throws for a schema that is not one of these.
    */
-  of(schema: Link<Schema<D>>): I {
+  implementationOf(schema: Link<Schema<D>>): I {
     const implementation = this.#implementations.get(schema);
     if (implementation === undefined) throw new Error(`${schema} is not a schema read here`);
     return implementation;
@@ -67,8 +67,8 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
 
   /** Reads the object that `link` names from `reader` with the implementation of the schema it names. */
   async read(link: Link<T>, reader: Reader): Promise<T> {
-    const bytes = await getBlob(reader, link);
-    const implementation = this.of(schemaOf(bytes, this.#encoding));
+    const bytes = await readBlob(reader, link);
+    const implementation = this.implementationOf(schemaOf(bytes, this.#encoding));
     return implementation.read(decodeObjectAt(link, bytes, implementation.schema), reader);
   }
 }

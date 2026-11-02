@@ -75,7 +75,7 @@ another that lists it.
 
 The keys work without objects. A `Key` is a scheme and a public key,
 `verify` checks a signature by one over the text for a digest, and
-`sameKey` holds when both the scheme and the public key bytes are the
+`isSameKey` holds when both the scheme and the public key bytes are the
 same, so one public key in two schemes is two keys. The scheme is the same
 when it is the same value, so a program holds one copy of this package. A
 `Key` carries its scheme as that value, so it is not data to clone or send;
@@ -207,11 +207,11 @@ longer counts the agent's signatures, whichever version they carry; what
 it accepted before stays accepted. A reader knows the versions it has seen, and nothing tells it
 of the others.
 
-`versions.of` gives the version a signed identity is, as a row: its root,
+`versions.versionOf` gives the version a signed identity is, as a row: its root,
 its `at` and its link. An application keeps the rows of the versions it sees in an
 index of its own, such as one of `@estoc/store`, from the signed
 identities its own objects lead to. In the order of their keys, a root's
-rows end with its current version. `versions.known` takes those rows and
+rows end with its current version. `versions.people` takes those rows and
 a `Reader`, and gives the `People` the reader knows, which are `Versions`
 too: their `current` gives the current version of a signed identity's
 identity, the later of the one given and the signed identity of its root's
@@ -221,7 +221,7 @@ for which the current version is the one given.
 ## People
 
 A person is a root and the versions of its identity that a reader has
-seen. `people.of` takes a signed identity in hand, such as that
+seen. `people.personOf` takes a signed identity in hand, such as that
 of a signature just read, and gives the `Person` of its root:
 
 - `root`, the root's key, as the signed identity holds it.
@@ -229,7 +229,7 @@ of a signature just read, and gives the `Person` of its root:
   the one in hand, each once and in the order of their rows. Each is read
   from the reader, signed by the root.
 - `current()`, the last of them, which says who signs for the person now.
-- `signed(signature)`, whether a signature already read was made for an
+- `hasSigned(signature)`, whether a signature already read was made for an
   identity of the root.
 
 The versions are those the reader has seen, in the order of the root's
@@ -248,12 +248,12 @@ signature carrying it counts as well.
 
 A person reads no signatures. What a signature is read from, and whether
 it is judged by the versions a reader knows or by `noVersions` alone, are
-for the caller to choose, so `signed` takes one already read. With
-`@estoc/store`, an application gives the index and `versions.known`
+for the caller to choose, so `hasSigned` takes one already read. With
+`@estoc/store`, an application gives the index and `versions.people`
 reads its rows:
 
 ```ts
-const people = await view(store, { index: seen, read: (rows, reader) => versions.known(rows, reader) });
+const people = await view(store, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
 const signature = await signatures.read(link, store, people);
 const author = people.personOf(signature.signedIdentity);
 ```

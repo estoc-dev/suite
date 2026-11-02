@@ -13,7 +13,7 @@ import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMe
 
 /** Faults a network puts in the way of every message, as a real channel may. */
 export interface Faults {
-  /** Every sealed message arrives twice. */
+  /** Every ciphertext arrives twice. */
   readonly twice?: boolean;
   /** `take` and a pickup hand out the latest arrival first. */
   readonly reversed?: boolean;
@@ -37,13 +37,13 @@ export interface Queue {
    * with it. Refuses a mailbox that is not at this queue.
    */
   pickup(mailbox: Link<EncodedObject<Json>>): Pickup;
-  /** The sealed messages that wait, which leave the queue. */
+  /** The ciphertexts that wait, which leave the queue. */
   take(): Uint8Array[];
-  /** The one sealed message that waits, which leaves the queue; throws unless exactly one does. */
+  /** The one ciphertext that waits, which leaves the queue; throws unless exactly one does. */
   takeOne(): Uint8Array;
 }
 
-type Waiting = { readonly sealed: Uint8Array };
+type QueuedMessage = { readonly ciphertext: Uint8Array };
 
 /**
  * A post office in one process: senders and receivers that share it reach
@@ -55,14 +55,14 @@ export class MemoryNetwork {
   readonly transport: Transport;
   readonly #schema: Schema<Json>;
   readonly #faults: Faults;
-  readonly #queues = new Map<string, Waiting[]>();
+  readonly #queues = new Map<string, QueuedMessage[]>();
   #deliveries = 0;
   #dones = 0;
 
   private constructor(schema: Schema<Json>, faults: Faults) {
     this.#schema = schema;
     this.#faults = faults;
-    this.transport = { schema, deliver: async (mailbox, sealed) => this.#deliver(mailbox, sealed) };
+    this.transport = { schema, deliver: async (mailbox, ciphertext) => this.#deliver(mailbox, ciphertext) };
   }
 
   static async create(validator: JsonSchemaValidator, faults: Faults = {}): Promise<MemoryNetwork> {
@@ -72,11 +72,11 @@ export class MemoryNetwork {
 
   queue(): Queue {
     const name = hex.encode(crypto.getRandomValues(new Uint8Array(16)));
-    const waiting: Waiting[] = [];
+    const waiting: QueuedMessage[] = [];
     const mailboxes = new Set<Link<EncodedObject<Json>>>();
     this.#queues.set(name, waiting);
     const take = () => {
-      const taken = waiting.splice(0).map(({ sealed }) => sealed);
+      const taken = waiting.splice(0).map(({ ciphertext }) => ciphertext);
       return this.#faults.reversed ? taken.reverse() : taken;
     };
     return {
@@ -93,39 +93,39 @@ export class MemoryNetwork {
       take,
       takeOne: () => {
         const taken = take();
-        const [sealed] = taken;
-        if (sealed === undefined || taken.length > 1) throw new Error(`${taken.length} messages arrived, not one`);
-        return sealed;
+        const [ciphertext] = taken;
+        if (ciphertext === undefined || taken.length > 1) throw new Error(`${taken.length} messages arrived, not one`);
+        return ciphertext;
       },
     };
   }
 
   // Finds the next that waits each time, so what arrives meanwhile is
   // handed out too.
-  async *#arrivals(waiting: Waiting[], signal?: AbortSignal): AsyncGenerator<Arrival> {
-    const handed = new Set<Waiting>();
+  async *#arrivals(waiting: QueuedMessage[], signal?: AbortSignal): AsyncGenerator<Arrival> {
+    const handed = new Set<QueuedMessage>();
     for (;;) {
       if (signal?.aborted) return;
       const left = waiting.filter((each) => !handed.has(each));
       const next = this.#faults.reversed ? left.at(-1) : left[0];
       if (next === undefined) return;
       handed.add(next);
-      yield { sealed: next.sealed.slice(), drop: async () => this.#drop(waiting, next) };
+      yield { ciphertext: next.ciphertext.slice(), drop: async () => this.#drop(waiting, next) };
     }
   }
 
-  #drop(waiting: Waiting[], arrival: Waiting): void {
+  #drop(waiting: QueuedMessage[], arrival: QueuedMessage): void {
     if (this.#faults.cut?.(this.#dones++)) throw new Error("the network was cut before the queue heard it was done");
     const at = waiting.indexOf(arrival);
     if (at !== -1) waiting.splice(at, 1);
   }
 
-  #deliver({ name }: JsonObject, sealed: Uint8Array): void {
+  #deliver({ name }: JsonObject, ciphertext: Uint8Array): void {
     const waiting = typeof name === "string" ? this.#queues.get(name) : undefined;
     if (waiting === undefined) throw new UndeliveredMessage("gone", `no queue is named ${String(name)}`);
     if (this.#faults.lost?.(this.#deliveries++)) return;
     // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
-    waiting.push({ sealed: sealed.slice() });
-    if (this.#faults.twice) waiting.push({ sealed: sealed.slice() });
+    waiting.push({ ciphertext: ciphertext.slice() });
+    if (this.#faults.twice) waiting.push({ ciphertext: ciphertext.slice() });
   }
 }

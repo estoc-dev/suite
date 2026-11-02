@@ -21,9 +21,9 @@ const object = (data: JsonObject) => encodeObject(anything, data);
 
 const newStore = () => new Store(json, new MemoryBackend());
 
-async function listed(store: { mine(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.mine()) links.push(link);
+  for await (const link of store.records()) links.push(link);
   return links;
 }
 
@@ -31,10 +31,10 @@ describe("a staged batch", () => {
   it("gives the blobs of the batch that what it writes as mine leads to, and those the store holds", async () => {
     const store = newStore();
     const held = object({ text: "held" });
-    await store.write({ mine: [held], blobs: [anything.bytes] });
+    await store.write({ records: [held], blobs: [anything.bytes] });
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) }, held: { $link: held.link } });
-    const staged = await store.stage({ mine: [note], blobs: [image] });
+    const staged = await store.stage({ records: [note], blobs: [image] });
     expect(await staged.get(note.link)).toEqual(note.bytes);
     expect(await staged.get(linkOf(image))).toEqual(image);
     expect(await staged.get(held.link)).toEqual(held.bytes);
@@ -46,7 +46,7 @@ describe("a staged batch", () => {
     const stray = utf8("led to by nothing written");
     const carried = object({ text: "carried" });
     const staged = await store.stage({
-      mine: [object({ text: "hello" })],
+      records: [object({ text: "hello" })],
       blobs: [stray, carried.bytes, anything.bytes],
     });
     expect(await staged.get(linkOf(stray))).toBeUndefined();
@@ -56,8 +56,8 @@ describe("a staged batch", () => {
   it("lists what the store lists and what the batch writes as mine, each once", async () => {
     const store = newStore();
     const [first, second, third] = [object({ text: "first" }), object({ text: "second" }), object({ text: "third" })];
-    await store.write({ mine: [first], blobs: [anything.bytes] });
-    const staged = await store.stage({ mine: [first, second, second, third] });
+    await store.write({ records: [first], blobs: [anything.bytes] });
+    const staged = await store.stage({ records: [first, second, second, third] });
     expect((await listed(staged)).sort()).toEqual([first.link, second.link, third.link].sort());
   });
 
@@ -65,11 +65,11 @@ describe("a staged batch", () => {
     const store = newStore();
     const carried = object({ text: "carried" });
     await expect(
-      store.stage({ mine: [{ bytes: json.encode([1, 2]) }], blobs: [carried.bytes, anything.bytes] }),
+      store.stage({ records: [{ bytes: json.encode([1, 2]) }], blobs: [carried.bytes, anything.bytes] }),
     ).rejects.toThrow(/is not an object/);
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
-    await expect(store.stage({ mine: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
+    await expect(store.stage({ records: [note], blobs: [carried.bytes, anything.bytes] })).rejects.toThrow(
       `${note.link} leads to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     expect(await store.get(carried.link)).toBeUndefined();
@@ -79,7 +79,7 @@ describe("a staged batch", () => {
   it("leaves the store as it was until it is committed", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const staged = await store.stage({ mine: [note], blobs: [anything.bytes] });
+    const staged = await store.stage({ records: [note], blobs: [anything.bytes] });
     expect(await listed(staged)).toEqual([note.link]);
     expect(await store.get(note.link)).toBeUndefined();
     expect(await store.get(anything.link)).toBeUndefined();
@@ -90,7 +90,7 @@ describe("a staged batch", () => {
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    const batch = { mine: [note], blobs: [image, stray, anything.bytes] };
+    const batch = { records: [note], blobs: [image, stray, anything.bytes] };
     const [written, committed] = [newStore(), newStore()];
     await written.write(batch);
     const staged = await committed.stage(batch);
@@ -104,11 +104,11 @@ describe("a staged batch", () => {
   it("can still be committed after other writes to the store", async () => {
     const store = newStore();
     const held = object({ text: "held" });
-    await store.write({ mine: [held], blobs: [anything.bytes] });
+    await store.write({ records: [held], blobs: [anything.bytes] });
     const note = object({ held: { $link: held.link } });
-    const staged = await store.stage({ mine: [note] });
+    const staged = await store.stage({ records: [note] });
     const other = object({ text: "other" });
-    await store.write({ mine: [other, note] });
+    await store.write({ records: [other, note] });
     await staged.commit();
     expect((await listed(store)).sort()).toEqual([held.link, other.link, note.link].sort());
     expect(await store.get(note.link)).toEqual(note.bytes);
@@ -119,7 +119,7 @@ describe("a staged batch", () => {
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
     const [givenNote, givenImage] = [new Uint8Array(note.bytes), new Uint8Array(image)];
-    const staged = await store.stage({ mine: [{ bytes: givenNote }], blobs: [givenImage, anything.bytes] });
+    const staged = await store.stage({ records: [{ bytes: givenNote }], blobs: [givenImage, anything.bytes] });
     givenNote.fill(0);
     givenImage.fill(0);
     (await staged.get(note.link))?.fill(0);
@@ -178,15 +178,15 @@ const people: View<Json, Version, People, SignatureData> = {
       yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
     },
   },
-  read: (rows, reader) => versions.known(rows, reader),
+  read: (rows, reader) => versions.people(rows, reader),
 };
 
 describe("a view of a staged batch", () => {
   it("is the view of the store once the batch is committed, when nothing else is written in between", async () => {
     const store = newStore();
-    await store.write({ mine: [note({ text: "soup", tags: ["lunch"], at: 1 })], blobs: [noteSchema.bytes] });
+    await store.write({ records: [note({ text: "soup", tags: ["lunch"], at: 1 })], blobs: [noteSchema.bytes] });
     const staged = await store.stage({
-      mine: [note({ text: "salad", tags: ["lunch", "dinner"], at: 2 })],
+      records: [note({ text: "salad", tags: ["lunch", "dinner"], at: 2 })],
       blobs: [note({ text: "stew", tags: ["dinner"], at: 3 }).bytes],
     });
     const before = await view(staged, texts);
@@ -204,7 +204,7 @@ describe("a view of a staged batch", () => {
     const hello = object({ text: "hello" });
     const byAgent = await signatures.actor(agent, await delegate(root, [agent.key], 1_000)).sign(hello);
     const staged = await store.stage({
-      mine: [byAgent],
+      records: [byAgent],
       blobs: [hello.bytes, anything.bytes, signatures.schema.bytes, ...byAgent.signedIdentity.blobs],
     });
     const before = await view(staged, people);
@@ -213,7 +213,7 @@ describe("a view of a staged batch", () => {
     const agentsOut = object({ text: "agents out" });
     const byRoot = await signatures.actor(root, await publish(root, 2_000)).sign(agentsOut);
     await store.write({
-      mine: [byRoot],
+      records: [byRoot],
       blobs: [agentsOut.bytes, anything.bytes, signatures.schema.bytes, ...byRoot.signedIdentity.blobs],
     });
     await expect(signatures.read(byAgent.link, staged, await view(staged, people))).rejects.toThrow(

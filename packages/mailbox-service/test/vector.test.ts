@@ -8,10 +8,10 @@ import {
   mailboxOfferSchemaRead,
   mailboxRequestSchemaRead,
   offerSchema,
+  pickupAnswerSchemaRead,
   pickupRequestSchemaRead,
   serviceSchemaRead,
   signer,
-  waitingSchemaRead,
 } from "./fixtures.ts";
 
 // The bytes and the links were checked against Python's json module with
@@ -23,10 +23,10 @@ const linkText =
 const serviceSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"at":{"minimum":0,"type":"integer"},"offers":{"items":{"additionalProperties":false,' +
-  `"properties":{"accept":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
-  '"required":["offer","accept"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
+  `"properties":{"acceptId":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
+  '"required":["offer","acceptId"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
   '"required":["origin","at","offers"],"title":"Service","type":"object"}';
-const serviceSchemaLink = "sha256:fc96c061b840aef0bdd71bdc86a5531db9cd6067b3f8868f54b7fbc2fb11abd8";
+const serviceSchemaLink = "sha256:de194bd2224d27064cf7a13f53e901d6d42d4e8e159c76a7f2be5aba0a58fff1";
 const offerSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`;
@@ -54,19 +54,19 @@ const mailboxRequestSchemaText =
 const mailboxRequestSchemaLink = "sha256:4bc433acf28fc6b61a5368358448d604df093f58bf449749b16937eaaa3fb259";
 const mailboxAcknowledgementSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"at":{"minimum":0,"type":"integer"},"pickup":${mailboxIdText},` +
-  `"request":${linkText},"send":${mailboxIdText}},` +
-  '"required":["request","at","send","pickup"],"title":"Mailbox acknowledgement","type":"object"}';
-const mailboxAcknowledgementSchemaLink = "sha256:2e11a6fb908570b6fb5f0a9b72654db36d6d930c8f309bac82d9f171e0fd2402";
+  `"properties":{"at":{"minimum":0,"type":"integer"},"pickupId":${mailboxIdText},` +
+  `"request":${linkText},"sendId":${mailboxIdText}},` +
+  '"required":["request","at","sendId","pickupId"],"title":"Mailbox acknowledgement","type":"object"}';
+const mailboxAcknowledgementSchemaLink = "sha256:dd96ed673e63fcab694fb39b80a1a8be00884b47b2279b9716e1a85e24eac9e7";
 const pickupRequestSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"done":{"items":${linkText},"type":"array"},"mailbox":${linkText}},` +
-  '"required":["mailbox","done"],"title":"Pickup request","type":"object"}';
-const pickupRequestSchemaLink = "sha256:9b296e0ad53e2719ca81dd69e6c1780a8c645e98de1bc6fbe68242a37aa7dafa";
-const waitingSchemaText =
+  `"properties":{"mailbox":${linkText},"receipts":{"items":${linkText},"type":"array"}},` +
+  '"required":["mailbox","receipts"],"title":"Pickup request","type":"object"}';
+const pickupRequestSchemaLink = "sha256:b1969329998538f106a77aff8a16878b8a26210068267e5edb8e5fae263ef24a";
+const pickupAnswerSchemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"sealed":{"items":${linkText},"type":"array"}},"required":["sealed"],"title":"Waiting","type":"object"}`;
-const waitingSchemaLink = "sha256:26a182b48c9cde0050eb307494b45c2149a35f9a2ad0359d96f8f1431b020828";
+  `"properties":{"ciphertexts":{"items":${linkText},"type":"array"}},"required":["ciphertexts"],"title":"Pickup answer","type":"object"}`;
+const pickupAnswerSchemaLink = "sha256:859877a78a2f345cbd197138a6057f0d0aa87224702c5903a46617a3bf6a93b9";
 const mailboxOfferText =
   '{"$describedBy":{"$link":"sha256:ad1727ae08f6191ad1e948a152d6350e71bbdc254fe40497ca5d40b6ef91edc5"},' +
   '"identity":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"},' +
@@ -107,7 +107,7 @@ test.each([
     mailboxAcknowledgementSchemaLink,
   ],
   ["pickup request", pickupRequestSchemaRead, pickupRequestSchemaText, pickupRequestSchemaLink],
-  ["Waiting", waitingSchemaRead, waitingSchemaText, waitingSchemaLink],
+  ["pickup answer", pickupAnswerSchemaRead, pickupAnswerSchemaText, pickupAnswerSchemaLink],
 ])("the %s schema encodes to fixed bytes and a fixed link", (_, schema, bytes, link) => {
   expect(text(schema.bytes)).toBe(bytes);
   expect(schema.link).toBe(link);

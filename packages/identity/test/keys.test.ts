@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   ed25519,
   eip191,
+  isSameKey,
   type KeyData,
   keyInterface,
   loadIdentity,
   type Scheme,
   SoftwareSigner,
-  sameKey,
   solanaOffchain,
 } from "../src/index.ts";
 import { schemes } from "./fixtures.ts";
@@ -32,7 +32,7 @@ describe("a key", () => {
     // Without its label, as bytes read from a file or the network have none.
     const bytes: Uint8Array = object.bytes;
     const read = await readKey(bytes);
-    expect(sameKey(read, key)).toBe(true);
+    expect(isSameKey(read, key)).toBe(true);
     expect(read.link).toBe(object.link);
   });
 

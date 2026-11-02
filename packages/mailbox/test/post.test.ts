@@ -39,9 +39,9 @@ const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
 const signed = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
-async function listed(store: { mine(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.mine()) links.push(link);
+  for await (const link of store.records()) links.push(link);
   return links;
 }
 
@@ -64,7 +64,7 @@ async function sendingTo(network: MemoryNetwork) {
   const at = await postAt(network);
   const queue = network.queue();
   const mailbox = queue.mailbox(bob.publicKey);
-  await at.store.write({ mine: [mailbox], blobs: [network.transport.schema.bytes] });
+  await at.store.write({ records: [mailbox], blobs: [network.transport.schema.bytes] });
   return { ...at, queue, mailbox };
 }
 
@@ -85,7 +85,7 @@ describe("an outbox", () => {
   it("sends the closure of a root the store holds, and records that it went out once the transport takes it", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post, queue, mailbox } = await sendingTo(network);
-    await store.write({ mine: [signature], blobs: signed });
+    await store.write({ records: [signature], blobs: signed });
 
     const sent = await (await post.outbox(mailbox.link)).send(signature.link);
     expect(sent).toEqual({
@@ -116,7 +116,7 @@ describe("an outbox", () => {
     const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
     const queue = network.queue();
     const atCarol = queue.mailbox(carol.publicKey);
-    await atBob.store.write({ mine: [atCarol], blobs: [network.transport.schema.bytes] });
+    await atBob.store.write({ records: [atCarol], blobs: [network.transport.schema.bytes] });
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
@@ -126,9 +126,9 @@ describe("an outbox", () => {
   it("records nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, post } = await sendingTo(network);
-    await store.write({ mine: [signature], blobs: signed });
+    await store.write({ records: [signature], blobs: signed });
     const elsewhere = (await MemoryNetwork.create(defaultValidator)).queue().mailbox(bob.publicKey);
-    await store.write({ mine: [elsewhere], blobs: [network.transport.schema.bytes] });
+    await store.write({ records: [elsewhere], blobs: [network.transport.schema.bytes] });
     const before = await listed(store);
 
     const sending = (await post.outbox(elsewhere.link)).send(signature.link);
@@ -218,8 +218,8 @@ describe("an inbox", () => {
     const network = await MemoryNetwork.create(defaultValidator);
     let full = false;
     const backend = new (class extends MemoryBackend {
-      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void> {
-        return full ? Promise.reject(new Error("the disk is full")) : super.put(blobs, mine);
+      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void> {
+        return full ? Promise.reject(new Error("the disk is full")) : super.put(blobs, records);
       }
     })();
     const { store, inbox, pickup } = await receivingAt(network, new Store(json, backend));
@@ -269,7 +269,7 @@ describe("an inbox", () => {
     const other = await receivingAt(network);
     await sendTo(network, other.store, other.inbox.mailbox, signed);
 
-    await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/do not open/);
+    await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/does not open/);
     expect(await listed(store)).toEqual([inbox.mailbox]);
   });
 
@@ -286,7 +286,7 @@ describe("an inbox", () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { kept, post, inbox } = await receivingAt(network);
     const wrong = encodeObject(keys, { mailbox: { $link: inbox.mailbox }, secret: hex.encode(new Uint8Array(32)) });
-    await kept.write({ mine: [wrong] });
+    await kept.write({ records: [wrong] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
   });
 

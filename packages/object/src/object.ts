@@ -54,10 +54,10 @@ export async function readObject<D, F extends Fields<D>>(
   link: Link<unknown>,
   schema: Schema<D, F>,
 ): Promise<EncodedObject<D, F>> {
-  return decodeObjectAt(link, await getBlob(reader, link), schema);
+  return decodeObjectAt(link, await readBlob(reader, link), schema);
 }
 
-export async function getBlob(reader: Reader, link: Link<unknown>): Promise<Uint8Array> {
+export async function readBlob(reader: Reader, link: Link<unknown>): Promise<Uint8Array> {
   const bytes = await reader.get(link);
   if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
   return bytes;

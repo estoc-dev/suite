@@ -7,10 +7,10 @@ import { MailboxKey, mailboxSchema } from "../src/index.ts";
 
 // The bytes and the links were checked against Python's json module with
 // sorted keys and no whitespace, which writes these values as JCS does, and
-// its hashlib. The sealed bytes were made by the HPKE of Python's
+// its hashlib. The ciphertext was made by the HPKE of Python's
 // cryptography package, with a random ephemeral key, for the secret key of
 // 32 bytes of 1, over a zip that Python's zipfile wrote without compression;
-// another info, KEM, KDF or AEAD does not open them. A change to the format
+// another info, KEM, KDF or AEAD does not open it. A change to the format
 // changes them.
 const schemaText =
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
@@ -30,7 +30,7 @@ const rootText =
   '"text":"hello"}';
 const rootLink = "sha256:dd1214fe04959de3cb3525458a5f3efe22bff32286d6eb29dc5d08db784422b2";
 const blob = new Uint8Array([0xfb, 0xff, 0xbf]);
-const sealed =
+const ciphertext =
   "f1e327bbd565e5553480d482b7b2f0b6d0e0049899f95bb99db1e0cf06b9281660d31a37d01d7ed22e58fd8a0f2381be4abd1e80f71a53b9debc44b58db07b57" +
   "706f727b8c5762c4242fc6fbf18b5fcb5a0203633b4af826237fcaef952bcbf250143ca6aee3f13116d3eef9bb08540463308aa62ce76a9b9471a49845dd1f30" +
   "0d883ed7de51a5c000b906ca7e6017e665ae06b7ec3ebba0001acf650878d807d98e170707ebd7f980fed094d68639125e91def7d375a6ae694a58f96995e8e7" +
@@ -61,8 +61,8 @@ test("the HTTP mailbox schema encodes to fixed bytes and a fixed link", async ()
   expect(schema.link).toBe(httpSchemaLink);
 });
 
-test("sealed bytes made elsewhere open with that key to a bundle of a root and a blob", async () => {
-  const bundle = await key.open(hex.decode(sealed));
+test("a ciphertext made elsewhere opens with that key to a bundle of a root and a blob", async () => {
+  const bundle = await key.open(hex.decode(ciphertext));
   expect(new TextDecoder().decode(bundle.root)).toBe(rootText);
   expect(bundle.link).toBe(rootLink);
   expect(bundle.get(linkOf(blob))).toEqual(blob);

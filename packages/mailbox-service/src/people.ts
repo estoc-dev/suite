@@ -13,24 +13,25 @@ import {
 import type { View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
-export type KnownPeople = View<Json, Version, People, SignatureData>;
+export type PeopleView = View<Json, Version, People, SignatureData>;
 
 /**
  * The people that a store of a service's, or of a client's of it, knows,
- * from what the service gave out that the store holds as mine: the versions
+ * from what the service gave out among the store's records: the versions
  * that signed the Services and the acknowledgements, of accounts and of
- * mailboxes, and those that the acknowledged acceptances and requests carry. The service and its client keep the same
- * records, so they know the people of one another alike. A version stands on
- * its root's signature alone, so none is judged here.
+ * mailboxes, and those that the acknowledged acceptances and requests
+ * carry. The service and its client keep the same records, so they know
+ * the people of one another alike. A version stands on its root's
+ * signature alone, so none is judged here.
  */
-export function knownPeople(
+export function peopleView(
   { signatures, signedIdentities, versions }: IdentityKit,
   schemas: {
     readonly service: Schema<Json, ServiceData>;
     readonly acknowledgement: Schema<Json, AcknowledgementData>;
     readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
   },
-): KnownPeople {
+): PeopleView {
   const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
     versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   return {
@@ -51,6 +52,6 @@ export function knownPeople(
         yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);
       },
     },
-    read: (rows, reader) => versions.known(rows, reader),
+    read: (rows, reader) => versions.people(rows, reader),
   };
 }

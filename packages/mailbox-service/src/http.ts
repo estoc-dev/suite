@@ -21,7 +21,7 @@ export async function readBody(
 }
 
 /**
- * A pickup is answered with at most `count` sealed messages, and at most
+ * A pickup is answered with at most `count` ciphertexts, and at most
  * `bytes` of them, but with one at least while any waits, however large.
  */
 export const PICKUP = { count: 100, bytes: 1024 * 1024 } as const;

@@ -44,7 +44,7 @@ const latest: View<Json, Row, Latest, Note> = {
 };
 
 const write = (store: Store, ...notes: Note[]) =>
-  store.write({ mine: notes.map((note) => encodeObject(noteSchema, note)), blobs: [noteSchema.bytes] });
+  store.write({ records: notes.map((note) => encodeObject(noteSchema, note)), blobs: [noteSchema.bytes] });
 
 describe("the value of a view", () => {
   it("is worked out from the rows of its index, with the store giving the objects they name", async () => {

@@ -16,7 +16,7 @@ export interface Backend {
   has(link: Link<unknown>): Promise<boolean>;
   /**
    * Puts each blob under its link, one after another in the order given,
-   * and then adds `mine` to the list of what was written. The store gives
+   * and then adds `records` to the list of what was written. The store gives
    * each blob after the blobs it leads to, and a link is listed only once
    * its blob is in, so a write cut short leaves no blob without what it
    * leads to and no listed link without its blob. The backend of a
@@ -24,23 +24,22 @@ export interface Backend {
    * these hold of the two together: what a blob leads to, or the blob of a
    * listed link, may be in the store beside instead.
    */
-  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, mine: Iterable<Link<never>>): Promise<void>;
+  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void>;
   /** The links listed by `put`, each once. */
-  mine(): AsyncIterable<Link<never>>;
+  records(): AsyncIterable<Link<never>>;
 }
 
 /** What one write puts in a store. */
 export interface Batch {
   /**
    * Objects that the user of the store writes, of whatever type the caller
-   * holds them as: only their bytes are written. `mine` lists them.
+   * holds them as: only their bytes are written. The store lists them.
    */
-  readonly mine?: Iterable<{ readonly bytes: Bytes<unknown> }>;
+  readonly records?: Iterable<{ readonly bytes: Bytes<unknown> }>;
   /**
    * Blobs that come with them and are not listed: what the objects link to,
-   * or the blobs of a bundle received along with an object that records
-   * receiving it. Only those that something written as mine leads to are
-   * kept.
+   * or the blobs of a bundle received along with an object that notes its
+   * arrival. Only those that a record leads to are kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
@@ -51,12 +50,12 @@ export interface Batch {
  * What is listed is what the user wrote, and anything else is reached by
  * following links from it, so an object that someone else slipped into a
  * bundle is read only as part of what it came with. Every blob a store holds
- * comes with all that it leads to, and a write adds only the blobs that what
- * it writes as mine leads to.
+ * comes with all that it leads to, and a write adds only the blobs that its
+ * records lead to.
  */
 export interface Store {
   /**
-   * A blob by its link, written to the store as mine or not. Throws when the
+   * A blob by its link, a record or not. Throws when the
    * backend gives other bytes under the link.
    */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -64,9 +63,9 @@ export interface Store {
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * Puts in what the batch writes as mine and the blobs it leads to, and
-   * drops the other blobs. Refuses the whole batch with a `RefusedBatch` when
-   * something written as mine is not an object of the store's encoding, or
+   * Puts in the batch's records and the blobs they lead to, and drops the
+   * other blobs. Refuses the whole batch with a `RefusedBatch` when a record
+   * is not an object of the store's encoding, or
    * when it leads to a blob that neither the batch nor the store holds: the
    * schema of an object, or any other link in it. A backend that fails
    * rejects with an error of its own.
@@ -79,8 +78,8 @@ export interface Store {
    * `(await store.stage(batch)).commit()` does.
    */
   stage(batch: Batch): Promise<StagedStore>;
-  /** The links of the objects written as mine, each once, in no particular order. */
-  mine(): AsyncIterable<Link<never>>;
+  /** The links of the records, each once, in no particular order. */
+  records(): AsyncIterable<Link<never>>;
   /**
    * The blob that `link` names and every blob it leads to, or nothing when
    * the store does not hold it. A blob of the store's encoding leads to the
@@ -94,7 +93,7 @@ export interface Store {
 /**
  * A store as it will be once a batch is written, read before the batch is
  * written: the blobs the store holds and those of the batch that `write`
- * keeps, and the links the store lists with those the batch writes as mine.
+ * keeps, and the links of the store's records with those of the batch.
  * The batch is fixed when it is staged, and the store is read as it is at
  * each read, so what is written to the store afterwards shows here too.
  * What is judged on it reads the same from the store once it is committed
@@ -113,18 +112,18 @@ export interface StagedStore {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * The links the store lists and those the batch writes as mine, each once,
-   * in no particular order. Those of the batch are listed here before
+   * The links of the store's records and of the batch's, each once, in no
+   * particular order. Those of the batch are listed here before
    * anything has judged them.
    */
-  mine(): AsyncIterable<Link<never>>;
+  records(): AsyncIterable<Link<never>>;
   /** Writes the batch as `write` writes it. Committing again writes nothing more. */
   commit(): Promise<void>;
 }
 
 /**
- * A batch that a store refuses for what it is: something written as mine
- * that is not an object, or a link to a blob that neither the batch nor the
+ * A batch that a store refuses for what it is: a record that is not an
+ * object, or a link to a blob that neither the batch nor the
  * store holds. The same batch is refused again until the store holds what it
  * leads to, while a backend that fails, which rejects with an error of its
  * own, may write it the next time.
@@ -154,7 +153,7 @@ class StoreOf<D> implements Store {
     await (await this.stage(batch)).commit();
   }
 
-  async stage({ mine = [], blobs = [] }: Batch): Promise<StagedStore> {
+  async stage({ records = [], blobs = [] }: Batch): Promise<StagedStore> {
     // Each blob is copied before it is hashed, so that what is kept is what
     // was hashed, whatever happens to the given arrays afterwards.
     const given = new Map<Link<unknown>, Uint8Array>();
@@ -163,13 +162,13 @@ class StoreOf<D> implements Store {
       given.set(linkOf(owned), owned);
     }
     const written: Link<never>[] = [];
-    for (const { bytes } of mine) {
+    for (const { bytes } of records) {
       const owned = new Uint8Array(bytes);
       const link = linkOf(owned);
       try {
         schemaOf(owned, this.#encoding);
       } catch (cause) {
-        throw new RefusedBatch(`${link} is written as mine but is not an object`, { cause });
+        throw new RefusedBatch(`${link} is written as a record but is not an object`, { cause });
       }
       given.set(link, owned);
       written.push(link);
@@ -177,8 +176,8 @@ class StoreOf<D> implements Store {
     return new StagedStoreOf(this, this.#backend, await this.#leavesFirst(written, given), written);
   }
 
-  mine(): AsyncIterable<Link<never>> {
-    return this.#backend.mine();
+  records(): AsyncIterable<Link<never>> {
+    return this.#backend.records();
   }
 
   /**
@@ -192,12 +191,12 @@ class StoreOf<D> implements Store {
     return new StoreOf(store.#encoding, {
       get: async (link) => (await backend.get(link)) ?? shared.get(link),
       has: async (link) => (await backend.has(link)) || shared.has(link),
-      put: async (blobs, mine) => {
+      put: async (blobs, records) => {
         const own = new Map<Link<unknown>, Uint8Array>();
         for (const [link, bytes] of blobs) if (!(await shared.has(link))) own.set(link, bytes);
-        await backend.put(own, mine);
+        await backend.put(own, records);
       },
-      mine: () => backend.mine(),
+      records: () => backend.records(),
     });
   }
 
@@ -219,14 +218,15 @@ class StoreOf<D> implements Store {
   }
 
   /**
-   * `mine` and the given blobs it leads to, each after the given blobs it
-   * leads to. Throws when one leads to a blob that is neither given nor held.
+   * `records` and the blobs of `blobs` they lead to, each after those it
+   * leads to. Throws when one leads to a blob that is neither in `blobs` nor
+   * held.
    * A held blob comes with all it leads to, so what it leads to is not looked
    * at again.
    */
   async #leavesFirst(
-    mine: readonly Link<unknown>[],
-    given: ReadonlyMap<Link<unknown>, Uint8Array>,
+    records: readonly Link<unknown>[],
+    blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
   ): Promise<Map<Link<unknown>, Uint8Array>> {
     const ordered = new Map<Link<unknown>, Uint8Array>();
     const held = new Set<Link<unknown>>();
@@ -235,11 +235,11 @@ class StoreOf<D> implements Store {
       bytes,
       links: this.#linksIn(bytes)[Symbol.iterator](),
     });
-    for (const start of mine) {
+    for (const start of records) {
       if (ordered.has(start)) continue;
       // A link is a hash of its blob, so no blob leads back to one on the path.
-      // biome-ignore lint/style/noNonNullAssertion: each of mine is among the given blobs
-      const path = [frame(start, given.get(start)!)];
+      // biome-ignore lint/style/noNonNullAssertion: each record is among the blobs
+      const path = [frame(start, blobs.get(start)!)];
       for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
         const next = top.links.next();
         if (next.done) {
@@ -249,7 +249,7 @@ class StoreOf<D> implements Store {
         }
         const linked = next.value;
         if (ordered.has(linked) || held.has(linked)) continue;
-        const linkedBytes = given.get(linked);
+        const linkedBytes = blobs.get(linked);
         if (linkedBytes !== undefined) {
           path.push(frame(linked, linkedBytes));
         } else if (await this.#backend.has(linked)) {
@@ -277,18 +277,18 @@ class StagedStoreOf implements StagedStore {
   readonly #store: Pick<Store, "get">;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
-  readonly #mine: readonly Link<never>[];
+  readonly #records: readonly Link<never>[];
 
   constructor(
     store: Pick<Store, "get">,
     backend: Backend,
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
-    mine: readonly Link<never>[],
+    records: readonly Link<never>[],
   ) {
     this.#store = store;
     this.#backend = backend;
     this.#blobs = blobs;
-    this.#mine = mine;
+    this.#records = records;
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -298,9 +298,9 @@ class StagedStoreOf implements StagedStore {
     return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
   }
 
-  async *mine(): AsyncIterable<Link<never>> {
-    const unlisted = new Set(this.#mine);
-    for await (const link of this.#backend.mine()) {
+  async *records(): AsyncIterable<Link<never>> {
+    const unlisted = new Set(this.#records);
+    for await (const link of this.#backend.records()) {
       unlisted.delete(link);
       yield link;
     }
@@ -308,14 +308,14 @@ class StagedStoreOf implements StagedStore {
   }
 
   commit(): Promise<void> {
-    return this.#backend.put(this.#blobs, this.#mine);
+    return this.#backend.put(this.#blobs, this.#records);
   }
 }
 
 /**
  * Makes a store that keeps its blobs and its list in `backend`, and finds
- * the links in a blob by `encoding`. The encoding is the one of the objects
- * written as mine, and a blob of any other encoding leads nowhere. A
+ * the links in a blob by `encoding`. The encoding is the one of the records,
+ * and a blob of any other encoding leads nowhere. A
  * backend is to be used with one encoding throughout, since the store takes
  * a blob it holds to come with all that the encoding finds it leads to.
  */
@@ -358,16 +358,16 @@ export class PrivateStore {
   }
 
   /**
-   * Keeps what the batch writes as mine and the blobs it leads to, as a
-   * store writes them. A blob led to may be held by the store beside, and
+   * Keeps the batch's records and the blobs they lead to, as a store writes
+   * them. A blob led to may be held by the store beside, and
    * then is not kept here again.
    */
   write(batch: Batch): Promise<void> {
     return this.#store.write(batch);
   }
 
-  /** The links of the objects written here as mine, each once, in no particular order. */
-  mine(): AsyncIterable<Link<never>> {
-    return this.#store.mine();
+  /** The links of the records written here, each once, in no particular order. */
+  records(): AsyncIterable<Link<never>> {
+    return this.#store.records();
   }
 }

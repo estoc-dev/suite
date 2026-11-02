@@ -25,7 +25,7 @@ export interface Person {
    */
   current(): Promise<SignedIdentityObject>;
   /** Whether `signature` was made for an identity of this person's root. */
-  signed(signature: Signature): boolean;
+  hasSigned(signature: Signature): boolean;
 }
 
 /** The people a reader knows. They are the versions it knows too: the current version of a signed identity is its person's. */

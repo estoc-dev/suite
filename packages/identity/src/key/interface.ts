@@ -89,6 +89,6 @@ export function verify(key: Key, digest: Uint8Array, signature: Uint8Array, sign
 }
 
 /** Whether `a` and `b` are the same key: the same scheme, which is one value in a program, and the same bytes. */
-export function sameKey(a: Key, b: Key): boolean {
+export function isSameKey(a: Key, b: Key): boolean {
   return a.scheme === b.scheme && equalBytes(a.publicKey, b.publicKey);
 }

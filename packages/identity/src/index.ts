@@ -8,7 +8,15 @@ export { type Identities, identitySchema } from "./identity/identity.ts";
 export { type IdentityData, type IdentityObject, identityInterface } from "./identity/interface.ts";
 export { ed25519 } from "./key/ed25519.ts";
 export { eip191 } from "./key/eip191.ts";
-export { type Key, type KeyData, type KeyObject, keyInterface, type Scheme, sameKey, verify } from "./key/interface.ts";
+export {
+  isSameKey,
+  type Key,
+  type KeyData,
+  type KeyObject,
+  keyInterface,
+  type Scheme,
+  verify,
+} from "./key/interface.ts";
 export type { Keys } from "./key/keys.ts";
 export { solanaOffchain } from "./key/solana-offchain.ts";
 export { type IdentityKit, loadIdentity } from "./load.ts";

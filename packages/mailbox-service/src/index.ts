@@ -18,10 +18,10 @@ export {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type PickupAnswerData,
   type PickupRequestData,
+  pickupAnswerSchema,
   pickupRequestSchema,
   type ServiceData,
   serviceSchema,
-  type WaitingData,
-  waitingSchema,
 } from "./schemas.ts";

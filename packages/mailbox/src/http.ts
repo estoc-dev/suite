@@ -9,7 +9,7 @@ const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0
 
 /**
  * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts
- * sealed bytes to the mailbox's url, and a 2xx response means they were
+ * the ciphertext to the mailbox's url, and a 2xx response means it was
  * handed on. 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, any
  * other response as `refused`, and no response as `later`.
  */
@@ -18,14 +18,14 @@ export async function loadHttpTransport(validator: JsonSchemaValidator): Promise
   return { schema: await encodeSchema(mailboxSchema("HTTP mailbox", { url }, ["url"]), validator), deliver };
 }
 
-async function deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void> {
+async function deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void> {
   const { url } = mailbox as { readonly url: string };
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
-      body: sealed,
+      body: ciphertext,
       // A redirect would take the bytes to a url that the mailbox does not
       // name, and that need not be one a mailbox may name. A browser does
       // not tell it from no answer, so it rejects as one.

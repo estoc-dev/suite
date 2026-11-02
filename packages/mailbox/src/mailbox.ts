@@ -12,25 +12,25 @@ import {
 import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 
-/** One way of carrying sealed bytes to a mailbox, with the schema of its mailboxes. */
+/** One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. */
 export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
   readonly schema: Schema<Json>;
   /**
-   * Hands sealed bytes on toward a mailbox whose data fits `schema`.
-   * Resolving says only that they were handed on: nothing confirms that a
+   * Hands `ciphertext` on toward a mailbox whose data fits `schema`.
+   * Resolving says only that it was handed on: nothing confirms that a
    * message arrived, and none is sent again. Rejects with an
-   * `UndeliveredMessage` when they cannot be.
+   * `UndeliveredMessage` when it cannot be.
    */
-  deliver(mailbox: JsonObject, sealed: Uint8Array): Promise<void>;
+  deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
 }
 
 /**
- * Sealed bytes that a transport could not hand on toward a mailbox, with
+ * A ciphertext that a transport could not hand on toward a mailbox, with
  * what the sender can do about it. `later`: the same can be sent again
  * later, as when the network is down or the mailbox is full. `gone`: the
  * mailbox takes nothing more, and another is needed. `refused`: the mailbox
- * takes others but not these, as when they are too large.
+ * takes others but not this one, as when it is too large.
  */
 export class UndeliveredMessage extends Error {
   override readonly name = "UndeliveredMessage";

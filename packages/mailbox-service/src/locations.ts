@@ -12,7 +12,7 @@ type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signa
 
 export type Locations = Index<Json, Location, SignatureData>;
 
-/** The Services that the signatures written as mine sign, by the root of the identity that signed each. */
+/** The Services that recorded signatures sign, by the root of the identity that signed each. */
 export function locations(signatures: Signatures, service: Schema<Json, ServiceData>): Locations {
   return {
     reads: [signatures.schema],
@@ -29,8 +29,8 @@ export function locations(signatures: Signatures, service: Schema<Json, ServiceD
 }
 
 /**
- * The links of the signatures over the Services of `root` that a store holds
- * as mine, from the latest back.
+ * The links of the signatures over the Services of `root` among a store's
+ * records, from the latest back.
  */
 export function servicesOf(
   locations: Locations,

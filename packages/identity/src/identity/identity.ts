@@ -8,7 +8,7 @@ import {
   type Reader,
   type Schema,
 } from "@estoc/object";
-import { type Key, type KeyObject, sameKey, verify } from "../key/interface.ts";
+import { isSameKey, type Key, type KeyObject, verify } from "../key/interface.ts";
 import type { Keys } from "../key/keys.ts";
 import type { Signer } from "../signer.ts";
 import {
@@ -17,7 +17,7 @@ import {
   type IdentityObject,
   identityInterface,
   identityOf,
-  type Sign,
+  type SigningFunction,
 } from "./interface.ts";
 
 /**
@@ -63,11 +63,11 @@ export class Identities implements IdentityImplementation {
     return verify(root, object, signature, signedIdentity) ? root : undefined;
   }
 
-  signing({ root }: IdentityObject, signer: Signer): Sign | undefined {
-    return sameKey(signer.key, root) ? (object, signedIdentity) => signer.sign(object, signedIdentity) : undefined;
+  signingFunction({ root }: IdentityObject, signer: Signer): SigningFunction | undefined {
+    return isSameKey(signer.key, root) ? (object, signedIdentity) => signer.sign(object, signedIdentity) : undefined;
   }
 
-  signs({ root }: IdentityObject, key: KeyObject): boolean {
+  hasSigner({ root }: IdentityObject, key: KeyObject): boolean {
     return key.link === root.link;
   }
 }

@@ -28,7 +28,7 @@ export interface View<D, K extends Key, V, F extends Fields<D> = Fields<D>> {
  * `StagedStore`.
  */
 export async function view<D, K extends Key, V, F extends Fields<D>>(
-  store: Pick<Store, "get" | "mine">,
+  store: Pick<Store, "get" | "records">,
   view: View<D, K, V, F>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);

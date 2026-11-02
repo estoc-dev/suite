@@ -57,7 +57,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   const queue = network.queue();
   return {
     mailbox: queue.mailbox(key.publicKey).bytes,
-    take: () => Promise.all(queue.take().map((sealed) => key.open(sealed))),
+    take: () => Promise.all(queue.take().map((ciphertext) => key.open(ciphertext))),
   };
 }
 

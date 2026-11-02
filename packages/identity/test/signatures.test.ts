@@ -19,6 +19,7 @@ import {
   type DelegatedIdentityObject,
   ed25519,
   eip191,
+  isSameKey,
   loadIdentity,
   noVersions,
   type Scheme,
@@ -27,7 +28,6 @@ import {
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
-  sameKey,
   signatureSchema,
   solanaOffchain,
   type Versions,
@@ -50,7 +50,7 @@ const rewritten = (signature: Signature, change: JsonObject) => written(signatur
 const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
-const knowing = (...signed: SignedIdentityObject[]) => versions.known(rowsOf(versions, ...signed), byLink(...signed));
+const knowing = (...signed: SignedIdentityObject[]) => versions.people(rowsOf(versions, ...signed), byLink(...signed));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, 0)).sign(object);
 
@@ -178,7 +178,7 @@ describe("a signature for a Delegated Identity", () => {
     const signedIdentity = await delegate(signer(eip191), [key(ed25519, 2)]);
     const signature = await signatures.actor(signer(ed25519, 2), signedIdentity).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature));
-    expect(sameKey(read.key, key(ed25519, 2))).toBe(true);
+    expect(isSameKey(read.key, key(ed25519, 2))).toBe(true);
   });
 
   it.each<[string, (signature: Uint8Array) => Uint8Array]>([
@@ -229,7 +229,7 @@ describe("a signature by an agent", () => {
     const second = await delegate(wallet, [laptop.key, phone.key], 2_000);
     const signature = await signatures.actor(phone, second).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature), knowing(first));
-    expect(sameKey(read.key, phone.key)).toBe(true);
+    expect(isSameKey(read.key, phone.key)).toBe(true);
   });
 
   it("is judged, against a version at the same at that drops its agent, by whichever has the greater link", async () => {

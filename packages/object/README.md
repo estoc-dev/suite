@@ -302,6 +302,6 @@ await texts.read(link, reader); // a Text, whichever of the two schemas the obje
 ```
 
 The table takes the shape from its implementations, so it is not named
-again. `of` gives the implementation of a schema, for what a program does
-with objects of it beyond reading them. Its `read` takes an object already
+again. `implementationOf` gives the implementation of a schema, for what a
+program does with objects of it beyond reading them. Its `read` takes an object already
 read with that schema, as the table's `read` gives it.

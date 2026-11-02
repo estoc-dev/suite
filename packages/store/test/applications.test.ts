@@ -57,7 +57,7 @@ const newStore = () => new Store(json, new MemoryBackend());
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.mine()) links.push(link);
+  for await (const link of store.records()) links.push(link);
   return links;
 }
 
@@ -66,7 +66,7 @@ async function readListed<F extends Fields<Json>>(
   schema: Schema<Json, F>,
 ): Promise<EncodedObject<Json, F>[]> {
   const objects: EncodedObject<Json, F>[] = [];
-  for await (const link of store.mine()) {
+  for await (const link of store.records()) {
     const bytes = await store.get(link);
     assert.exists(bytes);
     if (schemaOf(bytes, json) === schema.link) objects.push(decodeObject(bytes, schema));
@@ -76,7 +76,7 @@ async function readListed<F extends Fields<Json>>(
 
 async function receive(store: Store, files: ReadonlyMap<string, Uint8Array>) {
   const received = encodeObject(receivedSchema, { bundle: { $link: readBundle(files).link } });
-  await store.write({ mine: [received], blobs: [...schemas, ...files.values()] });
+  await store.write({ records: [received], blobs: [...schemas, ...files.values()] });
   return received;
 }
 
@@ -85,7 +85,7 @@ describe("a signed note", () => {
     const aliceStore = newStore();
     const note = encodeObject(noteSchema, { text: "hello" });
     const signature = await sign(note, alice);
-    await aliceStore.write({ mine: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
+    await aliceStore.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
     const files = writeBundle(signature, (await aliceStore.closure(signature.link)).values());
 
     const bobStore = newStore();
@@ -125,7 +125,7 @@ describe("an object slipped into a bundle", () => {
 
   it("is not listed among the receiver's own when the bundle leads to it, though it is of a schema the receiver writes", async () => {
     const bobStore = newStore();
-    await bobStore.write({ mine: [encodeObject(contactSchema, { name: "Alice" })], blobs: schemas });
+    await bobStore.write({ records: [encodeObject(contactSchema, { name: "Alice" })], blobs: schemas });
 
     const slipped = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await sign(slipped, mallory);

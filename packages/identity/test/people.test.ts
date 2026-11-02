@@ -9,7 +9,7 @@ const { signatures, versions, publish, delegate } = await loadIdentity(defaultVa
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
 const knowing = (...signed: SignedIdentityObject[]) =>
-  versions.known(
+  versions.people(
     rowsOf(versions, ...signed),
     new Map(signed.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes])),
   );
@@ -67,8 +67,8 @@ describe("a person", () => {
     const laptop = signer(ed25519, 2);
     const [published, version] = [await publish(wallet, 1_000), await delegate(wallet, [laptop.key], 2_000)];
     const person = knowing().personOf(published);
-    expect(person.signed(await signatures.actor(wallet, published).sign(hello))).toBe(true);
-    expect(person.signed(await signatures.actor(laptop, version).sign(hello))).toBe(true);
-    expect(person.signed(await signatures.actor(laptop, await publish(laptop, 1_000)).sign(hello))).toBe(false);
+    expect(person.hasSigned(await signatures.actor(wallet, published).sign(hello))).toBe(true);
+    expect(person.hasSigned(await signatures.actor(laptop, version).sign(hello))).toBe(true);
+    expect(person.hasSigned(await signatures.actor(laptop, await publish(laptop, 1_000)).sign(hello))).toBe(false);
   });
 });

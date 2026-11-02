@@ -6,7 +6,6 @@ import {
   type Signature,
   type Signatures,
   type SignedIdentityObject,
-  type Versions,
 } from "@estoc/identity";
 import {
   decodeObject,
@@ -186,12 +185,13 @@ export class Services {
   }
 
   /**
-   * Reads the Service that `link` names the service's signature over from
-   * `reader`, by the people it knows, and the offers it lists by the later
-   * of the version that signed the Service and the latest it knows. `at`
-   * reads it on the store as it will be once it keeps the Service, so a
-   * Service that `at` takes reads alike by `of` until the store knows a
-   * later version of the service's identity. Refuses it when its origin is
+   * Reads the Service that `link` names the service's signature over, and
+   * the offers it lists, from `reader`, by the people it knows. `at` reads
+   * it on the store as it will be once it keeps the Service, so the version
+   * that signed the Service is among them, and an offer is read by that
+   * version or a later one. A Service that `at` takes so reads alike by `of`
+   * until the store knows a later version of the service's identity.
+   * Refuses it when its origin is
    * not one that a client reaches, when an offer it lists is signed by an
    * identity of another root, or when its offer of an account names another
    * root. Offers of schemas the client does not read are passed over.
@@ -201,14 +201,11 @@ export class Services {
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.of(signedIdentity);
     const { root } = service;
-    const listing: Versions = {
-      current: (offerer) => (offerer.identity.root.link === root.link ? service.current() : people.current(offerer)),
-    };
     const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
     checkOrigin(origin);
     let account: AccountOffer | undefined;
     for (const { offer, accept } of offers) {
-      const signature = await this.#signatures.read(offer.$link, reader, listing);
+      const signature = await this.#signatures.read(offer.$link, reader, people);
       if (!service.signed(signature))
         throw new Error(`the Service of ${root.link} lists an offer signed by another root`);
       const bytes = await reader.get(signature.object);

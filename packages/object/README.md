@@ -248,6 +248,11 @@ can keep its link, and the signatures over the object still apply. Written
 again to another schema, the same content would be another object, which
 no one has signed.
 
+A schema is named by its link, so a schema that changes is another schema.
+A program's own newer schema, its older one and another application's are
+then alike: each is one more schema for the program to read, and keeping
+up with one's own past is the same work as reading another application.
+
 ## Interfaces
 
 Where a program reads objects of several schemas as one kind of thing, as

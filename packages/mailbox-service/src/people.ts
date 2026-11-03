@@ -1,17 +1,8 @@
-import type { IdentityKit, People, Signature, SignatureData, Version } from "@estoc/identity";
-import {
-  decodeObject,
-  type EncodedObject,
-  type Json,
-  type JsonLink,
-  json,
-  type Reader,
-  readObject,
-  type Schema,
-  schemaOf,
-} from "@estoc/object";
+import type { IdentityKit, People, SignatureData, Version } from "@estoc/identity";
+import { type EncodedObject, type Json, type Reader, readObject, type Schema } from "@estoc/object";
 import type { View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
+import { objectOf } from "./signatures.ts";
 
 export type PeopleView = View<Json, Version, People, SignatureData>;
 
@@ -41,15 +32,11 @@ export function peopleView(
     index: {
       reads: [signatures.schema],
       async *rows(signature, reader) {
-        const bytes = await reader.get(signature.data.object.$link);
-        if (bytes === undefined) return;
-        const schema = schemaOf(bytes, json);
-        let acknowledgedSignature: JsonLink<Signature> | undefined;
-        if (schema === schemas.acknowledgement.link)
-          acknowledgedSignature = decodeObject(bytes, schemas.acknowledgement).data.acceptance;
-        else if (schema === schemas.mailboxAcknowledgement.link)
-          acknowledgedSignature = decodeObject(bytes, schemas.mailboxAcknowledgement).data.request;
-        else if (schema !== schemas.service.link) return;
+        const acknowledgedSignature =
+          (await objectOf(signature, reader, schemas.acknowledgement))?.data.acceptance ??
+          (await objectOf(signature, reader, schemas.mailboxAcknowledgement))?.data.request;
+        if (acknowledgedSignature === undefined && (await objectOf(signature, reader, schemas.service)) === undefined)
+          return;
         yield await versionOf(signature, reader);
         if (acknowledgedSignature === undefined) return;
         yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);

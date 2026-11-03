@@ -1,7 +1,8 @@
 import type { Signature, SignatureData, Signatures } from "@estoc/identity";
-import { decodeObject, type Json, json, type Link, readObject, type Schema, schemaOf } from "@estoc/object";
+import { type Json, type Link, readObject, type Schema } from "@estoc/object";
 import type { View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, MailboxRequestData } from "./schemas.ts";
+import { objectOf } from "./signatures.ts";
 
 type AcknowledgementRow = readonly [acceptance: Link<Signature>, acknowledgement: Link<Signature>];
 
@@ -26,9 +27,9 @@ export function acknowledgementsView(
     index: {
       reads: [signatures.schema],
       async *rows(signature, reader) {
-        const bytes = await reader.get(signature.data.object.$link);
-        if (bytes === undefined || schemaOf(bytes, json) !== acknowledgement.link) return;
-        yield [decodeObject(bytes, acknowledgement).data.acceptance.$link, signature.link as Link<Signature>];
+        const acceptance = (await objectOf(signature, reader, acknowledgement))?.data.acceptance;
+        if (acceptance === undefined) return;
+        yield [acceptance.$link, signature.link as Link<Signature>];
       },
     },
     read: (rows) => ({
@@ -67,9 +68,9 @@ export function mailboxAcknowledgementsView(
     index: {
       reads: [signatures.schema],
       async *rows(signature, reader) {
-        const bytes = await reader.get(signature.data.object.$link);
-        if (bytes === undefined || schemaOf(bytes, json) !== schemas.mailboxAcknowledgement.link) return;
-        const { request, sendId } = decodeObject(bytes, schemas.mailboxAcknowledgement).data;
+        const acknowledgement = await objectOf(signature, reader, schemas.mailboxAcknowledgement);
+        if (acknowledgement === undefined) return;
+        const { request, sendId } = acknowledgement.data;
         const { object } = (await readObject(reader, request.$link, signatures.schema)).data;
         const { key } = (await readObject(reader, object.$link, schemas.mailboxRequest)).data;
         yield [sendId, key, signature.link as Link<Signature>];

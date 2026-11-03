@@ -550,12 +550,12 @@ async function pickupRequest(actor: Actor, mailbox: Link<Signature>, receipts: r
   return packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
 }
 
-type MailboxAcknowledgement = Awaited<ReturnType<typeof openMailbox>>;
+type OpenedMailbox = Awaited<ReturnType<typeof openMailbox>>;
 
 /** What waits at `mailbox` once `receipts` no longer waits, as `actor` picks it up. */
 async function queueAt(
   service: MailboxService,
-  mailbox: MailboxAcknowledgement,
+  mailbox: OpenedMailbox,
   actor: Actor,
   receipts: readonly Uint8Array[] = [],
 ) {
@@ -869,9 +869,7 @@ describe("a mailbox that a service opened", () => {
     expect(await queueAt(service, mailbox, listed)).toEqual([]);
   });
 
-  it.each<
-    [string, (actor: Actor, mailbox: MailboxAcknowledgement, other: MailboxAcknowledgement) => Promise<Uint8Array>]
-  >([
+  it.each<[string, (actor: Actor, mailbox: OpenedMailbox, other: OpenedMailbox) => Promise<Uint8Array>]>([
     ["that names another mailbox", (actor, _, other) => pickupRequest(actor, other.link)],
     [
       "that is not a pickup request",

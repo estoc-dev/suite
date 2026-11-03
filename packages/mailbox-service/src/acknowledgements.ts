@@ -1,5 +1,5 @@
 import type { Signature, Signatures } from "@estoc/identity";
-import { decodeObject, type Json, json, type Link, objectsOf, readObject, type Schema, schemaOf } from "@estoc/object";
+import { type Json, type Link, readObject, type Schema } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, MailboxRequestData } from "./schemas.ts";
 
@@ -23,11 +23,9 @@ export function acknowledgementsView(
   acknowledgement: Schema<Json, AcknowledgementData>,
 ): AcknowledgementsView {
   return {
-    index: indexOver(objectsOf(signatures.schema), async function* (signature, reader) {
-      const bytes = await reader.get(signature.data.object.$link);
-      if (bytes === undefined || schemaOf(bytes, json) !== acknowledgement.link) return;
-      yield [decodeObject(bytes, acknowledgement).data.acceptance.$link, signature.link as Link<Signature>];
-    }),
+    index: indexOver(signatures.selectionOver(acknowledgement), ({ signature, object }) => [
+      [object.data.acceptance.$link, signature.link as Link<Signature>],
+    ]),
     read: (rows) => ({
       async acknowledgementOf(acceptance) {
         for await (const [, link] of rows.range([acceptance])) return link;
@@ -61,14 +59,15 @@ export function mailboxAcknowledgementsView(
   },
 ): MailboxAcknowledgementsView {
   return {
-    index: indexOver(objectsOf(signatures.schema), async function* (signature, reader) {
-      const bytes = await reader.get(signature.data.object.$link);
-      if (bytes === undefined || schemaOf(bytes, json) !== schemas.mailboxAcknowledgement.link) return;
-      const { request, sendId } = decodeObject(bytes, schemas.mailboxAcknowledgement).data;
-      const { object } = (await readObject(reader, request.$link, signatures.schema)).data;
-      const { key } = (await readObject(reader, object.$link, schemas.mailboxRequest)).data;
-      yield [sendId, key, signature.link as Link<Signature>];
-    }),
+    index: indexOver(
+      signatures.selectionOver(schemas.mailboxAcknowledgement),
+      async function* ({ signature, object: acknowledgement }, reader) {
+        const { request, sendId } = acknowledgement.data;
+        const { object } = (await readObject(reader, request.$link, signatures.schema)).data;
+        const { key } = (await readObject(reader, object.$link, schemas.mailboxRequest)).data;
+        yield [sendId, key, signature.link as Link<Signature>];
+      },
+    ),
     read: (rows) => ({
       async acknowledgementAt(sendId, key) {
         for await (const [, , link] of rows.range([sendId, key])) return link;

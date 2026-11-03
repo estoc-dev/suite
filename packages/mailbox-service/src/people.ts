@@ -1,16 +1,5 @@
-import type { IdentityKit, People, Signature, SignatureData, Version } from "@estoc/identity";
-import {
-  decodeObject,
-  type EncodedObject,
-  type Json,
-  type JsonLink,
-  json,
-  objectsOf,
-  type Reader,
-  readObject,
-  type Schema,
-  schemaOf,
-} from "@estoc/object";
+import type { IdentityKit, People, SignatureData, Version } from "@estoc/identity";
+import { type EncodedObject, type Json, type Reader, readObject, type Schema } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
@@ -39,20 +28,21 @@ export function peopleView(
   const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
     versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   return {
-    index: indexOver(objectsOf(signatures.schema), async function* (signature, reader) {
-      const bytes = await reader.get(signature.data.object.$link);
-      if (bytes === undefined) return;
-      const schema = schemaOf(bytes, json);
-      let acknowledgedSignature: JsonLink<Signature> | undefined;
-      if (schema === schemas.acknowledgement.link)
-        acknowledgedSignature = decodeObject(bytes, schemas.acknowledgement).data.acceptance;
-      else if (schema === schemas.mailboxAcknowledgement.link)
-        acknowledgedSignature = decodeObject(bytes, schemas.mailboxAcknowledgement).data.request;
-      else if (schema !== schemas.service.link) return;
+    index: indexOver(signatures.selectionOver(schemas.service), async function* ({ signature }, reader) {
       yield await versionOf(signature, reader);
-      if (acknowledgedSignature === undefined) return;
-      yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);
-    }),
+    }).union(
+      indexOver(signatures.selectionOver(schemas.acknowledgement), async function* ({ signature, object }, reader) {
+        yield await versionOf(signature, reader);
+        yield await versionOf(await readObject(reader, object.data.acceptance.$link, signatures.schema), reader);
+      }),
+      indexOver(
+        signatures.selectionOver(schemas.mailboxAcknowledgement),
+        async function* ({ signature, object }, reader) {
+          yield await versionOf(signature, reader);
+          yield await versionOf(await readObject(reader, object.data.request.$link, signatures.schema), reader);
+        },
+      ),
+    ),
     read: (rows, reader) => versions.people(rows, reader),
   };
 }

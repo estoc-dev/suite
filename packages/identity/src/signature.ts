@@ -2,14 +2,17 @@ import {
   DRAFT_2020_12,
   type EncodedObject,
   encodeObject,
+  type Fields,
   type Json,
   type JsonLink,
   type JsonSchema,
   type Link,
   linkSchema,
+  objectsOf,
   type Reader,
   readObject,
   type Schema,
+  SelectionBySchema,
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
@@ -66,6 +69,12 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly key: KeyObject;
   readonly object: Link<never>;
   readonly signature: Uint8Array;
+}
+
+/** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
+export interface SignatureOver<F extends Fields<Json>> {
+  readonly signature: EncodedObject<Json, SignatureData>;
+  readonly object: EncodedObject<Json, F>;
 }
 
 /**
@@ -125,6 +134,27 @@ export class Signatures {
   /** Reads the signature that `link` names from `reader`, and verifies it by `versions`. */
   async read(link: Link<Signature>, reader: Reader, versions: Versions): Promise<Signature> {
     return this.verify(await readObject(reader, link, this.schema), reader, versions);
+  }
+
+  /**
+   * The selection of the signatures over objects of `schema`, each read with
+   * the object it signs.
+   *
+   * - A signature over an object of another schema is left out.
+   * - It does not verify them, as what a selection takes depends on the
+   *   record and its closure alone, and whether a signature counts depends
+   *   on the versions a reader has seen.
+   * - Reading a signature with it throws when the reader gives no blob for
+   *   the object, and where `decodeObject` throws for an object of `schema`.
+   */
+  selectionOver<F extends Fields<Json>>(
+    schema: Schema<Json, F>,
+  ): SelectionBySchema<Json, SignatureOver<F>, SignatureData> {
+    const objects = objectsOf(schema);
+    return new SelectionBySchema(this.schema, async (signature, reader) => {
+      const object = await objects.read(signature.data.object.$link, reader);
+      return object === undefined ? undefined : { signature, object };
+    });
   }
 
   /**

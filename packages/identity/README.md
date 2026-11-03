@@ -336,5 +336,23 @@ const read = await signatures.verify(signed, blobs, noVersions);
 const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 
+`signatures.selectionOver(schema)` is a `SelectionBySchema` of the
+signature schema, as `@estoc/object` has selections. It takes the
+signatures over objects of `schema`, each as a `SignatureOver`: the
+signature with the object it signs, read with `schema`. A signature over
+an object of another schema is left out. It does not verify the
+signatures it takes, since what a selection takes depends on the record
+and its closure alone, and whether a signature counts depends on the
+versions a reader has seen. An index whose rows need a signature verified
+verifies it in `rows`, by `noVersions`, and leaves whether that version
+still counts to what reads the rows. Here the notes each root has signed:
+
+```ts
+const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {
+  const { signedIdentity } = await signatures.verify(signature, reader, noVersions);
+  yield [signedIdentity.identity.root.link, object.link];
+});
+```
+
 Finding the signatures over an object takes an index by the link they
 name, so hand an object over together with its signatures.

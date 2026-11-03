@@ -11,9 +11,11 @@ import {
   type Json,
   type JsonLink,
   json,
+  jsonSchema,
   type Link,
   linkOf,
   linkSchema,
+  NewerSchema,
   type Schema,
 } from "../src/index.ts";
 
@@ -60,7 +62,7 @@ const quotedText: Implementation<Json, Text, QuoteData> = {
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations(json, [plainText, quotedText]);
+const texts = new Implementations(jsonSchema, [plainText, quotedText]);
 
 const hello = encodeObject(plain, { text: "hello" });
 const echo = encodeObject(quote, { quotes: { $link: textAt(hello) } });
@@ -115,8 +117,64 @@ describe("implementations", () => {
   });
 
   it("refuse two implementations of one schema", () => {
-    expect(() => new Implementations(json, [plainText, { ...plainText }])).toThrow(
+    expect(() => new Implementations(jsonSchema, [plainText, { ...plainText }])).toThrow(
       `${plain.link} is given two implementations`,
+    );
+  });
+});
+
+const following = (title: string, ...predecessors: Schema<Json>[]): Promise<Schema<Json, PlainData>> =>
+  encodeSchema(
+    {
+      $schema: DRAFT_2020_12,
+      title,
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+      "x-follows": predecessors.map(({ link }) => ({ $link: link })),
+    },
+    defaultValidator,
+  );
+const second = await following("second", plain);
+const third = await following("third", second);
+const both = await following("both", plain, quote);
+
+const textIn = (schema: Schema<Json, PlainData>): Implementation<Json, Text, PlainData> => ({
+  schema,
+  read: ({ link, data }) => ({ link, text: data.text }),
+});
+
+describe("implementations of schemas that follow others", () => {
+  it("refuse to leave out a schema that one of theirs follows", () => {
+    expect(() => new Implementations(jsonSchema, [textIn(third), textIn(plain)])).toThrow(
+      `${third.link} follows ${second.link}, which is not read here`,
+    );
+  });
+
+  it("take a schema following several, along with each schema it follows", async () => {
+    const all = new Implementations(jsonSchema, [plainText, quotedText, textIn(both), textIn(second), textIn(third)]);
+    const object = encodeObject(both, { text: "hello" });
+    await expect(all.read(textAt(object), blobs(object))).resolves.toEqual({ link: object.link, text: "hello" });
+  });
+
+  it("refuse an object of a schema following one of theirs as a newer schema", async () => {
+    const object = encodeObject(second, { text: "hello" });
+    const error = await texts.read(textAt(object), blobs(object, second)).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(NewerSchema);
+    expect(error).toMatchObject({ name: "NewerSchema", schema: second.link, predecessor: plain.link });
+  });
+
+  it("find one of theirs through a schema that is not", async () => {
+    const object = encodeObject(third, { text: "hello" });
+    const error = await texts.read(textAt(object), blobs(object, third, second)).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(NewerSchema);
+    expect(error).toMatchObject({ schema: third.link, predecessor: plain.link });
+  });
+
+  it("refuse an object as not read here when the reader does not give a schema between", async () => {
+    const object = encodeObject(third, { text: "hello" });
+    await expect(texts.read(textAt(object), blobs(object, third))).rejects.toThrow(
+      `${third.link} is not a schema read here`,
     );
   });
 });

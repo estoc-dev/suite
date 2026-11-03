@@ -100,9 +100,12 @@ bytes are the UTF-8 text `Key`. Whatever the scheme, a key reads as a
 `Key`, and the schemas say so in the same way.
 
 A scheme added later comes with a schema of its own, so keys already
-written keep their links. A program reads keys written to the key schemas
-it supports, as it says which schemas it reads, and refuses one written to
-any other, as it would a key in a scheme it does not support.
+written keep their links. Its key schema follows no other scheme's key
+schema in `x-follows`: it is another format, which a program reading keys
+in the other schemes need not support. A program reads keys written to the
+key schemas it supports, as it says which schemas it reads, and refuses
+one written to any other, as it would a key in a scheme it does not
+support.
 
 `keys` reads keys through an `Implementations` of `@estoc/object`, with
 one implementation for each scheme. `keys.check` is the verifier of a key:

@@ -76,6 +76,7 @@ const fieldCount: SchemaValidator<number, Text> = {
       }
       return Number(count);
     },
+    predecessorsOf: () => [],
   },
   compile: async (count) => (data) => {
     const fields = Object.keys(data).length;

@@ -315,6 +315,52 @@ describe("what a signature signs", () => {
   });
 });
 
+describe("the selection of the signatures over objects of a schema", () => {
+  const notes = signatures.selectionOver(note);
+  const holding = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>
+    new Map(objects.map(({ link, bytes }) => [link, bytes]));
+
+  it("reads a signature over an object of the schema with the object", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const read = await notes.read(signature.link, holding(signature, hello));
+    expect(read?.signature.link).toBe(signature.link);
+    expect(read?.signature.data).toEqual(dataOf(signature));
+    expect(read?.object.link).toBe(hello.link);
+    expect(read?.object.data).toEqual({ text: "hello" });
+  });
+
+  it("leaves out a signature over an object of another schema, and what is not a signature", async () => {
+    const card = encodeObject(
+      await encodeSchema(
+        { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", required: ["name"] },
+        defaultValidator,
+      ),
+      { name: "Alice" },
+    );
+    const signature = await sign(card, signer(ed25519));
+    expect(await notes.read(signature.link, holding(signature, card))).toBeUndefined();
+    expect(await notes.read(hello.link, holding(hello))).toBeUndefined();
+  });
+
+  it("takes a signature that does not verify", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const bytes = rewritten(signature, { object: { $link: goodbye.link } });
+    const read = await notes.read(linkOf(bytes), holding({ link: linkOf(bytes), bytes }, goodbye));
+    expect(read?.object.link).toBe(goodbye.link);
+    await expect(verified(bytes, identityOf(signature))).rejects.toThrow(/does not verify/);
+  });
+
+  it("refuses a signature whose object the reader does not give, or which does not fit the schema", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    await expect(notes.read(signature.link, holding(signature))).rejects.toThrow(/no blob is given/);
+    const bytes = json.encode(json.object({ title: "hello" }, note.link));
+    const unfit = await sign({ link: linkOf(bytes) }, signer(ed25519));
+    await expect(notes.read(unfit.link, holding(unfit, { link: linkOf(bytes), bytes }))).rejects.toThrow(
+      /does not fit its schema/,
+    );
+  });
+});
+
 describe("an identity actor", () => {
   it("signs as the signed identity it is made for", async () => {
     const signedIdentity = await publish(signer(ed25519));

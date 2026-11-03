@@ -197,12 +197,13 @@ the rows of objects of several schemas, or of several selections of one
 schema, need not tell one kind of object from another.
 
 `scan` goes through all that the user wrote. It hands each record to each
-selection of the index, which reads it with the schemas it chooses, and
-what the selection reads it as to `rows`. `objectsOf` checks an object
-against its schema and passes over objects of other schemas. What came
-from elsewhere reaches an index only by following links from what the
-user wrote. A blob is read from the store once for a record, the record
-among them, however many selections and rows read it. `range(prefix)` gives the rows whose keys start with
+selection of the index, and what the selection reads it as to `rows`. An
+`ObjectSelection` is handed instead the record read with its schema, and
+only a record of that schema: a record is checked against a schema once,
+however many object selections of that schema read it. What came from
+elsewhere reaches an index only by following links from what the user
+wrote. A blob is read from the store once for a record, the record among
+them, however many selections and rows read it. `range(prefix)` gives the rows whose keys start with
 `prefix`, in the order of their keys. What does not fit in rows, such as a
 count, an application keeps in a fold of its own, which then has to come
 to the same whatever the order and however often an object comes. The rows

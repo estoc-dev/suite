@@ -12,4 +12,4 @@ export {
   type SchemaLanguage,
   type SchemaValidator,
 } from "./schema.ts";
-export { objectsOf, type Selection } from "./selection.ts";
+export { ObjectSelection, objectsOf, type Selection } from "./selection.ts";

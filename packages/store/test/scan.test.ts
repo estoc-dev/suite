@@ -3,10 +3,13 @@ import {
   encodeObject,
   encodeSchema,
   type Json,
+  type JsonSchema,
   json,
   type Link,
+  ObjectSelection,
   objectsOf,
   readObject,
+  type SchemaValidator,
   type Selection,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
@@ -20,6 +23,11 @@ const schemas = [note.bytes, tag.bytes];
 const keysOf = ({ data }: { readonly data: Json }) => (data as { keys: Key[] }).keys;
 
 const byKeys: Index<Key> = indexOver(objectsOf(note), keysOf);
+
+/** A selection that reads records as `selection` does, without a schema to route them by. */
+const plainSelectionOf = <T>(selection: Selection<T>): Selection<T> => ({
+  read: (record, reader) => selection.read(record, reader),
+});
 
 async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
   const rows: K[] = [];
@@ -114,12 +122,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("holds no rows of a record that its selection leaves out", async () => {
-    const named: Selection<string> = {
-      async read(record, reader) {
-        const name = (await objectsOf(note).read(record, reader))?.data.name;
-        return typeof name === "string" ? name : undefined;
-      },
-    };
+    const named = new ObjectSelection(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { name: "a" }), encodeObject(note, { keys: [] })],
@@ -150,9 +153,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("hands each of two selections that take one record what that selection reads it as", async () => {
-    const fieldOf = (field: string): Selection<Json> => ({
-      read: async (record, reader) => (await objectsOf(note).read(record, reader))?.data[field],
-    });
+    const fieldOf = (field: string) => new ObjectSelection(note, ({ data }) => data[field]);
     const names: Index<Key> = indexOver(fieldOf("name"), (name) => [["name", name as string]]);
     const counts: Index<Key> = indexOver(fieldOf("n"), (n) => [["n", n as number]]);
     const store = new Store(json, new MemoryBackend());
@@ -161,6 +162,49 @@ describe("an index scanned from a store", () => {
       ["n", 1],
       ["name", "a"],
     ]);
+  });
+
+  it("gives the rows of an object selection that it gives of a selection reading each record as that one does", async () => {
+    const named = new ObjectSelection(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const tagged = new ObjectSelection(tag, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const store = new Store(json, new MemoryBackend());
+    await store.write({
+      records: [encodeObject(note, { name: "a" }), encodeObject(note, {}), encodeObject(tag, { name: "b" })],
+      blobs: schemas,
+    });
+    const rowsOf = (selections: Selection<string>[]) =>
+      scan(
+        store,
+        selections.map((selection) => indexOver(selection, (name) => [[name]])).reduce((a, b) => a.union(b)),
+      );
+    const routed = await whole(await rowsOf([named, tagged]));
+    expect(routed).toEqual([["a"], ["b"]]);
+    expect(await whole(await rowsOf([plainSelectionOf(named), plainSelectionOf(tagged)]))).toEqual(routed);
+    expect(await whole(await rowsOf([named, plainSelectionOf(tagged)]))).toEqual(routed);
+  });
+
+  it("validates a record once against each schema that object selections read it with", async () => {
+    const checked: string[] = [];
+    const checking = (name: string): SchemaValidator<JsonSchema, Json> => ({
+      language: defaultValidator.language,
+      async compile(schema) {
+        const check = await defaultValidator.compile(schema);
+        return (data) => {
+          checked.push(name);
+          return check(data);
+        };
+      },
+    });
+    const noteChecking = (name: string) => encodeSchema({ $schema: DRAFT, title: "Note" }, checking(name));
+    const [strict, lax] = await Promise.all([noteChecking("strict"), noteChecking("lax")]);
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [encodeObject(note, {})], blobs: schemas });
+    const index = indexOver(objectsOf(strict), () => [["a"]]).union(
+      indexOver(objectsOf(strict), () => [["b"]]),
+      indexOver(objectsOf(lax), () => [["c"]]),
+    );
+    expect(await whole(await scan(store, index))).toEqual([["a"], ["b"], ["c"]]);
+    expect(checked).toEqual(["strict", "lax"]);
   });
 
   it("reads a blob from the store once for a record, the record among them, however many selections read it", async () => {
@@ -181,13 +225,15 @@ describe("an index scanned from a store", () => {
       put: (blobs, records) => backend.put(blobs, records),
       records: () => backend.records(),
     };
-    const nameAs = (key: string) =>
-      indexOver(objectsOf(note), async function* ({ data }, reader) {
-        const { card } = data as { card: { $link: Link<unknown> } };
-        const { name } = (await readObject(reader, card.$link, tag)).data as { name: string };
-        yield [key, name];
-      });
-    const rows = await scan(new Store(json, counting), nameAs("a").union(nameAs("b")));
+    const cardName = new ObjectSelection(note, async ({ data }, reader) => {
+      const { card } = data as { card: { $link: Link<unknown> } };
+      return (await readObject(reader, card.$link, tag)).data.name as string;
+    });
+    const nameAs = (key: string, selection: Selection<string>) => indexOver(selection, (name) => [[key, name]]);
+    const rows = await scan(
+      new Store(json, counting),
+      nameAs("a", cardName).union(nameAs("b", cardName), nameAs("b", plainSelectionOf(cardName))),
+    );
     expect(await whole(rows)).toEqual([
       ["a", "Alice"],
       ["b", "Alice"],

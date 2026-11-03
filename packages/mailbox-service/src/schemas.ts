@@ -20,14 +20,16 @@ export const ID = /^sha256:[0-9a-f]{64}$/;
 const idSchema: JsonObject = { type: "string", pattern: ID.source };
 
 /**
- * What a service signs to say where it is and what it offers: at `at`, in
- * milliseconds since the Unix epoch by the service's clock, its identity is
- * reached at `origin`, and makes the offers listed, each as the link of the
- * service's signature over the offer and `acceptId`, the id that takes
- * acceptances of it. Of the Services that identities of one root sign, the
- * latest says where the service is now: the one with the greatest `at`, and
- * of those with the same `at`, the one whose signature has the greater
- * link, compared as ASCII strings.
+ * What a service signs to say where it is and what it offers.
+ *
+ * - At `at`, in milliseconds since the Unix epoch by the service's clock,
+ *   its identity is reached at `origin` and makes the offers listed.
+ * - Each offer is listed as the link of the service's signature over the
+ *   offer and `acceptId`, the id that takes acceptances of it.
+ * - Of the Services that identities of one root sign, the latest says where
+ *   the service is now: the one with the greatest `at`, and of those with
+ *   the same `at`, the one whose signature has the greater link, compared
+ *   as ASCII strings.
  */
 export const serviceSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -110,11 +112,13 @@ export const MAILBOX_ID = /^[0-9a-f]{32}$/;
 const mailboxIdSchema: JsonObject = { type: "string", pattern: MAILBOX_ID.source };
 
 /**
- * What a service signs to offer mailboxes, under an account it opened, on
- * these terms: what waits is kept for `retention` milliseconds, a mailbox
- * holds at most `quota` bytes waiting, and a message is at most `size`
- * bytes. It names the root of the service's identity, as the offer of an
- * account does, so a request for it asks this service alone.
+ * What a service signs to offer mailboxes under an account it opened.
+ *
+ * - What waits is kept for `retention` milliseconds.
+ * - A mailbox holds at most `quota` bytes waiting.
+ * - A message is at most `size` bytes.
+ * - It names the root of the service's identity, as the offer of an account
+ *   does, so a request for it asks this service alone.
  */
 export const mailboxOfferSchema: JsonSchema = {
   $schema: DRAFT_2020_12,

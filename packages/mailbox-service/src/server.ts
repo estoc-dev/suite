@@ -30,9 +30,9 @@ import {
 } from "@estoc/object";
 import { type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
-import { type Acknowledgements, acknowledgementOf, acknowledgements } from "./acknowledgements.ts";
+import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
-import { type Locations, locations, servicesOf } from "./locations.ts";
+import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import { type PeopleView, peopleView } from "./people.ts";
 import {
@@ -90,7 +90,6 @@ export interface Accounts {
    * step. Resolves to whether it was kept.
    */
   add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean>;
-  /** Whether `root` has an account. */
   has(root: Link<KeyObject>): Promise<boolean>;
 }
 
@@ -150,9 +149,10 @@ export interface ServiceOptions {
  */
 class MailboxService {
   readonly #actor: Actor;
-  readonly #services: ReturnType<typeof servicesOf>;
+  readonly #root: Link<KeyObject>;
+  readonly #locations: LocationsView;
   readonly #people: PeopleView;
-  readonly #acknowledgements: Acknowledgements;
+  readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
   readonly #signedIdentities: SignedIdentities;
   readonly #schemas: Schemas;
@@ -163,15 +163,16 @@ class MailboxService {
 
   constructor(
     actor: Actor,
-    { root, locations }: { readonly root: Link<KeyObject>; readonly locations: Locations },
+    root: Link<KeyObject>,
     kit: IdentityKit,
     schemas: Schemas,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#actor = actor;
-    this.#services = servicesOf(locations, root);
+    this.#root = root;
+    this.#locations = locationsView(kit.signatures, schemas.service);
     this.#people = peopleView(kit, schemas);
-    this.#acknowledgements = acknowledgements(kit.signatures, schemas.acknowledgement);
+    this.#acknowledgements = acknowledgementsView(kit.signatures, schemas.acknowledgement);
     this.#signatures = kit.signatures;
     this.#signedIdentities = kit.signedIdentities;
     this.#schemas = schemas;
@@ -189,7 +190,8 @@ class MailboxService {
    */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    const [latest, ...earlier] = await view(this.#store, this.#services);
+    const locations = await view(this.#store, this.#locations);
+    const [latest, ...earlier] = await locations.servicesOf(this.#root);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
     const id = pathname.slice(1);
@@ -256,8 +258,9 @@ class MailboxService {
     } catch (error) {
       return answer(400, reasonOf(error));
     }
+    const acknowledgements = await view(this.#store, this.#acknowledgements);
     const acknowledgement =
-      (await view(this.#store, acknowledgementOf(this.#acknowledgements, acceptance.link))) ??
+      (await acknowledgements.acknowledgementOf(acceptance.link)) ??
       (
         await this.#acknowledge(
           encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
@@ -489,11 +492,11 @@ export async function loadMailboxService(
     encodeObject(schemas.accountOffer, { identity }),
     encodeObject(schemas.mailboxOffer, { identity, ...terms }),
   ];
-  const index = locations(signatures, schemas.service);
 
   const people = await view(store, peopleView(kit, schemas));
+  const locations = await view(store, locationsView(signatures, schemas.service));
   const signed = await Promise.all(
-    (await view(store, servicesOf(index, identity.$link))).map((link) => signatures.read(link, store, people)),
+    (await locations.servicesOf(identity.$link)).map((link) => signatures.read(link, store, people)),
   );
   const [latest] = signed;
   const at = clock();
@@ -522,7 +525,7 @@ export async function loadMailboxService(
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, { root: identity.$link, locations: index }, kit, schemas, { ...options, clock });
+  return new MailboxService(actor, identity.$link, kit, schemas, { ...options, clock });
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

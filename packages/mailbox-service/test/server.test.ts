@@ -98,16 +98,16 @@ async function acceptanceBy(agent: Signer, version: SignedIdentityObject, offer:
   return packBundle(signature, signature.signedIdentity.blobs);
 }
 
-/** A signer as `signer` that, while `holding`, holds each signature back until it is released, the first asked first. */
+/** A signer as `signer` that, while `isHolding`, holds each signature back until it is released, the first asked first. */
 function heldSigner(signer: Signer) {
   const signing: (() => void)[] = [];
   const held = {
-    holding: false,
+    isHolding: false,
     signing,
     signer: {
       key: signer.key,
       async sign(digest: Uint8Array, signedIdentity?: Uint8Array) {
-        if (held.holding) await new Promise<void>((release) => signing.push(release));
+        if (held.isHolding) await new Promise<void>((release) => signing.push(release));
         return signer.sign(digest, signedIdentity);
       },
     },
@@ -265,12 +265,12 @@ describe("a mailbox service", () => {
     const { offer } = await rootOf(service);
     const earlier = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
     const later = await acceptanceBy(wallet, await publish(wallet, 2_000), offer);
-    held.holding = true;
+    held.isHolding = true;
     const opening = accepting(service, earlier);
     await vi.waitFor(() => expect(held.signing).toHaveLength(1));
     const racing = accepting(service, later);
     await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.holding = false;
+    held.isHolding = false;
     held.release();
     const opened = await opening;
     held.release();
@@ -290,12 +290,12 @@ describe("a mailbox service", () => {
     const held = heldSigner(serviceSigner);
     const { service, store } = await memoryService({ by: held.signer });
     const { signature: acceptance, zip } = await directAcceptance((await rootOf(service)).offer);
-    held.holding = true;
+    held.isHolding = true;
     const opening = accepting(service, zip);
     await vi.waitFor(() => expect(held.signing).toHaveLength(1));
     const racing = accepting(service, zip);
     await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.holding = false;
+    held.isHolding = false;
     held.release();
     const opened = await opening;
     held.release();
@@ -628,12 +628,12 @@ describe("a mailbox service's offer of mailboxes", () => {
     const actor = await actorOf(alice);
     await openAccount(service, actor);
     const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
-    held.holding = true;
+    held.isHolding = true;
     const opening = askingForMailbox(service, zip);
     await vi.waitFor(() => expect(held.signing).toHaveLength(1));
     const racing = askingForMailbox(service, zip);
     await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.holding = false;
+    held.isHolding = false;
     held.release();
     const opened = await opening;
     held.release();
@@ -743,7 +743,7 @@ describe("a mailbox service's offer of mailboxes", () => {
 });
 
 describe("a mailbox that a service opened", () => {
-  async function opened(options: Parameters<typeof memoryService>[0] = {}) {
+  async function serviceWithMailbox(options: Parameters<typeof memoryService>[0] = {}) {
     const loaded = await memoryService(options);
     const actor = await actorOf(alice);
     await openAccount(loaded.service, actor);
@@ -751,7 +751,7 @@ describe("a mailbox that a service opened", () => {
   }
 
   it("keeps a ciphertext posted to its send id, answering 204, which waits until a pickup has a receipt for it", async () => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     const [first, second] = [ciphertextOf(1), ciphertextOf(2)];
     for (const ciphertext of [first, second])
       expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
@@ -762,7 +762,7 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("keeps a ciphertext that arrives twice once, and takes it again when what waits is at its quota", async () => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
     for (const ciphertext of [...full, ...full])
       expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
@@ -770,14 +770,14 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers 413 to a ciphertext over the size its offer names, and keeps nothing of it", async () => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     expect((await post(service, mailbox.sendId, ciphertextOf(1, terms.size))).status).toBe(204);
     expect((await post(service, mailbox.sendId, ciphertextOf(2, terms.size + 1))).status).toBe(413);
     expect(await queueAt(service, mailbox, actor)).toEqual([ciphertextOf(1, terms.size)]);
   });
 
   it("answers 429 once what waits would come to more than its quota, and takes ciphertexts again once a pickup has receipts for some", async () => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
     for (const ciphertext of full) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     const over = await post(service, mailbox.sendId, ciphertextOf(5));
@@ -789,7 +789,7 @@ describe("a mailbox that a service opened", () => {
 
   it("lets what waited longer than the retention its offer names wait no more", async () => {
     const clock = { now: 1_000 };
-    const { service, actor, mailbox } = await opened({ clock });
+    const { service, actor, mailbox } = await serviceWithMailbox({ clock });
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     clock.now += terms.retention;
     expect(await queueAt(service, mailbox, actor)).toEqual([ciphertextOf(1)]);
@@ -799,7 +799,7 @@ describe("a mailbox that a service opened", () => {
 
   it("does not count what waited longer than the retention its offer names toward its quota", async () => {
     const clock = { now: 1_000 };
-    const { service, actor, mailbox } = await opened({ clock });
+    const { service, actor, mailbox } = await serviceWithMailbox({ clock });
     const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
     for (const ciphertext of full) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     clock.now += terms.retention;
@@ -810,7 +810,7 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers a pickup with 100 ciphertexts at most, the earliest first", async () => {
-    const { service, actor, mailbox } = await opened({ offered: { ...terms, size: 2, quota: 2 * 101 } });
+    const { service, actor, mailbox } = await serviceWithMailbox({ offered: { ...terms, size: 2, quota: 2 * 101 } });
     const sent = Array.from({ length: 101 }, (_, n) => new Uint8Array([n >> 8, n & 0xff]));
     for (const ciphertext of sent) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     const first = await queueAt(service, mailbox, actor);
@@ -820,7 +820,9 @@ describe("a mailbox that a service opened", () => {
 
   it("answers a pickup with ciphertexts that come to 1 MiB at most, but with the earliest alone when it is larger", async () => {
     const KiB = 1024;
-    const { service, actor, mailbox } = await opened({ offered: { ...terms, size: 1_536 * KiB, quota: 4_096 * KiB } });
+    const { service, actor, mailbox } = await serviceWithMailbox({
+      offered: { ...terms, size: 1_536 * KiB, quota: 4_096 * KiB },
+    });
     const [a, b, c, d] = [
       ciphertextOf(1, 600 * KiB),
       ciphertextOf(2, 300 * KiB),
@@ -837,14 +839,14 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers a pickup by an agent that a version of the root lists which it has not seen, by the version that the request carries", async () => {
-    const { service, mailbox } = await opened();
+    const { service, mailbox } = await serviceWithMailbox();
     const listed = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     expect(await queueAt(service, mailbox, listed)).toEqual([ciphertextOf(1)]);
   });
 
   it("answers 403 to a pickup signed for another root, and is done with nothing", async () => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     const other = await actorOf(bob);
     await openAccount(service, other);
@@ -878,7 +880,7 @@ describe("a mailbox that a service opened", () => {
     ],
     ["that is not a zip", async () => new TextEncoder().encode("hello")],
   ])("answers 400 to a body %s, and is done with nothing", async (_, body) => {
-    const { service, actor, mailbox } = await opened();
+    const { service, actor, mailbox } = await serviceWithMailbox();
     const other = await openMailbox(service, actor, keyOf(0x22));
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     expect((await post(service, mailbox.pickupId, await body(actor, mailbox, other))).status).toBe(400);
@@ -886,12 +888,12 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers 404 at a mailbox id it did not make up", async () => {
-    const { service } = await opened();
+    const { service } = await serviceWithMailbox();
     expect((await post(service, "0".repeat(32), ciphertextOf(1))).status).toBe(404);
   });
 
   it("answers a browser's preflight for posting a ciphertext to its send id from another origin", async () => {
-    const { service, mailbox } = await opened();
+    const { service, mailbox } = await serviceWithMailbox();
     const response = await service.fetch(request(`/${mailbox.sendId}`, { method: "OPTIONS" }));
     expect(response.status).toBe(204);
     expect(Object.fromEntries(response.headers)).toMatchObject({

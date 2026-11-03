@@ -30,9 +30,9 @@ import {
 } from "@estoc/object";
 import { type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
-import { type MailboxAcknowledgements, mailboxAcknowledgementAt, mailboxAcknowledgements } from "./acknowledgements.ts";
+import { type MailboxAcknowledgementsView, mailboxAcknowledgementsView } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
-import { type Locations, locations, servicesOf } from "./locations.ts";
+import { type LocationsView, locationsView } from "./locations.ts";
 import { type PeopleView, peopleView } from "./people.ts";
 import {
   type AccountOfferData,
@@ -364,16 +364,16 @@ export class Services {
   readonly #store: Store;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
-  readonly #locations: Locations;
-  readonly #mailboxes: MailboxAcknowledgements;
+  readonly #locations: LocationsView;
+  readonly #mailboxes: MailboxAcknowledgementsView;
   readonly #people: PeopleView;
 
   constructor(store: Store, kit: IdentityKit, schemas: Schemas) {
     this.#store = store;
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
-    this.#locations = locations(kit.signatures, schemas.service);
-    this.#mailboxes = mailboxAcknowledgements(kit.signatures, schemas);
+    this.#locations = locationsView(kit.signatures, schemas.service);
+    this.#mailboxes = mailboxAcknowledgementsView(kit.signatures, schemas);
     this.#people = peopleView(kit, schemas);
   }
 
@@ -410,7 +410,8 @@ export class Services {
    *   naming another origin than the one asked.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
-    const [latest] = await view(this.#store, servicesOf(this.#locations, signedIdentity.identity.root.link));
+    const locations = await view(this.#store, this.#locations);
+    const [latest] = await locations.servicesOf(signedIdentity.identity.root.link);
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
 
@@ -427,10 +428,8 @@ export class Services {
    */
   async pickup(mailbox: Link<EncodedObject<Json>>, actor: Actor): Promise<Pickup> {
     const { key, url } = (await readObject(this.#store, mailbox, this.#schemas.http)).data;
-    const link = await view(
-      this.#store,
-      mailboxAcknowledgementAt(this.#mailboxes, new URL(url).pathname.slice(1), key),
-    );
+    const mailboxes = await view(this.#store, this.#mailboxes);
+    const link = await mailboxes.acknowledgementAt(new URL(url).pathname.slice(1), key);
     if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox}`);
     // The acknowledgement was verified against the identity versions the
     // store held when it came. Here it says only where to pick up, which a

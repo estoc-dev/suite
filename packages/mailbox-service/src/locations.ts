@@ -1,6 +1,6 @@
 import { type KeyObject, noVersions, type Signature, type SignatureData, type Signatures } from "@estoc/identity";
 import { decodeObject, type Json, json, type Link, type Schema, schemaOf } from "@estoc/object";
-import type { Index, View } from "@estoc/store";
+import type { View } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
 
 /**
@@ -10,38 +10,34 @@ import type { ServiceData } from "./schemas.ts";
  */
 type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signature>];
 
-export type Locations = Index<Json, Location, SignatureData>;
-
 /** The Services that recorded signatures sign, by the root of the identity that signed each. */
-export function locations(signatures: Signatures, service: Schema<Json, ServiceData>): Locations {
-  return {
-    reads: [signatures.schema],
-    async *rows(signature, reader) {
-      const bytes = await reader.get(signature.data.object.$link);
-      if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-      // A row depends on the signature and its closure alone, so it is
-      // verified by the version it carries; whether that version still
-      // counts is for whoever reads the Service to check.
-      const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
-      yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
-    },
-  };
+export interface Locations {
+  /** The links of the signatures over the Services of `root`, from the latest back. */
+  servicesOf(root: Link<KeyObject>): Promise<Link<Signature>[]>;
 }
 
-/**
- * The links of the signatures over the Services of `root` among a store's
- * records, from the latest back.
- */
-export function servicesOf(
-  locations: Locations,
-  root: Link<KeyObject>,
-): View<Json, Location, Promise<Link<Signature>[]>, SignatureData> {
+export type LocationsView = View<Json, Location, Locations, SignatureData>;
+
+export function locationsView(signatures: Signatures, service: Schema<Json, ServiceData>): LocationsView {
   return {
-    index: locations,
-    async read(rows) {
-      const links: Link<Signature>[] = [];
-      for await (const [, , link] of rows.range([root])) links.unshift(link);
-      return links;
+    index: {
+      reads: [signatures.schema],
+      async *rows(signature, reader) {
+        const bytes = await reader.get(signature.data.object.$link);
+        if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
+        // A row depends on the signature and its closure alone, so it is
+        // verified by the version it carries; whether that version still
+        // counts is for whoever reads the Service to check.
+        const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
+        yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
+      },
     },
+    read: (rows) => ({
+      async servicesOf(root) {
+        const links: Link<Signature>[] = [];
+        for await (const [, , link] of rows.range([root])) links.unshift(link);
+        return links;
+      },
+    }),
   };
 }

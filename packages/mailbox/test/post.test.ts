@@ -173,7 +173,7 @@ describe("an inbox", () => {
   it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, kept, queue, inbox } = await receivingAt(network);
-    const byMailbox: Index<Json, [mailbox: Link<unknown>, key: Link<unknown>]> = indexOver(
+    const byMailbox: Index<[mailbox: Link<unknown>, key: Link<unknown>]> = indexOver(
       objectsOf(keys),
       ({ link, data }) => [[data.mailbox.$link, link]],
     );

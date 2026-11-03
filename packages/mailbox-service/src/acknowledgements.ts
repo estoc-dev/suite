@@ -16,7 +16,7 @@ export interface Acknowledgements {
   acknowledgementOf(acceptance: Link<Signature>): Promise<Link<Signature> | undefined>;
 }
 
-export type AcknowledgementsView = View<Json, AcknowledgementRow, Acknowledgements>;
+export type AcknowledgementsView = View<AcknowledgementRow, Acknowledgements>;
 
 export function acknowledgementsView(
   signatures: Signatures,
@@ -51,7 +51,7 @@ export interface MailboxAcknowledgements {
   acknowledgementAt(sendId: string, key: string): Promise<Link<Signature> | undefined>;
 }
 
-export type MailboxAcknowledgementsView = View<Json, MailboxAcknowledgementRow, MailboxAcknowledgements>;
+export type MailboxAcknowledgementsView = View<MailboxAcknowledgementRow, MailboxAcknowledgements>;
 
 export function mailboxAcknowledgementsView(
   signatures: Signatures,

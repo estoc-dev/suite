@@ -153,11 +153,11 @@ const note = (data: Note) => encodeObject(noteSchema, data);
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];
 
-const byTag: Index<Json, Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
+const byTag: Index<Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
   data.tags.map((tag) => [tag, data.at, link] as const),
 );
 
-const texts: View<Json, Row, Promise<[tag: string, text: string][]>> = {
+const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   index: byTag,
   async read(rows, reader) {
     const texts: [tag: string, text: string][] = [];
@@ -171,7 +171,7 @@ const { signatures, signedIdentities, versions, delegate, publish } = await load
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-const people: View<Json, Version, People> = {
+const people: View<Version, People> = {
   index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
     yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   }),

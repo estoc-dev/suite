@@ -32,7 +32,7 @@ const noteSchema: Schema<Json, Note> = await encodeSchema(
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];
 
-const byTag: Index<Json, Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
+const byTag: Index<Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
   data.tags.map((tag) => [tag, data.at, link] as const),
 );
 
@@ -40,7 +40,7 @@ interface Latest {
   of(tag: string): Promise<Note | undefined>;
 }
 
-const latest: View<Json, Row, Latest> = {
+const latest: View<Row, Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async of(tag) {
@@ -79,7 +79,7 @@ describe("the value of a view", () => {
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
-    const tags: View<Json, Row, Promise<Set<string>>> = {
+    const tags: View<Row, Promise<Set<string>>> = {
       index: byTag,
       async read(rows) {
         const tags = new Set<string>();

@@ -61,9 +61,7 @@ const deliveriesGoing = (direction: Direction, schema: Schema<Json, DeliveryData
 
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle.
-const deliveries: Index<Json, DeliveryRow> = deliveriesGoing("inbound", inbound).union(
-  deliveriesGoing("outbound", outbound),
-);
+const deliveries: Index<DeliveryRow> = deliveriesGoing("inbound", inbound).union(deliveriesGoing("outbound", outbound));
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const gathered: T[] = [];

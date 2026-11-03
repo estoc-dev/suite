@@ -9,8 +9,8 @@ import type { Store } from "./store.ts";
  * what their rows come to, so an application can give the one and a module
  * that knows what the objects mean the other.
  */
-export interface View<D, K extends Key, V> {
-  readonly index: Index<D, K>;
+export interface View<K extends Key, V> {
+  readonly index: Index<K>;
   /**
    * The value of `rows`, with `reader` giving by link the objects they name.
    * It may be a promise, as when the value is worked out from all the rows
@@ -29,9 +29,9 @@ export interface View<D, K extends Key, V> {
  *
  * @throws as `scan` does.
  */
-export async function view<D, K extends Key, V>(
+export async function view<K extends Key, V>(
   store: Pick<Store, "get" | "records">,
-  view: View<D, K, V>,
+  view: View<K, V>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);
 }

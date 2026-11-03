@@ -16,7 +16,7 @@ export interface Locations {
   servicesOf(root: Link<KeyObject>): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Json, Location, Locations>;
+export type LocationsView = View<Location, Locations>;
 
 export function locationsView(signatures: Signatures, service: Schema<Json, ServiceData>): LocationsView {
   return {

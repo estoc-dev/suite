@@ -1,7 +1,6 @@
 import {
   encodeObject,
   encodeSchema,
-  type Json,
   type JsonObject,
   json,
   type Link,
@@ -106,7 +105,7 @@ describe("a private store", () => {
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [anything.bytes] });
     await kept.write({ records: [object({ card: { $link: card.link } })] });
-    const byName: Index<Json, [name: string]> = indexOver(objectsOf(anything), async function* ({ data }, reader) {
+    const byName: Index<[name: string]> = indexOver(objectsOf(anything), async function* ({ data }, reader) {
       const { card } = data as { card: { $link: Link<unknown> } };
       const { name } = (await readObject(reader, card.$link, anything)).data as { name: string };
       yield [name];

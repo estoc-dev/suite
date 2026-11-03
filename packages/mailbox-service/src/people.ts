@@ -14,7 +14,7 @@ import {
 import { indexOver, type View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
-export type PeopleView = View<Json, Version, People>;
+export type PeopleView = View<Version, People>;
 
 /**
  * The people of a service's store, or of a client's of it, by the versions

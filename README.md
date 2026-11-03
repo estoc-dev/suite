@@ -22,8 +22,8 @@ The packages fall on the two sides of that line.
   Like JSON or zip, it has to be shared, and it gives no meaning and no
   reader an advantage.
 - Semantics are everything that carries meaning: identities, signatures,
-  mailboxes. Estoc writes them, and they do nothing that a semantics
-  written elsewhere could not.
+  mailboxes, comments. Estoc writes them, and they do nothing that a
+  semantics written elsewhere could not.
 
 Nor are objects tied to one encoding. Data is in an encoding and schemas
 in a language over it, here JSON and JSON Schema; deterministic CBOR with
@@ -91,8 +91,10 @@ fresh, such as a nonce.
   who are not online, reached by its identity, and opening an account
   there by signing its offer.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
-  them, kept on their device; and the indexes an application fills from
-  what the user wrote.
+  them, kept on their device; the indexes an application fills from
+  what the user wrote; and a catalog of it by the schema each object names.
+- `@estoc/comment`: comments on any blob, each an object that links to the
+  blob it is on, read back by that blob.
 
 ## Development
 

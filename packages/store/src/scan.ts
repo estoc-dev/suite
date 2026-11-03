@@ -136,7 +136,6 @@ export async function scan<K extends Key>(store: Pick<Store, "get" | "records">,
 /** A record as the parts of an index read it, so that what they share is done once. */
 class ScannedRecord {
   readonly link: Link<unknown>;
-  /** Gets each blob from the store once and keeps it: a link names one blob. */
   readonly reader: Reader;
   readonly #schemas = new Map<object, Link<unknown>>();
   readonly #objects = new Map<object, unknown>();

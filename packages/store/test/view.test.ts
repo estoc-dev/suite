@@ -37,13 +37,13 @@ const byTag: Index<Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
 );
 
 interface Latest {
-  of(tag: string): Promise<Note | undefined>;
+  noteTagged(tag: string): Promise<Note | undefined>;
 }
 
 const latest: View<Row, Latest> = {
   index: byTag,
   read: (rows, reader) => ({
-    async of(tag) {
+    async noteTagged(tag) {
       let last: Link<unknown> | undefined;
       for await (const [, , note] of rows.range([tag])) last = note;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
@@ -64,9 +64,9 @@ describe("the value of a view", () => {
       { text: "salad", tags: ["lunch", "dinner"], at: 2 },
     );
     const notes = await view(store, latest);
-    expect(await notes.of("lunch")).toMatchObject({ text: "salad" });
-    expect(await notes.of("dinner")).toMatchObject({ text: "stew" });
-    expect(await notes.of("breakfast")).toBeUndefined();
+    expect(await notes.noteTagged("lunch")).toMatchObject({ text: "salad" });
+    expect(await notes.noteTagged("dinner")).toMatchObject({ text: "stew" });
+    expect(await notes.noteTagged("breakfast")).toBeUndefined();
   });
 
   it("stays as the store was when viewed, and takes in later writes when viewed again", async () => {
@@ -74,8 +74,8 @@ describe("the value of a view", () => {
     await write(store, { text: "soup", tags: ["lunch"], at: 1 });
     const before = await view(store, latest);
     await write(store, { text: "salad", tags: ["lunch"], at: 2 });
-    expect(await before.of("lunch")).toMatchObject({ text: "soup" });
-    expect(await (await view(store, latest)).of("lunch")).toMatchObject({ text: "salad" });
+    expect(await before.noteTagged("lunch")).toMatchObject({ text: "soup" });
+    expect(await (await view(store, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {

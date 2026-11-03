@@ -313,3 +313,38 @@ The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
 program does with objects of it beyond reading them. Its `read` takes an
 object already read with that schema, as the table's `read` gives it.
+
+## Selections
+
+A program does not always take every object of a schema, nor only objects
+of one. A `Selection` says which records it takes and what each one reads
+as: `read` reads the record that a link names, and what it links to, from
+the reader, and gives what the record reads as, or `undefined` for one it
+leaves out. Whether it takes a record depends on the record and its
+closure alone, so it takes the same records whatever else the program has
+read.
+
+Most selections take objects of one schema, and a `SelectionBySchema` is
+one of those: it is given the schema, and what an object read with it reads
+as. Reading a record with it comes to reading the object first, so what
+reads records with several selections can read each record with a schema
+once, and pass over records of other schemas. `objectsOf(schema)` takes
+every object of `schema`, each as itself. One schema can then hold objects
+of several kinds, told apart by what they link to. Here a reply of
+`replySchema` can answer any object, and the selection takes the replies
+that answer a note of `noteSchema`, each with the note:
+
+```ts
+type Reply = { readonly to: JsonLink<unknown>; readonly text: string };
+type ReplyToNote = { readonly reply: EncodedObject<Json, Reply>; readonly note: EncodedObject<Json, Note> };
+
+const repliesToNotes = new SelectionBySchema<Json, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
+  const bytes = await reader.get(reply.data.to.$link);
+  if (bytes === undefined || schemaOf(bytes, json) !== noteSchema.link) return undefined;
+  return { reply, note: decodeObject(bytes, noteSchema) };
+});
+```
+
+Any other selection reads the record itself, with the schemas it chooses,
+as an implementation table does, and is handed every record. The indexes of
+`@estoc/store` are built over selections.

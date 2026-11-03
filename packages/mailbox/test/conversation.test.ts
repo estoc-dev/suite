@@ -7,11 +7,12 @@ import {
   type JsonSchema,
   json,
   type Link,
+  objectsOf,
   readObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Index, MemoryBackend, PrivateStore, type Rows, Store, scan } from "@estoc/store";
+import { type Index, indexOver, MemoryBackend, PrivateStore, type Rows, Store, scan } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type DeliveryData,
@@ -53,14 +54,14 @@ type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
 type DeliveryRow = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
 
+const deliveriesGoing = (direction: Direction, schema: Schema<Json, DeliveryData>) =>
+  indexOver(objectsOf(schema), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
+    [direction, mailbox.$link, at, bundle.$link],
+  ]);
+
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle.
-const deliveries: Index<Json, DeliveryRow, DeliveryData> = {
-  reads: [inbound, outbound],
-  rows: ({ schema, data: { mailbox, at, bundle } }) => [
-    [schema.link === inbound.link ? "inbound" : "outbound", mailbox.$link, at, bundle.$link],
-  ],
-};
+const deliveries: Index<DeliveryRow> = deliveriesGoing("inbound", inbound).union(deliveriesGoing("outbound", outbound));
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const gathered: T[] = [];

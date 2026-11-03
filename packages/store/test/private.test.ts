@@ -1,16 +1,16 @@
 import {
   encodeObject,
   encodeSchema,
-  type Json,
   type JsonObject,
   json,
   type Link,
   linkOf,
+  objectsOf,
   readObject,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Backend, type Index, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
+import { type Backend, type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
@@ -105,14 +105,11 @@ describe("a private store", () => {
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [anything.bytes] });
     await kept.write({ records: [object({ card: { $link: card.link } })] });
-    const byName: Index<Json, [name: string]> = {
-      reads: [anything],
-      async *rows({ data }, reader) {
-        const { card } = data as { card: { $link: Link<unknown> } };
-        const { name } = (await readObject(reader, card.$link, anything)).data as { name: string };
-        yield [name];
-      },
-    };
+    const byName: Index<[name: string]> = indexOver(objectsOf(anything), async function* ({ data }, reader) {
+      const { card } = data as { card: { $link: Link<unknown> } };
+      const { name } = (await readObject(reader, card.$link, anything)).data as { name: string };
+      yield [name];
+    });
     const rows: (readonly [string])[] = [];
     for await (const row of (await scan(kept, byName)).range([])) rows.push(row);
     expect(rows).toEqual([["Alice"]]);

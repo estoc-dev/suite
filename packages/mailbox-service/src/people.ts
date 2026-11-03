@@ -5,15 +5,16 @@ import {
   type Json,
   type JsonLink,
   json,
+  objectsOf,
   type Reader,
   readObject,
   type Schema,
   schemaOf,
 } from "@estoc/object";
-import type { View } from "@estoc/store";
+import { indexOver, type View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
-export type PeopleView = View<Json, Version, People, SignatureData>;
+export type PeopleView = View<Version, People>;
 
 /**
  * The people of a service's store, or of a client's of it, by the versions
@@ -38,23 +39,20 @@ export function peopleView(
   const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
     versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   return {
-    index: {
-      reads: [signatures.schema],
-      async *rows(signature, reader) {
-        const bytes = await reader.get(signature.data.object.$link);
-        if (bytes === undefined) return;
-        const schema = schemaOf(bytes, json);
-        let acknowledgedSignature: JsonLink<Signature> | undefined;
-        if (schema === schemas.acknowledgement.link)
-          acknowledgedSignature = decodeObject(bytes, schemas.acknowledgement).data.acceptance;
-        else if (schema === schemas.mailboxAcknowledgement.link)
-          acknowledgedSignature = decodeObject(bytes, schemas.mailboxAcknowledgement).data.request;
-        else if (schema !== schemas.service.link) return;
-        yield await versionOf(signature, reader);
-        if (acknowledgedSignature === undefined) return;
-        yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);
-      },
-    },
+    index: indexOver(objectsOf(signatures.schema), async function* (signature, reader) {
+      const bytes = await reader.get(signature.data.object.$link);
+      if (bytes === undefined) return;
+      const schema = schemaOf(bytes, json);
+      let acknowledgedSignature: JsonLink<Signature> | undefined;
+      if (schema === schemas.acknowledgement.link)
+        acknowledgedSignature = decodeObject(bytes, schemas.acknowledgement).data.acceptance;
+      else if (schema === schemas.mailboxAcknowledgement.link)
+        acknowledgedSignature = decodeObject(bytes, schemas.mailboxAcknowledgement).data.request;
+      else if (schema !== schemas.service.link) return;
+      yield await versionOf(signature, reader);
+      if (acknowledgedSignature === undefined) return;
+      yield await versionOf(await readObject(reader, acknowledgedSignature.$link, signatures.schema), reader);
+    }),
     read: (rows, reader) => versions.people(rows, reader),
   };
 }

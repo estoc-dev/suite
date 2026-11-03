@@ -1,7 +1,16 @@
-import { encodeObject, encodeSchema, type Json, json, type Link, readObject, type Schema } from "@estoc/object";
+import {
+  encodeObject,
+  encodeSchema,
+  type Json,
+  json,
+  type Link,
+  objectsOf,
+  readObject,
+  type Schema,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Index, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
 type Note = { readonly text: string; readonly tags: readonly string[]; readonly at: number };
 
@@ -23,19 +32,18 @@ const noteSchema: Schema<Json, Note> = await encodeSchema(
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];
 
-const byTag: Index<Json, Row, Note> = {
-  reads: [noteSchema],
-  rows: ({ link, data }) => data.tags.map((tag) => [tag, data.at, link] as const),
-};
+const byTag: Index<Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
+  data.tags.map((tag) => [tag, data.at, link] as const),
+);
 
 interface Latest {
-  of(tag: string): Promise<Note | undefined>;
+  noteTagged(tag: string): Promise<Note | undefined>;
 }
 
-const latest: View<Json, Row, Latest, Note> = {
+const latest: View<Row, Latest> = {
   index: byTag,
   read: (rows, reader) => ({
-    async of(tag) {
+    async noteTagged(tag) {
       let last: Link<unknown> | undefined;
       for await (const [, , note] of rows.range([tag])) last = note;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
@@ -56,9 +64,9 @@ describe("the value of a view", () => {
       { text: "salad", tags: ["lunch", "dinner"], at: 2 },
     );
     const notes = await view(store, latest);
-    expect(await notes.of("lunch")).toMatchObject({ text: "salad" });
-    expect(await notes.of("dinner")).toMatchObject({ text: "stew" });
-    expect(await notes.of("breakfast")).toBeUndefined();
+    expect(await notes.noteTagged("lunch")).toMatchObject({ text: "salad" });
+    expect(await notes.noteTagged("dinner")).toMatchObject({ text: "stew" });
+    expect(await notes.noteTagged("breakfast")).toBeUndefined();
   });
 
   it("stays as the store was when viewed, and takes in later writes when viewed again", async () => {
@@ -66,12 +74,12 @@ describe("the value of a view", () => {
     await write(store, { text: "soup", tags: ["lunch"], at: 1 });
     const before = await view(store, latest);
     await write(store, { text: "salad", tags: ["lunch"], at: 2 });
-    expect(await before.of("lunch")).toMatchObject({ text: "soup" });
-    expect(await (await view(store, latest)).of("lunch")).toMatchObject({ text: "salad" });
+    expect(await before.noteTagged("lunch")).toMatchObject({ text: "soup" });
+    expect(await (await view(store, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
-    const tags: View<Json, Row, Promise<Set<string>>, Note> = {
+    const tags: View<Row, Promise<Set<string>>> = {
       index: byTag,
       async read(rows) {
         const tags = new Set<string>();

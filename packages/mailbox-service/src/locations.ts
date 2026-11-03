@@ -1,6 +1,6 @@
-import { type KeyObject, noVersions, type Signature, type SignatureData, type Signatures } from "@estoc/identity";
-import { decodeObject, type Json, json, type Link, type Schema, schemaOf } from "@estoc/object";
-import type { View } from "@estoc/store";
+import { type KeyObject, noVersions, type Signature, type Signatures } from "@estoc/identity";
+import { decodeObject, type Json, json, type Link, objectsOf, type Schema, schemaOf } from "@estoc/object";
+import { indexOver, type View } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
 
 /**
@@ -16,22 +16,19 @@ export interface Locations {
   servicesOf(root: Link<KeyObject>): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Json, Location, Locations, SignatureData>;
+export type LocationsView = View<Location, Locations>;
 
 export function locationsView(signatures: Signatures, service: Schema<Json, ServiceData>): LocationsView {
   return {
-    index: {
-      reads: [signatures.schema],
-      async *rows(signature, reader) {
-        const bytes = await reader.get(signature.data.object.$link);
-        if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
-        // A row depends on the signature and its closure alone, so it is
-        // verified by the version it carries; whether that version still
-        // counts is for whoever reads the Service to check.
-        const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
-        yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
-      },
-    },
+    index: indexOver(objectsOf(signatures.schema), async function* (signature, reader) {
+      const bytes = await reader.get(signature.data.object.$link);
+      if (bytes === undefined || schemaOf(bytes, json) !== service.link) return;
+      // A row depends on the signature and its closure alone, so it is
+      // verified by the version it carries; whether that version still
+      // counts is for whoever reads the Service to check.
+      const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
+      yield [signedIdentity.identity.root.link, decodeObject(bytes, service).data.at, link];
+    }),
     read: (rows) => ({
       async servicesOf(root) {
         const links: Link<Signature>[] = [];

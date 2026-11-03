@@ -90,7 +90,6 @@ export interface Accounts {
    * step. Resolves to whether it was kept.
    */
   add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean>;
-  /** Whether `root` has an account. */
   has(root: Link<KeyObject>): Promise<boolean>;
 }
 

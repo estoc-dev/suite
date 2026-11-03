@@ -48,13 +48,13 @@ export interface Mailboxes {
   queue(sendId: string, since: number): AsyncIterable<Uint8Array>;
 }
 
-type HeldMessage = { readonly ciphertext: Uint8Array; readonly at: number };
+type QueueEntry = { readonly ciphertext: Uint8Array; readonly at: number };
 
 /** Keeps mailboxes in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryMailboxes implements Mailboxes {
   readonly #byRequest = new Map<Link<Signature>, OpenMailbox>();
   readonly #byId = new Map<string, OpenMailbox>();
-  readonly #queues = new Map<string, Map<Link<Uint8Array>, HeldMessage>>();
+  readonly #queues = new Map<string, Map<Link<Uint8Array>, QueueEntry>>();
 
   async open(mailbox: OpenMailbox): Promise<OpenMailbox> {
     const kept = this.#byRequest.get(mailbox.request);
@@ -97,7 +97,7 @@ export class MemoryMailboxes implements Mailboxes {
     for (const { ciphertext } of [...this.#removeExpired(sendId, since).values()]) yield ciphertext.slice();
   }
 
-  #removeExpired(sendId: string, since: number): Map<Link<Uint8Array>, HeldMessage> {
+  #removeExpired(sendId: string, since: number): Map<Link<Uint8Array>, QueueEntry> {
     const queue = this.#queues.get(sendId);
     if (queue === undefined) throw new Error(`no mailbox is opened at ${sendId}`);
     for (const [link, { at }] of queue) if (at < since) queue.delete(link);

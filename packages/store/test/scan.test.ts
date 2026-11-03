@@ -6,7 +6,7 @@ import {
   type JsonSchema,
   json,
   type Link,
-  ObjectSelection,
+  SelectionBySchema,
   objectsOf,
   readObject,
   type SchemaValidator,
@@ -122,7 +122,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("holds no rows of a record that its selection leaves out", async () => {
-    const named = new ObjectSelection(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const named = new SelectionBySchema(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { name: "a" }), encodeObject(note, { keys: [] })],
@@ -153,7 +153,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("hands each of two selections that take one record what that selection reads it as", async () => {
-    const fieldOf = (field: string) => new ObjectSelection(note, ({ data }) => data[field]);
+    const fieldOf = (field: string) => new SelectionBySchema(note, ({ data }) => data[field]);
     const names: Index<Key> = indexOver(fieldOf("name"), (name) => [["name", name as string]]);
     const counts: Index<Key> = indexOver(fieldOf("n"), (n) => [["n", n as number]]);
     const store = new Store(json, new MemoryBackend());
@@ -164,9 +164,9 @@ describe("an index scanned from a store", () => {
     ]);
   });
 
-  it("gives the rows of an object selection that it gives of a selection reading each record as that one does", async () => {
-    const named = new ObjectSelection(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
-    const tagged = new ObjectSelection(tag, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+  it("gives the rows of a selection by schema that it gives of a selection reading each record as that one does", async () => {
+    const named = new SelectionBySchema(note, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const tagged = new SelectionBySchema(tag, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { name: "a" }), encodeObject(note, {}), encodeObject(tag, { name: "b" })],
@@ -183,7 +183,7 @@ describe("an index scanned from a store", () => {
     expect(await whole(await rowsOf([named, plainSelectionOf(tagged)]))).toEqual(routed);
   });
 
-  it("validates a record once against each schema that object selections read it with", async () => {
+  it("validates a record once against each schema of the selections by schema that read it", async () => {
     const checked: string[] = [];
     const checking = (name: string): SchemaValidator<JsonSchema, Json> => ({
       language: defaultValidator.language,
@@ -225,7 +225,7 @@ describe("an index scanned from a store", () => {
       put: (blobs, records) => backend.put(blobs, records),
       records: () => backend.records(),
     };
-    const cardName = new ObjectSelection(note, async ({ data }, reader) => {
+    const cardName = new SelectionBySchema(note, async ({ data }, reader) => {
       const { card } = data as { card: { $link: Link<unknown> } };
       return (await readObject(reader, card.$link, tag)).data.name as string;
     });

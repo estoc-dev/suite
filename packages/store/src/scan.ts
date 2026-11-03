@@ -3,7 +3,7 @@ import {
   type EncodedObject,
   type Fields,
   type Link,
-  ObjectSelection,
+  SelectionBySchema,
   type Reader,
   type Schema,
   type Selection,
@@ -87,11 +87,11 @@ export function indexOver<K extends Key, T>(
 }
 
 /**
- * What `selection` reads `record` as. An object selection is handed the record read with its
- * schema, which the other object selections of that schema share.
+ * What `selection` reads `record` as. A selection by schema is handed the record read with its
+ * schema, which the other selections by that schema share.
  */
 async function itemOf<T>(selection: Selection<T>, record: ScannedRecord): Promise<T | undefined> {
-  if (!(selection instanceof ObjectSelection)) return selection.read(record.link, record.reader);
+  if (!(selection instanceof SelectionBySchema)) return selection.read(record.link, record.reader);
   const object = await record.objectOf(selection.schema);
   return object === undefined ? undefined : selection.itemOf(object, record.reader);
 }
@@ -108,13 +108,13 @@ export interface Rows<K extends Key> {
  *
  * - Only records reach an index, and on a staged batch the batch's records as well: what came
  *   from elsewhere is reached by following links from them.
- * - Each selection of the index reads each record from the store, except that an object selection
+ * - Each selection of the index reads each record from the store, except that a selection by schema
  *   is handed the record read with its schema, and only a record of that schema.
  * - Within one record, a blob, the record among them, is read from the store once, however many
  *   selections and rows read it, and the record is read and validated with a schema once,
- *   however many object selections of that schema read it.
+ *   however many selections by that schema read it.
  *
- * @throws when the data of a record does not fit the schema of an object selection that reads it.
+ * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
  * @throws where a selection or its rows throw.
  * @throws when a row holds a number that is not finite.
  */

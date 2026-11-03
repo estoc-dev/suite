@@ -23,7 +23,7 @@ export interface Selection<T> {
  * may read each record with a schema once, and pass over records of other
  * schemas.
  */
-export class ObjectSelection<D, T, F extends Fields<D> = Fields<D>> implements Selection<T> {
+export class SelectionBySchema<D, T, F extends Fields<D> = Fields<D>> implements Selection<T> {
   readonly schema: Schema<D, F>;
   readonly #itemOf: (object: EncodedObject<D, F>, reader: Reader) => T | undefined | Promise<T | undefined>;
 
@@ -59,6 +59,6 @@ export class ObjectSelection<D, T, F extends Fields<D> = Fields<D>> implements S
 }
 
 /** The selection of every object of `schema`, each read as itself. */
-export function objectsOf<D, F extends Fields<D>>(schema: Schema<D, F>): ObjectSelection<D, EncodedObject<D, F>, F> {
-  return new ObjectSelection(schema, (object) => object);
+export function objectsOf<D, F extends Fields<D>>(schema: Schema<D, F>): SelectionBySchema<D, EncodedObject<D, F>, F> {
+  return new SelectionBySchema(schema, (object) => object);
 }

@@ -324,7 +324,7 @@ leaves out. Whether it takes a record depends on the record and its
 closure alone, so it takes the same records whatever else the program has
 read.
 
-Most selections take objects of one schema, and an `ObjectSelection` is
+Most selections take objects of one schema, and a `SelectionBySchema` is
 one of those: it is given the schema, and what an object read with it reads
 as. Reading a record with it comes to reading the object first, so what
 reads records with several selections can read each record with a schema
@@ -338,7 +338,7 @@ that answer a note of `noteSchema`, each with the note:
 type Reply = { readonly to: JsonLink<unknown>; readonly text: string };
 type ReplyToNote = { readonly reply: EncodedObject<Json, Reply>; readonly note: EncodedObject<Json, Note> };
 
-const repliesToNotes = new ObjectSelection<Json, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
+const repliesToNotes = new SelectionBySchema<Json, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
   const bytes = await reader.get(reply.data.to.$link);
   if (bytes === undefined || schemaOf(bytes, json) !== noteSchema.link) return undefined;
   return { reply, note: decodeObject(bytes, noteSchema) };

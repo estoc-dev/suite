@@ -1,8 +1,8 @@
 # @estoc/didcomm-mediator
 
-**Status: planned.** Nothing here is built yet. This file is the plan, and
-the decisions behind it; each phase rewrites its part into a description
-of what was built.
+**Status: phase 1 of 4 built, the envelopes.** The rest of this file is
+the plan, and the decisions behind it; each phase rewrites its part into a
+description of what was built.
 
 A DIDComm v2 mediator built as a client of a mailbox service of
 `@estoc/mailbox-service`. DIDComm wallets ask it for mediation, have
@@ -100,25 +100,51 @@ mediator keeps no queue toward its clients. WebSockets come later.
 
 ## Envelopes
 
-- Opens anoncrypt, `ECDH-ES+A256KW`, with `A256CBC-HS512`, `A256GCM` and
-  `XC20P`: an anoncrypt sender picks among them, and a forward the
-  mediator cannot open would be lost.
-- Opens and writes authcrypt, `ECDH-1PU+A256KW` with `A256CBC-HS512`, the
-  one content encryption authcrypt allows, and anoncrypt of a signed
-  message.
-- Verifies JWS by `EdDSA` over Ed25519, `ES256` and `ES256K`, and signs
-  by `EdDSA`.
-- Publishes an X25519 keyAgreement key alone, so a sender that forwards
-  to it and a client that authcrypts to it use X25519.
-- Resolves `did:peer:2`, `did:peer:4` and `did:key` with no network.
-- Is written over `@noble/curves`, `@noble/hashes` and `@noble/ciphers`.
-  `jose` has no ECDH-1PU.
+Built, in `src/envelope`, exported as `@estoc/didcomm-mediator/envelope`.
+It knows nothing of Estoc, and is written over `@noble/curves`,
+`@noble/hashes` and `@noble/ciphers`; `jose` has no ECDH-1PU.
 
-The mediator's own DID is a `did:peer:2` with its X25519 key under `E`
-and a `DIDCommMessaging` service under `S`. A client puts it in the `uri`
-of its own service, as the spec's "Using a DID as an endpoint" does. The
-DID is static, so a mediator that moves hands out a new one, as moving is
-handing out a new mailbox.
+- `packEncrypted` writes anoncrypt, authcrypt, authcrypt anoncrypted again
+  to hide `skid`, and anoncrypt of a signed message. Authcrypt of a signed
+  message adds nothing, as the spec says, and is not written.
+- `unpack` takes envelopes off in the order anoncrypt, authcrypt, signed,
+  each at most once. That admits every combination the spec lists, and
+  also anoncrypt(authcrypt(sign)), which its text forbids but its test
+  vectors have.
+- Key agreement on X25519, P-256, P-384 and P-521: `ECDH-ES+A256KW` with
+  `A256CBC-HS512`, `A256GCM` or `XC20P`, and `ECDH-1PU+A256KW` with
+  `A256CBC-HS512` alone, which commits to its key. A point of a NIST curve
+  is checked to be on it, and an X25519 key of small order gives no
+  secret. A JWE with `crit` or `zip` is refused. `apv` is not checked
+  against the recipients' kids: the key derivation binds it already.
+- JWS: verifies `EdDSA` over Ed25519, `ES256` and `ES256K`, in the General
+  or the Flattened serialization, with one signature; signs by whichever
+  of them the key's curve has. An `ES256` or `ES256K` signature verifies
+  whether or not its `s` is low, since JOSE does not ask for it and Web
+  Crypto does not write it.
+- The checks between layers: an authcrypt sender and a signer are the
+  message's `from`, so a signer under authcrypt is the sender; a signed
+  message that is encrypted has `to`; and once a sender is proven, a `to`
+  names each recipient that decrypted. Anoncrypt alone proves no sender,
+  and then neither is checked: `sender` is none.
+- `OfflineResolver` resolves `did:key`, `did:peer:2` and `did:peer:4` with
+  no network, and other methods by a fallback. A `did:peer:4` resolves in
+  its short form once its long form has, of the latest 10,000; its two
+  forms are one DID, named by the short. A `did:key` on a NIST curve also
+  agrees on secrets by its own key, which did:key's algorithm leaves out
+  but DIDComm needs.
+- The test vectors are read from the specs' text: `test/vectors.json` from
+  appendices A to C of DIDComm v2.1, and `test/peer-did.json` from the
+  examples of the Peer DID spec. Every signed and encrypted message of
+  appendix C opens, for each of its recipients.
+
+The mediator publishes an X25519 keyAgreement key alone, so a sender that
+forwards to it and a client that authcrypts to it use X25519. Its own DID
+is a `did:peer:2` with that key under `E` and a `DIDCommMessaging` service
+under `S`, which phase 2 makes. A client puts the DID in the `uri` of its
+own service, as the spec's "Using a DID as an endpoint" does. The DID is
+static, so a mediator that moves hands out a new one, as moving is handing
+out a new mailbox.
 
 ## Who may do what
 
@@ -187,7 +213,7 @@ requests, so the client also gives one pickup request on its own: send
 
 | Phase | What | Done when |
 |---|---|---|
-| 1 Envelopes | did:peer:2/4 and did:key; anoncrypt and authcrypt; JWS | the test vectors of the spec's appendix pass |
+| 1 Envelopes, built | did:peer:2/4 and did:key; anoncrypt and authcrypt; JWS | the test vectors of the spec's appendix pass |
 | 2 Forward | the mediator's DID and key, in a private store; routes from a fixture | a sender's forward through the mediator to a service with `MemoryMailboxes` is picked up by `Services.pickup` as the inner JWE, which R opens |
 | 3 Pickup | the single pickup request; delivery, receipt, status | a DIDComm client picks up, acknowledges, and is not given the messages again |
 | 4 Coordinate Mediation | the records and their indexes; the replay rule; Discover Features | from `mediate-request` to receiving, the client speaks DIDComm alone |
@@ -200,8 +226,9 @@ rewritten. Tests run local HTTP servers, as those of
 ## Choices for v1, open to change
 
 1. Envelopes written over `@noble/*` rather than a WebAssembly build of a
-   DIDComm library, which may serve as a development dependency to test
-   against.
+   DIDComm library. The spec's vectors check what is opened, but nothing
+   from outside checks what is written: a test against a wallet, or such a
+   library as a development dependency, would.
 2. The mediator's DID is a `did:peer:2`, so moving changes it, and every
    client's DID with it. A DID method that resolves a service's root to
    its latest Service would follow it instead.

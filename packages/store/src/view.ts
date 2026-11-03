@@ -1,4 +1,4 @@
-import type { Fields, Reader } from "@estoc/object";
+import type { Reader } from "@estoc/object";
 import { type Index, type Key, type Rows, scan } from "./scan.ts";
 import type { Store } from "./store.ts";
 
@@ -9,8 +9,8 @@ import type { Store } from "./store.ts";
  * what their rows come to, so an application can give the one and a module
  * that knows what the objects mean the other.
  */
-export interface View<D, K extends Key, V, F extends Fields<D> = Fields<D>> {
-  readonly index: Index<D, K, F>;
+export interface View<D, K extends Key, V> {
+  readonly index: Index<D, K>;
   /**
    * The value of `rows`, with `reader` giving by link the objects they name.
    * It may be a promise, as when the value is worked out from all the rows
@@ -29,9 +29,9 @@ export interface View<D, K extends Key, V, F extends Fields<D> = Fields<D>> {
  *
  * @throws as `scan` does.
  */
-export async function view<D, K extends Key, V, F extends Fields<D>>(
+export async function view<D, K extends Key, V>(
   store: Pick<Store, "get" | "records">,
-  view: View<D, K, V, F>,
+  view: View<D, K, V>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);
 }

@@ -6,11 +6,12 @@ import {
   type Json,
   json,
   type Link,
+  objectsOf,
   readObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Index, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
+import { type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -172,10 +173,10 @@ describe("an inbox", () => {
   it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
     const { store, kept, queue, inbox } = await receivingAt(network);
-    const byMailbox: Index<Json, [mailbox: Link<unknown>, key: Link<unknown>], MailboxKeyData> = {
-      reads: [keys],
-      rows: ({ link, data }) => [[data.mailbox.$link, link]],
-    };
+    const byMailbox: Index<Json, [mailbox: Link<unknown>, key: Link<unknown>]> = indexOver(
+      objectsOf(keys),
+      ({ link, data }) => [[data.mailbox.$link, link]],
+    );
     const rows = [];
     for await (const row of (await scan(kept, byMailbox)).range([inbox.mailbox])) rows.push(row);
     expect(rows).toEqual([[inbox.mailbox, inbox.key]]);

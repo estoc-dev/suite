@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, type People, type SignatureData, SoftwareSigner, type Version } from "@estoc/identity";
+import { ed25519, loadIdentity, type People, SoftwareSigner, type Version } from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -7,12 +7,13 @@ import {
   json,
   type Link,
   linkOf,
+  objectsOf,
   readObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Index, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
@@ -152,12 +153,11 @@ const note = (data: Note) => encodeObject(noteSchema, data);
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];
 
-const byTag: Index<Json, Row, Note> = {
-  reads: [noteSchema],
-  rows: ({ link, data }) => data.tags.map((tag) => [tag, data.at, link] as const),
-};
+const byTag: Index<Json, Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
+  data.tags.map((tag) => [tag, data.at, link] as const),
+);
 
-const texts: View<Json, Row, Promise<[tag: string, text: string][]>, Note> = {
+const texts: View<Json, Row, Promise<[tag: string, text: string][]>> = {
   index: byTag,
   async read(rows, reader) {
     const texts: [tag: string, text: string][] = [];
@@ -171,13 +171,10 @@ const { signatures, signedIdentities, versions, delegate, publish } = await load
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-const people: View<Json, Version, People, SignatureData> = {
-  index: {
-    reads: [signatures.schema],
-    async *rows({ data }, reader) {
-      yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
-    },
-  },
+const people: View<Json, Version, People> = {
+  index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
+    yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
+  }),
   read: (rows, reader) => versions.people(rows, reader),
 };
 

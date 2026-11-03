@@ -161,41 +161,53 @@ gives other bytes, as a damaged disk may.
 ## Indexes
 
 A store keeps no index. An application keeps its own, of the objects the
-user writes: an `Index` says which schemas it reads and which rows each
-object of them gives. A row is a key of strings and finite numbers,
-compared one by one, a number before a string and a key before the longer
-keys that start with it. The rows of an object depend on it and its
-closure, which `rows` reads by link from the `Reader` it is given, and on
-nothing else. An index is the set of the rows its objects give, so the
-order they come in and how often make no difference. What depends on what
-else is written, such as whether something replaced an object, is worked
-out from the rows when they are read.
+user writes: an `Index` reads the objects that a `Selection` takes, and
+gives rows of what the selection reads each one as. A row is a key of
+strings and finite numbers, compared one by one, a number before a string
+and a key before the longer keys that start with it. The rows of an
+object depend on it and its closure, which the selection and `rows` read
+by link from the `Reader` they are given, and on nothing else. An index is
+the set of the rows its objects give, so the order they come in and how
+often make no difference. What depends on what else is written, such as
+whether something replaced an object, is worked out from the rows when
+they are read.
 
 ```ts
-import { scan, type Index } from "@estoc/store";
+import { objectsOf } from "@estoc/object";
+import { indexOver, scan, type Index } from "@estoc/store";
 
 type Note = { readonly tags: readonly string[]; readonly at: number };
 
 // Notes by tag, oldest first: a row for each tag of a note, from a
 // `noteSchema` declared as a `Schema<Json, Note>`.
-const byTag: Index<Json, [tag: string, at: number, note: Link<unknown>], Note> = {
-  reads: [noteSchema],
-  rows: ({ link, data }) => data.tags.map((tag) => [tag, data.at, link]),
-};
+const byTag: Index<Json, [tag: string, at: number, note: Link<unknown>]> = indexOver(
+  objectsOf(noteSchema),
+  ({ link, data }) => data.tags.map((tag) => [tag, data.at, link]),
+);
 
 const rows = await scan(store, byTag);
 for await (const [, at, note] of rows.range(["lunch"])) …;
 ```
 
-`scan` goes through all that the user wrote, reads each object of a schema
-the index reads, checks it against its schema and hands it to the index.
-It passes over objects of other schemas, and what came from elsewhere
-reaches an index only by following links from what the user wrote.
-`range(prefix)` gives the rows whose keys start with `prefix`, in the
-order of their keys. What does not fit in rows, such as a count, an
-application keeps in a fold of its own, which then has to come to the same
-whatever the order and however often an object comes. The rows are kept in
-memory and worked out again on each scan.
+An index comes only from `indexOver`, of one selection, and from `union`,
+of indexes whose rows are of one type, so which objects an index reads is
+said by its selections and not worked out in `rows`. Each part of a union
+reads its own objects and hands what it reads them as to its own rows, so
+the rows of objects of several schemas, or of several selections of one
+schema, need not tell one kind of object from another.
+
+`scan` goes through all that the user wrote. It reads each object whose
+schema is that of a selection of the index, checks it against that
+schema, and hands it to the selection, and what the selection reads it as
+to `rows`. It passes over objects of other schemas, and what came from
+elsewhere reaches an index only by following links from what the user
+wrote. A record is checked once against each schema it is read with, and
+a blob is read from the store once for a record, however many selections
+and rows read it. `range(prefix)` gives the rows whose keys start with
+`prefix`, in the order of their keys. What does not fit in rows, such as a
+count, an application keeps in a fold of its own, which then has to come
+to the same whatever the order and however often an object comes. The rows
+are kept in memory and worked out again on each scan.
 
 ## Views
 
@@ -213,7 +225,7 @@ import { view, type View } from "@estoc/store";
 // The latest note of a tag, from the rows of `byTag`.
 type Latest = { noteTagged(tag: string): Promise<Note | undefined> };
 
-const latest: View<Json, [tag: string, at: number, note: Link<unknown>], Latest, Note> = {
+const latest: View<Json, [tag: string, at: number, note: Link<unknown>], Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {

@@ -313,3 +313,35 @@ The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
 program does with objects of it beyond reading them. Its `read` takes an
 object already read with that schema, as the table's `read` gives it.
+
+## Selections
+
+A program does not always take every object of a schema. A `Selection`
+says which of them it takes and what each one reads as: `read` takes an
+object already read with `schema`, reads what it links to from the
+reader, and gives what the object reads as, or `undefined` for one it
+leaves out. Whether it takes an object depends on the object and its
+closure alone, so it takes the same objects whatever else the program has
+read. One schema can then hold objects of several kinds, told apart by
+what they link to. Here a reply of `replySchema` can answer any object,
+and the selection takes the replies that answer a note of `noteSchema`,
+each with the note:
+
+```ts
+type Reply = { readonly to: JsonLink<unknown>; readonly text: string };
+type ReplyToNote = { readonly reply: EncodedObject<Json, Reply>; readonly note: EncodedObject<Json, Note> };
+
+const repliesToNotes: Selection<Json, ReplyToNote, Reply> = {
+  schema: replySchema,
+  async read(reply, reader) {
+    const bytes = await reader.get(reply.data.to.$link);
+    if (bytes === undefined || schemaOf(bytes, json) !== noteSchema.link) return undefined;
+    return { reply, note: decodeObject(bytes, noteSchema) };
+  },
+};
+```
+
+A selection reads an object as an implementation does, and can leave
+objects out where an implementation reads them all. `objectsOf(schema)`
+takes every object of `schema`, each as itself. The indexes of
+`@estoc/store` are built over selections.

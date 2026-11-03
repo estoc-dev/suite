@@ -3,10 +3,10 @@ import {
   type EncodedObject,
   type Fields,
   type Link,
-  SelectionBySchema,
   type Reader,
   type Schema,
   type Selection,
+  SelectionBySchema,
   schemaOf,
 } from "@estoc/object";
 import type { Store } from "./store.ts";

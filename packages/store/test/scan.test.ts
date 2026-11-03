@@ -6,11 +6,11 @@ import {
   type JsonSchema,
   json,
   type Link,
-  SelectionBySchema,
   objectsOf,
   readObject,
   type SchemaValidator,
   type Selection,
+  SelectionBySchema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";

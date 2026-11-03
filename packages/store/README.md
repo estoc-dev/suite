@@ -107,8 +107,8 @@ await staged.commit();
 A batch that `write` refuses is refused when it is staged, before
 anything reads it. A staged batch gives the blobs that will be kept and no
 others, so what is judged leads to nothing the store will not hold.
-`scan` and `view` take a staged batch as they take a store, so the rows
-and the objects they name come from the store as it will be.
+`scan`, `catalog` and `view` take a staged batch as they take a store, so
+the rows and the objects they name come from the store as it will be.
 
 Staged on a store that holds nothing, a batch is read by what it holds
 alone, which is what its sender chose to show. Staged on the user's
@@ -193,6 +193,28 @@ application keeps in a fold of its own, which then has to come to the same
 whatever the order and however often an object comes. The rows are kept in
 memory and worked out again on each scan.
 
+## Catalog
+
+`catalog(store, encoding)` lists what was written as mine by the schema
+each object names, a row `[schema, object]` for each. `range([schema])`
+gives the objects written to that schema, in the order of their links, and
+`range([])` gives every schema that something written as mine names.
+
+```ts
+import { catalog } from "@estoc/store";
+
+const rows = await catalog(store, json);
+for await (const [, note] of rows.range([noteSchema.link])) …;
+```
+
+The schema is read with `schemaOf`, given the encoding of the store, and
+the object is not checked against it: an object is listed by what it names
+and not read as it. A viewer of arbitrary objects then lists them without
+compiling schemas someone else wrote, and reading an object with its
+schema, as a scan does, is what checks it. Like an index, the catalog holds
+only what the store lists as mine, and is worked out again each time it is
+made.
+
 ## Views
 
 What depends on what else is written is worked out from the rows when they
@@ -261,8 +283,8 @@ on them: bytes that are also written to the store are the store's as well.
 
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,
-and one that the store holds already is not kept again. `scan` and `view`
-take a private store as they take a store.
+and one that the store holds already is not kept again. `scan`, `catalog`
+and `view` take a private store as they take a store.
 
 A private store is only on the device that keeps it. Like a store, it only
 grows, so a key that is no longer used is still kept. Whether it is

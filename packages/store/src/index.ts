@@ -1,3 +1,4 @@
+export { type CatalogEntry, catalog } from "./catalog.ts";
 export { MemoryBackend } from "./memory.ts";
 export { type Index, type Key, type Prefix, type Rows, scan } from "./scan.ts";
 export { type Backend, type Batch, PrivateStore, RefusedBatch, type Staged, Store } from "./store.ts";

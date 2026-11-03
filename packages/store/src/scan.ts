@@ -63,7 +63,7 @@ export async function scan<D, K extends Key, F extends Fields<D>>(
   if (encoding === undefined || encodings.size > 1)
     throw new Error("an index reads schemas of one encoding, and at least one");
   const schemas = new Map(index.reads.map((schema) => [schema.link, schema]));
-  const rows = new Map<string, K>();
+  const rows: K[] = [];
   for await (const link of store.mine()) {
     const bytes = await store.get(link);
     if (bytes === undefined) throw new Error(`the store lists ${link} but does not hold it`);
@@ -73,9 +73,16 @@ export async function scan<D, K extends Key, F extends Fields<D>>(
     for await (const key of index.rows(object, store)) {
       if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
         throw new Error(`a row of ${link} holds a number that is not finite`);
-      rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
+      rows.push(key);
     }
   }
+  return rowsOf(rows);
+}
+
+/** The rows of `keys`, each once however often it comes, in the order of their keys. */
+export function rowsOf<K extends Key>(keys: Iterable<K>): Rows<K> {
+  const rows = new Map<string, K>();
+  for (const key of keys) rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
   return new SortedRows([...rows.values()].sort(compare));
 }
 

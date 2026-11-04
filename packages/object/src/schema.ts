@@ -20,8 +20,8 @@ export interface SchemaLanguage<S, D> {
    * @throws when the bytes are not exactly what `encode` writes for that schema.
    */
   decode(bytes: Uint8Array): S;
-  /** The schemas that a program reading `schema` reads too: the earlier versions it follows. */
-  predecessorsOf(schema: S): readonly Link<Schema<D>>[];
+  /** The schema that a program reading `schema` reads too: the earlier version it follows, if any. */
+  predecessorOf(schema: S): Link<Schema<D>> | undefined;
 }
 
 /**
@@ -54,21 +54,21 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
   readonly encoding: Encoding<D>;
   readonly bytes: Bytes<Schema<D>>;
   readonly link: Link<Schema<D>>;
-  /** The schemas that a program reading this one reads too, as its language gives them. */
-  readonly predecessors: readonly Link<Schema<D>>[];
+  /** The schema that a program reading this one reads too, as its language gives it. */
+  readonly predecessor: Link<Schema<D>> | undefined;
   readonly #check: Check<D>;
 
   constructor(
     encoding: Encoding<D>,
     bytes: Bytes<Schema<D>>,
     link: Link<Schema<D>>,
-    predecessors: readonly Link<Schema<D>>[],
+    predecessor: Link<Schema<D>> | undefined,
     check: Check<D>,
   ) {
     this.encoding = encoding;
     this.bytes = bytes;
     this.link = link;
-    this.predecessors = predecessors;
+    this.predecessor = predecessor;
     this.#check = check;
   }
 
@@ -90,8 +90,8 @@ export async function decodeSchema<S, D, F extends Fields<D> = Fields<D>>(
 ): Promise<Schema<D, F>> {
   const { language } = validator;
   const { value, bytes: owned, link } = decodeBlob(language, bytes);
-  const predecessors = language.predecessorsOf(value);
-  return new Schema<D, F>(language.encoding, owned, link, predecessors, await validator.compile(value));
+  const predecessor = language.predecessorOf(value);
+  return new Schema<D, F>(language.encoding, owned, link, predecessor, await validator.compile(value));
 }
 
 export async function encodeSchema<S, D, F extends Fields<D> = Fields<D>>(

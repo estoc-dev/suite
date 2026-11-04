@@ -47,7 +47,7 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
   // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
   /**
    * `language` is that of the schemas: an object names its schema in its encoding, and a schema
-   * that is not one of these is read in it for the schemas it follows.
+   * that is not one of these is read in it for the schema it follows.
    *
    * @throws when two implementations are of one schema, or when a schema follows one that is not
    * among them.
@@ -60,9 +60,9 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
       byLink.set(link, implementation);
     }
     for (const { schema } of byLink.values()) {
-      for (const predecessor of schema.predecessors) {
-        if (!byLink.has(predecessor)) throw new Error(`${schema.link} follows ${predecessor}, which is not read here`);
-      }
+      const { predecessor } = schema;
+      if (predecessor !== undefined && !byLink.has(predecessor))
+        throw new Error(`${schema.link} follows ${predecessor}, which is not read here`);
     }
     this.#language = language;
     this.#implementations = byLink;
@@ -95,30 +95,28 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
     return implementation.read(decodeObjectAt(link, bytes, implementation.schema), reader);
   }
 
+  // The reader can give any bytes for a link, so a chain it gives can lead back to a schema
+  // already passed, which ends the walk.
   async #refusalOf(schema: Link<Schema<D>>, reader: Reader): Promise<Error> {
-    const seen = new Set([schema]);
-    const unread = [schema];
-    for (let next = unread.shift(); next !== undefined; next = unread.shift()) {
-      for (const predecessor of await this.#predecessorsOf(next, reader)) {
-        if (this.#implementations.has(predecessor)) return new NewerSchema(schema, predecessor);
-        if (!seen.has(predecessor)) {
-          seen.add(predecessor);
-          unread.push(predecessor);
-        }
-      }
+    const passed = new Set([schema]);
+    let predecessor = await this.#predecessorOf(schema, reader);
+    while (predecessor !== undefined && !passed.has(predecessor)) {
+      if (this.#implementations.has(predecessor)) return new NewerSchema(schema, predecessor);
+      passed.add(predecessor);
+      predecessor = await this.#predecessorOf(predecessor, reader);
     }
     return new Error(`${schema} is not a schema read here`);
   }
 
   // The walk only picks which error to give, so a schema the reader does not give, or bytes that
-  // do not read as a schema, end a path rather than the read.
-  async #predecessorsOf(schema: Link<Schema<D>>, reader: Reader): Promise<readonly Link<Schema<D>>[]> {
+  // do not read as a schema, end it rather than the read.
+  async #predecessorOf(schema: Link<Schema<D>>, reader: Reader): Promise<Link<Schema<D>> | undefined> {
     const bytes = await reader.get(schema);
-    if (bytes === undefined) return [];
+    if (bytes === undefined) return undefined;
     try {
-      return this.#language.predecessorsOf(this.#language.decode(bytes));
+      return this.#language.predecessorOf(this.#language.decode(bytes));
     } catch {
-      return [];
+      return undefined;
     }
   }
 }
@@ -132,7 +130,7 @@ export class NewerSchema<D = unknown> extends Error {
   override readonly name = "NewerSchema";
   /** The schema the object is written to. */
   readonly schema: Link<Schema<D>>;
-  /** A schema read here that `schema` follows, directly or through others. */
+  /** The schema read here that `schema` follows, directly or through others. */
   readonly predecessor: Link<Schema<D>>;
 
   constructor(schema: Link<Schema<D>>, predecessor: Link<Schema<D>>) {

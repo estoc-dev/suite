@@ -123,7 +123,7 @@ describe("implementations", () => {
   });
 });
 
-const following = (title: string, ...predecessors: Schema<Json>[]): Promise<Schema<Json, PlainData>> =>
+const following = (title: string, predecessor: Schema<Json>): Promise<Schema<Json, PlainData>> =>
   encodeSchema(
     {
       $schema: DRAFT_2020_12,
@@ -131,13 +131,12 @@ const following = (title: string, ...predecessors: Schema<Json>[]): Promise<Sche
       type: "object",
       properties: { text: { type: "string" } },
       required: ["text"],
-      "x-follows": predecessors.map(({ link }) => ({ $link: link })),
+      "x-follows": { $link: predecessor.link },
     },
     defaultValidator,
   );
 const second = await following("second", plain);
 const third = await following("third", second);
-const both = await following("both", plain, quote);
 
 const textIn = (schema: Schema<Json, PlainData>): Implementation<Json, Text, PlainData> => ({
   schema,
@@ -151,9 +150,9 @@ describe("implementations of schemas that follow others", () => {
     );
   });
 
-  it("take a schema following several, along with each schema it follows", async () => {
-    const all = new Implementations(jsonSchema, [plainText, quotedText, textIn(both), textIn(second), textIn(third)]);
-    const object = encodeObject(both, { text: "hello" });
+  it("take a schema along with each schema before it", async () => {
+    const all = new Implementations(jsonSchema, [plainText, textIn(second), textIn(third)]);
+    const object = encodeObject(third, { text: "hello" });
     await expect(all.read(textAt(object), blobs(object))).resolves.toEqual({ link: object.link, text: "hello" });
   });
 
@@ -176,5 +175,11 @@ describe("implementations of schemas that follow others", () => {
     await expect(texts.read(textAt(object), blobs(object, third))).rejects.toThrow(
       `${third.link} is not a schema read here`,
     );
+  });
+
+  it("refuse an object as not read here when the reader leads back to a schema already passed", async () => {
+    const object = encodeObject(third, { text: "hello" });
+    const reader = blobs(object, third, { link: second.link, bytes: third.bytes });
+    await expect(texts.read(textAt(object), reader)).rejects.toThrow(`${third.link} is not a schema read here`);
   });
 });

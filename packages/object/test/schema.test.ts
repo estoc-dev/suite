@@ -43,24 +43,21 @@ describe("decodeSchema", () => {
     await expect(decodeSchema(encodeObject(anything, { $schema: DRAFT }).bytes, defaultValidator)).rejects.toThrow();
   });
 
-  it("gives the schemas named in x-follows as the schema's predecessors", async () => {
+  it("gives the schema named in x-follows as the schema's predecessor", async () => {
     const first = await encodeSchema({ $schema: DRAFT, title: "first" }, defaultValidator);
-    const second = await encodeSchema({ $schema: DRAFT, title: "second" }, defaultValidator);
-    const follows = [{ $link: first.link }, { $link: second.link }];
-    const schema = await encodeSchema({ $schema: DRAFT, "x-follows": follows }, defaultValidator);
-    expect((await decodeSchema(schema.bytes, defaultValidator)).predecessors).toEqual([first.link, second.link]);
+    const schema = await encodeSchema({ $schema: DRAFT, "x-follows": { $link: first.link } }, defaultValidator);
+    expect((await decodeSchema(schema.bytes, defaultValidator)).predecessor).toBe(first.link);
   });
 
-  it("gives no predecessors for a schema without x-follows", async () => {
-    expect((await encodeSchema({ $schema: DRAFT }, defaultValidator)).predecessors).toEqual([]);
+  it("gives no predecessor for a schema without x-follows", async () => {
+    expect((await encodeSchema({ $schema: DRAFT }, defaultValidator)).predecessor).toBeUndefined();
   });
 
   const link = linkOf(utf8("a schema"));
   it.each([
-    ["a single link", { $link: link }],
-    ["an empty array", []],
-    ["an array holding a string", [link]],
-    ["an array holding an object that is not a link", [{ schema: link }]],
+    ["an array of links", [{ $link: link }]],
+    ["a string", link],
+    ["an object that is not a link", { schema: link }],
   ])("refuses an x-follows that is %s", async (_, follows) => {
     await expect(encodeSchema({ $schema: DRAFT, "x-follows": follows }, lenient)).rejects.toThrow("x-follows");
   });

@@ -12,13 +12,12 @@ export interface JsonSchema extends JsonObject {
   readonly $schema: string;
 }
 
-/** @throws when the schema has an `x-follows` that is not a nonempty array of links. */
-function predecessorsIn(schema: JsonObject): readonly Link<Schema<Json>>[] {
+/** @throws when the schema has an `x-follows` that is not a link. */
+function predecessorIn(schema: JsonObject): Link<Schema<Json>> | undefined {
   const follows = schema["x-follows"];
-  if (follows === undefined) return [];
-  if (!Array.isArray(follows) || follows.length === 0 || !follows.every(isJsonLink))
-    throw new Error('a schema names the schemas it follows in x-follows, a nonempty array of {"$link": <link>}');
-  return follows.map(({ $link }) => $link);
+  if (follows === undefined) return undefined;
+  if (!isJsonLink(follows)) throw new Error('a schema names the schema it follows in x-follows, as {"$link": <link>}');
+  return follows.$link;
 }
 
 /**
@@ -26,8 +25,8 @@ function predecessorsIn(schema: JsonObject): readonly Link<Schema<Json>>[] {
  *
  * - A schema is a JSON object naming its dialect in `$schema`, written as JSON is.
  * - A schema has no `$describedBy`, so that no blob reads both as a schema and as an object.
- * - A schema names the schemas it follows in `x-follows`, a nonempty array of links. A schema
- *   without the keyword follows none.
+ * - A schema names the schema it follows in `x-follows`, as a link. A schema without the keyword
+ *   follows none.
  * - A dialect is a version of the language, and a `$ref` is a reference: a `$ref` to anything
  *   outside the schema fails compilation, and one in a place the dialect ignores, such as under
  *   `then` without `if`, has no effect.
@@ -42,10 +41,10 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
     }
     if (Object.hasOwn(value, "$describedBy"))
       throw new Error("a schema has no $describedBy, which names the schema of an object");
-    predecessorsIn(value);
+    predecessorIn(value);
     return value as JsonSchema;
   },
-  predecessorsOf: predecessorsIn,
+  predecessorOf: predecessorIn,
 };
 
 export type JsonSchemaValidator = SchemaValidator<JsonSchema, Json>;

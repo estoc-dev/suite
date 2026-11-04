@@ -9,7 +9,7 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
  * over JSON. A schema is a blob of its own, named by its link like any
  * other.
  */
-export interface SchemaLanguage<S, D> {
+export interface SchemaLanguage<D, S = unknown> {
   /** The encoding of the data that the schemas describe, and so of the objects written to them. */
   readonly encoding: Encoding<D>;
   /** @throws when the language cannot write `schema`. */
@@ -37,8 +37,8 @@ export interface SchemaLanguage<S, D> {
  * - The same schema and value give the same answer every time.
  * - A version of the language it does not support fails compilation.
  */
-export interface SchemaValidator<S, D> {
-  readonly language: SchemaLanguage<S, D>;
+export interface SchemaValidator<D, S> {
+  readonly language: SchemaLanguage<D, S>;
   /** @throws when `schema` cannot be compiled. */
   compile(schema: S): Promise<Check<D>>;
 }
@@ -84,9 +84,9 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
   }
 }
 
-export async function decodeSchema<S, D, F extends Fields<D> = Fields<D>>(
+export async function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   bytes: Bytes<Schema<D>>,
-  validator: SchemaValidator<S, D>,
+  validator: SchemaValidator<D, S>,
 ): Promise<Schema<D, F>> {
   const { language } = validator;
   const { value, bytes: owned, link } = decodeBlob(language, bytes);
@@ -94,9 +94,9 @@ export async function decodeSchema<S, D, F extends Fields<D> = Fields<D>>(
   return new Schema<D, F>(language.encoding, owned, link, predecessor, await validator.compile(value));
 }
 
-export async function encodeSchema<S, D, F extends Fields<D> = Fields<D>>(
+export async function encodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   schema: S,
-  validator: SchemaValidator<S, D>,
+  validator: SchemaValidator<D, S>,
 ): Promise<Schema<D, F>> {
-  return decodeSchema<S, D, F>(validator.language.encode(schema), validator);
+  return decodeSchema<D, S, F>(validator.language.encode(schema), validator);
 }

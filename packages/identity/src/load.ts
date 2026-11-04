@@ -38,7 +38,7 @@ export interface IdentityKit {
 export async function loadIdentity(validator: JsonSchemaValidator): Promise<IdentityKit> {
   const schemes = new Map<Scheme, Schema<Json, KeyData>>();
   for (const scheme of [ed25519, eip191, solanaOffchain])
-    schemes.set(scheme, await encodeSchema<JsonSchema, Json, KeyData>(scheme.keySchema, validator));
+    schemes.set(scheme, await encodeSchema<Json, JsonSchema, KeyData>(scheme.keySchema, validator));
   const keys = new Keys(schemes);
   const identities = new Identities(await encodeSchema(identitySchema, validator), keys);
   const delegatedIdentities = new DelegatedIdentities(await encodeSchema(delegatedIdentitySchema, validator), keys);

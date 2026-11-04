@@ -185,7 +185,7 @@ describe("an index scanned from a store", () => {
 
   it("validates a record once against each schema of the selections by schema that read it", async () => {
     const checked: string[] = [];
-    const checking = (name: string): SchemaValidator<JsonSchema, Json> => ({
+    const checking = (name: string): SchemaValidator<Json, JsonSchema> => ({
       language: defaultValidator.language,
       async compile(schema) {
         const check = await defaultValidator.compile(schema);

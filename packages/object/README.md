@@ -36,11 +36,11 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
   - The encoding finds the links in a value, so that the blobs in a blob's
     closure can be gathered without a schema to read it by, as a store
     gathers the closure it carries along with an object.
-- A `SchemaLanguage<S, D>` is a language of schemas `S` that describe the
-  data of one encoding, which it names. A schema is a blob of its own, with
+- A `SchemaLanguage<D, S>` is a language of schemas `S` that describe the
+  data `D` of one encoding, which it names. A schema is a blob of its own, with
   one way of being written and a link. The language also says which schema
   a schema follows, as described under [Versions](#versions).
-- A `SchemaValidator<S, D>` compiles the schemas of one language, which it
+- A `SchemaValidator<D, S>` compiles the schemas of one language, which it
   names, into checks of the fields of an object's data.
 
 A validator names its language and a language names its encoding, so a

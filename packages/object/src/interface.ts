@@ -41,7 +41,7 @@ export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
  *   too, so a program that reads a version of a format reads the versions before it.
  */
 export class Implementations<D, T, I extends Implementation<D, T> = Implementation<D, T>> {
-  readonly #language: SchemaLanguage<unknown, D>;
+  readonly #language: SchemaLanguage<D>;
   readonly #implementations: ReadonlyMap<Link<Schema<D>>, I>;
 
   // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
@@ -52,7 +52,7 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
    * @throws when two implementations are of one schema, or when a schema follows one that is not
    * among them.
    */
-  constructor(language: SchemaLanguage<unknown, D>, implementations: Iterable<I & Implementation<D, T>>) {
+  constructor(language: SchemaLanguage<D>, implementations: Iterable<I & Implementation<D, T>>) {
     const byLink = new Map<Link<Schema<D>>, I>();
     for (const implementation of implementations) {
       const { link } = implementation.schema;

@@ -31,7 +31,7 @@ function predecessorIn(schema: JsonObject): Link<Schema<Json>> | undefined {
  *   outside the schema fails compilation, and one in a place the dialect ignores, such as under
  *   `then` without `if`, has no effect.
  */
-export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
+export const jsonSchema: SchemaLanguage<Json, JsonSchema> = {
   encoding: json,
   encode: (schema) => json.encode(schema),
   decode(bytes) {
@@ -47,7 +47,7 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
   predecessorOf: predecessorIn,
 };
 
-export type JsonSchemaValidator = SchemaValidator<JsonSchema, Json>;
+export type JsonSchemaValidator = SchemaValidator<Json, JsonSchema>;
 
 /**
  * A link as JSON writes it, `{"$link": <link>}`, as a subschema to write

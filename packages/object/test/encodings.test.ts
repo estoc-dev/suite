@@ -64,7 +64,7 @@ const lines: Encoding<Text> = {
 };
 
 // A schema says how many fields the data has.
-const fieldCount: SchemaValidator<number, Text> = {
+const fieldCount: SchemaValidator<Text, number> = {
   language: {
     encoding: lines,
     encode: (count) => lines.encode({ count: String(count) }),

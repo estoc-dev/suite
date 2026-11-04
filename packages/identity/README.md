@@ -63,15 +63,15 @@ a key signs an object for an identity:  Estoc Object (sha256:<the object's diges
 
 The first text is signed only when a root signs an identity, and every
 signature for an identity, a root's for its Identity too, is over the
-second. So a signature a root makes for an identity never stands it behind
-another identity, even when the object signed is a Delegated Identity of
-that root listing someone else. The second text names the Signed identity,
-not only the identity: the Signed identity is the identity as its root
-publishes it, and a signature is made for what the root published, as it
-is. Everything in a Signature but its signature is signed, so one signature
-is one Signature. And a root lists an agent without the agent's leave, so a
-signature an agent made for one identity would otherwise also verify for
-another that lists it.
+second. So a signature a root makes for an identity does not stand it
+behind another identity, even when the object signed is a Delegated
+Identity of that root listing someone else. The second text names the
+Signed identity, not only the identity: the Signed identity is the
+identity as its root publishes it, and a signature is made for what the
+root published, as it is. Everything in a Signature but its signature is
+signed, so one signature is one Signature. And a root lists an agent
+without the agent's leave, so a signature an agent made for one identity
+would otherwise also verify for another that lists it.
 
 The keys work without objects. A `Key` is a scheme and a public key,
 `verify` checks a signature by one over the text for a digest, and

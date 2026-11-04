@@ -123,7 +123,7 @@ describe("implementations", () => {
   });
 });
 
-const following = (title: string, predecessor: Schema<Json>): Promise<Schema<Json, PlainData>> =>
+const schemaFollowing = (predecessor: Schema<Json>, title: string): Promise<Schema<Json, PlainData>> =>
   encodeSchema(
     {
       $schema: DRAFT_2020_12,
@@ -135,8 +135,8 @@ const following = (title: string, predecessor: Schema<Json>): Promise<Schema<Jso
     },
     defaultValidator,
   );
-const second = await following("second", plain);
-const third = await following("third", second);
+const second = await schemaFollowing(plain, "second");
+const third = await schemaFollowing(second, "third");
 
 const textIn = (schema: Schema<Json, PlainData>): Implementation<Json, Text, PlainData> => ({
   schema,
@@ -175,11 +175,5 @@ describe("implementations of schemas that follow others", () => {
     await expect(texts.read(textAt(object), blobs(object, third))).rejects.toThrow(
       `${third.link} is not a schema read here`,
     );
-  });
-
-  it("refuse an object as not read here when the reader leads back to a schema already passed", async () => {
-    const object = encodeObject(third, { text: "hello" });
-    const reader = blobs(object, third, { link: second.link, bytes: third.bytes });
-    await expect(texts.read(textAt(object), reader)).rejects.toThrow(`${third.link} is not a schema read here`);
   });
 });

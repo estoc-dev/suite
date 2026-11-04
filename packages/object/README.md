@@ -363,9 +363,11 @@ Following and interfaces say different things. An interface says that the
 objects of several schemas read as one kind of thing; following says that
 whoever reads one schema reads the other too. A new key scheme is another
 format: its key schema names the Key interface, as the other schemes' do,
-and follows none of them, since following one would make every program
-that reads keys in that scheme support the new one as well. A key schema
-that changes within its scheme follows the one before it.
+and follows none of them. Following one would hold every program that
+reads keys in the new scheme to read keys in that one too, and a program
+reading only that one would refuse keys in the new scheme as of a newer
+version rather than of a scheme it does not support. A key schema that
+changes within its scheme follows the one before it.
 
 ## Selections
 

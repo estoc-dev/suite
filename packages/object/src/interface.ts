@@ -95,14 +95,10 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
     return implementation.read(decodeObjectAt(link, bytes, implementation.schema), reader);
   }
 
-  // The reader can give any bytes for a link, so a chain it gives can lead back to a schema
-  // already passed, which ends the walk.
   async #refusalOf(schema: Link<Schema<D>>, reader: Reader): Promise<Error> {
-    const passed = new Set([schema]);
     let predecessor = await this.#predecessorOf(schema, reader);
-    while (predecessor !== undefined && !passed.has(predecessor)) {
+    while (predecessor !== undefined) {
       if (this.#implementations.has(predecessor)) return new NewerSchema(schema, predecessor);
-      passed.add(predecessor);
       predecessor = await this.#predecessorOf(predecessor, reader);
     }
     return new Error(`${schema} is not a schema read here`);

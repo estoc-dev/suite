@@ -1,8 +1,8 @@
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import type { Fields } from "./encoding.ts";
+import type { Encoding, Fields } from "./encoding.ts";
 import { type Bytes, type Link, linkOf } from "./link.ts";
 import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
-import type { Schema, SchemaLanguage } from "./schema.ts";
+import type { Schema } from "./schema.ts";
 
 /**
  * What the objects of a schema read as, whichever of several schemas they
@@ -41,18 +41,17 @@ export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
  *   too, so a program that reads a version of a format reads the versions before it.
  */
 export class Implementations<D, T, I extends Implementation<D, T> = Implementation<D, T>> {
-  readonly #language: SchemaLanguage<D>;
+  readonly #encoding: Encoding<D>;
   readonly #implementations: ReadonlyMap<Link<Schema<D>>, I>;
 
   // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
   /**
-   * `language` is that of the schemas: an object names its schema in its encoding, and a schema
-   * that is not one of these is read in it for the schema it follows.
+   * `encoding` is that of the schemas, in which an object names its schema.
    *
    * @throws when two implementations are of one schema, or when a schema follows one that is not
    * among them.
    */
-  constructor(language: SchemaLanguage<D>, implementations: Iterable<I & Implementation<D, T>>) {
+  constructor(encoding: Encoding<D>, implementations: Iterable<I & Implementation<D, T>>) {
     const byLink = new Map<Link<Schema<D>>, I>();
     for (const implementation of implementations) {
       const { link } = implementation.schema;
@@ -64,7 +63,7 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
       if (predecessor !== undefined && !byLink.has(predecessor))
         throw new Error(`${schema.link} follows ${predecessor}, which is not read here`);
     }
-    this.#language = language;
+    this.#encoding = encoding;
     this.#implementations = byLink;
   }
 
@@ -80,58 +79,10 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
     return implementation;
   }
 
-  /**
-   * Reads the object that `link` names from `reader` with the implementation of the schema it names.
-   *
-   * @throws {NewerSchema} when the object's schema is not one of these but follows one of them,
-   * directly or through schemas that `reader` gives.
-   * @throws when the object's schema is not one of these and is not found to follow one.
-   */
+  /** Reads the object that `link` names from `reader` with the implementation of the schema it names. */
   async read(link: Link<T>, reader: Reader): Promise<T> {
     const bytes = await readBlob(reader, link);
-    const schema = schemaOf(bytes, this.#language.encoding);
-    const implementation = this.#implementations.get(schema);
-    if (implementation === undefined) throw await this.#refusalOf(schema, reader);
+    const implementation = this.implementationOf(schemaOf(bytes, this.#encoding));
     return implementation.read(decodeObjectAt(link, bytes, implementation.schema), reader);
-  }
-
-  async #refusalOf(schema: Link<Schema<D>>, reader: Reader): Promise<Error> {
-    let predecessor = await this.#predecessorOf(schema, reader);
-    while (predecessor !== undefined) {
-      if (this.#implementations.has(predecessor)) return new NewerSchema(schema, predecessor);
-      predecessor = await this.#predecessorOf(predecessor, reader);
-    }
-    return new Error(`${schema} is not a schema read here`);
-  }
-
-  // The walk only picks which error to give, so a schema the reader does not give, or bytes that
-  // do not read as a schema, end it rather than the read.
-  async #predecessorOf(schema: Link<Schema<D>>, reader: Reader): Promise<Link<Schema<D>> | undefined> {
-    const bytes = await reader.get(schema);
-    if (bytes === undefined) return undefined;
-    try {
-      return this.#language.predecessorOf(this.#language.decode(bytes));
-    } catch {
-      return undefined;
-    }
-  }
-}
-
-/**
- * An object written to a schema that a program does not read but that
- * follows one it does: a newer version of a format the program reads, which
- * a newer version of the program may read.
- */
-export class NewerSchema<D = unknown> extends Error {
-  override readonly name = "NewerSchema";
-  /** The schema the object is written to. */
-  readonly schema: Link<Schema<D>>;
-  /** The schema read here that `schema` follows, directly or through others. */
-  readonly predecessor: Link<Schema<D>>;
-
-  constructor(schema: Link<Schema<D>>, predecessor: Link<Schema<D>>) {
-    super(`${schema} is not a schema read here, but follows ${predecessor}, which is`);
-    this.schema = schema;
-    this.predecessor = predecessor;
   }
 }

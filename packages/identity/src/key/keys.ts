@@ -4,7 +4,7 @@ import {
   type Implementation,
   Implementations,
   type Json,
-  jsonSchema,
+  json,
   type Link,
   type Reader,
   type Schema,
@@ -39,7 +39,7 @@ export class Keys {
         }),
       }),
     );
-    this.#implementations = new Implementations(jsonSchema, implementations);
+    this.#implementations = new Implementations(json, implementations);
     this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
   }
 

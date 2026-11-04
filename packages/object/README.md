@@ -37,9 +37,9 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     closure can be gathered without a schema to read it by, as a store
     gathers the closure it carries along with an object.
 - A `SchemaLanguage<D, S>` is a language of schemas `S` that describe the
-  data `D` of one encoding, which it names. A schema is a blob of its own, with
-  one way of being written and a link. The language also says which schema
-  a schema follows, as described under [Versions](#versions).
+  data `D` of one encoding, which it names. A schema is a blob of its own,
+  with one way of being written and a link. The language also says which
+  schema a schema follows, as described under [Versions](#versions).
 - A `SchemaValidator<D, S>` compiles the schemas of one language, which it
   names, into checks of the fields of an object's data.
 
@@ -254,8 +254,8 @@ A program's own newer schema, its older one and another application's are
 then alike: each is one more schema for the program to read, and keeping
 up with one's own past is the same work as reading another application.
 What a newer schema adds is that it can say which schema it follows, so
-that a program reading only the older one can tell it from a stranger's,
-as described under [Versions](#versions).
+that a program reading it has to read the older one too, as described
+under [Versions](#versions).
 
 ## Interfaces
 
@@ -309,16 +309,14 @@ const quotedText: Implementation<Json, Text, { readonly quotes: JsonLink<Text> }
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations(jsonSchema, [plainText, quotedText]);
+const texts = new Implementations(json, [plainText, quotedText]);
 await texts.read(link, reader); // a Text, whichever of the two schemas the object names
 ```
 
 The table takes the shape from its implementations, so it is not named
-again. It is given the schema language, in whose encoding an object names
-its schema. `implementationOf` gives the implementation of a schema, for
-what a program does with objects of it beyond reading them. Its `read`
-takes an object already read with that schema, as the table's `read` gives
-it.
+again. `implementationOf` gives the implementation of a schema, for what a
+program does with objects of it beyond reading them. Its `read` takes an
+object already read with that schema, as the table's `read` gives it.
 
 ## Versions
 
@@ -339,9 +337,9 @@ ignores. The schema a schema follows is its predecessor, which
   supports is the newest schemas of its formats and every schema before
   them, so a program of several formats has several chains.
 - Following needs no one's leave: anyone can write a schema that follows
-  someone else's. A program reads no object with a schema it does not list,
-  and uses the chain only to say why it refuses one, so a schema that
-  follows another falsely gets no more than a misleading request to update.
+  someone else's. It binds only the programs that read the new schema, and
+  a program reading the old one reads no object of the new, as of any
+  schema it does not list.
 - The links in `x-follows` put the whole chain in the closure of each schema
   on it, and of each object written to one. A store or a bundle carries the
   chain along with an object, and a batch written to a store has to carry
@@ -349,25 +347,17 @@ ignores. The schema a schema follows is its predecessor, which
 
 `Implementations` holds a program to its chains. The schema that a schema
 in the table follows has to be in the table too, or the table is refused,
-so a program cannot read a version without the versions before it.
-Reading an object of a schema not in the table, `read` follows the chain
-back from that schema through the reader, and on reaching a schema in the
-table refuses the object with a `NewerSchema`. The error names both
-schemas: the object is of a newer version of a format the program reads,
-and a newer version of the program may read it. A schema the reader does
-not give, or that does not read as a schema, ends the walk, and an object
-whose chain reaches no schema in the table is refused as of a schema not
-read here. `implementationOf` looks at the table alone.
+so a program cannot read a version without the versions before it. An
+object of a schema not in the table is refused as of a schema not read
+here, whether or not its schema follows one in the table.
 
 Following and interfaces say different things. An interface says that the
 objects of several schemas read as one kind of thing; following says that
 whoever reads one schema reads the other too. A new key scheme is another
 format: its key schema names the Key interface, as the other schemes' do,
-and follows none of them. Following one would hold every program that
-reads keys in the new scheme to read keys in that one too, and a program
-reading only that one would refuse keys in the new scheme as of a newer
-version rather than of a scheme it does not support. A key schema that
-changes within its scheme follows the one before it.
+and follows none of them, since following one would hold every program
+that reads keys in the new scheme to read keys in that one too. A key
+schema that changes within its scheme follows the one before it.
 
 ## Selections
 

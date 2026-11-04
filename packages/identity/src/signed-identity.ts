@@ -7,7 +7,7 @@ import {
   type Json,
   type JsonLink,
   type JsonSchema,
-  jsonSchema,
+  json,
   type Link,
   linkSchema,
   type Reader,
@@ -75,7 +75,7 @@ export class SignedIdentities {
 
   constructor(schema: Schema<Json, SignedIdentityData>, identities: Iterable<IdentityImplementation>) {
     this.schema = schema;
-    this.#identities = new Implementations(jsonSchema, identities);
+    this.#identities = new Implementations(json, identities);
   }
 
   /**

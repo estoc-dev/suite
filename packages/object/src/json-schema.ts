@@ -13,7 +13,7 @@ export interface JsonSchema extends JsonObject {
 }
 
 /** @throws when the schema has an `x-follows` that is not a link. */
-function predecessorIn(schema: JsonObject): Link<Schema<Json>> | undefined {
+function predecessorOf(schema: JsonObject): Link<Schema<Json>> | undefined {
   const follows = schema["x-follows"];
   if (follows === undefined) return undefined;
   if (!isJsonLink(follows)) throw new Error('a schema names the schema it follows in x-follows, as {"$link": <link>}');
@@ -41,10 +41,10 @@ export const jsonSchema: SchemaLanguage<Json, JsonSchema> = {
     }
     if (Object.hasOwn(value, "$describedBy"))
       throw new Error("a schema has no $describedBy, which names the schema of an object");
-    predecessorIn(value);
+    predecessorOf(value);
     return value as JsonSchema;
   },
-  predecessorOf: predecessorIn,
+  predecessorOf,
 };
 
 export type JsonSchemaValidator = SchemaValidator<Json, JsonSchema>;

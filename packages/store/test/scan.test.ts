@@ -17,8 +17,8 @@ import { describe, expect, it } from "vitest";
 import { type Backend, type Index, indexOver, type Key, MemoryBackend, type Rows, Store, scan } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const titled = (title: string) => encodeSchema({ $schema: DRAFT, title }, defaultValidator);
-const [note, tag] = await Promise.all([titled("Note"), titled("Tag")]);
+const schemaTitled = (title: string) => encodeSchema({ $schema: DRAFT, title }, defaultValidator);
+const [note, tag] = await Promise.all([schemaTitled("Note"), schemaTitled("Tag")]);
 const schemas = [note.bytes, tag.bytes];
 const keysOf = ({ data }: { readonly data: Json }) => (data as { keys: Key[] }).keys;
 
@@ -185,7 +185,7 @@ describe("an index scanned from a store", () => {
 
   it("validates a record once against each schema of the selections by schema that read it", async () => {
     const checked: string[] = [];
-    const checking = (name: string): SchemaValidator<JsonSchema, Json> => ({
+    const checking = (name: string): SchemaValidator<Json, JsonSchema> => ({
       language: defaultValidator.language,
       async compile(schema) {
         const check = await defaultValidator.compile(schema);

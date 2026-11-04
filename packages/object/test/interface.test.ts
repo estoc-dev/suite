@@ -120,3 +120,44 @@ describe("implementations", () => {
     );
   });
 });
+
+const schemaFollowing = (predecessor: Schema<Json>, title: string): Promise<Schema<Json, PlainData>> =>
+  encodeSchema(
+    {
+      $schema: DRAFT_2020_12,
+      title,
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+      "x-follows": { $link: predecessor.link },
+    },
+    defaultValidator,
+  );
+const second = await schemaFollowing(plain, "second");
+const third = await schemaFollowing(second, "third");
+
+const textIn = (schema: Schema<Json, PlainData>): Implementation<Json, Text, PlainData> => ({
+  schema,
+  read: ({ link, data }) => ({ link, text: data.text }),
+});
+
+describe("implementations of schemas that follow others", () => {
+  it("refuse to leave out a schema that one of theirs follows", () => {
+    expect(() => new Implementations(json, [textIn(third), textIn(plain)])).toThrow(
+      `${third.link} follows ${second.link}, which is not read here`,
+    );
+  });
+
+  it("take a schema along with each schema before it", async () => {
+    const all = new Implementations(json, [plainText, textIn(second), textIn(third)]);
+    const object = encodeObject(third, { text: "hello" });
+    await expect(all.read(textAt(object), blobs(object))).resolves.toEqual({ link: object.link, text: "hello" });
+  });
+
+  it("refuse an object of a schema following one of theirs as of any schema not read here", async () => {
+    const object = encodeObject(second, { text: "hello" });
+    await expect(texts.read(textAt(object), blobs(object, second))).rejects.toThrow(
+      `${second.link} is not a schema read here`,
+    );
+  });
+});

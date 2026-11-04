@@ -1,6 +1,6 @@
-import { isJsonObject, type Json, type JsonObject, json } from "./json.ts";
-import { LINK_PATTERN } from "./link.ts";
-import type { SchemaLanguage, SchemaValidator } from "./schema.ts";
+import { isJsonLink, isJsonObject, type Json, type JsonObject, json } from "./json.ts";
+import { LINK_PATTERN, type Link } from "./link.ts";
+import type { Schema, SchemaLanguage, SchemaValidator } from "./schema.ts";
 
 export const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
@@ -12,16 +12,26 @@ export interface JsonSchema extends JsonObject {
   readonly $schema: string;
 }
 
+/** @throws when the schema has an `x-follows` that is not a link. */
+function predecessorOf(schema: JsonObject): Link<Schema<Json>> | undefined {
+  const follows = schema["x-follows"];
+  if (follows === undefined) return undefined;
+  if (!isJsonLink(follows)) throw new Error('a schema names the schema it follows in x-follows, as {"$link": <link>}');
+  return follows.$link;
+}
+
 /**
  * JSON Schema over JSON.
  *
  * - A schema is a JSON object naming its dialect in `$schema`, written as JSON is.
  * - A schema has no `$describedBy`, so that no blob reads both as a schema and as an object.
+ * - A schema names the schema it follows in `x-follows`, as a link. A schema without the keyword
+ *   follows none.
  * - A dialect is a version of the language, and a `$ref` is a reference: a `$ref` to anything
  *   outside the schema fails compilation, and one in a place the dialect ignores, such as under
  *   `then` without `if`, has no effect.
  */
-export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
+export const jsonSchema: SchemaLanguage<Json, JsonSchema> = {
   encoding: json,
   encode: (schema) => json.encode(schema),
   decode(bytes) {
@@ -31,11 +41,13 @@ export const jsonSchema: SchemaLanguage<JsonSchema, Json> = {
     }
     if (Object.hasOwn(value, "$describedBy"))
       throw new Error("a schema has no $describedBy, which names the schema of an object");
+    predecessorOf(value);
     return value as JsonSchema;
   },
+  predecessorOf,
 };
 
-export type JsonSchemaValidator = SchemaValidator<JsonSchema, Json>;
+export type JsonSchemaValidator = SchemaValidator<Json, JsonSchema>;
 
 /**
  * A link as JSON writes it, `{"$link": <link>}`, as a subschema to write

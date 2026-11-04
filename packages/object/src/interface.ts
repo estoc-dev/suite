@@ -33,35 +33,22 @@ export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
 
 /**
  * The concrete schemas a program reads as one interface, each with its
- * implementation, picked by the schema an object names.
- *
- * - Which schemas these are is the program's to say; one that a schema names as its interface but
- *   the program does not list is refused like any other.
- * - The schemas are closed under following: each schema that one of them follows is one of them
- *   too, so a program that reads a version of a format reads the versions before it.
+ * implementation, picked by the schema an object names. Which schemas these
+ * are is the program's to say; one that a schema names as its interface but
+ * the program does not list is refused like any other.
  */
 export class Implementations<D, T, I extends Implementation<D, T> = Implementation<D, T>> {
   readonly #encoding: Encoding<D>;
   readonly #implementations: ReadonlyMap<Link<Schema<D>>, I>;
 
   // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
-  /**
-   * `encoding` is that of the schemas, in which an object names its schema.
-   *
-   * @throws when two implementations are of one schema, or when a schema follows one that is not
-   * among them.
-   */
+  /** `encoding` is that of the schemas, in which an object names its schema. */
   constructor(encoding: Encoding<D>, implementations: Iterable<I & Implementation<D, T>>) {
     const byLink = new Map<Link<Schema<D>>, I>();
     for (const implementation of implementations) {
       const { link } = implementation.schema;
       if (byLink.has(link)) throw new Error(`${link} is given two implementations`);
       byLink.set(link, implementation);
-    }
-    for (const { schema } of byLink.values()) {
-      const { predecessor } = schema;
-      if (predecessor !== undefined && !byLink.has(predecessor))
-        throw new Error(`${schema.link} follows ${predecessor}, which is not read here`);
     }
     this.#encoding = encoding;
     this.#implementations = byLink;

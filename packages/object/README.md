@@ -38,8 +38,7 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     gathers the closure it carries along with an object.
 - A `SchemaLanguage<D, S>` is a language of schemas `S` that describe the
   data `D` of one encoding, which it names. A schema is a blob of its own,
-  with one way of being written and a link. The language also says which
-  schema a schema follows, as described under [Versions](#versions).
+  with one way of being written and a link.
 - A `SchemaValidator<D, S>` compiles the schemas of one language, which it
   names, into checks of the fields of an object's data.
 
@@ -253,9 +252,6 @@ A schema is named by its link, so a schema that changes is another schema.
 A program's own newer schema, its older one and another application's are
 then alike: each is one more schema for the program to read, and keeping
 up with one's own past is the same work as reading another application.
-What a newer schema adds is that it can say which schema it follows, so
-that a program reading it has to read the older one too, as described
-under [Versions](#versions).
 
 ## Interfaces
 
@@ -317,47 +313,6 @@ The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
 program does with objects of it beyond reading them. Its `read` takes an
 object already read with that schema, as the table's `read` gives it.
-
-## Versions
-
-A format that changes gets a new schema, and a program that reads the old
-one does not read objects of the new. The new schema can say that it is a
-later version of the old: in JSON Schema it names the schema it follows in
-`"x-follows": {"$link": <link>}`, and a schema without the keyword follows
-none. Like `x-implements`, it is a keyword of one's own, which validation
-ignores. The schema a schema follows is its predecessor, which
-`Schema.predecessor` gives.
-
-- A schema names by link only schemas that exist before it, so following
-  runs from newer to older and has no cycles: the versions of a format form
-  a chain back to its first. Two schemas can follow the same one, so chains
-  can share their older versions.
-- Following means that a program that reads a schema reads the schema it
-  follows too, and so every schema before it on the chain. What a program
-  supports is the newest schemas of its formats and every schema before
-  them, so a program of several formats has several chains.
-- Following needs no one's leave: anyone can write a schema that follows
-  someone else's. It binds only the programs that read the new schema, and
-  a program reading the old one reads no object of the new, as of any
-  schema it does not list.
-- The links in `x-follows` put the whole chain in the closure of each schema
-  on it, and of each object written to one. A store or a bundle carries the
-  chain along with an object, and a batch written to a store has to carry
-  it, as it does an interface.
-
-`Implementations` holds a program to its chains. The schema that a schema
-in the table follows has to be in the table too, or the table is refused,
-so a program cannot read a version without the versions before it. An
-object of a schema not in the table is refused as of a schema not read
-here, whether or not its schema follows one in the table.
-
-Following and interfaces say different things. An interface says that the
-objects of several schemas read as one kind of thing; following says that
-whoever reads one schema reads the other too. A new key scheme is another
-format: its key schema names the Key interface, as the other schemes' do,
-and follows none of them, since following one would hold every program
-that reads keys in the new scheme to read keys in that one too. A key
-schema that changes within its scheme follows the one before it.
 
 ## Selections
 

@@ -1,5 +1,6 @@
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import type { Encoding, Fields } from "./encoding.ts";
+import type { Lineage } from "./lineage.ts";
 import { type Bytes, type Link, linkOf } from "./link.ts";
 import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
 import type { Schema } from "./schema.ts";
@@ -37,8 +38,8 @@ export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
  *
  * - Which schemas these are is the program's to say; one that a schema names as its interface but
  *   the program does not list is refused like any other.
- * - The schemas are closed under following: each schema that one of them follows is one of them
- *   too, so a program that reads a version of a format reads the versions before it.
+ * - Each version on the lineages the program pins is one of them. A program pins the lineage of a
+ *   format up to the newest version it reads, so it reads the versions before that one too.
  */
 export class Implementations<D, T, I extends Implementation<D, T> = Implementation<D, T>> {
   readonly #encoding: Encoding<D>;
@@ -46,23 +47,26 @@ export class Implementations<D, T, I extends Implementation<D, T> = Implementati
 
   // Naming `T` beside `I` lets it be inferred from the implementations rather than left unknown.
   /**
-   * `encoding` is that of the schemas, in which an object names its schema.
+   * `encoding` is that of the schemas, in which an object names its schema, and `lineages` are those
+   * the program pins.
    *
-   * @throws when two implementations are of one schema, or when a schema follows one that is not
-   * among them.
+   * @throws when two implementations are of one schema, or when a version on one of `lineages` is
+   * not among them.
    */
-  constructor(encoding: Encoding<D>, implementations: Iterable<I & Implementation<D, T>>) {
+  constructor(
+    encoding: Encoding<D>,
+    implementations: Iterable<I & Implementation<D, T>>,
+    lineages: Iterable<Lineage<Schema<D>>> = [],
+  ) {
     const byLink = new Map<Link<Schema<D>>, I>();
     for (const implementation of implementations) {
       const { link } = implementation.schema;
       if (byLink.has(link)) throw new Error(`${link} is given two implementations`);
       byLink.set(link, implementation);
     }
-    for (const { schema } of byLink.values()) {
-      const { predecessor } = schema;
-      if (predecessor !== undefined && !byLink.has(predecessor))
-        throw new Error(`${schema.link} follows ${predecessor}, which is not read here`);
-    }
+    for (const { link, versions } of lineages)
+      for (const version of versions)
+        if (!byLink.has(version)) throw new Error(`${link} lists ${version}, which is not read here`);
     this.#encoding = encoding;
     this.#implementations = byLink;
   }

@@ -11,7 +11,10 @@ import {
   type Json,
   type JsonLink,
   json,
+  type LineageData,
   type Link,
+  lineageOf,
+  lineageSchema,
   linkOf,
   linkSchema,
   type Schema,
@@ -121,7 +124,11 @@ describe("implementations", () => {
   });
 });
 
-const schemaFollowing = (predecessor: Schema<Json>, title: string): Promise<Schema<Json, PlainData>> =>
+const lineages: Schema<Json, LineageData<Schema<Json>>> = await encodeSchema(lineageSchema, defaultValidator);
+const lineageOfSchemas = (...versions: Schema<Json>[]) =>
+  lineageOf(encodeObject(lineages, { versions: versions.map(({ link }) => ({ $link: link })) }));
+
+const textSchemaTitled = (title: string): Promise<Schema<Json, PlainData>> =>
   encodeSchema(
     {
       $schema: DRAFT_2020_12,
@@ -129,35 +136,43 @@ const schemaFollowing = (predecessor: Schema<Json>, title: string): Promise<Sche
       type: "object",
       properties: { text: { type: "string" } },
       required: ["text"],
-      "x-follows": { $link: predecessor.link },
     },
     defaultValidator,
   );
-const second = await schemaFollowing(plain, "second");
-const third = await schemaFollowing(second, "third");
+const second = await textSchemaTitled("second");
+const third = await textSchemaTitled("third");
 
 const textIn = (schema: Schema<Json, PlainData>): Implementation<Json, Text, PlainData> => ({
   schema,
   read: ({ link, data }) => ({ link, text: data.text }),
 });
 
-describe("implementations of schemas that follow others", () => {
-  it("refuse to leave out a schema that one of theirs follows", () => {
-    expect(() => new Implementations(json, [textIn(third), textIn(plain)])).toThrow(
-      `${third.link} follows ${second.link}, which is not read here`,
+describe("implementations of versions", () => {
+  const lineage = lineageOfSchemas(plain, second, third);
+
+  it("read a version alone when they pin no lineage of it", async () => {
+    const alone = new Implementations(json, [textIn(third)]);
+    const object = encodeObject(third, { text: "hello" });
+    await expect(alone.read(textAt(object), blobs(object))).resolves.toEqual({ link: object.link, text: "hello" });
+  });
+
+  it("refuse to leave out a version on a lineage they pin", () => {
+    expect(() => new Implementations(json, [textIn(third), plainText], [lineage])).toThrow(
+      `${lineage.link} lists ${second.link}, which is not read here`,
     );
   });
 
-  it("take a schema along with each schema before it", async () => {
-    const all = new Implementations(json, [plainText, textIn(second), textIn(third)]);
-    const object = encodeObject(third, { text: "hello" });
+  it("read each version on a lineage they pin", async () => {
+    const all = new Implementations(json, [plainText, textIn(second), textIn(third)], [lineage]);
+    const object = encodeObject(second, { text: "hello" });
     await expect(all.read(textAt(object), blobs(object))).resolves.toEqual({ link: object.link, text: "hello" });
   });
 
-  it("refuse an object of a schema following one of theirs as of any schema not read here", async () => {
-    const object = encodeObject(second, { text: "hello" });
-    await expect(texts.read(textAt(object), blobs(object, second))).rejects.toThrow(
-      `${second.link} is not a schema read here`,
+  it("refuse an object of a version after their lineage as of any schema not read here", async () => {
+    const upToSecond = new Implementations(json, [plainText, textIn(second)], [lineageOfSchemas(plain, second)]);
+    const object = encodeObject(third, { text: "hello" });
+    await expect(upToSecond.read(textAt(object), blobs(object))).rejects.toThrow(
+      `${third.link} is not a schema read here`,
     );
   });
 });

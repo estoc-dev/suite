@@ -8,7 +8,6 @@ import {
   type JsonSchema,
   type JsonSchemaValidator,
   jsonSchema,
-  linkOf,
   linkSchema,
 } from "../src/index.ts";
 
@@ -41,25 +40,6 @@ describe("decodeSchema", () => {
     const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
     // @ts-expect-error: refused at compile time too
     await expect(decodeSchema(encodeObject(anything, { $schema: DRAFT }).bytes, defaultValidator)).rejects.toThrow();
-  });
-
-  it("gives the schema named in x-follows as the schema's predecessor", async () => {
-    const first = await encodeSchema({ $schema: DRAFT, title: "first" }, defaultValidator);
-    const schema = await encodeSchema({ $schema: DRAFT, "x-follows": { $link: first.link } }, defaultValidator);
-    expect((await decodeSchema(schema.bytes, defaultValidator)).predecessor).toBe(first.link);
-  });
-
-  it("gives no predecessor for a schema without x-follows", async () => {
-    expect((await encodeSchema({ $schema: DRAFT }, defaultValidator)).predecessor).toBeUndefined();
-  });
-
-  const link = linkOf(utf8("a schema"));
-  it.each([
-    ["an array of links", [{ $link: link }]],
-    ["a string", link],
-    ["an object that is not a link", { schema: link }],
-  ])("refuses an x-follows that is %s", async (_, follows) => {
-    await expect(encodeSchema({ $schema: DRAFT, "x-follows": follows }, lenient)).rejects.toThrow("x-follows");
   });
 });
 

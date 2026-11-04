@@ -252,8 +252,6 @@ A schema is named by its link, so a schema that changes is another schema.
 A program's own newer schema, its older one and another application's are
 then alike: each is one more schema for the program to read, and keeping
 up with one's own past is the same work as reading another application.
-That a newer schema is a later version of an older one is said apart from
-both, by a lineage, as described under [Versions](#versions).
 
 ## Interfaces
 
@@ -315,56 +313,6 @@ The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
 program does with objects of it beyond reading them. Its `read` takes an
 object already read with that schema, as the table's `read` gives it.
-
-## Versions
-
-A format that changes gets a new schema, and a program that reads the old
-one does not read objects of the new. Neither schema says that the new one
-is a later version of the old, since a schema says only what its data is.
-A lineage says it: an object of its own that lists the versions of a
-format by link, oldest first. In JSON it is written to `lineageSchema`:
-
-```
-{"$describedBy": <the link of lineageSchema>, "versions": [<the link of v1>, <the link of v2>]}
-```
-
-- A lineage is said of schemas from outside them, as a signature is said
-  of an object. Anyone can write one, of their own schemas or of someone
-  else's, and the schemas keep their links whatever lineages list them.
-- One schema can be on several lineages. Two lineages can share their
-  older versions and part after them, and a lineage that leaves out a
-  version is another lineage.
-- A lineage links to its versions, so they are in its closure. A schema
-  links to none of its lineages, so they are not in the closure of the
-  schema or of an object written to it.
-- `lineageOf` gives the object of a lineage as a `Lineage`, which lists its
-  versions by link.
-
-`Implementations` holds a program to the lineages it pins: each version on
-them has to be in the table, or the table is refused. A program pins the
-lineage of a format up to the newest version it reads, so it cannot read a
-version without the versions before it. A program that reads the first two
-versions of a format with three pins the lineage of those two, another
-object than the lineage of all three, and refuses an object of the third
-as of any schema not read here. A schema on no lineage the program pins is
-read alone.
-
-```ts
-const lineages: Schema<Json, LineageData<Schema<Json>>> = await encodeSchema(lineageSchema, validator);
-const versions = [noteV1, noteV2].map(({ link }) => ({ $link: link }));
-const notes = lineageOf(encodeObject(lineages, { versions }));
-const texts = new Implementations(json, [noteV1AsText, noteV2AsText], [notes]); // refused if either is left out
-```
-
-A lineage and an interface say different things. An interface says that
-the objects of several schemas read as one kind of thing; a lineage says
-that whoever reads one of its versions reads those before it too. A new
-key scheme is another format: its key schema names the Key interface, as
-the other schemes' do, and no lineage a program pins lists it after
-another scheme's key schema, since that would hold every program that
-reads keys in the new scheme to read keys in the other too. A key schema
-that changes within its scheme comes after the one before it on the
-scheme's lineage.
 
 ## Selections
 

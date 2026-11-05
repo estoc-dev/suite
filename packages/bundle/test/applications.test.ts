@@ -1,9 +1,9 @@
 import {
+  type CurveScheme,
   ed25519,
   eip191,
   loadIdentity,
   noVersions,
-  type Scheme,
   type Signature,
   SoftwareSigner,
 } from "@estoc/identity";
@@ -31,7 +31,8 @@ import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 // the ones their names say, and the signatures are verified where they are read.
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const signer = (scheme: CurveScheme, fill: number) =>
+  SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const schemaFor = <F extends Fields<Json> = Fields<Json>>(
   title: string,
   properties: JsonObject,
@@ -48,7 +49,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     defaultValidator,
   );
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
-const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator, [ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, 0));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 

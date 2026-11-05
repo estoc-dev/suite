@@ -1,6 +1,14 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ed25519, loadIdentity, type Scheme, type Signer, SoftwareSigner } from "@estoc/identity";
+import {
+  type CurveScheme,
+  ed25519,
+  eip191,
+  loadIdentity,
+  type Signer,
+  SoftwareSigner,
+  solanaOffchain,
+} from "@estoc/identity";
 import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
@@ -25,12 +33,15 @@ import {
 } from "../src/index.ts";
 import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
 
-export const signer = (scheme: Scheme, fill: number) =>
+export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
+export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(json, new MemoryBackend());
 
-export const { keys, identities, signedIdentities, signatures, publish, delegate } =
-  await loadIdentity(defaultValidator);
+export const { keys, identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(
+  defaultValidator,
+  schemes,
+);
 export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, 0));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
@@ -102,6 +113,7 @@ export async function memoryService({
     mailboxes,
     terms: offered,
     validator: defaultValidator,
+    schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
   return { service, store, accounts, mailboxes };

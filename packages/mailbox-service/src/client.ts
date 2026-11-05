@@ -4,6 +4,7 @@ import {
   type IdentityKit,
   loadIdentity,
   noVersions,
+  type Scheme,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -519,12 +520,15 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
   return unpackBundle(zip);
 }
 
-/** Reaches mailbox services for the identities of the user of `store`, which keeps what it reaches. */
+/**
+ * Reaches mailbox services for the identities of the user of `store`, which
+ * keeps what it reaches, reading keys in `schemes`.
+ */
 export async function loadServices(
   store: Store,
-  { validator }: { readonly validator: JsonSchemaValidator },
+  { validator, schemes }: { readonly validator: JsonSchemaValidator; readonly schemes: readonly Scheme[] },
 ): Promise<Services> {
-  const kit = await loadIdentity(validator);
+  const kit = await loadIdentity(validator, schemes);
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);
   // The HTTP transport's schema is read as the fields every HTTP mailbox has.

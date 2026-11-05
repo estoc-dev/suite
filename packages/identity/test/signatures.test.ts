@@ -16,13 +16,13 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test, vi } from "vitest";
 import {
+  type CurveScheme,
   type DelegatedIdentityObject,
   ed25519,
   eip191,
   isSameKey,
   loadIdentity,
   noVersions,
-  type Scheme,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -34,15 +34,15 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const { identities, signatures, versions, publish, delegate } = await loadIdentity(defaultValidator);
+const { identities, signatures, versions, publish, delegate } = await loadIdentity(defaultValidator, schemes);
 const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map(), versions = noVersions) =>
   by.verify(decodeObject(bytes, by.schema), blobs, versions);
 const verified = (bytes: Uint8Array, blobs?: Reader, versions?: Versions) =>
   verifiedBy(signatures, bytes, blobs, versions);
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
+const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 const fieldsOf = (object: { readonly bytes: Uint8Array }) => json.fields(json.decode(object.bytes));
 const dataOf = (object: { readonly bytes: Uint8Array }) => fieldsOf(object).data;
 const written = (signature: Signature, data: JsonObject) => json.encode(json.object(data, fieldsOf(signature).schema));
@@ -404,20 +404,20 @@ describe("signatures loaded with a validator", () => {
     ["signed identity", /^Signed Identity$/],
     ["identity", /^Identity$/],
   ])("refuse a signature whose %s it says does not fit", async (_, title) => {
-    const { signatures: strict } = await loadIdentity(refusing(title));
+    const { signatures: strict } = await loadIdentity(refusing(title), schemes);
     const signature = await sign(hello, signer(ed25519));
     await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/it does not fit/);
   });
 
   it("do not ask a signer to publish an identity it says does not fit", async () => {
-    const strict = await loadIdentity(refusing(/^Identity$/));
+    const strict = await loadIdentity(refusing(/^Identity$/), schemes);
     const sign = vi.fn(async () => new Uint8Array(64));
     await expect(strict.publish({ key: signer(ed25519).key, sign })).rejects.toThrow(/it does not fit/);
     expect(sign).not.toHaveBeenCalled();
   });
 
   it("are not loaded when it says the objects of the schemes do not fit, which keys are written to", async () => {
-    await expect(loadIdentity(refusing(/^Key Scheme$/))).rejects.toThrow(/it does not fit/);
+    await expect(loadIdentity(refusing(/^Key Scheme$/), schemes)).rejects.toThrow(/it does not fit/);
   });
 });
 

@@ -1,5 +1,3 @@
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import { ed25519, eip191, type Key, SoftwareSigner, signingText, solanaOffchain, verify } from "../src/index.ts";
@@ -23,14 +21,6 @@ describe.each([
     secret.map((byte) => byte ^ 0x5a),
   );
 
-  it("verifies what its signer signs", async () => {
-    expect(verify(signer.key, digest, await signer.sign(digest))).toBe(true);
-  });
-
-  it("rejects its signature over another digest", async () => {
-    expect(verify(signer.key, otherDigest, await signer.sign(digest))).toBe(false);
-  });
-
   it("rejects another key's signature", async () => {
     expect(verify(signer.key, digest, await other.sign(digest))).toBe(false);
   });
@@ -38,14 +28,6 @@ describe.each([
   it("rejects a signature with one bit changed", async () => {
     const signature = (await signer.sign(digest)).map((byte, i) => (i === 10 ? byte ^ 1 : byte));
     expect(verify(signer.key, digest, signature)).toBe(false);
-  });
-
-  it("verifies what its signer signs by a signed identity only by that signed identity", async () => {
-    const signature = await signer.sign(digest, otherDigest);
-    expect(verify(signer.key, digest, signature, otherDigest)).toBe(true);
-    expect(verify(signer.key, digest, signature)).toBe(false);
-    expect(verify(signer.key, digest, signature, digest)).toBe(false);
-    expect(verify(signer.key, digest, await signer.sign(digest), otherDigest)).toBe(false);
   });
 
   it("rejects a signature of the wrong length", async () => {
@@ -60,14 +42,6 @@ test("one Ed25519 key signs differently as ed25519 and as solana-offchain", asyn
   const solana = SoftwareSigner.fromSecretKey(solanaOffchain, ed25519Secret);
   expect(verify(solana.key, digest, await plain.sign(digest))).toBe(false);
   expect(verify(plain.key, digest, await solana.sign(digest))).toBe(false);
-});
-
-test("an eip191 key rejects the high-s twin of its signature", async () => {
-  const signer = SoftwareSigner.fromSecretKey(eip191, secp256k1Secret);
-  const signature = await signer.sign(digest);
-  const s = bytesToNumberBE(signature.subarray(32));
-  const twin = Uint8Array.of(...signature.subarray(0, 32), ...numberToBytesBE(secp256k1.Point.CURVE().n - s, 32));
-  expect(verify(signer.key, digest, twin)).toBe(false);
 });
 
 describe("signingText", () => {

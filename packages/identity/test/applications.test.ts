@@ -14,27 +14,29 @@ import {
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import {
+  type CurveScheme,
   ed25519,
   eip191,
   type IdentityObject,
   type KeyObject,
   loadIdentity,
   noVersions,
-  type Scheme,
   type Signature,
   type Signer,
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
+import { schemes } from "./fixtures.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator, schemes);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const signer = (scheme: CurveScheme, fill: number) =>
+  SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, 0)).sign(object);

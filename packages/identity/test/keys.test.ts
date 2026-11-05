@@ -14,12 +14,12 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
+  type CurveScheme,
   ed25519,
   eip191,
   isSameKey,
   type KeyData,
   loadIdentity,
-  type Scheme,
   type SchemeData,
   SoftwareSigner,
   schemeSchema,
@@ -28,17 +28,17 @@ import {
 } from "../src/index.ts";
 import { schemes } from "./fixtures.ts";
 
-const { keys } = await loadIdentity(defaultValidator);
+const { keys } = await loadIdentity(defaultValidator, schemes);
 const keyScheme: Schema<Json, SchemeData> = await encodeSchema(schemeSchema, defaultValidator);
 const schemeObjects = schemeValidator(keyScheme);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
 
 const secretKey = new Uint8Array(32).fill(1);
-const publicKeyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).key.publicKey);
+const publicKeyOf = (scheme: CurveScheme) => bytesToHex(SoftwareSigner.fromSecretKey(scheme, secretKey).key.publicKey);
 const ed25519Key = publicKeyOf(ed25519);
 const eip191Key = publicKeyOf(eip191);
-const written = (scheme: Scheme, data: JsonObject) =>
+const written = (scheme: CurveScheme, data: JsonObject) =>
   json.encode(json.object(data, keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link));
 
 describe("a key", () => {
@@ -72,7 +72,7 @@ describe("a key", () => {
     );
   });
 
-  it.each<[string, Scheme, JsonObject]>([
+  it.each<[string, CurveScheme, JsonObject]>([
     ["a public key of another scheme's length", ed25519, { publicKey: eip191Key }],
     ["a public key shorter than its scheme's", eip191, { publicKey: ed25519Key }],
     ["the public key in uppercase hex", ed25519, { publicKey: ed25519Key.toUpperCase() }],
@@ -108,7 +108,7 @@ describe("the object of a scheme", () => {
       expect(json.decode(schema.bytes)).toEqual({
         $schema: { $link: keyScheme.link },
         name: scheme.name,
-        publicKeyLength: scheme.curve.publicKeyLength,
+        publicKeyLength: scheme.publicKeyLength,
       });
     },
   );

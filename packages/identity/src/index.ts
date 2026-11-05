@@ -6,6 +6,7 @@ export {
 } from "./identity/delegated.ts";
 export { type Identities, identitySchema } from "./identity/identity.ts";
 export { hasSigner, type IdentityData, type IdentityObject } from "./identity/interface.ts";
+export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";
 export { eip191 } from "./key/eip191.ts";
 export {

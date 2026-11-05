@@ -1,10 +1,5 @@
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import { ed25519Curve } from "./curves.ts";
-import type { Scheme } from "./interface.ts";
+import { type CurveScheme, curveScheme, ed25519Curve } from "./curves.ts";
 
 /** Signs the text itself, as a software key or a Solana wallet's plain `signMessage` signs it. */
-export const ed25519: Scheme = {
-  name: "ed25519",
-  curve: ed25519Curve,
-  message: (text) => utf8ToBytes(text),
-};
+export const ed25519: CurveScheme = curveScheme("ed25519", ed25519Curve, (text) => utf8ToBytes(text));

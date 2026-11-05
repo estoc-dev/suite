@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
-import { loadIdentity, noVersions } from "@estoc/identity";
+import { ed25519, loadIdentity, noVersions } from "@estoc/identity";
 import { decodeObject, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 
-const { signatures } = await loadIdentity(defaultValidator);
+const { signatures } = await loadIdentity(defaultValidator, [ed25519]);
 
 // The login object is the vector of @estoc/object, and the signature over it
 // and its signer's signed identity, with the signed identity's blobs, those

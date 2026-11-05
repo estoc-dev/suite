@@ -33,7 +33,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // out of those records alone, through an index of all that its user wrote,
 // and reads each line from its bundle when it shows it.
 
-const { signatures, publish } = await loadIdentity(defaultValidator);
+const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   {

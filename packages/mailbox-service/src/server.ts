@@ -7,6 +7,7 @@ import {
   loadIdentity,
   noVersions,
   type People,
+  type Scheme,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -132,6 +133,8 @@ export interface ServiceOptions {
   readonly terms: MailboxTerms;
   /** The validator that the schemas are compiled with. */
   readonly validator: JsonSchemaValidator;
+  /** The schemes of the keys the service reads, its own and those of whoever signs to it. */
+  readonly schemes: readonly Scheme[];
   /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
   readonly clock?: () => number;
 }
@@ -470,12 +473,12 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  */
 export async function loadMailboxService(
   signer: Signer,
-  { origin, validator, terms, clock = Date.now, ...options }: ServiceOptions,
+  { origin, validator, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const kit = await loadIdentity(validator);
+  const kit = await loadIdentity(validator, schemes);
   const { keys, signatures, publish } = kit;
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);

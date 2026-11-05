@@ -17,6 +17,7 @@ import {
   memoryService,
   memoryStore,
   offerSchema,
+  schemes,
   serve,
   serviceIdentity,
   serviceRoot,
@@ -76,7 +77,7 @@ async function records(store: Store) {
 
 async function client() {
   const store = memoryStore();
-  return { store, services: await loadServices(store, { validator: defaultValidator }) };
+  return { store, services: await loadServices(store, { validator: defaultValidator, schemes }) };
 }
 
 async function accountAt(services: Services, origin: string) {

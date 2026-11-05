@@ -1,4 +1,5 @@
-import type { Key, Scheme } from "./key/interface.ts";
+import type { CurveScheme } from "./key/curves.ts";
+import type { Key } from "./key/interface.ts";
 import { signingText } from "./signing-text.ts";
 
 /**
@@ -14,17 +15,17 @@ export interface Signer {
 
 /** A signer over a secret key held in memory. */
 export class SoftwareSigner implements Signer {
-  readonly #scheme: Scheme;
+  readonly #scheme: CurveScheme;
   readonly #publicKey: Uint8Array;
   readonly #secretKey: Uint8Array;
 
-  private constructor(scheme: Scheme, publicKey: Uint8Array, secretKey: Uint8Array) {
+  private constructor(scheme: CurveScheme, publicKey: Uint8Array, secretKey: Uint8Array) {
     this.#scheme = scheme;
     this.#publicKey = publicKey;
     this.#secretKey = secretKey;
   }
 
-  static fromSecretKey(scheme: Scheme, secretKey: Uint8Array): SoftwareSigner {
+  static fromSecretKey(scheme: CurveScheme, secretKey: Uint8Array): SoftwareSigner {
     const owned = new Uint8Array(secretKey);
     return new SoftwareSigner(scheme, scheme.curve.publicKeyOf(owned), owned);
   }

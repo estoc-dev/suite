@@ -40,7 +40,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     },
     defaultValidator,
   );
-const { identities, signatures, publish } = await loadIdentity(defaultValidator);
+const { identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>

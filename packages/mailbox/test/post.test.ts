@@ -25,7 +25,7 @@ import {
 } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const { signatures, publish } = await loadIdentity(defaultValidator);
+const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const note = await encodeSchema(
   { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },

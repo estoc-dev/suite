@@ -3,6 +3,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assert, describe, expect, it, vi } from "vitest";
 import {
+  type CurveScheme,
   type DelegatedIdentityObject,
   delegatedIdentitySchema,
   ed25519,
@@ -13,7 +14,6 @@ import {
   isSameKey,
   type Key,
   loadIdentity,
-  type Scheme,
   type SignedIdentityObject,
   SoftwareSigner,
   schemeSchema,
@@ -22,12 +22,14 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const { keys, identities, delegatedIdentities, signedIdentities, versions, publish, delegate } =
-  await loadIdentity(defaultValidator);
+const { keys, identities, delegatedIdentities, signedIdentities, versions, publish, delegate } = await loadIdentity(
+  defaultValidator,
+  schemes,
+);
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
-const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
+const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 const written = (data: JsonObject) => json.encode(json.object(data, identities.schema.link));
 const writtenSigned = (data: JsonObject) => json.encode(json.object(data, signedIdentities.schema.link));
 // A signed identity's identity is read before its root's signature is

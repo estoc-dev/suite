@@ -2,25 +2,26 @@ import type { EncodedObject, Json, Link } from "@estoc/object";
 import { equalBytes } from "@noble/curves/utils.js";
 import { signingText } from "../signing-text.ts";
 
-export interface Curve {
-  readonly publicKeyLength: number;
-  publicKeyOf(secretKey: Uint8Array): Uint8Array;
-  sign(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
-  /** Takes a 64-byte signature and a key of `publicKeyLength` bytes. */
-  verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
-}
-
 /**
- * How a key signs: which curve, and how the signing text is wrapped before
- * the curve signs it. A key kept in a chain wallet signs only in that
- * chain's off-chain message framing, so the framing belongs to the key and
- * a verifier does not have to accept a framing its holder did not choose.
+ * How a key signs, as a plugin gives it: the data of the scheme's object,
+ * and the code that verifies a signature in it. A key kept in a chain
+ * wallet signs only in that chain's off-chain message framing, so the
+ * framing belongs to the scheme, and a verifier does not accept a framing
+ * its holder did not choose.
+ *
+ * - One signing act has one valid encoding. Signatures are stored and
+ *   hashed as bytes, and a second encoding of the same signature would give
+ *   the same act a second link.
+ * - `name` is not that of another scheme.
+ * - The text is framed as it is, not rewritten, so a key that signs it
+ *   signs what it says.
  */
 export interface Scheme {
-  /** The name in the scheme's object, which sets it apart from every other scheme's. */
+  /** Sets the link of its scheme object apart from every other scheme's. */
   readonly name: string;
-  readonly curve: Curve;
-  message(text: string, publicKey: Uint8Array): Uint8Array;
+  readonly publicKeyLength: number;
+  /** Whether `signature` is `publicKey`'s over `text` in this scheme. */
+  verify(signature: Uint8Array, text: string, publicKey: Uint8Array): boolean;
 }
 
 /**
@@ -53,9 +54,8 @@ export interface KeyObject extends EncodedObject<Json, KeyData>, Key {
 export function verify(key: Key, digest: Uint8Array, signature: Uint8Array, signedIdentity?: Uint8Array): boolean {
   const { scheme, publicKey } = key;
   return (
-    publicKey.length === scheme.curve.publicKeyLength &&
-    signature.length === 64 &&
-    scheme.curve.verify(signature, scheme.message(signingText(digest, signedIdentity), publicKey), publicKey)
+    publicKey.length === scheme.publicKeyLength &&
+    scheme.verify(signature, signingText(digest, signedIdentity), publicKey)
   );
 }
 

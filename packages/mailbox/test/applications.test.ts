@@ -1,12 +1,12 @@
 import type { Bundle } from "@estoc/bundle";
 import {
+  type CurveScheme,
   ed25519,
   eip191,
   type IdentityObject,
   type KeyObject,
   loadIdentity,
   noVersions,
-  type Scheme,
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
@@ -33,10 +33,15 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator);
+const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator, [
+  ed25519,
+  eip191,
+  solanaOffchain,
+]);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const signer = (scheme: Scheme, fill: number) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const signer = (scheme: CurveScheme, fill: number) =>
+  SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await publish(by, 0)).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);

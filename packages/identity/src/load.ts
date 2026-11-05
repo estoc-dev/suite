@@ -1,12 +1,9 @@
 import { encodeSchema, type Json, type JsonSchemaValidator, type Schema } from "@estoc/object";
 import { DelegatedIdentities, type DelegatedIdentityObject, delegatedIdentitySchema } from "./identity/delegated.ts";
 import { Identities, identitySchema } from "./identity/identity.ts";
-import { ed25519 } from "./key/ed25519.ts";
-import { eip191 } from "./key/eip191.ts";
 import type { Key, KeyData, Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
 import { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts";
-import { solanaOffchain } from "./key/solana-offchain.ts";
 import { Signatures, signatureSchema } from "./signature.ts";
 import { SignedIdentities, type SignedIdentityObject, signedIdentitySchema } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
@@ -36,15 +33,19 @@ export interface IdentityKit {
 }
 
 /**
- * The schemas of this package compiled by `validator`, with the keys of each
- * scheme this package supports, written to the scheme's object.
+ * The schemas of this package compiled by `validator`, with the keys of
+ * `schemes`, each written to its scheme's object. The application picks the
+ * schemes, so which keys it accepts is its own to say.
+ *
+ * @throws when the data of one of `schemes` does not fit the scheme schema,
+ * or two of them have one object.
  */
-export async function loadIdentity(validator: JsonSchemaValidator): Promise<IdentityKit> {
-  const schemes = schemeValidator(await encodeSchema(schemeSchema, validator));
+export async function loadIdentity(validator: JsonSchemaValidator, schemes: readonly Scheme[]): Promise<IdentityKit> {
+  const keySchemaValidator = schemeValidator(await encodeSchema(schemeSchema, validator));
   const keySchemas = new Map<Scheme, Schema<Json, KeyData>>();
-  for (const scheme of [ed25519, eip191, solanaOffchain]) {
-    const data = { name: scheme.name, publicKeyLength: scheme.curve.publicKeyLength };
-    keySchemas.set(scheme, await encodeSchema<Json, SchemeData, KeyData>(data, schemes));
+  for (const scheme of schemes) {
+    const data = { name: scheme.name, publicKeyLength: scheme.publicKeyLength };
+    keySchemas.set(scheme, await encodeSchema<Json, SchemeData, KeyData>(data, keySchemaValidator));
   }
   const keys = new Keys(keySchemas);
   const identities = new Identities(await encodeSchema(identitySchema, validator), keys);

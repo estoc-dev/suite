@@ -88,7 +88,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
-    const { signatures, publish } = await loadIdentity(defaultValidator);
+    const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
     const bySigner: Index<[signer: string, object: string]> = indexOver(
       objectsOf(signatures.schema),
       async function* (object, reader) {

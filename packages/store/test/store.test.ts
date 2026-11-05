@@ -15,7 +15,7 @@ import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.t
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
-const { identities, signatures, publish } = await loadIdentity(defaultValidator);
+const { identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, 0).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);

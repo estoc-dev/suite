@@ -26,7 +26,7 @@ Identity's are its root's signature, a Delegated Identity's the index of
 the agent that signed and that agent's signature.
 
 `loadIdentity` compiles every schema here with the validator the
-application picks, writes the object of each scheme it supports, and gives
+application picks, writes the object of each scheme it picks, and gives
 what reads and writes the objects of each,
 side by side: `keys`, `identities`, `delegatedIdentities`,
 `signedIdentities`, `signatures` and `versions`, with `publish` and
@@ -38,13 +38,44 @@ another where an object of the one links to an object of the other.
 
 ## Schemes
 
-A scheme is how a key signs: a curve, how the text it signs is framed
-before the curve signs it, and the object its keys are written to. A key
-kept in a chain wallet signs only in that chain's off-chain message
+A scheme is how a key signs: how the text it signs is framed, the code
+that verifies a signature over it, and the object its keys are written to.
+A key kept in a chain wallet signs only in that chain's off-chain message
 framing, so the framing belongs to the key, and a verifier does not accept
 a framing its holder did not choose.
 
-Each scheme is a `Scheme` value in a file of its own under `src/key/`:
+A scheme is a plugin, a `Scheme` value: `name` and `publicKeyLength`, the
+data of its object, and `verify`, which says whether a signature is a
+public key's over a text. The application picks the schemes it reads keys
+in, `loadIdentity(validator, schemes)`, so which keys it accepts is its own
+to say, and no registry holds them. Two schemes with one object are
+refused. This package keeps what is the same in every scheme: the signing
+text, picking a scheme by the link of its object, and the rules of
+identities and signatures. A scheme only answers whether a key's signature
+over a text holds. A `Signer` is not part of it, and a plugin can give one
+of its own, as a wallet or a passkey would.
+
+`Scheme` documents the rules a scheme keeps:
+
+- One signing act has one valid encoding. Signatures are stored and hashed
+  as bytes, and a second encoding of the same signature would give the
+  same act a second link.
+- `name` is not that of another scheme.
+- The text is framed as it is, not rewritten.
+
+`violationsOf` of `@estoc/identity/conformance` checks a scheme against
+them, for a plugin to run in its tests. It takes the scheme, a signer whose
+key is in it and a function that gives another encoding of a signature,
+and gives the rules the scheme breaks: what the signer signs verifies, and
+not for another digest or another signed identity, and the other encoding
+does not verify.
+
+Most schemes are a curve signing the text in a framing, and
+`curveScheme(name, curve, message)` writes one as a `CurveScheme`, whose
+signatures are 64 bytes and which `SoftwareSigner` signs in. The curves
+here, `ed25519Curve` and `secp256k1Curve`, verify strictly, so that each
+signature has one encoding. Each scheme here is a `curveScheme` in a file
+of its own under `src/key/`, written with the public API alone:
 
 - `ed25519`: the text itself, as a software key or a Solana wallet's plain
   `signMessage` signs it.
@@ -52,6 +83,17 @@ Each scheme is a `Scheme` value in a file of its own under `src/key/`:
   compressed form.
 - `solanaOffchain`: a Solana off-chain message, version 1, naming the key
   as its one signer, which Ledger's Solana app signs from 1.14.
+
+A plugin depends on `@estoc/identity` as a peer dependency, so a program
+holds one copy of it, which `isSameKey` and `keys.encode` need. A scheme is picked by the link of
+its object, so a plugin with a bug wrongly accepts only signatures by keys
+in its scheme, those of the identities whose root or agent is in it. That
+does not hold against code meant to harm, which runs in the same
+JavaScript realm as the application. A program does not fetch the verifier
+of a scheme it has not seen by its link: the link proves the bytes, not
+that the verifier is right, and whoever wrote the scheme's object would
+have written its verifier too. Trust in the code comes from the
+application that picks it.
 
 Every scheme signs the same texts before its framing, `signingText(digest,
 signedIdentity?)`. A key signs objects and nothing else, and a login or a
@@ -128,8 +170,8 @@ object is written to. `keys.read` does the same from the
 link of the object and a `Reader`, and picks the schema to read the object
 with by `schemaOf`. `keys.encode` writes a key as its object, and refuses a
 public key that its scheme's object does not take, and a scheme that is not
-one of those `loadIdentity` writes an object for. A scheme added later is one more file
-under `src/key/` and one more of those.
+one of those `loadIdentity` writes an object for. A scheme added later is one more
+plugin an application gives `loadIdentity`.
 
 ## Identities
 
@@ -343,7 +385,7 @@ import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identi
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
-const { signatures, publish } = await loadIdentity(defaultValidator);
+const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, secretKey);
 const actor = signatures.actor(signer, await publish(signer));
 const signature = await actor.sign(object);

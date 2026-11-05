@@ -58,10 +58,11 @@ it, so it stays one object, with one link, wherever the service is reached.
 ## Reaching a service
 
 ```ts
+import { ed25519, eip191 } from "@estoc/identity";
 import { loadServices } from "@estoc/mailbox-service";
 import { defaultValidator } from "@estoc/object/default-validator";
 
-const services = await loadServices(store, { validator: defaultValidator });
+const services = await loadServices(store, { validator: defaultValidator, schemes: [ed25519, eip191] });
 const service = await services.fetch("https://mail.example");
 ```
 
@@ -77,6 +78,8 @@ gives a `Service`: the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
 lists one. Offers of schemas the client does not read are passed over.
+`schemes` are the schemes of `@estoc/identity` the client reads keys in, a
+service's and its user's alike.
 
 `fetch` takes an origin alone, a scheme, a host and a port, and refuses a url
 with a path. It takes `https://`, or `http://` to the client's own
@@ -344,6 +347,7 @@ a receiver that picks up again does.
 ## The service
 
 ```ts
+import { ed25519, eip191 } from "@estoc/identity";
 import { loadMailboxService, MemoryAccounts, MemoryMailboxes } from "@estoc/mailbox-service/server";
 
 const service = await loadMailboxService(serviceKey, {
@@ -353,12 +357,14 @@ const service = await loadMailboxService(serviceKey, {
   mailboxes: new MemoryMailboxes(),
   terms: { retention: 30 * 24 * 60 * 60 * 1000, quota: 64 * 1024 * 1024, size: 1024 * 1024 },
   validator: defaultValidator,
+  schemes: [ed25519, eip191],
 });
 export default { fetch: (request: Request) => service.fetch(request) };
 ```
 
 `loadMailboxService` takes the signer of the service's identity and the
-origin it is reached at. The origin is set there rather than read from a
+origin it is reached at, and the schemes it reads keys in, its own and
+those of whoever signs to it. The origin is set there rather than read from a
 request, whose host is the requester's to choose. Started with an empty
 store, it has the signer sign the service's identity, then the offer of an
 account, the offer of mailboxes on `terms`, and a Service at that origin

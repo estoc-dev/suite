@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const { identities, signatures, publish } = await loadIdentity(defaultValidator);
+const { identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 

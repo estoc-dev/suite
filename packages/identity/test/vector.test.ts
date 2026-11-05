@@ -16,8 +16,9 @@ import {
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
+import { schemes } from "./fixtures.ts";
 
-const { signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const { signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator, schemes);
 const keyScheme: Schema<Json, SchemeData> = await encodeSchema(schemeSchema, defaultValidator);
 const schemeObjects = schemeValidator(keyScheme);
 
@@ -34,7 +35,7 @@ const schemeSchemaLink = "sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d9
 const ed25519SchemeText =
   '{"$schema":{"$link":"sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4"},' +
   '"name":"ed25519","publicKeyLength":32}';
-const schemes = [
+const schemeObjectVectors = [
   {
     scheme: ed25519,
     text: ed25519SchemeText,
@@ -157,10 +158,10 @@ test("the scheme schema encodes to fixed bytes and a fixed link", () => {
   expect(keyScheme.link).toBe(schemeSchemaLink);
 });
 
-test.each(schemes)(
+test.each(schemeObjectVectors)(
   "the object of $scheme.name encodes to fixed bytes and a fixed link",
   async ({ scheme, text: expected, link }) => {
-    const data = { name: scheme.name, publicKeyLength: scheme.curve.publicKeyLength };
+    const data = { name: scheme.name, publicKeyLength: scheme.publicKeyLength };
     const schema = await encodeSchema(data, schemeObjects);
     expect(text(schema.bytes)).toBe(expected);
     expect(schema.link).toBe(link);

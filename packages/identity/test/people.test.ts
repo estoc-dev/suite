@@ -1,13 +1,20 @@
 import { encodeObject, encodeSchema, type Json, linkOf, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { ed25519, eip191, loadIdentity, type Scheme, type SignedIdentityObject, SoftwareSigner } from "../src/index.ts";
-import { rowsOf } from "./fixtures.ts";
+import {
+  type CurveScheme,
+  ed25519,
+  eip191,
+  loadIdentity,
+  type SignedIdentityObject,
+  SoftwareSigner,
+} from "../src/index.ts";
+import { rowsOf, schemes } from "./fixtures.ts";
 
-const { signatures, versions, publish, delegate } = await loadIdentity(defaultValidator);
+const { signatures, versions, publish, delegate } = await loadIdentity(defaultValidator, schemes);
 
-const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
+const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
+const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
   versions.people(
     rowsOf(versions, ...signed),

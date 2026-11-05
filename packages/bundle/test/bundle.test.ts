@@ -16,7 +16,10 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
-const { identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const { identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator, [
+  ed25519,
+  eip191,
+]);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);

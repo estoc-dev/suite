@@ -403,21 +403,21 @@ describe("signatures loaded with a validator", () => {
   it.each([
     ["signed identity", /^Signed Identity$/],
     ["identity", /^Identity$/],
-    ["root", / key$/],
   ])("refuse a signature whose %s it says does not fit", async (_, title) => {
     const { signatures: strict } = await loadIdentity(refusing(title));
     const signature = await sign(hello, signer(ed25519));
     await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/it does not fit/);
   });
 
-  it.each([
-    ["identity", /^Identity$/],
-    ["key", / key$/],
-  ])("do not ask a signer to publish an identity whose %s it says does not fit", async (_, title) => {
-    const strict = await loadIdentity(refusing(title));
+  it("do not ask a signer to publish an identity it says does not fit", async () => {
+    const strict = await loadIdentity(refusing(/^Identity$/));
     const sign = vi.fn(async () => new Uint8Array(64));
     await expect(strict.publish({ key: signer(ed25519).key, sign })).rejects.toThrow(/it does not fit/);
     expect(sign).not.toHaveBeenCalled();
+  });
+
+  it("are not loaded when it says the objects of the schemes do not fit, which keys are written to", async () => {
+    await expect(loadIdentity(refusing(/^Key Scheme$/))).rejects.toThrow(/it does not fit/);
   });
 });
 

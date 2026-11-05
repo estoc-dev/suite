@@ -1,25 +1,7 @@
-import { utf8ToBytes } from "@noble/hashes/utils.js";
 import type { Encoding, Fields } from "./encoding.ts";
-import { type Bytes, type Link, linkOf } from "./link.ts";
+import type { Link } from "./link.ts";
 import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
 import type { Schema } from "./schema.ts";
-
-/**
- * What the objects of a schema read as, whichever of several schemas they
- * are written to: a blob that each such schema names by link, in JSON
- * Schema by `x-implements`. The interface is in the closure of each such
- * schema, so whoever holds the schema can get the interface too.
- */
-export interface Interface {
-  readonly bytes: Bytes<Interface>;
-  readonly link: Link<Interface>;
-}
-
-/** An interface that is its name in UTF-8. */
-export function interfaceNamed(name: string): Interface {
-  const bytes: Bytes<Interface> = utf8ToBytes(name);
-  return { bytes, link: linkOf(bytes) };
-}
 
 /**
  * A concrete schema that a program reads as an interface, with how an
@@ -34,8 +16,7 @@ export interface Implementation<D, T, F extends Fields<D> = Fields<D>> {
 /**
  * The concrete schemas a program reads as one interface, each with its
  * implementation, picked by the schema an object names. Which schemas these
- * are is the program's to say; one that a schema names as its interface but
- * the program does not list is refused like any other.
+ * are is the program's to say, and an object of any other is refused.
  */
 export class Implementations<D, T, I extends Implementation<D, T> = Implementation<D, T>> {
   readonly #encoding: Encoding<D>;

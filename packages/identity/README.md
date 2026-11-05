@@ -7,7 +7,9 @@ keys, the identity, the root's signature over the identity and each
 signature are written as objects, which another object names by its link.
 
 ```
-Key                 an Object written to the key schema of its scheme, with the field
+Scheme              an Object written to the scheme schema, with the fields
+                    "name": <the scheme's name>, "publicKeyLength": <bytes>
+Key                 an Object written to its Scheme, with the field
                     "publicKey": <hex>
 Identity            an Object written to the Identity schema, with the fields
                     "root": <the Key's link>, "at": <Unix ms>
@@ -24,19 +26,20 @@ Identity's are its root's signature, a Delegated Identity's the index of
 the agent that signed and that agent's signature.
 
 `loadIdentity` compiles every schema here with the validator the
-application picks, and gives what reads and writes the objects of each,
+application picks, writes the object of each scheme it supports, and gives
+what reads and writes the objects of each,
 side by side: `keys`, `identities`, `delegatedIdentities`,
 `signedIdentities`, `signatures` and `versions`, with `publish` and
 `delegate`, which write an identity and have its root sign it. The code is
 laid out as the objects are. Each schema has a file of its own, an
-interface and the schemas that name it share a directory, `src/key/` and
+interface and the schemas read as it share a directory, `src/key/` and
 `src/identity/`, with the interface in `interface.ts`, and one file imports
 another where an object of the one links to an object of the other.
 
 ## Schemes
 
 A scheme is how a key signs: a curve, how the text it signs is framed
-before the curve signs it, and the schema its keys are written to. A key
+before the curve signs it, and the object its keys are written to. A key
 kept in a chain wallet signs only in that chain's off-chain message
 framing, so the framing belongs to the key, and a verifier does not accept
 a framing its holder did not choose.
@@ -86,23 +89,37 @@ signing is asynchronous.
 
 ## Keys
 
-Each scheme writes its keys to a schema of its own, its `keySchema`, and
-the schema a key's object is written to is its scheme. The schema holds the
-public key, in lowercase hex at its scheme's length, and no other field, so
-each key has one object and one link. The schemas of `ed25519` and
-`solana-offchain` take public keys of the same shape and differ only in
-their titles, which name the schemes: one public key in the two schemes is
-two objects, with two links, as it is two keys.
+Each scheme has an object, written to `schemeSchema`, that holds its name
+and how many bytes its public keys are, and that object is the schema its
+keys are written to:
 
-The document of each key schema names what its objects read as, the Key
-interface, by `"x-implements": {"$link": <link>}`, the link of `keyInterface`, whose
-bytes are the UTF-8 text `Key`. Whatever the scheme, a key reads as a
-`Key`, and the schemas say so in the same way.
+```
+key                 {"$schema": {"$link": <ed25519>}, "publicKey": "…"}
+ed25519             {"$schema": {"$link": <the scheme schema>}, "name": "ed25519", "publicKeyLength": 32}
+the scheme schema   {"$schema": {"$link": <the root of JSON Schema>}, "document": {…}}
+```
 
-A scheme added later comes with a schema of its own, so keys already
-written keep their links. A program reads keys written to the key schemas
-it supports, as it says which schemas it reads, and refuses one written to
-any other, as it would a key in a scheme it does not support.
+Each line is the type of the one above it. The scheme schema is a JSON
+Schema schema, and the objects of the schemes are the schemas of a language
+of their own, which `schemeValidator` reads. It checks a key without a JSON
+Schema validator: a key holds its public key, in lowercase hex at its
+scheme's length, and no other field, so each key has one object and one
+link, and no scheme writes its keys another way. The objects of `ed25519`
+and `solana-offchain` differ only in their names: one public key in the two
+schemes is two objects, with two links, as it is two keys. A scheme's
+object carries as its `blobs` itself, the scheme schema and the root of
+JSON Schema.
+
+That an object is a scheme is its type, not a mark in a document. What a
+program reads a scheme's keys as is still the program's to say: another
+program could read an `ed25519` key as a Solana address.
+
+A scheme added later comes with an object of its own, so keys already
+written keep their links. A program reads keys written to the objects of
+the schemes it supports, as it says which schemas it reads, and refuses one
+written to any other, as it would a key in a scheme it does not support.
+Verifying is code, which no object holds, so a program refuses a scheme it
+has no verifier for whatever its object says.
 
 `keys` reads keys through an `Implementations` of `@estoc/object`, with
 one implementation for each scheme. `keys.check` is the verifier of a key:
@@ -110,18 +127,17 @@ it takes a key's object and gives the key, in the scheme of the schema the
 object is written to. `keys.read` does the same from the
 link of the object and a `Reader`, and picks the schema to read the object
 with by `schemaOf`. `keys.encode` writes a key as its object, and refuses a
-public key that its scheme's schema does not take, and a scheme that is not
-one of those `loadIdentity` compiles. A scheme added later is one more file
+public key that its scheme's object does not take, and a scheme that is not
+one of those `loadIdentity` writes an object for. A scheme added later is one more file
 under `src/key/` and one more of those.
 
 ## Identities
 
 An identity is written to one of two schemas, whatever the scheme of its
-root, and names its root by the link of the root's object. The documents
-of both schemas name the Identity interface in `x-implements`, the link of
-`identityInterface`, whose bytes are the UTF-8 text `Identity`, as the key
-schemas name the Key interface. Whichever schema it is written to, an
-identity reads as an `IdentityObject`, with its root as `root`, and that is
+root, and names its root by the link of the root's object. The two differ
+in shape and share no template, so they are JSON Schema schemas, and
+`signedIdentities` is what reads both as identities. Whichever schema it is
+written to, an identity reads as an `IdentityObject`, with its root as `root`, and that is
 all a reader that does not sign needs. Someone who signs is a person by
 their root, a wallet as much as a device or a service: two identities are
 of the same person when the links of their roots are the same, so a
@@ -163,9 +179,8 @@ signed it: `identities.read` and `delegatedIdentities.read` read an
 identity's object with the keys it names and do not authenticate it, and
 `signedIdentities.read` verifies that its root signed it. Reading an
 identity takes the blobs of its object and of its keys; an identity
-carries them as `blobs`, with those of the schemas they are written to, of
-the root of each schema's language and of the interfaces those schemas
-name, each once. That is the identity's closure, so
+carries them as `blobs`, with the blobs of the schemas they are written
+to, each once. That is the identity's closure, so
 where an identity goes, as into a store or a bundle, `...identity.blobs`
 goes along and carries all it links to.
 
@@ -194,7 +209,7 @@ signed identity and a `Reader`, reads its identity through an
 `Implementations` of the identity schemas, which picks the schema to read
 the identity's object with by `schemaOf`, and refuses a signature that the
 identity's root did not make. A signed identity carries as `blobs` its
-object, its schema and the schema's root with the identity's `blobs`.
+object and its schema's blobs with the identity's `blobs`.
 
 A signature is made by a signed identity, so `signedIdentities` asks the
 schema of the identity what the signature needs of it, and `signatures`

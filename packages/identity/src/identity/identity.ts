@@ -15,7 +15,6 @@ import {
   type IdentityData,
   type IdentityImplementation,
   type IdentityObject,
-  identityInterface,
   identityOf,
   type SigningFunction,
 } from "./interface.ts";
@@ -28,7 +27,6 @@ import {
 export const identitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
   title: "Identity",
-  "x-implements": { $link: identityInterface.link },
   type: "object",
   properties: { root: linkSchema, at: { type: "integer", minimum: 0 } },
   required: ["root", "at"],

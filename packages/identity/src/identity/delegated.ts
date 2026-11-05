@@ -17,7 +17,6 @@ import {
   type IdentityData,
   type IdentityImplementation,
   type IdentityObject,
-  identityInterface,
   identityOf,
   type SigningFunction,
 } from "./interface.ts";
@@ -34,7 +33,6 @@ import {
 export const delegatedIdentitySchema: JsonSchema = {
   $schema: DRAFT_2020_12,
   title: "Delegated Identity",
-  "x-implements": { $link: identityInterface.link },
   type: "object",
   properties: {
     root: linkSchema,

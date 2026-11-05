@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import {
@@ -7,7 +6,6 @@ import {
   encodeSchema,
   type Implementation,
   Implementations,
-  interfaceNamed,
   type Json,
   type JsonLink,
   json,
@@ -66,14 +64,6 @@ const hello = encodeObject(plain, { text: "hello" });
 const echo = encodeObject(quote, { quotes: { $link: textAt(hello) } });
 const blobs = (...objects: { bytes: Uint8Array; link: Link<unknown> }[]) =>
   new Map(objects.map(({ bytes, link }) => [link, bytes]));
-
-describe("an interface named by text", () => {
-  it("is the UTF-8 bytes of its name, under their SHA-256", () => {
-    const named = interfaceNamed("Key");
-    expect(named.bytes).toEqual(new TextEncoder().encode("Key"));
-    expect(named.link).toBe(`sha256:${createHash("sha256").update("Key").digest("hex")}`);
-  });
-});
 
 describe("implementations", () => {
   it("read each object with the implementation of the schema it names", async () => {

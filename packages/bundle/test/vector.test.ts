@@ -18,54 +18,55 @@ const objectText =
 const objectLink = "sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4";
 const rootText = '{"$schema":null,"language":"JSON Schema"}';
 const rootLink = "sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326";
-const keyInterfaceLink = "sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160";
-const identityInterfaceLink = "sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f";
-const keySchemaText =
+const schemeSchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["publicKey"],' +
-  '"title":"Ed25519 key","type":"object",' +
-  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}';
-const keySchemaLink = "sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d";
+  '"properties":{"name":{"type":"string"},"publicKeyLength":{"minimum":1,"type":"integer"}},' +
+  '"required":["name","publicKeyLength"],"title":"Key Scheme","type":"object"}}';
+const schemeSchemaLink = "sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4";
+const ed25519SchemeText =
+  '{"$schema":{"$link":"sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4"},' +
+  '"name":"ed25519","publicKeyLength":32}';
+const ed25519SchemeLink = "sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528";
 const identitySchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root","at"],' +
-  '"title":"Identity","type":"object",' +
-  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}}';
-const identitySchemaLink = "sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422";
+  '"title":"Identity","type":"object"}}';
+const identitySchemaLink = "sha256:f9fcc71f3625929ed2d27067970e7d6cb38db30dd3d4d1c41d81be5b046f5ab7";
 const keyText =
-  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
+  '{"$schema":{"$link":"sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
-const keyLink = "sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01";
+const keyLink = "sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9";
 const identityText =
-  '{"$schema":{"$link":"sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422"},' +
+  '{"$schema":{"$link":"sha256:f9fcc71f3625929ed2d27067970e7d6cb38db30dd3d4d1c41d81be5b046f5ab7"},' +
   '"at":1767225600000,' +
-  '"root":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
-const identityLink = "sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96";
+  '"root":{"$link":"sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9"}}';
+const identityLink = "sha256:4f82dee355134c70145e97849da3f99017abac0240a21eb522e88a8329a8495b";
 const signedIdentitySchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$",' +
+  '"type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},"required":["identity","signature"],' +
   '"title":"Signed Identity","type":"object"}}';
 const signedIdentitySchemaLink = "sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2";
 const signedIdentityText =
   '{"$schema":{"$link":"sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2"},' +
-  '"identity":{"$link":"sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96"},' +
-  '"signature":"ca32524b421edba33e57e0f39be585a9d243fde02ef4662a616b880e48fd3ffb1499997e490aadf276dfdf0d284' +
-  '97ab9061db5fad80635dfb335650c0a29f30d"}';
-const signedIdentityLink = "sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5";
+  '"identity":{"$link":"sha256:4f82dee355134c70145e97849da3f99017abac0240a21eb522e88a8329a8495b"},' +
+  '"signature":"93b5b886255a444aa89df3676e028e36c25f0f6d065e69ca83f66746c482af8bd3fcd7a9952afd7257b720a' +
+  'ff4733761c142ad0d12307c808b71efce3e022a01"}';
+const signedIdentityLink = "sha256:594e6783ce52b6d891186b15aed00844b84468b458ccba166dd15d77f537eadf";
 const signatureText =
   '{"$schema":{"$link":"sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4"},' +
   '"object":{"$link":"sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4"},' +
-  '"signature":"16ee674e6a0d4bfcea87e6a04bacba19b43d67e6e89501dd36e322ab5c2db74decf00cb9ddb82f4152e10033815' +
-  '111447f479ee08896ae6900e5a2d038882e0e",' +
-  '"signedIdentity":{"$link":"sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5"}}';
-const signatureLink = "sha256:d5dcd6b8364fdabfb2ae49a92f0bfc2c84ca6da05748d606135fe440ae92278e";
+  '"signature":"92af1ae34cf530cfc3f433ba227b42d69835955df17f3cb1174177b7078bd6beb7dcdc47c71dab2b342c0a2' +
+  'c1b7924da6b49ac8cfecbcdec3b31c2a4a14d1c09",' +
+  '"signedIdentity":{"$link":"sha256:594e6783ce52b6d891186b15aed00844b84468b458ccba166dd15d77f537eadf"}' +
+  "}";
+const signatureLink = "sha256:24f33da59eee939ccaaafb3c5ed731ebad91acc0bb6b9b9600c8b82db219cb2b";
 
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -77,9 +78,8 @@ const blobs = new Map<Link<unknown>, string>([
   [identityLink, identityText],
   [keyLink, keyText],
   [identitySchemaLink, identitySchemaText],
-  [keySchemaLink, keySchemaText],
-  [identityInterfaceLink, "Identity"],
-  [keyInterfaceLink, "Key"],
+  [ed25519SchemeLink, ed25519SchemeText],
+  [schemeSchemaLink, schemeSchemaText],
 ]);
 const files = new Map([
   ["index.json", signatureText],

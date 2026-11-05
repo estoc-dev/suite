@@ -94,8 +94,8 @@ A schema is an object like any other, written to its language.
   that schema, one written to a root by itself. An encoding stops the same
   way: no blob says that some bytes are JCS, and `schemaOf` is given the
   encoding by its caller.
-- A schema links to nothing but what it is written to, and one whose
-  document holds a link is refused, in writing and in reading. A JSON
+- A schema links to nothing but what it is written to, and one that links
+  to anything else is refused, in writing and in reading. A JSON
   Schema document writes out the links its objects hold with `linkSchema`,
   which holds none. So the closure of a schema is itself and the blobs of
   its language, up to the root, and the schema gives them as `blobs`. They

@@ -96,7 +96,5 @@ export const json: Encoding<Json> = {
     const { $schema: _, ...data } = value as JsonObject;
     return { data, schema };
   },
-  linkValue: (link) => ({ $link: link }),
-  link: (value) => (isJsonLink(value) ? value.$link : undefined),
   links: (value) => (schemaNamedBy(value) === undefined ? [] : linksIn(value)),
 };

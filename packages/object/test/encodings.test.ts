@@ -63,8 +63,6 @@ const lines: Encoding<Text> = {
     if (!isLink(schema)) throw new Error("an object names its schema by link");
     return { data, schema };
   },
-  linkValue: (link) => link,
-  link: (value) => (isLink(value) ? value : undefined),
   links(value) {
     if (typeof value === "string" || !(value.schema === "" || isLink(value.schema))) return [];
     return Object.values(value).filter(isLink);

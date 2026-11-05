@@ -103,7 +103,7 @@ describe("a bundle", () => {
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
     const signed = await delegate(wallet, [alice.key]);
-    const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
+    const bundle = readBundle(writeBundle(signed, [...signed.schema.blobs, ...signed.identity.blobs]));
     expect(bundle.link).toBe(signed.link);
     expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signed);
   });

@@ -11,11 +11,10 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
  *
  * - A schema is an object written to the language's root, which describes itself and stands for
  *   the language. Changing language is changing root.
- * - The data of a schema is its `document`, written in the language, and `follows`, the link of an
- *   earlier version of the same format, when it is a later one. This outer layer is the same in
- *   every language, so that following reads the same in each.
- * - No schema reads the root: what reads a schema checks the link it names, and reads the outer
- *   layer itself, as an encoding is told by the caller rather than by a blob.
+ * - The data of a schema is its `document` alone, whole as the language writes it, so that the
+ *   language's own tools read it as it is.
+ * - No schema reads the root: what reads a schema checks the link it names, and reads the
+ *   document out itself, as an encoding is told by the caller rather than by a blob.
  */
 export interface SchemaLanguage<D, S extends D = D> {
   /** The encoding of the schemas, and so of the objects written to them. */
@@ -57,25 +56,23 @@ export interface SchemaValidator<D, S extends D = D> {
 export class Schema<D, F extends Fields<D> = Fields<D>> {
   /** The encoding of the objects written to this schema, which is that of its language. */
   readonly encoding: Encoding<D>;
-  /** The root of the schema's language. The schema links to it, so it goes wherever the schema goes. */
   readonly root: SelfDescribingObject<D>;
   readonly bytes: Bytes<Schema<D>>;
   readonly link: Link<Schema<D>>;
-  /** The schema of the earlier version of the format that this schema follows, if any. */
-  readonly follows: Link<Schema<D>> | undefined;
+  /** The closure of the schema: its bytes and the root of its language, which go wherever it goes. */
+  readonly blobs: readonly Uint8Array[];
   readonly #check: Check<D>;
 
   constructor(
     language: SchemaLanguage<D>,
     { bytes, link }: { readonly bytes: Bytes<Schema<D>>; readonly link: Link<Schema<D>> },
-    follows: Link<Schema<D>> | undefined,
     check: Check<D>,
   ) {
     this.encoding = language.encoding;
     this.root = language.root;
     this.bytes = bytes;
     this.link = link;
-    this.follows = follows;
+    this.blobs = [bytes, language.root.bytes];
     this.#check = check;
   }
 
@@ -95,7 +92,7 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
  * Reads the schema that `bytes` hold, and compiles its document with `validator`.
  *
  * @throws when the bytes are not an object written to the root of the validator's language, or
- * hold anything but a document of the language and the link of the schema they follow.
+ * hold anything but a document of the language.
  * @throws when the validator cannot compile the document.
  */
 export async function decodeSchema<D, S extends D, F extends Fields<D> = Fields<D>>(
@@ -108,30 +105,18 @@ export async function decodeSchema<D, S extends D, F extends Fields<D> = Fields<
   const { data, schema } = encoding.fields(value);
   if (schema !== root.link)
     throw new Error(`a schema is written to the root ${root.link}, not to ${schema ?? "itself"}`);
-  const { document, follows, ...rest } = data;
+  const { document, ...rest } = data;
   if (document === undefined) throw new Error("a schema holds a document");
   const extra = Object.keys(rest);
-  if (extra.length > 0) throw new Error(`a schema holds a document and what it follows, not ${extra.join(", ")}`);
-  let followed: Link<Schema<D>> | undefined;
-  if (follows !== undefined) {
-    followed = encoding.link(follows);
-    if (followed === undefined) throw new Error("a schema follows another by link");
-  }
-  return new Schema<D, F>(
-    language,
-    { bytes: owned, link },
-    followed,
-    await validator.compile(language.document(document)),
-  );
+  if (extra.length > 0) throw new Error(`a schema holds a document alone, not ${extra.join(", ")}`);
+  return new Schema<D, F>(language, { bytes: owned, link }, await validator.compile(language.document(document)));
 }
 
-/** Writes `document` as a schema, following `follows` when it is given, and compiles it as `decodeSchema` does. */
+/** Writes `document` as a schema, and compiles it as `decodeSchema` does. */
 export async function encodeSchema<D, S extends D, F extends Fields<D> = Fields<D>>(
   document: S,
   validator: SchemaValidator<D, S>,
-  { follows }: { readonly follows?: Link<Schema<D>> } = {},
 ): Promise<Schema<D, F>> {
   const { encoding, root } = validator.language;
-  const data = follows === undefined ? { document } : { document, follows: encoding.linkValue(follows) };
-  return decodeSchema<D, S, F>(encoding.encode(encoding.object(data, root.link)), validator);
+  return decodeSchema<D, S, F>(encoding.encode(encoding.object({ document }, root.link)), validator);
 }

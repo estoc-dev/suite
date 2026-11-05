@@ -35,10 +35,6 @@ export interface Encoding<D> {
    * @throws for any other value, which is not an object but bytes.
    */
   fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> | null };
-  /** `link` as a value, to hold in data wherever it names a blob. */
-  linkValue(link: Link<unknown>): D;
-  /** The link that `value` is, or `undefined` for a value that is not a link. */
-  link(value: D): Link<never> | undefined;
   /**
    * The links in an object, its schema included, so that a blob's closure
    * can be gathered without reading it through a schema.

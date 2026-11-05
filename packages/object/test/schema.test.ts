@@ -42,12 +42,11 @@ describe("decodeSchema", () => {
     });
     expect(read.link).toBe(schema.link);
     expect(read.root).toBe(root);
-    expect(read.follows).toBeUndefined();
   });
 
   it("reads a schema written out by hand", async () => {
-    const read = await decodeSchema(utf8(schemaText(`"document":{"$schema":"${DRAFT}"}`)), lenient);
-    expect(read.follows).toBeUndefined();
+    const text = schemaText(`"document":{"$schema":"${DRAFT}"}`);
+    expect(new TextDecoder().decode((await decodeSchema(utf8(text), lenient)).bytes)).toBe(text);
   });
 
   it.each([
@@ -58,11 +57,6 @@ describe("decodeSchema", () => {
       "an object of the root holding more than a document",
       schemaText(`"document":{"$schema":"${DRAFT}"}`, '"title":"Name"'),
       /not title/,
-    ],
-    [
-      "a schema following another by a bare string",
-      schemaText(`"document":{"$schema":"${DRAFT}"}`, `"follows":"${root.link}"`),
-      /follows another by link/,
     ],
   ])("refuses %s", async (_, text, reason) => {
     await expect(decodeSchema(utf8(text), lenient)).rejects.toThrow(reason);
@@ -82,25 +76,11 @@ describe("decodeSchema", () => {
   });
 });
 
-describe("a schema that follows another", () => {
-  const document: JsonSchema = { $schema: DRAFT, type: "object", title: "Note" };
-
-  it("links to the schema it follows, and reads back with it", async () => {
-    const first = await encodeSchema(document, defaultValidator);
-    const second = await encodeSchema(document, defaultValidator, { follows: first.link });
-    expect(json.decode(second.bytes)).toEqual({
-      $schema: { $link: root.link },
-      document,
-      follows: { $link: first.link },
-    });
-    expect([...json.links(json.decode(second.bytes))].sort()).toEqual([root.link, first.link].sort());
-    expect((await decodeSchema(second.bytes, defaultValidator)).follows).toBe(first.link);
-  });
-
-  it("is another schema than the same document following nothing", async () => {
-    const first = await encodeSchema(document, defaultValidator);
-    const second = await encodeSchema(document, defaultValidator, { follows: first.link });
-    expect(second.link).not.toBe(first.link);
+describe("the blobs of a schema", () => {
+  it("are its closure, the schema and the root of its language", async () => {
+    const schema = await encodeSchema({ $schema: DRAFT, type: "object", title: "Note" }, defaultValidator);
+    expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
+    expect([...json.links(json.decode(schema.bytes))]).toEqual([root.link]);
   });
 });
 

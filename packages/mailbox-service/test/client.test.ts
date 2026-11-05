@@ -96,12 +96,12 @@ async function signedService(origin: string, offers: readonly (readonly [Encoded
   const signature = await by.sign(service);
   const blobs = [
     service.bytes,
-    serviceSchemaRead.bytes,
+    ...serviceSchemaRead.blobs,
     ...signature.signedIdentity.blobs,
-    signatures.schema.bytes,
+    ...signatures.schema.blobs,
     ...signed.map(({ bytes }) => bytes),
     ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs),
-    ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
+    ...offers.flatMap(([object]) => [object.bytes, ...object.schema.blobs]),
     serviceRoot.bytes,
   ];
   return packBundle(signature, blobs);
@@ -114,13 +114,13 @@ async function acknowledgementBy(by: Actor, request: Request) {
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
-    acknowledgementSchemaRead.bytes,
+    ...acknowledgementSchemaRead.blobs,
     ...signature.signedIdentity.blobs,
-    signatures.schema.bytes,
+    ...signatures.schema.blobs,
     acceptance.root,
     ...acceptance.blobs(),
     offer.bytes,
-    offerSchema.bytes,
+    ...offerSchema.blobs,
     serviceRoot.bytes,
   ];
   return new Response(await packBundle(signature, blobs), { status: 201 });
@@ -394,7 +394,7 @@ async function withAccount(actor: Actor, options: Parameters<typeof running>[0] 
 /** A mailbox sealed to `key` that `actor` opens by `offer`, which `store` then holds. */
 async function openMailbox(store: Store, offer: MailboxOffer, actor: Actor, key = keyOf(7)) {
   const mailbox = await offer.open(actor, key);
-  await store.write({ records: [mailbox], blobs: [http.schema.bytes, http.schema.root.bytes] });
+  await store.write({ records: [mailbox], blobs: http.schema.blobs });
   return mailbox;
 }
 
@@ -453,7 +453,7 @@ describe("a mailbox that a service opened", () => {
     const note = encodeObject(noteSchema, { text: "hello, Alice" });
     await sender.write({
       records: [{ bytes }, note],
-      blobs: [http.schema.bytes, http.schema.root.bytes, noteSchema.bytes],
+      blobs: [...http.schema.blobs, ...noteSchema.blobs],
     });
     const outbox = await (await loadPost(sender, new PrivateStore(sender, new MemoryBackend()), options)).outbox(
       inbox.mailbox,
@@ -571,7 +571,7 @@ describe("a mailbox that a service opened", () => {
     const { store, services } = await client();
     await services.fetch(origin);
     const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${"0".repeat(32)}` });
-    await store.write({ records: [mailbox], blobs: [http.schema.bytes, http.schema.root.bytes] });
+    await store.write({ records: [mailbox], blobs: http.schema.blobs });
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/holds no acknowledgement/);
   });
 });

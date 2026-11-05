@@ -114,7 +114,7 @@ describe("an HTTP outbox", () => {
     const kept = new PrivateStore(store, new MemoryBackend());
     const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
-    await store.write({ records: [mailbox, hello], blobs: [http.schema.bytes, http.schema.root.bytes, note.bytes] });
+    await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, note.bytes] });
     const outbox = await post.outbox(mailbox.link);
     const before = await listed(store);
 

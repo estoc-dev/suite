@@ -43,9 +43,6 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     blob's closure can be gathered without a schema to read it by, as a
     store gathers the closure it carries along with an object. Bytes link
     to nothing, whatever they hold.
-  - The encoding writes a link as one of its values and reads one back, so
-    that what every schema language shares, such as the schema a schema
-    follows, reads the same over any encoding.
 - A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
   one encoding, which it names, with documents `S`. Its root stands for
   it, and a schema is an object written to the root.
@@ -74,10 +71,8 @@ translating old ones.
 A schema is an object like any other, written to the root of its
 language.
 
-- Its data is `document`, the schema in its language, and `follows`, the
-  link of the schema of an earlier version of the same format when it is a
-  later one. This outer layer is the same in every language, so `follows`
-  reads the same wherever it is.
+- Its data is `document` alone, the schema whole as its language writes
+  it, so that the language's own tools read it as it is.
 - A root describes itself: its `$schema` is `null`, since a blob cannot
   hold its own hash, and `schemaOf` gives it its own link. Only what has
   one instance describes itself, since its link fixes every byte and no
@@ -94,16 +89,13 @@ language.
   is given the encoding by its caller.
 - A root is in the closure of each schema written to it, and so of each
   object of those schemas, so it goes wherever a schema goes, as into a
-  store or a bundle. A schema holds it as `root`.
+  store or a bundle. A schema holds it as `root`, and gives its closure,
+  its own bytes and the root's, as `blobs`.
 
 Changing language is changing root: schemas in CDDL over CBOR would name
 `{"$schema": null, "language": "CDDL"}`. A root stands for a language
 rather than one of its dialects; a JSON Schema document names its dialect
 itself.
-
-`encodeSchema(document, validator, { follows: earlier.link })` writes a
-schema that follows `earlier`, which `schema.follows` reads back. Two
-versions can follow one, so the versions of a format can branch.
 
 A blob that is not an object is bytes: an image, a JSON Schema document on
 its own, or a JSON file such as a `biome.json`, whose `$schema` is a

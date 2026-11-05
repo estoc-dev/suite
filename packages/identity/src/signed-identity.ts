@@ -149,6 +149,6 @@ function signedIdentityOf<I extends IdentityObject>(
     link: object.link as Link<SignedIdentityObject>,
     identity,
     signature,
-    blobs: [object.bytes, object.schema.bytes, object.schema.root.bytes, ...identity.blobs],
+    blobs: [object.bytes, ...object.schema.blobs, ...identity.blobs],
   };
 }

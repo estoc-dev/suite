@@ -36,7 +36,7 @@ const keys: Schema<Json, MailboxKeyData> = await encodeSchema(mailboxKeySchema, 
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, 0)).sign(hello);
-const schemas = [note, signatures.schema].flatMap(({ bytes, root }) => [bytes, root.bytes]);
+const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
 const signed = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
@@ -67,7 +67,7 @@ async function sendingTo(network: MemoryNetwork) {
   const mailbox = queue.mailbox(bob.publicKey);
   await at.store.write({
     records: [mailbox],
-    blobs: [network.transport.schema.bytes, network.transport.schema.root.bytes],
+    blobs: network.transport.schema.blobs,
   });
   return { ...at, queue, mailbox };
 }
@@ -122,7 +122,7 @@ describe("an outbox", () => {
     const atCarol = queue.mailbox(carol.publicKey);
     await atBob.store.write({
       records: [atCarol],
-      blobs: [network.transport.schema.bytes, network.transport.schema.root.bytes],
+      blobs: network.transport.schema.blobs,
     });
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
@@ -137,7 +137,7 @@ describe("an outbox", () => {
     const elsewhere = (await MemoryNetwork.create(defaultValidator)).queue().mailbox(bob.publicKey);
     await store.write({
       records: [elsewhere],
-      blobs: [network.transport.schema.bytes, network.transport.schema.root.bytes],
+      blobs: network.transport.schema.blobs,
     });
     const before = await listed(store);
 

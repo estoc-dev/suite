@@ -163,7 +163,7 @@ describe("a mailbox service", () => {
     const { service } = await memoryService();
     const { signature } = await directAcceptance((await rootOf(service)).offer, wallet);
     const { signedIdentity } = signature;
-    const read = [signedIdentity.bytes, signedIdentity.identity.bytes, signedIdentity.identity.root.bytes];
+    const read = [signedIdentity.bytes, ...signedIdentity.identity.blobs];
     expect((await accepting(service, await packBundle(signature, read))).status).toBe(201);
   });
 
@@ -387,7 +387,7 @@ describe("a mailbox service", () => {
       at: 2_000,
       offers: [{ offer: { $link: offered.link }, acceptId: dropped.link }],
     });
-    const blobs = [earlier.bytes, offered.bytes, dropped.bytes, schema.bytes];
+    const blobs = [earlier.bytes, offered.bytes, dropped.bytes, ...schema.blobs];
     await store.write({ records: [await asService.sign(earlier)], blobs });
     expect((await post(service, dropped.link, (await directAcceptance(dropped)).zip)).status).toBe(410);
   });

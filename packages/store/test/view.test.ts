@@ -54,7 +54,7 @@ const latest: View<Row, Latest> = {
 const write = (store: Store, ...notes: Note[]) =>
   store.write({
     records: notes.map((note) => encodeObject(noteSchema, note)),
-    blobs: [noteSchema.bytes, noteSchema.root.bytes],
+    blobs: noteSchema.blobs,
   });
 
 describe("the value of a view", () => {

@@ -32,7 +32,7 @@ describe("a staged batch", () => {
   it("gives the blobs of the batch in its records' closures, and those the store holds", async () => {
     const store = newStore();
     const held = object({ text: "held" });
-    await store.write({ records: [held], blobs: [anything.bytes, anything.root.bytes] });
+    await store.write({ records: [held], blobs: anything.blobs });
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) }, held: { $link: held.link } });
     const staged = await store.stage({ records: [note], blobs: [image] });
@@ -48,7 +48,7 @@ describe("a staged batch", () => {
     const carried = object({ text: "carried" });
     const staged = await store.stage({
       records: [object({ text: "hello" })],
-      blobs: [stray, carried.bytes, anything.bytes, anything.root.bytes],
+      blobs: [stray, carried.bytes, ...anything.blobs],
     });
     expect(await staged.get(linkOf(stray))).toBeUndefined();
     expect(await staged.get(carried.link)).toBeUndefined();
@@ -57,7 +57,7 @@ describe("a staged batch", () => {
   it("lists the records of the store and of the batch, each once", async () => {
     const store = newStore();
     const [first, second, third] = [object({ text: "first" }), object({ text: "second" }), object({ text: "third" })];
-    await store.write({ records: [first], blobs: [anything.bytes, anything.root.bytes] });
+    await store.write({ records: [first], blobs: anything.blobs });
     const staged = await store.stage({ records: [first, second, second, third] });
     expect((await listed(staged)).sort()).toEqual([first.link, second.link, third.link].sort());
   });
@@ -68,14 +68,14 @@ describe("a staged batch", () => {
     await expect(
       store.stage({
         records: [{ bytes: json.encode([1, 2]) }],
-        blobs: [carried.bytes, anything.bytes, anything.root.bytes],
+        blobs: [carried.bytes, ...anything.blobs],
       }),
     ).rejects.toThrow(/is not an object/);
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
-    await expect(
-      store.stage({ records: [note], blobs: [carried.bytes, anything.bytes, anything.root.bytes] }),
-    ).rejects.toThrow(`${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`);
+    await expect(store.stage({ records: [note], blobs: [carried.bytes, ...anything.blobs] })).rejects.toThrow(
+      `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
+    );
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
   });
@@ -83,7 +83,7 @@ describe("a staged batch", () => {
   it("leaves the store as it was until it is committed", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const staged = await store.stage({ records: [note], blobs: [anything.bytes, anything.root.bytes] });
+    const staged = await store.stage({ records: [note], blobs: anything.blobs });
     expect(await listed(staged)).toEqual([note.link]);
     expect(await store.get(note.link)).toBeUndefined();
     expect(await store.get(anything.link)).toBeUndefined();
@@ -94,7 +94,7 @@ describe("a staged batch", () => {
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    const batch = { records: [note], blobs: [image, stray, anything.bytes, anything.root.bytes] };
+    const batch = { records: [note], blobs: [image, stray, ...anything.blobs] };
     const [written, committed] = [newStore(), newStore()];
     await written.write(batch);
     const staged = await committed.stage(batch);
@@ -108,7 +108,7 @@ describe("a staged batch", () => {
   it("can still be committed after other writes to the store", async () => {
     const store = newStore();
     const held = object({ text: "held" });
-    await store.write({ records: [held], blobs: [anything.bytes, anything.root.bytes] });
+    await store.write({ records: [held], blobs: anything.blobs });
     const note = object({ held: { $link: held.link } });
     const staged = await store.stage({ records: [note] });
     const other = object({ text: "other" });
@@ -125,7 +125,7 @@ describe("a staged batch", () => {
     const [givenNote, givenImage] = [new Uint8Array(note.bytes), new Uint8Array(image)];
     const staged = await store.stage({
       records: [{ bytes: givenNote }],
-      blobs: [givenImage, anything.bytes, anything.root.bytes],
+      blobs: [givenImage, ...anything.blobs],
     });
     givenNote.fill(0);
     givenImage.fill(0);
@@ -189,7 +189,7 @@ describe("a view of a staged batch", () => {
     const store = newStore();
     await store.write({
       records: [note({ text: "soup", tags: ["lunch"], at: 1 })],
-      blobs: [noteSchema.bytes, noteSchema.root.bytes],
+      blobs: noteSchema.blobs,
     });
     const staged = await store.stage({
       records: [note({ text: "salad", tags: ["lunch", "dinner"], at: 2 })],
@@ -211,13 +211,7 @@ describe("a view of a staged batch", () => {
     const byAgent = await signatures.actor(agent, await delegate(root, [agent.key], 1_000)).sign(hello);
     const staged = await store.stage({
       records: [byAgent],
-      blobs: [
-        hello.bytes,
-        anything.bytes,
-        anything.root.bytes,
-        signatures.schema.bytes,
-        ...byAgent.signedIdentity.blobs,
-      ],
+      blobs: [hello.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byAgent.signedIdentity.blobs],
     });
     const before = await view(staged, people);
     expect((await signatures.read(byAgent.link, staged, before)).object).toBe(hello.link);
@@ -226,13 +220,7 @@ describe("a view of a staged batch", () => {
     const byRoot = await signatures.actor(root, await publish(root, 2_000)).sign(agentsOut);
     await store.write({
       records: [byRoot],
-      blobs: [
-        agentsOut.bytes,
-        anything.bytes,
-        anything.root.bytes,
-        signatures.schema.bytes,
-        ...byRoot.signedIdentity.blobs,
-      ],
+      blobs: [agentsOut.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byRoot.signedIdentity.blobs],
     });
     await expect(signatures.read(byAgent.link, staged, await view(staged, people))).rejects.toThrow(
       "does not sign for the current version",

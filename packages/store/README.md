@@ -32,7 +32,7 @@ import { MemoryBackend, Store } from "@estoc/store";
 const store = new Store(json, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
-// `schemas` are the bytes of all that the program writes to and of their language's root;
+// `schemas` are the blobs of each schema the program writes to, with the root of its language;
 // the store keeps those named here.
 await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
@@ -264,7 +264,7 @@ import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
 const keys = new PrivateStore(store, new MemoryBackend());
-await keys.write({ records: [key], blobs: [keySchema.bytes] });
+await keys.write({ records: [key], blobs: keySchema.blobs });
 
 await keys.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined

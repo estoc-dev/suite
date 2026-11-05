@@ -1,6 +1,7 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
   type Actor,
+  hasSigner,
   type IdentityKit,
   type KeyObject,
   loadIdentity,
@@ -8,7 +9,6 @@ import {
   type People,
   type Signature,
   type Signatures,
-  type SignedIdentities,
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
@@ -154,7 +154,6 @@ class MailboxService {
   readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
-  readonly #signedIdentities: SignedIdentities;
   readonly #schemas: Schemas;
   readonly #store: Store;
   readonly #accounts: Accounts;
@@ -174,7 +173,6 @@ class MailboxService {
     this.#people = peopleView(kit, schemas);
     this.#acknowledgements = acknowledgementsView(kit.signatures, schemas.acknowledgement);
     this.#signatures = kit.signatures;
-    this.#signedIdentities = kit.signedIdentities;
     this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
@@ -387,7 +385,7 @@ class MailboxService {
     const { signedIdentity, key } = signature;
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
-    if (!this.#signedIdentities.hasSigner(await people.current(signedIdentity), key))
+    if (!hasSigner((await people.current(signedIdentity)).identity, key))
       return answer(403, `${key.link} does not sign for the current version of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);

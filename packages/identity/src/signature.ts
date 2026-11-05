@@ -1,5 +1,6 @@
 import {
   DRAFT_2020_12,
+  digestOf,
   type EncodedObject,
   encodeObject,
   type Fields,
@@ -16,6 +17,7 @@ import {
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
+import { hasSigner, signerOf, signingFunction } from "./identity/interface.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject, Versions } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
@@ -125,7 +127,7 @@ export class Signatures {
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
     const verified = this.#signatureOf(signature, signedIdentity);
     const current = await versions.current(signedIdentity);
-    if (!this.#signedIdentities.hasSigner(current, verified.key)) {
+    if (!hasSigner(current.identity, verified.key)) {
       throw new Error(`${verified.key.link} does not sign for the current version of ${current.identity.root.link}`);
     }
     return verified;
@@ -163,15 +165,16 @@ export class Signatures {
    * @throws when `signer`'s key does not sign for its identity.
    */
   actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
-    const sign = this.#signedIdentities.signingFunction(signedIdentity, signer);
+    const sign = signingFunction(signedIdentity.identity, signer);
     if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);
+    const by = digestOf(signedIdentity.link);
     return {
       signedIdentity,
       sign: async (object) => {
         const data = {
           signedIdentity: { $link: signedIdentity.link },
           object: { $link: object.link as Link<never> },
-          signature: bytesToHex(await sign(object.link)),
+          signature: bytesToHex(await sign(digestOf(object.link), by)),
         };
         return this.#signatureOf(encodeObject(this.schema, data), signedIdentity);
       },
@@ -181,7 +184,7 @@ export class Signatures {
   #signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
     const object = signature.data.object.$link;
     const value = hexToBytes(signature.data.signature);
-    const key = this.#signedIdentities.verify(signedIdentity, object, value);
+    const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));
     if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
     return { ...signature, link: signature.link as Link<Signature>, signedIdentity, key, object, signature: value };
   }

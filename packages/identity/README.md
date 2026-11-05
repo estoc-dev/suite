@@ -170,7 +170,10 @@ Identity it signs after that takes every agent out.
 Each identity schema has an implementation of the Identity interface,
 which reads its objects with the keys they name and says what a signature
 asks of it: which of its keys made a signature, how a signer signs for it,
-and whether a key signs for it. `identities` is the implementation of
+and whether a key signs for it. An identity carries as `implementation`
+the implementation that read or wrote it, so these are asked of the
+identity in hand: `hasSigner(identity, key)` says whether `key` signs for
+it. `identities` is the implementation of
 `identitySchema`, and `identities.encode` writes the Identity whose root
 is a key, at its `at`; `delegatedIdentities` is that of `delegatedIdentitySchema`, and
 `delegatedIdentities.encode` writes the Delegated Identity of a root, its
@@ -211,9 +214,10 @@ the identity's object with by `schemaOf`, and refuses a signature that the
 identity's root did not make. A signed identity carries as `blobs` its
 object and its schema's blobs with the identity's `blobs`.
 
-A signature is made by a signed identity, so `signedIdentities` asks the
-schema of the identity what the signature needs of it, and `signatures`
-depends on signed identities and on no identity schema.
+The implementation of an identity's schema is picked once, as
+`signedIdentities.read` reads it, and the identity carries it. So
+`signatures` asks the identity what a signature needs of it, and depends
+on signed identities and on no identity schema.
 
 ## Versions
 

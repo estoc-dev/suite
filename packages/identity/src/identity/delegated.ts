@@ -65,16 +65,16 @@ export class DelegatedIdentities implements IdentityImplementation<DelegatedIden
     const rootKey = this.#keys.encode(root);
     const agentKeys = agents.map((agent) => this.#keys.encode(agent));
     const data = { root: { $link: rootKey.link }, agents: agentKeys.map(({ link }) => ({ $link: link })), at };
-    return delegatedIdentityOf(encodeObject(this.schema, data), rootKey, agentKeys);
+    return delegatedIdentityOf(encodeObject(this.schema, data), this, rootKey, agentKeys);
   }
 
   async read(object: EncodedObject<Json, DelegatedIdentityData>, reader: Reader): Promise<DelegatedIdentityObject> {
     const { root, agents } = object.data;
     const read = (key: JsonLink<KeyObject>) => this.#keys.read(key.$link, reader);
-    return delegatedIdentityOf(object, await read(root), await Promise.all(agents.map(read)));
+    return delegatedIdentityOf(object, this, await read(root), await Promise.all(agents.map(read)));
   }
 
-  verify(
+  signerOf(
     { agents }: DelegatedIdentityObject,
     object: Uint8Array,
     signature: Uint8Array,
@@ -99,8 +99,9 @@ export class DelegatedIdentities implements IdentityImplementation<DelegatedIden
 
 function delegatedIdentityOf(
   object: EncodedObject<Json, DelegatedIdentityData>,
+  implementation: DelegatedIdentities,
   root: KeyObject,
   agents: readonly KeyObject[],
 ): DelegatedIdentityObject {
-  return { ...identityOf(object, root, [root, ...agents]), data: object.data, agents };
+  return { ...identityOf(object, implementation, root, [root, ...agents]), data: object.data, agents };
 }

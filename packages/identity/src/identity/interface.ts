@@ -23,7 +23,9 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  *   their root by that link, while a signature names a signed identity of
  *   the identity it is made for.
  * - Which keys sign for an identity, and how their signatures are laid out,
- *   is for its schema to say.
+ *   is for its schema to say. It carries as `implementation` the
+ *   implementation of its schema that read or wrote it, so what a signature
+ *   asks of it is asked of the identity in hand.
  * - `at` is when the root signs it, in milliseconds since the Unix epoch by
  *   the root's clock. Each identity a root signs is a version, whatever
  *   schema it is written to.
@@ -39,6 +41,7 @@ export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
   readonly root: KeyObject;
   readonly blobs: readonly Uint8Array[];
+  readonly implementation: IdentityImplementation;
 }
 
 /** Signs the digest of an object by the digest of a signed identity, giving the bytes of a signature for its identity. */
@@ -57,20 +60,41 @@ export interface IdentityImplementation<I extends IdentityObject = IdentityObjec
    * The key that signs for `identity` and made `signature`, signing the
    * digest `object` by the digest `signedIdentity`; undefined when none did.
    */
-  verify(identity: I, object: Uint8Array, signature: Uint8Array, signedIdentity: Uint8Array): KeyObject | undefined;
+  signerOf(identity: I, object: Uint8Array, signature: Uint8Array, signedIdentity: Uint8Array): KeyObject | undefined;
   /** How `signer` signs for `identity`; undefined when its key does not. */
   signingFunction(identity: I, signer: Signer): SigningFunction | undefined;
   /** Whether `key` signs for `identity`. */
   hasSigner(identity: I, key: KeyObject): boolean;
 }
 
-/** The identity `object` is, whose root is `root` and which names `keys`. */
+/** The key that signs for `identity` and made `signature`, as `signerOf` of its implementation; undefined when none did. */
+export function signerOf(
+  identity: IdentityObject,
+  object: Uint8Array,
+  signature: Uint8Array,
+  signedIdentity: Uint8Array,
+): KeyObject | undefined {
+  return identity.implementation.signerOf(identity, object, signature, signedIdentity);
+}
+
+/** How `signer` signs for `identity`, as `signingFunction` of its implementation; undefined when its key does not. */
+export function signingFunction(identity: IdentityObject, signer: Signer): SigningFunction | undefined {
+  return identity.implementation.signingFunction(identity, signer);
+}
+
+/** Whether `key` signs for `identity`, as `hasSigner` of its implementation. */
+export function hasSigner(identity: IdentityObject, key: KeyObject): boolean {
+  return identity.implementation.hasSigner(identity, key);
+}
+
+/** The identity `object` is, read or written with `implementation`, whose root is `root` and which names `keys`. */
 export function identityOf(
   object: EncodedObject<Json, IdentityData>,
+  implementation: IdentityImplementation,
   root: KeyObject,
   keys: readonly KeyObject[] = [root],
 ): IdentityObject {
-  return { ...object, link: object.link as Link<IdentityObject>, root, blobs: blobsOf(object, keys) };
+  return { ...object, link: object.link as Link<IdentityObject>, root, blobs: blobsOf(object, keys), implementation };
 }
 
 // A key can be both root and agent, keys of one scheme share a schema, and

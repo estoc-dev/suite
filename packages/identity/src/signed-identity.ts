@@ -17,7 +17,7 @@ import {
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
 import type { IdentityImplementation, IdentityObject } from "./identity/interface.ts";
-import { type KeyObject, verify } from "./key/interface.ts";
+import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
 /** The schema every signed identity is written to, whatever the scheme of its root. */
@@ -65,11 +65,7 @@ export interface Versions {
 /** A reader that has seen no versions, so a signature is verified by the version it carries alone. */
 export const noVersions: Versions = { current: async (signedIdentity) => signedIdentity };
 
-/**
- * Signed identities, with the identity schemas their identities are read
- * with. A signature is made by a signed identity, so what a signature asks of
- * the schema of its identity is asked here.
- */
+/** Signed identities, with the identity schemas their identities are read with. */
 export class SignedIdentities {
   readonly schema: Schema<Json, SignedIdentityData>;
   readonly #identities: Implementations<Json, IdentityObject, IdentityImplementation>;
@@ -101,39 +97,6 @@ export class SignedIdentities {
     const signature = await root.sign(digestOf(identity.link));
     const data = { identity: { $link: identity.link }, signature: bytesToHex(signature) };
     return signedIdentityOf(encodeObject(this.schema, data), identity);
-  }
-
-  /** The key that signs for `signedIdentity`'s identity and made `signature` over `object` by it; undefined when none did. */
-  verify(signedIdentity: SignedIdentityObject, object: Link<never>, signature: Uint8Array): KeyObject | undefined {
-    const { identity } = signedIdentity;
-    return this.#implementationOf(identity).verify(
-      identity,
-      digestOf(object),
-      signature,
-      digestOf(signedIdentity.link),
-    );
-  }
-
-  /** How `signer` signs an object by `signedIdentity`; undefined when its key does not sign for its identity. */
-  signingFunction(
-    signedIdentity: SignedIdentityObject,
-    signer: Signer,
-  ): ((object: Link<unknown>) => Promise<Uint8Array>) | undefined {
-    const { identity } = signedIdentity;
-    const sign = this.#implementationOf(identity).signingFunction(identity, signer);
-    if (sign === undefined) return undefined;
-    const by = digestOf(signedIdentity.link);
-    return (object) => sign(digestOf(object), by);
-  }
-
-  /** Whether `key` signs for `signedIdentity`'s identity. */
-  hasSigner(signedIdentity: SignedIdentityObject, key: KeyObject): boolean {
-    const { identity } = signedIdentity;
-    return this.#implementationOf(identity).hasSigner(identity, key);
-  }
-
-  #implementationOf(identity: IdentityObject): IdentityImplementation {
-    return this.#identities.implementationOf(identity.schema.link);
   }
 }
 

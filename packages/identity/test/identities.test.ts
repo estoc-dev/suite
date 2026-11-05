@@ -7,6 +7,7 @@ import {
   delegatedIdentitySchema,
   ed25519,
   eip191,
+  hasSigner,
   type IdentityObject,
   identitySchema,
   isSameKey,
@@ -68,6 +69,13 @@ describe("an identity", () => {
     const solana = identities.encode({ scheme: solanaOffchain, publicKey }, 0);
     expect(plain.schema.link).toBe(solana.schema.link);
     expect(plain.link).not.toBe(solana.link);
+  });
+
+  it("has its root alone sign for it, as it is read", async () => {
+    const signed = await publish(signer(ed25519));
+    const { identity } = await signedIdentities.read(signed.link, byLink(signed.blobs));
+    expect(hasSigner(identity, identity.root)).toBe(true);
+    expect(hasSigner(identity, keys.encode(key(ed25519, 2)))).toBe(false);
   });
 
   it("carries as its blobs its object, its root's, and the blobs of the schemas they are written to, each once", async () => {
@@ -222,6 +230,13 @@ describe("a Delegated Identity", () => {
     expect(read.identity).toEqual(signed.identity);
     expect(isSameKey(read.identity.root, key(eip191))).toBe(true);
     expect(agentsOf(read.identity).map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
+  });
+
+  it("has its agents sign for it, and its root only where it lists itself, as it is read", async () => {
+    const signed = await delegate(signer(ed25519), [key(ed25519, 2)]);
+    const { identity } = await signedIdentities.read(signed.link, byLink(signed.blobs));
+    expect(hasSigner(identity, keys.encode(key(ed25519, 2)))).toBe(true);
+    expect(hasSigner(identity, identity.root)).toBe(false);
   });
 
   it("names its root and its agents by the links of their objects", async () => {

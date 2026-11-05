@@ -45,14 +45,14 @@ export class Identities implements IdentityImplementation {
 
   encode(root: Key, at: number): IdentityObject {
     const key = this.#keys.encode(root);
-    return identityOf(encodeObject(this.schema, { root: { $link: key.link }, at }), key);
+    return identityOf(encodeObject(this.schema, { root: { $link: key.link }, at }), this, key);
   }
 
   async read(object: EncodedObject<Json, IdentityData>, reader: Reader): Promise<IdentityObject> {
-    return identityOf(object, await this.#keys.read(object.data.root.$link, reader));
+    return identityOf(object, this, await this.#keys.read(object.data.root.$link, reader));
   }
 
-  verify(
+  signerOf(
     { root }: IdentityObject,
     object: Uint8Array,
     signature: Uint8Array,

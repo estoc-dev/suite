@@ -5,10 +5,13 @@ import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.t
 
 /**
  * A version of a root's identity, as a row: its root, its `at` and its
- * signed identity. A root that signs one identity twice with a signer that
- * signs with randomness makes two versions at one `at`, told apart by the
- * links of their signed identities. The rows of a root's versions, in the
- * order of their keys, `at` and then that link, end with the current one.
+ * signed identity.
+ *
+ * - A root that signs one identity twice with a signer that signs with
+ *   randomness makes two versions at one `at`, told apart by the links of
+ *   their signed identities.
+ * - The rows of a root's versions, in the order of their keys, `at` and then
+ *   the link of the signed identity, end with the current one.
  */
 export type Version = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
 

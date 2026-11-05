@@ -84,8 +84,10 @@ describe("a scheme", () => {
   });
 
   it("that gives a curve that signs a hash the text itself breaks the rules of what it verifies", async () => {
-    const unhashed = curveScheme("secp256k1-text", secp256k1Curve, (text) => utf8ToBytes(text));
-    expect(await checkScheme(unhashed, SoftwareSigner.fromSecretKey(unhashed, secretKey), withSNegated)).toEqual([
+    const unhashedScheme = curveScheme("secp256k1-text", secp256k1Curve, (text) => utf8ToBytes(text));
+    expect(
+      await checkScheme(unhashedScheme, SoftwareSigner.fromSecretKey(unhashedScheme, secretKey), withSNegated),
+    ).toEqual([
       "a signature verifies for another digest",
       "a signature verifies by another signed identity",
       "a signature by a signed identity verifies by none",

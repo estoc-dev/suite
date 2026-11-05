@@ -34,15 +34,16 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
 
 /**
  * An identity as its root publishes it: an object written to
- * `signedIdentitySchema`, read with the identity and verified, the bytes
- * being the root's signature over the identity's link, whichever identity
- * schema it is written to. What the root publishes is this object as it is,
- * so a signature names the identity it is made for by the link of this
- * object. Two signers are the same someone when the roots of their
- * identities are the same, whichever signed identities they sign by.
+ * `signedIdentitySchema`, read with the identity and verified.
  *
- * `blobs` are what it takes to read it again: the bytes of its object, of
- * its schema and of the schema's root, and the identity's `blobs`.
+ * - The bytes are the root's signature over the identity's link, whichever
+ *   identity schema it is written to.
+ * - What the root publishes is this object as it is, so a signature names
+ *   the identity it is made for by the link of this object.
+ * - Two signers are the same someone when the roots of their identities are
+ *   the same, whichever signed identities they sign by.
+ * - `blobs` are what it takes to read it again: the bytes of its object, of
+ *   its schema and of the schema's root, and the identity's `blobs`.
  */
 export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
   extends EncodedObject<Json, SignedIdentityData> {

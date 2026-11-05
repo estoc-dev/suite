@@ -336,13 +336,13 @@ describe("the versions a reader has seen", () => {
   const wallet = signer(eip191);
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
     byLink(signed.flatMap(({ blobs }) => blobs));
-  const knowing = (...signed: SignedIdentityObject[]) =>
+  const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
     versions.people(rowsOf(versions, ...signed), blobsOf(...signed));
 
   it("give as current the version of a root with the greatest at", async () => {
     const later = await delegate(wallet, [key(ed25519, 2)], 2_000);
     const earlier = await delegate(wallet, [key(ed25519, 3)], 1_000);
-    expect((await knowing(later, earlier).current(earlier)).link).toBe(later.link);
+    expect((await peopleHavingSeen(later, earlier).current(earlier)).link).toBe(later.link);
   });
 
   it("give as current of two versions at the same at that whose signed identity has the greater link", async () => {
@@ -352,27 +352,27 @@ describe("the versions a reader has seen", () => {
     ]);
     const greater = one.link > other.link ? one : other;
     const lesser = greater === one ? other : one;
-    expect((await knowing(lesser, greater).current(lesser)).link).toBe(greater.link);
-    expect((await knowing(lesser).current(greater)).link).toBe(greater.link);
+    expect((await peopleHavingSeen(lesser, greater).current(lesser)).link).toBe(greater.link);
+    expect((await peopleHavingSeen(lesser).current(greater)).link).toBe(greater.link);
   });
 
   it("give the version given as current when it is later than any of them", async () => {
     const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const later = await delegate(wallet, [key(ed25519, 3)], 2_000);
-    expect((await knowing(earlier).current(later)).link).toBe(later.link);
+    expect((await peopleHavingSeen(earlier).current(later)).link).toBe(later.link);
   });
 
   it("give the version given as current when none of them is of its root", async () => {
     const signed = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const other = await delegate(signer(ed25519, 4), [key(ed25519, 2)], 2_000);
-    expect((await knowing(other).current(signed)).link).toBe(signed.link);
+    expect((await peopleHavingSeen(other).current(signed)).link).toBe(signed.link);
   });
 
   it("give as current the latest version, whichever identity schema each is written to", async () => {
     const published = await publish(wallet, 1_000);
     const delegated = await delegate(wallet, [key(ed25519, 2)], 2_000);
     const republished = await publish(wallet, 3_000);
-    expect((await knowing(delegated).current(published)).link).toBe(delegated.link);
-    expect((await knowing(published, republished).current(delegated)).link).toBe(republished.link);
+    expect((await peopleHavingSeen(delegated).current(published)).link).toBe(delegated.link);
+    expect((await peopleHavingSeen(published, republished).current(delegated)).link).toBe(republished.link);
   });
 });

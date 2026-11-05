@@ -59,7 +59,10 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
   readonly root: SelfDescribingObject<D>;
   readonly bytes: Bytes<Schema<D>>;
   readonly link: Link<Schema<D>>;
-  /** The closure of the schema: its bytes and the root of its language, which go wherever it goes. */
+  /**
+   * The bytes of the schema and of the root of its language, which go wherever it goes. Blobs its
+   * document links to, as `x-implements` does to an interface, are in its closure but not here.
+   */
   readonly blobs: readonly Uint8Array[];
   readonly #check: Check<D>;
 

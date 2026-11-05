@@ -89,8 +89,10 @@ language.
   is given the encoding by its caller.
 - A root is in the closure of each schema written to it, and so of each
   object of those schemas, so it goes wherever a schema goes, as into a
-  store or a bundle. A schema holds it as `root`, and gives its closure,
-  its own bytes and the root's, as `blobs`.
+  store or a bundle. A schema holds it as `root`, and gives its own bytes
+  and the root's as `blobs`. A blob its document links to, as
+  `x-implements` links to an interface, is in its closure too but not in
+  `blobs`, and goes along separately.
 
 Changing language is changing root: schemas in CDDL over CBOR would name
 `{"$schema": null, "language": "CDDL"}`. A root stands for a language

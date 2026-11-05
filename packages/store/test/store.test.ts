@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, type JsonObject, json, type Link, linkOf } from "@estoc/object";
+import { encodeObject, encodeSchema, interfaceNamed, type JsonObject, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
@@ -116,6 +116,20 @@ describe("a store", () => {
     await expect(store.write({ records: [written] })).rejects.toThrow(`${written.link} links to ${unheld.link}`);
     expect(await store.get(carried.link)).toBeUndefined();
     expect(await listed(store)).toEqual([]);
+  });
+
+  it("takes an object of a schema that names an interface only along with the interface", async () => {
+    const store = newStore();
+    const note = interfaceNamed("Note");
+    const schema = await encodeSchema({ $schema: DRAFT, "x-implements": { $link: note.link } }, defaultValidator);
+    const written = encodeObject(schema, { text: "hello" });
+    await expect(store.write({ records: [written], blobs: schema.blobs })).rejects.toThrow(
+      `${schema.link} links to ${note.link}, which neither the batch nor the store holds`,
+    );
+    await store.write({ records: [written], blobs: [...schema.blobs, note.bytes] });
+    expect([...(await store.closure(written.link)).keys()].sort()).toEqual(
+      [written.link, schema.link, schema.root.link, note.link].sort(),
+    );
   });
 
   it("refuses a batch for what it is with a RefusedBatch, and passes on a backend's own failure as it is", async () => {

@@ -5,6 +5,7 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
+  interfaceNamed,
   type JsonSchema,
   type JsonSchemaValidator,
   json,
@@ -77,10 +78,17 @@ describe("decodeSchema", () => {
 });
 
 describe("the blobs of a schema", () => {
-  it("are its closure, the schema and the root of its language", async () => {
+  it("are the schema and the root of its language", async () => {
     const schema = await encodeSchema({ $schema: DRAFT, type: "object", title: "Note" }, defaultValidator);
     expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
     expect([...json.links(json.decode(schema.bytes))]).toEqual([root.link]);
+  });
+
+  it("leave out an interface its document names, which is in its closure too", async () => {
+    const note = interfaceNamed("Note");
+    const schema = await encodeSchema({ $schema: DRAFT, "x-implements": { $link: note.link } }, defaultValidator);
+    expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
+    expect([...json.links(json.decode(schema.bytes))].sort()).toEqual([root.link, note.link].sort());
   });
 });
 

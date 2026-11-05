@@ -63,7 +63,7 @@ of its own, as a wallet or a passkey would.
 - `name` is not that of another scheme.
 - The text is framed as it is, not rewritten.
 
-`violationsOf` of `@estoc/identity/conformance` checks a scheme against
+`checkScheme` of `@estoc/identity/conformance` checks a scheme against
 them, for a plugin to run in its tests. It takes the scheme, a signer whose
 key is in it and a function that gives another encoding of a signature,
 and gives the rules the scheme breaks: what the signer signs verifies, and
@@ -74,7 +74,9 @@ Most schemes are a curve signing the text in a framing, and
 `curveScheme(name, curve, message)` writes one as a `CurveScheme`, whose
 signatures are 64 bytes and which `SoftwareSigner` signs in. The curves
 here, `ed25519Curve` and `secp256k1Curve`, verify strictly, so that each
-signature has one encoding. Each scheme here is a `curveScheme` in a file
+signature has one encoding. `ed25519Curve` signs the framed text whole;
+`secp256k1Curve` signs a 32-byte hash, as ECDSA does, so a scheme on it
+hashes the whole framed text, as `eip191` does with Keccak-256. Each scheme here is a `curveScheme` in a file
 of its own under `src/key/`, written with the public API alone:
 
 - `ed25519`: the text itself, as a software key or a Solana wallet's plain
@@ -234,8 +236,9 @@ goes along and carries all it links to.
 A signed identity is an identity as its root publishes it, written to
 `signedIdentitySchema`: it names the identity by its link and holds the
 root's signature over the first text for that link, whichever schema the
-identity is written to. Signing is taken to be deterministic, so an
-identity has one signed identity. A signature names who makes it by the
+identity is written to. A root can sign one identity more than once, and
+where its signer signs with randomness, as a passkey does, each signed
+identity has a link of its own. A signature names who makes it by the
 link of a signed identity, what the root published as it is, so reading a
 signature reads that the root stands behind the identity. Two signers are
 the same someone when the roots of their identities are, whichever signed

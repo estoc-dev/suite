@@ -6,7 +6,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToNumberBE, bytesToNumberLE, numberToBytesBE, numberToBytesLE } from "@noble/curves/utils.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
-import { violationsOf } from "../src/conformance.ts";
+import { checkScheme } from "../src/conformance.ts";
 import {
   curveScheme,
   ed25519,
@@ -64,7 +64,7 @@ test.each([
   { scheme: eip191, reencoded: withSNegated },
   { scheme: solanaOffchain, reencoded: withOrderAdded },
 ])("$scheme.name keeps the rules for a scheme", async ({ scheme, reencoded }) => {
-  expect(await violationsOf(scheme, SoftwareSigner.fromSecretKey(scheme, secretKey), reencoded)).toEqual([]);
+  expect(await checkScheme(scheme, SoftwareSigner.fromSecretKey(scheme, secretKey), reencoded)).toEqual([]);
 });
 
 describe("a scheme", () => {
@@ -78,8 +78,18 @@ describe("a scheme", () => {
       },
       eip191.message,
     );
-    expect(await violationsOf(lax, SoftwareSigner.fromSecretKey(lax, secretKey), withSNegated)).toEqual([
+    expect(await checkScheme(lax, SoftwareSigner.fromSecretKey(lax, secretKey), withSNegated)).toEqual([
       "another encoding of a signature verifies",
+    ]);
+  });
+
+  it("that gives a curve that signs a hash the text itself breaks the rules of what it verifies", async () => {
+    const unhashed = curveScheme("secp256k1-text", secp256k1Curve, (text) => utf8ToBytes(text));
+    expect(await checkScheme(unhashed, SoftwareSigner.fromSecretKey(unhashed, secretKey), withSNegated)).toEqual([
+      "a signature verifies for another digest",
+      "a signature verifies by another signed identity",
+      "a signature by a signed identity verifies by none",
+      "a signature by none verifies by a signed identity",
     ]);
   });
 
@@ -89,7 +99,7 @@ describe("a scheme", () => {
       key: { scheme: accepting, publicKey: new Uint8Array(32) },
       sign: async () => new Uint8Array(64),
     };
-    expect(await violationsOf(accepting, signer, (signature) => signature.map((byte) => byte ^ 1))).toEqual([
+    expect(await checkScheme(accepting, signer, (signature) => signature.map((byte) => byte ^ 1))).toEqual([
       "a signature verifies for another digest",
       "a signature verifies by another signed identity",
       "a signature by a signed identity verifies by none",
@@ -101,7 +111,7 @@ describe("a scheme", () => {
 
 describe("a scheme given as a Scheme alone", () => {
   it("keeps the rules for a scheme", async () => {
-    expect(await violationsOf(p256Der, p256Signer, withDerSNegated)).toEqual([]);
+    expect(await checkScheme(p256Der, p256Signer, withDerSNegated)).toEqual([]);
   });
 
   it("signs for an identity, with signatures of its own length", async () => {

@@ -2,10 +2,13 @@ import { equalBytes } from "@noble/curves/utils.js";
 import { type Key, type Scheme, verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
+// Each pair differs in its last byte alone, so a scheme that signs only the
+// start of the text, as a curve that signs a hash does when given the text
+// itself, verifies a signature over one for the other.
 const digest = new Uint8Array(32).fill(1);
-const otherDigest = new Uint8Array(32).fill(2);
+const otherDigest = Uint8Array.of(...new Uint8Array(31).fill(1), 2);
 const signedIdentity = new Uint8Array(32).fill(3);
-const otherSignedIdentity = new Uint8Array(32).fill(4);
+const otherSignedIdentity = Uint8Array.of(...new Uint8Array(31).fill(3), 4);
 
 /**
  * The rules for a scheme that `scheme` breaks, verifying what `signer`
@@ -17,7 +20,7 @@ const otherSignedIdentity = new Uint8Array(32).fill(4);
  * - `reencoded` gives another encoding of a signature, one that a verifier
  *   that is not strict would take; what it gives does not verify.
  */
-export async function violationsOf(
+export async function checkScheme(
   scheme: Scheme,
   signer: Signer,
   reencoded: (signature: Uint8Array) => Uint8Array,

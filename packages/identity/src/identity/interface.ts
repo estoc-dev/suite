@@ -67,7 +67,7 @@ export interface IdentityImplementation<I extends IdentityObject = IdentityObjec
   hasSigner(identity: I, key: KeyObject): boolean;
 }
 
-/** The key that signs for `identity` and made `signature`, as `signerOf` of its implementation; undefined when none did. */
+/** The key that signs for `identity` and made `signature`; undefined when none did. */
 export function signerOf(
   identity: IdentityObject,
   object: Uint8Array,
@@ -77,12 +77,12 @@ export function signerOf(
   return identity.implementation.signerOf(identity, object, signature, signedIdentity);
 }
 
-/** How `signer` signs for `identity`, as `signingFunction` of its implementation; undefined when its key does not. */
+/** How `signer` signs for `identity`; undefined when its key does not. */
 export function signingFunction(identity: IdentityObject, signer: Signer): SigningFunction | undefined {
   return identity.implementation.signingFunction(identity, signer);
 }
 
-/** Whether `key` signs for `identity`, as `hasSigner` of its implementation. */
+/** Whether `key` signs for `identity`. */
 export function hasSigner(identity: IdentityObject, key: KeyObject): boolean {
   return identity.implementation.hasSigner(identity, key);
 }

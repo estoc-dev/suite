@@ -5,41 +5,90 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
+  interfaceNamed,
   type JsonSchema,
   type JsonSchemaValidator,
+  json,
   jsonSchema,
   linkSchema,
+  schemaOf,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const lenient: JsonSchemaValidator = { language: jsonSchema, compile: async () => () => [] };
 
+const { root } = jsonSchema;
+const schemaText = (...members: string[]) => `{${[`"$schema":{"$link":"${root.link}"}`, ...members].join(",")}}`;
+
+describe("the root of JSON Schema", () => {
+  it("describes itself, and stands for the language", () => {
+    expect(new TextDecoder().decode(root.bytes)).toBe('{"$schema":null,"language":"JSON Schema"}');
+    expect(schemaOf(root.bytes, json)).toBe(root.link);
+  });
+
+  it("is not a schema", async () => {
+    // @ts-expect-error: refused at compile time too
+    await expect(decodeSchema(root.bytes, lenient)).rejects.toThrow(/not to itself/);
+  });
+});
+
 describe("decodeSchema", () => {
-  it("reads back what encodeSchema wrote", async () => {
+  it("reads back what encodeSchema wrote, an object of the root holding the document", async () => {
     const schema = await encodeSchema({ $schema: DRAFT, type: "string", title: "Name" }, defaultValidator);
     const read = await decodeSchema(schema.bytes, defaultValidator);
-    expect(jsonSchema.decode(read.bytes)).toEqual({ $schema: DRAFT, type: "string", title: "Name" });
+    expect(json.decode(read.bytes)).toEqual({
+      $schema: { $link: root.link },
+      document: { $schema: DRAFT, type: "string", title: "Name" },
+    });
     expect(read.link).toBe(schema.link);
+    expect(read.root).toBe(root);
+  });
+
+  it("reads a schema written out by hand", async () => {
+    const text = schemaText(`"document":{"$schema":"${DRAFT}"}`);
+    expect(new TextDecoder().decode((await decodeSchema(utf8(text), lenient)).bytes)).toBe(text);
   });
 
   it.each([
-    ["an array", "[]"],
-    ["a boolean schema", "true"],
-    ["a string", `"${DRAFT}"`],
-  ])("refuses %s, since a schema is a JSON object", async (_, text) => {
-    await expect(decodeSchema(utf8(text), defaultValidator)).rejects.toThrow();
+    ["an array", "[]", /names its schema/],
+    ["a JSON Schema document on its own, which is bytes", `{"$schema":"${DRAFT}","type":"string"}`, /names its schema/],
+    ["an object of the root with no document", schemaText(), /holds a document/],
+    [
+      "an object of the root holding more than a document",
+      schemaText(`"document":{"$schema":"${DRAFT}"}`, '"title":"Name"'),
+      /not title/,
+    ],
+  ])("refuses %s", async (_, text, reason) => {
+    await expect(decodeSchema(utf8(text), lenient)).rejects.toThrow(reason);
   });
 
-  it("refuses a schema that does not name its dialect, whatever the validator", async () => {
-    await expect(decodeSchema(utf8('{"type":"string"}'), lenient)).rejects.toThrow();
-    await expect(decodeSchema(utf8('{"$schema":2020,"type":"string"}'), lenient)).rejects.toThrow();
+  it("refuses a document that does not name its dialect, whatever the validator", async () => {
+    await expect(decodeSchema(utf8(schemaText('"document":{"type":"string"}')), lenient)).rejects.toThrow();
+    await expect(decodeSchema(utf8(schemaText('"document":{"$schema":2020}')), lenient)).rejects.toThrow();
+    await expect(decodeSchema(utf8(schemaText('"document":true')), lenient)).rejects.toThrow();
   });
 
-  it("refuses the bytes of an object", async () => {
+  it("refuses an object of another schema, even one holding a document", async () => {
     const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+    const object = encodeObject(anything, { document: { $schema: DRAFT } });
     // @ts-expect-error: refused at compile time too
-    await expect(decodeSchema(encodeObject(anything, { $schema: DRAFT }).bytes, defaultValidator)).rejects.toThrow();
+    await expect(decodeSchema(object.bytes, defaultValidator)).rejects.toThrow(/written to the root/);
+  });
+});
+
+describe("the blobs of a schema", () => {
+  it("are the schema and the root of its language", async () => {
+    const schema = await encodeSchema({ $schema: DRAFT, type: "object", title: "Note" }, defaultValidator);
+    expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
+    expect([...json.links(json.decode(schema.bytes))]).toEqual([root.link]);
+  });
+
+  it("leave out an interface its document names, which is in its closure too", async () => {
+    const note = interfaceNamed("Note");
+    const schema = await encodeSchema({ $schema: DRAFT, "x-implements": { $link: note.link } }, defaultValidator);
+    expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
+    expect([...json.links(json.decode(schema.bytes))].sort()).toEqual([root.link, note.link].sort());
   });
 });
 

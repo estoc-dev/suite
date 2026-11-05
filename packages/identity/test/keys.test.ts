@@ -23,7 +23,7 @@ const publicKeyOf = (scheme: Scheme) => bytesToHex(SoftwareSigner.fromSecretKey(
 const ed25519Key = publicKeyOf(ed25519);
 const eip191Key = publicKeyOf(eip191);
 const written = (scheme: Scheme, data: JsonObject) =>
-  json.encode(json.object(data, linkOf(json.encode(scheme.keySchema))));
+  json.encode(json.object(data, keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link));
 
 describe("a key", () => {
   it.each(schemes)("in $name reads back from its object as the same key", async (scheme) => {

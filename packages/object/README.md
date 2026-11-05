@@ -11,9 +11,14 @@ and JSON Schema. In that pair:
 
 ```
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
-Schema     a JSON Schema document: a JSON object naming its dialect in $schema
-Object     {"$describedBy": <the Schema's link>, ...<the fields of its data>}
+Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
+Schema     {"$schema": <the link of the root>, "document": <a JSON Schema document>}
+Root       {"$schema": null, "language": "JSON Schema"}
 ```
+
+A schema is an object too, written to the root of its language, and the
+root is an object that describes itself. A blob that is not an object is
+bytes.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -31,16 +36,18 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     before the schema is.
   - The data of an object is fields, values of the encoding by name
     (`Fields<D>`). The encoding writes an object as one value, those fields
-    and one more for the link of its schema, and refuses any other value as
-    an object.
-  - The encoding finds the links in a value, so that the blobs in a blob's
-    closure can be gathered without a schema to read it by, as a store
-    gathers the closure it carries along with an object.
-- A `SchemaLanguage<D, S>` is a language of schemas `S` that describe the
-  data `D` of one encoding, which it names. A schema is a blob of its own,
-  with one way of being written and a link.
-- A `SchemaValidator<D, S>` compiles the schemas of one language, which it
-  names, into checks of the fields of an object's data.
+    and one more for the link of its schema, or for `null` in an object that
+    describes itself, and refuses any other value as an object. Any other
+    value is bytes.
+  - The encoding finds the links in an object, so that the blobs in a
+    blob's closure can be gathered without a schema to read it by, as a
+    store gathers the closure it carries along with an object. Bytes link
+    to nothing, whatever they hold.
+- A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
+  one encoding, which it names, with documents `S`. Its root stands for
+  it, and a schema is an object written to the root.
+- A `SchemaValidator<D, S>` compiles the documents of one language, which
+  it names, into checks of the fields of an object's data.
 
 A validator names its language and a language names its encoding, so a
 schema read with a validator knows the encoding of the objects written to
@@ -58,6 +65,44 @@ Two encodings of the same content are two blobs with two links, and
 neither reads as the other, just as the same data under two schemas is two
 objects. Moving to another encoding means writing new objects, not
 translating old ones.
+
+## Schemas and roots
+
+A schema is an object like any other, written to the root of its
+language.
+
+- Its data is `document` alone, the schema whole as its language writes
+  it, so that the language's own tools read it as it is.
+- A root describes itself: its `$schema` is `null`, since a blob cannot
+  hold its own hash, and `schemaOf` gives it its own link. Only what has
+  one instance describes itself, since its link fixes every byte and no
+  schema could say more of it.
+- A root is known by its link alone. A program holds the root of each
+  language it reads, with the code that reads it, and does not take a blob
+  for a root by its fields, since anyone can write `{"$schema": null, …}`.
+  Its data says what kind of thing it stands for, as `language` does: its
+  link is all it means, and two kinds of thing written by name alone would
+  be one blob.
+- No schema reads a root. Reading a schema checks that it names the root
+  of the validator's language, and reads its document there. An encoding
+  stops the same way: no blob says that some bytes are JCS, and `schemaOf`
+  is given the encoding by its caller.
+- A root is in the closure of each schema written to it, and so of each
+  object of those schemas, so it goes wherever a schema goes, as into a
+  store or a bundle. A schema holds it as `root`, and gives its own bytes
+  and the root's as `blobs`. A blob its document links to, as
+  `x-implements` links to an interface, is in its closure too but not in
+  `blobs`, and goes along separately.
+
+Changing language is changing root: schemas in CDDL over CBOR would name
+`{"$schema": null, "language": "CDDL"}`. A root stands for a language
+rather than one of its dialects; a JSON Schema document names its dialect
+itself.
+
+A blob that is not an object is bytes: an image, a JSON Schema document on
+its own, or a JSON file such as a `biome.json`, whose `$schema` is a
+string, even when it happens to be JCS. Only the links in an object are
+followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
@@ -92,20 +137,24 @@ over it, and `defaultValidator` a validator of that language.
   it holds. Any other object with a `$link` member is refused, in writing
   and in reading, whether it holds something other than a link or a member
   beside it, so whatever has the mark of a link is one. That holds for
-  schemas as well, which are JSON too. The links the encoding finds in a
-  value are the ones these objects hold, the schema an object names among
-  them, and no others. In TypeScript a link in JSON data is a
+  the documents of schemas as well, which are JSON too. The links the
+  encoding finds in an object are the ones these hold, its schema among
+  them, and no others; in bytes it finds none. In TypeScript a link in JSON data is a
   `JsonLink<T>`, `{ $link: Link<T> }`.
-- An object is the JSON object of the fields of its data and
-  `$describedBy`, which holds the link of its schema. Only there does
-  `$describedBy` name a schema: deeper in the data it is a field like any
-  other, and data with a `$describedBy` of its own is refused. A schema is
-  a JSON object naming its dialect in `$schema`, written as JSON is, and
-  has no `$describedBy`.
+- An object is the JSON object of the fields of its data and `$schema`,
+  which holds the link of its schema, or `null` in an object that
+  describes itself. Only there does `$schema` name a schema: deeper in the
+  data it is a field like any other, and data with a `$schema` of its own
+  is refused. JSON without a `$schema` that is a link or `null` is bytes.
+- A schema is `{"$schema": {"$link": <root>}, "document": …}`, whose
+  document is a whole JSON Schema, naming its dialect in a `$schema` of its
+  own, so that any JSON Schema tool can validate with it as it is. The two
+  `$schema`s are at different depths and do not meet. The root of JSON
+  Schema, `jsonSchema.root`, is `{"$schema":null,"language":"JSON Schema"}`.
 - A blob does not say what kind of blob it is, or which version of the
   format. A reader knows which kind it expects, and the kinds cannot pass
-  for one another: an object has `$describedBy`, and a schema has
-  `$schema` and no `$describedBy`. A signature is an object, and like any
+  for one another: an object names its schema, a schema names its root,
+  and a root is known by its link. A signature is an object, and like any
   object it cannot pass for one of another schema.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
@@ -114,7 +163,7 @@ over it, and `defaultValidator` a validator of that language.
 
 An object holds its data and the link of its schema, and nothing else, and
 its data has to fit the schema. The schema checks the data alone, without
-`$describedBy`, so it does not name the field, and a schema that takes no
+`$schema`, so it does not name the field, and a schema that takes no
 fields beyond its own still takes the object. Reading one takes the schema
 the reader expects and refuses an object written to any other, so an
 application does not mistake another schema's object for one of its own.
@@ -159,9 +208,9 @@ gives no blob, and refuses one whose bytes have another link all the same,
 since decoding them gives their link anyway.
 
 A schema holds all that its data is checked against. In JSON Schema a `$ref`
-reaches the schema's own parts and nothing elsewhere, so the link of a
+reaches the document's own parts and nothing elsewhere, so the link of a
 schema fixes what its objects may hold, and no one changes that later by
-changing what a URL names. Where the data holds a link, the schema writes
+changing what a URL names. Where the data holds a link, the document writes
 out what a link looks like: `linkSchema`, to place there, takes an object
 whose one member is `$link`, a string matching `^sha256:[0-9a-f]{64}$`. It
 names the member through `propertyNames` rather than `properties`, since
@@ -171,15 +220,15 @@ member that is not a link.
 ## Validators
 
 Whether a value fits a schema is the validator's call. A validator compiles a
-schema once, when the schema is read, and the schema keeps the result, so
+schema's document once, when the schema is read, and the schema keeps the result, so
 reading a schema returns a promise and checking an object against it does
 not: `decodeObject` is synchronous, and `readObject` returns a promise only
 because the reader it gets the blob from may answer with one. Every
 validator works offline and keeps to three rules:
 
-- A reference to anything outside the schema fails compilation, rather than
-  the validation that happens to reach it.
-- The same schema and value give the same answer every time.
+- A reference to anything outside the document fails compilation, rather
+  than the validation that happens to reach it.
+- The same document and value give the same answer every time.
 - A version of the language it does not support fails compilation.
 
 For JSON Schema, a reference is a `$ref`, and one in a place the dialect
@@ -193,10 +242,10 @@ without any blob changing.
 [`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
 which interprets schemas instead of generating code and so runs under a
 strict content security policy. It takes draft 2020-12 only, whose URI is
-`DRAFT_2020_12`, in the schema and in any schema resource inside it. A
-schema without `$id` can reference its own parts by fragment
+`DRAFT_2020_12`, in the document and in any schema resource inside it. A
+document without `$id` can reference its own parts by fragment
 (`#/$defs/name`), and a schema resource inside it by its `$id`. Nothing is
-fetched, so a URL resolves only to a part of the schema itself, and not to
+fetched, so a URL resolves only to a part of the document itself, and not to
 the draft's meta-schemas either. It asserts the formats hyperjump's lite
 set supports (dates, times and durations, email, IP addresses, URIs and
 IRIs, UUIDs, URI templates, JSON pointers and regular expressions) and
@@ -257,25 +306,23 @@ up with one's own past is the same work as reading another application.
 
 Where a program reads objects of several schemas as one kind of thing, as
 `@estoc/identity` reads a key in any of its schemes as a key, that kind is
-an interface, and each of those schemas can name it. In JSON Schema a
-schema names it by `"x-implements": {"$link": <link>}`, the link of a blob
+an interface, and each of those schemas can name it. In JSON Schema the
+document names it by `"x-implements": {"$link": <link>}`, the link of a blob
 that stands for the interface, such as its name as text, which
 `interfaceNamed` gives as an `Interface`. One schema names one interface.
 
 - JSON Schema has no keyword for this. `allOf` with a `$ref` says that the
   data also fits another schema, which is about shape, not kind, and a
-  `$ref` reaches nothing outside the schema anyway. Keywords that start
+  `$ref` reaches nothing outside the document anyway. Keywords that start
   with `x-` are left to annotations of one's own, and later drafts do not
   take the names. In draft 2020-12 a keyword the dialect does not define
   has no effect on validation, and an implementation that collects
   annotations can report its value; `JsonSchemaValidator` reports only
-  what does not fit, so here the mark is read from the schema itself.
+  what does not fit, so here the mark is read from the document itself.
 - The value is a link, not a string, so a store or a bundle that follows a
   schema's links carries the interface along with it, and whoever holds
   the schema holds the interface too. An object's closure includes it,
   and a batch written to a store has to carry it.
-- A schema has no `$describedBy`, so the mark goes in a keyword of its own
-  rather than there.
 
 The mark does not let a program take a schema it does not know. A program
 still pins the concrete schemas it reads, each with how its data becomes

@@ -3,7 +3,16 @@ export { type Implementation, Implementations, type Interface, interfaceNamed } 
 export { type Json, type JsonLink, type JsonObject, json } from "./json.ts";
 export { DRAFT_2020_12, type JsonSchema, type JsonSchemaValidator, jsonSchema, linkSchema } from "./json-schema.ts";
 export { type Bytes, digestOf, type Link, linkOf } from "./link.ts";
-export { decodeObject, type EncodedObject, encodeObject, type Reader, readObject, schemaOf } from "./object.ts";
+export {
+  decodeObject,
+  type EncodedObject,
+  encodeObject,
+  type Reader,
+  readObject,
+  type SelfDescribingObject,
+  schemaOf,
+  selfDescribingObject,
+} from "./object.ts";
 export {
   type Check,
   decodeSchema,

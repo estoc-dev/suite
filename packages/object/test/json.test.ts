@@ -3,9 +3,10 @@ import { describe, expect, it, test } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
 import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
 
-const anything = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
+const DRAFT = "https://json-schema.org/draft/2020-12/schema";
+const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const objectText = (value: string) => `{"$describedBy":{"$link":"${anything.link}"},"v":${value}}`;
+const objectText = (value: string) => `{"$schema":{"$link":"${anything.link}"},"v":${value}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
 
 describe("strict decoding", () => {
@@ -14,9 +15,9 @@ describe("strict decoding", () => {
   });
 
   it.each([
-    ["whitespace between members", `{"$describedBy":{"$link":"${anything.link}"}, "v":1}`],
+    ["whitespace between members", `{"$schema":{"$link":"${anything.link}"}, "v":1}`],
     ["a trailing newline", `${objectText("1")}\n`],
-    ["keys out of order", `{"v":1,"$describedBy":{"$link":"${anything.link}"}}`],
+    ["keys out of order", `{"v":1,"$schema":{"$link":"${anything.link}"}}`],
     ["a repeated key", objectText('{"a":1,"a":1}')],
     ["a number with a needless fraction", objectText("1.0")],
     ["a number with a needless exponent", objectText("1e2")],
@@ -66,10 +67,7 @@ describe("an object with a $link member", () => {
   });
 
   it("is refused in a schema too", async () => {
-    const schema = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      properties: { $link: { type: "string" } },
-    };
+    const schema = { $schema: DRAFT, properties: { $link: { type: "string" } } };
     await expect(encodeSchema(schema, defaultValidator)).rejects.toThrow(/\$link/);
   });
 });
@@ -105,21 +103,31 @@ describe("the links in a JSON value", () => {
   const a = linkOf(utf8("a"));
   const b = linkOf(utf8("b"));
 
-  it("are the ones its $link objects hold, at any depth", () => {
-    const value = { list: [{ $link: a }, { nested: [{ $link: b }] }], again: { $link: b }, count: 1, none: null };
-    expect([...json.links(value)].sort()).toEqual([a, b, b].sort());
+  it("are the ones an object's $link objects hold, at any depth, its schema among them", () => {
+    const object = encodeObject(anything, { list: [{ $link: a }, { nested: [{ $link: b }] }], again: { $link: b } });
+    expect([...json.links(json.decode(object.bytes))].sort()).toEqual([anything.link, a, b, b].sort());
   });
 
-  it("include the schema an object names", () => {
-    const object = encodeObject(anything, { v: [{ $link: a }] });
-    expect([...json.links(json.decode(object.bytes))]).toEqual([anything.link, a]);
+  it("are those of its data in an object that describes itself", () => {
+    const value = json.object({ data: [{ $link: a }] }, null);
+    expect([...json.links(value)]).toEqual([a]);
+  });
+
+  it.each([
+    ["has no $schema", { list: [{ $link: a }] }],
+    ["names its dialect in $schema, as a JSON Schema document does", { $schema: DRAFT, list: [{ $link: a }] }],
+    ["names its schema by a bare string", { $schema: a, list: [{ $link: a }] }],
+    ["is an array", [{ $schema: { $link: a } }]],
+  ])("are none in a value that %s, which is bytes", (_, value) => {
+    expect([...json.links(value)]).toEqual([]);
   });
 
   it("leave out a string that is a link as a whole, as a member or as a member's name", () => {
-    expect([...json.links([a, { [a]: "named by a link", text: a }])]).toEqual([]);
+    const value = json.object({ list: [a, { [a]: "named by a link", text: a }] }, null);
+    expect([...json.links(value)]).toEqual([]);
   });
 
   it("are refused at an object with a $link member that is not a link", () => {
-    expect(() => [...json.links([{ $link: a, note: "x" }])]).toThrow(/\$link/);
+    expect(() => [...json.links(json.object({ list: [{ $link: a, note: "x" }] }, null))]).toThrow(/\$link/);
   });
 });

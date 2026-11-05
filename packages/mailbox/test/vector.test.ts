@@ -13,33 +13,32 @@ import { MailboxKey, mailboxSchema } from "../src/index.ts";
 // another info, KEM, KDF or AEAD does not open it. A change to the format
 // changes them.
 const schemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"name":{"type":"string"}},' +
-  '"required":["key","name"],"title":"Memory mailbox","type":"object"}';
-const schemaLink = "sha256:ad78ace09f4e1f8597af52bc27c63f478b632545742521797d694a13ddba4f9e";
+  '"required":["key","name"],"title":"Memory mailbox","type":"object"}}';
+const schemaLink = "sha256:3b4546b1f354600643aa3eb0cbfdb81cd2d401d91d719a09a0cbd7f39c5664f1";
 const httpSchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},' +
-  '"url":{"format":"uri","pattern":"^(https://|http://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?([/?#]|$))",' +
-  '"type":"string"}},' +
-  '"required":["key","url"],"title":"HTTP mailbox","type":"object"}';
-const httpSchemaLink = "sha256:8ffecf613658fc3f846c3a40be80feec587ce034ad53edd769708f3078ac1e4c";
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"url":{"format":"uri",' +
+  '"pattern":"^(https://|http://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?([/?#]|$))",' +
+  '"type":"string"}},"required":["key","url"],"title":"HTTP mailbox","type":"object"}}';
+const httpSchemaLink = "sha256:f13d679656670434f0ba582a6035de52b2caa98c9c055a0de0c5fb1ae9867792";
 const publicKey = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
 const rootText =
-  '{"$describedBy":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' +
-  '"text":"hello"}';
-const rootLink = "sha256:dd1214fe04959de3cb3525458a5f3efe22bff32286d6eb29dc5d08db784422b2";
+  '{"$schema":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' + '"text":"hello"}';
+const rootLink = "sha256:ba723e2a7497a6919764e06fb1dc2303313d92abc3dfdae235e9fdfbfe084219";
 const blob = new Uint8Array([0xfb, 0xff, 0xbf]);
 const ciphertext =
-  "f1e327bbd565e5553480d482b7b2f0b6d0e0049899f95bb99db1e0cf06b9281660d31a37d01d7ed22e58fd8a0f2381be4abd1e80f71a53b9debc44b58db07b57" +
-  "706f727b8c5762c4242fc6fbf18b5fcb5a0203633b4af826237fcaef952bcbf250143ca6aee3f13116d3eef9bb08540463308aa62ce76a9b9471a49845dd1f30" +
-  "0d883ed7de51a5c000b906ca7e6017e665ae06b7ec3ebba0001acf650878d807d98e170707ebd7f980fed094d68639125e91def7d375a6ae694a58f96995e8e7" +
-  "3cfc8fa5109d8e8beeaf7a68e1f542c9282b9d98c261bc3fa0f4fc1b2df96b66ed561a667a8d29a384a401384ec8605d787db4b89965ebf21b95fa8c69521b3e" +
-  "7aa470d3f0b850cdae783097108e6fe401c73be434927242f58d19e46eb9c1f6238050401d402c789316b6a6d0ab2d4fbc09e2befc95db54bc63a445e785f191" +
-  "967107764b84e45ad937a05548905d10c945d4f10e91bfdf5528b0e394e60a0bf6d1b1543431ad6801346df6a899f986815f10b866d8107b26f0470ccd3f7b3b" +
-  "84af7cd05c6d660dde6e732c2dbf731fab5557e6b9f831cda77840fa771882d84bdb32b2a1b5c99278b044116b33e4e4af3976e874993e10be989c288e5c031e" +
-  "2e2944df50d4273af6aecf21513118f5c4563aeae8135f342c193761dd3c03a20e6f94b7a4828a7cd7b16275de07e6ed6ff8c786d9a963c446c24d33bb770c7f" +
-  "3b7b";
+  "d9f313c82335238230040bfbcfe96956cf8f7b0db47ea1422ef88cd735cd7324020e30a371ca503abfa0250fe1ad78ef6ef12a92fc7eac5ddcf5bb70311e94ab" +
+  "60f9cdc14a1bf016e1d3493b11dc8db880a119572aa37f1a4468a92444069f0d7a6c553beb258708aa63369685509c49652923d5b453b04d65833535d4ea8dc1" +
+  "f254e6ea3dc309e3a49960ecb205a1e0e2ab517ed787aff53e371319f989668359f8b50c9b38b9a82d441161474bfd370187578984259312e96416bf19cadb43" +
+  "c859f5d83af060f73b0e03e41ef02dc9f653f8eb721f4188f19e62066f5651db6e2b71b6c39ab1811ec3023e6f5573147b3231c14c9099d5b5778c1417444129" +
+  "4f8794040171b882817a7e0d577b8950ecf20f6bb08d387d1b05736c01839e5d394de71c20986662636ebd55c3ed4427931ec552783e8c4d94515b6951ca0c74" +
+  "fe2c1d5e758f1d85deaef3c9ff25ebf7c72c6d89b828f0cdaf80262d4c1b97aaf6f555fd41b2a4706cc4ced67b0a3a6047aca86544469a9ce8e32d4b946aeeba" +
+  "51026e4c4d8f110048990cc6b0995c3142d4f7db452156a2b3398ad32d44ba0d788e3bcf5819dbcccdc16a0587443491d5ad35aa359ee83315c1bf83f6f1d092" +
+  "becfca001f9389ce356a977deb6f49461aada705df6db93f2b5d68d3e1995e87ae382f48ae97c1e5eb79ae2cb9142cf00a964de9603f5506389763e705";
 
 const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(1));
 

@@ -46,7 +46,7 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   },
   defaultValidator,
 );
-const schemas = [line, signatures.schema].map(({ bytes }) => bytes);
+const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
 const [inbound, outbound] = await Promise.all([delivery(inboundSchema), delivery(outboundSchema)]);
 
@@ -117,7 +117,10 @@ async function chat(faults: Faults = {}) {
     const inbox = await owner.post.openInbox(queue.mailbox);
     const handedOver = await owner.store.get(inbox.mailbox);
     assert.exists(handedOver);
-    await peer.store.write({ records: [{ bytes: handedOver }], blobs: [network.transport.schema.bytes] });
+    await peer.store.write({
+      records: [{ bytes: handedOver }],
+      blobs: network.transport.schema.blobs,
+    });
     const outbox = await peer.post.outbox(inbox.mailbox);
     return { mailbox: inbox.mailbox, inbox, outbox, pickup: queue.pickup(inbox.mailbox) };
   };

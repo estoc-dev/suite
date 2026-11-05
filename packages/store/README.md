@@ -17,9 +17,10 @@ A store holds two things.
 - **Records**: the links of the objects the user wrote. They are the one
   thing in a store that is not a blob.
 
-A blob of the store's encoding links to the blobs whose links the encoding
-finds in it, the schema of an object among them; a blob of another
-encoding, such as an image, links to nothing. The closure of a blob is the
+An object of the store's encoding links to the blobs whose links it holds,
+its schema among them. Any other blob is bytes and links to nothing: an
+image, or JSON that names no schema, whatever links it seems to hold, so
+an attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
 store holds comes with its closure, and a write adds only the blobs in the
 closures of its records.
@@ -31,7 +32,8 @@ import { MemoryBackend, Store } from "@estoc/store";
 const store = new Store(json, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
-// `schemas` are all that the program writes to; the store keeps those named here.
+// `schemas` are the blobs of each schema the program writes to, with the root of its language;
+// the store keeps those named here.
 await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
 for await (const link of store.records()) …;               // note.link, signature.link
@@ -72,7 +74,8 @@ The whole batch is refused when:
 
 - a record is not an object of the store's encoding, or
 - a blob in a record's closure is neither in the batch nor held by the
-  store: the schema of an object, or a blob its data links to.
+  store: the schema of an object and the root of its language, or a blob
+  its data links to.
 
 So the schemas of objects come with them unless the store holds them
 already, and a bundle is taken in only with the closures of its objects,
@@ -261,7 +264,7 @@ import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
 const keys = new PrivateStore(store, new MemoryBackend());
-await keys.write({ records: [key], blobs: [keySchema.bytes] });
+await keys.write({ records: [key], blobs: keySchema.blobs });
 
 await keys.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined

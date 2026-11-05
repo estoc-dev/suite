@@ -24,23 +24,24 @@ export interface Encoding<D> {
   /**
    * An object as one value: the fields of its data, and one field more,
    * which the encoding keeps for the link of the schema the data is written
-   * to.
+   * to, or for `null` in an object that describes itself.
    *
    * @throws when `data` has that field itself.
    */
-  object(data: Fields<D>, schema: Link<Schema<D>>): D;
+  object(data: Fields<D>, schema: Link<unknown> | null): D;
   /**
-   * The data and the schema link of a value that `object` gives.
+   * The data and the schema of a value that `object` gives.
    *
-   * @throws for any other value.
+   * @throws for any other value, which is not an object but bytes.
    */
-  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> };
+  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> | null };
   /**
-   * The links in a value, an object's schema included, so that a blob's
-   * closure can be gathered without reading it through a schema. It may
-   * give more than the readers of the value follow, but leaves none out: a
-   * reader checks each blob it follows, and a blob left out would be missing
-   * when it is followed.
+   * The links in an object, its schema included, so that a blob's closure
+   * can be gathered without reading it through a schema.
+   *
+   * - A value that is not an object is bytes, and links to nothing whatever it holds.
+   * - It may give more than the readers of the object follow, but leaves none out: a reader checks
+   *   each blob it follows, and a blob left out would be missing when it is followed.
    */
   links(value: D): Iterable<Link<unknown>>;
 }

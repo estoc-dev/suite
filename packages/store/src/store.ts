@@ -88,9 +88,10 @@ export interface Store {
    * The closure of the blob that `link` names: the blob and every blob it links to, directly or
    * through others. It is empty when the store does not hold the blob.
    *
-   * - A blob of the store's encoding links to the blobs whose links the encoding finds in it, the
-   *   schema of an object among them.
-   * - A blob of any other encoding, such as an image, links to nothing.
+   * - An object of the store's encoding links to the blobs whose links it holds, its schema among
+   *   them.
+   * - Any other blob is bytes and links to nothing, such as an image, or JSON that names no schema
+   *   whatever links it seems to hold.
    *
    * @throws when the backend gives other bytes under a link in the closure.
    */
@@ -320,8 +321,8 @@ class StagedStoreOf implements StagedStore {
 
 /**
  * Makes a store that keeps its blobs and its records in `backend`, and finds the links in a blob by
- * `encoding`. The encoding is the one of the records, and a blob of any other encoding links to
- * nothing. A backend is to be used with one encoding throughout, since the store takes a blob it
+ * `encoding`. The encoding is the one of the records, and a blob that is not an object in it links
+ * to nothing. A backend is to be used with one encoding throughout, since the store takes a blob it
  * holds to come with its closure under that encoding.
  */
 export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = StoreOf;

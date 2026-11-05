@@ -77,7 +77,7 @@ describe("a bundle", () => {
       "an index.json formatted by hand",
       () => filesOf(utf8(JSON.stringify(json.object({ text: "hello" }, note.link), null, 2))),
     ],
-    ["an index.json that is a schema", () => filesOf(note.bytes)],
+    ["an index.json that is a JSON Schema document, which is bytes", () => filesOf(json.encode({ $schema: DRAFT }))],
     ["an index.json that is not JSON", () => filesOf(image)],
     [
       "a blob that does not have the link its name says",
@@ -103,7 +103,7 @@ describe("a bundle", () => {
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
     const signed = await delegate(wallet, [alice.key]);
-    const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
+    const bundle = readBundle(writeBundle(signed, [...signed.schema.blobs, ...signed.identity.blobs]));
     expect(bundle.link).toBe(signed.link);
     expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signed);
   });

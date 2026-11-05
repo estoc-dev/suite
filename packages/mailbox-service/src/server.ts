@@ -307,9 +307,12 @@ class MailboxService {
       sendId,
       pickupId,
     });
-    const signed = await this.#acknowledge(acknowledgement, bundle, signature.signedIdentity, [
-      this.#schemas.mailboxRequest.bytes,
-    ]);
+    const signed = await this.#acknowledge(
+      acknowledgement,
+      bundle,
+      signature.signedIdentity,
+      this.#schemas.mailboxRequest.blobs,
+    );
     const { identity: _, ...terms } = offer.data;
     const mailbox = { request: signature.link, acknowledgement: signed.link, root, sendId, pickupId, terms };
     // Requests of one mailbox at once can each sign an acknowledgement, and
@@ -334,7 +337,8 @@ class MailboxService {
     // Reading what is acknowledged takes neither the schemas in its signed
     // identity's closure nor the interfaces they name, so the bundle need not
     // hold them, and the store takes a blob in only with its whole closure.
-    const own = [acknowledgement.bytes, acknowledgement.schema.bytes, ...signedIdentity.blobs, ...blobs];
+    const { schema } = acknowledgement;
+    const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
   }
@@ -518,9 +522,9 @@ export async function loadMailboxService(
     const object = encodeObject(schemas.service, next);
     const blobs = [
       object.bytes,
-      schemas.service.bytes,
-      ...listed.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, offer.schema.bytes]),
-      signatures.schema.bytes,
+      ...schemas.service.blobs,
+      ...listed.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
+      ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
     await store.write({ records: [await actor.sign(object)], blobs });

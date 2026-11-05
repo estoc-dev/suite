@@ -17,27 +17,29 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
 
 /**
  * Someone who signs, as others see them: an identity read from its object
- * with its root, whichever identity schema the object is written to. It is
- * what every identity schema names as the Identity interface, and all a
- * reader that does not sign needs. Someone is their root: two identities are
- * of the same someone when the links of their roots are the same, and an
- * object that names someone names their root by that link, while a signature
- * names a signed identity of the identity it is made for. Which keys sign
- * for an identity, and how their signatures are laid out, is for its schema
- * to say.
+ * with its root, whichever identity schema the object is written to.
  *
- * `at` is when the root signs it, in milliseconds since the Unix epoch by
- * the root's clock. Each identity a root signs is a version, whatever schema
- * it is written to, and of a root's versions the current one is that with
- * the greatest `at`, and of those with the same `at`, that whose signed
- * identity has the greater link. The current version says who signs for the
- * root, the root itself included.
- *
- * `blobs` are the identity's closure: the bytes of its object and of the
- * keys it names, of the schemas they are written to, and of the interfaces
- * those schemas name, each once. Reading the identity again does not need
- * the interfaces, but a store takes in a blob only with its whole closure,
- * so their bytes come along as well.
+ * - It is what every identity schema names as the Identity interface, and
+ *   all a reader that does not sign needs.
+ * - Someone is their root: two identities are of the same someone when the
+ *   links of their roots are the same. An object that names someone names
+ *   their root by that link, while a signature names a signed identity of
+ *   the identity it is made for.
+ * - Which keys sign for an identity, and how their signatures are laid out,
+ *   is for its schema to say.
+ * - `at` is when the root signs it, in milliseconds since the Unix epoch by
+ *   the root's clock. Each identity a root signs is a version, whatever
+ *   schema it is written to.
+ * - Of a root's versions the current one is that with the greatest `at`,
+ *   and of those with the same `at`, that whose signed identity has the
+ *   greater link. The current version says who signs for the root, the root
+ *   itself included.
+ * - `blobs` are the identity's closure: the bytes of its object and of the
+ *   keys it names, of the schemas they are written to and the root of each
+ *   schema's language, and of the interfaces those schemas name, each once.
+ *   Reading the identity again does not need the interfaces, but a store
+ *   takes in a blob only with its whole closure, so their bytes come along
+ *   as well.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
@@ -81,8 +83,9 @@ export function identityOf(
 // yet each blob is carried once.
 function blobsOf(object: EncodedObject<Json>, keys: readonly KeyObject[]): Uint8Array[] {
   const blobs = new Map<Link<unknown>, Uint8Array>();
-  const schemas = keys.map(({ schema }) => schema);
-  for (const { link, bytes } of [object, ...keys, object.schema, ...schemas, identityInterface, keyInterface]) {
+  const schemas = [object.schema, ...keys.map(({ schema }) => schema)];
+  const roots = schemas.map(({ root }) => root);
+  for (const { link, bytes } of [object, ...keys, ...schemas, ...roots, identityInterface, keyInterface]) {
     blobs.set(link, bytes);
   }
   return [...blobs.values()];

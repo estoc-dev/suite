@@ -36,22 +36,23 @@ let turn: Promise<unknown> = Promise.resolve();
  */
 export const defaultValidator: JsonSchemaValidator = {
   language: jsonSchema,
-  compile(schema) {
-    const check = turn.then(() => compileInRegistry(schema));
+  compile(document) {
+    const check = turn.then(() => compileInRegistry(document));
     turn = check.catch(() => undefined);
     return check;
   },
 };
 
-async function compileInRegistry(schema: JsonSchema): Promise<Check<Json>> {
-  if (schema.$schema !== DRAFT_2020_12) throw new Error(`unsupported dialect ${schema.$schema}`);
-  registerSchema(schema as SchemaObject, anonymousUri);
+async function compileInRegistry(document: JsonSchema): Promise<Check<Json>> {
+  if (document.$schema !== DRAFT_2020_12) throw new Error(`unsupported dialect ${document.$schema}`);
+  registerSchema(document as SchemaObject, anonymousUri);
   try {
     const root = await getSchema(anonymousUri);
     const resources = Object.entries(root.document.embedded ?? {}) as [string, SchemaDocument][];
     for (const [uri, resource] of resources) {
       // The registry resolves a URI before the schema's own resources do.
-      if (uri !== anonymousUri && hasSchema(uri)) throw new Error(`the schema takes the $id ${uri} of another schema`);
+      if (uri !== anonymousUri && hasSchema(uri))
+        throw new Error(`the document takes the $id ${uri} of another schema`);
       if (resource.dialectId !== DRAFT_2020_12) throw new Error(`unsupported dialect ${resource.dialectId} in ${uri}`);
     }
 
@@ -61,7 +62,7 @@ async function compileInRegistry(schema: JsonSchema): Promise<Check<Json>> {
     for (const location of Object.keys(compiled.ast)) {
       if (location === "metaData" || location === "plugins") continue;
       const uri = location.replace(/#.*/, "");
-      if (!reachable.has(uri)) throw new Error(`$ref to ${uri}, which is not in the schema`);
+      if (!reachable.has(uri)) throw new Error(`$ref to ${uri}, which is not in the document`);
     }
 
     return (data) => {

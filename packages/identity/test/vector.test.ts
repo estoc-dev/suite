@@ -25,124 +25,130 @@ const { signedIdentities, signatures, publish, delegate } = await loadIdentity(d
 const keyInterfaceLink = "sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160";
 const identityInterfaceLink = "sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f";
 const ed25519KeySchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
-  '"required":["publicKey"],"title":"Ed25519 key","type":"object",' +
-  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}';
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["publicKey"],' +
+  '"title":"Ed25519 key","type":"object",' +
+  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}';
 const keySchemas = [
   {
     scheme: ed25519,
     text: ed25519KeySchemaText,
-    link: "sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662",
+    link: "sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d",
   },
   {
     scheme: eip191,
     text:
-      '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{66}$","type":"string"}},' +
-      '"required":["publicKey"],"title":"EIP-191 key","type":"object",' +
-      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
-    link: "sha256:8896cefe124af9a93c39ced7f4190a39a5573928806c256e5af54323a1b38d1a",
+      '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+      '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{66}$","type":"string"}},"required":["publicKey"],' +
+      '"title":"EIP-191 key","type":"object",' +
+      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}',
+    link: "sha256:190f56b1528699ccc2194d0a3a3cbc8f9718010c59f89b727d3b8d3f9a188f70",
   },
   {
     scheme: solanaOffchain,
     text:
-      '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},' +
-      '"required":["publicKey"],"title":"Solana off-chain key","type":"object",' +
-      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}',
-    link: "sha256:c0bee18e26838f2864b6e7864e3a81ab41cc9d95a65c47c3d5ae491522236822",
+      '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+      '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["publicKey"],' +
+      '"title":"Solana off-chain key","type":"object",' +
+      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}',
+    link: "sha256:326d9922d773eddf9e565c065b729f51e7a1f64e876f8dd5633eea5cb2080a14",
   },
 ];
 const identitySchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
-  '"required":["root","at"],"title":"Identity","type":"object",' +
-  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}';
-const identitySchemaLink = "sha256:2925548520e954bb82d94214d2b85a334b851966ec0603dd1537ec1811221194";
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root","at"],' +
+  '"title":"Identity","type":"object",' +
+  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}}';
+const identitySchemaLink = "sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422";
 const delegatedIdentitySchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"agents":{"items":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"maxItems":256,"type":"array","uniqueItems":true},"at":{"minimum":0,"type":"integer"},' +
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '"properties":{"agents":{"items":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$",' +
+  '"type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},"maxItems":256,' +
+  '"type":"array","uniqueItems":true},"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
-  '"required":["root","agents","at"],"title":"Delegated Identity","type":"object",' +
-  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}';
-const delegatedIdentitySchemaLink = "sha256:774505bf3100ca1accd21ace45dbbf45e17240c7a36afcfd40665afeabe7c2b0";
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root","agents",' +
+  '"at"],"title":"Delegated Identity","type":"object",' +
+  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}}';
+const delegatedIdentitySchemaLink = "sha256:66df1e064901ce479186e768ea5bc3013b1bf67c6140735f96b0eeed7fbd2a2d";
 const keyText =
-  '{"$describedBy":{"$link":"sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662"},' +
+  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
-const keyLink = "sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358";
+const keyLink = "sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01";
 const identityText =
-  '{"$describedBy":{"$link":"sha256:2925548520e954bb82d94214d2b85a334b851966ec0603dd1537ec1811221194"},' +
+  '{"$schema":{"$link":"sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422"},' +
   '"at":1767225600000,' +
-  '"root":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
-const identityLink = "sha256:9765b6f9fd07cb8028dc55244b82652e39bb55d69d8353c3e413fa4b9ed905cb";
+  '"root":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
+const identityLink = "sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96";
 const signedIdentitySchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
-  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},' +
-  '"required":["identity","signature"],"title":"Signed Identity","type":"object"}';
-const signedIdentitySchemaLink = "sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa";
+  '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},"required":["identity","signature"],' +
+  '"title":"Signed Identity","type":"object"}}';
+const signedIdentitySchemaLink = "sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2";
 const signedIdentityText =
-  '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
-  '"identity":{"$link":"sha256:9765b6f9fd07cb8028dc55244b82652e39bb55d69d8353c3e413fa4b9ed905cb"},' +
-  '"signature":"aaaf553e3f7ba3f235107155d0bd14eb59c0c8df74300e305a10d9a0fc59e1c5' +
-  'a12b081cb298e10eb9e3405e4a80e647f974c04df9a63b7cf831de272a954101"}';
-const signedIdentityLink = "sha256:d0a756f4ee31b20a78995e7d47d4899906c7ba7b15947a3e35664fdadffb7f13";
+  '{"$schema":{"$link":"sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2"},' +
+  '"identity":{"$link":"sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96"},' +
+  '"signature":"ca32524b421edba33e57e0f39be585a9d243fde02ef4662a616b880e48fd3ffb1499997e490aadf276dfdf0d284' +
+  '97ab9061db5fad80635dfb335650c0a29f30d"}';
+const signedIdentityLink = "sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5";
 const signatureSchemaText =
-  '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
+  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
+  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"object":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},' +
   '"signedIdentity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
-  '"required":["signedIdentity","object","signature"],"title":"Signature","type":"object"}';
-const signatureSchemaLink = "sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135";
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["signedIdentity",' +
+  '"object","signature"],"title":"Signature","type":"object"}}';
+const signatureSchemaLink = "sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4";
 const signatureText =
-  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
-  '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
-  '"signature":"59d738d7f8c5c7ef617acde85109c583580757cb049bf400036c5c1f73c0e34c' +
-  'dc9bd536b9bdf97de1106db12f8e9a7f81cc4617fc74f7fd1b12a512421aad01",' +
-  '"signedIdentity":{"$link":"sha256:d0a756f4ee31b20a78995e7d47d4899906c7ba7b15947a3e35664fdadffb7f13"}}';
-const signatureLink = "sha256:6223032687970d05dd72660c90cca223d0dbcc3e87da3532bafff0abb79978fb";
+  '{"$schema":{"$link":"sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4"},' +
+  '"object":{"$link":"sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4"},' +
+  '"signature":"16ee674e6a0d4bfcea87e6a04bacba19b43d67e6e89501dd36e322ab5c2db74decf00cb9ddb82f4152e10033815' +
+  '111447f479ee08896ae6900e5a2d038882e0e",' +
+  '"signedIdentity":{"$link":"sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5"}}';
+const signatureLink = "sha256:d5dcd6b8364fdabfb2ae49a92f0bfc2c84ca6da05748d606135fe440ae92278e";
 const agentKeyTexts = [
-  '{"$describedBy":{"$link":"sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662"},' +
+  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
     '"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"}',
-  '{"$describedBy":{"$link":"sha256:ebbcea47c3c3ce9adc3d76f8450ceba8f413d247a4b2f9b30aca6d2505beb662"},' +
+  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
     '"publicKey":"ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1"}',
 ] as const;
 const agentKeyLinks = [
-  "sha256:301a5c2ca31246fe1ae00e0ea57d0a89c8d2b7ec07688792bcd33dd59914db71",
-  "sha256:a883261c6730f312d9edae37efbbbb5a247fde743001b6677501a8c064f564b5",
+  "sha256:f4a86d57ad03dec7cfec4e0816efdc52a96569960a29f5b902b32345ce5f4c63",
+  "sha256:b0ef6c084a50ccf9d89f93a2e5797e0382a29ca6444580bb13c78dc1dcac190b",
 ] as const;
 const delegatedIdentityText =
-  '{"$describedBy":{"$link":"sha256:774505bf3100ca1accd21ace45dbbf45e17240c7a36afcfd40665afeabe7c2b0"},' +
-  '"agents":[{"$link":"sha256:301a5c2ca31246fe1ae00e0ea57d0a89c8d2b7ec07688792bcd33dd59914db71"},' +
-  '{"$link":"sha256:a883261c6730f312d9edae37efbbbb5a247fde743001b6677501a8c064f564b5"}],"at":1767225600000,' +
-  '"root":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
-const delegatedIdentityLink = "sha256:5572fd1cf344ec963c82a4eb856d1c89e73d1c0745cb06478dbf2086a2e99503";
+  '{"$schema":{"$link":"sha256:66df1e064901ce479186e768ea5bc3013b1bf67c6140735f96b0eeed7fbd2a2d"},' +
+  '"agents":[{"$link":"sha256:f4a86d57ad03dec7cfec4e0816efdc52a96569960a29f5b902b32345ce5f4c63"},' +
+  '{"$link":"sha256:b0ef6c084a50ccf9d89f93a2e5797e0382a29ca6444580bb13c78dc1dcac190b"}],"at":1767225600000,' +
+  '"root":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
+const delegatedIdentityLink = "sha256:63ce8817c4f6937bde2a1893004c18efabd0118c634ac68ab4b35949490c785c";
 const delegatedSignedIdentityText =
-  '{"$describedBy":{"$link":"sha256:ee9e79ae29ac47b734cd73993d28f50b5bd4323c4693a304366958d3c6161dfa"},' +
-  '"identity":{"$link":"sha256:5572fd1cf344ec963c82a4eb856d1c89e73d1c0745cb06478dbf2086a2e99503"},' +
-  '"signature":"3d779ab24786011086f97e7eaaeed7b17d0e1004c5b5b864f8851313514db635' +
-  'a3e8b40cacdb4d3736cff3533e177e23aa2aa00194de11303af92942610d1a0e"}';
-const delegatedSignedIdentityLink = "sha256:5994a1c17dabfe1a2238c96a955f3f9d855447e7e6b41bfe0fb6090d9816a87d";
+  '{"$schema":{"$link":"sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2"},' +
+  '"identity":{"$link":"sha256:63ce8817c4f6937bde2a1893004c18efabd0118c634ac68ab4b35949490c785c"},' +
+  '"signature":"8c41a5e0bb102cfdbc848bc8bfbd291d9e579d5bdd8b770741263f35aaac8119351ee1744cecf9f937891d2753a' +
+  'fe76d0acaa450e6cfa916b14f6dc59f3c4c01"}';
+const delegatedSignedIdentityLink = "sha256:12b3b20d2d12c658a65fbe642e8393e1fe7190eb20fc67ccb9e161e88e5e9150";
 const delegatedSignatureText =
-  '{"$describedBy":{"$link":"sha256:5b26f24cc52953b3f9ed306e7773dcff9edc5cad8c6a825f02179e3a4a3d7135"},' +
-  '"object":{"$link":"sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c"},' +
-  '"signature":"01' +
-  "096bac7524d8dc1a88aa2d3ff95df6b7f607d00da4df762a9cf8699f5722c4d8" +
-  '7f2f96c96d832faad228a4aa4ae4c0ea6286b158041f558fb9313f1bb039ec07",' +
-  '"signedIdentity":{"$link":"sha256:5994a1c17dabfe1a2238c96a955f3f9d855447e7e6b41bfe0fb6090d9816a87d"}}';
-const delegatedSignatureLink = "sha256:673d7bd2f282b565742f7d120353d5439ab7ea4943ff8c2fe884bb48ebc4777c";
+  '{"$schema":{"$link":"sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4"},' +
+  '"object":{"$link":"sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4"},' +
+  '"signature":"014d40b2d7884df44cadd004441524908ec240f1274fb39071698a338cc3ccd7245f213246e4b97d433f054e744' +
+  '5c3dbb64d6869fe4c3523b8bfd3e20d1aa42807",' +
+  '"signedIdentity":{"$link":"sha256:12b3b20d2d12c658a65fbe642e8393e1fe7190eb20fc67ccb9e161e88e5e9150"}}';
+const delegatedSignatureLink = "sha256:88710701d32142d1435916d84df12c528868191d7c5ec75aa10d0c7357588414";
 
 // The login object of the vector in @estoc/object.
-const objectLink: Link<never> = "sha256:30b98860979cfbb8aff2e2d4b4cbffb449d618e7168ec3772d2757334c3def3c";
+const objectLink: Link<never> = "sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);

@@ -19,7 +19,7 @@ import { type Backend, type Index, indexOver, type Key, MemoryBackend, type Rows
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const schemaTitled = (title: string) => encodeSchema({ $schema: DRAFT, title }, defaultValidator);
 const [note, tag] = await Promise.all([schemaTitled("Note"), schemaTitled("Tag")]);
-const schemas = [note.bytes, tag.bytes];
+const schemas = [note.bytes, tag.bytes, note.root.bytes];
 const keysOf = ({ data }: { readonly data: Json }) => (data as { keys: Key[] }).keys;
 
 const byKeys: Index<Key> = indexOver(objectsOf(note), keysOf);

@@ -10,6 +10,7 @@ import {
   json,
   readObject,
   schemaOf,
+  selfDescribingObject,
 } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -28,11 +29,12 @@ const login = await encodeSchema(
 );
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
-  ["without a $describedBy", '{"v":1}'],
-  ["whose $describedBy is not a link", '{"$describedBy":{"$link":"login"},"v":1}'],
-  ["whose $describedBy is a link as a bare string", `{"$describedBy":"${anything.link}","v":1}`],
-  ["whose $describedBy has a member besides $link", `{"$describedBy":{"$link":"${anything.link}","note":"x"},"v":1}`],
-  ["whose $describedBy is the schema itself", `{"$describedBy":{"$schema":"${DRAFT}"},"v":1}`],
+  ["without a $schema", '{"v":1}'],
+  ["whose $schema is not a link", '{"$schema":{"$link":"login"},"v":1}'],
+  ["whose $schema is a link as a bare string", `{"$schema":"${anything.link}","v":1}`],
+  ["whose $schema has a member besides $link", `{"$schema":{"$link":"${anything.link}","note":"x"},"v":1}`],
+  ["whose $schema is a dialect, as a JSON Schema document's is", `{"$schema":"${DRAFT}","v":1}`],
+  ["whose $schema is a document", `{"$schema":{"$schema":"${DRAFT}"},"v":1}`],
   ["that is an array", `[1,{"$link":"${anything.link}"}]`],
   ["that is a string", `"${anything.link}"`],
 ];
@@ -45,10 +47,7 @@ describe("an object", () => {
       { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null },
     ],
     ["no fields", {}],
-    [
-      "a $describedBy deeper in its data, which is data like any other",
-      { inner: { $describedBy: { $link: login.link } } },
-    ],
+    ["a $schema deeper in its data, which is data like any other", { inner: { $schema: { $link: login.link } } }],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
@@ -57,13 +56,13 @@ describe("an object", () => {
     expect(read.schema).toBe(anything);
   });
 
-  it("reads back as its data without its $describedBy, which a closed schema need not name", () => {
+  it("reads back as its data without its $schema, which a closed schema need not name", () => {
     expect(decodeObject(encodeObject(login, greeting).bytes, login).data).toEqual(greeting);
   });
 
-  it("is refused when its data has a $describedBy of its own", () => {
-    expect(() => encodeObject(anything, { $describedBy: { $link: login.link } })).toThrow(/\$describedBy/);
-    expect(() => encodeObject(anything, { $describedBy: "note" })).toThrow(/\$describedBy/);
+  it("is refused when its data has a $schema of its own", () => {
+    expect(() => encodeObject(anything, { $schema: { $link: login.link } })).toThrow(/\$schema/);
+    expect(() => encodeObject(anything, { $schema: "note" })).toThrow(/\$schema/);
   });
 
   it("is linked by the SHA-256 of its bytes", () => {
@@ -112,7 +111,13 @@ describe("an object read by its link", () => {
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
     expect(schemaOf(encodeObject(login, greeting).bytes, json)).toBe(login.link);
-    expect(schemaOf(utf8(`{"$describedBy":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
+    expect(schemaOf(utf8(`{"$schema":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
+  });
+
+  it("is the object's own link for one that describes itself", () => {
+    const itself = selfDescribingObject(json, { language: "Example" });
+    expect(new TextDecoder().decode(itself.bytes)).toBe('{"$schema":null,"language":"Example"}');
+    expect(schemaOf(itself.bytes, json)).toBe(itself.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, text) => {
@@ -120,9 +125,16 @@ describe("the schema an object names", () => {
   });
 });
 
-test("a schema's bytes are not an object", () => {
+test("a schema is an object of its root, and not of any schema", () => {
+  expect(schemaOf(login.bytes, json)).toBe(login.root.link);
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(login.bytes, anything)).toThrow();
+});
+
+test("an object that describes itself is not an object of any schema", () => {
+  const itself = selfDescribingObject(json, { v: 1 });
+  // @ts-expect-error: refused at compile time too
+  expect(() => decodeObject(itself.bytes, anything)).toThrow(/not to/);
 });
 
 test("an object read with a schema decoded from the same bytes keeps its link", async () => {

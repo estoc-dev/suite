@@ -41,8 +41,8 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * object. Two signers are the same someone when the roots of their
  * identities are the same, whichever signed identities they sign by.
  *
- * `blobs` are what it takes to read it again: the bytes of its object and of
- * its schema, and the identity's `blobs`.
+ * `blobs` are what it takes to read it again: the bytes of its object, of
+ * its schema and of the schema's root, and the identity's `blobs`.
  */
 export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
   extends EncodedObject<Json, SignedIdentityData> {
@@ -149,6 +149,6 @@ function signedIdentityOf<I extends IdentityObject>(
     link: object.link as Link<SignedIdentityObject>,
     identity,
     signature,
-    blobs: [object.bytes, object.schema.bytes, ...identity.blobs],
+    blobs: [object.bytes, object.schema.bytes, object.schema.root.bytes, ...identity.blobs],
   };
 }

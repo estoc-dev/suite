@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, type JsonObject } from "@estoc/object";
+import { encodeObject, encodeSchema, type JsonObject, json } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -62,8 +62,14 @@ describe("a mailbox", () => {
 
 describe("a mailbox from bytes", () => {
   it("is refused when the bytes are not an object", async () => {
+    await expect(mailboxFrom(json.encode({ $schema: DRAFT }), options)).rejects.toThrow(/\$schema/);
+  });
+
+  it("is refused when the bytes are a schema", async () => {
     // @ts-expect-error: refused at compile time too
-    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/\$describedBy/);
+    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(
+      `no transport takes mailboxes written to ${note.root.link}`,
+    );
   });
 
   it("is refused when no transport given takes its schema", async () => {

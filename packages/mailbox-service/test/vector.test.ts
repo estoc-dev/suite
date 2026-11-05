@@ -17,61 +17,72 @@ import {
 // The bytes and the links were checked against Python's json module with
 // sorted keys and no whitespace, which writes these values as JCS does, its
 // hashlib, and the Ed25519 of its cryptography package for the secret key of
-// 32 bytes of 1. A change to the format changes them.
+// 32 bytes of 1. Each schema is a document written to the root of JSON
+// Schema. A change to the format changes them.
+const rootLink = "sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326";
+const schemaText = (document: string) => `{"$schema":{"$link":"${rootLink}"},"document":${document}}`;
 const linkText =
   '{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}';
-const serviceSchemaText =
+const serviceSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"at":{"minimum":0,"type":"integer"},"offers":{"items":{"additionalProperties":false,' +
-  `"properties":{"acceptId":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
-  '"required":["offer","acceptId"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
-  '"required":["origin","at","offers"],"title":"Service","type":"object"}';
-const serviceSchemaLink = "sha256:de194bd2224d27064cf7a13f53e901d6d42d4e8e159c76a7f2be5aba0a58fff1";
-const offerSchemaText =
+    '"properties":{"at":{"minimum":0,"type":"integer"},"offers":{"items":{"additionalProperties":false,' +
+    `"properties":{"acceptId":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
+    '"required":["offer","acceptId"],"type":"object"},"type":"array"},"origin":{"type":"string"}},' +
+    '"required":["origin","at","offers"],"title":"Service","type":"object"}',
+);
+const serviceSchemaLink = "sha256:bb1d65f5142a43528963d808499bc33374531635cdc1050840ea259bb2e8e625";
+const offerSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`;
-const offerSchemaLink = "sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d";
-const acknowledgementSchemaText =
+    `"properties":{"identity":${linkText}},"required":["identity"],"title":"Account offer","type":"object"}`,
+);
+const offerSchemaLink = "sha256:42bb0114710faac6d0d962aa3dafe52f6a097930003a5f4dd6e2504f9e0b0205";
+const acknowledgementSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"acceptance":${linkText},"at":{"minimum":0,"type":"integer"}},` +
-  '"required":["acceptance","at"],"title":"Acknowledgement","type":"object"}';
-const acknowledgementSchemaLink = "sha256:a6f5260e29ece9b0a3aefe53e59aca509d491a77a9f0d5ff614699f3fbf80a48";
+    `"properties":{"acceptance":${linkText},"at":{"minimum":0,"type":"integer"}},` +
+    '"required":["acceptance","at"],"title":"Acknowledgement","type":"object"}',
+);
+const acknowledgementSchemaLink = "sha256:968f141b75fa769ad324e0e3a2dd072797ea7f316af02e92d8d76ff3262bd33d";
 const offerText =
-  '{"$describedBy":{"$link":"sha256:6a481c3f3d8b65973933499e4d710891cf8306501eafc10ae813a411bd44981d"},' +
-  '"identity":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"}}';
-const offerLink = "sha256:70268cbdf530023b939e533b17e5b7b772a881af97de568984903616ef2dd4e5";
+  '{"$schema":{"$link":"sha256:42bb0114710faac6d0d962aa3dafe52f6a097930003a5f4dd6e2504f9e0b0205"},' +
+  '"identity":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
+const offerLink = "sha256:716960b57d1ebb6a28e70c975a646a7dbec02849870ec279e6bf2c91135c5273";
 const mailboxIdText = '{"pattern":"^[0-9a-f]{32}$","type":"string"}';
-const mailboxOfferSchemaText =
+const mailboxOfferSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"identity":${linkText},"quota":{"minimum":1,"type":"integer"},` +
-  '"retention":{"minimum":1,"type":"integer"},"size":{"minimum":1,"type":"integer"}},' +
-  '"required":["identity","retention","quota","size"],"title":"Mailbox offer","type":"object"}';
-const mailboxOfferSchemaLink = "sha256:ad1727ae08f6191ad1e948a152d6350e71bbdc254fe40497ca5d40b6ef91edc5";
-const mailboxRequestSchemaText =
+    `"properties":{"identity":${linkText},"quota":{"minimum":1,"type":"integer"},` +
+    '"retention":{"minimum":1,"type":"integer"},"size":{"minimum":1,"type":"integer"}},' +
+    '"required":["identity","retention","quota","size"],"title":"Mailbox offer","type":"object"}',
+);
+const mailboxOfferSchemaLink = "sha256:2908406433dbb67ef15206ee245d6a803c279c857171b6d59e404eeff76143dc";
+const mailboxRequestSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
-  '"required":["offer","key"],"title":"Mailbox request","type":"object"}';
-const mailboxRequestSchemaLink = "sha256:4bc433acf28fc6b61a5368358448d604df093f58bf449749b16937eaaa3fb259";
-const mailboxAcknowledgementSchemaText =
+    `"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"offer":${linkText}},` +
+    '"required":["offer","key"],"title":"Mailbox request","type":"object"}',
+);
+const mailboxRequestSchemaLink = "sha256:cdf7a50d0368b0f7539de32e4696549ad6a82946623a6b087d1d2809ec2d95b7";
+const mailboxAcknowledgementSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"at":{"minimum":0,"type":"integer"},"pickupId":${mailboxIdText},` +
-  `"request":${linkText},"sendId":${mailboxIdText}},` +
-  '"required":["request","at","sendId","pickupId"],"title":"Mailbox acknowledgement","type":"object"}';
-const mailboxAcknowledgementSchemaLink = "sha256:dd96ed673e63fcab694fb39b80a1a8be00884b47b2279b9716e1a85e24eac9e7";
-const pickupRequestSchemaText =
+    `"properties":{"at":{"minimum":0,"type":"integer"},"pickupId":${mailboxIdText},` +
+    `"request":${linkText},"sendId":${mailboxIdText}},` +
+    '"required":["request","at","sendId","pickupId"],"title":"Mailbox acknowledgement","type":"object"}',
+);
+const mailboxAcknowledgementSchemaLink = "sha256:4d3cce4c4645d41d29cfb966fdc297c4d3a492c5b3c1a184cce31b3900bde8e9";
+const pickupRequestSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"mailbox":${linkText},"receipts":{"items":${linkText},"type":"array"}},` +
-  '"required":["mailbox","receipts"],"title":"Pickup request","type":"object"}';
-const pickupRequestSchemaLink = "sha256:b1969329998538f106a77aff8a16878b8a26210068267e5edb8e5fae263ef24a";
-const pickupAnswerSchemaText =
+    `"properties":{"mailbox":${linkText},"receipts":{"items":${linkText},"type":"array"}},` +
+    '"required":["mailbox","receipts"],"title":"Pickup request","type":"object"}',
+);
+const pickupRequestSchemaLink = "sha256:7ed4ad9e11d010b295ece58fd5dedbb0d88526894ea5bc3a2cbe52a7837ce18e";
+const pickupAnswerSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"ciphertexts":{"items":${linkText},"type":"array"}},"required":["ciphertexts"],"title":"Pickup answer","type":"object"}`;
-const pickupAnswerSchemaLink = "sha256:859877a78a2f345cbd197138a6057f0d0aa87224702c5903a46617a3bf6a93b9";
+    `"properties":{"ciphertexts":{"items":${linkText},"type":"array"}},"required":["ciphertexts"],"title":"Pickup answer","type":"object"}`,
+);
+const pickupAnswerSchemaLink = "sha256:22f1abbff6d77e673e8776b65ae32470d2897a82ff57cef734f85d1e02f3e59e";
 const mailboxOfferText =
-  '{"$describedBy":{"$link":"sha256:ad1727ae08f6191ad1e948a152d6350e71bbdc254fe40497ca5d40b6ef91edc5"},' +
-  '"identity":{"$link":"sha256:ecc75ffb48855e212f07f6a1bfe71da1e95e47d8f159a0354438ca6fefb90358"},' +
+  '{"$schema":{"$link":"sha256:2908406433dbb67ef15206ee245d6a803c279c857171b6d59e404eeff76143dc"},' +
+  '"identity":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"},' +
   '"quota":4096,"retention":60000,"size":1024}';
-const mailboxOfferLink = "sha256:ecac8cc2f39a0e69d5447406ab16958fa6d0f9fc504994c3ce643b4cae278afd";
+const mailboxOfferLink = "sha256:8d9c2ca4071b1c684af6f0ab39e5872e7c41ec2c78933e678a280cb170a7e2d1";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 

@@ -52,7 +52,10 @@ const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { na
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
-const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema].map(({ bytes }) => bytes);
+const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema].flatMap(({ bytes, root }) => [
+  bytes,
+  root.bytes,
+]);
 const newStore = () => new Store(json, new MemoryBackend());
 
 async function listed(store: Store): Promise<Link<unknown>[]> {

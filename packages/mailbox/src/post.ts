@@ -103,10 +103,10 @@ export class Post {
     if (data.key !== hex.encode(key.publicKey))
       throw new Error("the mailbox made names another key than the one given");
     const mailbox = linkOf(bytes);
-    await this.#store.write({ records: [{ bytes }], blobs: [transport.schema.bytes] });
+    await this.#store.write({ records: [{ bytes }], blobs: [transport.schema.bytes, transport.schema.root.bytes] });
     const schema = this.#schemas.key;
     const object = encodeObject(schema, { mailbox: { $link: mailbox }, secret: hex.encode(secret) });
-    await this.#keys.write({ records: [object], blobs: [schema.bytes] });
+    await this.#keys.write({ records: [object], blobs: [schema.bytes, schema.root.bytes] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -145,7 +145,7 @@ export class Post {
     const schema = this.#schemas[direction];
     const at = this.#clock();
     const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ records: [record], blobs: [schema.bytes, ...blobs] });
+    await this.#store.write({ records: [record], blobs: [schema.bytes, schema.root.bytes, ...blobs] });
     return { direction, bundle, mailbox, at, link: record.link };
   }
 }

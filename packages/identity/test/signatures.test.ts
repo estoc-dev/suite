@@ -133,7 +133,7 @@ describe("a signature", () => {
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
     ["written to another schema", (signature) => json.encode(json.object(dataOf(signature), note.link))],
-    ["without its $describedBy", (signature) => json.encode(dataOf(signature))],
+    ["without its $schema", (signature) => json.encode(dataOf(signature))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await sign(hello, signer(ed25519));
     await expect(verified(change(signature), identityOf(signature))).rejects.toThrow();

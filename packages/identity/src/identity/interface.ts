@@ -34,10 +34,11 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  * root, the root itself included.
  *
  * `blobs` are the identity's closure: the bytes of its object and of the
- * keys it names, of the schemas they are written to, and of the interfaces
- * those schemas name, each once. Reading the identity again does not need
- * the interfaces, but a store takes in a blob only with its whole closure,
- * so their bytes come along as well.
+ * keys it names, of the schemas they are written to and the root of each
+ * schema's language, and of the interfaces those schemas name, each once.
+ * Reading the identity again does not need the interfaces, but a store
+ * takes in a blob only with its whole closure, so their bytes come along as
+ * well.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
@@ -81,8 +82,9 @@ export function identityOf(
 // yet each blob is carried once.
 function blobsOf(object: EncodedObject<Json>, keys: readonly KeyObject[]): Uint8Array[] {
   const blobs = new Map<Link<unknown>, Uint8Array>();
-  const schemas = keys.map(({ schema }) => schema);
-  for (const { link, bytes } of [object, ...keys, object.schema, ...schemas, identityInterface, keyInterface]) {
+  const schemas = [object.schema, ...keys.map(({ schema }) => schema)];
+  const roots = schemas.map(({ root }) => root);
+  for (const { link, bytes } of [object, ...keys, ...schemas, ...roots, identityInterface, keyInterface]) {
     blobs.set(link, bytes);
   }
   return [...blobs.values()];

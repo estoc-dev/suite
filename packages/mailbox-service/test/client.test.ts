@@ -394,7 +394,7 @@ async function withAccount(actor: Actor, options: Parameters<typeof running>[0] 
 /** A mailbox sealed to `key` that `actor` opens by `offer`, which `store` then holds. */
 async function openMailbox(store: Store, offer: MailboxOffer, actor: Actor, key = keyOf(7)) {
   const mailbox = await offer.open(actor, key);
-  await store.write({ records: [mailbox], blobs: [http.schema.bytes] });
+  await store.write({ records: [mailbox], blobs: [http.schema.bytes, http.schema.root.bytes] });
   return mailbox;
 }
 
@@ -451,7 +451,10 @@ describe("a mailbox that a service opened", () => {
       defaultValidator,
     );
     const note = encodeObject(noteSchema, { text: "hello, Alice" });
-    await sender.write({ records: [{ bytes }, note], blobs: [http.schema.bytes, noteSchema.bytes] });
+    await sender.write({
+      records: [{ bytes }, note],
+      blobs: [http.schema.bytes, http.schema.root.bytes, noteSchema.bytes],
+    });
     const outbox = await (await loadPost(sender, new PrivateStore(sender, new MemoryBackend()), options)).outbox(
       inbox.mailbox,
     );
@@ -568,7 +571,7 @@ describe("a mailbox that a service opened", () => {
     const { store, services } = await client();
     await services.fetch(origin);
     const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${"0".repeat(32)}` });
-    await store.write({ records: [mailbox], blobs: [http.schema.bytes] });
+    await store.write({ records: [mailbox], blobs: [http.schema.bytes, http.schema.root.bytes] });
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/holds no acknowledgement/);
   });
 });

@@ -1,5 +1,6 @@
 import { isJsonObject, type Json, type JsonObject, json } from "./json.ts";
 import { LINK_PATTERN } from "./link.ts";
+import { selfDescribingObject } from "./object.ts";
 import type { SchemaLanguage, SchemaValidator } from "./schema.ts";
 
 export const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
@@ -15,22 +16,22 @@ export interface JsonSchema extends JsonObject {
 /**
  * JSON Schema over JSON.
  *
- * - A schema is a JSON object naming its dialect in `$schema`, written as JSON is.
- * - A schema has no `$describedBy`, so that no blob reads both as a schema and as an object.
+ * - Its root is `{"$schema": null, "language": "JSON Schema"}`, which stands for the language
+ *   rather than one of its dialects.
+ * - A document is a whole JSON Schema, a JSON object naming its dialect in `$schema`, with nothing
+ *   added, so any JSON Schema tool can validate with it as it is. The schema's `$schema` and the
+ *   document's are at different depths, and do not meet.
  * - A dialect is a version of the language, and a `$ref` is a reference: a `$ref` to anything
- *   outside the schema fails compilation, and one in a place the dialect ignores, such as under
+ *   outside the document fails compilation, and one in a place the dialect ignores, such as under
  *   `then` without `if`, has no effect.
  */
 export const jsonSchema: SchemaLanguage<Json, JsonSchema> = {
   encoding: json,
-  encode: (schema) => json.encode(schema),
-  decode(bytes) {
-    const value = json.decode(bytes);
+  root: selfDescribingObject(json, { language: "JSON Schema" }),
+  document(value) {
     if (!isJsonObject(value) || typeof value.$schema !== "string") {
-      throw new Error("a schema is a JSON object naming its dialect in $schema");
+      throw new Error("a JSON Schema document is a JSON object naming its dialect in $schema");
     }
-    if (Object.hasOwn(value, "$describedBy"))
-      throw new Error("a schema has no $describedBy, which names the schema of an object");
     return value as JsonSchema;
   },
 };
@@ -39,13 +40,13 @@ export type JsonSchemaValidator = SchemaValidator<Json, JsonSchema>;
 
 /**
  * A link as JSON writes it, `{"$link": <link>}`, as a subschema to write
- * into a schema wherever its data holds one. A schema refers to nothing
- * outside itself, so each schema that takes a link carries this.
+ * into a document wherever its data holds one. A document refers to nothing
+ * outside itself, so each document that takes a link carries this.
  */
 export const linkSchema: JsonObject = {
   type: "object",
   required: ["$link"],
-  // A schema is JSON too, so `properties: {"$link": …}` would be an object
+  // A document is JSON too, so `properties: {"$link": …}` would be an object
   // with a `$link` member that is not a link, and refused.
   propertyNames: { const: "$link" },
   additionalProperties: { type: "string", pattern: LINK_PATTERN },

@@ -94,8 +94,8 @@ each key has one object and one link. The schemas of `ed25519` and
 their titles, which name the schemes: one public key in the two schemes is
 two objects, with two links, as it is two keys.
 
-Each key schema names what its objects read as, the Key interface, by
-`"x-implements": {"$link": <link>}`, the link of `keyInterface`, whose
+The document of each key schema names what its objects read as, the Key
+interface, by `"x-implements": {"$link": <link>}`, the link of `keyInterface`, whose
 bytes are the UTF-8 text `Key`. Whatever the scheme, a key reads as a
 `Key`, and the schemas say so in the same way.
 
@@ -117,8 +117,8 @@ under `src/key/` and one more of those.
 ## Identities
 
 An identity is written to one of two schemas, whatever the scheme of its
-root, and names its root by the link of the root's object. Both schemas
-name the Identity interface in `x-implements`, the link of
+root, and names its root by the link of the root's object. The documents
+of both schemas name the Identity interface in `x-implements`, the link of
 `identityInterface`, whose bytes are the UTF-8 text `Identity`, as the key
 schemas name the Key interface. Whichever schema it is written to, an
 identity reads as an `IdentityObject`, with its root as `root`, and that is
@@ -163,8 +163,9 @@ signed it: `identities.read` and `delegatedIdentities.read` read an
 identity's object with the keys it names and do not authenticate it, and
 `signedIdentities.read` verifies that its root signed it. Reading an
 identity takes the blobs of its object and of its keys; an identity
-carries them as `blobs`, with those of the schemas they are written to and
-of the interfaces those name, each once. That is the identity's closure, so
+carries them as `blobs`, with those of the schemas they are written to, of
+the root of each schema's language and of the interfaces those schemas
+name, each once. That is the identity's closure, so
 where an identity goes, as into a store or a bundle, `...identity.blobs`
 goes along and carries all it links to.
 
@@ -193,7 +194,7 @@ signed identity and a `Reader`, reads its identity through an
 `Implementations` of the identity schemas, which picks the schema to read
 the identity's object with by `schemaOf`, and refuses a signature that the
 identity's root did not make. A signed identity carries as `blobs` its
-object and its schema with the identity's `blobs`.
+object, its schema and the schema's root with the identity's `blobs`.
 
 A signature is made by a signed identity, so `signedIdentities` asks the
 schema of the identity what the signature needs of it, and `signatures`

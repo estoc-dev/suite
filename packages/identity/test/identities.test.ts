@@ -22,13 +22,14 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const { keys, identities, signedIdentities, versions, publish, delegate } = await loadIdentity(defaultValidator);
+const { keys, identities, delegatedIdentities, signedIdentities, versions, publish, delegate } =
+  await loadIdentity(defaultValidator);
 const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
 const signer = (scheme: Scheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: Scheme, fill = 1) => signer(scheme, fill).key;
-const written = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(identitySchema))));
-const writtenSigned = (data: JsonObject) => json.encode(json.object(data, linkOf(json.encode(signedIdentitySchema))));
+const written = (data: JsonObject) => json.encode(json.object(data, identities.schema.link));
+const writtenSigned = (data: JsonObject) => json.encode(json.object(data, signedIdentities.schema.link));
 // A signed identity's identity is read before its root's signature is
 // verified, so one that names an identity that does not read is refused for
 // the identity, whatever its signature.
@@ -39,7 +40,7 @@ const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
 };
 
 // The closure a store gathers from a blob: the blob and every blob reached by
-// the links JSON finds in it, past which a blob that is not JSON links to nothing.
+// the links JSON finds in it, past which a blob that is not an object links to nothing.
 function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
   const reached = new Set([link]);
   for (const next of reached) {
@@ -77,7 +78,7 @@ describe("an identity", () => {
     expect(plain.link).not.toBe(solana.link);
   });
 
-  it("carries as its blobs its object, its root's, the schemas they are written to and the interfaces those name", async () => {
+  it("carries as its blobs its object, its root's, the schemas they are written to, their root and the interfaces those name", async () => {
     const identity = identities.encode(key(eip191), 0);
     const schema = await encodeSchema(identitySchema, defaultValidator);
     const keySchema = await encodeSchema(eip191.keySchema, defaultValidator);
@@ -86,6 +87,7 @@ describe("an identity", () => {
       identity.root.link,
       schema.link,
       keySchema.link,
+      schema.root.link,
       identityInterface.link,
       keyInterface.link,
     ]);
@@ -148,12 +150,13 @@ describe("a signed identity", () => {
     expect(read.signature).toEqual(signed.signature);
   });
 
-  it("carries as its blobs its object, its schema, and its identity's blobs", async () => {
+  it("carries as its blobs its object, its schema, the schema's root, and its identity's blobs", async () => {
     const signed = await publish(signer(ed25519));
     const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
     expect(signed.blobs.map((bytes) => linkOf(bytes))).toEqual([
       signed.link,
       schema.link,
+      schema.root.link,
       ...signed.identity.blobs.map((bytes) => linkOf(bytes)),
     ]);
   });
@@ -257,7 +260,7 @@ describe("a Delegated Identity", () => {
     expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
   });
 
-  it("carries as its blobs its object, its keys', the schemas they are written to and the interfaces those name", async () => {
+  it("carries as its blobs its object, its keys', the schemas they are written to, their root and the interfaces those name", async () => {
     const { identity } = await delegate(signer(eip191), [key(ed25519, 2), key(ed25519, 3)]);
     const schema = await encodeSchema(delegatedIdentitySchema, defaultValidator);
     const [first, second] = agentsOf(identity);
@@ -271,6 +274,7 @@ describe("a Delegated Identity", () => {
       schema.link,
       identity.root.schema.link,
       first.schema.link,
+      schema.root.link,
       identityInterface.link,
       keyInterface.link,
     ]);
@@ -280,7 +284,7 @@ describe("a Delegated Identity", () => {
     const root = keys.encode(key(ed25519));
     const other = identities.encode(key(ed25519, 2), 0);
     const data = { root: { $link: root.link }, agents: [{ $link: other.link }], at: 0 };
-    const bytes = json.encode(json.object(data, linkOf(json.encode(delegatedIdentitySchema))));
+    const bytes = json.encode(json.object(data, delegatedIdentities.schema.link));
     await expect(readFrom(bytes, root.bytes, other.bytes)).rejects.toThrow(
       `${other.schema.link} is not a schema read here`,
     );
@@ -293,7 +297,7 @@ describe("a Delegated Identity", () => {
   ])("is refused with %s", async (_, at) => {
     const root = keys.encode(key(ed25519));
     const data = { root: { $link: root.link }, agents: [], ...at };
-    const bytes = json.encode(json.object(data, linkOf(json.encode(delegatedIdentitySchema))));
+    const bytes = json.encode(json.object(data, delegatedIdentities.schema.link));
     await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/does not fit/);
   });
 

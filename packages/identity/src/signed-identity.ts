@@ -36,8 +36,8 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * An identity as its root publishes it: an object written to
  * `signedIdentitySchema`, read with the identity and verified.
  *
- * - The bytes are the root's signature over the identity's link, whichever
- *   identity schema it is written to.
+ * - `signature` holds the root's signature over the identity's link,
+ *   whichever identity schema it is written to.
  * - What the root publishes is this object as it is, so a signature names
  *   the identity it is made for by the link of this object.
  * - Two signers are the same someone when the roots of their identities are

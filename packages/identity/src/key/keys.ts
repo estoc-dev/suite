@@ -18,9 +18,10 @@ interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
 }
 
 /**
- * Reads keys written to the key schemas of the schemes this package supports,
- * and refuses a key written to any other schema. The schema a key is
- * written to is its scheme, so each key has one object and one link.
+ * Reads keys written to the objects of the schemes this package supports,
+ * and refuses a key written to any other schema. A key is written to the
+ * object of its scheme, which takes its public key alone, so each key has
+ * one object and one link.
  */
 export class Keys {
   readonly #implementations: Implementations<Json, KeyObject, KeyImplementation>;
@@ -47,12 +48,12 @@ export class Keys {
     return this.#implementations.implementationOf(object.schema.link).read(object);
   }
 
-  /** Reads the key that `link` names from `reader`, with the key schema it is written to. */
+  /** Reads the key that `link` names from `reader`, with the object of the scheme it is written to. */
   read(link: Link<KeyObject>, reader: Reader): Promise<KeyObject> {
     return this.#implementations.read(link, reader);
   }
 
-  /** Writes a key as its object, to the key schema of its scheme. */
+  /** Writes a key as its object, to the object of its scheme. */
   encode({ scheme, publicKey }: Key): KeyObject {
     const implementation = this.#byScheme.get(scheme);
     if (implementation === undefined) throw new Error(`the ${scheme.name} scheme is not one written here`);

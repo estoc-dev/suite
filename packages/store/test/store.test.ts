@@ -1,5 +1,14 @@
-import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, interfaceNamed, type JsonObject, json, type Link, linkOf } from "@estoc/object";
+import { ed25519, loadIdentity, noVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
+import {
+  encodeObject,
+  encodeSchema,
+  type JsonObject,
+  json,
+  jsonSchema,
+  jsonSchemaRoot,
+  type Link,
+  linkOf,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
@@ -118,17 +127,16 @@ describe("a store", () => {
     expect(await listed(store)).toEqual([]);
   });
 
-  it("takes an object of a schema that names an interface only along with the interface", async () => {
+  it("takes an object of a schema written to another schema only along with that one too", async () => {
     const store = newStore();
-    const note = interfaceNamed("Note");
-    const schema = await encodeSchema({ $schema: DRAFT, "x-implements": { $link: note.link } }, defaultValidator);
-    const written = encodeObject(schema, { text: "hello" });
-    await expect(store.write({ records: [written], blobs: schema.blobs })).rejects.toThrow(
-      `${schema.link} links to ${note.link}, which neither the batch nor the store holds`,
+    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
+    const { root: key } = identities.encode(signer.key, 0);
+    await expect(store.write({ records: [key], blobs: [key.schema.bytes, jsonSchemaRoot.bytes] })).rejects.toThrow(
+      `${key.schema.link} links to ${keyScheme.link}, which neither the batch nor the store holds`,
     );
-    await store.write({ records: [written], blobs: [...schema.blobs, note.bytes] });
-    expect([...(await store.closure(written.link)).keys()].sort()).toEqual(
-      [written.link, schema.link, schema.root.link, note.link].sort(),
+    await store.write({ records: [key], blobs: key.schema.blobs });
+    expect([...(await store.closure(key.link)).keys()].sort()).toEqual(
+      [key.link, key.schema.link, keyScheme.link, jsonSchema.link].sort(),
     );
   });
 
@@ -167,7 +175,7 @@ describe("a store", () => {
     await store.write({ records: [commitment], blobs: anything.blobs });
     expect(await listed(store)).toEqual([commitment.link]);
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual(
-      [commitment.link, anything.link, anything.root.link].sort(),
+      [commitment.link, anything.link, jsonSchema.link].sort(),
     );
   });
 
@@ -188,7 +196,7 @@ describe("a store", () => {
     const inner = object({ image: { $link: linkOf(image) } });
     const outer = object({ inner: { $link: inner.link } });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
-    expect(order).toEqual([anything.root.link, anything.link, linkOf(image), inner.link, outer.link]);
+    expect(order).toEqual([jsonSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
 
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {
@@ -212,7 +220,7 @@ describe("the closure of a blob", () => {
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
-      [outer.link, inner.link, linkOf(image), anything.link, anything.root.link].sort(),
+      [outer.link, inner.link, linkOf(image), anything.link, jsonSchema.link].sort(),
     );
     expect(closure.get(inner.link)).toEqual(inner.bytes);
   });
@@ -230,7 +238,7 @@ describe("the closure of a blob", () => {
     await store.write({ records: [outer], blobs: [...bytes, target.bytes, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
-      [outer.link, ...bytes.map((blob) => linkOf(blob)), anything.link, anything.root.link].sort(),
+      [outer.link, ...bytes.map((blob) => linkOf(blob)), anything.link, jsonSchema.link].sort(),
     );
     expect(await store.get(target.link)).toBeUndefined();
   });

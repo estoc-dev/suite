@@ -5,12 +5,15 @@ import {
   decodeSchema,
   encodeObject,
   encodeSchema,
-  interfaceNamed,
+  type Json,
   type JsonSchema,
   type JsonSchemaValidator,
   json,
   jsonSchema,
+  jsonSchemaRoot,
   linkSchema,
+  type Schema,
+  type SchemaValidator,
   schemaOf,
 } from "../src/index.ts";
 
@@ -18,7 +21,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const lenient: JsonSchemaValidator = { language: jsonSchema, compile: async () => () => [] };
 
-const { root } = jsonSchema;
+const root = jsonSchemaRoot;
 const schemaText = (...members: string[]) => `{${[`"$schema":{"$link":"${root.link}"}`, ...members].join(",")}}`;
 
 describe("the root of JSON Schema", () => {
@@ -42,7 +45,6 @@ describe("decodeSchema", () => {
       document: { $schema: DRAFT, type: "string", title: "Name" },
     });
     expect(read.link).toBe(schema.link);
-    expect(read.root).toBe(root);
   });
 
   it("reads a schema written out by hand", async () => {
@@ -73,22 +75,85 @@ describe("decodeSchema", () => {
     const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
     const object = encodeObject(anything, { document: { $schema: DRAFT } });
     // @ts-expect-error: refused at compile time too
-    await expect(decodeSchema(object.bytes, defaultValidator)).rejects.toThrow(/written to the root/);
+    await expect(decodeSchema(object.bytes, defaultValidator)).rejects.toThrow(
+      `is written to ${root.link}, not to ${anything.link}`,
+    );
+  });
+
+  it("refuses a document that holds a link, which would put another blob in the schema's closure", async () => {
+    const note = await encodeSchema({ $schema: DRAFT, title: "Note" }, defaultValidator);
+    const refusal = `a schema links only to what it is written to, not to ${note.link}`;
+    await expect(encodeSchema({ $schema: DRAFT, const: { $link: note.link } }, defaultValidator)).rejects.toThrow(
+      refusal,
+    );
+    const text = schemaText(`"document":{"$schema":"${DRAFT}","x-note":{"$link":"${note.link}"}}`);
+    await expect(decodeSchema(utf8(text), lenient)).rejects.toThrow(refusal);
   });
 });
 
 describe("the blobs of a schema", () => {
-  it("are the schema and the root of its language", async () => {
-    const schema = await encodeSchema({ $schema: DRAFT, type: "object", title: "Note" }, defaultValidator);
+  it("are its closure, the schema and the root of its language, though its data holds links", async () => {
+    const schema = await encodeSchema(
+      { $schema: DRAFT, type: "object", title: "Note", properties: { to: linkSchema } },
+      defaultValidator,
+    );
     expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
     expect([...json.links(json.decode(schema.bytes))]).toEqual([root.link]);
   });
+});
 
-  it("leave out an interface its document names, which is in its closure too", async () => {
-    const note = interfaceNamed("Note");
-    const schema = await encodeSchema({ $schema: DRAFT, "x-implements": { $link: note.link } }, defaultValidator);
-    expect(schema.blobs).toEqual([schema.bytes, root.bytes]);
-    expect([...json.links(json.decode(schema.bytes))].sort()).toEqual([root.link, note.link].sort());
+type Bounds = { readonly min: number; readonly max: number };
+
+const boundsSchema: Schema<Json, Bounds> = await encodeSchema(
+  {
+    $schema: DRAFT,
+    type: "object",
+    properties: { min: { type: "integer" }, max: { type: "integer" } },
+    required: ["min", "max"],
+    additionalProperties: false,
+  },
+  defaultValidator,
+);
+
+// Each bounds is the schema of the counts within it.
+const counts: SchemaValidator<Json, Bounds> = {
+  language: {
+    encoding: json,
+    link: boundsSchema.link,
+    blobs: boundsSchema.blobs,
+    data: (bounds) => bounds,
+    document: (data) => boundsSchema.validate(data),
+  },
+  compile:
+    async ({ min, max }) =>
+    ({ count }) =>
+      typeof count === "number" && min <= count && count <= max ? [] : [`#/count: not within ${min} and ${max}`],
+};
+
+describe("a language whose schemas are objects of a schema", () => {
+  const dozen = encodeSchema({ min: 0, max: 12 }, counts);
+
+  it("writes a schema as an object of that schema, which checks the objects written to it", async () => {
+    const schema = await dozen;
+    expect(json.decode(schema.bytes)).toEqual({ $schema: { $link: boundsSchema.link }, min: 0, max: 12 });
+    expect(encodeObject(schema, { count: 12 }).data).toEqual({ count: 12 });
+    expect(() => encodeObject(schema, { count: 13 })).toThrow(/does not fit/);
+  });
+
+  it("gives as a schema's blobs the schema, the schema it is written to and that one's root", async () => {
+    const schema = await dozen;
+    expect(schema.blobs).toEqual([schema.bytes, boundsSchema.bytes, root.bytes]);
+  });
+
+  it("refuses a schema whose data does not fit the schema it is written to", async () => {
+    const text = `{"$schema":{"$link":"${boundsSchema.link}"},"min":0}`;
+    await expect(decodeSchema(utf8(text), counts)).rejects.toThrow(/does not fit/);
+  });
+
+  it("refuses a schema written to the root of JSON Schema", async () => {
+    await expect(decodeSchema(utf8(schemaText(`"document":{"$schema":"${DRAFT}"}`)), counts)).rejects.toThrow(
+      `is written to ${boundsSchema.link}, not to ${root.link}`,
+    );
   });
 });
 

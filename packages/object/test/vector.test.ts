@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, decodeSchema, encodeObject, encodeSchema, jsonSchema } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, jsonSchemaRoot } from "../src/index.ts";
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
@@ -33,8 +33,8 @@ const object = encodeObject(schema, { audience: "https://app.estoc.dev", nonce: 
 
 describe("the root of JSON Schema, a login schema and an object written to it", () => {
   it("encode to fixed bytes and links", () => {
-    expect(new TextDecoder().decode(jsonSchema.root.bytes)).toBe(rootText);
-    expect(jsonSchema.root.link).toBe(rootLink);
+    expect(new TextDecoder().decode(jsonSchemaRoot.bytes)).toBe(rootText);
+    expect(jsonSchemaRoot.link).toBe(rootLink);
     expect(new TextDecoder().decode(schema.bytes)).toBe(schemaText);
     expect(schema.link).toBe(schemaLink);
     expect(new TextDecoder().decode(object.bytes)).toBe(objectText);

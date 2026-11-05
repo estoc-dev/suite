@@ -1,22 +1,21 @@
-import { digestOf, encodeSchema, type Json, type JsonObject, json, type Link, linkOf } from "@estoc/object";
+import { digestOf, encodeSchema, type Json, type JsonObject, json, jsonSchema, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { assert, describe, expect, it, test, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import {
   type DelegatedIdentityObject,
   delegatedIdentitySchema,
   ed25519,
   eip191,
   type IdentityObject,
-  identityInterface,
   identitySchema,
   isSameKey,
   type Key,
-  keyInterface,
   loadIdentity,
   type Scheme,
   type SignedIdentityObject,
   SoftwareSigner,
+  schemeSchema,
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
@@ -57,13 +56,6 @@ function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Arr
   return reached;
 }
 
-test.each([
-  ["Identity", identitySchema],
-  ["Delegated Identity", delegatedIdentitySchema],
-])("the %s schema names the Identity interface", (_, schema) => {
-  expect(schema["x-implements"]).toEqual({ $link: identityInterface.link });
-});
-
 describe("an identity", () => {
   it("names its root by the link of the root's object, and holds its at", () => {
     const identity = identities.encode(key(ed25519), 1_000);
@@ -78,18 +70,17 @@ describe("an identity", () => {
     expect(plain.link).not.toBe(solana.link);
   });
 
-  it("carries as its blobs its object, its root's, the schemas they are written to, their root and the interfaces those name", async () => {
+  it("carries as its blobs its object, its root's, and the blobs of the schemas they are written to, each once", async () => {
     const identity = identities.encode(key(eip191), 0);
     const schema = await encodeSchema(identitySchema, defaultValidator);
-    const keySchema = await encodeSchema(eip191.keySchema, defaultValidator);
+    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
     expect(identity.blobs.map((bytes) => linkOf(bytes))).toEqual([
       identity.link,
       identity.root.link,
       schema.link,
-      keySchema.link,
-      schema.root.link,
-      identityInterface.link,
-      keyInterface.link,
+      jsonSchema.link,
+      identity.root.schema.link,
+      keyScheme.link,
     ]);
   });
 
@@ -150,13 +141,13 @@ describe("a signed identity", () => {
     expect(read.signature).toEqual(signed.signature);
   });
 
-  it("carries as its blobs its object, its schema, the schema's root, and its identity's blobs", async () => {
+  it("carries as its blobs its object, its schema's blobs, and its identity's", async () => {
     const signed = await publish(signer(ed25519));
     const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
     expect(signed.blobs.map((bytes) => linkOf(bytes))).toEqual([
       signed.link,
       schema.link,
-      schema.root.link,
+      jsonSchema.link,
       ...signed.identity.blobs.map((bytes) => linkOf(bytes)),
     ]);
   });
@@ -260,9 +251,10 @@ describe("a Delegated Identity", () => {
     expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
   });
 
-  it("carries as its blobs its object, its keys', the schemas they are written to, their root and the interfaces those name", async () => {
+  it("carries as its blobs its object, its keys', and the blobs of the schemas they are written to, each once", async () => {
     const { identity } = await delegate(signer(eip191), [key(ed25519, 2), key(ed25519, 3)]);
     const schema = await encodeSchema(delegatedIdentitySchema, defaultValidator);
+    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
     const [first, second] = agentsOf(identity);
     assert.exists(first);
     assert.exists(second);
@@ -272,11 +264,10 @@ describe("a Delegated Identity", () => {
       first.link,
       second.link,
       schema.link,
+      jsonSchema.link,
       identity.root.schema.link,
+      keyScheme.link,
       first.schema.link,
-      schema.root.link,
-      identityInterface.link,
-      keyInterface.link,
     ]);
   });
 

@@ -69,14 +69,20 @@ const lines: Encoding<Text> = {
   },
 };
 
+const fieldCountRoot = selfDescribingObject(lines, { language: "Field count" });
+
 // A document says how many fields the data has.
 const fieldCount: SchemaValidator<Text, string> = {
   language: {
     encoding: lines,
-    root: selfDescribingObject(lines, { language: "Field count" }),
-    document(value) {
-      if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) throw new Error("not a count of fields");
-      return value;
+    link: fieldCountRoot.link,
+    blobs: [fieldCountRoot.bytes],
+    data: (count) => ({ document: count }),
+    document({ document, ...rest }) {
+      if (Object.keys(rest).length > 0 || typeof document !== "string" || !/^(0|[1-9][0-9]*)$/.test(document)) {
+        throw new Error("a schema holds a count of fields alone");
+      }
+      return document;
     },
   },
   compile: async (count) => (data) => {
@@ -100,7 +106,7 @@ describe("an encoding other than JSON", () => {
   });
 
   it("writes its schemas as objects of its root", () => {
-    const { root } = fieldCount.language;
+    const root = fieldCountRoot;
     expect(new TextDecoder().decode(root.bytes)).toBe("language=Field count\nschema=\n");
     expect(new TextDecoder().decode(pair.bytes)).toBe(`document=2\nschema=${root.link}\n`);
     expect(schemaOf(pair.bytes, lines)).toBe(root.link);

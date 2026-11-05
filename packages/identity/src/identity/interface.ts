@@ -1,17 +1,14 @@
 import {
   type EncodedObject,
   type Implementation,
-  type Interface,
-  interfaceNamed,
   type Json,
   type JsonLink,
   type Link,
+  linkOf,
+  type Schema,
 } from "@estoc/object";
-import { type KeyObject, keyInterface } from "../key/interface.ts";
+import type { KeyObject } from "../key/interface.ts";
 import type { Signer } from "../signer.ts";
-
-/** What the objects of each identity schema read as: an identity with its root. */
-export const identityInterface: Interface = interfaceNamed("Identity");
 
 export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: number };
 
@@ -19,7 +16,7 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  * Someone who signs, as others see them: an identity read from its object
  * with its root, whichever identity schema the object is written to.
  *
- * - It is what every identity schema names as the Identity interface, and
+ * - It is what a program reads the objects of every identity schema as, and
  *   all a reader that does not sign needs.
  * - Someone is their root: two identities are of the same someone when the
  *   links of their roots are the same. An object that names someone names
@@ -34,12 +31,9 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  *   and of those with the same `at`, that whose signed identity has the
  *   greater link. The current version says who signs for the root, the root
  *   itself included.
- * - `blobs` are the identity's closure: the bytes of its object and of the
- *   keys it names, of the schemas they are written to and the root of each
- *   schema's language, and of the interfaces those schemas name, each once.
- *   Reading the identity again does not need the interfaces, but a store
- *   takes in a blob only with its whole closure, so their bytes come along
- *   as well.
+ * - `blobs` are the identity's closure, each blob once: the bytes of its
+ *   object and of the keys it names, and the blobs of the schemas they are
+ *   written to.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
@@ -79,14 +73,15 @@ export function identityOf(
   return { ...object, link: object.link as Link<IdentityObject>, root, blobs: blobsOf(object, keys) };
 }
 
-// A key can be both root and agent, and keys of one scheme share a schema,
-// yet each blob is carried once.
+// A key can be both root and agent, keys of one scheme share a schema, and
+// schemas share the blobs of their languages, yet each blob is carried once.
 function blobsOf(object: EncodedObject<Json>, keys: readonly KeyObject[]): Uint8Array[] {
   const blobs = new Map<Link<unknown>, Uint8Array>();
-  const schemas = [object.schema, ...keys.map(({ schema }) => schema)];
-  const roots = schemas.map(({ root }) => root);
-  for (const { link, bytes } of [object, ...keys, ...schemas, ...roots, identityInterface, keyInterface]) {
+  const schemas = new Map<Link<unknown>, Schema<Json>>();
+  for (const { link, bytes, schema } of [object, ...keys]) {
     blobs.set(link, bytes);
+    schemas.set(schema.link, schema);
   }
+  for (const schema of schemas.values()) for (const bytes of schema.blobs) blobs.set(linkOf(bytes), bytes);
   return [...blobs.values()];
 }

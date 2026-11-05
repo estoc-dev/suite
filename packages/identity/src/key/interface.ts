@@ -1,16 +1,6 @@
-import {
-  DRAFT_2020_12,
-  type EncodedObject,
-  type Interface,
-  interfaceNamed,
-  type Json,
-  type JsonSchema,
-  type Link,
-} from "@estoc/object";
+import type { EncodedObject, Json, Link } from "@estoc/object";
 import { equalBytes } from "@noble/curves/utils.js";
 import { signingText } from "../signing-text.ts";
-
-export const keyInterface: Interface = interfaceNamed("Key");
 
 export interface Curve {
   readonly publicKeyLength: number;
@@ -22,34 +12,15 @@ export interface Curve {
 
 /**
  * How a key signs: which curve, and how the signing text is wrapped before
- * the curve signs it, with the schema its keys are written to. A key kept in
- * a chain wallet signs only in that chain's off-chain message framing, so
- * the framing belongs to the key and a verifier never has to accept a
- * framing its holder did not choose.
+ * the curve signs it. A key kept in a chain wallet signs only in that
+ * chain's off-chain message framing, so the framing belongs to the key and
+ * a verifier does not have to accept a framing its holder did not choose.
  */
 export interface Scheme {
+  /** The name in the scheme's object, which sets it apart from every other scheme's. */
   readonly name: string;
   readonly curve: Curve;
   message(text: string, publicKey: Uint8Array): Uint8Array;
-  /** Written by `keySchema`, so that it names the Key interface. */
-  readonly keySchema: JsonSchema;
-}
-
-// The schema is a blob, so its title is part of its link and of the link of
-// every key written to it. Where two schemes take keys of one shape, as
-// ed25519 and solana-offchain do, the title naming the scheme is the only
-// thing that sets their schemas, and so one public key's objects in them,
-// apart.
-export function keySchema(title: string, curve: Curve): JsonSchema {
-  return {
-    $schema: DRAFT_2020_12,
-    title,
-    "x-implements": { $link: keyInterface.link },
-    type: "object",
-    properties: { publicKey: { type: "string", pattern: `^[0-9a-f]{${2 * curve.publicKeyLength}}$` } },
-    required: ["publicKey"],
-    additionalProperties: false,
-  };
 }
 
 /**
@@ -67,7 +38,7 @@ export interface Key {
 export type KeyData = { readonly publicKey: string };
 
 /**
- * A key read from its object, written to the key schema of its scheme. An
+ * A key read from its object, written to the object of its scheme. An
  * identity names its root by the link of this object.
  */
 export interface KeyObject extends EncodedObject<Json, KeyData>, Key {

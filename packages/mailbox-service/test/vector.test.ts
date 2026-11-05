@@ -44,8 +44,8 @@ const acknowledgementSchemaText = schemaText(
 const acknowledgementSchemaLink = "sha256:968f141b75fa769ad324e0e3a2dd072797ea7f316af02e92d8d76ff3262bd33d";
 const offerText =
   '{"$schema":{"$link":"sha256:42bb0114710faac6d0d962aa3dafe52f6a097930003a5f4dd6e2504f9e0b0205"},' +
-  '"identity":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
-const offerLink = "sha256:716960b57d1ebb6a28e70c975a646a7dbec02849870ec279e6bf2c91135c5273";
+  '"identity":{"$link":"sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9"}}';
+const offerLink = "sha256:4dba771ea965e73671fa941632917e5edabf611dfca9d7e61e7c43934ee7496d";
 const mailboxIdText = '{"pattern":"^[0-9a-f]{32}$","type":"string"}';
 const mailboxOfferSchemaText = schemaText(
   '{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
@@ -80,9 +80,9 @@ const pickupAnswerSchemaText = schemaText(
 const pickupAnswerSchemaLink = "sha256:22f1abbff6d77e673e8776b65ae32470d2897a82ff57cef734f85d1e02f3e59e";
 const mailboxOfferText =
   '{"$schema":{"$link":"sha256:2908406433dbb67ef15206ee245d6a803c279c857171b6d59e404eeff76143dc"},' +
-  '"identity":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"},' +
+  '"identity":{"$link":"sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9"},' +
   '"quota":4096,"retention":60000,"size":1024}';
-const mailboxOfferLink = "sha256:8d9c2ca4071b1c684af6f0ab39e5872e7c41ec2c78933e678a280cb170a7e2d1";
+const mailboxOfferLink = "sha256:60d44e4b21fa19508e3c66d081c7191abb59316e1b7733c87f76a42dac91b556";
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 

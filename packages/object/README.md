@@ -16,9 +16,8 @@ Schema     {"$schema": <the link of the root>, "document": <a JSON Schema docume
 Root       {"$schema": null, "language": "JSON Schema"}
 ```
 
-A schema is an object too, written to the root of its language, and the
-root is an object that describes itself. A blob that is not an object is
-bytes.
+A schema is an object too, written to its language: here the root, an
+object that describes itself. A blob that is not an object is bytes.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -44,8 +43,9 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     store gathers the closure it carries along with an object. Bytes link
     to nothing, whatever they hold.
 - A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
-  one encoding, which it names, with documents `S`. Its root stands for
-  it, and a schema is an object written to the root.
+  one encoding, which it names, with documents `S`. It names what its
+  schemas are written to, a root that stands for it or a schema whose
+  objects are schemas, and reads a schema's document out of its data.
 - A `SchemaValidator<D, S>` compiles the documents of one language, which
   it names, into checks of the fields of an object's data.
 
@@ -68,11 +68,16 @@ translating old ones.
 
 ## Schemas and roots
 
-A schema is an object like any other, written to the root of its
-language.
+A schema is an object like any other, written to its language.
 
-- Its data is `document` alone, the schema whole as its language writes
-  it, so that the language's own tools read it as it is.
+- The schemas of a standard language are written to its root, which stands
+  for it. A JSON Schema schema's data is `document` alone, the schema whole
+  as the language writes it, so that the language's own tools read it as it
+  is.
+- A schema can be a language too, whose objects are schemas in turn. The
+  key schemes of `@estoc/identity` are one: the object of each scheme,
+  written to the scheme schema, is the schema of the keys in it. Each is
+  the type of the next, its `$schema`, and none inherits from another.
 - A root describes itself: its `$schema` is `null`, since a blob cannot
   hold its own hash, and `schemaOf` gives it its own link. Only what has
   one instance describes itself, since its link fixes every byte and no
@@ -83,21 +88,24 @@ language.
   Its data says what kind of thing it stands for, as `language` does: its
   link is all it means, and two kinds of thing written by name alone would
   be one blob.
-- No schema reads a root. Reading a schema checks that it names the root
-  of the validator's language, and reads its document there. An encoding
-  stops the same way: no blob says that some bytes are JCS, and `schemaOf`
-  is given the encoding by its caller.
-- A root is in the closure of each schema written to it, and so of each
-  object of those schemas, so it goes wherever a schema goes, as into a
-  store or a bundle. A schema holds it as `root`, and gives its own bytes
-  and the root's as `blobs`. A blob its document links to, as
-  `x-implements` links to an interface, is in its closure too but not in
-  `blobs`, and goes along separately.
+- Reading stops at a root, which no schema reads. Reading a schema checks
+  that it names what the validator's language names, and the language
+  reads the document out of its data: a language written to a schema with
+  that schema, one written to a root by itself. An encoding stops the same
+  way: no blob says that some bytes are JCS, and `schemaOf` is given the
+  encoding by its caller.
+- A schema links to nothing but what it is written to, and one that links
+  to anything else is refused, in writing and in reading. A JSON
+  Schema document writes out the links its objects hold with `linkSchema`,
+  which holds none. So the closure of a schema is itself and the blobs of
+  its language, up to the root, and the schema gives them as `blobs`. They
+  go wherever the schema goes, and so wherever an object of it goes, as
+  into a store or a bundle.
 
-Changing language is changing root: schemas in CDDL over CBOR would name
-`{"$schema": null, "language": "CDDL"}`. A root stands for a language
-rather than one of its dialects; a JSON Schema document names its dialect
-itself.
+Changing language is changing what schemas are written to: schemas in CDDL
+over CBOR would name `{"$schema": null, "language": "CDDL"}`. A root stands
+for a language rather than one of its dialects; a JSON Schema document
+names its dialect itself.
 
 A blob that is not an object is bytes: an image, a JSON Schema document on
 its own, or a JSON file such as a `biome.json`, whose `$schema` is a
@@ -150,11 +158,11 @@ over it, and `defaultValidator` a validator of that language.
   document is a whole JSON Schema, naming its dialect in a `$schema` of its
   own, so that any JSON Schema tool can validate with it as it is. The two
   `$schema`s are at different depths and do not meet. The root of JSON
-  Schema, `jsonSchema.root`, is `{"$schema":null,"language":"JSON Schema"}`.
+  Schema, `jsonSchemaRoot`, is `{"$schema":null,"language":"JSON Schema"}`.
 - A blob does not say what kind of blob it is, or which version of the
   format. A reader knows which kind it expects, and the kinds cannot pass
-  for one another: an object names its schema, a schema names its root,
-  and a root is known by its link. A signature is an object, and like any
+  for one another: an object names its schema, a schema names its
+  language, and a root is known by its link. A signature is an object, and like any
   object it cannot pass for one of another schema.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
@@ -302,41 +310,24 @@ A program's own newer schema, its older one and another application's are
 then alike: each is one more schema for the program to read, and keeping
 up with one's own past is the same work as reading another application.
 
-## Interfaces
+## Implementations
 
 Where a program reads objects of several schemas as one kind of thing, as
 `@estoc/identity` reads a key in any of its schemes as a key, that kind is
-an interface, and each of those schemas can name it. In JSON Schema the
-document names it by `"x-implements": {"$link": <link>}`, the link of a blob
-that stands for the interface, such as its name as text, which
-`interfaceNamed` gives as an `Interface`. One schema names one interface.
+an interface. What a schema's objects read as is the program's to say, not
+the schema's: one program reads an Ed25519 key as a key, another could
+read the same key as a Solana address. So a schema does not name an
+interface. A program lists the concrete schemas it reads as one, each with
+how its data becomes the interface's shape, and picks among them by
+`schemaOf`.
 
-- JSON Schema has no keyword for this. `allOf` with a `$ref` says that the
-  data also fits another schema, which is about shape, not kind, and a
-  `$ref` reaches nothing outside the document anyway. Keywords that start
-  with `x-` are left to annotations of one's own, and later drafts do not
-  take the names. In draft 2020-12 a keyword the dialect does not define
-  has no effect on validation, and an implementation that collects
-  annotations can report its value; `JsonSchemaValidator` reports only
-  what does not fit, so here the mark is read from the document itself.
-- The value is a link, not a string, so a store or a bundle that follows a
-  schema's links carries the interface along with it, and whoever holds
-  the schema holds the interface too. An object's closure includes it,
-  and a batch written to a store has to carry it.
-
-The mark does not let a program take a schema it does not know. A program
-still pins the concrete schemas it reads, each with how its data becomes
-the interface's shape, and picks among them by `schemaOf`. What the mark
-adds is that the schemas themselves say what the program's table says,
-which a test can hold the two to.
-
-That table is `Implementations`. Each `Implementation` is a compiled schema
+That list is `Implementations`. Each `Implementation` is a compiled schema
 with a `read` that turns an object written to it into the interface's
 shape, following what the object links to through the reader. The table
 reads an object by its link with the implementation of the schema it
-names, and refuses one written to any other schema, whatever interface
-that schema names. Here `plain` and `quote` are two schemas of one
-interface, and an object of `quote` links to the text it quotes:
+names, and refuses one written to any other schema. Here `plain` and
+`quote` are two schemas of one interface, and an object of `quote` links to
+the text it quotes:
 
 ```ts
 type Text = { readonly link: Link<unknown>; readonly text: string };

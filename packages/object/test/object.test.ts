@@ -8,6 +8,7 @@ import {
   encodeSchema,
   type JsonObject,
   json,
+  jsonSchema,
   readObject,
   schemaOf,
   selfDescribingObject,
@@ -126,7 +127,7 @@ describe("the schema an object names", () => {
 });
 
 test("a schema is an object of its root, and not of any schema", () => {
-  expect(schemaOf(login.bytes, json)).toBe(login.root.link);
+  expect(schemaOf(login.bytes, json)).toBe(jsonSchema.link);
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(login.bytes, anything)).toThrow();
 });

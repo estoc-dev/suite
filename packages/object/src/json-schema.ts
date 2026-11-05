@@ -1,6 +1,6 @@
 import { isJsonObject, type Json, type JsonObject, json } from "./json.ts";
 import { LINK_PATTERN } from "./link.ts";
-import { selfDescribingObject } from "./object.ts";
+import { type SelfDescribingObject, selfDescribingObject } from "./object.ts";
 import type { SchemaLanguage, SchemaValidator } from "./schema.ts";
 
 export const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
@@ -14,25 +14,34 @@ export interface JsonSchema extends JsonObject {
 }
 
 /**
- * JSON Schema over JSON.
+ * The root of JSON Schema, `{"$schema": null, "language": "JSON Schema"}`,
+ * which stands for the language rather than one of its dialects.
+ */
+export const jsonSchemaRoot: SelfDescribingObject<Json> = selfDescribingObject(json, { language: "JSON Schema" });
+
+/**
+ * JSON Schema over JSON, whose schemas are written to `jsonSchemaRoot`.
  *
- * - Its root is `{"$schema": null, "language": "JSON Schema"}`, which stands for the language
- *   rather than one of its dialects.
- * - A document is a whole JSON Schema, a JSON object naming its dialect in `$schema`, with nothing
- *   added, so any JSON Schema tool can validate with it as it is. The schema's `$schema` and the
- *   document's are at different depths, and do not meet.
+ * - The data of a schema is its `document` alone, a whole JSON Schema: a JSON object naming its
+ *   dialect in `$schema`, with nothing added, so any JSON Schema tool can validate with it as it is.
+ *   The schema's `$schema` and the document's are at different depths, and do not meet.
  * - A dialect is a version of the language, and a `$ref` is a reference: a `$ref` to anything
  *   outside the document fails compilation, and one in a place the dialect ignores, such as under
  *   `then` without `if`, has no effect.
  */
 export const jsonSchema: SchemaLanguage<Json, JsonSchema> = {
   encoding: json,
-  root: selfDescribingObject(json, { language: "JSON Schema" }),
-  document(value) {
-    if (!isJsonObject(value) || typeof value.$schema !== "string") {
+  link: jsonSchemaRoot.link,
+  blobs: [jsonSchemaRoot.bytes],
+  data: (document) => ({ document }),
+  document({ document, ...rest }) {
+    if (document === undefined) throw new Error("a schema holds a document");
+    const extra = Object.keys(rest);
+    if (extra.length > 0) throw new Error(`a schema holds a document alone, not ${extra.join(", ")}`);
+    if (!isJsonObject(document) || typeof document.$schema !== "string") {
       throw new Error("a JSON Schema document is a JSON object naming its dialect in $schema");
     }
-    return value as JsonSchema;
+    return document as JsonSchema;
   },
 };
 

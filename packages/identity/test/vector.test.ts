@@ -1,60 +1,58 @@
-import { decodeObject, decodeSchema, encodeSchema, type Link } from "@estoc/object";
+import { decodeObject, decodeSchema, encodeSchema, type Json, type Link, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it, test } from "vitest";
 import {
   delegatedIdentitySchema,
   ed25519,
   eip191,
-  identityInterface,
   identitySchema,
-  keyInterface,
   loadIdentity,
   noVersions,
+  type SchemeData,
   SoftwareSigner,
+  schemeSchema,
+  schemeValidator,
   signatureSchema,
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
 
 const { signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator);
+const keyScheme: Schema<Json, SchemeData> = await encodeSchema(schemeSchema, defaultValidator);
+const schemeObjects = schemeValidator(keyScheme);
 
 // The bytes and links were checked against Python's json module with sorted
 // keys and no whitespace, which writes these values as JCS does, and against
 // its hashlib; the signatures, which Ed25519 makes deterministic, against
 // Python's cryptography package. A change to the format changes them.
-const keyInterfaceLink = "sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160";
-const identityInterfaceLink = "sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f";
-const ed25519KeySchemaText =
+const schemeSchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["publicKey"],' +
-  '"title":"Ed25519 key","type":"object",' +
-  '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}';
-const keySchemas = [
+  '"properties":{"name":{"type":"string"},"publicKeyLength":{"minimum":1,"type":"integer"}},' +
+  '"required":["name","publicKeyLength"],"title":"Key Scheme","type":"object"}}';
+const schemeSchemaLink = "sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4";
+const ed25519SchemeText =
+  '{"$schema":{"$link":"sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4"},' +
+  '"name":"ed25519","publicKeyLength":32}';
+const schemes = [
   {
     scheme: ed25519,
-    text: ed25519KeySchemaText,
-    link: "sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d",
+    text: ed25519SchemeText,
+    link: "sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528",
   },
   {
     scheme: eip191,
     text:
-      '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
-      '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{66}$","type":"string"}},"required":["publicKey"],' +
-      '"title":"EIP-191 key","type":"object",' +
-      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}',
-    link: "sha256:190f56b1528699ccc2194d0a3a3cbc8f9718010c59f89b727d3b8d3f9a188f70",
+      '{"$schema":{"$link":"sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4"},' +
+      '"name":"eip191","publicKeyLength":33}',
+    link: "sha256:06ab36aaf177ae229c46545d5240b3ff1ad94268eed6d1547eacc57f7b89428f",
   },
   {
     scheme: solanaOffchain,
     text:
-      '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
-      '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-      '"properties":{"publicKey":{"pattern":"^[0-9a-f]{64}$","type":"string"}},"required":["publicKey"],' +
-      '"title":"Solana off-chain key","type":"object",' +
-      '"x-implements":{"$link":"sha256:99a52df3ff3d499488e2fa28150c4106a2cb5e928891a830a9aa3922b2d32160"}}}',
-    link: "sha256:326d9922d773eddf9e565c065b729f51e7a1f64e876f8dd5633eea5cb2080a14",
+      '{"$schema":{"$link":"sha256:14916fbf1e5472070cfde6c14cfdde45186db7ec6cc19d91f12bcad38e1357f4"},' +
+      '"name":"solana-offchain","publicKeyLength":32}',
+    link: "sha256:d6d8af532285e95b93796c26b0273bfceee7223932864543287f734e8f078d1d",
   },
 ];
 const identitySchemaText =
@@ -63,43 +61,41 @@ const identitySchemaText =
   '"properties":{"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root","at"],' +
-  '"title":"Identity","type":"object",' +
-  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}}';
-const identitySchemaLink = "sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422";
+  '"title":"Identity","type":"object"}}';
+const identitySchemaLink = "sha256:f9fcc71f3625929ed2d27067970e7d6cb38db30dd3d4d1c41d81be5b046f5ab7";
 const delegatedIdentitySchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
   '"properties":{"agents":{"items":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$",' +
-  '"type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},"maxItems":256,' +
-  '"type":"array","uniqueItems":true},"at":{"minimum":0,"type":"integer"},' +
+  '"type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"maxItems":256,"type":"array","uniqueItems":true},"at":{"minimum":0,"type":"integer"},' +
   '"root":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root","agents",' +
-  '"at"],"title":"Delegated Identity","type":"object",' +
-  '"x-implements":{"$link":"sha256:999f23fcd7bec7075e54bb5dea0d9c548bfe7261f95b911ed8e23d2f4188724f"}}}';
-const delegatedIdentitySchemaLink = "sha256:66df1e064901ce479186e768ea5bc3013b1bf67c6140735f96b0eeed7fbd2a2d";
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["root",' +
+  '"agents","at"],"title":"Delegated Identity","type":"object"}}';
+const delegatedIdentitySchemaLink = "sha256:33d1ce92ec18cd317921c69fe5b56881e28d95c69ff276f9f42c6e374ace8c9d";
 const keyText =
-  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
+  '{"$schema":{"$link":"sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528"},' +
   '"publicKey":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}';
-const keyLink = "sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01";
+const keyLink = "sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9";
 const identityText =
-  '{"$schema":{"$link":"sha256:22ad1b36ad3b46ada728ea6d6df738a1f306bf6917cef82d7c7a951709e1b422"},' +
+  '{"$schema":{"$link":"sha256:f9fcc71f3625929ed2d27067970e7d6cb38db30dd3d4d1c41d81be5b046f5ab7"},' +
   '"at":1767225600000,' +
-  '"root":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
-const identityLink = "sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96";
+  '"root":{"$link":"sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9"}}';
+const identityLink = "sha256:4f82dee355134c70145e97849da3f99017abac0240a21eb522e88a8329a8495b";
 const signedIdentitySchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
+  '"properties":{"identity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$",' +
+  '"type":"string"},"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"}},"required":["identity","signature"],' +
   '"title":"Signed Identity","type":"object"}}';
 const signedIdentitySchemaLink = "sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2";
 const signedIdentityText =
   '{"$schema":{"$link":"sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2"},' +
-  '"identity":{"$link":"sha256:fbabefdf1d2020bd7c8da5ad3fddb1a9eb408ed1fe1b374a45f10ddb46257c96"},' +
-  '"signature":"ca32524b421edba33e57e0f39be585a9d243fde02ef4662a616b880e48fd3ffb1499997e490aadf276dfdf0d284' +
-  '97ab9061db5fad80635dfb335650c0a29f30d"}';
-const signedIdentityLink = "sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5";
+  '"identity":{"$link":"sha256:4f82dee355134c70145e97849da3f99017abac0240a21eb522e88a8329a8495b"},' +
+  '"signature":"93b5b886255a444aa89df3676e028e36c25f0f6d065e69ca83f66746c482af8bd3fcd7a9952afd7257b720a' +
+  'ff4733761c142ad0d12307c808b71efce3e022a01"}';
+const signedIdentityLink = "sha256:594e6783ce52b6d891186b15aed00844b84468b458ccba166dd15d77f537eadf";
 const signatureSchemaText =
   '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
   '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
@@ -107,45 +103,48 @@ const signatureSchemaText =
   '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"},' +
   '"signature":{"pattern":"^(?:[0-9a-f]{2})*$","type":"string"},' +
   '"signedIdentity":{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},"required":["signedIdentity",' +
-  '"object","signature"],"title":"Signature","type":"object"}}';
+  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}},' +
+  '"required":["signedIdentity","object","signature"],"title":"Signature","type":"object"}}';
 const signatureSchemaLink = "sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4";
 const signatureText =
   '{"$schema":{"$link":"sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4"},' +
   '"object":{"$link":"sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4"},' +
-  '"signature":"16ee674e6a0d4bfcea87e6a04bacba19b43d67e6e89501dd36e322ab5c2db74decf00cb9ddb82f4152e10033815' +
-  '111447f479ee08896ae6900e5a2d038882e0e",' +
-  '"signedIdentity":{"$link":"sha256:db798bd9d9c764128778606fc3e0529f4104e3a2f37894512c4d7d73290ec4f5"}}';
-const signatureLink = "sha256:d5dcd6b8364fdabfb2ae49a92f0bfc2c84ca6da05748d606135fe440ae92278e";
+  '"signature":"92af1ae34cf530cfc3f433ba227b42d69835955df17f3cb1174177b7078bd6beb7dcdc47c71dab2b342c0a2' +
+  'c1b7924da6b49ac8cfecbcdec3b31c2a4a14d1c09",' +
+  '"signedIdentity":{"$link":"sha256:594e6783ce52b6d891186b15aed00844b84468b458ccba166dd15d77f537eadf"}' +
+  "}";
+const signatureLink = "sha256:24f33da59eee939ccaaafb3c5ed731ebad91acc0bb6b9b9600c8b82db219cb2b";
 const agentKeyTexts = [
-  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
+  '{"$schema":{"$link":"sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528"},' +
     '"publicKey":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"}',
-  '{"$schema":{"$link":"sha256:806f6c529a168ad41bc7deee10a1c67027f2332648fa29a7a5f33bff9d83f19d"},' +
+  '{"$schema":{"$link":"sha256:57236c4b4d4885a804a04068e9a8c5b0a5a25cf27b8b248c7671d1495b3f0528"},' +
     '"publicKey":"ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1"}',
 ] as const;
 const agentKeyLinks = [
-  "sha256:f4a86d57ad03dec7cfec4e0816efdc52a96569960a29f5b902b32345ce5f4c63",
-  "sha256:b0ef6c084a50ccf9d89f93a2e5797e0382a29ca6444580bb13c78dc1dcac190b",
+  "sha256:eec1b978328fc012fd87c8ac60da9122d3ef5c33fe2c33c6dd2063e11d4be439",
+  "sha256:857b0c10eeab7719dcf3daabf93e917cd0148261727d6c8b94c6e7bc1468a79b",
 ] as const;
 const delegatedIdentityText =
-  '{"$schema":{"$link":"sha256:66df1e064901ce479186e768ea5bc3013b1bf67c6140735f96b0eeed7fbd2a2d"},' +
-  '"agents":[{"$link":"sha256:f4a86d57ad03dec7cfec4e0816efdc52a96569960a29f5b902b32345ce5f4c63"},' +
-  '{"$link":"sha256:b0ef6c084a50ccf9d89f93a2e5797e0382a29ca6444580bb13c78dc1dcac190b"}],"at":1767225600000,' +
-  '"root":{"$link":"sha256:5c8f964122280caf757367dee41bbfa6fd25be5fd70280ce2949ecbad76efa01"}}';
-const delegatedIdentityLink = "sha256:63ce8817c4f6937bde2a1893004c18efabd0118c634ac68ab4b35949490c785c";
+  '{"$schema":{"$link":"sha256:33d1ce92ec18cd317921c69fe5b56881e28d95c69ff276f9f42c6e374ace8c9d"},' +
+  '"agents":[{"$link":"sha256:eec1b978328fc012fd87c8ac60da9122d3ef5c33fe2c33c6dd2063e11d4be439"},' +
+  '{"$link":"sha256:857b0c10eeab7719dcf3daabf93e917cd0148261727d6c8b94c6e7bc1468a79b"}],' +
+  '"at":1767225600000,' +
+  '"root":{"$link":"sha256:cfb93cd8b7d44611bdc136c3d6bb98c5204fa8e90d78d7fcc2233892b34405a9"}}';
+const delegatedIdentityLink = "sha256:fecb1ce17586307afc3a1c54dbd36d1c42f6fc055c5755e89f78db056714c5e6";
 const delegatedSignedIdentityText =
   '{"$schema":{"$link":"sha256:6ff4089d10d54822ae943cd0d5d6c2122382d269c79e59306c2ea7a3c1db8ec2"},' +
-  '"identity":{"$link":"sha256:63ce8817c4f6937bde2a1893004c18efabd0118c634ac68ab4b35949490c785c"},' +
-  '"signature":"8c41a5e0bb102cfdbc848bc8bfbd291d9e579d5bdd8b770741263f35aaac8119351ee1744cecf9f937891d2753a' +
-  'fe76d0acaa450e6cfa916b14f6dc59f3c4c01"}';
-const delegatedSignedIdentityLink = "sha256:12b3b20d2d12c658a65fbe642e8393e1fe7190eb20fc67ccb9e161e88e5e9150";
+  '"identity":{"$link":"sha256:fecb1ce17586307afc3a1c54dbd36d1c42f6fc055c5755e89f78db056714c5e6"},' +
+  '"signature":"c712ea1de581c58d8436aedb9e8073893c6bc000d10cc4bd6d141cd01acb0eb97a6d6591dca5db3664d65ba' +
+  '9d3547c70227c140bbce8ae21c4c3ce879b032d02"}';
+const delegatedSignedIdentityLink = "sha256:4f52127c156c09f044e7cae5cd28eeea5292fbc8ecad178af1c31d53e69db02d";
 const delegatedSignatureText =
   '{"$schema":{"$link":"sha256:7090ce0b5950e2d59e4af998b51090059cff783b8f05b4c12817acbe36c573c4"},' +
   '"object":{"$link":"sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4"},' +
-  '"signature":"014d40b2d7884df44cadd004441524908ec240f1274fb39071698a338cc3ccd7245f213246e4b97d433f054e744' +
-  '5c3dbb64d6869fe4c3523b8bfd3e20d1aa42807",' +
-  '"signedIdentity":{"$link":"sha256:12b3b20d2d12c658a65fbe642e8393e1fe7190eb20fc67ccb9e161e88e5e9150"}}';
-const delegatedSignatureLink = "sha256:88710701d32142d1435916d84df12c528868191d7c5ec75aa10d0c7357588414";
+  '"signature":"01e8b8da322ed66d0b957dea08818df5a67e617c062783b66e61778121834275b1369af2b1afba7ac08575c' +
+  'cc412e98619cc29a316812d5441a7873e676b61330e",' +
+  '"signedIdentity":{"$link":"sha256:4f52127c156c09f044e7cae5cd28eeea5292fbc8ecad178af1c31d53e69db02d"}' +
+  "}";
+const delegatedSignatureLink = "sha256:3f7bb1c141288e266f9ae2eec6d15e28f5ba53bf41e5ffe5a3e4db31452741f3";
 
 // The login object of the vector in @estoc/object.
 const objectLink: Link<never> = "sha256:7f0842ff8211ee8330f12285571af67d615bb76dbedaec6eb9b5ae9686fa2df4";
@@ -153,20 +152,19 @@ const objectLink: Link<never> = "sha256:7f0842ff8211ee8330f12285571af67d615bb76d
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
-test.each([
-  ["Key", keyInterface, keyInterfaceLink],
-  ["Identity", identityInterface, identityInterfaceLink],
-] as const)("the %s interface is its name in UTF-8, with a fixed link", (name, { bytes, link }, expected) => {
-  expect(text(bytes)).toBe(name);
-  expect(link).toBe(expected);
+test("the scheme schema encodes to fixed bytes and a fixed link", () => {
+  expect(text(keyScheme.bytes)).toBe(schemeSchemaText);
+  expect(keyScheme.link).toBe(schemeSchemaLink);
 });
 
-test.each(keySchemas)(
-  "the key schema of $scheme.name encodes to fixed bytes and a fixed link",
+test.each(schemes)(
+  "the object of $scheme.name encodes to fixed bytes and a fixed link",
   async ({ scheme, text: expected, link }) => {
-    const schema = await encodeSchema(scheme.keySchema, defaultValidator);
+    const data = { name: scheme.name, publicKeyLength: scheme.curve.publicKeyLength };
+    const schema = await encodeSchema(data, schemeObjects);
     expect(text(schema.bytes)).toBe(expected);
     expect(schema.link).toBe(link);
+    expect((await decodeSchema(utf8(expected), schemeObjects)).link).toBe(link);
   },
 );
 
@@ -216,7 +214,7 @@ describe("an Identity with an Ed25519 root at the start of 2026, signed, and its
     const read = await signedIdentities.read(signedIdentityLink, blobs);
     expect(read.identity.link).toBe(identityLink);
     expect(read.identity.root.scheme).toBe(ed25519);
-    const keySchema = await decodeSchema(utf8(ed25519KeySchemaText), defaultValidator);
+    const keySchema = await decodeSchema(utf8(ed25519SchemeText), schemeObjects);
     expect(decodeObject(utf8(keyText), keySchema).link).toBe(keyLink);
     const schema = await decodeSchema(utf8(identitySchemaText), defaultValidator);
     expect(decodeObject(utf8(identityText), schema).link).toBe(identityLink);

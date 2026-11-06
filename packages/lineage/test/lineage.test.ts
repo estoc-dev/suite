@@ -32,36 +32,39 @@ describe("a lineage started with an item", () => {
   });
 
   it("has the first node of every lineage started with that item", () => {
-    const appended = lineages.startingWith(first).appending(second);
-    expect(lineages.startingWith(first).first.link).toBe(appended.first.link);
-    expect(lineages.startingWith(second).first.link).not.toBe(appended.first.link);
+    const lineage = lineages.startingWith(first).appending(second);
+    expect(lineages.startingWith(first).first.link).toBe(lineage.first.link);
+    expect(lineages.startingWith(second).first.link).not.toBe(lineage.first.link);
   });
 });
 
 describe("appending an item", () => {
   it("keeps the nodes before and names the head as previous", () => {
-    const started = lineages.startingWith(first);
-    const appended = started.appending(second);
-    expect(linksOf(appended.nodes)).toEqual([started.head.link, appended.head.link]);
-    expect(appended.first).toBe(started.first);
-    expect(appended.head.data).toEqual({ previous: { $link: started.head.link }, item: { $link: second.link } });
-    expect(appended.items).toEqual([first.link, second.link]);
+    const initialLineage = lineages.startingWith(first);
+    const extendedLineage = initialLineage.appending(second);
+    expect(linksOf(extendedLineage.nodes)).toEqual([initialLineage.head.link, extendedLineage.head.link]);
+    expect(extendedLineage.first).toBe(initialLineage.first);
+    expect(extendedLineage.head.data).toEqual({
+      previous: { $link: initialLineage.head.link },
+      item: { $link: second.link },
+    });
+    expect(extendedLineage.items).toEqual([first.link, second.link]);
   });
 
   it("leaves the lineage it appends to as it is", () => {
-    const started = lineages.startingWith(first);
-    started.appending(second);
-    expect(started.nodes).toEqual([started.head]);
-    expect(started.items).toEqual([first.link]);
+    const lineage = lineages.startingWith(first);
+    lineage.appending(second);
+    expect(lineage.nodes).toEqual([lineage.head]);
+    expect(lineage.items).toEqual([first.link]);
   });
 
   it("forks two lineages from one head, which share the nodes up to it", () => {
-    const started = lineages.startingWith(first).appending(second);
-    const one = started.appending(third);
-    const other = started.appending(first);
-    expect(linksOf(one.nodes).slice(0, 2)).toEqual(linksOf(started.nodes));
-    expect(linksOf(other.nodes).slice(0, 2)).toEqual(linksOf(started.nodes));
-    expect(one.head.link).not.toBe(other.head.link);
+    const trunk = lineages.startingWith(first).appending(second);
+    const branch = trunk.appending(third);
+    const otherBranch = trunk.appending(first);
+    expect(linksOf(branch.nodes).slice(0, 2)).toEqual(linksOf(trunk.nodes));
+    expect(linksOf(otherBranch.nodes).slice(0, 2)).toEqual(linksOf(trunk.nodes));
+    expect(branch.head.link).not.toBe(otherBranch.head.link);
   });
 
   it("puts an item appended twice in two nodes, and keeps both in items", () => {
@@ -73,19 +76,19 @@ describe("appending an item", () => {
 
 describe("reading a lineage", () => {
   it("gives back the nodes and items of one built by appending, from its blobs", async () => {
-    const built = lineages.startingWith(first).appending(second).appending(third);
-    const read = await lineages.read(built.head.link, byLink(built.blobs));
-    expect(linksOf(read.nodes)).toEqual(linksOf(built.nodes));
-    expect(read.first.link).toBe(built.first.link);
-    expect(read.items).toEqual(built.items);
+    const builtLineage = lineages.startingWith(first).appending(second).appending(third);
+    const loadedLineage = await lineages.read(builtLineage.head.link, byLink(builtLineage.blobs));
+    expect(linksOf(loadedLineage.nodes)).toEqual(linksOf(builtLineage.nodes));
+    expect(loadedLineage.first.link).toBe(builtLineage.first.link);
+    expect(loadedLineage.items).toEqual(builtLineage.items);
   });
 
   it("refuses a lineage when the reader gives no blob for a node on the way", async () => {
     const middle = lineages.startingWith(first).appending(second);
-    const built = middle.appending(third);
-    const blobs = byLink(built.blobs);
+    const lineage = middle.appending(third);
+    const blobs = byLink(lineage.blobs);
     blobs.delete(middle.head.link);
-    await expect(lineages.read(built.head.link, blobs)).rejects.toThrow(`no blob is given for ${middle.head.link}`);
+    await expect(lineages.read(lineage.head.link, blobs)).rejects.toThrow(`no blob is given for ${middle.head.link}`);
   });
 
   it("refuses a lineage whose previous names an object of another schema", async () => {

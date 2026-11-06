@@ -73,14 +73,15 @@ export class Lineages {
   readonly schema: Schema<Json, LineageNodeData>;
   /**
    * The selection of every lineage node, each as the lineage it is the head
-   * of, read back to its first node. Reading a node with it throws where
-   * `read` does.
+   * of, read back to its first node.
+   *
+   * @throws where `read` does, when it reads a node.
    */
   readonly selection: SelectionBySchema<Json, Lineage, LineageNodeData>;
 
   constructor(schema: Schema<Json, LineageNodeData>) {
     this.schema = schema;
-    this.selection = new SelectionBySchema(schema, (head, reader) => this.#lineageEndingIn(head, reader));
+    this.selection = new SelectionBySchema(schema, (head, reader) => this.#readLineageEndingIn(head, reader));
   }
 
   /** The lineage of one node, which carries `item`. It writes nothing. */
@@ -96,10 +97,10 @@ export class Lineages {
    *   `readObject` throws for one that is not a lineage node.
    */
   async read(link: Link<LineageNodeObject>, reader: Reader): Promise<Lineage> {
-    return this.#lineageEndingIn(await readObject(reader, link, this.schema), reader);
+    return this.#readLineageEndingIn(await readObject(reader, link, this.schema), reader);
   }
 
-  async #lineageEndingIn(head: LineageNodeObject, reader: Reader): Promise<Lineage> {
+  async #readLineageEndingIn(head: LineageNodeObject, reader: Reader): Promise<Lineage> {
     // A node names the one before it by its hash, so the nodes do not loop back.
     const before: LineageNodeObject[] = [];
     for (let node = head; node.data.previous !== undefined; ) {

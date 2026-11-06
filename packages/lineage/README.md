@@ -76,22 +76,23 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { indexOver, scan } from "@estoc/store";
 
 const lineages = await loadLineage(defaultValidator);
-const draft = encodeObject(note, { text: "draft" });
-const revised = encodeObject(note, { text: "revised" });
-const final = encodeObject(note, { text: "final" });
-const lineage = lineages.startingWith(draft).appending(revised).appending(final);
+const firstDraft = encodeObject(note, { text: "first draft" });
+const secondDraft = encodeObject(note, { text: "second draft" });
+const finalDraft = encodeObject(note, { text: "final draft" });
+const lineage = lineages.startingWith(firstDraft).appending(secondDraft).appending(finalDraft);
 await store.write({
   records: [lineage.head],
-  blobs: [...lineage.blobs, draft.bytes, revised.bytes, final.bytes, ...note.blobs],
+  blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, ...note.blobs],
 });
 ```
 
 `lineages.selection` is a `SelectionBySchema` of the node schema, as
 `@estoc/object` has selections. It takes every node record, each as the
 lineage it is the head of, read back to its first node. An index by
-`first.link` keeps the heads of each series together, and one by
-`head.data.item` says which lineages a version is on. Indexes and views
-are the application's, and this package has none:
+`first.link` keeps together the heads of each series written as records.
+An index by each link in `items` finds the heads whose lineages hold a
+version, and one by `head.data.item.$link` only the heads that carry it.
+Indexes and views are the application's, and this package has none:
 
 ```ts
 const bySeries = indexOver(lineages.selection, function* ({ first, head }) {

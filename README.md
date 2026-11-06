@@ -50,6 +50,9 @@ semantics written elsewhere could not.
 - `@estoc/identity`: keys in their schemes, an identity written as an
   object that names its root key and signed by that key, which signs for
   it itself or through the agents it lists, and the signatures made for it.
+- `@estoc/lineage`: versions strung into a series by anyone, as a chain
+  of nodes that each carry the link of one version and name the node
+  before, with no authority over what comes next.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
 - `@estoc/mailbox-service`: a service that keeps messages for receivers

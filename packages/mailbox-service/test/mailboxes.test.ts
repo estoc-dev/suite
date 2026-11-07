@@ -8,7 +8,6 @@ const linkNamed = (name: string) => linkOf(new TextEncoder().encode(name)) as Li
 const ciphertextOf = (fill: number, length = 4) => new Uint8Array(length).fill(fill);
 const limits = { at: 1, since: 0, quota: 100 };
 
-/** The mailbox that the request `name` opens. */
 const mailboxRequested = (name: string): OpenMailbox => ({
   request: linkNamed(`request ${name}`),
   acknowledgement: linkNamed(`acknowledgement ${name}`),
@@ -24,7 +23,7 @@ async function openInTemporaryFolder(): Promise<Mailboxes> {
   return mailboxes;
 }
 
-async function queued(mailboxes: Mailboxes, sendId: string, since = 0): Promise<Uint8Array[]> {
+async function readQueue(mailboxes: Mailboxes, sendId: string, since = 0): Promise<Uint8Array[]> {
   const ciphertexts: Uint8Array[] = [];
   for await (const ciphertext of mailboxes.queue(sendId, since)) ciphertexts.push(ciphertext);
   return ciphertexts;
@@ -54,16 +53,16 @@ describe.each([
     for (const ciphertext of [a, a, b]) expect(await mailboxes.put(sendId, ciphertext, full)).toBe(true);
     expect(await mailboxes.put(sendId, ciphertextOf(3, 1), full)).toBe(false);
     expect(await mailboxes.put(sendId, a, full)).toBe(true);
-    expect(await queued(mailboxes, sendId)).toEqual([a, b]);
+    expect(await readQueue(mailboxes, sendId)).toEqual([a, b]);
   });
 
   it("gives what waits the earliest first, and lets what was received before since wait no more", async () => {
     const mailboxes = await open();
     const { sendId } = await mailboxes.open(mailboxRequested("one"));
-    const sent = [5, 3, 1, 4, 2].map((fill) => ciphertextOf(fill));
-    for (const [at, ciphertext] of sent.entries()) await mailboxes.put(sendId, ciphertext, { ...limits, at });
-    expect(await queued(mailboxes, sendId, 2)).toEqual(sent.slice(2));
-    expect(await queued(mailboxes, sendId, 0)).toEqual(sent.slice(2));
+    const ciphertexts = [5, 3, 1, 4, 2].map((fill) => ciphertextOf(fill));
+    for (const [at, ciphertext] of ciphertexts.entries()) await mailboxes.put(sendId, ciphertext, { ...limits, at });
+    expect(await readQueue(mailboxes, sendId, 2)).toEqual(ciphertexts.slice(2));
+    expect(await readQueue(mailboxes, sendId, 0)).toEqual(ciphertexts.slice(2));
   });
 
   it("does not count what was received before since toward the quota", async () => {
@@ -73,7 +72,7 @@ describe.each([
     expect(await mailboxes.put(sendId, a, { at: 1, since: 0, quota: 8 })).toBe(true);
     expect(await mailboxes.put(sendId, b, { at: 2, since: 1, quota: 8 })).toBe(false);
     expect(await mailboxes.put(sendId, b, { at: 2, since: 2, quota: 8 })).toBe(true);
-    expect(await queued(mailboxes, sendId)).toEqual([b]);
+    expect(await readQueue(mailboxes, sendId)).toEqual([b]);
   });
 
   it("lets what drop names wait no more at that mailbox alone, until it is put again, as the latest", async () => {
@@ -84,9 +83,9 @@ describe.each([
     for (const { sendId } of [one, two])
       for (const ciphertext of [a, b]) await mailboxes.put(sendId, ciphertext, limits);
     await mailboxes.drop(one.sendId, [linkOf(a)]);
-    expect(await queued(mailboxes, one.sendId)).toEqual([b]);
-    expect(await queued(mailboxes, two.sendId)).toEqual([a, b]);
+    expect(await readQueue(mailboxes, one.sendId)).toEqual([b]);
+    expect(await readQueue(mailboxes, two.sendId)).toEqual([a, b]);
     await mailboxes.put(one.sendId, a, limits);
-    expect(await queued(mailboxes, one.sendId)).toEqual([b, a]);
+    expect(await readQueue(mailboxes, one.sendId)).toEqual([b, a]);
   });
 });

@@ -299,27 +299,24 @@ class MailboxService {
     }
     const root = signature.signedIdentity.identity.root.link;
     if (!(await this.#accounts.has(root))) return answer(403, `${root} has no account here`);
-    const opened = await this.#mailboxes.mailboxOpenedBy(signature.link);
-    if (opened !== undefined) return this.#answerWith(opened.acknowledgement, 200);
+    const existingMailbox = await this.#mailboxes.mailboxOpenedBy(signature.link);
+    if (existingMailbox !== undefined) return this.#answerWith(existingMailbox.acknowledgement, 200);
     const [sendId, pickupId] = [newId(), newId()];
-    const acknowledgement = encodeObject(this.#schemas.mailboxAcknowledgement, {
-      request: { $link: signature.link },
-      at,
-      sendId,
-      pickupId,
-    });
-    const signed = await this.#acknowledge(
-      acknowledgement,
+    const acknowledgement = await this.#acknowledge(
+      encodeObject(this.#schemas.mailboxAcknowledgement, { request: { $link: signature.link }, at, sendId, pickupId }),
       bundle,
       signature.signedIdentity,
       this.#schemas.mailboxRequest.blobs,
     );
     const { identity: _, ...terms } = offer.data;
-    const mailbox = { request: signature.link, acknowledgement: signed.link, root, sendId, pickupId, terms };
+    const mailbox = { request: signature.link, acknowledgement: acknowledgement.link, root, sendId, pickupId, terms };
     // Requests of one mailbox at once can each sign an acknowledgement, and
     // each is answered with the one that opened it.
-    const kept = await this.#mailboxes.open(mailbox);
-    return this.#answerWith(kept.acknowledgement, kept.acknowledgement === signed.link ? 201 : 200);
+    const keptMailbox = await this.#mailboxes.open(mailbox);
+    return this.#answerWith(
+      keptMailbox.acknowledgement,
+      keptMailbox.acknowledgement === acknowledgement.link ? 201 : 200,
+    );
   }
 
   /**
@@ -335,9 +332,9 @@ class MailboxService {
     blobs: readonly Bytes<unknown>[] = [],
   ): Promise<Signature> {
     const signature = await this.#actor.sign(acknowledgement);
-    // Reading what is acknowledged takes neither the schemas in its signed
-    // identity's closure nor the interfaces they name, so the bundle need not
-    // hold them, and the store takes a blob in only with its whole closure.
+    // Reading what is acknowledged takes none of the schemas in its signed
+    // identity's closure, so the bundle need not hold them, and the store
+    // takes a blob in only with its whole closure.
     const { schema } = acknowledgement;
     const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
@@ -500,31 +497,31 @@ export async function loadMailboxService(
 
   const people = await view(store, peopleView(kit, schemas));
   const locations = await view(store, locationsView(signatures, schemas.service));
-  const signed = await Promise.all(
+  const serviceSignatures = await Promise.all(
     (await locations.servicesOf(identity.$link)).map((link) => signatures.read(link, store, people)),
   );
-  const [latest] = signed;
+  const [latest] = serviceSignatures;
   const at = clock();
   const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, at)));
-  const services = await Promise.all(signed.map(({ object }) => readObject(store, object, schemas.service)));
+  const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
-  const listed: (readonly [EncodedObject<Json>, Signature])[] = [];
+  const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];
   for (const offer of offers) {
     const signature =
       (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
-    listed.push([offer, signature]);
+    signedOffers.push([offer, signature]);
   }
   const next: ServiceData = {
     origin,
     at,
-    offers: listed.map(([offer, signature]) => ({ offer: { $link: signature.link }, acceptId: offer.link })),
+    offers: signedOffers.map(([offer, signature]) => ({ offer: { $link: signature.link }, acceptId: offer.link })),
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
     const object = encodeObject(schemas.service, next);
     const blobs = [
       object.bytes,
       ...schemas.service.blobs,
-      ...listed.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
+      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
       ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];

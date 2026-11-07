@@ -178,7 +178,6 @@ const mailboxOf = ({
   terms: { retention, quota, size },
 });
 
-/** Opens the SQLite file at `path`, making it when it is missing, with the tables that `schema` makes. */
 function openDatabase(path: string, schema: string): DatabaseSync {
   const database = new DatabaseSync(path);
   // FULL, the default, leaves the journal's removal unsynced, so a write

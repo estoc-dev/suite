@@ -259,17 +259,17 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
   const body = await packBundle(signature, [...blobs, ...signature.signedIdentity.blobs]);
   const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
   const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
-  const staged = await store.stage({ records: [{ bytes: answer.root }], blobs: answer.blobs() });
-  const stagedPeople = await view(staged, people);
-  const acknowledgement = await signatures.read(answer.link, staged, stagedPeople);
+  const stagedStore = await store.stage({ records: [{ bytes: answer.root }], blobs: answer.blobs() });
+  const stagedPeople = await view(stagedStore, people);
+  const acknowledgement = await signatures.read(answer.link, stagedStore, stagedPeople);
   if (!stagedPeople.personOf(to.service).hasSigned(acknowledgement)) {
     throw new Error("the acknowledgement is signed by another root than the service's");
   }
-  const { data } = await readObject(staged, acknowledgement.object, to.schema);
+  const { data } = await readObject(stagedStore, acknowledgement.object, to.schema);
   const acknowledgedSignature = data[to.field].$link;
   if (acknowledgedSignature !== signature.link)
     throw new Error(`the acknowledgement is of ${acknowledgedSignature}, not the one sent`);
-  await staged.commit();
+  await stagedStore.commit();
   return { signature: acknowledgement, data };
 }
 
@@ -318,7 +318,7 @@ class ServicePickup implements Pickup {
    * @throws when a pickup fails before `signal` aborts.
    */
   async *arrivals(signal?: AbortSignal): AsyncGenerator<Arrival> {
-    const handed = new Set<Link<Uint8Array>>();
+    const handedLinks = new Set<Link<Uint8Array>>();
     const receipts: Link<Uint8Array>[] = [];
     while (signal?.aborted !== true) {
       let queue: Uint8Array[];
@@ -328,12 +328,12 @@ class ServicePickup implements Pickup {
         if (signal?.aborted) return;
         throw error;
       }
-      const fresh = queue.filter((ciphertext) => !handed.has(linkOf(ciphertext)));
+      const fresh = queue.filter((ciphertext) => !handedLinks.has(linkOf(ciphertext)));
       if (fresh.length === 0) return;
       for (const ciphertext of fresh) {
         if (signal?.aborted) return;
         const link = linkOf(ciphertext);
-        handed.add(link);
+        handedLinks.add(link);
         yield { ciphertext, drop: async () => void receipts.push(link) };
       }
     }
@@ -394,10 +394,10 @@ export class Services {
   async fetch(origin: string): Promise<Service> {
     checkOrigin(origin);
     const bundle = await bundleIn(await fetch(new URL("/", origin), REQUEST), [200]);
-    const staged = await this.#store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
-    const service = await this.#read(bundle.link, staged);
+    const stagedStore = await this.#store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+    const service = await this.#read(bundle.link, stagedStore);
     if (service.origin !== origin) throw new Error(`the Service at ${origin} names ${service.origin}`);
-    await staged.commit();
+    await stagedStore.commit();
     return service;
   }
 
@@ -485,14 +485,17 @@ export class Services {
         if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== root.link) {
           throw new Error(`the Service of ${root.link} lists an account offer that names another root`);
         }
-        const offered = { service: signedIdentity, offer: signature.object, url };
-        account = new AccountOffer(offered, posting, this.#schemas.acknowledgement);
+        account = new AccountOffer(
+          { service: signedIdentity, offer: signature.object, url },
+          posting,
+          this.#schemas.acknowledgement,
+        );
       } else if (mailbox === undefined && schema === this.#schemas.mailboxOffer.link) {
-        const read = decodeObject(bytes, this.#schemas.mailboxOffer);
-        if (read.data.identity.$link !== root.link) {
+        const decodedOffer = decodeObject(bytes, this.#schemas.mailboxOffer);
+        if (decodedOffer.data.identity.$link !== root.link) {
           throw new Error(`the Service of ${root.link} lists a mailbox offer that names another root`);
         }
-        mailbox = new MailboxOffer({ service: signedIdentity, offer: read, url }, posting, this.#schemas);
+        mailbox = new MailboxOffer({ service: signedIdentity, offer: decodedOffer, url }, posting, this.#schemas);
       }
     }
     return { signedIdentity, origin, at, link, account, mailbox };

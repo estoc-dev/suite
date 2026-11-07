@@ -61,10 +61,12 @@ export class SchemaLineage<T> {
 
 /**
  * A selection of objects of the versions of a schema lineage, which works
- * out what each reads as from what its version reads it as. A record of any
- * other schema is left out. It reads each record itself, as any selection
- * other than by schema does, so a record that it and a selection by the
- * schema of one version both take is validated by each.
+ * out what each reads as from what its version reads it as.
+ *
+ * - A record of any other schema is left out.
+ * - It reads each record itself, as any selection other than by schema
+ *   does, so a record that it and a selection by the schema of one version
+ *   both take is validated by each.
  */
 export class SelectionBySchemaLineage<T, V> implements Selection<T> {
   readonly schemaLineage: SchemaLineage<V>;

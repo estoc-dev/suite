@@ -118,9 +118,9 @@ describe("the selection of a schema lineage over a store", () => {
   it("gives the rows of the records of every version, and none of another schema", async () => {
     const store = new Store(json, new MemoryBackend());
     await writeHeads(store, lineages.startingWith(first));
-    const untitled = encodeObject(note, { text: "untitled" });
-    const titled = encodeObject(titledNote, { title: "Greeting", body: "titled" });
-    await store.write({ records: [untitled, titled], blobs: notes.blobs });
+    const untitledRecord = encodeObject(note, { text: "untitled" });
+    const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });
+    await store.write({ records: [untitledRecord, titledRecord], blobs: notes.blobs });
     const byText = indexOver(notes.selection, function* ({ text, title }) {
       yield [text, title ?? ""] as const;
     });

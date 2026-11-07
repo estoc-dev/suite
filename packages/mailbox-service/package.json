@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./sqlite": "./src/sqlite.ts"
   },
   "scripts": {
     "typecheck": "tsc",

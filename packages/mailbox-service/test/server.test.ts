@@ -8,10 +8,13 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, type Link, linkOf, readObject } from "@estoc/object";
+import { decodeObject, encodeObject, encodeSchema, json, type Link, linkOf, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { assert, describe, expect, it, vi } from "vitest";
+import { Store } from "@estoc/store";
+import { SqliteBackend } from "@estoc/store/sqlite";
+import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { MailboxService } from "../src/server.ts";
+import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
@@ -21,6 +24,7 @@ import {
   mailboxAcknowledgementSchemaRead,
   mailboxOfferSchemaRead,
   mailboxRequestSchemaRead,
+  makeTemporaryPath,
   memoryService,
   memoryStore,
   offerSchema,
@@ -491,7 +495,39 @@ describe("a mailbox service started again", () => {
     );
     expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
   });
+
+  it("on the same SQLite file keeps the accounts and the mailboxes it opened, and what waits at them", async () => {
+    const path = await makeTemporaryPath();
+    const before = sqliteParts(path);
+    const { service } = await memoryService(before);
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const mailbox = await openMailbox(service, actor);
+    expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
+    before.close();
+    const after = sqliteParts(path);
+    onTestFinished(after.close);
+    const { service: again } = await memoryService({ ...after, start: 9_000 });
+    expect(await acceptAccount(again, actor)).toBe(200);
+    const { zip } = await requesting(actor, (await rootOf(again)).mailbox.offer);
+    expect((await askingForMailbox(again, zip)).status).toBe(200);
+    expect((await post(again, mailbox.sendId, ciphertextOf(2))).status).toBe(204);
+    expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1), ciphertextOf(2)]);
+  });
 });
+
+/** The store, the accounts and the mailboxes of a service, all in the SQLite file at `path`. */
+function sqliteParts(path: string) {
+  const backend = new SqliteBackend(path);
+  const accounts = new SqliteAccounts(path);
+  const mailboxes = new SqliteMailboxes(path);
+  const close = () => {
+    backend.close();
+    accounts.close();
+    mailboxes.close();
+  };
+  return { store: new Store(json, backend), accounts, mailboxes, close };
+}
 
 const bob = signer(ed25519, 6);
 const keyOf = (fill: number) => fill.toString(16).padStart(2, "0").repeat(32);

@@ -67,18 +67,18 @@ async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
   const signature = await signatures.read(bundle.link, bundle, noVersions);
   const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
-  const [listed, listedMailbox] = data.offers;
-  assert.exists(listed);
+  const [listedAccount, listedMailbox] = data.offers;
+  assert.exists(listedAccount);
   assert.exists(listedMailbox);
-  const offered = await signatures.read(listed.offer.$link, bundle, noVersions);
-  const offer = await readObject(bundle, offered.object, offerSchema);
-  const mailboxOffered = await signatures.read(listedMailbox.offer.$link, bundle, noVersions);
+  const offerSignature = await signatures.read(listedAccount.offer.$link, bundle, noVersions);
+  const offer = await readObject(bundle, offerSignature.object, offerSchema);
+  const mailboxOfferSignature = await signatures.read(listedMailbox.offer.$link, bundle, noVersions);
   const mailbox = {
-    offered: mailboxOffered,
-    offer: await readObject(bundle, mailboxOffered.object, mailboxOfferSchemaRead),
+    offerSignature: mailboxOfferSignature,
+    offer: await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchemaRead),
     acceptId: listedMailbox.acceptId,
   };
-  return { signature, data, offered, offer, acceptId: listed.acceptId, mailbox };
+  return { signature, data, offerSignature, offer, acceptId: listedAccount.acceptId, mailbox };
 }
 
 const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
@@ -104,20 +104,20 @@ async function acceptanceBy(agent: Signer, version: SignedIdentityObject, offer:
 
 /** A signer as `signer` that, while `isHolding`, holds each signature back until it is released, the first asked first. */
 function heldSigner(signer: Signer) {
-  const signing: (() => void)[] = [];
-  const held = {
+  const pending: (() => void)[] = [];
+  const holder = {
     isHolding: false,
-    signing,
+    pending,
     signer: {
       key: signer.key,
       async sign(digest: Uint8Array, signedIdentity?: Uint8Array) {
-        if (held.isHolding) await new Promise<void>((release) => signing.push(release));
+        if (holder.isHolding) await new Promise<void>((release) => pending.push(release));
         return signer.sign(digest, signedIdentity);
       },
     },
-    release: () => signing.shift()?.(),
+    release: () => pending.shift()?.(),
   };
-  return held;
+  return holder;
 }
 
 async function acknowledgementIn(response: Response) {
@@ -132,18 +132,18 @@ describe("a mailbox service", () => {
     const response = await getRoot(service);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
-    const { signature, data, offered, offer, acceptId, mailbox } = await rootOf(service);
+    const { signature, data, offerSignature, offer, acceptId, mailbox } = await rootOf(service);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
       offers: [
-        { offer: { $link: offered.link }, acceptId },
-        { offer: { $link: mailbox.offered.link }, acceptId: mailbox.acceptId },
+        { offer: { $link: offerSignature.link }, acceptId },
+        { offer: { $link: mailbox.offerSignature.link }, acceptId: mailbox.acceptId },
       ],
     });
     expect([acceptId, mailbox.acceptId]).toEqual([offer.link, mailbox.offer.link]);
-    for (const { signedIdentity } of [offered, mailbox.offered])
+    for (const { signedIdentity } of [offerSignature, mailbox.offerSignature])
       expect(signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
     expect(mailbox.offer.data).toEqual({ identity: { $link: serviceRoot.link }, ...terms });
@@ -175,11 +175,11 @@ describe("a mailbox service", () => {
     const { service, store } = await memoryService();
     const { zip } = await directAcceptance((await rootOf(service)).offer);
     const first = new Uint8Array(await (await postAcceptance(service, zip)).arrayBuffer());
-    const opened = await records(store);
+    const recordsBefore = await records(store);
     const again = await postAcceptance(service, zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
-    expect(await records(store)).toEqual(opened);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("opens the account of a root for the signature of an agent that a Delegated Identity of the root's lists", async () => {
@@ -213,76 +213,78 @@ describe("a mailbox service", () => {
     const first = await delegate(wallet, [device.key, phone.key], 1_000);
     const second = await delegate(wallet, [phone.key], 2_000);
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
-    const opened = await records(store);
+    const recordsBefore = await records(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/does not sign for the current version/);
-    expect(await records(store)).toEqual(opened);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("answers 400 to an agent that a later version removed, though the agent opened the account before it came", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
-    const removed = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
-    expect((await postAcceptance(service, removed)).status).toBe(201);
+    const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    expect((await postAcceptance(service, removedAcceptance)).status).toBe(201);
     const second = await delegate(wallet, [phone.key], 2_000);
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(200);
-    expect((await postAcceptance(service, removed)).status).toBe(400);
+    expect((await postAcceptance(service, removedAcceptance)).status).toBe(400);
     const { service: again } = await memoryService({ store });
-    expect((await postAcceptance(again, removed)).status).toBe(400);
+    expect((await postAcceptance(again, removedAcceptance)).status).toBe(400);
   });
 
   it("answers 400 to an agent whose body comes in only after a later version removed it, and signs nothing for it", async () => {
     const { service, store } = await memoryService();
     const { offer, acceptId } = await rootOf(service);
-    const removed = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
-    let reading = () => {};
-    const read = new Promise<void>((resolve) => (reading = resolve));
+    const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    let reportPull = () => {};
+    const firstPull = new Promise<void>((resolve) => (reportPull = resolve));
     let release = () => {};
-    const released = new Promise<void>((resolve) => (release = resolve));
+    const bodyRelease = new Promise<void>((resolve) => (release = resolve));
     const body = new ReadableStream<Uint8Array>(
       {
         async pull(controller) {
-          reading();
-          await released;
-          controller.enqueue(removed);
+          reportPull();
+          await bodyRelease;
+          controller.enqueue(removedAcceptance);
           controller.close();
         },
       },
       { highWaterMark: 0 },
     );
-    const sending = service.fetch(request(`/${acceptId}`, { method: "POST", body, duplex: "half" } as RequestInit));
-    await read;
+    const pendingResponse = service.fetch(
+      request(`/${acceptId}`, { method: "POST", body, duplex: "half" } as RequestInit),
+    );
+    await firstPull;
     const second = await delegate(wallet, [phone.key], 2_000);
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
-    const opened = await records(store);
+    const recordsBefore = await records(store);
     release();
-    const response = await sending;
+    const response = await pendingResponse;
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/does not sign for the current version/);
-    expect(await records(store)).toEqual(opened);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and has seen the versions of both", async () => {
-    const held = heldSigner(serviceSigner);
-    const { service } = await memoryService({ by: held.signer });
+    const holder = heldSigner(serviceSigner);
+    const { service } = await memoryService({ by: holder.signer });
     const { offer } = await rootOf(service);
     const earlier = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
     const later = await acceptanceBy(wallet, await publish(wallet, 2_000), offer);
-    held.isHolding = true;
-    const opening = postAcceptance(service, earlier);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
-    const racing = postAcceptance(service, later);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.isHolding = false;
-    held.release();
-    const opened = await opening;
-    held.release();
-    const answered = await racing;
-    expect([opened.status, answered.status]).toEqual([201, 200]);
+    holder.isHolding = true;
+    const opener = postAcceptance(service, earlier);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
+    const racer = postAcceptance(service, later);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
+    holder.isHolding = false;
+    holder.release();
+    const openerAnswer = await opener;
+    holder.release();
+    const racerAnswer = await racer;
+    expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     for (const [response, zip] of [
-      [opened, earlier],
-      [answered, later],
+      [openerAnswer, earlier],
+      [racerAnswer, later],
     ] as const) {
       const { acknowledgement } = await acknowledgementIn(response);
       expect(acknowledgement.data.acceptance.$link).toBe((await unpackBundle(zip)).link);
@@ -291,28 +293,28 @@ describe("a mailbox service", () => {
   });
 
   it("answers one acceptance posted twice at once with 201 and 200, each acknowledging it, and later with the acknowledgement whose signature has the least link", async () => {
-    const held = heldSigner(serviceSigner);
-    const { service, store } = await memoryService({ by: held.signer });
+    const holder = heldSigner(serviceSigner);
+    const { service, store } = await memoryService({ by: holder.signer });
     const { signature: acceptance, zip } = await directAcceptance((await rootOf(service)).offer);
-    held.isHolding = true;
-    const opening = postAcceptance(service, zip);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
-    const racing = postAcceptance(service, zip);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.isHolding = false;
-    held.release();
-    const opened = await opening;
-    held.release();
-    const answered = await racing;
-    expect([opened.status, answered.status]).toEqual([201, 200]);
-    const answers = await Promise.all([opened, answered].map(acknowledgementIn));
+    holder.isHolding = true;
+    const opener = postAcceptance(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
+    const racer = postAcceptance(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
+    holder.isHolding = false;
+    holder.release();
+    const openerAnswer = await opener;
+    holder.release();
+    const racerAnswer = await racer;
+    expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
+    const answers = await Promise.all([openerAnswer, racerAnswer].map(acknowledgementIn));
     for (const { acknowledgement } of answers) expect(acknowledgement.data.acceptance.$link).toBe(acceptance.link);
-    const kept = await records(store);
+    const recordsBefore = await records(store);
     const again = await postAcceptance(service, zip);
     expect(again.status).toBe(200);
     const [least] = answers.map(({ signature }) => signature.link).sort();
     expect((await acknowledgementIn(again)).signature.link).toBe(least);
-    expect(await records(store)).toEqual(kept);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
@@ -383,17 +385,17 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const dropped = encodeObject(schema, { identity: { $link: serviceRoot.link } });
+    const droppedOffer = encodeObject(schema, { identity: { $link: serviceRoot.link } });
     const asService = await serviceActor(3_000);
-    const offered = await asService.sign(dropped);
+    const offerSignature = await asService.sign(droppedOffer);
     const earlier = encodeObject(serviceSchemaRead, {
       origin: "https://mail.example",
       at: 2_000,
-      offers: [{ offer: { $link: offered.link }, acceptId: dropped.link }],
+      offers: [{ offer: { $link: offerSignature.link }, acceptId: droppedOffer.link }],
     });
-    const blobs = [earlier.bytes, offered.bytes, dropped.bytes, ...schema.blobs];
+    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...schema.blobs];
     await store.write({ records: [await asService.sign(earlier)], blobs });
-    expect((await post(service, dropped.link, (await directAcceptance(dropped)).zip)).status).toBe(410);
+    expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).zip)).status).toBe(410);
   });
 
   it("answers with the latest Service that its store holds, which a start elsewhere may have signed since", async () => {
@@ -424,27 +426,29 @@ describe("a mailbox service", () => {
     // whose signer answers over a network.
     let release = () => {};
     const bothRead = new Promise<void>((resolve) => (release = resolve));
-    let reading = 2;
+    let startsLeft = 2;
     const by: Signer = {
       key: serviceSigner.key,
       async sign(digest, signedIdentity) {
-        if (--reading === 0) release();
+        if (--startsLeft === 0) release();
         await bothRead;
         return serviceSigner.sign(digest, signedIdentity);
       },
     };
     const store = memoryStore();
-    const started = await Promise.all(
+    const starts = await Promise.all(
       ["https://one.example", "https://two.example"].map((origin) =>
         memoryService({ store, by, origin, start: 10_000 }),
       ),
     );
-    const signed = await Promise.all((await records(store)).map((link) => signatures.read(link, store, noVersions)));
+    const serviceSignatures = await Promise.all(
+      (await records(store)).map((link) => signatures.read(link, store, noVersions)),
+    );
     const ats = await Promise.all(
-      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
+      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
     );
     expect(ats).toEqual([10_000, 10_000]);
-    const [one, two] = await Promise.all(started.map(({ service }) => rootOf(service)));
+    const [one, two] = await Promise.all(starts.map(({ service }) => rootOf(service)));
     expect(one?.signature.link).toBe(two?.signature.link);
   });
 
@@ -487,11 +491,13 @@ describe("a mailbox service started again", () => {
   it("at another origin with its clock behind signs a Service earlier than the one before, which stays the latest", async () => {
     const { service, store } = await memoryService({ start: 5_000 });
     const before = await rootOf(service);
-    const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
-    expect((await rootOf(moved)).data).toEqual(before.data);
-    const signed = await Promise.all((await records(store)).map((link) => signatures.read(link, store, noVersions)));
+    const { service: movedService } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
+    expect((await rootOf(movedService)).data).toEqual(before.data);
+    const serviceSignatures = await Promise.all(
+      (await records(store)).map((link) => signatures.read(link, store, noVersions)),
+    );
     const services = await Promise.all(
-      signed.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
+      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
     );
     expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
   });
@@ -509,7 +515,7 @@ describe("a mailbox service started again", () => {
     onTestFinished(after.close);
     const { service: again } = await memoryService({ ...after, start: 9_000 });
     expect(await acceptAccount(again, actor)).toBe(200);
-    const { zip } = await requesting(actor, (await rootOf(again)).mailbox.offer);
+    const { zip } = await mailboxRequest(actor, (await rootOf(again)).mailbox.offer);
     expect((await postMailboxRequest(again, zip)).status).toBe(200);
     expect((await post(again, mailbox.sendId, ciphertextOf(2))).status).toBe(204);
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1), ciphertextOf(2)]);
@@ -544,7 +550,7 @@ const openAccount = async (service: MailboxService, actor: Actor) =>
   expect(await acceptAccount(service, actor)).toBe(201);
 
 /** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
-async function requesting(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
+async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
   const request = encodeObject(mailboxRequestSchemaRead, { offer: { $link: offer.link as Link<never> }, key });
   const signature = await actor.sign(request);
   return { signature, zip: await packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
@@ -569,7 +575,7 @@ async function mailboxAcknowledgementIn(response: Response) {
  * signature over the acknowledgement, and what the acknowledgement says.
  */
 async function openMailbox(service: MailboxService, actor: Actor, key = keyOf(0x11)) {
-  const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer, key);
+  const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer, key);
   const response = await postMailboxRequest(service, zip);
   expect(response.status).toBe(201);
   const { signature, acknowledgement } = await mailboxAcknowledgementIn(response);
@@ -611,11 +617,11 @@ describe("a mailbox service's offer of mailboxes", () => {
     const actor = await actorOf(alice);
     await openAccount(service, actor);
     const { mailbox } = await rootOf(service);
-    const { signature, zip } = await requesting(actor, mailbox.offer);
+    const { signature, zip } = await mailboxRequest(actor, mailbox.offer);
     const response = await postMailboxRequest(service, zip);
     expect(response.status).toBe(201);
-    const { bundle, signature: signed, acknowledgement } = await mailboxAcknowledgementIn(response);
-    expect(signed.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
+    const { bundle, signature: acknowledgementSignature, acknowledgement } = await mailboxAcknowledgementIn(response);
+    expect(acknowledgementSignature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     const { sendId, pickupId } = acknowledgement.data;
     expect(acknowledgement.data).toEqual({ request: { $link: signature.link }, at: 5_002, sendId, pickupId });
     expect(sendId).toMatch(/^[0-9a-f]{32}$/);
@@ -633,7 +639,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service } = await memoryService();
     await openAccount(service, await actorOf(wallet));
     const agent = signatures.actor(device, await delegate(wallet, [device.key]));
-    const { zip } = await requesting(agent, (await rootOf(service)).mailbox.offer);
+    const { zip } = await mailboxRequest(agent, (await rootOf(service)).mailbox.offer);
     expect((await postMailboxRequest(service, zip)).status).toBe(201);
   });
 
@@ -649,33 +655,33 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, store } = await memoryService();
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
     const first = new Uint8Array(await (await postMailboxRequest(service, zip)).arrayBuffer());
-    const opened = await records(store);
+    const recordsBefore = await records(store);
     const again = await postMailboxRequest(service, zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
-    expect(await records(store)).toEqual(opened);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("answers one request posted twice at once with 201 and 200, each with the acknowledgement of the mailbox it opened", async () => {
-    const held = heldSigner(serviceSigner);
-    const { service } = await memoryService({ by: held.signer });
+    const holder = heldSigner(serviceSigner);
+    const { service } = await memoryService({ by: holder.signer });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
-    held.isHolding = true;
-    const opening = postMailboxRequest(service, zip);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(1));
-    const racing = postMailboxRequest(service, zip);
-    await vi.waitFor(() => expect(held.signing).toHaveLength(2));
-    held.isHolding = false;
-    held.release();
-    const opened = await opening;
-    held.release();
-    const answered = await racing;
-    expect([opened.status, answered.status]).toEqual([201, 200]);
-    const [first, second] = await Promise.all([opened, answered].map(mailboxAcknowledgementIn));
+    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
+    holder.isHolding = true;
+    const opener = postMailboxRequest(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
+    const racer = postMailboxRequest(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
+    holder.isHolding = false;
+    holder.release();
+    const openerAnswer = await opener;
+    holder.release();
+    const racerAnswer = await racer;
+    expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
+    const [first, second] = await Promise.all([openerAnswer, racerAnswer].map(mailboxAcknowledgementIn));
     expect(second?.signature.link).toBe(first?.signature.link);
     expect((await mailboxAcknowledgementIn(await postMailboxRequest(service, zip))).signature.link).toBe(
       first?.signature.link,
@@ -684,7 +690,7 @@ describe("a mailbox service's offer of mailboxes", () => {
 
   it("answers 403 to a request by a root that has no account, and opens no mailbox", async () => {
     const { service, store } = await memoryService();
-    const { zip } = await requesting(await actorOf(alice), (await rootOf(service)).mailbox.offer);
+    const { zip } = await mailboxRequest(await actorOf(alice), (await rootOf(service)).mailbox.offer);
     const response = await postMailboxRequest(service, zip);
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/has no account here/);
@@ -694,10 +700,10 @@ describe("a mailbox service's offer of mailboxes", () => {
   it("answers 400 to a request by an agent that a later version of its root removed, though the root has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
-    const removed = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
-    await openAccount(service, removed);
+    const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    await openAccount(service, removedAgent);
     expect(await acceptAccount(service, signatures.actor(phone, await delegate(wallet, [phone.key], 2_000)))).toBe(200);
-    const response = await postMailboxRequest(service, (await requesting(removed, mailbox.offer)).zip);
+    const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).zip);
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/does not sign for the current version/);
   });
@@ -705,13 +711,13 @@ describe("a mailbox service's offer of mailboxes", () => {
   it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
     [
       "for the offer of an account",
-      async (service, actor) => (await requesting(actor, (await rootOf(service)).offer)).zip,
+      async (service, actor) => (await mailboxRequest(actor, (await rootOf(service)).offer)).zip,
     ],
     [
       "for another service's offer of mailboxes",
       async (_, actor) => {
         const { service: other } = await memoryService({ by: otherService });
-        return (await requesting(actor, (await rootOf(other)).mailbox.offer)).zip;
+        return (await mailboxRequest(actor, (await rootOf(other)).mailbox.offer)).zip;
       },
     ],
     [
@@ -725,11 +731,11 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, store } = await memoryService();
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const opened = await records(store);
+    const recordsBefore = await records(store);
     const response = await postMailboxRequest(service, await body(service, actor));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toBe("");
-    expect(await records(store)).toEqual(opened);
+    expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("keeps the mailboxes it opened on the terms of their offer once it offers other terms", async () => {
@@ -738,14 +744,14 @@ describe("a mailbox service's offer of mailboxes", () => {
     await openAccount(service, actor);
     const before = await rootOf(service);
     const mailbox = await openMailbox(service, actor);
-    const offered = { ...terms, size: 100 };
-    const { service: again } = await memoryService({ store, accounts, mailboxes, offered, start: 9_000 });
+    const offeredTerms = { ...terms, size: 100 };
+    const { service: again } = await memoryService({ store, accounts, mailboxes, offeredTerms, start: 9_000 });
     const after = await rootOf(again);
     expect(after.mailbox.offer.data.size).toBe(100);
-    expect(after.offered.link).toBe(before.offered.link);
+    expect(after.offerSignature.link).toBe(before.offerSignature.link);
     expect((await post(again, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
     expect(
-      (await post(again, before.mailbox.acceptId, (await requesting(actor, before.mailbox.offer)).zip)).status,
+      (await post(again, before.mailbox.acceptId, (await mailboxRequest(actor, before.mailbox.offer)).zip)).status,
     ).toBe(410);
   });
 
@@ -753,7 +759,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, ...shared } = await memoryService();
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { service: newer } = await memoryService({ ...shared, offered: { ...terms, size: 100 }, start: 9_000 });
+    const { service: newer } = await memoryService({ ...shared, offeredTerms: { ...terms, size: 100 }, start: 9_000 });
     expect((await rootOf(service)).mailbox.offer.data.size).toBe(100);
     const mailbox = await openMailbox(service, actor);
     expect((await post(newer, mailbox.sendId, ciphertextOf(1, 101))).status).toBe(413);
@@ -764,26 +770,26 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, ...shared } = await memoryService({ start: 5_000 });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await requesting(actor, (await rootOf(service)).mailbox.offer);
+    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
     const first = new Uint8Array(await (await postMailboxRequest(service, zip)).arrayBuffer());
-    const offered = { ...terms, size: 100 };
-    const { service: behind } = await memoryService({ ...shared, offered, start: 1_000 });
+    const offeredTerms = { ...terms, size: 100 };
+    const { service: behind } = await memoryService({ ...shared, offeredTerms, start: 1_000 });
     const again = await postMailboxRequest(behind, zip);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
-    const opened = await openMailbox(behind, actor, keyOf(0x22));
-    expect((await post(behind, opened.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
-    const own = encodeObject(mailboxOfferSchemaRead, { identity: { $link: serviceRoot.link }, ...offered });
-    expect((await post(behind, own.link, (await requesting(actor, own)).zip)).status).toBe(410);
+    const mailbox = await openMailbox(behind, actor, keyOf(0x22));
+    expect((await post(behind, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
+    const own = encodeObject(mailboxOfferSchemaRead, { identity: { $link: serviceRoot.link }, ...offeredTerms });
+    expect((await post(behind, own.link, (await mailboxRequest(actor, own)).zip)).status).toBe(410);
   });
 });
 
 describe("a mailbox that a service opened", () => {
   async function serviceWithMailbox(options: Parameters<typeof memoryService>[0] = {}) {
-    const loaded = await memoryService(options);
+    const run = await memoryService(options);
     const actor = await actorOf(alice);
-    await openAccount(loaded.service, actor);
-    return { ...loaded, actor, mailbox: await openMailbox(loaded.service, actor) };
+    await openAccount(run.service, actor);
+    return { ...run, actor, mailbox: await openMailbox(run.service, actor) };
   }
 
   it("keeps a ciphertext posted to its send id, answering 204, which waits until a pickup has a receipt for it", async () => {
@@ -846,18 +852,20 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers a pickup with 100 ciphertexts at most, the earliest first", async () => {
-    const { service, actor, mailbox } = await serviceWithMailbox({ offered: { ...terms, size: 2, quota: 2 * 101 } });
-    const sent = Array.from({ length: 101 }, (_, n) => new Uint8Array([n >> 8, n & 0xff]));
-    for (const ciphertext of sent) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
+    const { service, actor, mailbox } = await serviceWithMailbox({
+      offeredTerms: { ...terms, size: 2, quota: 2 * 101 },
+    });
+    const ciphertexts = Array.from({ length: 101 }, (_, n) => new Uint8Array([n >> 8, n & 0xff]));
+    for (const ciphertext of ciphertexts) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     const first = await queueAt(service, mailbox, actor);
-    expect(first).toEqual(sent.slice(0, 100));
-    expect(await queueAt(service, mailbox, actor, sent.slice(0, 100))).toEqual(sent.slice(100));
+    expect(first).toEqual(ciphertexts.slice(0, 100));
+    expect(await queueAt(service, mailbox, actor, ciphertexts.slice(0, 100))).toEqual(ciphertexts.slice(100));
   });
 
   it("answers a pickup with ciphertexts that come to 1 MiB at most, but with the earliest alone when it is larger", async () => {
     const KiB = 1024;
     const { service, actor, mailbox } = await serviceWithMailbox({
-      offered: { ...terms, size: 1_536 * KiB, quota: 4_096 * KiB },
+      offeredTerms: { ...terms, size: 1_536 * KiB, quota: 4_096 * KiB },
     });
     const [a, b, c, d] = [
       ciphertextOf(1, 600 * KiB),
@@ -876,9 +884,9 @@ describe("a mailbox that a service opened", () => {
 
   it("answers a pickup by an agent that a version of the root lists which it has not seen, by the version that the request carries", async () => {
     const { service, mailbox } = await serviceWithMailbox();
-    const listed = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
+    const listedAgent = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
-    expect(await queueAt(service, mailbox, listed)).toEqual([ciphertextOf(1)]);
+    expect(await queueAt(service, mailbox, listedAgent)).toEqual([ciphertextOf(1)]);
   });
 
   it("answers 403 to a pickup signed for another root, and is done with nothing", async () => {
@@ -894,15 +902,15 @@ describe("a mailbox that a service opened", () => {
 
   it("answers 403 to a pickup by an agent that a later version of the root, which it has seen, takes out", async () => {
     const { service } = await memoryService();
-    const removed = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
-    await openAccount(service, removed);
-    const mailbox = await openMailbox(service, removed);
-    const listed = signatures.actor(phone, await delegate(wallet, [phone.key], 2_000));
-    expect(await acceptAccount(service, listed)).toBe(200);
-    const response = await post(service, mailbox.pickupId, await pickupRequest(removed, mailbox.link));
+    const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    await openAccount(service, removedAgent);
+    const mailbox = await openMailbox(service, removedAgent);
+    const listedAgent = signatures.actor(phone, await delegate(wallet, [phone.key], 2_000));
+    expect(await acceptAccount(service, listedAgent)).toBe(200);
+    const response = await post(service, mailbox.pickupId, await pickupRequest(removedAgent, mailbox.link));
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/does not sign for the current version/);
-    expect(await queueAt(service, mailbox, listed)).toEqual([]);
+    expect(await queueAt(service, mailbox, listedAgent)).toEqual([]);
   });
 
   it.each<[string, (actor: Actor, mailbox: OpenedMailbox, other: OpenedMailbox) => Promise<Uint8Array>]>([

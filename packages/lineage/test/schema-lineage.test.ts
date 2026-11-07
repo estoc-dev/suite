@@ -78,6 +78,12 @@ describe("the schema lineage of versions", () => {
     for (const link of [noteV1.link, noteV2.link, defaultValidator.language.link]) expect(blobs.has(link)).toBe(true);
   });
 
+  it("has the schema that an object of a version names, and no other", () => {
+    expect(notes.hasSchemaNamedBy(untitledNote.bytes)).toBe(true);
+    expect(notes.hasSchemaNamedBy(titledNote.bytes)).toBe(true);
+    expect(notes.hasSchemaNamedBy(encodeObject(other, { text: "hello" }).bytes)).toBe(false);
+  });
+
   it("refuses two versions of one schema", () => {
     expect(() => lineages.schemaLineageOf([v1, v2, { ...v1 }])).toThrow(`${noteV1.link} is given two implementations`);
   });

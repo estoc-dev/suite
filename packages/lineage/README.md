@@ -126,6 +126,9 @@ schema as the same `T`, their schemas of one encoding, and gives a
 - `lineage`, the lineage of the versions' schemas.
 - `read(link, reader)`, which reads an object with the version whose
   schema it names, and refuses one of the schema of no version.
+- `hasSchemaNamedBy(bytes)`, whether an object names the schema of a
+  version, so that one of another schema can be left aside before `read`
+  refuses it.
 - `blobs`, the closure of the head: the lineage's `blobs` and those of
   every version's schema.
 - `selection`, which takes every object of a version, each as its version

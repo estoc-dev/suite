@@ -1,10 +1,6 @@
 import type { Implementations, Link, Reader, Selection } from "@estoc/object";
 import type { Lineage } from "./lineage.ts";
 
-// `SelectionBySchemaLineage` asks whether a record names the schema of a
-// version, which nothing outside this module can.
-let namesVersion: <T>(schemaLineage: SchemaLineage<T>, record: Uint8Array) => boolean;
-
 /**
  * The versions of a format as the lineage of their schemas, each read as
  * `T` by its implementation.
@@ -24,10 +20,6 @@ export class SchemaLineage<T> {
   readonly selection: SelectionBySchemaLineage<T, T>;
   readonly #implementations: Pick<Implementations<unknown, T>, "read">;
   readonly #schemaOf: (record: Uint8Array) => Link<unknown>;
-
-  static {
-    namesVersion = (schemaLineage, record) => schemaLineage.lineage.items.includes(schemaLineage.#schemaOf(record));
-  }
 
   /**
    * `lineage` is that of the schemas of the versions, and `schemaBlobs` the
@@ -55,6 +47,15 @@ export class SchemaLineage<T> {
    */
   read(link: Link<T>, reader: Reader): Promise<T> {
     return this.#implementations.read(link, reader);
+  }
+
+  /**
+   * Whether the object that `bytes` hold names the schema of a version.
+   *
+   * @throws when the bytes are not an object in the encoding of the versions.
+   */
+  hasSchemaNamedBy(bytes: Uint8Array): boolean {
+    return this.lineage.items.includes(this.#schemaOf(bytes));
   }
 }
 
@@ -87,7 +88,7 @@ export class SelectionBySchemaLineage<T, V> implements Selection<T> {
   async read(record: Link<unknown>, reader: Reader): Promise<T | undefined> {
     const bytes = await reader.get(record);
     // A record the reader does not give is left to `read`, which refuses it.
-    if (bytes !== undefined && !namesVersion(this.schemaLineage, bytes)) return undefined;
+    if (bytes !== undefined && !this.schemaLineage.hasSchemaNamedBy(bytes)) return undefined;
     return this.#itemOf(await this.schemaLineage.read(record as Link<V>, reader), reader);
   }
 }

@@ -406,7 +406,7 @@ root without one, in one step, so two acceptances of one root that arrive
 together open one account, and the service answers 201 to the acceptance
 whose row was kept and 200 to any other. Its `has` says whether a root has
 an account, which opening a mailbox asks. `MemoryAccounts` keeps the rows
-in memory.
+in memory, and `SqliteAccounts` in a SQLite file.
 
 `mailboxes` holds the mailboxes the service opened, each with the request
 that opened it, the link of the service's signature over its
@@ -417,7 +417,26 @@ together open one. Its `put` keeps a ciphertext unless what waits would
 then come to more than the quota, in one step. The service passes it
 `since`, the time that the retention reaches back to, and what was
 received before then waits no more. `MemoryMailboxes` keeps them in
-memory.
+memory, and `SqliteMailboxes` in a SQLite file.
+
+`SqliteAccounts` and `SqliteMailboxes` run only in Node, so they are
+imported on their own, from `@estoc/mailbox-service/sqlite`. Each is given
+the path of a file, which can be the one that a `SqliteBackend` keeps the
+store in, so that one file holds all that a service keeps. Each `add`,
+`open`, `put` and `drop` is one transaction, on disk by the time it
+resolves. They share none with the store, which the service writes an
+acknowledgement to before it keeps the account or the mailbox: a service
+that stops in between has not answered yet, and the acceptance or the
+request posted again opens the account, or a mailbox with other ids.
+
+```ts
+import { SqliteAccounts, SqliteMailboxes } from "@estoc/mailbox-service/sqlite";
+import { SqliteBackend } from "@estoc/store/sqlite";
+
+const store = new Store(json, new SqliteBackend("service.db"));
+const accounts = new SqliteAccounts("service.db");
+const mailboxes = new SqliteMailboxes("service.db");
+```
 
 `fetch` takes a `Request` and gives a `Response`, as a fetch handler does.
 It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and

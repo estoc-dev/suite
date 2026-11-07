@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type CurveScheme,
   ed25519,
@@ -12,6 +15,7 @@ import {
 import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, Store } from "@estoc/store";
+import { onTestFinished } from "vitest";
 import {
   type AccountOfferData,
   type AcknowledgementData,
@@ -37,6 +41,13 @@ export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain]
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(json, new MemoryBackend());
+
+/** A path to a file in a folder of its own, which is removed once the test finishes. */
+export async function makeTemporaryPath(): Promise<string> {
+  const folder = await mkdtemp(join(tmpdir(), "mailbox-service-"));
+  onTestFinished(() => rm(folder, { recursive: true }));
+  return join(folder, "service.db");
+}
 
 export const { keys, identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(
   defaultValidator,

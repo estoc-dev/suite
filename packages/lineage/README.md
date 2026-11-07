@@ -43,9 +43,9 @@ they stay as `@estoc/identity` writes them.
 
 `loadLineage(validator)` compiles the lineage node schema with the
 validator the application picks and gives `Lineages`: `schema`,
-`startingWith`, `read` and `selection`. A `Lineage` comes from them, so it
-is a chain read back from its head to its first node, each node an object
-of the node schema. It holds:
+`startingWith`, `read`, `selection` and `schemaLineageOf`. A `Lineage`
+comes from them, so it is a chain read back from its head to its first
+node, each node an object of the node schema. It holds:
 
 - `first`, `head`, and `nodes` from the first to the head.
 - `items`, the links the nodes carry, in their order and one for each
@@ -107,3 +107,47 @@ The rows of a series hold every head written as a record, those appended
 to since among them, and those on either side of a fork. Which of them to
 show, such as those that no other head of the series extends, is worked
 out by the application from the rows.
+
+## Schema lineages
+
+A schema says what its data looks like, and not which version of a format
+it is, so a new version of a format is a new schema with nothing in it
+naming the one before. A schema lineage strings the versions into a
+series: it is a lineage whose items are their schemas. Like any lineage,
+it holds no authority. A program builds its own over the versions it
+reads, and the author of the format can publish one; the same versions in
+the same order give the same head, so the two can be compared.
+
+`lineages.schemaLineageOf(versions)` takes the versions in their order,
+each an `Implementation` of `@estoc/object` that reads an object of its
+schema as the same `T`, and gives a `SchemaLineage`:
+
+- `lineage`, the lineage of the versions' schemas.
+- `read(link, reader)`, which reads an object with the version whose
+  schema it names, and refuses one of the schema of no version.
+- `blobs`, the closure of the head: the lineage's `blobs` and those of
+  every version's schema.
+
+Objects of earlier versions stay as they were written, each read with its
+own version, and new ones are written to the last. The first node is
+fixed by the first version's schema, so it names the format's series, and
+the lineage of a program that reads one version more extends that of one
+that reads one less.
+
+```ts
+import type { Implementation, Json } from "@estoc/object";
+
+type Note = { readonly title?: string; readonly text: string };
+
+// noteV1 is a schema of { text }, and noteV2 a schema of { title, body }.
+const v1: Implementation<Json, Note, { readonly text: string }> = {
+  schema: noteV1,
+  read: ({ data }) => ({ text: data.text }),
+};
+const v2: Implementation<Json, Note, { readonly title: string; readonly body: string }> = {
+  schema: noteV2,
+  read: ({ data }) => ({ title: data.title, text: data.body }),
+};
+const notes = lineages.schemaLineageOf([v1, v2]);
+const note = await notes.read(link, store); // a Note, of either version
+```

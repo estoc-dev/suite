@@ -1,6 +1,4 @@
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -144,27 +142,4 @@ export async function signedAtOrigins(service: ServiceData, origins: readonly st
     }),
   );
   return signed.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));
-}
-
-/** Serves `handle` over HTTP at 127.0.0.1, as a host would run a service's handler. */
-export async function serve(
-  handle: (request: Request) => Promise<Response>,
-): Promise<{ readonly origin: string; close(): Promise<void> }> {
-  const server = createServer(async (incoming, outgoing) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of incoming) chunks.push(chunk as Buffer);
-    const method = incoming.method ?? "GET";
-    const body = method === "GET" || method === "HEAD" ? null : Buffer.concat(chunks);
-    const response = await handle(new Request(new URL(incoming.url ?? "/", origin), { method, body }));
-    outgoing
-      .writeHead(response.status, Object.fromEntries(response.headers))
-      .end(Buffer.from(await response.arrayBuffer()));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const close = () => {
-    server.closeAllConnections();
-    return new Promise<void>((resolve) => server.close(() => resolve()));
-  };
-  return { origin, close };
 }

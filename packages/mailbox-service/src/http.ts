@@ -1,6 +1,6 @@
 export const ZIP = "application/zip";
 
-/** The bytes of a body, or `undefined` when it holds more than `limit`, of which no more is read. */
+/** The bytes of a body, or `undefined` when it holds more than `limit`, in which case no chunk is read after the one that goes past `limit`. */
 export async function readBody(
   body: ReadableStream<Uint8Array> | null,
   limit: number,

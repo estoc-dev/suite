@@ -457,3 +457,93 @@ much more than arrived.
 
 A service opens no account for its own root: a signature of its own over
 its offer accepts nothing.
+
+## Running with Node
+
+`src/main.ts` runs a service in Node, with all it keeps in one SQLite file.
+Node runs the TypeScript sources as they are, so a checkout of the
+repository with its dependencies installed is all it takes:
+
+```sh
+git clone https://github.com/estoc-dev/suite.git && cd suite
+pnpm install --frozen-lockfile
+node packages/mailbox-service/src/main.ts key /var/lib/mailbox/key
+```
+
+`main.ts key <path>` writes a new secret key for the service's identity, an
+Ed25519 key in hex, to a file that its owner alone reads, and refuses to
+write over a file that is there. The service is named by the root of that
+identity, so a lost key is a lost service: keep a copy offline.
+
+`main.ts` takes its settings from the environment:
+
+| Variable | Setting |
+|---|---|
+| `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
+| `MAILBOX_KEY` | the path of the key file |
+| `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes, made when it is missing |
+| `MAILBOX_PORT` | the port it listens at, on 127.0.0.1 |
+| `MAILBOX_RETENTION` | the retention that the offer of mailboxes names, in milliseconds; 30 days unless set |
+| `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
+| `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
+
+Without the key file it refuses to start, since a new key would be another
+service. It listens on 127.0.0.1 alone, for a proxy in front of it that
+holds the TLS certificate. It writes a line for each request, with its
+method, its status and how long it took. On SIGTERM it takes no more
+requests, answers those it took, and closes the file.
+
+A body comes in as the service reads it, a chunk at a time. Once a body goes
+past the service's limit for it, the service reads no more chunks of it and
+the rest is dropped, so a large body is not held in memory.
+
+Under systemd, with Caddy in front:
+
+```ini
+# /etc/systemd/system/mailbox.service
+[Unit]
+Description=Mailbox service
+After=network.target
+
+[Service]
+User=mailbox
+WorkingDirectory=/srv/suite
+ExecStart=/usr/bin/node packages/mailbox-service/src/main.ts
+Environment=MAILBOX_ORIGIN=https://mail.example
+Environment=MAILBOX_KEY=/var/lib/mailbox/key
+Environment=MAILBOX_DATABASE=/var/lib/mailbox/service.db
+Environment=MAILBOX_PORT=8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```
+# /etc/caddy/Caddyfile
+mail.example {
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+The SQLite file can be backed up while the service runs, with SQLite's
+online backup:
+
+```sh
+sqlite3 /var/lib/mailbox/service.db ".backup /var/backups/mailbox.db"
+```
+
+`src/smoke.ts` checks a running service:
+
+```sh
+node packages/mailbox-service/src/smoke.ts https://mail.example
+```
+
+It opens a mailbox there under the account of a test identity, sends it a
+message, and picks the message up. The identity and the mailbox's key are
+fixed, so each run reaches the same account. While the service offers
+mailboxes on the same terms, each run reaches the same mailbox too. A change
+to `MAILBOX_RETENTION`, `MAILBOX_QUOTA` or `MAILBOX_SIZE` makes another offer,
+under which the next run opens another mailbox. Anyone who reads `smoke.ts`
+can sign as that identity, which is all right for an account that only tests
+a service.

@@ -21,8 +21,9 @@ export interface TestMailbox {
 /**
  * A mailbox at the service at `origin`, which the account of a fixed
  * identity opens to a fixed key. The identity is published at time 0, so each
- * run signs the same acceptance and the same request, and reaches the same
- * account and the same mailbox.
+ * run signs the same acceptance and reaches the same account. While the
+ * service offers mailboxes on the same terms, each run signs the same request
+ * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);

@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-/** A handler of requests that Node serves over HTTP. */
+/** The HTTP server that `serve` runs. */
 export interface HttpServer {
   /** Where it is reached, `http://127.0.0.1:<port>`. */
   readonly origin: string;
@@ -16,7 +16,7 @@ export interface HttpServer {
  * `port` is 0, for a proxy in front of it to reach.
  *
  * - A request's body comes in as the handler reads it, so a handler that
- *   reads up to a limit holds no more than that.
+ *   stops reading at a limit holds none of the rest of a large body.
  * - When `handle` throws, the request is answered 500.
  */
 export async function serve(handle: (request: Request) => Promise<Response>, port: number): Promise<HttpServer> {

@@ -493,8 +493,9 @@ holds the TLS certificate. It writes a line for each request, with its
 method, its status and how long it took. On SIGTERM it takes no more
 requests, answers those it took, and closes the file.
 
-A body comes in as the service reads it, and the service reads no more of
-one than its limit, so a large body is not held in memory.
+A body comes in as the service reads it, a chunk at a time. Once a body goes
+past the service's limit for it, the service reads no more chunks of it and
+the rest is dropped, so a large body is not held in memory.
 
 Under systemd, with Caddy in front:
 
@@ -540,6 +541,9 @@ node packages/mailbox-service/src/smoke.ts https://mail.example
 
 It opens a mailbox there under the account of a test identity, sends it a
 message, and picks the message up. The identity and the mailbox's key are
-fixed, so each run reaches the same account and the same mailbox, and the
-service keeps one of each for it. Anyone who reads `smoke.ts` can sign as
-that identity, which is all right for an account that only tests a service.
+fixed, so each run reaches the same account. While the service offers
+mailboxes on the same terms, each run reaches the same mailbox too. A change
+to `MAILBOX_RETENTION`, `MAILBOX_QUOTA` or `MAILBOX_SIZE` makes another offer,
+under which the next run opens another mailbox. Anyone who reads `smoke.ts`
+can sign as that identity, which is all right for an account that only tests
+a service.

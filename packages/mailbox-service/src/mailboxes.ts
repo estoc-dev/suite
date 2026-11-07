@@ -57,8 +57,8 @@ export class MemoryMailboxes implements Mailboxes {
   readonly #queues = new Map<string, Map<Link<Uint8Array>, HeldMessage>>();
 
   async open(mailbox: OpenMailbox): Promise<OpenMailbox> {
-    const kept = this.#byRequest.get(mailbox.request);
-    if (kept !== undefined) return kept;
+    const existingMailbox = this.#byRequest.get(mailbox.request);
+    if (existingMailbox !== undefined) return existingMailbox;
     this.#byRequest.set(mailbox.request, mailbox);
     this.#byId.set(mailbox.sendId, mailbox).set(mailbox.pickupId, mailbox);
     this.#queues.set(mailbox.sendId, new Map());

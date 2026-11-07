@@ -539,8 +539,8 @@ async function signatureListedIn(
   people: People,
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
-    for (const { offer: listed } of data.offers) {
-      const signature = await signatures.read(listed.$link, store, people);
+    for (const { offer: listedOffer } of data.offers) {
+      const signature = await signatures.read(listedOffer.$link, store, people);
       if (signature.object === offer) return signature;
     }
   }

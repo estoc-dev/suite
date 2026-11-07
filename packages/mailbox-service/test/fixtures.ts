@@ -100,7 +100,7 @@ export async function memoryService({
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
-  offered = terms,
+  offeredTerms = terms,
   clock,
   accounts = new MemoryAccounts(),
   mailboxes = new MemoryMailboxes(),
@@ -109,7 +109,7 @@ export async function memoryService({
   readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
-  readonly offered?: MailboxTerms;
+  readonly offeredTerms?: MailboxTerms;
   readonly clock?: { now: number };
   readonly accounts?: Accounts;
   readonly mailboxes?: Mailboxes;
@@ -120,7 +120,7 @@ export async function memoryService({
     store,
     accounts,
     mailboxes,
-    terms: offered,
+    terms: offeredTerms,
     validator: defaultValidator,
     schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
@@ -135,11 +135,11 @@ export async function memoryService({
  */
 export async function signedAtOrigins(service: ServiceData, origins: readonly string[]) {
   const actor = await serviceActor(1_000);
-  const signed = await Promise.all(
+  const signedServices = await Promise.all(
     origins.map(async (origin) => {
       const object = encodeObject(serviceSchemaRead, { ...service, origin });
       return { object, signature: await actor.sign(object) };
     }),
   );
-  return signed.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));
+  return signedServices.sort((a, b) => (a.signature.link < b.signature.link ? 1 : -1));
 }

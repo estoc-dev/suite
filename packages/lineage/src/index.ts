@@ -5,5 +5,5 @@ export {
   type Lineages,
   lineageNodeSchema,
   loadLineage,
-  type SchemaLineage,
 } from "./lineage.ts";
+export { type SchemaLineage, SelectionBySchemaLineage } from "./schema-lineage.ts";

@@ -120,7 +120,8 @@ the same order give the same head, so the two can be compared.
 
 `lineages.schemaLineageOf(versions)` takes the versions in their order,
 each an `Implementation` of `@estoc/object` that reads an object of its
-schema as the same `T`, and gives a `SchemaLineage`:
+schema as the same `T`, their schemas of one encoding, and gives a
+`SchemaLineage`:
 
 - `lineage`, the lineage of the versions' schemas.
 - `read(link, reader)`, which reads an object with the version whose

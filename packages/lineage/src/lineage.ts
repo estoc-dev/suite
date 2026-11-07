@@ -116,7 +116,8 @@ export class Lineages {
 
   /**
    * The schema lineage of `versions`, in their order: the lineage of their
-   * schemas, with each version read by its implementation. It writes nothing.
+   * schemas, with each version read by its implementation. Their schemas are
+   * of one encoding, in which an object names its schema. It writes nothing.
    *
    * @throws when two versions are of one schema.
    */

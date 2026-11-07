@@ -11,8 +11,6 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { loadLineage } from "../src/index.ts";
 
-// A format of notes whose second version gives a note a title.
-
 interface Note {
   readonly title?: string;
   readonly text: string;
@@ -53,8 +51,8 @@ const v2: Implementation<Json, Note, NoteV2Data> = {
 };
 const notes = lineages.schemaLineageOf([v1, v2]);
 
-const untitled = encodeObject(noteV1, { text: "hello" });
-const titled = encodeObject(noteV2, { title: "Greeting", body: "hello" });
+const untitledNote = encodeObject(noteV1, { text: "hello" });
+const titledNote = encodeObject(noteV2, { title: "Greeting", body: "hello" });
 const noteAt = ({ link }: { readonly link: Link<unknown> }) => link as Link<Note>;
 const byLink = (blobs: readonly Uint8Array[]) =>
   new Map<Link<unknown>, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
@@ -86,9 +84,9 @@ describe("the schema lineage of versions", () => {
 
 describe("reading with a schema lineage", () => {
   it("reads an object of each version with that version", async () => {
-    const reader = byLink([untitled.bytes, titled.bytes]);
-    await expect(notes.read(noteAt(untitled), reader)).resolves.toEqual({ text: "hello" });
-    await expect(notes.read(noteAt(titled), reader)).resolves.toEqual({ title: "Greeting", text: "hello" });
+    const reader = byLink([untitledNote.bytes, titledNote.bytes]);
+    await expect(notes.read(noteAt(untitledNote), reader)).resolves.toEqual({ text: "hello" });
+    await expect(notes.read(noteAt(titledNote), reader)).resolves.toEqual({ title: "Greeting", text: "hello" });
   });
 
   it("reads as the shape its versions give, with no type named for it", () => {

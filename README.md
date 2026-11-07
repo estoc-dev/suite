@@ -54,7 +54,7 @@ semantics written elsewhere could not.
   of nodes that each carry the link of one version and name the node
   before, with no authority over what comes next. The schemas of a
   format's versions are strung the same way, and an object of any version
-  is read as the same shape.
+  is read, and selected for an index, as the same shape.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
   receiver's key, and the records in a store of what came in and went out.
 - `@estoc/mailbox-service`: a service that keeps messages for receivers

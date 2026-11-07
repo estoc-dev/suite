@@ -128,6 +128,8 @@ schema as the same `T`, their schemas of one encoding, and gives a
   schema it names, and refuses one of the schema of no version.
 - `blobs`, the closure of the head: the lineage's `blobs` and those of
   every version's schema.
+- `selection`, which takes every object of a version, each as its version
+  reads it.
 
 Objects of earlier versions stay as they were written, each read with its
 own version, and new ones are written to the last. The first node is
@@ -151,4 +153,22 @@ const v2: Implementation<Json, Note, { readonly title: string; readonly body: st
 };
 const notes = lineages.schemaLineageOf([v1, v2]);
 const note = await notes.read(link, store); // a Note, of either version
+```
+
+`SelectionBySchemaLineage` is to a schema lineage what `SelectionBySchema`
+of `@estoc/object` is to a schema. One made with `itemOf` takes the
+objects of every version, each as what `itemOf` gives of what its version
+reads it as, and leaves out those it gives `undefined` for and the records
+of other schemas; `notes.selection` takes each as it is read. Like any
+selection other than by schema, it reads each record itself. An index of
+`@estoc/store` over it holds the rows of every version:
+
+```ts
+import { SelectionBySchemaLineage } from "@estoc/lineage";
+import { indexOver } from "@estoc/store";
+
+const byText = indexOver(notes.selection, function* ({ text }) {
+  yield [text] as const;
+});
+const titles = new SelectionBySchemaLineage(notes, ({ title }) => title); // the notes that have a title
 ```

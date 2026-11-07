@@ -1,4 +1,12 @@
-import { encodeObject, encodeSchema, type Json, json, type Link, type Schema } from "@estoc/object";
+import {
+  encodeObject,
+  encodeSchema,
+  type Implementation,
+  type Json,
+  json,
+  type Link,
+  type Schema,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { type Index, indexOver, MemoryBackend, Store, scan } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -77,5 +85,50 @@ describe("a lineage written to a store", () => {
     expect(await readHeads(store, byItem, second.link)).toEqual([lineage.head.link]);
     expect(await readHeads(store, byItem, first.link)).toEqual([lineage.head.link]);
     expect(await readHeads(store, byItem, third.link)).toEqual([]);
+  });
+});
+
+interface TitledText {
+  readonly title?: string;
+  readonly text: string;
+}
+
+const titledNote: Schema<Json, { readonly title: string; readonly body: string }> = await encodeSchema(
+  {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title: "Note",
+    type: "object",
+    properties: { title: { type: "string" }, body: { type: "string" } },
+    required: ["title", "body"],
+    additionalProperties: false,
+  },
+  defaultValidator,
+);
+const v1: Implementation<Json, TitledText, { readonly text: string }> = {
+  schema: note,
+  read: ({ data }) => ({ text: data.text }),
+};
+const v2: Implementation<Json, TitledText, { readonly title: string; readonly body: string }> = {
+  schema: titledNote,
+  read: ({ data }) => ({ title: data.title, text: data.body }),
+};
+const notes = lineages.schemaLineageOf([v1, v2]);
+
+describe("the selection of a schema lineage over a store", () => {
+  it("gives the rows of the records of every version, and none of another schema", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await writeHeads(store, lineages.startingWith(first));
+    const untitled = encodeObject(note, { text: "untitled" });
+    const titled = encodeObject(titledNote, { title: "Greeting", body: "titled" });
+    await store.write({ records: [untitled, titled], blobs: notes.blobs });
+    const byText = indexOver(notes.selection, function* ({ text, title }) {
+      yield [text, title ?? ""] as const;
+    });
+    const rows: (readonly [string, string])[] = [];
+    for await (const row of (await scan(store, byText)).range([])) rows.push(row);
+    expect(rows).toEqual([
+      ["titled", "Greeting"],
+      ["untitled", ""],
+    ]);
   });
 });

@@ -3,6 +3,8 @@ import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
+  type Implementation,
+  Implementations,
   type Json,
   type JsonLink,
   type JsonSchema,
@@ -61,6 +63,29 @@ export interface Lineage {
 }
 
 /**
+ * The versions of a format as the lineage of their schemas, each read as
+ * `T` by its implementation.
+ *
+ * - A schema says what its data looks like and not which version it
+ *   follows. The lineage says it, with no more authority than any other:
+ *   the same versions in the same order give the same head.
+ * - An object is read with the version whose schema it names, so objects
+ *   of earlier versions stay as they were written.
+ */
+export interface SchemaLineage<T> {
+  /** The lineage whose items are the schemas of the versions, in their order. */
+  readonly lineage: Lineage;
+  /**
+   * Reads the object that `link` names from `reader` with the version of the schema it names.
+   *
+   * @throws when the object is of the schema of no version, and where `Implementations.read` throws.
+   */
+  read(link: Link<T>, reader: Reader): Promise<T>;
+  /** The closure of the lineage's head: its `blobs` and the blobs of every version's schema. */
+  readonly blobs: readonly Uint8Array[];
+}
+
+/**
  * Lineages, read and built with the lineage node schema.
  *
  * - Anyone builds a lineage, of their own items or anyone's, and nothing in
@@ -87,6 +112,24 @@ export class Lineages {
   /** The lineage of one node, which carries `item`. It writes nothing. */
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
     return lineageOf(this.schema, [], encodeObject(this.schema, { item: { $link: item.link } }));
+  }
+
+  /**
+   * The schema lineage of `versions`, in their order: the lineage of their
+   * schemas, with each version read by its implementation. Their schemas are
+   * of one encoding, in which an object names its schema. It writes nothing.
+   *
+   * @throws when two versions are of one schema.
+   */
+  schemaLineageOf<D, T>(versions: readonly [Implementation<D, T>, ...Implementation<D, T>[]]): SchemaLineage<T> {
+    const [first, ...later] = versions;
+    const implementations = new Implementations(first.schema.encoding, versions);
+    const lineage = later.reduce((earlier, { schema }) => earlier.appending(schema), this.startingWith(first.schema));
+    return {
+      lineage,
+      read: (link, reader) => implementations.read(link, reader),
+      blobs: [...lineage.blobs, ...versions.flatMap(({ schema }) => schema.blobs)],
+    };
   }
 
   /**

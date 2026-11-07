@@ -296,3 +296,22 @@ links as it is given them; the store does the hashing and decoding, of
 what goes in and of what comes back.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
+
+`SqliteBackend` keeps them in one SQLite file. It runs only in Node, so it
+is imported on its own, from `@estoc/store/sqlite`. Each write is one
+transaction, which goes in whole or not at all and is on disk by the time
+the write resolves. The file is not encrypted, so the file of a private
+store goes where only its user can read it.
+
+```ts
+import { SqliteBackend } from "@estoc/store/sqlite";
+
+const backend = new SqliteBackend("store.db");
+const store = new Store(json, backend);
+// …
+backend.close();
+```
+
+Stores are joined by writing bundles from one to another, not by copying
+their files. A file copied while it is open, as by a tool that syncs a
+folder, can come out damaged.

@@ -1,7 +1,7 @@
 import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
 
 /**
- * Where a store keeps its blobs and its records: memory, a folder, or storage in a browser. It
+ * Where a store keeps its blobs and its records: memory, a file, or storage in a browser. It
  * keeps bytes and links as it is given them; the store hashes and decodes, and hashes again what it
  * gets back, so a backend that was damaged makes reading fail.
  */

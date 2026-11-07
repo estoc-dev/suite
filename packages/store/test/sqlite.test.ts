@@ -12,7 +12,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: JsonObject) => encodeObject(anything, data);
-const blobs = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
+const blobsOf = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
 
 async function makeTemporaryPath(): Promise<string> {
   const folder = await mkdtemp(join(tmpdir(), "store-"));
@@ -35,14 +35,14 @@ async function listed(source: { records(): AsyncIterable<Link<never>> }): Promis
 describe("a SqliteBackend", () => {
   it("reads what was put before, when the file is opened again", async () => {
     const path = await makeTemporaryPath();
-    const put = blobs("one", "two");
-    const records = [...put.keys()];
-    const first = new SqliteBackend(path);
-    await first.put(put, records);
-    first.close();
-    const again = open(path);
-    for (const [link, bytes] of put) expect(await again.get(link)).toEqual(bytes);
-    expect(await listed(again)).toEqual(records);
+    const blobs = blobsOf("one", "two");
+    const records = [...blobs.keys()];
+    const writer = new SqliteBackend(path);
+    await writer.put(blobs, records);
+    writer.close();
+    const reader = open(path);
+    for (const [link, bytes] of blobs) expect(await reader.get(link)).toEqual(bytes);
+    expect(await listed(reader)).toEqual(records);
   });
 
   it("reads what another backend open on the same file puts", async () => {
@@ -56,14 +56,14 @@ describe("a SqliteBackend", () => {
 
   it("leaves nothing of a put that fails partway", async () => {
     const backend = open(await makeTemporaryPath());
-    const put = blobs("one", "two");
+    const blobs = blobsOf("one", "two");
     const failure = new Error("cut short");
     function* records() {
       yield linkOf(utf8("one"));
       throw failure;
     }
-    await expect(backend.put(put, records())).rejects.toBe(failure);
-    for (const link of put.keys()) expect(await backend.has(link)).toBe(false);
+    await expect(backend.put(blobs, records())).rejects.toBe(failure);
+    for (const link of blobs.keys()) expect(await backend.has(link)).toBe(false);
     expect(await listed(backend)).toEqual([]);
   });
 
@@ -73,7 +73,7 @@ describe("a SqliteBackend", () => {
     const link = linkOf(utf8("one"));
     await expect(backend.get(link)).rejects.toThrow();
     await expect(backend.has(link)).rejects.toThrow();
-    await expect(backend.put(blobs("one"), [])).rejects.toThrow();
+    await expect(backend.put(blobsOf("one"), [])).rejects.toThrow();
     await expect(listed(backend)).rejects.toThrow();
   });
 });
@@ -83,11 +83,11 @@ describe("a store in a SqliteBackend", () => {
     const path = await makeTemporaryPath();
     const note = object({ text: "hello" });
     const reply = object({ text: "hi", to: { $link: note.link } });
-    const written = new Store(json, open(path));
-    await written.write({ records: [note, reply], blobs: anything.blobs });
-    const opened = new Store(json, open(path));
-    expect(await listed(opened)).toEqual(await listed(written));
-    expect(await opened.closure(reply.link)).toEqual(await written.closure(reply.link));
+    const writer = new Store(json, open(path));
+    await writer.write({ records: [note, reply], blobs: anything.blobs });
+    const reader = new Store(json, open(path));
+    expect(await listed(reader)).toEqual(await listed(writer));
+    expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
   });
 
   it("refuses to give a blob whose bytes were changed in the file", async () => {

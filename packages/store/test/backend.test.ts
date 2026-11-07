@@ -7,7 +7,7 @@ import { type Backend, MemoryBackend } from "../src/index.ts";
 import { SqliteBackend } from "../src/sqlite.ts";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const blobs = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
+const blobsOf = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
 
 async function openInTemporaryFolder(): Promise<Backend> {
   const folder = await mkdtemp(join(tmpdir(), "store-"));
@@ -31,9 +31,9 @@ describe.each([
 ])("$name", ({ open }) => {
   it("gives back the bytes put under a link, and nothing for a link it was not given", async () => {
     const backend = await open();
-    const put = blobs("one", "two");
-    await backend.put(put, []);
-    for (const [link, bytes] of put) {
+    const blobs = blobsOf("one", "two");
+    await backend.put(blobs, []);
+    for (const [link, bytes] of blobs) {
       expect(await backend.get(link)).toEqual(bytes);
       expect(await backend.has(link)).toBe(true);
     }
@@ -45,7 +45,7 @@ describe.each([
   it("keeps what was put when the array it gave back is changed", async () => {
     const backend = await open();
     const link = linkOf(utf8("one"));
-    await backend.put(blobs("one"), []);
+    await backend.put(blobsOf("one"), []);
     (await backend.get(link))?.fill(0);
     expect(await backend.get(link)).toEqual(utf8("one"));
   });
@@ -55,8 +55,8 @@ describe.each([
     const a = linkOf(utf8("a"));
     const b = linkOf(utf8("b"));
     const c = linkOf(utf8("c"));
-    await backend.put(blobs("a", "b"), [a, b]);
-    await backend.put(blobs("c"), [c, a]);
+    await backend.put(blobsOf("a", "b"), [a, b]);
+    await backend.put(blobsOf("c"), [c, a]);
     expect(await listed(backend)).toEqual([a, b, c]);
   });
 });

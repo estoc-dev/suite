@@ -14,7 +14,10 @@ export class SqliteBackend implements Backend {
    */
   constructor(path: string) {
     this.#database = new DatabaseSync(path);
+    // FULL, the default, leaves the journal's removal unsynced, so a write
+    // followed closely by a power loss can be rolled back.
     this.#database.exec(`
+      PRAGMA synchronous = EXTRA;
       CREATE TABLE IF NOT EXISTS blobs (link TEXT PRIMARY KEY, bytes BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS records (link TEXT PRIMARY KEY);
     `);

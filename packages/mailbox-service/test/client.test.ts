@@ -7,6 +7,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, PrivateStore, type Store } from "@estoc/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadServices, type MailboxOffer, type Services } from "../src/index.ts";
+import { serve } from "../src/node.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
   acknowledgementSchemaRead,
@@ -18,7 +19,6 @@ import {
   memoryStore,
   offerSchema,
   schemes,
-  serve,
   serviceIdentity,
   serviceRoot,
   serviceSchemaRead,
@@ -45,7 +45,7 @@ afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => 
 
 /** Serves at an origin of 127.0.0.1 what `handle` makes, given that origin, for each request. */
 async function startServer(handle: (request: Request, origin: string) => Promise<Response>) {
-  const server = await serve((request) => handle(request, server.origin));
+  const server = await serve((request) => handle(request, server.origin), 0);
   servers.push(server);
   return server;
 }

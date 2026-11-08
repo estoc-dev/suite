@@ -19,11 +19,9 @@ import type { Keys } from "./key/keys.ts";
 import { type Signer, SoftwareSigner } from "./signer.ts";
 
 /**
- * The schema of a Secret Key: a key, by the link of its object, and
- * `secret`, its secret key as 32 bytes in lowercase hex. A device keeps one
- * in its private store for each key it signs with by a secret in memory, as
- * it keeps a Wallet Key for each it signs with through a wallet, so its
- * private store lists the keys it signs with.
+ * The schema of a Secret Key, kept in a device's private store for each key
+ * the device signs with by a secret in memory. With the Wallet Keys there,
+ * the private store lists the keys the device signs with.
  */
 export const secretKeySchema: JsonSchema = {
   $schema: DRAFT_2020_12,

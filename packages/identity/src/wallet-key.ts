@@ -16,11 +16,12 @@ import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 
 /**
- * The schema of a Wallet Key: a key, by the link of its object, that a
- * device signs with through a wallet. It holds no secret, and which wallet
- * it is, the program finds by the public key the wallet gives. A device
- * keeps one in its private store for each such key, as it means something
- * to that device alone.
+ * The schema of a Wallet Key, kept in a device's private store for each key
+ * the device signs with through a wallet.
+ *
+ * - It is kept private as it means something to that device alone.
+ * - Which wallet holds the key, the program finds by the public key the
+ *   wallet gives.
  */
 export const walletKeySchema: JsonSchema = {
   $schema: DRAFT_2020_12,

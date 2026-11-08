@@ -23,14 +23,14 @@ const object = (data: JsonObject) => encodeObject(anything, data);
 
 const newStore = (backend: Backend = new MemoryBackend()) => new Store(json, backend);
 
-const giving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
+const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
   get: (link) => backend.get(link === under ? other : link),
   has: (link) => backend.has(link),
   put: (blobs, records) => backend.put(blobs, records),
   records: (start) => backend.records(start),
 });
 
-async function listed(store: Store): Promise<Link<unknown>[]> {
+async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
   for await (const link of store.records()) links.push(link);
   return links;
@@ -50,10 +50,10 @@ describe("a store", () => {
 
   it("refuses to give a blob when its backend gives other bytes under the link", async () => {
     const backend = new MemoryBackend();
-    const [kept, other] = [object({ text: "kept" }), object({ text: "other" })];
-    await newStore(backend).write({ records: [kept, other], blobs: anything.blobs });
-    const store = newStore(giving(backend, kept.link, other.link));
-    await expect(store.get(kept.link)).rejects.toThrow(`another blob under ${kept.link}`);
+    const [keptObject, other] = [object({ text: "kept" }), object({ text: "other" })];
+    await newStore(backend).write({ records: [keptObject, other], blobs: anything.blobs });
+    const store = newStore(backendGiving(backend, keptObject.link, other.link));
+    await expect(store.get(keptObject.link)).rejects.toThrow(`another blob under ${keptObject.link}`);
   });
 
   it("lists its records, and not the blobs written with them", async () => {
@@ -61,7 +61,7 @@ describe("a store", () => {
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
     await store.write({ records: [note], blobs: [image, ...anything.blobs] });
-    expect(await listed(store)).toEqual([note.link]);
+    expect(await recordsOf(store)).toEqual([note.link]);
     expect(await store.get(linkOf(image))).toEqual(image);
   });
 
@@ -87,7 +87,7 @@ describe("a store", () => {
     const note = object({ text: "hello" });
     await store.write({ records: [note, note], blobs: anything.blobs });
     await store.write({ records: [note] });
-    expect(await listed(store)).toEqual([note.link]);
+    expect(await recordsOf(store)).toEqual([note.link]);
   });
 
   it("lists an object that came in with another once it is written as a record", async () => {
@@ -95,36 +95,38 @@ describe("a store", () => {
     const note = object({ text: "hello" });
     const record = object({ received: { $link: note.link } });
     await store.write({ records: [record], blobs: [note.bytes, ...anything.blobs] });
-    expect(await listed(store)).toEqual([record.link]);
+    expect(await recordsOf(store)).toEqual([record.link]);
     await store.write({ records: [note] });
-    expect((await listed(store)).sort()).toEqual([record.link, note.link].sort());
+    expect((await recordsOf(store)).sort()).toEqual([record.link, note.link].sort());
   });
 
   it("refuses a batch with a record that is not an object, and keeps none of it", async () => {
     const store = newStore();
-    const carried = object({ text: "carried" });
+    const carriedObject = object({ text: "carried" });
     const notCanonical = utf8(` ${new TextDecoder().decode(object({ text: "hello" }).bytes)}`);
-    await expect(store.write({ records: [{ bytes: notCanonical }], blobs: [carried.bytes] })).rejects.toThrow(
+    await expect(store.write({ records: [{ bytes: notCanonical }], blobs: [carriedObject.bytes] })).rejects.toThrow(
       /is not an object/,
     );
     await expect(store.write({ records: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(/is not an object/);
-    expect(await store.get(carried.link)).toBeUndefined();
-    expect(await listed(store)).toEqual([]);
+    expect(await store.get(carriedObject.link)).toBeUndefined();
+    expect(await recordsOf(store)).toEqual([]);
   });
 
   it("refuses a batch in which a blob links to one that neither the batch nor the store holds, and keeps none of it", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: { $link: linkOf(image) } });
-    const carried = object({ text: "carried" });
-    await expect(store.write({ records: [note], blobs: [carried.bytes, ...anything.blobs] })).rejects.toThrow(
+    const carriedObject = object({ text: "carried" });
+    await expect(store.write({ records: [note], blobs: [carriedObject.bytes, ...anything.blobs] })).rejects.toThrow(
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
-    const unheld = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
-    const written = encodeObject(unheld, { text: "hello" });
-    await expect(store.write({ records: [written] })).rejects.toThrow(`${written.link} links to ${unheld.link}`);
-    expect(await store.get(carried.link)).toBeUndefined();
-    expect(await listed(store)).toEqual([]);
+    const unheldSchema = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
+    const writtenRecord = encodeObject(unheldSchema, { text: "hello" });
+    await expect(store.write({ records: [writtenRecord] })).rejects.toThrow(
+      `${writtenRecord.link} links to ${unheldSchema.link}`,
+    );
+    expect(await store.get(carriedObject.link)).toBeUndefined();
+    expect(await recordsOf(store)).toEqual([]);
   });
 
   it("takes an object of a schema written to another schema only along with that one too", async () => {
@@ -147,16 +149,16 @@ describe("a store", () => {
     await expect(store.write({ records: [note], blobs: anything.blobs })).rejects.toThrow(RefusedBatch);
     await expect(store.write({ records: [{ bytes: json.encode([1, 2]) }] })).rejects.toThrow(RefusedBatch);
 
-    const gone = new Error("the disk is gone");
+    const diskError = new Error("the disk is gone");
     const backend = new MemoryBackend();
-    const failing = newStore({
+    const failingStore = newStore({
       get: (link) => backend.get(link),
-      has: () => Promise.reject(gone),
-      put: () => Promise.reject(gone),
+      has: () => Promise.reject(diskError),
+      put: () => Promise.reject(diskError),
       records: (start) => backend.records(start),
     });
-    await expect(failing.write({ records: [note], blobs: anything.blobs })).rejects.toBe(gone);
-    await expect(failing.write({ records: [note], blobs: [image, ...anything.blobs] })).rejects.toBe(gone);
+    await expect(failingStore.write({ records: [note], blobs: anything.blobs })).rejects.toBe(diskError);
+    await expect(failingStore.write({ records: [note], blobs: [image, ...anything.blobs] })).rejects.toBe(diskError);
   });
 
   it("takes a batch whose blobs link to blobs it holds from an earlier write", async () => {
@@ -166,14 +168,14 @@ describe("a store", () => {
     await store.write({ records: [first], blobs: [image, ...anything.blobs] });
     const second = object({ text: "second", image: { $link: linkOf(image) } });
     await store.write({ records: [second] });
-    expect((await listed(store)).sort()).toEqual([first.link, second.link].sort());
+    expect((await recordsOf(store)).sort()).toEqual([first.link, second.link].sort());
   });
 
   it("takes a string that is a link as a whole as a string, and does not ask for the blob it names", async () => {
     const store = newStore();
     const commitment = object({ hash: linkOf(utf8("a secret")) });
     await store.write({ records: [commitment], blobs: anything.blobs });
-    expect(await listed(store)).toEqual([commitment.link]);
+    expect(await recordsOf(store)).toEqual([commitment.link]);
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual(
       [commitment.link, anything.link, jsonSchema.link].sort(),
     );
@@ -202,11 +204,11 @@ describe("a store", () => {
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const given = new Uint8Array(note.bytes);
-    await store.write({ records: [{ bytes: given }], blobs: anything.blobs });
-    given.fill(0);
-    const gotten = await store.get(note.link);
-    gotten?.fill(0);
+    const givenBytes = new Uint8Array(note.bytes);
+    await store.write({ records: [{ bytes: givenBytes }], blobs: anything.blobs });
+    givenBytes.fill(0);
+    const gottenBytes = await store.get(note.link);
+    gottenBytes?.fill(0);
     expect(await store.get(note.link)).toEqual(note.bytes);
   });
 });
@@ -251,7 +253,7 @@ describe("the closure of a blob", () => {
       records: [outer, other],
       blobs: [inner.bytes, ...anything.blobs],
     });
-    const store = newStore(giving(backend, inner.link, other.link));
+    const store = newStore(backendGiving(backend, inner.link, other.link));
     await expect(store.closure(outer.link)).rejects.toThrow(`another blob under ${inner.link}`);
   });
 
@@ -270,9 +272,9 @@ describe("a signature read from a store", () => {
       records: [note, signature],
       blobs: [...signature.signedIdentity.blobs, ...anything.blobs, ...signatureSchemas],
     });
-    const read = await signatures.read(signature.link, store, noVersions);
-    expect(read.object).toBe(note.link);
-    expect(read.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
+    const readSignature = await signatures.read(signature.link, store, noVersions);
+    expect(readSignature.object).toBe(note.link);
+    expect(readSignature.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
 
   it("is refused when the store holds another kind of object under its link", async () => {

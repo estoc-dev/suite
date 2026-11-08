@@ -70,13 +70,14 @@ export class Index<K extends Key> {
 
 /**
  * The index of the records that `selection` takes, with the rows that `rows` gives of what it
- * reads each one as. The rows depend on the record and its closure, which `reader` gives by link,
- * and on nothing else; what depends on what else is written, such as whether something replaced
- * the record, is worked out from the rows when they are read.
+ * reads each one as.
  *
- * `reader` throws for a blob the store fails to give, and the scan fails with that even where
- * `selection` or `rows` catch it, such as to give no row of something that came from elsewhere and
- * does not read as they expect.
+ * - The rows depend on the record and its closure, which `reader` gives by link, and on nothing
+ *   else; what depends on what else is written, such as whether something replaced the record, is
+ *   worked out from the rows when they are read.
+ * - `reader` throws for a blob the store fails to give, and a scan of the index fails with that
+ *   even where `selection` or `rows` catch it, such as to give no row of something that came from
+ *   elsewhere and does not read as they expect.
  */
 export function indexOver<K extends Key, T>(
   selection: Selection<T>,
@@ -216,9 +217,9 @@ class ScannedRecord {
   async objectOf<D, F extends Fields<D>>(schema: Schema<D, F>): Promise<EncodedObject<D, F> | undefined> {
     if (!this.#objects.has(schema)) {
       const bytes = await this.reader.get(this.link);
-      const named = this.#schemas.get(schema.encoding) ?? schemaOf(bytes, schema.encoding);
-      this.#schemas.set(schema.encoding, named);
-      this.#objects.set(schema, named === schema.link ? decodeObject(bytes, schema) : undefined);
+      const schemaLink = this.#schemas.get(schema.encoding) ?? schemaOf(bytes, schema.encoding);
+      this.#schemas.set(schema.encoding, schemaLink);
+      this.#objects.set(schema, schemaLink === schema.link ? decodeObject(bytes, schema) : undefined);
     }
     return this.#objects.get(schema) as EncodedObject<D, F> | undefined;
   }

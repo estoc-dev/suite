@@ -26,7 +26,7 @@ function open(path: string): SqliteBackend {
   return backend;
 }
 
-async function listed(source: { records(): AsyncIterable<Link<never>> }): Promise<Link<never>[]> {
+async function recordsOf(source: { records(): AsyncIterable<Link<never>> }): Promise<Link<never>[]> {
   const links: Link<never>[] = [];
   for await (const link of source.records()) links.push(link);
   return links;
@@ -42,7 +42,7 @@ describe("a SqliteBackend", () => {
     writer.close();
     const reader = open(path);
     for (const [link, bytes] of blobs) expect(await reader.get(link)).toEqual(bytes);
-    expect(await listed(reader)).toEqual(records);
+    expect(await recordsOf(reader)).toEqual(records);
   });
 
   it("reads what another backend open on the same file puts", async () => {
@@ -51,7 +51,7 @@ describe("a SqliteBackend", () => {
     const one = utf8("one");
     await writer.put(new Map([[linkOf(one), one]]), [linkOf(one)]);
     expect(await reader.get(linkOf(one))).toEqual(one);
-    expect(await listed(reader)).toEqual([linkOf(one)]);
+    expect(await recordsOf(reader)).toEqual([linkOf(one)]);
   });
 
   it("leaves nothing of a put that fails partway", async () => {
@@ -64,7 +64,7 @@ describe("a SqliteBackend", () => {
     }
     await expect(backend.put(blobs, records())).rejects.toBe(failure);
     for (const link of blobs.keys()) expect(await backend.has(link)).toBe(false);
-    expect(await listed(backend)).toEqual([]);
+    expect(await recordsOf(backend)).toEqual([]);
   });
 
   it("rejects every call once it is closed", async () => {
@@ -74,7 +74,7 @@ describe("a SqliteBackend", () => {
     await expect(backend.get(link)).rejects.toThrow();
     await expect(backend.has(link)).rejects.toThrow();
     await expect(backend.put(blobsOf("one"), [])).rejects.toThrow();
-    await expect(listed(backend)).rejects.toThrow();
+    await expect(recordsOf(backend)).rejects.toThrow();
   });
 });
 
@@ -86,7 +86,7 @@ describe("a store in a SqliteBackend", () => {
     const writer = new Store(json, open(path));
     await writer.write({ records: [note, reply], blobs: anything.blobs });
     const reader = new Store(json, open(path));
-    expect(await listed(reader)).toEqual(await listed(writer));
+    expect(await recordsOf(reader)).toEqual(await recordsOf(writer));
     expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
   });
 

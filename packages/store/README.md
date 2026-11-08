@@ -106,11 +106,11 @@ keeps, and the links of the store's records with those of the batch.
 `commit` writes the batch, as `write` does.
 
 ```ts
-const staged = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
-const people = await view(staged, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
-const signature = await signatures.read(bundle.link, staged, people);
+const stagedStore = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+const people = await view(stagedStore, { index: seenVersions, read: (rows, reader) => versions.people(rows, reader) });
+const signature = await signatures.read(bundle.link, stagedStore, people);
 // … whether whoever signed is someone to take it from …
-await staged.commit();
+await stagedStore.commit();
 ```
 
 A batch that `write` refuses is refused when it is staged, before

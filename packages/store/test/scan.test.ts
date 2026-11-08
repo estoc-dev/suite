@@ -280,6 +280,51 @@ describe("an index scanned from a store", () => {
   });
 });
 
+describe("an index whose rows give none of what does not read as they expect", () => {
+  const about = encodeObject(note, { keys: [["a"]] });
+  const record = encodeObject(note, { about: { $link: about.link } });
+  const byAbout: Index<Key> = indexOver(objectsOf(note), async function* ({ data }, reader) {
+    const { about } = data as { about?: { $link: Link<unknown> } };
+    if (about === undefined) return;
+    let keys: Key[];
+    try {
+      keys = keysOf(await readObject(reader, about.$link, note));
+    } catch {
+      return;
+    }
+    yield* keys;
+  });
+
+  // A store that holds `record`, on a backend that gives what `instead` gives for the note it is about.
+  async function storeGiving(instead: { get?: () => Promise<Uint8Array | undefined> }): Promise<Store> {
+    const backend = new (class extends MemoryBackend {
+      override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
+        return link === about.link && instead.get !== undefined ? instead.get() : super.get(link);
+      }
+    })();
+    const store = new Store(json, backend);
+    await store.write({ records: [record], blobs: [about.bytes, ...schemas] });
+    return store;
+  }
+
+  it("is not filled when the store throws for a blob of a record's closure, and a later scan reads the record", async () => {
+    const gone = new Error("the disk is gone");
+    const instead: { get?: () => Promise<Uint8Array | undefined> } = {};
+    const store = await storeGiving(instead);
+    instead.get = () => Promise.reject(gone);
+    await expect(scan(store, byAbout)).rejects.toBe(gone);
+    delete instead.get;
+    expect(await whole(await scan(store, byAbout))).toEqual([["a"]]);
+  });
+
+  it("is not filled when the store does not hold a blob of a record's closure", async () => {
+    const store = await storeGiving({ get: async () => undefined });
+    await expect(scan(store, byAbout)).rejects.toThrow(
+      `the store lists ${record.link} but does not hold ${about.link} of its closure`,
+    );
+  });
+});
+
 describe("an index scanned again from a store", () => {
   const [first, second] = [encodeObject(note, { keys: [["a"]] }), encodeObject(note, { keys: [["b"]] })];
 

@@ -222,6 +222,14 @@ index as long as the program holds it, so a program makes each index once:
 one made again by `indexOver` is another, and is read from all the records,
 as each index is once a program starts.
 
+Rows that catch what they fail to read, so as to give none of something
+that came from elsewhere and does not read as they expect, cannot tell that
+from a store that fails. A scan therefore fails when the store throws, or
+gives no blob, for a link that a selection or its rows read, even where they
+catch it: the rows of that record would be cut short. A scan that fails
+leaves the rows a store keeps as they were, so the next one reads that
+record again.
+
 ## Views
 
 What depends on what else is written is worked out from the rows when they

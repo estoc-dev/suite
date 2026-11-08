@@ -1,9 +1,9 @@
-import type { IdentityKit, People, SignatureData, Version } from "@estoc/identity";
+import type { IdentityKit, IdentityVersion, People, SignatureData } from "@estoc/identity";
 import { type EncodedObject, type Json, type Reader, readObject, type Schema } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
 import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
 
-export type PeopleView = View<Version, People>;
+export type PeopleView = View<IdentityVersion, People>;
 
 /**
  * The people of a service's store, or of a client's of it, by the versions

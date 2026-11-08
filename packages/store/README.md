@@ -163,17 +163,17 @@ gives other bytes, as a damaged disk may.
 
 ## Indexes
 
-A store keeps no index. An application keeps its own, of the records the
-user writes: an `Index` reads the records that a `Selection` takes, and
-gives rows of what the selection reads each one as. A row is a key of
-strings and finite numbers, compared one by one, a number before a string
-and a key before the longer keys that start with it. The rows of a
+A store has no index of its own. An application makes its own, of the
+records the user writes: an `Index` reads the records that a `Selection`
+takes, and gives rows of what the selection reads each one as. A row is a
+key of strings and finite numbers, compared one by one, a number before a
+string and a key before the longer keys that start with it. The rows of a
 record depend on it and its closure, which the selection and `rows` read
 by link from the `Reader` they are given, and on nothing else. An index is
 the set of the rows its records give, so the order they come in and how
 often make no difference. What depends on what else is written, such as
-whether something replaced a record, is worked out from the rows when
-they are read.
+whether something replaced a record, is worked out from the rows when they
+are read.
 
 ```ts
 import { objectsOf } from "@estoc/object";
@@ -210,8 +210,17 @@ many selections and rows read it. `range(prefix)` gives the rows whose
 keys start with `prefix`, in the order of their keys. What does not fit in
 rows, such as a count, an application keeps in a fold of its own, which
 then has to come to the same whatever the order and however often an
-object comes. The rows are kept in memory and worked out again on each
-scan.
+object comes.
+
+A store keeps in memory the rows of each index it is scanned for, and a
+later scan reads only the records listed since, those that another store on
+the same backend wrote among them. The rows of a record depend on it and
+its closure alone, and a store only grows, so the rows of the records read
+before still hold. A private store keeps its own, and a staged batch reads
+its records on top of those its store keeps. The rows are kept for an
+index as long as the program holds it, so a program makes each index once:
+one made again by `indexOver` is another, and is read from all the records,
+as each index is once a program starts.
 
 ## Views
 
@@ -293,7 +302,9 @@ encrypted is up to its backend.
 
 A store keeps its blobs and its list in a backend, which keeps bytes and
 links as it is given them; the store does the hashing and decoding, of
-what goes in and of what comes back.
+what goes in and of what comes back. The list keeps the order in which
+links were first put, and a backend gives it from any point on, so a store
+reads only the records listed since it last scanned.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 

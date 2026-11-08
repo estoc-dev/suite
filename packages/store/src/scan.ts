@@ -113,24 +113,66 @@ export interface Rows<K extends Key> {
  * - Within one record, a blob, the record among them, is read from the store once, however many
  *   selections and rows read it, and the record is read and validated with a schema once,
  *   however many selections by that schema read it.
+ * - A store and a private store keep the rows of each index they are scanned for, so a later scan
+ *   reads only the records listed since. A staged batch reads its own records on top of the rows
+ *   that its store keeps.
  *
  * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
  * @throws where a selection or its rows throw.
  * @throws when a row holds a number that is not finite.
  */
 export async function scan<K extends Key>(store: Pick<Store, "get" | "records">, index: Index<K>): Promise<Rows<K>> {
-  const rows = new Map<string, K>();
-  for await (const link of store.records()) {
-    const record = new ScannedRecord(link, store);
-    for (const part of partsOf(index)) {
-      for await (const key of part(record)) {
-        if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
-          throw new Error(`a row of ${link} holds a number that is not finite`);
-        rows.set(JSON.stringify(key), Object.freeze([...key]) as K);
-      }
-    }
+  if (rowsOf in store) return (store as RowKeeper)[rowsOf](index);
+  return new SortedRows<K>([]).adding(store.records(), store, index);
+}
+
+/** The key under which `scan` asks a store for the rows it keeps, which nothing outside this package can. */
+export const rowsOf: unique symbol = Symbol("rowsOf");
+
+/** A store that keeps the rows of the indexes it is scanned for. */
+export interface RowKeeper {
+  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>>;
+}
+
+/**
+ * The rows that a store keeps of each index it is scanned for, with how many of its records they
+ * are of, so that a scan reads only the records listed since.
+ *
+ * - The rows of a record depend on it and its closure alone, and a store only grows, so the rows of
+ *   the records read before still hold.
+ * - The rows are kept for as long as the index is, so a program makes an index once and keeps it.
+ * - Scans of one index go one after another, each from where the last left off, and one that fails
+ *   leaves the rows as they were.
+ */
+export class KeptRows {
+  readonly #reader: Reader;
+  readonly #records: (start: number) => AsyncIterable<Link<unknown>>;
+  readonly #rowsByIndex = new WeakMap<Index<Key>, Promise<{ rows: SortedRows<Key>; count: number }>>();
+
+  /**
+   * Keeps rows of the records that `records(start)` gives in the order they were listed, leaving out
+   * the first `start`, each read from `reader`.
+   */
+  constructor(reader: Reader, records: (start: number) => AsyncIterable<Link<unknown>>) {
+    this.#reader = reader;
+    this.#records = records;
   }
-  return new SortedRows([...rows.values()].sort(compare));
+
+  /** The rows of `index` for all the records listed now. */
+  rowsOf<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+    const previous = this.#rowsByIndex.get(index) ?? Promise.resolve({ rows: new SortedRows<Key>([]), count: 0 });
+    const next = previous.then(async ({ rows, count }) => {
+      const records: Link<unknown>[] = [];
+      for await (const link of this.#records(count)) records.push(link);
+      return { rows: await rows.adding(records, this.#reader, index), count: count + records.length };
+    });
+    this.#rowsByIndex.set(
+      index,
+      next.catch(() => previous),
+    );
+    // What is kept under an index are rows of its keys.
+    return next.then(({ rows }) => rows as SortedRows<K>);
+  }
 }
 
 /** A record as the parts of an index read it, so that what they share is done once. */
@@ -173,14 +215,41 @@ function readerOnce(reader: Reader): Reader {
   };
 }
 
-class SortedRows<K extends Key> implements Rows<K> {
+// biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
+/** Rows in the order of their keys, each once. */
+export class SortedRows<K extends Key> implements Rows<K> {
   readonly #rows: readonly K[];
 
   constructor(rows: readonly K[]) {
     this.#rows = rows;
   }
 
-  // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
+  /**
+   * These rows with those that `index` gives of `records`, each record read from `reader`.
+   *
+   * @throws as `scan` does.
+   */
+  async adding(
+    records: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>,
+    reader: Reader,
+    index: Index<K>,
+  ): Promise<SortedRows<K>> {
+    const newRows: K[] = [];
+    for await (const link of records) {
+      const record = new ScannedRecord(link, reader);
+      for (const part of partsOf(index)) {
+        for await (const key of part(record)) {
+          if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
+            throw new Error(`a row of ${link} holds a number that is not finite`);
+          newRows.push(Object.freeze([...key]) as K);
+        }
+      }
+    }
+    if (newRows.length === 0) return this;
+    const rows = [...this.#rows, ...newRows].sort(compare);
+    return new SortedRows(rows.filter((row, at) => at === 0 || compare(rows[at - 1]!, row) !== 0));
+  }
+
   async *range(prefix: Prefix<K>): AsyncIterable<K> {
     const start: Key = [...prefix];
     const rows = this.#rows;

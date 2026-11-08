@@ -27,7 +27,7 @@ const giving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): B
   get: (link) => backend.get(link === under ? other : link),
   has: (link) => backend.has(link),
   put: (blobs, records) => backend.put(blobs, records),
-  records: () => backend.records(),
+  records: (start) => backend.records(start),
 });
 
 async function listed(store: Store): Promise<Link<unknown>[]> {
@@ -153,7 +153,7 @@ describe("a store", () => {
       get: (link) => backend.get(link),
       has: () => Promise.reject(gone),
       put: () => Promise.reject(gone),
-      records: () => backend.records(),
+      records: (start) => backend.records(start),
     });
     await expect(failing.write({ records: [note], blobs: anything.blobs })).rejects.toBe(gone);
     await expect(failing.write({ records: [note], blobs: [image, ...anything.blobs] })).rejects.toBe(gone);

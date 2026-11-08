@@ -20,7 +20,7 @@ export class MemoryBackend implements Backend {
     for (const link of records) this.#records.add(link);
   }
 
-  async *records(): AsyncIterable<Link<never>> {
-    yield* [...this.#records];
+  async *records(start = 0): AsyncIterable<Link<never>> {
+    yield* [...this.#records].slice(start);
   }
 }

@@ -32,8 +32,10 @@ const server = createServer(async (request, response) => {
     type: request.headers["content-type"],
     body: new Uint8Array(Buffer.concat(chunks)),
   });
-  const late = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
-  const status = late ? 408 : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
+  const isTimedOut = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
+  const status = isTimedOut
+    ? 408
+    : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
 const port = await listen(server);
@@ -111,8 +113,8 @@ describe("an HTTP mailbox", () => {
 describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
     const store = new Store(json, new MemoryBackend());
-    const kept = new PrivateStore(store, new MemoryBackend());
-    const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
+    const privateStore = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, privateStore, { ...options, validator: defaultValidator });
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, note.bytes] });
     const outbox = await post.outbox(mailbox.link);
@@ -121,8 +123,8 @@ describe("an HTTP outbox", () => {
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
     expect(await listed(store)).toEqual(before);
 
-    const sent = await outbox.send(hello.link);
-    expect(new Set(await listed(store))).toEqual(new Set([...before, sent.link]));
+    const delivery = await outbox.send(hello.link);
+    expect(new Set(await listed(store))).toEqual(new Set([...before, delivery.link]));
     const requested = take();
     expect(requested.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = requested.at(-1);

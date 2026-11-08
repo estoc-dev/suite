@@ -48,11 +48,11 @@ describe.each([
   it("keeps a ciphertext that waits already once, and takes none that would bring what waits over the quota", async () => {
     const mailboxes = await open();
     const { sendId } = await mailboxes.open(mailboxRequested("one"));
-    const full = { ...limits, quota: 8 };
+    const limitsOfEightBytes = { ...limits, quota: 8 };
     const [a, b] = [ciphertextOf(1), ciphertextOf(2)];
-    for (const ciphertext of [a, a, b]) expect(await mailboxes.put(sendId, ciphertext, full)).toBe(true);
-    expect(await mailboxes.put(sendId, ciphertextOf(3, 1), full)).toBe(false);
-    expect(await mailboxes.put(sendId, a, full)).toBe(true);
+    for (const ciphertext of [a, a, b]) expect(await mailboxes.put(sendId, ciphertext, limitsOfEightBytes)).toBe(true);
+    expect(await mailboxes.put(sendId, ciphertextOf(3, 1), limitsOfEightBytes)).toBe(false);
+    expect(await mailboxes.put(sendId, a, limitsOfEightBytes)).toBe(true);
     expect(await readQueue(mailboxes, sendId)).toEqual([a, b]);
   });
 

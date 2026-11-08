@@ -61,20 +61,20 @@ interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>
  */
 export class Post {
   readonly #store: Store;
-  readonly #keys: PrivateStore;
+  readonly #privateStore: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
   readonly #schemas: Schemas;
 
   constructor(
     store: Store,
-    keys: PrivateStore,
+    privateStore: PrivateStore,
     transports: readonly Transport[],
     clock: () => number,
     schemas: Schemas,
   ) {
     this.#store = store;
-    this.#keys = keys;
+    this.#privateStore = privateStore;
     this.#transports = transports;
     this.#clock = clock;
     this.#schemas = schemas;
@@ -82,8 +82,8 @@ export class Post {
 
   /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject<Json>>): Promise<Outbox> {
-    const bound = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
-    return new Outbox(bound, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
+    const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
+    return new Outbox(boundMailbox, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
   }
 
   /**
@@ -106,7 +106,7 @@ export class Post {
     await this.#store.write({ records: [{ bytes }], blobs: transport.schema.blobs });
     const schema = this.#schemas.key;
     const object = encodeObject(schema, { mailbox: { $link: mailbox }, secret: hex.encode(secret) });
-    await this.#keys.write({ records: [object], blobs: schema.blobs });
+    await this.#privateStore.write({ records: [object], blobs: schema.blobs });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -118,11 +118,11 @@ export class Post {
    *   sealed to another mailbox.
    */
   async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
-    const { data } = await readObject(this.#keys, key, this.#schemas.key);
+    const { data } = await readObject(this.#privateStore, key, this.#schemas.key);
     const mailbox = data.mailbox.$link;
-    const named = readMailbox(await this.#bytesAt(mailbox), this.#transports).data.key;
+    const namedKey = readMailbox(await this.#bytesAt(mailbox), this.#transports).data.key;
     const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
-    if (named !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
+    if (namedKey !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
   }
 
@@ -261,12 +261,12 @@ export class Inbox {
 
 /**
  * Makes a post that sends and receives with `store`, through `transports`,
- * and keeps the keys of the user's mailboxes in `keys`, a private store
- * beside `store`.
+ * and keeps the keys of the user's mailboxes in `privateStore`, beside
+ * `store`.
  */
 export async function loadPost(
   store: Store,
-  keys: PrivateStore,
+  privateStore: PrivateStore,
   { transports, validator, clock = Date.now }: PostOptions,
 ): Promise<Post> {
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
@@ -276,5 +276,5 @@ export async function loadPost(
     compile<DeliveryData>(outboundSchema),
     compile<MailboxKeyData>(mailboxKeySchema),
   ]);
-  return new Post(store, keys, transports, clock, { inbound, outbound, key });
+  return new Post(store, privateStore, transports, clock, { inbound, outbound, key });
 }

@@ -328,9 +328,9 @@ class ServicePickup implements Pickup {
         if (signal?.aborted) return;
         throw error;
       }
-      const fresh = queue.filter((ciphertext) => !handedLinks.has(linkOf(ciphertext)));
-      if (fresh.length === 0) return;
-      for (const ciphertext of fresh) {
+      const newCiphertexts = queue.filter((ciphertext) => !handedLinks.has(linkOf(ciphertext)));
+      if (newCiphertexts.length === 0) return;
+      for (const ciphertext of newCiphertexts) {
         if (signal?.aborted) return;
         const link = linkOf(ciphertext);
         handedLinks.add(link);

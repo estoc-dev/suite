@@ -170,24 +170,24 @@ class StoreOf<D> implements Store, RowKeeper {
   async stage({ records = [], blobs = [] }: Batch): Promise<StagedStore> {
     // Each blob is copied before it is hashed, so that what is kept is what
     // was hashed, whatever happens to the given arrays afterwards.
-    const given = new Map<Link<unknown>, Uint8Array>();
+    const batchBlobs = new Map<Link<unknown>, Uint8Array>();
     for (const blob of blobs) {
-      const owned = new Uint8Array(blob);
-      given.set(linkOf(owned), owned);
+      const ownedBytes = new Uint8Array(blob);
+      batchBlobs.set(linkOf(ownedBytes), ownedBytes);
     }
-    const written: Link<never>[] = [];
+    const recordLinks: Link<never>[] = [];
     for (const { bytes } of records) {
-      const owned = new Uint8Array(bytes);
-      const link = linkOf(owned);
+      const ownedBytes = new Uint8Array(bytes);
+      const link = linkOf(ownedBytes);
       try {
-        schemaOf(owned, this.#encoding);
+        schemaOf(ownedBytes, this.#encoding);
       } catch (cause) {
         throw new RefusedBatch(`${link} is written as a record but is not an object`, { cause });
       }
-      given.set(link, owned);
-      written.push(link);
+      batchBlobs.set(link, ownedBytes);
+      recordLinks.push(link);
     }
-    return new StagedStoreOf(this, this.#backend, await this.#leavesFirst(written, given), written);
+    return new StagedStoreOf(this, this.#backend, await this.#leavesFirst(recordLinks, batchBlobs), recordLinks);
   }
 
   records(): AsyncIterable<Link<never>> {
@@ -205,34 +205,34 @@ class StoreOf<D> implements Store, RowKeeper {
    */
   static beside(store: Store, backend: Backend): Store & RowKeeper {
     if (!(#backend in store)) throw new TypeError("a private store is kept beside a store made by `new Store`");
-    const shared = store.#backend;
+    const sharedBackend = store.#backend;
     return new StoreOf(store.#encoding, {
-      get: async (link) => (await backend.get(link)) ?? shared.get(link),
-      has: async (link) => (await backend.has(link)) || shared.has(link),
+      get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
+      has: async (link) => (await backend.has(link)) || sharedBackend.has(link),
       put: async (blobs, records) => {
-        const own = new Map<Link<unknown>, Uint8Array>();
-        for (const [link, bytes] of blobs) if (!(await shared.has(link))) own.set(link, bytes);
-        await backend.put(own, records);
+        const ownBlobs = new Map<Link<unknown>, Uint8Array>();
+        for (const [link, bytes] of blobs) if (!(await sharedBackend.has(link))) ownBlobs.set(link, bytes);
+        await backend.put(ownBlobs, records);
       },
       records: (start) => backend.records(start),
     });
   }
 
   async closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
-    const gathered = new Map<Link<unknown>, Uint8Array>();
-    const seen = new Set([link]);
-    const pending = [link];
-    for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const closureBlobs = new Map<Link<unknown>, Uint8Array>();
+    const seenLinks = new Set([link]);
+    const pendingLinks = [link];
+    for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
       const bytes = await this.get(next);
       if (bytes === undefined) continue;
-      gathered.set(next, bytes);
-      for (const linked of this.#linksIn(bytes)) {
-        if (seen.has(linked)) continue;
-        seen.add(linked);
-        pending.push(linked);
+      closureBlobs.set(next, bytes);
+      for (const targetLink of this.#linksIn(bytes)) {
+        if (seenLinks.has(targetLink)) continue;
+        seenLinks.add(targetLink);
+        pendingLinks.push(targetLink);
       }
     }
-    return gathered;
+    return closureBlobs;
   }
 
   /**
@@ -245,38 +245,38 @@ class StoreOf<D> implements Store, RowKeeper {
     records: readonly Link<unknown>[],
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
   ): Promise<Map<Link<unknown>, Uint8Array>> {
-    const ordered = new Map<Link<unknown>, Uint8Array>();
-    const held = new Set<Link<unknown>>();
+    const orderedBlobs = new Map<Link<unknown>, Uint8Array>();
+    const heldLinks = new Set<Link<unknown>>();
     const frame = (link: Link<unknown>, bytes: Uint8Array) => ({
       link,
       bytes,
       links: this.#linksIn(bytes)[Symbol.iterator](),
     });
     for (const start of records) {
-      if (ordered.has(start)) continue;
+      if (orderedBlobs.has(start)) continue;
       // A link is a hash of its blob, so no blob on the path is in the closure of one after it.
       // biome-ignore lint/style/noNonNullAssertion: each record is among the blobs
       const path = [frame(start, blobs.get(start)!)];
       for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
         const next = top.links.next();
         if (next.done) {
-          ordered.set(top.link, top.bytes);
+          orderedBlobs.set(top.link, top.bytes);
           path.pop();
           continue;
         }
-        const linked = next.value;
-        if (ordered.has(linked) || held.has(linked)) continue;
-        const linkedBytes = blobs.get(linked);
-        if (linkedBytes !== undefined) {
-          path.push(frame(linked, linkedBytes));
-        } else if (await this.#backend.has(linked)) {
-          held.add(linked);
+        const targetLink = next.value;
+        if (orderedBlobs.has(targetLink) || heldLinks.has(targetLink)) continue;
+        const targetBytes = blobs.get(targetLink);
+        if (targetBytes !== undefined) {
+          path.push(frame(targetLink, targetBytes));
+        } else if (await this.#backend.has(targetLink)) {
+          heldLinks.add(targetLink);
         } else {
-          throw new RefusedBatch(`${top.link} links to ${linked}, which neither the batch nor the store holds`);
+          throw new RefusedBatch(`${top.link} links to ${targetLink}, which neither the batch nor the store holds`);
         }
       }
     }
-    return ordered;
+    return orderedBlobs;
   }
 
   #linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
@@ -316,12 +316,12 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   }
 
   async *records(): AsyncIterable<Link<never>> {
-    const unlisted = new Set(this.#records);
+    const unlistedLinks = new Set(this.#records);
     for await (const link of this.#backend.records()) {
-      unlisted.delete(link);
+      unlistedLinks.delete(link);
       yield link;
     }
-    yield* unlisted;
+    yield* unlistedLinks;
   }
 
   async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {

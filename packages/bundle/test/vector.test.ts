@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 
 // stored-by-python.zip holds these files as Python's zipfile writes them,
-// without compression and with index.json last. A bundle reads and writes its
-// root and blobs without decoding them, so they stay fixed when the objects
-// they hold change format.
+// without compression and with index.json last. A bundle does not validate
+// these objects against their schemas or verify the signature, so the files
+// stay fixed when those schemas change.
 const objectText =
   '{"$schema":{"$link":"sha256:cf76929b1ed8423c16a19e6dc435f82e007bcff00c2020c94abbb4ad73e97eb0"},' +
   '"audience":"https://app.estoc.dev","nonce":"6f1c0a9e"}';
@@ -83,8 +83,8 @@ const files = new Map([
 
 describe("a bundle whose root is a signature over a login object, carrying the object and the signer's signed identity", () => {
   it("writes to fixed files", () => {
-    const written = writeBundle({ bytes: utf8(signatureText) }, [...blobs.values()].map(utf8));
-    expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
+    const writtenFiles = writeBundle({ bytes: utf8(signatureText) }, [...blobs.values()].map(utf8));
+    expect(new Map([...writtenFiles].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
   });
 
   it("reads from those files with the root's link, and gets each blob by its link", () => {
@@ -97,8 +97,8 @@ describe("a bundle whose root is a signature over a login object, carrying the o
 
   it("unzips to those files from a zip that another tool made", async () => {
     const zip = new Uint8Array(readFileSync(new URL("stored-by-python.zip", import.meta.url)));
-    const unzipped = await unzipBundle(zip);
-    expect(new Map([...unzipped].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
-    expect(readBundle(unzipped).link).toBe(signatureLink);
+    const unzippedFiles = await unzipBundle(zip);
+    expect(new Map([...unzippedFiles].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
+    expect(readBundle(unzippedFiles).link).toBe(signatureLink);
   });
 });

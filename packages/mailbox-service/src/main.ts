@@ -70,12 +70,13 @@ async function start(): Promise<void> {
     port,
     process.env.MAILBOX_HOST,
   );
-  console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
   const stop = async () => {
     await server.close();
     for (const file of [privateBackend, backend, accounts, mailboxes]) file.close();
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
+  // Whoever waits for this line can ask it to stop from then on.
+  console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
 }
 
 /**

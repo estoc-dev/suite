@@ -1,0 +1,139 @@
+import {
+  type IdentityKit,
+  type KeyObject,
+  noVersions,
+  type Signature,
+  type SignatureOver,
+  type SignedIdentityObject,
+} from "@estoc/identity";
+import {
+  type EncodedObject,
+  encodeObject,
+  encodeSchema,
+  type Json,
+  type JsonSchemaValidator,
+  type Link,
+  objectsOf,
+  type Reader,
+  readObject,
+  type Schema,
+} from "@estoc/object";
+import { indexOver, type Rows, type View } from "@estoc/store";
+import { type DeliveryData, inboundSchema, type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
+
+/**
+ * A Mailbox Grant as a row: the root of whoever signed it, the root of the signed identity it is
+ * to, its `at`, and the link of the signature.
+ *
+ * - The grants of one root to another are a series, and its rows, in the order of their keys, end
+ *   with the latest.
+ * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
+ *   versions of an identity are.
+ */
+export type MailboxGrantRow = readonly [
+  from: Link<KeyObject>,
+  to: Link<KeyObject>,
+  at: number,
+  signature: Link<Signature>,
+];
+
+/** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
+export interface MailboxGrant {
+  readonly object: EncodedObject<Json, MailboxGrantData>;
+  readonly signature: Signature;
+  readonly to: SignedIdentityObject;
+}
+
+/** The latest Mailbox Grant of each series that a store holds. */
+export interface LatestGrants {
+  /** The latest grant that `from` signed to `to`, by the links of their roots, or `undefined` when there is none. */
+  grantFrom(from: Link<KeyObject>, to: Link<KeyObject>): Promise<MailboxGrant | undefined>;
+}
+
+type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
+
+/**
+ * Mailbox Grants: writing one for a signer to sign, and reading the latest of each series from a
+ * store.
+ *
+ * - A grant reaches `latest` as a signature over it, either written as a record or as the root of
+ *   a bundle that an `Inbound` record says came in.
+ * - Each signature is verified by the signed identity it carries, as by `noVersions`.
+ * - A bundle that came in and does not read as a grant gives no row, since anyone can send a
+ *   bundle to a mailbox.
+ * - The scan still fails when the store fails to give a blob of that bundle, so a later scan of
+ *   the index reads it again.
+ */
+export class MailboxGrants {
+  readonly schema: Schema<Json, MailboxGrantData>;
+  /** The latest grant of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
+  readonly latest: View<MailboxGrantRow, LatestGrants>;
+  readonly #identity: SignatureReading;
+
+  constructor(schema: Schema<Json, MailboxGrantData>, inbound: Schema<Json, DeliveryData>, identity: SignatureReading) {
+    this.schema = schema;
+    this.#identity = identity;
+    const grants = identity.signatures.selectionOver(schema);
+    const rowOf = (grant: SignatureOver<MailboxGrantData>, reader: Reader) => this.#rowOf(grant, reader);
+    const recordedGrants = indexOver(grants, async function* (grant, reader) {
+      yield await rowOf(grant, reader);
+    });
+    const receivedGrants = indexOver(objectsOf(inbound), async function* ({ data }, reader) {
+      let row: MailboxGrantRow | undefined;
+      try {
+        const grant = await grants.read(data.bundle.$link, reader);
+        row = grant === undefined ? undefined : await rowOf(grant, reader);
+      } catch {
+        return;
+      }
+      if (row !== undefined) yield row;
+    });
+    this.latest = { index: recordedGrants.union(receivedGrants), read: (rows, reader) => this.#latestOf(rows, reader) };
+  }
+
+  /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */
+  encode(
+    to: SignedIdentityObject,
+    mailboxes: readonly Link<EncodedObject<Json>>[],
+    at: number,
+  ): EncodedObject<Json, MailboxGrantData> {
+    return encodeObject(this.schema, { to: { $link: to.link }, mailboxes: mailboxes.map(($link) => ({ $link })), at });
+  }
+
+  async #rowOf({ signature, object }: SignatureOver<MailboxGrantData>, reader: Reader): Promise<MailboxGrantRow> {
+    const { signatures, signedIdentities } = this.#identity;
+    const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
+    const to = await signedIdentities.read(object.data.to.$link, reader);
+    return [signedIdentity.identity.root.link, to.identity.root.link, object.data.at, link];
+  }
+
+  #latestOf(rows: Rows<MailboxGrantRow>, reader: Reader): LatestGrants {
+    return {
+      grantFrom: async (from, to) => {
+        let last: MailboxGrantRow | undefined;
+        for await (const row of rows.range([from, to])) last = row;
+        return last === undefined ? undefined : this.#read(last[3], reader);
+      },
+    };
+  }
+
+  async #read(link: Link<Signature>, reader: Reader): Promise<MailboxGrant> {
+    const { signatures, signedIdentities } = this.#identity;
+    const signature = await signatures.read(link, reader, noVersions);
+    const object = await readObject(reader, signature.object, this.schema);
+    return { object, signature, to: await signedIdentities.read(object.data.to.$link, reader) };
+  }
+}
+
+/**
+ * Mailbox Grants with their schema compiled by `validator`, whose signatures and signed identities
+ * are read with `identity`.
+ */
+export async function loadMailboxGrants(
+  validator: JsonSchemaValidator,
+  identity: SignatureReading,
+): Promise<MailboxGrants> {
+  const schema: Schema<Json, MailboxGrantData> = await encodeSchema(mailboxGrantSchema, validator);
+  const inbound: Schema<Json, DeliveryData> = await encodeSchema(inboundSchema, validator);
+  return new MailboxGrants(schema, inbound, identity);
+}

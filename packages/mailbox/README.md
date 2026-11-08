@@ -281,6 +281,60 @@ not used: they need the sender to hold an x25519 key that the receiver
 already knows, which a sender that has only been handed a mailbox does not
 have.
 
+## Mailbox Grants
+
+```
+Mailbox Grant  {"to": <link of a signed identity>, "mailboxes": [<link of a mailbox>, …], "at": <milliseconds>}, signed
+```
+
+A Mailbox Grant says at which mailboxes whoever signs it takes messages
+from someone. `to` is that someone's signed identity, the version the
+signer holds when it signs, and `at` is when, by the signer's clock. The
+signer writes its signature over the grant as a record, which is its own
+account of where it takes whose messages, and sends the signature, with
+its closure, to the one the grant is to, who then sends to those mailboxes.
+A grant with no mailboxes says that the signer no longer takes their
+messages. The schema is `mailboxGrantSchema`.
+
+The grants of one root to another are a series, by the root of the signer
+and the root of `to`. The latest of a series is the one with the greatest
+`at`, and of two at one `at`, the one whose signature has the greater link,
+as with the versions of an identity in `@estoc/identity`. Each side holds
+the latest it has seen, so the two agree on where messages go by comparing
+one link, without asking a transport whether a mailbox still takes them.
+`to` says which series a grant is of and grants nothing by itself: a grant
+to someone else that is passed on to you is of their series, and does not
+change where its signer takes your messages.
+
+```ts
+import { loadMailboxGrants } from "@estoc/mailbox";
+import { view } from "@estoc/store";
+
+const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities });
+const grant = grants.encode(theirs, [inbox.mailbox], Date.now());
+const signature = await actor.sign(grant);
+await store.write({ records: [signature], blobs: [grant.bytes, ...grants.schema.blobs, ...] });
+await (await post.outbox(theirMailbox)).send(signature.link);
+
+const latest = await view(store, grants.latest);
+await latest.grantFrom(mine, their); // where I take their messages
+await latest.grantFrom(their, mine); // where they take mine
+```
+
+`grants.latest` is a `View` of `@estoc/store`, made once for the program
+as the index it holds is. Its index reads the signatures over grants that
+the user writes as records, and the bundles that `Inbound` records say
+came in whose root is such a signature. Each gives a row of the root of
+the signer, the root of `to`, `at` and the link of the signature; the
+signature is verified by the signed identity it carries, as by
+`noVersions`. A bundle that came in and does not read as a grant gives no
+row, since anyone can send a bundle to a mailbox. The scan still fails
+when the store fails to give a blob of it, so a later scan of the index
+reads the bundle again. `grantFrom` takes the links of two roots and gives
+the latest grant of the first to the second,
+with the signature over it and the signed identity it is to, or
+`undefined` when the store holds none.
+
 ## Transports
 
 A transport is a plugin:

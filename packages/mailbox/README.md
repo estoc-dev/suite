@@ -156,8 +156,8 @@ The three schemas are `inboundSchema`, `outboundSchema` and
 import { loadPost } from "@estoc/mailbox";
 import { MemoryBackend, PrivateStore } from "@estoc/store";
 
-const keys = new PrivateStore(store, new MemoryBackend());
-const post = await loadPost(store, keys, { transports: [transport], validator: defaultValidator });
+const privateStore = new PrivateStore(store, new MemoryBackend());
+const post = await loadPost(store, privateStore, { transports: [transport], validator: defaultValidator });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and its closure in the store

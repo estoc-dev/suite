@@ -14,7 +14,7 @@ const schemes = [ed25519, eip191, solanaOffchain];
 
 const [command, path, ...rest] = process.argv.slice(2);
 if (command === undefined) await start();
-else if (command === "key" && path !== undefined && rest.length === 0) await makeKeys(path);
+else if (command === "key" && path !== undefined && rest.length === 0) await makePrivateStore(path);
 else {
   console.error("Usage: main.ts, set up by the environment, or main.ts key <path>");
   process.exitCode = 1;
@@ -24,13 +24,13 @@ else {
  * Serves the mailbox service that the environment sets up, until the
  * process is asked to stop.
  *
- * @throws when a setting without a default is not set, or the key file is
- *   missing.
- * @throws when the key file holds no Secret Key or more than one.
+ * @throws when a setting without a default is not set, or the file of the
+ *   private store is missing.
+ * @throws when the private store holds no Secret Key or more than one.
  */
 async function start(): Promise<void> {
   const origin = settingNamed("MAILBOX_ORIGIN");
-  const keysPath = settingNamed("MAILBOX_KEYS");
+  const privateStorePath = settingNamed("MAILBOX_PRIVATE_STORE");
   const database = settingNamed("MAILBOX_DATABASE");
   const port = Number(settingNamed("MAILBOX_PORT"));
   const terms = {
@@ -39,13 +39,13 @@ async function start(): Promise<void> {
     size: Number(process.env.MAILBOX_SIZE ?? MIB),
   };
   // SQLite makes a file that is missing, which would be a new service with no key.
-  await access(keysPath);
-  const keysBackend = new SqliteBackend(keysPath);
+  await access(privateStorePath);
+  const privateBackend = new SqliteBackend(privateStorePath);
   const backend = new SqliteBackend(database);
   const accounts = new SqliteAccounts(database);
   const mailboxes = new SqliteMailboxes(database);
   const store = new Store(json, backend);
-  const secretKey = await secretKeyIn(new PrivateStore(store, keysBackend), keysPath);
+  const secretKey = await secretKeyIn(new PrivateStore(store, privateBackend), privateStorePath);
   const service = await loadMailboxService(secretKey.signer, {
     origin,
     store,
@@ -69,7 +69,7 @@ async function start(): Promise<void> {
   console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
   const stop = async () => {
     await server.close();
-    for (const file of [keysBackend, backend, accounts, mailboxes]) file.close();
+    for (const file of [privateBackend, backend, accounts, mailboxes]) file.close();
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
 }
@@ -81,15 +81,15 @@ async function start(): Promise<void> {
  *
  * @throws when a file is at `path`.
  */
-async function makeKeys(path: string): Promise<void> {
+async function makePrivateStore(path: string): Promise<void> {
   // SQLite gives the files it makes beside a database the database's mode.
   await (await open(path, "wx", 0o600)).close();
   const backend = new SqliteBackend(path);
   try {
     const { secretKeys } = await loadIdentity(defaultValidator, schemes);
     const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
-    const keys = new PrivateStore(new Store(json, new MemoryBackend()), backend);
-    await keys.write({ records: [secretKey], blobs: secretKey.blobs });
+    const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);
+    await privateStore.write({ records: [secretKey], blobs: secretKey.blobs });
     console.log(secretKey.key.link);
   } finally {
     backend.close();
@@ -97,22 +97,22 @@ async function makeKeys(path: string): Promise<void> {
 }
 
 /**
- * The one Secret Key in `keys`, the private store at `path`.
+ * The one Secret Key in `privateStore`, kept at `path`.
  *
- * @throws when `keys` holds no Secret Key or more than one.
+ * @throws when `privateStore` holds no Secret Key or more than one.
  */
-async function secretKeyIn(keys: PrivateStore, path: string): Promise<SecretKeyObject> {
+async function secretKeyIn(privateStore: PrivateStore, path: string): Promise<SecretKeyObject> {
   const { secretKeys } = await loadIdentity(defaultValidator, schemes);
   const selection = objectsOf(secretKeys.schema);
   const links: Link<SecretKeyObject>[] = [];
-  for await (const record of keys.records()) {
-    const object = await selection.read(record, keys);
+  for await (const record of privateStore.records()) {
+    const object = await selection.read(record, privateStore);
     if (object !== undefined) links.push(object.link as Link<SecretKeyObject>);
   }
   const [link, ...others] = links;
   if (link === undefined || others.length > 0)
     throw new Error(`${path} holds ${links.length} Secret Keys, where the service takes one`);
-  return secretKeys.read(link, keys);
+  return secretKeys.read(link, privateStore);
 }
 
 function settingNamed(name: string): string {

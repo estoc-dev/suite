@@ -263,10 +263,10 @@ schema can be kept on either side.
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
 const store = new Store(json, new MemoryBackend());
-const keys = new PrivateStore(store, new MemoryBackend());
-await keys.write({ records: [key], blobs: keySchema.blobs });
+const privateStore = new PrivateStore(store, new MemoryBackend());
+await privateStore.write({ records: [key], blobs: keySchema.blobs });
 
-await keys.get(mailbox.link);  // from the store beside
+await privateStore.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined
 ```
 

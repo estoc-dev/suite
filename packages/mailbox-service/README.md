@@ -487,7 +487,8 @@ on its own: the private store when it changes, the database often.
 | `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
 | `MAILBOX_PRIVATE_STORE` | the path of the private store that `main.ts key` makes |
 | `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes, made when it is missing |
-| `MAILBOX_PORT` | the port it listens at, on 127.0.0.1 |
+| `MAILBOX_PORT` | the port it listens at |
+| `MAILBOX_HOST` | the address it listens at; 127.0.0.1 unless set |
 | `MAILBOX_RETENTION` | the retention that the offer of mailboxes names, in milliseconds; 30 days unless set |
 | `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
 | `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
@@ -495,8 +496,8 @@ on its own: the private store when it changes, the database often.
 It signs with the one Secret Key in its private store. Without the private
 store, or with no Secret Key or more than one in it, it refuses to start,
 since a new key would be another service. Once it serves, it writes a line
-with its origin and the link of its root. It listens on 127.0.0.1 alone,
-for a proxy in front of it that holds the TLS certificate. It writes a line
+with its origin, where it listens and the link of its root. It speaks plain
+HTTP, for a proxy in front of it that holds the TLS certificate. It writes a line
 for each request, with its method, its status and how long it took. On
 SIGTERM it takes no more requests, answers those it took, and closes the
 files.
@@ -555,3 +556,44 @@ to `MAILBOX_RETENTION`, `MAILBOX_QUOTA` or `MAILBOX_SIZE` makes another offer,
 under which the next run opens another mailbox. Anyone who reads `smoke.ts`
 can sign as that identity, which is all right for an account that only tests
 a service.
+
+## Running in Docker
+
+`Dockerfile` builds an image of the service, from the root of the
+repository:
+
+```sh
+docker build -f packages/mailbox-service/Dockerfile -t mailbox-service .
+```
+
+The image runs `main.ts` as the `node` user. It listens at port 8080 of the
+container, for a proxy on the same network, and keeps its private store
+and its database in `/data`. The other settings come from the environment
+as above. Arguments go to `main.ts`, so the private store is made with:
+
+```sh
+docker run --rm -v mailbox:/data mailbox-service key /data/private.db
+```
+
+With Docker Compose, from a folder that holds a checkout of the repository
+at `suite`:
+
+```yaml
+services:
+  mailbox:
+    build:
+      context: suite
+      dockerfile: packages/mailbox-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      MAILBOX_ORIGIN: https://mail.example
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+```
+
+`docker compose run --rm mailbox key /data/private.db` makes the private
+store in that volume, and `docker compose up -d --build` serves the
+checkout as it is after a pull.

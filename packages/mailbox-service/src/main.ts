@@ -55,23 +55,28 @@ async function start(): Promise<void> {
     validator: defaultValidator,
     schemes,
   });
-  const server = await serve(async (request) => {
-    const since = performance.now();
-    let status = 500;
-    try {
-      const response = await service.fetch(request);
-      status = response.status;
-      return response;
-    } finally {
-      console.log(`${request.method} ${status} ${Math.round(performance.now() - since)} ms`);
-    }
-  }, port);
-  console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
+  const server = await serve(
+    async (request) => {
+      const since = performance.now();
+      let status = 500;
+      try {
+        const response = await service.fetch(request);
+        status = response.status;
+        return response;
+      } finally {
+        console.log(`${request.method} ${status} ${Math.round(performance.now() - since)} ms`);
+      }
+    },
+    port,
+    process.env.MAILBOX_HOST,
+  );
   const stop = async () => {
     await server.close();
     for (const file of [privateBackend, backend, accounts, mailboxes]) file.close();
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
+  // Whoever waits for this line can ask it to stop from then on.
+  console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
 }
 
 /**

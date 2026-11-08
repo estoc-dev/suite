@@ -48,6 +48,13 @@ describe("serve", () => {
     },
   );
 
+  it("serves at the address it is given", async () => {
+    const server = await serve(async (request) => new Response(new URL(request.url).host), 0, "::1");
+    onTestFinished(() => server.close());
+    expect(server.origin).toMatch(/^http:\/\/\[::1\]:\d+$/);
+    expect(await (await fetch(server.origin)).text()).toBe(new URL(server.origin).host);
+  });
+
   it("answers 500 when the handler throws", async () => {
     const { origin } = await startServer();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

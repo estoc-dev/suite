@@ -1,4 +1,5 @@
 import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
+import { type Index, KeptRows, type Key, type RowKeeper, rowsOf, type SortedRows } from "./scan.ts";
 
 /**
  * Where a store keeps its blobs and its records: memory, a file, or storage in a browser. It
@@ -24,8 +25,11 @@ export interface Backend {
    *   the store beside instead.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void>;
-  /** The links listed by `put`, each once. */
-  records(): AsyncIterable<Link<never>>;
+  /**
+   * The links listed by `put`, each once and in the order they were first listed, leaving out the
+   * first `start`.
+   */
+  records(start?: number): AsyncIterable<Link<never>>;
 }
 
 /** What one write puts in a store. */
@@ -140,13 +144,15 @@ export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
 }
 
-class StoreOf<D> implements Store {
+class StoreOf<D> implements Store, RowKeeper {
   readonly #encoding: Encoding<D>;
   readonly #backend: Backend;
+  readonly #keptRows: KeptRows;
 
   constructor(encoding: Encoding<D>, backend: Backend) {
     this.#encoding = encoding;
     this.#backend = backend;
+    this.#keptRows = new KeptRows(this, (start) => backend.records(start));
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -188,12 +194,16 @@ class StoreOf<D> implements Store {
     return this.#backend.records();
   }
 
+  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+    return this.#keptRows.rowsOf(index);
+  }
+
   /**
    * A store that writes to `backend` and holds besides all that `store`
    * holds, of the same encoding. What `store` holds already is not put in
    * `backend` again.
    */
-  static beside(store: Store, backend: Backend): Store {
+  static beside(store: Store, backend: Backend): Store & RowKeeper {
     if (!(#backend in store)) throw new TypeError("a private store is kept beside a store made by `new Store`");
     const shared = store.#backend;
     return new StoreOf(store.#encoding, {
@@ -204,7 +214,7 @@ class StoreOf<D> implements Store {
         for (const [link, bytes] of blobs) if (!(await shared.has(link))) own.set(link, bytes);
         await backend.put(own, records);
       },
-      records: () => backend.records(),
+      records: (start) => backend.records(start),
     });
   }
 
@@ -280,14 +290,14 @@ class StoreOf<D> implements Store {
   }
 }
 
-class StagedStoreOf implements StagedStore {
-  readonly #store: Pick<Store, "get">;
+class StagedStoreOf implements StagedStore, RowKeeper {
+  readonly #store: Pick<Store, "get"> & RowKeeper;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly #records: readonly Link<never>[];
 
   constructor(
-    store: Pick<Store, "get">,
+    store: Pick<Store, "get"> & RowKeeper,
     backend: Backend,
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
     records: readonly Link<never>[],
@@ -312,6 +322,11 @@ class StagedStoreOf implements StagedStore {
       yield link;
     }
     yield* unlisted;
+  }
+
+  /** The rows that the store keeps of `index`, with those of the batch's records. */
+  async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+    return (await this.#store[rowsOf](index)).adding(this.#records, this, index);
   }
 
   commit(): Promise<void> {
@@ -344,7 +359,7 @@ export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = 
 export class PrivateStore {
   // A private field makes the type nominal, unlike the interface `Store`, so a
   // store, which has every method of this one, cannot be given in its place.
-  readonly #store: Store;
+  readonly #store: Store & RowKeeper;
 
   /**
    * Keeps what is written to it in `backend`, beside `store`, whose encoding it finds links by.
@@ -377,5 +392,9 @@ export class PrivateStore {
   /** The links of the records written here, each once, in no particular order. */
   records(): AsyncIterable<Link<never>> {
     return this.#store.records();
+  }
+
+  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+    return this.#store[rowsOf](index);
   }
 }

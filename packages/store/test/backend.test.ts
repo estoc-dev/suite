@@ -19,9 +19,9 @@ async function openInTemporaryFolder(): Promise<Backend> {
   return backend;
 }
 
-async function listed(backend: Backend): Promise<Link<never>[]> {
+async function listed(backend: Backend, start?: number): Promise<Link<never>[]> {
   const links: Link<never>[] = [];
-  for await (const link of backend.records()) links.push(link);
+  for await (const link of backend.records(start)) links.push(link);
   return links;
 }
 
@@ -58,5 +58,16 @@ describe.each([
     await backend.put(blobsOf("a", "b"), [a, b]);
     await backend.put(blobsOf("c"), [c, a]);
     expect(await listed(backend)).toEqual([a, b, c]);
+  });
+
+  it("lists the records after the first `start`, in the order they were first put", async () => {
+    const backend = await open();
+    const a = linkOf(utf8("a"));
+    const b = linkOf(utf8("b"));
+    const c = linkOf(utf8("c"));
+    await backend.put(blobsOf("a", "b"), [a, b]);
+    await backend.put(blobsOf("c"), [c, a]);
+    expect(await listed(backend, 1)).toEqual([b, c]);
+    expect(await listed(backend, 3)).toEqual([]);
   });
 });

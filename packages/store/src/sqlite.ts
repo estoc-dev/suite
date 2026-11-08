@@ -45,9 +45,9 @@ export class SqliteBackend implements Backend {
     }
   }
 
-  async *records(): AsyncIterable<Link<never>> {
+  async *records(start = 0): AsyncIterable<Link<never>> {
     // Read whole, so that no statement holds a read lock on the file while the caller goes through the links.
-    const rows = this.#sql.all`SELECT link FROM records ORDER BY rowid`;
+    const rows = this.#sql.all`SELECT link FROM records ORDER BY rowid LIMIT -1 OFFSET ${start}`;
     for (const { link } of rows) yield link as Link<never>;
   }
 

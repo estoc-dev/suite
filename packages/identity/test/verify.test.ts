@@ -64,9 +64,23 @@ describe("signingText", () => {
   });
 });
 
-// Signatures made outside this package, by viem's `signMessage` and by
-// `@solana/offchain-messages`, over `signingText(digest)`.
-describe("signatures from chain tooling", () => {
+// Signatures made outside this package, by the Ed25519 of Python's
+// cryptography package, viem's `signMessage` and `@solana/offchain-messages`,
+// over `signingText(digest)`.
+describe("signatures made elsewhere", () => {
+  test("an Ed25519 signature over the text itself verifies, and a software signer makes the same one", async () => {
+    const key: Key = {
+      scheme: ed25519,
+      publicKey: hexToBytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"),
+    };
+    const signature = hexToBytes(
+      "01361d5c2b681738b32210c0644adeb7df5e52e8463ba71e2cca3358464fa14e" +
+        "3948a846c6415f22c2f919796cdf75c3e84cc9a1bf3aab45025590264643ec07",
+    );
+    expect(verify(key, digest, signature)).toBe(true);
+    expect(await SoftwareSigner.fromSecretKey(ed25519, ed25519Secret).sign(digest)).toEqual(signature);
+  });
+
   test("a personal_sign signature verifies, and a software signer makes the same one", async () => {
     const key: Key = {
       scheme: eip191,

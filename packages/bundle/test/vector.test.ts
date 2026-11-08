@@ -1,17 +1,12 @@
 import { readFileSync } from "node:fs";
-import { ed25519, loadIdentity, noVersions } from "@estoc/identity";
-import { decodeObject, type Link } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import type { Link } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { readBundle, unzipBundle, writeBundle } from "../src/index.ts";
 
-const { signatures } = await loadIdentity(defaultValidator, [ed25519]);
-
-// The login object is the vector of @estoc/object, and the signature over it
-// and its signer's signed identity, with the signed identity's blobs, those
-// of @estoc/identity. A change to the format changes them.
-// stored-by-python.zip holds the same files as Python's zipfile writes them,
-// without compression and with index.json last.
+// stored-by-python.zip holds these files as Python's zipfile writes them,
+// without compression and with index.json last. A bundle reads and writes its
+// root and blobs without decoding them, so they stay fixed when the objects
+// they hold change format.
 const objectText =
   '{"$schema":{"$link":"sha256:cf76929b1ed8423c16a19e6dc435f82e007bcff00c2020c94abbb4ad73e97eb0"},' +
   '"audience":"https://app.estoc.dev","nonce":"6f1c0a9e"}';
@@ -87,18 +82,8 @@ const files = new Map([
 ]);
 
 describe("a bundle whose root is a signature over a login object, carrying the object and the signer's signed identity", () => {
-  it("writes to fixed files", async () => {
-    const read = decodeObject(utf8(signatureText), signatures.schema);
-    const signature = await signatures.verify(
-      read,
-      new Map([
-        [signedIdentityLink, utf8(signedIdentityText)],
-        [identityLink, utf8(identityText)],
-        [keyLink, utf8(keyText)],
-      ]),
-      noVersions,
-    );
-    const written = writeBundle(signature, [utf8(objectText), ...signature.signedIdentity.blobs]);
+  it("writes to fixed files", () => {
+    const written = writeBundle({ bytes: utf8(signatureText) }, [...blobs.values()].map(utf8));
     expect(new Map([...written].map(([path, bytes]) => [path, text(bytes)]))).toEqual(files);
   });
 

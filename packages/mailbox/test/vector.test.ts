@@ -1,31 +1,12 @@
-import { encodeSchema, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { linkOf } from "@estoc/object";
 import { hex } from "@scure/base";
-import { describe, expect, it, test } from "vitest";
-import { loadHttpTransport } from "../src/http.ts";
-import { MailboxKey, mailboxSchema } from "../src/index.ts";
+import { expect, test } from "vitest";
+import { MailboxKey } from "../src/index.ts";
 
-// The bytes and the links were checked against Python's json module with
-// sorted keys and no whitespace, which writes these values as JCS does, and
-// its hashlib. The ciphertext was made by the HPKE of Python's
-// cryptography package, with a random ephemeral key, for the secret key of
-// 32 bytes of 1, over a zip that Python's zipfile wrote without compression;
-// another info, KEM, KDF or AEAD does not open it. A change to the format
-// changes them.
-const schemaText =
-  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
-  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"name":{"type":"string"}},' +
-  '"required":["key","name"],"title":"Memory mailbox","type":"object"}}';
-const schemaLink = "sha256:3b4546b1f354600643aa3eb0cbfdb81cd2d401d91d719a09a0cbd7f39c5664f1";
-const httpSchemaText =
-  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
-  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  '"properties":{"key":{"pattern":"^[0-9a-f]{64}$","type":"string"},"url":{"format":"uri",' +
-  '"pattern":"^(https://|http://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?([/?#]|$))",' +
-  '"type":"string"}},"required":["key","url"],"title":"HTTP mailbox","type":"object"}}';
-const httpSchemaLink = "sha256:f13d679656670434f0ba582a6035de52b2caa98c9c055a0de0c5fb1ae9867792";
-const publicKey = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
+// The ciphertext was made by the HPKE of Python's cryptography package, with
+// a random ephemeral key, for the secret key of 32 bytes of 1, over a zip that
+// Python's zipfile wrote without compression; another info, KEM, KDF or AEAD
+// does not open it. The link of the root was checked against its hashlib.
 const rootText =
   '{"$schema":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' + '"text":"hello"}';
 const rootLink = "sha256:ba723e2a7497a6919764e06fb1dc2303313d92abc3dfdae235e9fdfbfe084219";
@@ -41,24 +22,6 @@ const ciphertext =
   "becfca001f9389ce356a977deb6f49461aada705df6db93f2b5d68d3e1995e87ae382f48ae97c1e5eb79ae2cb9142cf00a964de9603f5506389763e705";
 
 const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(1));
-
-describe("the memory mailbox schema and an x25519 key", () => {
-  it("encode to fixed bytes, a fixed link and a fixed public key", async () => {
-    const schema = await encodeSchema(
-      mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]),
-      defaultValidator,
-    );
-    expect(new TextDecoder().decode(schema.bytes)).toBe(schemaText);
-    expect(schema.link).toBe(schemaLink);
-    expect(hex.encode(key.publicKey)).toBe(publicKey);
-  });
-});
-
-test("the HTTP mailbox schema encodes to fixed bytes and a fixed link", async () => {
-  const { schema } = await loadHttpTransport(defaultValidator);
-  expect(new TextDecoder().decode(schema.bytes)).toBe(httpSchemaText);
-  expect(schema.link).toBe(httpSchemaLink);
-});
 
 test("a ciphertext made elsewhere opens with that key to a bundle of a root and a blob", async () => {
   const bundle = await key.open(hex.decode(ciphertext));

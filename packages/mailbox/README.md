@@ -328,7 +328,9 @@ came in whose root is such a signature. Each gives a row of the root of
 the signer, the root of `to`, `at` and the link of the signature; the
 signature is verified by the signed identity it carries, as by
 `noVersions`. A bundle that came in and does not read as a grant gives no
-row, since anyone can send a bundle to a mailbox. `grantFrom` takes the
+row, since anyone can send a bundle to a mailbox. A blob of it that the
+store fails to give fails the scan instead, so a later scan of the index
+reads the bundle again. `grantFrom` takes the
 links of two roots and gives the latest grant of the first to the second,
 with the signature over it and the signed identity it is to, or
 `undefined` when the store holds none.

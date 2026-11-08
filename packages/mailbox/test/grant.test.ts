@@ -2,7 +2,7 @@ import { type Actor, ed25519, type KeyObject, loadIdentity, type Signature, Soft
 import { type EncodedObject, encodeObject, type Json, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, loadMailboxGrants, loadPost, type Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -25,10 +25,10 @@ interface Person {
   collect(): Promise<unknown>;
 }
 
-async function person(fill: number): Promise<Person> {
+async function person(fill: number, backend = new MemoryBackend()): Promise<Person> {
   const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
   const actor = signatures.actor(signer, await publish(signer, 0));
-  const store = new Store(json, new MemoryBackend());
+  const store = new Store(json, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = await loadPost(store, privateStore, { transports: [network.transport], validator: defaultValidator });
   const queue = network.queue();
@@ -89,9 +89,12 @@ describe("the latest grant of one person to another", () => {
 
   it("is, of two at one at, the one whose signature has the greater link", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const given = [await give(alice, bob, [await mailboxIn(alice)], 1_000), await give(alice, bob, [], 1_000)];
-    const greater = given.map(({ link }) => link).sort()[1];
-    expect((await grantFrom(alice, alice, bob))?.signature.link).toBe(greater);
+    const givenSignatures = [
+      await give(alice, bob, [await mailboxIn(alice)], 1_000),
+      await give(alice, bob, [], 1_000),
+    ];
+    const greaterLink = givenSignatures.map(({ link }) => link).sort()[1];
+    expect((await grantFrom(alice, alice, bob))?.signature.link).toBe(greaterLink);
   });
 
   it("names no mailboxes once the signer no longer takes their messages", async () => {
@@ -107,11 +110,11 @@ describe("the latest grant of one person to another", () => {
     expect(await grantFrom(bob, alice, bob)).toBeUndefined();
     await send(alice, bob, signature.link);
 
-    const [given, received] = [await grantFrom(alice, alice, bob), await grantFrom(bob, alice, bob)];
-    assert.exists(received);
-    expect(received.signature.link).toBe(signature.link);
-    expect(received.object.link).toBe(given?.object.link);
-    expect(received.object.data.mailboxes).toEqual([{ $link: alice.inbox.mailbox }]);
+    const [givenGrant, receivedGrant] = [await grantFrom(alice, alice, bob), await grantFrom(bob, alice, bob)];
+    assert.exists(receivedGrant);
+    expect(receivedGrant.signature.link).toBe(signature.link);
+    expect(receivedGrant.object.link).toBe(givenGrant?.object.link);
+    expect(receivedGrant.object.data.mailboxes).toEqual([{ $link: alice.inbox.mailbox }]);
   });
 
   it("is not one that the signer gave someone else, which was passed on", async () => {
@@ -134,10 +137,30 @@ describe("the latest grant of one person to another", () => {
     // Mallory has seen Alice's signed identity and a signature of hers, and
     // puts them over a later grant of a mailbox Mallory receives at.
     const grant = grants.encode(bob.actor.signedIdentity, [mallory.inbox.mailbox], 2_000);
-    const forged = encodeObject(signatures.schema, { ...signature.data, object: { $link: grant.link } });
-    await mallory.store.write({ records: [forged], blobs: blobsOf(grant, signature, bob) });
-    await send(mallory, bob, forged.link);
+    const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: { $link: grant.link } });
+    await mallory.store.write({ records: [forgedSignature], blobs: blobsOf(grant, signature, bob) });
+    await send(mallory, bob, forgedSignature.link);
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
   });
+});
+
+test("a view whose store fails to give a grant that came in fails, and a later one reads the grant", async () => {
+  let failingLink: Link<unknown> | undefined;
+  const backend = new (class extends MemoryBackend {
+    override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
+      return link === failingLink ? Promise.reject(new Error("the disk fails to read")) : super.get(link);
+    }
+  })();
+  const [alice, bob] = await Promise.all([person(1), person(2, backend)]);
+  const first = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+  await send(alice, bob, first.link);
+  expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(first.link);
+  const withdrawal = await give(alice, bob, [], 2_000);
+  await send(alice, bob, withdrawal.link);
+
+  failingLink = withdrawal.link;
+  await expect(grantFrom(bob, alice, bob)).rejects.toThrow(`the store fails to give ${withdrawal.link}`);
+  failingLink = undefined;
+  expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(withdrawal.link);
 });

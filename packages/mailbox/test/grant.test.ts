@@ -147,9 +147,10 @@ describe("the latest grant of one person to another", () => {
 
 test("a view whose store fails to give a grant that came in fails, and a later one reads the grant", async () => {
   let failingLink: Link<unknown> | undefined;
+  const diskError = new Error("the disk fails to read");
   const backend = new (class extends MemoryBackend {
     override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
-      return link === failingLink ? Promise.reject(new Error("the disk fails to read")) : super.get(link);
+      return link === failingLink ? Promise.reject(diskError) : super.get(link);
     }
   })();
   const [alice, bob] = await Promise.all([person(1), person(2, backend)]);
@@ -160,7 +161,7 @@ test("a view whose store fails to give a grant that came in fails, and a later o
   await send(alice, bob, withdrawal.link);
 
   failingLink = withdrawal.link;
-  await expect(grantFrom(bob, alice, bob)).rejects.toThrow(`the store fails to give ${withdrawal.link}`);
+  await expect(grantFrom(bob, alice, bob)).rejects.toBe(diskError);
   failingLink = undefined;
   expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(withdrawal.link);
 });

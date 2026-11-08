@@ -61,8 +61,8 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
  * - Each signature is verified by the signed identity it carries, as by `noVersions`.
  * - A bundle that came in and does not read as a grant gives no row, since anyone can send a
  *   bundle to a mailbox.
- * - A blob of that bundle that the store fails to give fails the scan instead, so a later scan of
- *   the index reads the bundle again.
+ * - The scan still fails when the store fails to give a blob of that bundle, so a later scan of
+ *   the index reads it again.
  */
 export class MailboxGrants {
   readonly schema: Schema<Json, MailboxGrantData>;
@@ -79,13 +79,11 @@ export class MailboxGrants {
       yield await rowOf(grant, reader);
     });
     const receivedGrants = indexOver(objectsOf(inbound), async function* ({ data }, reader) {
-      const closure = closureReader(reader);
       let row: MailboxGrantRow | undefined;
       try {
-        const grant = await grants.read(data.bundle.$link, closure);
-        row = grant === undefined ? undefined : await rowOf(grant, closure);
-      } catch (error) {
-        if (error instanceof StoreFailure) throw error;
+        const grant = await grants.read(data.bundle.$link, reader);
+        row = grant === undefined ? undefined : await rowOf(grant, reader);
+      } catch {
         return;
       }
       if (row !== undefined) yield row;
@@ -125,32 +123,6 @@ export class MailboxGrants {
     const object = await readObject(reader, signature.object, this.schema);
     return { object, signature, to: await signedIdentities.read(object.data.to.$link, reader) };
   }
-}
-
-/** A blob of a record's closure that the store fails to give, though it holds the closure with the record. */
-class StoreFailure extends Error {
-  override readonly name = "StoreFailure";
-}
-
-/**
- * `reader` for the closure of a record. The store holds the closure with the record, so a blob it
- * fails to give tells of the store and not of what the record links to.
- *
- * @throws {StoreFailure} when `reader` throws or gives no blob for a link.
- */
-function closureReader(reader: Reader): Reader {
-  return {
-    async get(link) {
-      let bytes: Uint8Array | undefined;
-      try {
-        bytes = await reader.get(link);
-      } catch (cause) {
-        throw new StoreFailure(`the store fails to give ${link}`, { cause });
-      }
-      if (bytes === undefined) throw new StoreFailure(`the store holds a record but not ${link} of its closure`);
-      return bytes;
-    },
-  };
 }
 
 /**

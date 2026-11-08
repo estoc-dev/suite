@@ -111,8 +111,8 @@ describe("an HTTP mailbox", () => {
 describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
     const store = new Store(json, new MemoryBackend());
-    const kept = new PrivateStore(store, new MemoryBackend());
-    const post = await loadPost(store, kept, { ...options, validator: defaultValidator });
+    const privateStore = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, privateStore, { ...options, validator: defaultValidator });
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, note.bytes] });
     const outbox = await post.outbox(mailbox.link);

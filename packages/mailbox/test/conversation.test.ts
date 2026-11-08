@@ -102,8 +102,8 @@ async function chat(faults: Faults = {}) {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await publish(signer, 0));
     const store = new Store(json, new MemoryBackend());
-    const kept = new PrivateStore(store, new MemoryBackend());
-    const post = await loadPost(store, kept, { transports, validator: defaultValidator, clock });
+    const privateStore = new PrivateStore(store, new MemoryBackend());
+    const post = await loadPost(store, privateStore, { transports, validator: defaultValidator, clock });
     return { name, actor, store, post };
   };
   const alice = await person("Alice", 1);

@@ -52,11 +52,11 @@ async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise
 async function postAt(
   network: MemoryNetwork,
   store = new Store(json, new MemoryBackend()),
-  kept = new PrivateStore(store, new MemoryBackend()),
+  privateStore = new PrivateStore(store, new MemoryBackend()),
 ) {
   let now = 1000;
   const options = { transports: [network.transport], validator: defaultValidator, clock: () => now++ };
-  return { store, kept, post: await loadPost(store, kept, options) };
+  return { store, privateStore, post: await loadPost(store, privateStore, options) };
 }
 
 // A post whose store holds the mailbox of a new queue sealed to Bob, as when
@@ -167,12 +167,12 @@ describe("an outbox", () => {
 describe("an inbox", () => {
   it("is opened at a mailbox that the store holds, with its key kept in the private store alone", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
-    const { store, kept, inbox } = await receivingAt(network);
+    const { store, privateStore, inbox } = await receivingAt(network);
     expect(await listed(store)).toEqual([inbox.mailbox]);
-    expect(await listed(kept)).toEqual([inbox.key]);
+    expect(await listed(privateStore)).toEqual([inbox.key]);
     expect(await store.get(inbox.key)).toBeUndefined();
 
-    const { data } = await readObject(kept, inbox.key, keys);
+    const { data } = await readObject(privateStore, inbox.key, keys);
     expect(data.mailbox.$link).toBe(inbox.mailbox);
     const mailbox = await readObject(store, inbox.mailbox, network.transport.schema);
     const key = await MailboxKey.fromSecretKey(hex.decode(data.secret));
@@ -181,16 +181,16 @@ describe("an inbox", () => {
 
   it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
-    const { store, kept, queue, inbox } = await receivingAt(network);
+    const { store, privateStore, queue, inbox } = await receivingAt(network);
     const byMailbox: Index<[mailbox: Link<unknown>, key: Link<unknown>]> = indexOver(
       objectsOf(keys),
       ({ link, data }) => [[data.mailbox.$link, link]],
     );
     const rows = [];
-    for await (const row of (await scan(kept, byMailbox)).range([inbox.mailbox])) rows.push(row);
+    for await (const row of (await scan(privateStore, byMailbox)).range([inbox.mailbox])) rows.push(row);
     expect(rows).toEqual([[inbox.mailbox, inbox.key]]);
 
-    const again = await (await postAt(network, store, kept)).post.inbox(inbox.key);
+    const again = await (await postAt(network, store, privateStore)).post.inbox(inbox.key);
     await sendTo(network, store, again.mailbox, signed);
     expect(await again.receive(queue.takeOne())).toMatchObject({ bundle: signature.link, mailbox: inbox.mailbox });
   });
@@ -285,18 +285,18 @@ describe("an inbox", () => {
 
   it("is not opened at a mailbox that names another key than the one given, and writes nothing", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
-    const { store, kept, post } = await postAt(network);
+    const { store, privateStore, post } = await postAt(network);
     const queue = network.queue();
     await expect(post.openInbox(() => queue.mailbox(bob.publicKey))).rejects.toThrow(/names another key/);
     expect(await listed(store)).toEqual([]);
-    expect(await listed(kept)).toEqual([]);
+    expect(await listed(privateStore)).toEqual([]);
   });
 
   it("is not made from a key whose secret is not of the key its mailbox names", async () => {
     const network = await MemoryNetwork.create(defaultValidator);
-    const { kept, post, inbox } = await receivingAt(network);
+    const { privateStore, post, inbox } = await receivingAt(network);
     const wrong = encodeObject(keys, { mailbox: { $link: inbox.mailbox }, secret: hex.encode(new Uint8Array(32)) });
-    await kept.write({ records: [wrong] });
+    await privateStore.write({ records: [wrong] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
   });
 

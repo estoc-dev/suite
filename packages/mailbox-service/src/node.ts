@@ -5,21 +5,25 @@ import { pipeline } from "node:stream/promises";
 
 /** The HTTP server that `serve` runs. */
 export interface HttpServer {
-  /** Where it is reached, `http://127.0.0.1:<port>`. */
+  /** Where it is reached, `http://<address>:<port>`. */
   readonly origin: string;
   /** Stops taking connections, and resolves once the requests it took are answered. */
   close(): Promise<void>;
 }
 
 /**
- * Serves `handle` over HTTP at `port` of 127.0.0.1, or at a free port when
+ * Serves `handle` over HTTP at `port` of `host`, or at a free port when
  * `port` is 0, for a proxy in front of it to reach.
  *
  * - A request's body comes in as the handler reads it, so a handler that
  *   stops reading at a limit holds none of the rest of a large body.
  * - When `handle` throws, the request is answered 500.
  */
-export async function serve(handle: (request: Request) => Promise<Response>, port: number): Promise<HttpServer> {
+export async function serve(
+  handle: (request: Request) => Promise<Response>,
+  port: number,
+  host = "127.0.0.1",
+): Promise<HttpServer> {
   const server = createServer(async (incoming, outgoing) => {
     let response: Response;
     try {
@@ -33,8 +37,9 @@ export async function serve(handle: (request: Request) => Promise<Response>, por
     // A client that went away takes no answer.
     else await pipeline(Readable.from(response.body), outgoing).catch(() => {});
   });
-  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
-  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
+  const address = server.address() as AddressInfo;
+  const origin = `http://${address.family === "IPv6" ? `[${address.address}]` : address.address}:${address.port}`;
   return { origin, close: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 

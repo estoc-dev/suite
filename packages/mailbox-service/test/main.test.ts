@@ -107,6 +107,14 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(await second.stop()).toBe(0);
   });
 
+  it("listens at the address that MAILBOX_HOST names", async () => {
+    const settings = await settingsAtFreePort();
+    await run(main, ["key", settings.MAILBOX_PRIVATE_STORE]);
+    const service = await start({ ...settings, MAILBOX_HOST: "::1" });
+    expect(service.line).toContain(`is served at http://[::1]:${settings.MAILBOX_PORT} as`);
+    expect(await service.stop()).toBe(0);
+  });
+
   it("refuses to start without its private store, and makes no database", async () => {
     const settings = await settingsAtFreePort();
     const { code, stderr } = await run(main, [], settings);

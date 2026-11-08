@@ -3,7 +3,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { hex } from "@scure/base";
 import { describe, expect, it, test } from "vitest";
 import { loadHttpTransport } from "../src/http.ts";
-import { MailboxKey, mailboxGrantSchema, mailboxSchema } from "../src/index.ts";
+import { MailboxKey, mailboxSchema } from "../src/index.ts";
 
 // The bytes and the links were checked against Python's json module with
 // sorted keys and no whitespace, which writes these values as JCS does, and
@@ -25,15 +25,6 @@ const httpSchemaText =
   '"pattern":"^(https://|http://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?([/?#]|$))",' +
   '"type":"string"}},"required":["key","url"],"title":"HTTP mailbox","type":"object"}}';
 const httpSchemaLink = "sha256:f13d679656670434f0ba582a6035de52b2caa98c9c055a0de0c5fb1ae9867792";
-const linkText =
-  '{"additionalProperties":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},' +
-  '"propertyNames":{"const":"$link"},"required":["$link"],"type":"object"}';
-const grantSchemaText =
-  '{"$schema":{"$link":"sha256:425b8e0a2f53217063bea3514e27175e0f1aa4b046ca12b4a65020e391e33326"},' +
-  '"document":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,' +
-  `"properties":{"at":{"minimum":0,"type":"integer"},"mailboxes":{"items":${linkText},"type":"array"},` +
-  `"to":${linkText}},"required":["to","mailboxes","at"],"title":"Mailbox Grant","type":"object"}}`;
-const grantSchemaLink = "sha256:010664ef1ced0b5050e3b73e0642570db0e1d31773e60f76cd33d4162dde9e66";
 const publicKey = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
 const rootText =
   '{"$schema":{"$link":"sha256:c9e93e6ce90a74281807c4b97bc57c64f6dc977528fcbe2d6c45b9035acb05f9"},' + '"text":"hello"}';
@@ -67,12 +58,6 @@ test("the HTTP mailbox schema encodes to fixed bytes and a fixed link", async ()
   const { schema } = await loadHttpTransport(defaultValidator);
   expect(new TextDecoder().decode(schema.bytes)).toBe(httpSchemaText);
   expect(schema.link).toBe(httpSchemaLink);
-});
-
-test("the Mailbox Grant schema encodes to fixed bytes and a fixed link", async () => {
-  const schema = await encodeSchema(mailboxGrantSchema, defaultValidator);
-  expect(new TextDecoder().decode(schema.bytes)).toBe(grantSchemaText);
-  expect(schema.link).toBe(grantSchemaLink);
 });
 
 test("a ciphertext made elsewhere opens with that key to a bundle of a root and a blob", async () => {

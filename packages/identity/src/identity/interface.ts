@@ -1,12 +1,5 @@
-import {
-  type EncodedObject,
-  type Implementation,
-  type Json,
-  type JsonLink,
-  type Link,
-  linkOf,
-  type Schema,
-} from "@estoc/object";
+import type { EncodedObject, Implementation, Json, JsonLink, Link } from "@estoc/object";
+import { blobsOf } from "../blobs.ts";
 import type { KeyObject } from "../key/interface.ts";
 import type { Signer } from "../signer.ts";
 
@@ -94,18 +87,11 @@ export function identityOf(
   root: KeyObject,
   keys: readonly KeyObject[] = [root],
 ): IdentityObject {
-  return { ...object, link: object.link as Link<IdentityObject>, root, blobs: blobsOf(object, keys), implementation };
-}
-
-// A key can be both root and agent, keys of one scheme share a schema, and
-// schemas share the blobs of their languages, yet each blob is carried once.
-function blobsOf(object: EncodedObject<Json>, keys: readonly KeyObject[]): Uint8Array[] {
-  const blobs = new Map<Link<unknown>, Uint8Array>();
-  const schemas = new Map<Link<unknown>, Schema<Json>>();
-  for (const { link, bytes, schema } of [object, ...keys]) {
-    blobs.set(link, bytes);
-    schemas.set(schema.link, schema);
-  }
-  for (const schema of schemas.values()) for (const bytes of schema.blobs) blobs.set(linkOf(bytes), bytes);
-  return [...blobs.values()];
+  return {
+    ...object,
+    link: object.link as Link<IdentityObject>,
+    root,
+    blobs: blobsOf([object, ...keys]),
+    implementation,
+  };
 }

@@ -22,6 +22,7 @@ export { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts"
 export { solanaOffchain } from "./key/solana-offchain.ts";
 export { type IdentityKit, loadIdentity } from "./load.ts";
 export type { People, Person } from "./person.ts";
+export { type SecretKeyData, type SecretKeyObject, type SecretKeys, secretKeySchema } from "./secret-key.ts";
 export {
   type Actor,
   type Signature,
@@ -41,3 +42,4 @@ export {
 export { type Signer, SoftwareSigner } from "./signer.ts";
 export { signingText } from "./signing-text.ts";
 export type { IdentityVersions, Version } from "./versions.ts";
+export { type WalletKeyData, type WalletKeyObject, type WalletKeys, walletKeySchema } from "./wallet-key.ts";

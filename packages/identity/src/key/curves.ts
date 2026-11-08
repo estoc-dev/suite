@@ -17,6 +17,11 @@ export interface CurveScheme extends Scheme {
   message(text: string, publicKey: Uint8Array): Uint8Array;
 }
 
+/** Whether `scheme` is a `CurveScheme`, one in which a curve signs. */
+export function isCurveScheme(scheme: Scheme): scheme is CurveScheme {
+  return "curve" in scheme;
+}
+
 /** The scheme named `name` in which `curve` signs `message(text, publicKey)`, one signature of 64 bytes. */
 export function curveScheme(
   name: string,

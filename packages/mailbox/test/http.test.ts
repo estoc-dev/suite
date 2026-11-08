@@ -32,8 +32,10 @@ const server = createServer(async (request, response) => {
     type: request.headers["content-type"],
     body: new Uint8Array(Buffer.concat(chunks)),
   });
-  const late = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
-  const status = late ? 408 : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
+  const isTimedOut = path === "/late-once" && requests.filter((each) => each.path === path).length === 1;
+  const status = isTimedOut
+    ? 408
+    : (answers[path ?? ""] ?? Number(/^\/answer\/([0-9]{3})$/.exec(path ?? "")?.[1] ?? 404));
   response.writeHead(status, status === 307 ? { location: "/inbox" } : {}).end();
 });
 const port = await listen(server);
@@ -121,8 +123,8 @@ describe("an HTTP outbox", () => {
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
     expect(await listed(store)).toEqual(before);
 
-    const sent = await outbox.send(hello.link);
-    expect(new Set(await listed(store))).toEqual(new Set([...before, sent.link]));
+    const delivery = await outbox.send(hello.link);
+    expect(new Set(await listed(store))).toEqual(new Set([...before, delivery.link]));
     const requested = take();
     expect(requested.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = requested.at(-1);

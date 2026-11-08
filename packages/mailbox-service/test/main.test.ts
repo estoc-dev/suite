@@ -69,19 +69,18 @@ async function start(settings: Readonly<Record<string, string>>) {
   };
 }
 
-/** The Secret Keys in the private store at `path`. */
 async function secretKeysAt(path: string) {
   const { secretKeys } = await loadIdentity(defaultValidator, [ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
   const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);
   const selection = objectsOf(secretKeys.schema);
-  const found = [];
+  const secretKeyObjects = [];
   for await (const record of privateStore.records()) {
     const object = await selection.read(record, privateStore);
-    if (object !== undefined) found.push(object);
+    if (object !== undefined) secretKeyObjects.push(object);
   }
-  return found;
+  return secretKeyObjects;
 }
 
 describe("main.ts", { timeout: 20_000 }, () => {

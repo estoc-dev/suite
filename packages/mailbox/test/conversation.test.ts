@@ -64,9 +64,9 @@ const deliveriesGoing = (direction: Direction, schema: Schema<Json, DeliveryData
 const deliveries: Index<DeliveryRow> = deliveriesGoing("inbound", inbound).union(deliveriesGoing("outbound", outbound));
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
-  const gathered: T[] = [];
-  for await (const item of items) gathered.push(item);
-  return gathered;
+  const values: T[] = [];
+  for await (const item of items) values.push(item);
+  return values;
 }
 
 // What came in at `mine` and went out to `theirs`, in the order of when. A
@@ -74,11 +74,11 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // first time: a range gives its rows in the order of when.
 async function conversation(rows: Rows<DeliveryRow>, mine: Mailbox, theirs: Mailbox): Promise<DeliveryRow[]> {
   const first = async (range: AsyncIterable<DeliveryRow>) => {
-    const seen = new Set<Link<never>>();
+    const seenBundles = new Set<Link<never>>();
     return (await all(range)).filter(([, , , bundle]) => {
-      const fresh = !seen.has(bundle);
-      seen.add(bundle);
-      return fresh;
+      const isFirst = !seenBundles.has(bundle);
+      seenBundles.add(bundle);
+      return isFirst;
     });
   };
   const ways = await Promise.all([first(rows.range(["inbound", mine])), first(rows.range(["outbound", theirs]))]);
@@ -115,10 +115,10 @@ async function chat(faults: Faults = {}) {
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
     const inbox = await owner.post.openInbox(queue.mailbox);
-    const handedOver = await owner.store.get(inbox.mailbox);
-    assert.exists(handedOver);
+    const mailboxBytes = await owner.store.get(inbox.mailbox);
+    assert.exists(mailboxBytes);
     await peer.store.write({
-      records: [{ bytes: handedOver }],
+      records: [{ bytes: mailboxBytes }],
       blobs: network.transport.schema.blobs,
     });
     const outbox = await peer.post.outbox(inbox.mailbox);
@@ -144,9 +144,9 @@ async function chat(faults: Faults = {}) {
   const show = async (person: Person, mine: Mailbox, theirs: Mailbox) =>
     Promise.all(
       (await conversation(await scan(person.store, deliveries), mine, theirs)).map(async ([direction, , , bundle]) => {
-        const signed = await signatures.read(bundle, person.store, noVersions);
-        const { data } = await readObject(person.store, signed.object, line);
-        return [direction, names.get(signed.signedIdentity.identity.root.link), data.text];
+        const signature = await signatures.read(bundle, person.store, noVersions);
+        const { data } = await readObject(person.store, signature.object, line);
+        return [direction, names.get(signature.signedIdentity.identity.root.link), data.text];
       }),
     );
   // What the person's store records as having come in, or gone out, at any mailbox.
@@ -247,8 +247,8 @@ describe("a conversation", () => {
 
     // What Alice wrote, written again to another store, last first and twice.
     const copy = new Store(json, new MemoryBackend());
-    const written = await all(alice.store.records());
-    for (const link of [...written, ...written].reverse()) {
+    const recordLinks = await all(alice.store.records());
+    for (const link of [...recordLinks, ...recordLinks].reverse()) {
       const closure = await alice.store.closure(link);
       const bytes = closure.get(link);
       assert.exists(bytes);

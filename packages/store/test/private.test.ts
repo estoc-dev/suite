@@ -17,8 +17,8 @@ const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: JsonObject) => encodeObject(anything, data);
 
-function sides(shared: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
-  const store = new Store(json, shared);
+function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
+  const store = new Store(json, sharedBackend);
   return { store, privateStore: new PrivateStore(store, privateBackend) };
 }
 

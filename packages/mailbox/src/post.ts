@@ -82,8 +82,8 @@ export class Post {
 
   /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject<Json>>): Promise<Outbox> {
-    const bound = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
-    return new Outbox(bound, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
+    const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
+    return new Outbox(boundMailbox, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
   }
 
   /**
@@ -120,9 +120,9 @@ export class Post {
   async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#privateStore, key, this.#schemas.key);
     const mailbox = data.mailbox.$link;
-    const named = readMailbox(await this.#bytesAt(mailbox), this.#transports).data.key;
+    const namedKey = readMailbox(await this.#bytesAt(mailbox), this.#transports).data.key;
     const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
-    if (named !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
+    if (namedKey !== hex.encode(opener.publicKey)) throw new Error(`${mailbox} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
   }
 

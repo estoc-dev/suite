@@ -805,10 +805,10 @@ describe("a mailbox that a service opened", () => {
 
   it("keeps a ciphertext that arrives twice once, and takes it again when what waits is at its quota", async () => {
     const { service, actor, mailbox } = await serviceWithMailbox();
-    const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
-    for (const ciphertext of [...full, ...full])
+    const ciphertextsFillingQuota = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
+    for (const ciphertext of [...ciphertextsFillingQuota, ...ciphertextsFillingQuota])
       expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
-    expect(await queueAt(service, mailbox, actor)).toEqual(full);
+    expect(await queueAt(service, mailbox, actor)).toEqual(ciphertextsFillingQuota);
   });
 
   it("answers 413 to a ciphertext over the size its offer names, and keeps nothing of it", async () => {
@@ -820,12 +820,13 @@ describe("a mailbox that a service opened", () => {
 
   it("answers 429 once what waits would come to more than its quota, and takes ciphertexts again once a pickup has receipts for some", async () => {
     const { service, actor, mailbox } = await serviceWithMailbox();
-    const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
-    for (const ciphertext of full) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
+    const ciphertextsFillingQuota = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
+    for (const ciphertext of ciphertextsFillingQuota)
+      expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     const over = await post(service, mailbox.sendId, ciphertextOf(5));
     expect(over.status).toBe(429);
     expect(await over.text()).toMatch(/holds at most 4096 bytes/);
-    await queueAt(service, mailbox, actor, full.slice(0, 1));
+    await queueAt(service, mailbox, actor, ciphertextsFillingQuota.slice(0, 1));
     expect((await post(service, mailbox.sendId, ciphertextOf(5))).status).toBe(204);
   });
 
@@ -842,8 +843,9 @@ describe("a mailbox that a service opened", () => {
   it("does not count what waited longer than the retention its offer names toward its quota", async () => {
     const clock = { now: 1_000 };
     const { service, actor, mailbox } = await serviceWithMailbox({ clock });
-    const full = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
-    for (const ciphertext of full) expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
+    const ciphertextsFillingQuota = [1, 2, 3, 4].map((fill) => ciphertextOf(fill, terms.quota / 4));
+    for (const ciphertext of ciphertextsFillingQuota)
+      expect((await post(service, mailbox.sendId, ciphertext)).status).toBe(204);
     clock.now += terms.retention;
     expect((await post(service, mailbox.sendId, ciphertextOf(5))).status).toBe(429);
     clock.now += 1;

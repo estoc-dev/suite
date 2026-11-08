@@ -460,38 +460,44 @@ its offer accepts nothing.
 
 ## Running with Node
 
-`src/main.ts` runs a service in Node, with all it keeps in one SQLite file.
+`src/main.ts` runs a service in Node, with its key in one SQLite file and
+all else it keeps in another.
 Node runs the TypeScript sources as they are, so a checkout of the
 repository with its dependencies installed is all it takes:
 
 ```sh
 git clone https://github.com/estoc-dev/suite.git && cd suite
 pnpm install --frozen-lockfile
-node packages/mailbox-service/src/main.ts key /var/lib/mailbox/key
+node packages/mailbox-service/src/main.ts key /var/lib/mailbox/keys.db
 ```
 
-`main.ts key <path>` writes a new secret key for the service's identity, an
-Ed25519 key in hex, to a file that its owner alone reads, and refuses to
-write over a file that is there. The service is named by the root of that
-identity, so a lost key is a lost service: keep a copy offline.
+`main.ts key <path>` makes a private store at `<path>`, a SQLite file that
+its owner alone reads, holding a new Ed25519 Secret Key of
+`@estoc/identity` for the service's identity, and prints the link of its
+key. It refuses to write over a file that is there. The service is named by
+the root of that identity, so a lost key is a lost service: keep a copy of
+the file offline. The file is apart from the database so that each is
+backed up on its own: the keys once, the database often.
 
 `main.ts` takes its settings from the environment:
 
 | Variable | Setting |
 |---|---|
 | `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
-| `MAILBOX_KEY` | the path of the key file |
+| `MAILBOX_KEYS` | the path of the key file, the private store that `main.ts key` makes |
 | `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes, made when it is missing |
 | `MAILBOX_PORT` | the port it listens at, on 127.0.0.1 |
 | `MAILBOX_RETENTION` | the retention that the offer of mailboxes names, in milliseconds; 30 days unless set |
 | `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
 | `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
 
-Without the key file it refuses to start, since a new key would be another
-service. It listens on 127.0.0.1 alone, for a proxy in front of it that
-holds the TLS certificate. It writes a line for each request, with its
-method, its status and how long it took. On SIGTERM it takes no more
-requests, answers those it took, and closes the file.
+It signs with the one Secret Key in the key file. Without the file, or with
+no Secret Key or more than one in it, it refuses to start, since a new key
+would be another service. Once it serves, it writes a line with its origin
+and the link of its root. It listens on 127.0.0.1 alone, for a proxy in
+front of it that holds the TLS certificate. It writes a line for each
+request, with its method, its status and how long it took. On SIGTERM it
+takes no more requests, answers those it took, and closes the files.
 
 A body comes in as the service reads it, a chunk at a time. Once a body goes
 past the service's limit for it, the service reads no more chunks of it and
@@ -510,7 +516,7 @@ User=mailbox
 WorkingDirectory=/srv/suite
 ExecStart=/usr/bin/node packages/mailbox-service/src/main.ts
 Environment=MAILBOX_ORIGIN=https://mail.example
-Environment=MAILBOX_KEY=/var/lib/mailbox/key
+Environment=MAILBOX_KEYS=/var/lib/mailbox/keys.db
 Environment=MAILBOX_DATABASE=/var/lib/mailbox/service.db
 Environment=MAILBOX_PORT=8080
 Restart=always
@@ -526,7 +532,7 @@ mail.example {
 }
 ```
 
-The SQLite file can be backed up while the service runs, with SQLite's
+The database can be backed up while the service runs, with SQLite's
 online backup:
 
 ```sh

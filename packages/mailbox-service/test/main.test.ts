@@ -4,6 +4,11 @@ import { access, readFile, stat } from "node:fs/promises";
 import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
+import { json, objectsOf } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
+import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
 import { makeTemporaryPath } from "./fixtures.ts";
@@ -14,16 +19,19 @@ const smoke = fileURLToPath(new URL("../src/smoke.ts", import.meta.url));
 /** Runs `script` with `args`, and the environment with `settings`, to its end. */
 async function run(script: string, args: readonly string[], settings: Readonly<Record<string, string>> = {}) {
   const child = spawn(process.execPath, [script, ...args], { env: { ...process.env, ...settings } });
+  let stdout = "";
   let stderr = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk) => {
+    stdout += chunk;
+  });
   child.stderr.setEncoding("utf8").on("data", (chunk) => {
     stderr += chunk;
   });
-  child.stdout.resume();
   const [code] = await once(child, "exit");
-  return { code, stderr };
+  return { code, stdout, stderr };
 }
 
-/** Settings for a service at a free port of 127.0.0.1, which keeps its key and its database in a folder of its own. */
+/** Settings for a service at a free port of 127.0.0.1, which keeps its keys and its database in a folder of its own. */
 async function settingsAtFreePort() {
   const database = await makeTemporaryPath();
   const probe = createServer().listen(0, "127.0.0.1");
@@ -32,25 +40,26 @@ async function settingsAtFreePort() {
   probe.close();
   return {
     MAILBOX_ORIGIN: `http://127.0.0.1:${port}`,
-    MAILBOX_KEY: join(dirname(database), "key"),
+    MAILBOX_KEYS: join(dirname(database), "keys.db"),
     MAILBOX_DATABASE: database,
     MAILBOX_PORT: String(port),
   };
 }
 
-/** Starts main.ts with `settings`, resolving once it serves. */
+/** Starts main.ts with `settings`, resolving once it serves, with the line it writes then. */
 async function start(settings: Readonly<Record<string, string>>) {
   const child = spawn(process.execPath, [main], {
     env: { ...process.env, ...settings },
     stdio: ["ignore", "pipe", "inherit"],
   });
   onTestFinished(() => void child.kill());
-  await new Promise((resolve, reject) => {
-    child.stdout.once("data", resolve);
+  const line = await new Promise<string>((resolve, reject) => {
+    child.stdout.setEncoding("utf8").once("data", resolve);
     child.once("exit", (code) => reject(new Error(`main.ts exited with ${code}`)));
   });
   child.stdout.resume();
   return {
+    line,
     /** Asks it to stop, resolving to its exit code once it has. */
     async stop() {
       child.kill("SIGTERM");
@@ -60,23 +69,41 @@ async function start(settings: Readonly<Record<string, string>>) {
   };
 }
 
+/** The Secret Keys in the private store at `path`. */
+async function secretKeysAt(path: string) {
+  const { secretKeys } = await loadIdentity(defaultValidator, [ed25519, eip191, solanaOffchain]);
+  const backend = new SqliteBackend(path);
+  onTestFinished(() => backend.close());
+  const keys = new PrivateStore(new Store(json, new MemoryBackend()), backend);
+  const selection = objectsOf(secretKeys.schema);
+  const found = [];
+  for await (const record of keys.records()) {
+    const object = await selection.read(record, keys);
+    if (object !== undefined) found.push(object);
+  }
+  return found;
+}
+
 describe("main.ts", { timeout: 20_000 }, () => {
   it("serves the service that the environment sets up, which passes the smoke test", async () => {
     const settings = await settingsAtFreePort();
-    expect((await run(main, ["key", settings.MAILBOX_KEY])).code).toBe(0);
+    expect((await run(main, ["key", settings.MAILBOX_KEYS])).code).toBe(0);
     const service = await start(settings);
-    expect(await run(smoke, [settings.MAILBOX_ORIGIN])).toEqual({ code: 0, stderr: "" });
+    expect(await run(smoke, [settings.MAILBOX_ORIGIN])).toMatchObject({ code: 0, stderr: "" });
     expect(await service.stop()).toBe(0);
   });
 
-  it("keeps what waits at a mailbox when started again", async () => {
+  it("keeps its root, and what waits at a mailbox, when started again", async () => {
     const settings = await settingsAtFreePort();
-    await run(main, ["key", settings.MAILBOX_KEY]);
+    const { stdout } = await run(main, ["key", settings.MAILBOX_KEYS]);
+    const root = stdout.trim();
     const first = await start(settings);
+    expect(first.line).toContain(`as ${root}`);
     const mailbox = await openTestMailbox(settings.MAILBOX_ORIGIN);
     expect((await fetch(mailbox.url, { method: "POST", body: new Uint8Array([1]) })).status).toBe(204);
     expect(await first.stop()).toBe(0);
     const second = await start(settings);
+    expect(second.line).toContain(`as ${root}`);
     expect(await mailbox.pickUp()).toEqual([new Uint8Array([1])]);
     expect(await second.stop()).toBe(0);
   });
@@ -85,21 +112,38 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const settings = await settingsAtFreePort();
     const { code, stderr } = await run(main, [], settings);
     expect(code).toBe(1);
-    expect(stderr).toContain(`no such file or directory, open '${settings.MAILBOX_KEY}'`);
+    expect(stderr).toContain(`no such file or directory, access '${settings.MAILBOX_KEYS}'`);
+    await expect(access(settings.MAILBOX_KEYS)).rejects.toThrow(/ENOENT/);
     await expect(access(settings.MAILBOX_DATABASE)).rejects.toThrow(/ENOENT/);
+  });
+
+  it("refuses to start with a key file that holds no Secret Key", async () => {
+    const settings = await settingsAtFreePort();
+    new SqliteBackend(settings.MAILBOX_KEYS).close();
+    const { code, stderr } = await run(main, [], settings);
+    expect(code).toBe(1);
+    expect(stderr).toContain(`${settings.MAILBOX_KEYS} holds 0 Secret Keys`);
   });
 });
 
 describe("main.ts key", { timeout: 20_000 }, () => {
-  it("writes a key file that its owner alone reads, and refuses to write over one", async () => {
-    const path = join(dirname(await makeTemporaryPath()), "key");
-    expect((await run(main, ["key", path])).code).toBe(0);
-    const key = await readFile(path, "utf8");
-    expect(key).toMatch(/^[0-9a-f]{64}\n$/);
+  it("makes a private store that its owner alone reads, holding one Secret Key, whose key it prints", async () => {
+    const path = join(dirname(await makeTemporaryPath()), "keys.db");
+    const { code, stdout } = await run(main, ["key", path]);
+    expect(code).toBe(0);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
+    const [secretKey, ...others] = await secretKeysAt(path);
+    expect(others).toEqual([]);
+    expect(stdout).toBe(`${secretKey?.data.key.$link}\n`);
+  });
+
+  it("refuses to write over a file that is there", async () => {
+    const path = join(dirname(await makeTemporaryPath()), "keys.db");
+    await run(main, ["key", path]);
+    const bytes = await readFile(path);
     const { code, stderr } = await run(main, ["key", path]);
     expect(code).toBe(1);
     expect(stderr).toContain("EEXIST");
-    expect(await readFile(path, "utf8")).toBe(key);
+    expect(await readFile(path)).toEqual(bytes);
   });
 });

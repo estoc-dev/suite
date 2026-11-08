@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, type People, SoftwareSigner, type Version } from "@estoc/identity";
+import { ed25519, type IdentityVersion, loadIdentity, type People, SoftwareSigner } from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -177,7 +177,7 @@ const { signatures, signedIdentities, versions, delegate, publish } = await load
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-const people: View<Version, People> = {
+const people: View<IdentityVersion, People> = {
   index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
     yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   }),

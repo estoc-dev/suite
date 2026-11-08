@@ -41,5 +41,5 @@ export {
 } from "./signed-identity.ts";
 export { type Signer, SoftwareSigner } from "./signer.ts";
 export { signingText } from "./signing-text.ts";
-export type { IdentityVersions, Version } from "./versions.ts";
+export type { IdentityVersion, IdentityVersions } from "./versions.ts";
 export { type WalletKeyData, type WalletKeyObject, type WalletKeys, walletKeySchema } from "./wallet-key.ts";

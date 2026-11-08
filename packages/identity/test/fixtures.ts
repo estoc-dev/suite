@@ -3,11 +3,11 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
+  type IdentityVersion,
   type IdentityVersions,
   type KeyObject,
   type SignedIdentityObject,
   solanaOffchain,
-  type Version,
 } from "../src/index.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
@@ -38,7 +38,7 @@ export function rowsOf(versions: IdentityVersions, ...signedIdentities: readonly
     ([, at, link], [, otherAt, otherLink]) => at - otherAt || (link < otherLink ? -1 : link > otherLink ? 1 : 0),
   );
   return {
-    async *range([root]: readonly [Link<KeyObject>]): AsyncIterable<Version> {
+    async *range([root]: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> {
       yield* rows.filter(([of]) => of === root);
     },
   };

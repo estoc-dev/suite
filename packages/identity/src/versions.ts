@@ -13,7 +13,7 @@ import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.t
  * - The rows of a root's versions, in the order of their keys, `at` and then
  *   the link of the signed identity, end with the current one.
  */
-export type Version = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
+export type IdentityVersion = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
 
 /** The versions of identities: the row each is, and the people of the versions a reader has seen. */
 export class IdentityVersions {
@@ -23,7 +23,7 @@ export class IdentityVersions {
     this.#signedIdentities = signedIdentities;
   }
 
-  versionOf(signedIdentity: SignedIdentityObject): Version {
+  versionOf(signedIdentity: SignedIdentityObject): IdentityVersion {
     const { identity } = signedIdentity;
     return [identity.root.link, identity.data.at, signedIdentity.link];
   }
@@ -33,7 +33,7 @@ export class IdentityVersions {
    * its index of those versions, each as `versionOf` gives it. A version a
    * row names is read from `reader`.
    */
-  people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<Version> }, reader: Reader): People {
+  people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> }, reader: Reader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
     const order = (version: SignedIdentityObject, other: SignedIdentityObject) =>
       compareVersions(this.versionOf(version), this.versionOf(other));
@@ -48,7 +48,7 @@ export class IdentityVersions {
           return versions.sort(order);
         },
         current: async () => {
-          let last: Version | undefined;
+          let last: IdentityVersion | undefined;
           for await (const version of rows.range([root.link])) last = version;
           return last === undefined || compareVersions(this.versionOf(signedIdentity), last) >= 0
             ? signedIdentity
@@ -61,6 +61,6 @@ export class IdentityVersions {
   }
 }
 
-function compareVersions([, at, link]: Version, [, otherAt, otherLink]: Version): number {
+function compareVersions([, at, link]: IdentityVersion, [, otherAt, otherLink]: IdentityVersion): number {
   return at !== otherAt ? at - otherAt : link < otherLink ? -1 : link > otherLink ? 1 : 0;
 }

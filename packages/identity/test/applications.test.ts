@@ -6,7 +6,6 @@ import {
   type Json,
   type JsonLink,
   type Link,
-  linkOf,
   linkSchema,
   type Reader,
   type Schema,
@@ -26,7 +25,7 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
-import { schemes } from "./fixtures.ts";
+import { byLink, schemes } from "./fixtures.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it
@@ -37,7 +36,6 @@ const { keys, identities, signatures, publish, delegate } = await loadIdentity(d
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, 0)).sign(object);
 

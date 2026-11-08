@@ -125,12 +125,14 @@ export class Signatures {
   async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader, versions: Versions): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
-    const verified = this.#signatureOf(signature, signedIdentity);
+    const verifiedSignature = this.#signatureOf(signature, signedIdentity);
     const current = await versions.current(signedIdentity);
-    if (!hasSigner(current.identity, verified.key)) {
-      throw new Error(`${verified.key.link} does not sign for the current version of ${current.identity.root.link}`);
+    if (!hasSigner(current.identity, verifiedSignature.key)) {
+      throw new Error(
+        `${verifiedSignature.key.link} does not sign for the current version of ${current.identity.root.link}`,
+      );
     }
-    return verified;
+    return verifiedSignature;
   }
 
   /** Reads the signature that `link` names from `reader`, and verifies it by `versions`. */

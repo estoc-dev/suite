@@ -1,4 +1,4 @@
-import { digestOf, encodeSchema, type Json, type JsonObject, json, jsonSchema, type Link, linkOf } from "@estoc/object";
+import { digestOf, encodeSchema, type JsonObject, json, jsonSchema, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -20,13 +20,12 @@ import {
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { rowsOf, schemes } from "./fixtures.ts";
+import { byLink, closure, rowsOf, schemes } from "./fixtures.ts";
 
 const { keys, identities, delegatedIdentities, signedIdentities, versions, publish, delegate } = await loadIdentity(
   defaultValidator,
   schemes,
 );
-const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -40,24 +39,6 @@ const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
   const signed = unsignedOf(linkOf(bytes));
   return signedIdentities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
 };
-
-// The closure a store gathers from a blob: the blob and every blob reached by
-// the links JSON finds in it, past which a blob that is not an object links to nothing.
-function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
-  const reached = new Set([link]);
-  for (const next of reached) {
-    const bytes = blobs.get(next);
-    if (bytes === undefined) continue;
-    let value: Json;
-    try {
-      value = json.decode(bytes);
-    } catch {
-      continue;
-    }
-    for (const linked of json.links(value)) reached.add(linked);
-  }
-  return reached;
-}
 
 describe("an identity", () => {
   it("names its root by the link of the root's object, and holds its at", () => {

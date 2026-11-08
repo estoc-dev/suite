@@ -4,10 +4,12 @@ import { Identities, identitySchema } from "./identity/identity.ts";
 import type { Key, KeyData, Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
 import { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts";
+import { SecretKeys, secretKeySchema } from "./secret-key.ts";
 import { Signatures, signatureSchema } from "./signature.ts";
 import { SignedIdentities, type SignedIdentityObject, signedIdentitySchema } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 import { IdentityVersions } from "./versions.ts";
+import { WalletKeys, walletKeySchema } from "./wallet-key.ts";
 
 /** Each schema of this package, compiled, as what reads and writes its objects, side by side. */
 export interface IdentityKit {
@@ -17,6 +19,8 @@ export interface IdentityKit {
   readonly signedIdentities: SignedIdentities;
   readonly signatures: Signatures;
   readonly versions: IdentityVersions;
+  readonly secretKeys: SecretKeys;
+  readonly walletKeys: WalletKeys;
   /**
    * Writes the Identity whose root is `root`'s key, at `at`, and has `root`
    * sign it. Where a version signed by a clock that is off falls among the
@@ -61,6 +65,8 @@ export async function loadIdentity(validator: JsonSchemaValidator, schemes: read
     signedIdentities,
     signatures: new Signatures(await encodeSchema(signatureSchema, validator), signedIdentities),
     versions: new IdentityVersions(signedIdentities),
+    secretKeys: new SecretKeys(await encodeSchema(secretKeySchema, validator), keys),
+    walletKeys: new WalletKeys(await encodeSchema(walletKeySchema, validator), keys),
     publish: async (root, at = Date.now()) => signedIdentities.sign(root, identities.encode(root.key, at)),
     delegate: async (root, agents, at = Date.now()) =>
       signedIdentities.sign(root, delegatedIdentities.encode(root.key, agents, at)),

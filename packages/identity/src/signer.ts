@@ -26,8 +26,8 @@ export class SoftwareSigner implements Signer {
   }
 
   static fromSecretKey(scheme: CurveScheme, secretKey: Uint8Array): SoftwareSigner {
-    const owned = new Uint8Array(secretKey);
-    return new SoftwareSigner(scheme, scheme.curve.publicKeyOf(owned), owned);
+    const ownedSecretKey = new Uint8Array(secretKey);
+    return new SoftwareSigner(scheme, scheme.curve.publicKeyOf(ownedSecretKey), ownedSecretKey);
   }
 
   get key(): Key {

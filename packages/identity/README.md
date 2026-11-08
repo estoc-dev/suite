@@ -19,6 +19,10 @@ Signed identity     an Object written to the signed identity schema, with the fi
                     "identity": <the identity's link>, "signature": <hex>
 Signature           an Object written to the signature schema, with the fields
                     "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
+Secret Key          an Object written to the Secret Key schema, with the fields
+                    "key": <the Key's link>, "secret": <hex>
+Wallet Key          an Object written to the Wallet Key schema, with the field
+                    "key": <the Key's link>
 ```
 
 The bytes of a Signature are read as the schema of its identity says: an
@@ -29,8 +33,9 @@ the agent that signed and that agent's signature.
 application picks, writes the object of each scheme it picks, and gives
 what reads and writes the objects of each,
 side by side: `keys`, `identities`, `delegatedIdentities`,
-`signedIdentities`, `signatures` and `versions`, with `publish` and
-`delegate`, which write an identity and have its root sign it. The code is
+`signedIdentities`, `signatures`, `versions`, `secretKeys` and
+`walletKeys`, with `publish` and `delegate`, which write an identity and
+have its root sign it. The code is
 laid out as the objects are. Each schema has a file of its own, an
 interface and the schemas read as it share a directory, `src/key/` and
 `src/identity/`, with the interface in `interface.ts`, and one file imports
@@ -421,3 +426,48 @@ const signedNotes = indexOver(signatures.selectionOver(noteSchema), async functi
 
 Finding the signatures over an object takes an index by the link they
 name, so hand an object over together with its signatures.
+
+## Secret Keys and Wallet Keys
+
+Which keys a device signs with is for its private store to say, the
+`PrivateStore` of `@estoc/store` that it keeps beside its store. It holds
+one of two objects for each such key:
+
+- A Secret Key, written to `secretKeySchema`, holds the key by the link of
+  its object, and `secret`, the key's secret as 32 bytes in lowercase hex.
+  The device signs with the secret in memory.
+- A Wallet Key, written to `walletKeySchema`, holds the key alone. The
+  device signs through a wallet, the one whose public key is the key's.
+
+To sign with a key, a device looks for either. With its Secret Key it signs
+with a `SoftwareSigner`; with its Wallet Key it connects a wallet and checks
+the public key the wallet gives; with neither it does not sign with the
+key. A key with no secret is not taken to be a wallet's, since the keys of
+others and the agents of other devices have none here either, so the
+private store lists just the keys the device signs with. The two are
+separate schemas, so a Wallet Key does not read as a Secret Key that lacks
+its secret. A Wallet Key holds no secret, and is in the private store
+because it means something to that device alone.
+
+A key that signs for every request, such as a service's or an agent's on a
+device, has a Secret Key, since nobody is there to confirm on a wallet. A
+wallet suits a root, which signs rarely and with someone there: to publish,
+or to change its agents. A user with no wallet has a Secret Key for their
+root too.
+
+`secretKeys.encode(scheme, secret)` writes the Secret Key of a secret in a
+`CurveScheme`; the caller makes the secret. `secretKeys.read` reads one
+from its link and a `Reader`, such as a private store, with its key and
+`signer`, a `Signer` over the secret. It refuses a Secret Key whose key is
+in a scheme no curve signs in, and one whose secret is not that of its key.
+`walletKeys.encode(key)` and `walletKeys.read` do the same for a Wallet
+Key, which reads with its key alone: connecting the wallet is for the
+application, and what signs takes a `Signer` either way. Each carries as
+`blobs` its closure, its object, its key's and the blobs of the schemas
+they are written to, so one write puts it in an empty private store:
+
+```ts
+const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
+await privateStore.write({ records: [secretKey], blobs: secretKey.blobs });
+const { signer } = await secretKeys.read(secretKey.link, privateStore);
+```

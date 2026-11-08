@@ -5,7 +5,7 @@ import { pipeline } from "node:stream/promises";
 
 /** The HTTP server that `serve` runs. */
 export interface HttpServer {
-  /** Where it is reached, `http://<address>:<port>`. */
+  /** The bound address and port, as an HTTP origin. */
   readonly origin: string;
   /** Stops taking connections, and resolves once the requests it took are answered. */
   close(): Promise<void>;

@@ -324,7 +324,6 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     yield* unlisted;
   }
 
-  /** The rows that the store keeps of `index`, with those of the batch's records. */
   async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
     return (await this.#store[rowsOf](index)).adding(this.#records, this, index);
   }

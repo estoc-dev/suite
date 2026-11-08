@@ -47,10 +47,9 @@ async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
 
 const whole = <K extends Key>(rows: Rows<K>) => all(rows.range([]));
 
-/** `backend`, noting in `got` each link that it is asked for. */
-const backendNoting = (got: Link<unknown>[], backend: Backend): Backend => ({
+const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backend => ({
   get: (link) => {
-    got.push(link);
+    requestedLinks.push(link);
     return backend.get(link);
   },
   has: (link) => backend.has(link),
@@ -236,22 +235,22 @@ describe("an index scanned from a store", () => {
       records: [record],
       blobs: [card.bytes, ...schemas],
     });
-    const got: Link<unknown>[] = [];
+    const requestedLinks: Link<unknown>[] = [];
     const cardName = new SelectionBySchema(note, async ({ data }, reader) => {
       const { card } = data as { card: { $link: Link<unknown> } };
       return (await readObject(reader, card.$link, tag)).data.name as string;
     });
     const nameAs = (key: string, selection: Selection<string>) => indexOver(selection, (name) => [[key, name]]);
     const rows = await scan(
-      new Store(json, backendNoting(got, backend)),
+      new Store(json, backendNoting(requestedLinks, backend)),
       nameAs("a", cardName).union(nameAs("b", cardName), nameAs("b", plainSelectionOf(cardName))),
     );
     expect(await whole(rows)).toEqual([
       ["a", "Alice"],
       ["b", "Alice"],
     ]);
-    expect(got.filter((link) => link === card.link)).toHaveLength(1);
-    expect(got.filter((link) => link === record.link)).toHaveLength(1);
+    expect(requestedLinks.filter((link) => link === card.link)).toHaveLength(1);
+    expect(requestedLinks.filter((link) => link === record.link)).toHaveLength(1);
   });
 
   it("is not filled when a row holds a number that is not finite", async () => {
@@ -285,15 +284,15 @@ describe("an index scanned again from a store", () => {
   const [first, second] = [encodeObject(note, { keys: [["a"]] }), encodeObject(note, { keys: [["b"]] })];
 
   it("reads only the records listed since the last scan", async () => {
-    const got: Link<unknown>[] = [];
-    const store = new Store(json, backendNoting(got, new MemoryBackend()));
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
     expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
     await store.write({ records: [second] });
-    got.length = 0;
+    requestedLinks.length = 0;
     expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
-    expect(got).toContain(second.link);
-    expect(got).not.toContain(first.link);
+    expect(requestedLinks).toContain(second.link);
+    expect(requestedLinks).not.toContain(first.link);
   });
 
   it("holds the rows of all the records for another index", async () => {
@@ -313,17 +312,17 @@ describe("an index scanned again from a store", () => {
   });
 
   it("reads each record once for scans that overlap", async () => {
-    const got: Link<unknown>[] = [];
-    const store = new Store(json, backendNoting(got, new MemoryBackend()));
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
     const scans = await Promise.all([scan(store, byKeys), scan(store, byKeys)]);
     for (const rows of scans) expect(await whole(rows)).toEqual([["a"]]);
-    expect(got.filter((link) => link === first.link)).toHaveLength(1);
+    expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
   });
 
   it("goes on from the last scan that went through, after one that fails", async () => {
-    const got: Link<unknown>[] = [];
-    const backend = backendNoting(got, new MemoryBackend());
+    const requestedLinks: Link<unknown>[] = [];
+    const backend = backendNoting(requestedLinks, new MemoryBackend());
     const gone = new Error("the disk is gone");
     let isGone = false;
     const store = new Store(json, { ...backend, get: (link) => (isGone ? Promise.reject(gone) : backend.get(link)) });
@@ -333,34 +332,34 @@ describe("an index scanned again from a store", () => {
     isGone = true;
     await expect(scan(store, byKeys)).rejects.toBe(gone);
     isGone = false;
-    got.length = 0;
+    requestedLinks.length = 0;
     expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
-    expect(got).not.toContain(first.link);
+    expect(requestedLinks).not.toContain(first.link);
   });
 
   it("reads, on a staged batch, the batch's records on top of the rows its store keeps", async () => {
-    const got: Link<unknown>[] = [];
-    const store = new Store(json, backendNoting(got, new MemoryBackend()));
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
     await scan(store, byKeys);
-    got.length = 0;
+    requestedLinks.length = 0;
     const stagedStore = await store.stage({ records: [second] });
     expect(await whole(await scan(stagedStore, byKeys))).toEqual([["a"], ["b"]]);
-    expect(got).not.toContain(first.link);
+    expect(requestedLinks).not.toContain(first.link);
     expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
     await stagedStore.commit();
     expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
   });
 
   it("reads, on a private store, only the records written to it since the last scan", async () => {
-    const got: Link<unknown>[] = [];
+    const requestedLinks: Link<unknown>[] = [];
     const store = new Store(json, new MemoryBackend());
-    const privateStore = new PrivateStore(store, backendNoting(got, new MemoryBackend()));
+    const privateStore = new PrivateStore(store, backendNoting(requestedLinks, new MemoryBackend()));
     await privateStore.write({ records: [first], blobs: schemas });
     expect(await whole(await scan(privateStore, byKeys))).toEqual([["a"]]);
     await privateStore.write({ records: [second] });
-    got.length = 0;
+    requestedLinks.length = 0;
     expect(await whole(await scan(privateStore, byKeys))).toEqual([["a"], ["b"]]);
-    expect(got).not.toContain(first.link);
+    expect(requestedLinks).not.toContain(first.link);
   });
 });

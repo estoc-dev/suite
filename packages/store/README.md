@@ -106,11 +106,11 @@ keeps, and the links of the store's records with those of the batch.
 `commit` writes the batch, as `write` does.
 
 ```ts
-const staged = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
-const people = await view(staged, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
-const signature = await signatures.read(bundle.link, staged, people);
+const stagedStore = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+const people = await view(stagedStore, { index: seenVersions, read: (rows, reader) => versions.people(rows, reader) });
+const signature = await signatures.read(bundle.link, stagedStore, people);
 // … whether whoever signed is someone to take it from …
-await staged.commit();
+await stagedStore.commit();
 ```
 
 A batch that `write` refuses is refused when it is staged, before
@@ -221,6 +221,14 @@ its records on top of those its store keeps. The rows are kept for an
 index as long as the program holds it, so a program makes each index once:
 one made again by `indexOver` is another, and is read from all the records,
 as each index is once a program starts.
+
+Rows that catch what they fail to read, so as to give none of something
+that came from elsewhere and does not read as they expect, cannot tell that
+from a store that fails. A scan therefore fails when the store throws, or
+gives no blob, for a link that a selection or its rows read, even where they
+catch it: the rows of that record would be cut short. A scan that fails
+leaves the rows a store keeps as they were, so the next one reads that
+record again.
 
 ## Views
 

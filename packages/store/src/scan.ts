@@ -70,9 +70,14 @@ export class Index<K extends Key> {
 
 /**
  * The index of the records that `selection` takes, with the rows that `rows` gives of what it
- * reads each one as. The rows depend on the record and its closure, which `reader` gives by link,
- * and on nothing else; what depends on what else is written, such as whether something replaced
- * the record, is worked out from the rows when they are read.
+ * reads each one as.
+ *
+ * - The rows depend on the record and its closure, which `reader` gives by link, and on nothing
+ *   else; what depends on what else is written, such as whether something replaced the record, is
+ *   worked out from the rows when they are read.
+ * - `reader` throws for a blob the store fails to give, and a scan of the index fails with that
+ *   even where `selection` or `rows` catch it, such as to give no row of something that came from
+ *   elsewhere and does not read as they expect.
  */
 export function indexOver<K extends Key, T>(
   selection: Selection<T>,
@@ -119,6 +124,8 @@ export interface Rows<K extends Key> {
  *
  * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
  * @throws where a selection or its rows throw.
+ * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
+ *   even where they catch it.
  * @throws when a row holds a number that is not finite.
  */
 export async function scan<K extends Key>(store: Pick<Store, "get" | "records">, index: Index<K>): Promise<Rows<K>> {
@@ -178,13 +185,29 @@ export class KeptRows {
 /** A record as the parts of an index read it, so that what they share is done once. */
 class ScannedRecord {
   readonly link: Link<unknown>;
-  readonly reader: Reader;
+  /** The blobs of the record's closure, each read from the store once. */
+  readonly reader: { get(link: Link<unknown>): Promise<Uint8Array> };
   readonly #schemas = new Map<object, Link<unknown>>();
   readonly #objects = new Map<object, unknown>();
+  #readFailure: { readonly error: unknown } | undefined;
 
   constructor(link: Link<unknown>, store: Reader) {
     this.link = link;
-    this.reader = readerOnce(store);
+    this.reader = readerOnce(async (blob) => {
+      try {
+        const bytes = await store.get(blob);
+        if (bytes === undefined) throw new Error(`the store lists ${link} but does not hold ${blob} of its closure`);
+        return bytes;
+      } catch (error) {
+        this.#readFailure ??= { error };
+        throw error;
+      }
+    });
+  }
+
+  /** The first error that reading a blob of the record threw, whether or not what read it caught it. */
+  get readFailure(): { readonly error: unknown } | undefined {
+    return this.#readFailure;
   }
 
   /**
@@ -194,21 +217,22 @@ class ScannedRecord {
   async objectOf<D, F extends Fields<D>>(schema: Schema<D, F>): Promise<EncodedObject<D, F> | undefined> {
     if (!this.#objects.has(schema)) {
       const bytes = await this.reader.get(this.link);
-      if (bytes === undefined) throw new Error(`the store lists ${this.link} but does not hold it`);
-      const named = this.#schemas.get(schema.encoding) ?? schemaOf(bytes, schema.encoding);
-      this.#schemas.set(schema.encoding, named);
-      this.#objects.set(schema, named === schema.link ? decodeObject(bytes, schema) : undefined);
+      const schemaLink = this.#schemas.get(schema.encoding) ?? schemaOf(bytes, schema.encoding);
+      this.#schemas.set(schema.encoding, schemaLink);
+      this.#objects.set(schema, schemaLink === schema.link ? decodeObject(bytes, schema) : undefined);
     }
     return this.#objects.get(schema) as EncodedObject<D, F> | undefined;
   }
 }
 
-/** A reader that gets each blob from `reader` once and keeps it: a link names one blob. */
-function readerOnce(reader: Reader): Reader {
-  const blobs = new Map<Link<unknown>, Promise<Uint8Array | undefined>>();
+/** A reader that gets each blob with `get` once and keeps it: a link names one blob. */
+function readerOnce(get: (link: Link<unknown>) => Promise<Uint8Array>): {
+  get(link: Link<unknown>): Promise<Uint8Array>;
+} {
+  const blobs = new Map<Link<unknown>, Promise<Uint8Array>>();
   return {
     get(link) {
-      const bytes = blobs.get(link) ?? Promise.resolve(reader.get(link));
+      const bytes = blobs.get(link) ?? get(link);
       blobs.set(link, bytes);
       return bytes;
     },
@@ -244,6 +268,8 @@ export class SortedRows<K extends Key> implements Rows<K> {
           newRows.push(Object.freeze([...key]) as K);
         }
       }
+      const failure = record.readFailure;
+      if (failure !== undefined) throw failure.error;
     }
     if (newRows.length === 0) return this;
     const rows = [...this.#rows, ...newRows].sort(compare);

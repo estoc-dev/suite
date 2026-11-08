@@ -22,7 +22,7 @@ function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Bac
   return { store, privateStore: new PrivateStore(store, privateBackend) };
 }
 
-async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
   for await (const link of store.records()) links.push(link);
   return links;
@@ -37,8 +37,8 @@ describe("a private store", () => {
     await privateStore.write({ records: [secret] });
     expect(await privateStore.get(secret.link)).toEqual(secret.bytes);
     expect(await privateStore.get(card.link)).toEqual(card.bytes);
-    expect(await listed(privateStore)).toEqual([secret.link]);
-    expect(await listed(store)).toEqual([card.link]);
+    expect(await recordsOf(privateStore)).toEqual([secret.link]);
+    expect(await recordsOf(store)).toEqual([card.link]);
   });
 
   it("keeps in its backend nothing that the store beside it holds already", async () => {
@@ -62,7 +62,7 @@ describe("a private store", () => {
     await expect(privateStore.write({ records: [secret], blobs: anything.blobs })).rejects.toThrow(
       `${secret.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
-    expect(await listed(privateStore)).toEqual([]);
+    expect(await recordsOf(privateStore)).toEqual([]);
   });
 
   it("refuses to give a blob when the backend of the store beside it gives other bytes under the link", async () => {
@@ -125,7 +125,7 @@ describe("the store beside a private store", () => {
     await privateStore.write({ records: [secret] });
     expect(await store.get(secret.link)).toBeUndefined();
     expect((await store.closure(secret.link)).size).toBe(0);
-    expect(await listed(store)).toEqual([card.link]);
+    expect(await recordsOf(store)).toEqual([card.link]);
   });
 
   it("refuses to write anything with a blob kept in the private store in its closure", async () => {
@@ -136,6 +136,6 @@ describe("the store beside a private store", () => {
     await expect(store.write({ records: [leak], blobs: anything.blobs })).rejects.toThrow(
       `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,
     );
-    expect(await listed(store)).toEqual([]);
+    expect(await recordsOf(store)).toEqual([]);
   });
 });

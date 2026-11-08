@@ -12,13 +12,13 @@
   },
   "dependencies": {
     "@estoc/bundle": "workspace:*",
+    "@estoc/identity": "workspace:*",
     "@estoc/object": "workspace:*",
     "@estoc/store": "workspace:*",
     "@hpke/core": "1.9.0",
     "@scure/base": "^2.4.0"
   },
   "devDependencies": {
-    "@estoc/identity": "workspace:*",
     "@types/node": "^26.6.2",
     "typescript": "~5.8.0",
     "vitest": "^3.2.7"

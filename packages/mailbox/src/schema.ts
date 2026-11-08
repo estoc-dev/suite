@@ -1,3 +1,4 @@
+import type { SignedIdentityObject } from "@estoc/identity";
 import {
   DRAFT_2020_12,
   type EncodedObject,
@@ -83,3 +84,33 @@ function deliverySchema(title: string): JsonSchema {
     additionalProperties: false,
   };
 }
+
+/**
+ * The draft 2020-12 schema of a Mailbox Grant, which says at which mailboxes whoever signs it
+ * takes messages from someone.
+ *
+ * - `to` is the link of that someone's signed identity, the version the signer holds when it
+ *   signs.
+ * - `mailboxes` are the links of the mailboxes. A grant with none says the signer no longer takes
+ *   their messages.
+ * - `at` is when, in milliseconds since the Unix epoch, by the signer's clock.
+ */
+export const mailboxGrantSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Mailbox Grant",
+  type: "object",
+  properties: {
+    to: linkSchema,
+    mailboxes: { type: "array", items: linkSchema },
+    at: { type: "integer", minimum: 0 },
+  },
+  required: ["to", "mailboxes", "at"],
+  additionalProperties: false,
+};
+
+/** The data of a Mailbox Grant, as `mailboxGrantSchema` describes it. */
+export type MailboxGrantData = {
+  readonly to: JsonLink<SignedIdentityObject>;
+  readonly mailboxes: readonly JsonLink<EncodedObject<Json>>[];
+  readonly at: number;
+};

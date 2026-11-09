@@ -321,6 +321,59 @@ describe("the version of a signed identity", () => {
   });
 });
 
+describe("the selection of versions", () => {
+  const { selection } = versions;
+  const root = signer(ed25519, 4);
+
+  it.each([
+    ["an Identity", () => publish(root, 1_000)],
+    ["a Delegated Identity", () => delegate(root, [key(ed25519, 2)], 1_000)],
+  ])("reads the signed identity of %s as its version", async (_, signed) => {
+    const signedIdentity = await signed();
+    expect(await selection.read(signedIdentity.link, byLink(signedIdentity.blobs))).toEqual(
+      versions.versionOf(signedIdentity),
+    );
+  });
+
+  it("leaves out a signed identity that another key signed", async () => {
+    const { identity, blobs } = await publish(root, 1_000);
+    const forged = writtenSigned({
+      identity: { $link: identity.link },
+      signature: bytesToHex(await signer(ed25519, 9).sign(digestOf(identity.link))),
+    });
+    expect(await selection.read(linkOf(forged), byLink([forged, ...blobs]))).toBeUndefined();
+  });
+
+  it("leaves out a signed identity that names what is not an identity", async () => {
+    const rootKey = keys.encode(root.key);
+    const signed = unsignedOf(rootKey.link);
+    expect(await selection.read(linkOf(signed), byLink([signed, rootKey.bytes]))).toBeUndefined();
+  });
+
+  it("leaves out a signed identity whose root's scheme the application does not accept", async () => {
+    const { versions: ed25519Versions } = await loadIdentity(defaultValidator, [ed25519]);
+    const signedIdentity = await publish(signer(eip191), 1_000);
+    expect(await ed25519Versions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs))).toBeUndefined();
+  });
+
+  it("leaves out a signed identity whose identity the reader does not give", async () => {
+    const signedIdentity = await publish(root, 1_000);
+    const failing = {
+      get: async (link: Link<unknown>) => {
+        if (link === signedIdentity.link) return signedIdentity.bytes;
+        throw new Error("the disk failed");
+      },
+    };
+    expect(await selection.read(signedIdentity.link, byLink([signedIdentity.bytes]))).toBeUndefined();
+    expect(await selection.read(signedIdentity.link, failing)).toBeUndefined();
+  });
+
+  it("leaves out an object of another schema", async () => {
+    const rootKey = keys.encode(root.key);
+    expect(await selection.read(rootKey.link, byLink([rootKey.bytes]))).toBeUndefined();
+  });
+});
+
 describe("the versions a reader has seen", () => {
   const wallet = signer(eip191);
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>

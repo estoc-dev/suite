@@ -21,12 +21,11 @@ import {
   linkSchema,
   readObject,
   type Schema,
-  SelectionBySchema,
   schemaOf,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
-import { type Index, indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
+import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
 // is listed in their store; what comes from the other is kept with a record
@@ -48,7 +47,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     },
     defaultValidator,
   );
-const { identities, signatures, signedIdentities, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { identities, signatures, signedIdentities, versions, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
@@ -159,16 +158,7 @@ describe("an object slipped into a bundle", () => {
 });
 
 describe("a signed identity that comes in a bundle", () => {
-  const versionsHeld: Index<readonly [root: Link<unknown>, signedIdentity: Link<unknown>]> = indexOverBlobs(
-    new SelectionBySchema(signedIdentities.schema, async ({ link }, reader) => {
-      try {
-        return await signedIdentities.read(link as Link<SignedIdentityObject>, reader);
-      } catch {
-        return undefined;
-      }
-    }),
-    ({ identity, link }) => [[identity.root.link, link]],
-  );
+  const versionsHeld = indexOverBlobs(versions.selection, (version) => [version]);
 
   it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
     const aliceVersion = await publish(alice, 5);
@@ -195,7 +185,7 @@ describe("a signed identity that comes in a bundle", () => {
     const rows = [];
     for await (const row of (await scan(bobStore, versionsHeld)).range([])) rows.push(row);
     const expectedRows = [aliceVersion, signature.signedIdentity]
-      .map(({ identity, link }) => [identity.root.link, link] as const)
+      .map((version) => versions.versionOf(version))
       .sort(([a], [b]) => (a < b ? -1 : 1));
     expect(rows).toEqual(expectedRows);
   });

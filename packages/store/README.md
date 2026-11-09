@@ -237,21 +237,11 @@ objects that carry their authority in a signature, as
 looks only at the objects of its schema:
 
 ```ts
-import { SelectionBySchema } from "@estoc/object";
 import { indexOverBlobs } from "@estoc/store";
 
-// The signed identities a store holds, by root, however deep in a closure they
-// came. One whose root did not sign it gives no row.
-const versionsHeld = indexOverBlobs(
-  new SelectionBySchema(signedIdentities.schema, async ({ link }, reader) => {
-    try {
-      return await signedIdentities.read(link as Link<SignedIdentityObject>, reader);
-    } catch {
-      return undefined;
-    }
-  }),
-  ({ identity, link }) => [[identity.root.link, link]],
-);
+// The versions of the signed identities a store holds, however deep in a
+// closure they came. One whose root did not sign it gives no row.
+const versionsHeld = indexOverBlobs(versions.selection, (version) => [version]);
 ```
 
 - A write keeps only the blobs in the closures of its records, so these are

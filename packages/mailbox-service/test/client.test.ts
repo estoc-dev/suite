@@ -353,8 +353,8 @@ describe("a service found by its root", () => {
     const { origin } = await startService();
     const { store, services } = await client();
     const { link, signedIdentity } = await services.fetch(origin);
-    const removed = await removeAgent(store);
-    await receiveAtMailbox(store, await unpackBundle(await signedService(origin, [], removed, 9_000)));
+    const removedActor = await removeAgent(store);
+    await receiveAtMailbox(store, await unpackBundle(await signedService(origin, [], removedActor, 9_000)));
     expect((await services.latestOf(signedIdentity))?.link).toBe(link);
   });
 

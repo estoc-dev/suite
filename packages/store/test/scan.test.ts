@@ -517,27 +517,48 @@ describe("an index over blobs", () => {
     expect(await whole(await scan(store, indexOverBlobs(objectsOf(strict), keysOf)))).toEqual([["fitting"]]);
   });
 
-  it("is not filled where its selection or its rows throw", async () => {
-    const error = new Error("does not read");
+  describe("whose selection or rows throw on a blob", () => {
+    const [unreadable, readable] = [
+      encodeObject(tag, { keys: [["unreadable"]] }),
+      encodeObject(tag, { keys: [["a"]] }),
+    ];
+    const readableKeysOf = (object: { readonly data: Json }) => {
+      const keys = keysOf(object);
+      if (keys[0]?.[0] === "unreadable") throw new Error("does not read");
+      return keys;
+    };
+
+    async function rowsOf(index: Index<Key>) {
+      const store = new Store(json, new MemoryBackend());
+      await store.write({ records: [unreadable, readable], blobs: schemas });
+      return whole(await scan(store, index));
+    }
+
+    it.each<[string, Index<Key>]>([
+      ["selection throws", indexOverBlobs(new SelectionBySchema(tag, readableKeysOf), (keys) => keys)],
+      ["rows throw", indexOverBlobs(objectsOf(tag), readableKeysOf)],
+    ])("passes over the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
+      expect(await rowsOf(index)).toEqual([["a"]]);
+    });
+
+    it("keeps no row that its rows gave of the blob before they threw", async () => {
+      const index = indexOverBlobs(objectsOf(tag), function* (object): Iterable<Key> {
+        yield* keysOf(object);
+        readableKeysOf(object);
+      });
+      expect(await rowsOf(index)).toEqual([["a"]]);
+    });
+  });
+
+  it("is not filled when a row holds a number that is not finite", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(tag, {})], blobs: schemas });
-    const throwing = new SelectionBySchema(tag, () => {
-      throw error;
-    });
     await expect(
       scan(
         store,
-        indexOverBlobs(throwing, () => []),
+        indexOverBlobs(objectsOf(tag), () => [[Number.NaN]]),
       ),
-    ).rejects.toBe(error);
-    await expect(
-      scan(
-        store,
-        indexOverBlobs(objectsOf(tag), () => {
-          throw error;
-        }),
-      ),
-    ).rejects.toBe(error);
+    ).rejects.toThrow("a number that is not finite");
   });
 
   it("is not filled from something else with a `get` and `records`, which still fills an index of records", async () => {
@@ -585,7 +606,32 @@ describe("an index over blobs", () => {
       expect(await whole(await scan(store, byTagKeys))).toEqual([["nested"], ["other"], ["reaching"]]);
     });
 
-    it("is not filled when the store throws for what its selection reads and catches", async () => {
+    const linkedFrom = (data: Json) => (data as { of?: { $link: Link<unknown> } }).of?.$link;
+
+    it.each<[string, Index<Key>]>([
+      [
+        "its selection reads and catches",
+        indexOverBlobs(
+          new SelectionBySchema(tag, async ({ data }, reader) => {
+            const of = linkedFrom(data);
+            if (of === undefined) return undefined;
+            try {
+              return keysOf(await readObject(reader, of, tag));
+            } catch {
+              return undefined;
+            }
+          }),
+          (keys) => keys,
+        ),
+      ],
+      [
+        "its rows read",
+        indexOverBlobs(objectsOf(tag), async function* ({ data }, reader): AsyncIterable<Key> {
+          const of = linkedFrom(data);
+          if (of !== undefined) yield* keysOf(await readObject(reader, of, tag));
+        }),
+      ],
+    ])("is not filled when the store throws for what %s", async (_, index) => {
       const diskError = new Error("the disk is gone");
       // The blob is listed too and goes in first, so it is the read through the object that links to it that fails.
       let readCount = 0;
@@ -594,21 +640,7 @@ describe("an index over blobs", () => {
         if (readCount === 1) return nested.bytes;
         throw diskError;
       });
-      const reachedKeys = new SelectionBySchema(tag, async ({ data }, reader) => {
-        const { of } = data as { of?: { $link: Link<unknown> } };
-        if (of === undefined) return undefined;
-        try {
-          return keysOf(await readObject(reader, of.$link, tag));
-        } catch {
-          return undefined;
-        }
-      });
-      await expect(
-        scan(
-          store,
-          indexOverBlobs(reachedKeys, (keys) => keys),
-        ),
-      ).rejects.toBe(diskError);
+      await expect(scan(store, index)).rejects.toBe(diskError);
       expect(readCount).toBe(2);
     });
 

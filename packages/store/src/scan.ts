@@ -105,13 +105,11 @@ export function indexOver<K extends Key, T>(
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A blob that is not an object in the encoding of the schema, or that names the schema and does
- *   not fit it, gives no row. Anyone can send one, and a scan that threw on it would fail from then
- *   on.
- * - What `selection` or `rows` throw fails the scan, so for the same reason they have to catch what
- *   they cannot read and give no row of it.
- * - `reader` throws as it does for `indexOver`, and a scan of the index fails with that even where
- *   `selection` or `rows` catch it.
+ * - A blob gives no row when it is not an object in the encoding of the schema, when it names the
+ *   schema and does not fit it, or when `selection` or `rows` throw on it. Anyone can send one, and
+ *   a scan that threw on it would fail from then on. A mistake in `selection` or `rows` therefore
+ *   shows only as rows that are missing.
+ * - `reader` throws as it does for `indexOver`, and a scan of the index still fails with that.
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
 export function indexOverBlobs<K extends Key, D, T, F extends Fields<D> = Fields<D>>(
@@ -122,15 +120,16 @@ export function indexOverBlobs<K extends Key, D, T, F extends Fields<D> = Fields
     records: [],
     blobs: [
       async function* (blob) {
-        let object: EncodedObject<D, F> | undefined;
+        const keys: K[] = [];
         try {
-          object = await blob.objectOf(selection.schema);
+          const object = await blob.objectOf(selection.schema);
+          const item = object === undefined ? undefined : await selection.itemOf(object, blob.reader);
+          if (item !== undefined) for await (const key of rows(item, blob.reader)) keys.push(key);
         } catch {
           // A store that failed still fails the scan, by the blob's `readFailure`.
           return;
         }
-        const item = object === undefined ? undefined : await selection.itemOf(object, blob.reader);
-        if (item !== undefined) yield* rows(item, blob.reader);
+        yield* keys;
       },
     ],
   });
@@ -171,7 +170,7 @@ export interface Rows<K extends Key> {
  *   the rows that its store keeps.
  *
  * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
- * @throws where a selection or its rows throw.
+ * @throws where a selection of `indexOver` or its rows throw.
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
  *   even where they catch it.
  * @throws when a row holds a number that is not finite.

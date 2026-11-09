@@ -18,7 +18,6 @@ import {
   type Reader,
   readObject,
   type Schema,
-  SelectionBySchema,
 } from "@estoc/object";
 import { indexOverBlobs, type Rows, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
@@ -87,17 +86,8 @@ export class MailboxGrants {
   constructor(schema: Schema<Json, MailboxGrantData>, identity: SignatureReading) {
     this.schema = schema;
     this.#identity = identity;
-    const grants = identity.signatures.selectionOver(schema);
-    const selection = new SelectionBySchema(identity.signatures.schema, async (signature, reader) => {
-      try {
-        const grant = await grants.itemOf(signature, reader);
-        return grant === undefined ? undefined : await this.#rowOf(grant, reader);
-      } catch {
-        return undefined;
-      }
-    });
     this.series = {
-      index: indexOverBlobs(selection, (row) => [row]),
+      index: indexOverBlobs(identity.signatures.selectionOver(schema), (grant, reader) => this.#rowsOf(grant, reader)),
       read: (rows, reader) => this.#seriesOf(rows, reader),
     };
   }
@@ -111,11 +101,14 @@ export class MailboxGrants {
     return encodeObject(this.schema, { to: { $link: to.link }, mailboxes: mailboxes.map(($link) => ({ $link })), at });
   }
 
-  async #rowOf({ signature, object }: SignatureOver<MailboxGrantData>, reader: Reader): Promise<MailboxGrantRow> {
+  async *#rowsOf(
+    { signature, object }: SignatureOver<MailboxGrantData>,
+    reader: Reader,
+  ): AsyncIterable<MailboxGrantRow> {
     const { signatures, signedIdentities } = this.#identity;
     const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
     const to = await signedIdentities.read(object.data.to.$link, reader);
-    return [signedIdentity.identity.root.link, to.identity.root.link, object.data.at, link];
+    yield [signedIdentity.identity.root.link, to.identity.root.link, object.data.at, link];
   }
 
   #seriesOf(rows: Rows<MailboxGrantRow>, reader: Reader): GrantSeries {

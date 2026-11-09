@@ -17,12 +17,15 @@ goes by who signed it, not by where the bytes came from; TLS keeps them
 private, and vouches for the service on first contact alone. A refusal is
 plain text, and a client keeps nothing of it.
 
-Of the Services that identities of one root signed, the latest says where
-the service is now: the one with the greatest `at`, and of those with the
-same `at`, the one whose signature has the greater link, compared as ASCII
-strings. Services started at once can sign the same `at`, and every reader
-takes the same one of them for the latest, whatever order its store took
-them in.
+Of the Services that identities of one root signed, a reader counts those
+signed by a key that the root's current identity version it holds lists, and
+the latest of them says where the service is now: the one with the greatest
+`at`, and of those with the same `at`, the one whose signature has the
+greater link, compared as ASCII strings. A Service signed by a key that a
+later identity version takes out counts no more, whatever its `at`, so
+whoever still holds that key does not say where the service is. Services
+started at once can sign the same `at`, and every reader takes the same one
+of them for the latest, whatever order its store took them in.
 
 What a client posts to, the service gives it: each offer in a Service comes
 with an id, and the address is the origin and the id, `<origin>/<id>`.
@@ -72,9 +75,9 @@ the service's signatures over them, the service's identity and their
 schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
-offer signed by an identity of another root. It writes the service's
-signature over the Service to the store as a record, with its closure, and
-gives a `Service`: the service's signed identity that signed it, its
+offer signed by an identity of another root. It keeps the bundle in the
+store with an `Inbound` record of `@estoc/store`, and gives a `Service`:
+the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
 lists one. Offers of schemas the client does not read are passed over.
@@ -89,7 +92,8 @@ the one it trusts on first contact.
 
 After first contact the service is its root. `latestOf` gives the latest
 Service that the store holds of the root that signed a signed identity,
-whichever channel brought it, and reaches nothing:
+whichever channel brought it, or `undefined` when none counts, and reaches
+nothing:
 
 ```ts
 const service = await services.latestOf(account.service);
@@ -99,7 +103,9 @@ Another device that syncs the store goes back to the service that way, and
 to where it moved, once the store holds the newer Service. `latestOf` checks a
 Service it reads from the store as `fetch` does, save that no origin was
 asked: its origin is still to be one that `fetch` takes. It reads every
-Service in the store, through an index of `@estoc/store`.
+Service that the store holds, through an index over blobs of
+`@estoc/store`, so a Service that came in at a mailbox counts as one that
+`fetch` got: what makes it the service's is the signature.
 
 ## Opening an account
 
@@ -190,13 +196,45 @@ identity's acceptance of its offer.
 
 ### What the client keeps
 
-`fetch` writes the service's signature over the Service, whose closure holds
-the offers and the service's signatures over them, and `accept` and `open`
-write the service's signature over the acknowledgement, each to the store
-as a record, with their closure. Another device that syncs the store learns
-which services the identity has accounts and mailboxes at, by their roots,
-and where they are, without asking them. When the service refuses, or its
-answer is refused, `accept` and `open` write nothing.
+What a service answers comes from outside the store, so the client keeps it
+as `@estoc/store` keeps all such: `fetch` keeps the service's signature over
+the Service, whose closure holds the offers and the service's signatures
+over them, and `accept` and `open` keep the service's signature over the
+acknowledgement, each with an `Inbound` record whose `via` is the origin it
+came from:
+
+```
+Origin  {"origin": <origin>}
+```
+
+The origin is an object of its own, written to `originSchema`, so one
+origin is one object however often it is reached. `via` records where
+something came from, and nothing reads it to decide anything. `loadServices`
+takes a `clock` for the `at` of the records, `Date.now` unless given. When the
+service refuses, or its answer is refused, `fetch`, `accept` and `open` write
+nothing.
+
+What the client reads back of where services are, it reads from the
+signatures the store holds, records or not, by who signed them, as it reads
+identity versions. A Service that came in at a mailbox, or that another
+device fetched, reads as one that came from the service here. Another device
+that syncs the store learns where the services are, by their roots, without
+asking them.
+
+The mailboxes it opened, it reads back from a record that `open` writes once
+the service acknowledged the request, written to `openedMailboxSchema`:
+
+```
+Opened mailbox  {"mailbox": <link of the HTTP mailbox>, "acknowledgement": <link of the service's signature over the mailbox acknowledgement>}
+```
+
+The record is the user's own, so another device that syncs the store picks
+up at the mailbox too. An acknowledgement that came in another way, such as
+at a mailbox, opens no mailbox to pick up at, even one that the service
+signed of the account's request. A key that a later identity version of the
+account's root takes out still signs requests by the identity version
+before, so a signature over a request does not tell one sent while the key
+was listed from one sent after; the record does.
 
 The client holds identity versions as the service does, as the signed
 identities in its store. That store can hold other records than the service
@@ -204,21 +242,24 @@ gave out, so it can have seen an identity version that the service has not.
 `fetch`, `latestOf` and `accept` verify the service's signatures against
 them, so a Service, an offer or an acknowledgement signed by a key that a
 later identity version of the service does not list is refused once the store
-holds that identity version, whatever record brought it. A service from
+holds that identity version, however it came. `latestOf` passes over a
+Service so signed and takes the latest that counts. A service from
 `loadMailboxService` signs with its root's key, so its signatures are refused
 this way only after the root signs a later identity version that does not
 list that key.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
-it will be once that is written, as `stage` of `@estoc/store` gives it. So a
-Service that `fetch` takes reads alike by `latestOf` until the store holds a
-later identity version of the service. The offers a Service lists are read
-as any signature is, and the store then holds the identity version that
-signed the Service, so an offer is verified by that identity version or a
-later one. When a service signs a Service by an identity version that takes
-out the key that signed an offer by an earlier one, it signs the offer again
-by a key that the identity version lists. The offer stays the same object, so
-its id and the acceptances of it stay as they were.
+it will be once that is kept: `stage` of `@estoc/store` gives it with the
+bundle's root as a record, and once it reads, the intake keeps the bundle
+and the staged batch is dropped. So a Service that `fetch` takes reads alike
+by `latestOf` until the store holds a later identity version of the service.
+The offers a Service lists are read as any signature is, and the store then
+holds the identity version that signed the Service, so an offer is verified
+by that identity version or a later one. When a service signs a Service by
+an identity version that takes out the key that signed an offer by an
+earlier one, it signs the offer again by a key that the identity version
+lists. The offer stays the same object, so its id and the acceptances of it
+stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
 account is of, the service's signed identity that signed the
@@ -250,12 +291,13 @@ const inbox = await post.openInbox((publicKey) => service.mailbox.open(actor, pu
 The actor signs the request, and `open` posts the bundle of that signature
 to `POST /<id>`, at the id that the Service lists with the offer: the
 signature as the root, with the request and the blobs of its signed
-identity. It writes the service's signature over the acknowledgement to
-the store as a record, with its closure, and gives the HTTP mailbox of
-`@estoc/mailbox` that senders post to, `{"key", "url"}`, whose url is the
-origin the offer was taken at and the send id. `Post.openInbox` writes the
-mailbox to the store, and its key to the private store. The client refuses
-an acknowledgement as `accept` does, and writes nothing then.
+identity. It keeps the service's signature over the acknowledgement as
+`accept` does, and makes the HTTP mailbox of `@estoc/mailbox` that senders
+post to, `{"key", "url"}`, whose url is the origin the offer was taken at and
+the send id. It writes an Opened mailbox record of the mailbox and the
+acknowledgement, and gives the mailbox. `Post.openInbox` writes the mailbox
+to the store as a record, and its key to the private store. The client
+refuses an acknowledgement as `accept` does, and writes nothing then.
 
 The offer names the terms of the mailboxes it opens: what waits is kept
 for `retention` milliseconds, a mailbox holds at most `quota` bytes that
@@ -318,12 +360,15 @@ acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 
-`pickup` finds the acknowledgement of the mailbox that the store holds,
-through an index of `@estoc/store`, by the send id at the end of the
-mailbox's url and by the mailbox's key. It picks up at the pickup id, at
-the origin of the latest Service of the service that the store holds, so
-at wherever the service moved. Senders still post to the url that the
-mailbox names.
+`pickup` goes by the acknowledgement that the Opened mailbox record of the
+mailbox links to, through an index over the records of `@estoc/store`. The
+client verified it when `open` kept it, and a later identity version of the
+account that takes out the key that signed the request does not change it:
+the mailbox stays the account's, and an agent that the root lists picks up
+there. It picks up at the pickup id, at the origin of the latest Service
+that the store holds of the service that signed the acknowledgement, so at
+wherever the service moved. Senders still post to the url that the mailbox
+names.
 
 Each request is a pickup request that the actor signs. It names the mailbox
 by the service's signature over the acknowledgement, and lists by link, as

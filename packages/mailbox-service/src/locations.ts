@@ -1,6 +1,13 @@
-import { type KeyObject, noIdentityVersions, type Signature, type Signatures } from "@estoc/identity";
+import {
+  hasSigner,
+  type KeyObject,
+  noIdentityVersions,
+  type SeenIdentityVersions,
+  type Signature,
+  type Signatures,
+} from "@estoc/identity";
 import type { Json, Link, Schema } from "@estoc/object";
-import { indexOver, type View } from "@estoc/store";
+import { indexOverBlobs, type View } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
 
 /**
@@ -10,27 +17,40 @@ import type { ServiceData } from "./schemas.ts";
  */
 type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signature>];
 
-/** The Services that recorded signatures sign, by the root of the identity that signed each. */
+/**
+ * The Services that the signatures a store holds sign, records or not, by
+ * the root of the identity that signed each. A Service carries its authority
+ * in the signature, so one that came in at a mailbox counts as one fetched.
+ */
 export interface Locations {
-  /** The links of the signatures over the Services of `root`, from the latest back. */
-  servicesOf(root: Link<KeyObject>): Promise<Link<Signature>[]>;
+  /**
+   * The links of the signatures over the Services of `root` whose keys sign
+   * for the current identity version that `seenIdentityVersions` gives, from
+   * the latest back. One by a key that a later identity version takes out
+   * does not count, whatever its `at`.
+   */
+  servicesOf(root: Link<KeyObject>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
 
 export type LocationsView = View<Location, Locations>;
 
 export function locationsView(signatures: Signatures, service: Schema<Json, ServiceData>): LocationsView {
   return {
-    index: indexOver(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
+    index: indexOverBlobs(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
       // verified by the identity version it carries; whether that identity
-      // version still counts is for whoever reads the Service to check.
+      // version still counts is checked as the rows are read.
       const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
       yield [signedIdentity.identity.root.link, object.data.at, link];
     }),
-    read: (rows) => ({
-      async servicesOf(root) {
+    read: (rows, reader) => ({
+      async servicesOf(root, seenIdentityVersions) {
         const links: Link<Signature>[] = [];
-        for await (const [, , link] of rows.range([root])) links.unshift(link);
+        for await (const [, , link] of rows.range([root])) {
+          const { signedIdentity, key } = await signatures.read(link, reader, noIdentityVersions);
+          const current = await seenIdentityVersions.current(signedIdentity);
+          if (hasSigner(current.identity, key)) links.unshift(link);
+        }
         return links;
       },
     }),

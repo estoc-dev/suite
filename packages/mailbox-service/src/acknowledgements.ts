@@ -1,7 +1,7 @@
 import type { Signature, Signatures } from "@estoc/identity";
-import { type Json, type Link, readObject, type Schema } from "@estoc/object";
+import { type EncodedObject, type Json, type Link, objectsOf, type Schema } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
-import type { AcknowledgementData, MailboxAcknowledgementData, MailboxRequestData } from "./schemas.ts";
+import type { AcknowledgementData, OpenedMailboxData } from "./schemas.ts";
 
 type AcknowledgementRow = readonly [acceptance: Link<Signature>, acknowledgement: Link<Signature>];
 
@@ -35,42 +35,33 @@ export function acknowledgementsView(
   };
 }
 
-type MailboxAcknowledgementRow = readonly [sendId: string, key: string, acknowledgement: Link<Signature>];
+type OpenedMailboxRow = readonly [mailbox: Link<EncodedObject<Json>>, acknowledgement: Link<Signature>];
 
 /**
- * The mailboxes that recorded signatures acknowledge, by the id that
- * senders post to and the key that the request named.
+ * The mailboxes that the user's client opened, by the records that it
+ * writes once a service acknowledged its request for each. An
+ * acknowledgement that the store came to hold another way, such as at a
+ * mailbox, opens none: a key that a later identity version of the account's
+ * root takes out still signs requests by the identity version before, so the
+ * signature does not tell a request sent while the key was listed from one
+ * sent after.
  */
-export interface MailboxAcknowledgements {
+export interface OpenedMailboxes {
   /**
-   * The link of a signature over the acknowledgement of a mailbox at
-   * `sendId` sealed to `key`, or `undefined` when the store holds none.
+   * The link of the service's signature over the acknowledgement of
+   * `mailbox`, or `undefined` when the store holds no record of opening it.
    */
-  acknowledgementAt(sendId: string, key: string): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(mailbox: Link<EncodedObject<Json>>): Promise<Link<Signature> | undefined>;
 }
 
-export type MailboxAcknowledgementsView = View<MailboxAcknowledgementRow, MailboxAcknowledgements>;
+export type OpenedMailboxesView = View<OpenedMailboxRow, OpenedMailboxes>;
 
-export function mailboxAcknowledgementsView(
-  signatures: Signatures,
-  schemas: {
-    readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
-    readonly mailboxRequest: Schema<Json, MailboxRequestData>;
-  },
-): MailboxAcknowledgementsView {
+export function openedMailboxesView(openedMailbox: Schema<Json, OpenedMailboxData>): OpenedMailboxesView {
   return {
-    index: indexOver(
-      signatures.selectionOver(schemas.mailboxAcknowledgement),
-      async function* ({ signature, object: acknowledgement }, reader) {
-        const { request, sendId } = acknowledgement.data;
-        const { object } = (await readObject(reader, request.$link, signatures.schema)).data;
-        const { key } = (await readObject(reader, object.$link, schemas.mailboxRequest)).data;
-        yield [sendId, key, signature.link as Link<Signature>];
-      },
-    ),
+    index: indexOver(objectsOf(openedMailbox), ({ data }) => [[data.mailbox.$link, data.acknowledgement.$link]]),
     read: (rows) => ({
-      async acknowledgementAt(sendId, key) {
-        for await (const [, , link] of rows.range([sendId, key])) return link;
+      async acknowledgementOf(mailbox) {
+        for await (const [, link] of rows.range([mailbox])) return link;
         return undefined;
       },
     }),

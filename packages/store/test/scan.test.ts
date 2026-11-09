@@ -528,7 +528,7 @@ describe("an index over blobs", () => {
       return keys;
     };
 
-    async function rowsOfStore(index: Index<Key>) {
+    async function rowsOf(index: Index<Key>) {
       const store = new Store(json, new MemoryBackend());
       await store.write({ records: [unreadable, readable], blobs: schemas });
       return whole(await scan(store, index));
@@ -538,15 +538,15 @@ describe("an index over blobs", () => {
       ["selection throws", indexOverBlobs(new SelectionBySchema(tag, readableKeysOf), (keys) => keys)],
       ["rows throw", indexOverBlobs(objectsOf(tag), readableKeysOf)],
     ])("passes over the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
-      expect(await rowsOfStore(index)).toEqual([["a"]]);
+      expect(await rowsOf(index)).toEqual([["a"]]);
     });
 
     it("keeps no row that its rows gave of the blob before they threw", async () => {
-      const cutShort = indexOverBlobs(objectsOf(tag), function* (object): Iterable<Key> {
+      const index = indexOverBlobs(objectsOf(tag), function* (object): Iterable<Key> {
         yield* keysOf(object);
         readableKeysOf(object);
       });
-      expect(await rowsOfStore(cutShort)).toEqual([["a"]]);
+      expect(await rowsOf(index)).toEqual([["a"]]);
     });
   });
 

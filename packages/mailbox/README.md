@@ -326,15 +326,16 @@ change where its signer takes your messages.
 import { loadMailboxGrants } from "@estoc/mailbox";
 import { view } from "@estoc/store";
 
-const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities });
+const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities, versions });
 const grant = grants.encode(theirs, [inbox.mailbox], Date.now());
 const signature = await actor.sign(grant);
 await store.write({ records: [signature], blobs: [grant.bytes, ...grants.schema.blobs, ...] });
 await (await post.outbox(theirMailbox)).send(signature.link);
 
 const latest = await view(store, grants.latest);
-await latest.grantFrom(mine, their); // where I take their messages
-await latest.grantFrom(their, mine); // where they take mine
+const people = await view(store, grants.people);
+await latest.grantFrom(mine, their, people); // where I take their messages
+await latest.grantFrom(their, mine, people); // where they take mine
 ```
 
 `grants.latest` is a `View` of `@estoc/store`, made once for the program
@@ -342,15 +343,41 @@ as the index it holds is. Its index reads the signatures over grants that
 the user writes as records, and the bundles that `Inbound` records say
 came in, at a mailbox or out of band, whose root is such a signature. Each
 gives a row of the root of
-the signer, the root of `to`, `at` and the link of the signature; the
-signature is verified by the signed identity it carries, as by
-`noVersions`. A bundle that came in and does not read as a grant gives no
+the signer, the root of `to`, `at`, the link of the signature and since
+when the store holds it: the `at` of the `Inbound`, or the grant's own `at`
+for a record. The signature is verified by the signed identity it carries,
+as by `noVersions`. A bundle that came in and does not read as a grant gives no
 row, since anyone can send a bundle to a mailbox. The scan still fails
 when the store fails to give a blob of it, so a later scan of the index
-reads the bundle again. `grantFrom` takes the links of two roots and gives
-the latest grant of the first to the second,
+reads the bundle again. `grantFrom` takes the links of two roots and the
+`People` of the versions a reader has seen, and gives the latest grant of
+the first to the second that counts by them,
 with the signature over it and the signed identity it is to, or
-`undefined` when the store holds none.
+`undefined` when the store holds none that does.
+
+`grants.people` is a `View` that gives those `People`, from the versions the
+store has seen in its grants and in what came in: the one a signature
+carries, for a signature over a grant written as a record or at the root of
+a bundle, and a signed identity at the root of a bundle. Its `index` can be
+joined with `union` to an application's own index of versions.
+
+A root removes an agent by signing a version that does not list it, as in
+`@estoc/identity`. The grants the agent signed before stay in use, so a
+sender keeps sending to those mailboxes, and the agent cannot add new ones:
+
+- A grant signed by a key that the current version does not list counts when
+  the store held it before the `at` of the version that removed the key, the
+  first the reader has seen after the last that lists it. The time it came in
+  is by the reader's clock, which the agent cannot change, and the agent
+  chooses the grant's own `at`, so that does not say when.
+- A grant signed by a key that the current version lists comes before any
+  signed by a key it does not list, whatever their `at`s. So a root replaces
+  what a removed agent signed by having a key it lists sign a grant, however
+  late an `at` the agent wrote.
+- A reader holds only the versions it has seen, so a key counts as listed
+  until the reader sees the version that removes it. Once it does, a grant
+  that came in after that version's `at` stops counting, even one that came
+  in before the reader saw it.
 
 ## Transports
 

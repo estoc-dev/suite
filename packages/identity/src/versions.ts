@@ -1,7 +1,7 @@
-import type { Link, Reader } from "@estoc/object";
+import { type Json, type Link, type Reader, SelectionBySchema } from "@estoc/object";
 import type { KeyObject } from "./key/interface.ts";
 import type { People, Person } from "./person.ts";
-import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
+import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
  * A version of a root's identity, as a row: its root, its `at` and its
@@ -15,12 +15,33 @@ import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.t
  */
 export type IdentityVersion = readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>];
 
-/** The versions of identities: the row each is, and the people of the versions a reader has seen. */
+/** The versions of identities: the row each is, their selection, and the people of those a reader has seen. */
 export class IdentityVersions {
+  /**
+   * The selection of signed identities, each read as the row `versionOf`
+   * gives.
+   *
+   * - Anyone can send a signed identity, so one whose identity does not read,
+   *   or whose root did not sign it, gives `undefined`.
+   * - A reader that throws or gives no blob for what the signed identity names
+   *   leaves it out the same way, so what reads with a reader that can fail
+   *   has to notice that itself.
+   *
+   * @throws from `read`, when the reader gives no blob for the record, and
+   *   where `decodeObject` throws for an object of the signed identity schema.
+   */
+  readonly selection: SelectionBySchema<Json, IdentityVersion, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
     this.#signedIdentities = signedIdentities;
+    this.selection = new SelectionBySchema(signedIdentities.schema, async (object, reader) => {
+      try {
+        return this.versionOf(await signedIdentities.verify(object, reader));
+      } catch {
+        return undefined;
+      }
+    });
   }
 
   versionOf(signedIdentity: SignedIdentityObject): IdentityVersion {

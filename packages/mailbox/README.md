@@ -324,16 +324,17 @@ change where its signer takes your messages.
 
 ```ts
 import { loadMailboxGrants } from "@estoc/mailbox";
-import { view } from "@estoc/store";
+import { indexOverBlobs, view } from "@estoc/store";
 
-const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities, versions });
+const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities });
 const grant = grants.encode(theirs, [inbox.mailbox], Date.now());
 const signature = await actor.sign(grant);
 await store.write({ records: [signature], blobs: [grant.bytes, ...grants.schema.blobs, ...] });
 await (await post.outbox(theirMailbox)).send(signature.link);
 
+const seen = indexOverBlobs(versions.selection, (version) => [version]);
 const latest = await view(store, grants.latest);
-const people = await view(store, grants.people);
+const people = await view(store, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
 await latest.grantFrom(mine, their, people); // where I take their messages
 await latest.grantFrom(their, mine, people); // where they take mine
 ```
@@ -354,12 +355,10 @@ second whose key signs for the current version,
 with the signature over it and the signed identity it is to, or
 `undefined` when the store holds none.
 
-`grants.people` is a `View` that gives the `People` of the versions the
-store has seen in its grants and in what came in: the one a signature
-carries, for a signature over a grant written as a record or at the root of
-a bundle, and a signed identity at the root of a bundle. Those `People` are
-`Versions` too. Its `index` can be joined with `union` to an application's
-own index of versions.
+The `Versions` of a reader are the `People` of the signed identities its store
+holds, as in `@estoc/identity`. `seen` reads them by their schema, wherever
+they sit in the closure of a record or of what came in, and is made once for
+the program too.
 
 A root removes an agent by signing a version that does not list it, as in
 `@estoc/identity`. A reader that has seen that version no longer counts the

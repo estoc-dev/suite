@@ -2,8 +2,10 @@ import { readBundle, writeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
+  type IdentityVersion,
   type KeyObject,
   loadIdentity,
+  type People,
   type Signature,
   type SignedIdentityObject,
   type Signer,
@@ -11,7 +13,16 @@ import {
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Intake, loadIntake, MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
+import {
+  type Intake,
+  indexOverBlobs,
+  loadIntake,
+  MemoryBackend,
+  PrivateStore,
+  Store,
+  type View,
+  view,
+} from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, loadMailboxGrants, loadPost, type Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -23,8 +34,12 @@ import { MemoryNetwork } from "./memory-network.ts";
 // store.
 
 const identity = await loadIdentity(defaultValidator, [ed25519]);
-const { signatures, publish, delegate } = identity;
+const { signatures, signedIdentities, versions, publish, delegate } = identity;
 const grants = await loadMailboxGrants(defaultValidator, identity);
+const seenPeople: View<IdentityVersion, People> = {
+  index: indexOverBlobs(versions.selection, (version) => [version]),
+  read: (rows, reader) => versions.people(rows, reader),
+};
 const network = await MemoryNetwork.create(defaultValidator);
 
 interface Person {
@@ -102,7 +117,7 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
 }
 
 const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
-  (await view(store, grants.latest)).grantFrom(from.root, to.root, await view(store, grants.people));
+  (await view(store, grants.latest)).grantFrom(from.root, to.root, await view(store, seenPeople));
 
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {
@@ -239,6 +254,36 @@ describe("a grant by an agent that a later version does not list", () => {
     await handOver(former, bob, signature.link);
 
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
+  });
+
+  it("does not count once that version comes in below the root of a bundle", async () => {
+    const { former, current, bob } = await twoPeople();
+    const carol = await person(3);
+    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, signature.link);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
+
+    // Carol's grant is to that version, and only her signature is at the root.
+    const toWallet = await give(carol, current, [carol.inbox.mailbox], 6_000);
+    await handOver(carol, bob, toWallet.link);
+
+    expect(await grantFrom(bob, former, bob)).toBeUndefined();
+  });
+
+  it("counts when that version comes in without the signature of its root", async () => {
+    const { former, bob } = await twoPeople();
+    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, signature.link);
+
+    const forgedVersion = encodeObject(signedIdentities.schema, {
+      identity: { $link: removalVersion.identity.link },
+      signature: "00".repeat(64),
+    });
+    const blobs = removalVersion.blobs.filter((blob) => blob !== removalVersion.bytes);
+    await bob.intake.receive(readBundle(writeBundle(forgedVersion, blobs)));
+    expect(await bob.store.get(forgedVersion.link)).toEqual(forgedVersion.bytes);
+
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
   });
 
   it("gives way to one by a key that the current version lists, whatever its at", async () => {

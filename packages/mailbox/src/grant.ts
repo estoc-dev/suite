@@ -1,10 +1,8 @@
 import {
   hasSigner,
   type IdentityKit,
-  type IdentityVersion,
   type KeyObject,
   noVersions,
-  type People,
   type Signature,
   type SignatureOver,
   type SignedIdentityObject,
@@ -57,7 +55,7 @@ export interface LatestGrants {
   grantFrom(from: Link<KeyObject>, to: Link<KeyObject>, versions: Versions): Promise<MailboxGrant | undefined>;
 }
 
-type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities" | "versions">;
+type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
 /**
  * Mailbox Grants: writing one for a signer to sign, and reading the latest of each series from a
@@ -76,19 +74,12 @@ export class MailboxGrants {
   readonly schema: Schema<Json, MailboxGrantData>;
   /** The latest grant of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
   readonly latest: View<MailboxGrantRow, LatestGrants>;
-  /**
-   * The people of the versions that a store has seen in its grants and in what came in: the
-   * version a signature carries, for a signature over a grant written as a record or at the root
-   * of a bundle, and a signed identity at the root of a bundle.
-   */
-  readonly people: View<IdentityVersion, People>;
   readonly #identity: SignatureReading;
 
   constructor(schema: Schema<Json, MailboxGrantData>, inbound: Schema<Json, InboundData>, identity: SignatureReading) {
     this.schema = schema;
     this.#identity = identity;
-    const { signatures, signedIdentities, versions } = identity;
-    const grants = signatures.selectionOver(schema);
+    const grants = identity.signatures.selectionOver(schema);
     const rowOf = (grant: SignatureOver<MailboxGrantData>, reader: Reader) => this.#rowOf(grant, reader);
     const recordedGrants = indexOver(grants, async function* (grant, reader) {
       yield await rowOf(grant, reader);
@@ -104,27 +95,6 @@ export class MailboxGrants {
       if (row !== undefined) yield row;
     });
     this.latest = { index: recordedGrants.union(receivedGrants), read: (rows, reader) => this.#latestOf(rows, reader) };
-
-    const versionOf = async (link: Link<SignedIdentityObject>, reader: Reader) =>
-      versions.versionOf(await signedIdentities.read(link, reader));
-    const signatureObjects = objectsOf(signatures.schema);
-    const recordedVersions = indexOver(grants, async function* ({ signature }, reader) {
-      yield await versionOf(signature.data.signedIdentity.$link, reader);
-    });
-    const receivedVersions = indexOver(objectsOf(inbound), async function* ({ data }, reader) {
-      let version: IdentityVersion;
-      try {
-        const signature = await signatureObjects.read(data.bundle.$link, reader);
-        version = await versionOf(signature?.data.signedIdentity.$link ?? data.bundle.$link, reader);
-      } catch {
-        return;
-      }
-      yield version;
-    });
-    this.people = {
-      index: recordedVersions.union(receivedVersions),
-      read: (rows, reader) => versions.people(rows, reader),
-    };
   }
 
   /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */

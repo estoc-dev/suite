@@ -1,48 +1,20 @@
-import type { IdentityKit, IdentityVersion, People, SignatureData } from "@estoc/identity";
-import { type EncodedObject, type Json, type Reader, readObject, type Schema } from "@estoc/object";
-import { indexOver, type View } from "@estoc/store";
-import type { AcknowledgementData, MailboxAcknowledgementData, ServiceData } from "./schemas.ts";
+import type { IdentityVersion, IdentityVersions, People } from "@estoc/identity";
+import { indexOverBlobs, type View } from "@estoc/store";
 
 export type PeopleView = View<IdentityVersion, People>;
 
 /**
- * The people of a service's store, or of a client's of it, by the versions
- * the store has seen in what the service gave out among its records.
+ * The people of a service's store, or of a client's of it, by the signed
+ * identities the store holds, wherever they sit in the closure of a record.
  *
- * - The versions are those that signed the Services and the acknowledgements,
- *   of accounts and of mailboxes, and those that the acknowledged acceptances
- *   and requests carry.
- * - The service and its client keep the same records, so they have seen the
- *   same versions of one another.
+ * - A client's store can hold other records than the service gave out, so it
+ *   can have seen a version that the service has not.
  * - Each version's root signature is verified; the signatures that carry it
  *   are not checked here against the versions seen.
  */
-export function peopleView(
-  { signatures, signedIdentities, versions }: IdentityKit,
-  schemas: {
-    readonly service: Schema<Json, ServiceData>;
-    readonly acknowledgement: Schema<Json, AcknowledgementData>;
-    readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
-  },
-): PeopleView {
-  const versionOf = async ({ data }: EncodedObject<Json, SignatureData>, reader: Reader) =>
-    versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
+export function peopleView(versions: IdentityVersions): PeopleView {
   return {
-    index: indexOver(signatures.selectionOver(schemas.service), async function* ({ signature }, reader) {
-      yield await versionOf(signature, reader);
-    }).union(
-      indexOver(signatures.selectionOver(schemas.acknowledgement), async function* ({ signature, object }, reader) {
-        yield await versionOf(signature, reader);
-        yield await versionOf(await readObject(reader, object.data.acceptance.$link, signatures.schema), reader);
-      }),
-      indexOver(
-        signatures.selectionOver(schemas.mailboxAcknowledgement),
-        async function* ({ signature, object }, reader) {
-          yield await versionOf(signature, reader);
-          yield await versionOf(await readObject(reader, object.data.request.$link, signatures.schema), reader);
-        },
-      ),
-    ),
+    index: indexOverBlobs(versions.selection, (version) => [version]),
     read: (rows, reader) => versions.people(rows, reader),
   };
 }

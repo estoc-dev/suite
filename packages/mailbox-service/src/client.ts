@@ -375,7 +375,7 @@ export class Services {
     this.#schemas = schemas;
     this.#locations = locationsView(kit.signatures, schemas.service);
     this.#mailboxes = mailboxAcknowledgementsView(kit.signatures, schemas);
-    this.#people = peopleView(kit, schemas);
+    this.#people = peopleView(kit.versions);
   }
 
   /**

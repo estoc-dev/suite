@@ -214,12 +214,27 @@ takes a `clock` for the `at` of the records, `Date.now` unless given. When the
 service refuses, or its answer is refused, `fetch`, `accept` and `open` write
 nothing.
 
-What the client reads back, it reads from the signatures the store holds,
-records or not, by who signed them, as it reads identity versions. A Service
-or an acknowledgement that came in at a mailbox, or that another device
-fetched, reads as one that came from the service here. Another device that
-syncs the store learns which services the identity has accounts and
-mailboxes at, by their roots, and where they are, without asking them.
+What the client reads back of where services are, it reads from the
+signatures the store holds, records or not, by who signed them, as it reads
+identity versions. A Service that came in at a mailbox, or that another
+device fetched, reads as one that came from the service here. Another device
+that syncs the store learns where the services are, by their roots, without
+asking them.
+
+The mailboxes it opened, it reads back from a record that `open` writes once
+the service acknowledged the request, written to `openedMailboxSchema`:
+
+```
+Opened mailbox  {"mailbox": <link of the HTTP mailbox>, "acknowledgement": <link of the service's signature over the mailbox acknowledgement>}
+```
+
+The record is the user's own, so another device that syncs the store picks
+up at the mailbox too. An acknowledgement that came in another way, such as
+at a mailbox, opens no mailbox to pick up at, even one that the service
+signed of the account's request. A key that a later identity version of the
+account's root takes out still signs requests by the identity version
+before, so a signature over a request does not tell one sent while the key
+was listed from one sent after; the record does.
 
 The client holds identity versions as the service does, as the signed
 identities in its store. That store can hold other records than the service
@@ -277,11 +292,12 @@ The actor signs the request, and `open` posts the bundle of that signature
 to `POST /<id>`, at the id that the Service lists with the offer: the
 signature as the root, with the request and the blobs of its signed
 identity. It keeps the service's signature over the acknowledgement as
-`accept` does, and gives the HTTP mailbox of
-`@estoc/mailbox` that senders post to, `{"key", "url"}`, whose url is the
-origin the offer was taken at and the send id. `Post.openInbox` writes the
-mailbox to the store, and its key to the private store. The client refuses
-an acknowledgement as `accept` does, and writes nothing then.
+`accept` does, and makes the HTTP mailbox of `@estoc/mailbox` that senders
+post to, `{"key", "url"}`, whose url is the origin the offer was taken at and
+the send id. It writes an Opened mailbox record of the mailbox and the
+acknowledgement, and gives the mailbox. `Post.openInbox` writes the mailbox
+to the store as a record, and its key to the private store. The client
+refuses an acknowledgement as `accept` does, and writes nothing then.
 
 The offer names the terms of the mailboxes it opens: what waits is kept
 for `retention` milliseconds, a mailbox holds at most `quota` bytes that
@@ -344,20 +360,15 @@ acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 
-`pickup` finds the service's acknowledgement of the mailbox among the
-signatures the store holds, through an index over blobs of `@estoc/store`,
-by the send id at the end of the mailbox's url, the mailbox's key, and the
-root of the actor's identity, for which the request was signed. The index
-takes an acknowledgement only when it is signed for the root that the
-request's offer names, and verifies it and the request by the identity
-versions they carry. Anyone can send an acknowledgement to a mailbox:
-without the request's root, one that someone signs of their own request for
-their own offer, with the same send id and key, would read as the
-account's, and without the offer's root, one that someone signs of the
-account's request would. It picks up at the pickup id, at
-the origin of the latest Service of the service that the store holds, so
-at wherever the service moved. Senders still post to the url that the
-mailbox names.
+`pickup` goes by the acknowledgement that the Opened mailbox record of the
+mailbox links to, through an index over the records of `@estoc/store`. The
+client verified it when `open` kept it, and a later identity version of the
+account that takes out the key that signed the request does not change it:
+the mailbox stays the account's, and an agent that the root lists picks up
+there. It picks up at the pickup id, at the origin of the latest Service
+that the store holds of the service that signed the acknowledgement, so at
+wherever the service moved. Senders still post to the url that the mailbox
+names.
 
 Each request is a pickup request that the actor signs. It names the mailbox
 by the service's signature over the acknowledgement, and lists by link, as

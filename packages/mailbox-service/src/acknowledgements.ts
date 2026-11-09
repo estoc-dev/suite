@@ -1,12 +1,7 @@
-import { type KeyObject, noIdentityVersions, type Signature, type Signatures } from "@estoc/identity";
-import { type Json, type Link, readObject, type Schema } from "@estoc/object";
-import { indexOver, indexOverBlobs, type View } from "@estoc/store";
-import type {
-  AcknowledgementData,
-  MailboxAcknowledgementData,
-  MailboxOfferData,
-  MailboxRequestData,
-} from "./schemas.ts";
+import type { Signature, Signatures } from "@estoc/identity";
+import { type EncodedObject, type Json, type Link, objectsOf, type Schema } from "@estoc/object";
+import { indexOver, type View } from "@estoc/store";
+import type { AcknowledgementData, OpenedMailboxData } from "./schemas.ts";
 
 type AcknowledgementRow = readonly [acceptance: Link<Signature>, acknowledgement: Link<Signature>];
 
@@ -40,62 +35,33 @@ export function acknowledgementsView(
   };
 }
 
-type MailboxAcknowledgementRow = readonly [
-  sendId: string,
-  key: string,
-  root: Link<KeyObject>,
-  acknowledgement: Link<Signature>,
-];
+type OpenedMailboxRow = readonly [mailbox: Link<EncodedObject<Json>>, acknowledgement: Link<Signature>];
 
 /**
- * The mailboxes that the signatures a store holds acknowledge, records or
- * not, by the id that senders post to, the key that the request named and
- * the root of the identity that signed the request.
- *
- * - An acknowledgement gives a row only when it is signed for the root that
- *   the request's offer names, and it and the request verify by the
- *   identity versions they carry.
- * - Anyone can send an acknowledgement to a mailbox. Without the root of the
- *   request, one that someone signs of their own request for their own
- *   offer, with the same send id and key, would read as the account's;
- *   without the root of the offer, one that someone signs of the account's
- *   request would.
+ * The mailboxes that the user's client opened, by the records that it
+ * writes once a service acknowledged its request for each. An
+ * acknowledgement that the store came to hold another way, such as at a
+ * mailbox, opens none: a key that a later identity version of the account's
+ * root takes out still signs requests by the identity version before, so the
+ * signature does not tell a request sent while the key was listed from one
+ * sent after.
  */
-export interface MailboxAcknowledgements {
+export interface OpenedMailboxes {
   /**
-   * The link of a signature over the acknowledgement of a mailbox at
-   * `sendId` sealed to `key`, of a request signed for `root`, or `undefined`
-   * when the store holds none.
+   * The link of the service's signature over the acknowledgement of
+   * `mailbox`, or `undefined` when the store holds no record of opening it.
    */
-  acknowledgementAt(sendId: string, key: string, root: Link<KeyObject>): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(mailbox: Link<EncodedObject<Json>>): Promise<Link<Signature> | undefined>;
 }
 
-export type MailboxAcknowledgementsView = View<MailboxAcknowledgementRow, MailboxAcknowledgements>;
+export type OpenedMailboxesView = View<OpenedMailboxRow, OpenedMailboxes>;
 
-export function mailboxAcknowledgementsView(
-  signatures: Signatures,
-  schemas: {
-    readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
-    readonly mailboxRequest: Schema<Json, MailboxRequestData>;
-    readonly mailboxOffer: Schema<Json, MailboxOfferData>;
-  },
-): MailboxAcknowledgementsView {
+export function openedMailboxesView(openedMailbox: Schema<Json, OpenedMailboxData>): OpenedMailboxesView {
   return {
-    index: indexOverBlobs(
-      signatures.selectionOver(schemas.mailboxAcknowledgement),
-      async function* ({ signature, object: acknowledgement }, reader) {
-        const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
-        const { request, sendId } = acknowledgement.data;
-        const requestSignature = await signatures.read(request.$link, reader, noIdentityVersions);
-        const { offer, key } = (await readObject(reader, requestSignature.object, schemas.mailboxRequest)).data;
-        const { identity } = (await readObject(reader, offer.$link, schemas.mailboxOffer)).data;
-        if (identity.$link === signedIdentity.identity.root.link)
-          yield [sendId, key, requestSignature.signedIdentity.identity.root.link, link];
-      },
-    ),
+    index: indexOver(objectsOf(openedMailbox), ({ data }) => [[data.mailbox.$link, data.acknowledgement.$link]]),
     read: (rows) => ({
-      async acknowledgementAt(sendId, key, root) {
-        for await (const [, , , link] of rows.range([sendId, key, root])) return link;
+      async acknowledgementOf(mailbox) {
+        for await (const [, link] of rows.range([mailbox])) return link;
         return undefined;
       },
     }),

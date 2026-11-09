@@ -1,6 +1,8 @@
 import type { KeyObject, Signature } from "@estoc/identity";
 import {
   DRAFT_2020_12,
+  type EncodedObject,
+  type Json,
   type JsonLink,
   type JsonObject,
   type JsonSchema,
@@ -26,10 +28,6 @@ const idSchema: JsonObject = { type: "string", pattern: ID.source };
  *   its identity is reached at `origin` and makes the offers listed.
  * - Each offer is listed as the link of the service's signature over the
  *   offer and `acceptId`, the id that takes acceptances of it.
- * - Of the Services that identities of one root sign, the latest says where
- *   the service is now: the one with the greatest `at`, and of those with
- *   the same `at`, the one whose signature has the greater link, compared
- *   as ASCII strings.
  */
 export const serviceSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -198,6 +196,26 @@ export type MailboxAcknowledgementData = {
   readonly at: number;
   readonly sendId: string;
   readonly pickupId: string;
+};
+
+/**
+ * What a client writes once a service acknowledged its request for a
+ * mailbox, unsigned: `mailbox` is the link of the HTTP mailbox that senders
+ * post to, and `acknowledgement` the link of the service's signature over
+ * the mailbox's acknowledgement, by which the mailbox is picked up.
+ */
+export const openedMailboxSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Opened mailbox",
+  type: "object",
+  properties: { mailbox: linkSchema, acknowledgement: linkSchema },
+  required: ["mailbox", "acknowledgement"],
+  additionalProperties: false,
+};
+
+export type OpenedMailboxData = {
+  readonly mailbox: JsonLink<EncodedObject<Json>>;
+  readonly acknowledgement: JsonLink<Signature>;
 };
 
 /**

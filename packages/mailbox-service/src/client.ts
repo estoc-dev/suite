@@ -31,7 +31,7 @@ import {
 } from "@estoc/object";
 import { type Intake, loadIntake, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
-import { type MailboxAcknowledgementsView, mailboxAcknowledgementsView } from "./acknowledgements.ts";
+import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import { type PeopleView, peopleView } from "./people.ts";
@@ -47,7 +47,9 @@ import {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type OpenedMailboxData,
   type OriginData,
+  openedMailboxSchema,
   originSchema,
   type PickupAnswerData,
   type PickupRequestData,
@@ -80,6 +82,7 @@ type Schemas = {
   readonly mailboxOffer: Schema<Json, MailboxOfferData>;
   readonly mailboxRequest: Schema<Json, MailboxRequestData>;
   readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
+  readonly openedMailbox: Schema<Json, OpenedMailboxData>;
   readonly pickupRequest: Schema<Json, PickupRequestData>;
   readonly pickupAnswer: Schema<Json, PickupAnswerData>;
   readonly origin: Schema<Json, OriginData>;
@@ -190,7 +193,7 @@ export class MailboxOffer {
   readonly terms: MailboxTerms;
   readonly #url: URL;
   readonly #posting: Posting;
-  readonly #schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "http">;
+  readonly #schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "openedMailbox" | "http">;
 
   constructor(
     {
@@ -203,7 +206,7 @@ export class MailboxOffer {
       readonly url: URL;
     },
     posting: Posting,
-    schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "http">,
+    schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "openedMailbox" | "http">,
   ) {
     const { identity: _, ...terms } = offer.data;
     this.service = service;
@@ -222,7 +225,7 @@ export class MailboxOffer {
    *   signature.
    * - The service's signature over the acknowledgement is kept in the store
    *   with an Inbound record whose `via` is the origin the offer was taken
-   *   at.
+   *   at, and then with an Opened mailbox record, which `pickup` goes by.
    * - It gives the HTTP mailbox of `@estoc/mailbox` that senders post to, at
    *   the origin the offer was taken at. It is what `Post.openInbox` is to be
    *   given, as `(publicKey) => offer.open(actor, publicKey)`.
@@ -235,16 +238,25 @@ export class MailboxOffer {
     const request = encodeObject(this.#schemas.mailboxRequest, { offer: { $link: this.link }, key: hex.encode(key) });
     // The service holds the offer and the schemas, so they are left out.
     const signature = await actor.sign(request);
-    const { data } = await post(
+    const { signature: acknowledgement, data } = await post(
       { url: this.#url, service: this.service, schema: this.#schemas.mailboxAcknowledgement, field: "request" },
       signature,
       [request.bytes],
       this.#posting,
     );
-    return encodeObject(this.#schemas.http, {
+    const mailbox = encodeObject(this.#schemas.http, {
       key: hex.encode(key),
       url: new URL(`/${data.sendId}`, this.#url.origin).href,
     });
+    const openedMailbox = encodeObject(this.#schemas.openedMailbox, {
+      mailbox: { $link: mailbox.link },
+      acknowledgement: { $link: acknowledgement.link },
+    });
+    await this.#posting.store.write({
+      records: [openedMailbox],
+      blobs: [mailbox.bytes, ...mailbox.schema.blobs, ...openedMailbox.schema.blobs],
+    });
+    return mailbox;
   }
 }
 
@@ -378,9 +390,10 @@ class ServicePickup implements Pickup {
  *
  * - What a service answers is kept with an Inbound record of `@estoc/store`
  *   whose `via` is the Origin it was reached at.
- * - What the client reads back, it reads from the signatures the store
- *   holds, records or not, so what came in another way, such as at a
- *   mailbox, reads alike.
+ * - It reads Services back from the signatures the store holds, records or
+ *   not, so one that came in another way, such as at a mailbox, reads alike.
+ * - It reads the mailboxes it opened back from the Opened mailbox records
+ *   that `open` writes.
  */
 export class Services {
   readonly #store: Store;
@@ -388,7 +401,7 @@ export class Services {
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #locations: LocationsView;
-  readonly #mailboxes: MailboxAcknowledgementsView;
+  readonly #mailboxes: OpenedMailboxesView;
   readonly #people: PeopleView;
 
   constructor(store: Store, intake: Intake, kit: IdentityKit, schemas: Schemas) {
@@ -397,7 +410,7 @@ export class Services {
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#locations = locationsView(kit.signatures, schemas.service);
-    this.#mailboxes = mailboxAcknowledgementsView(kit.signatures, schemas);
+    this.#mailboxes = openedMailboxesView(schemas.openedMailbox);
     this.#people = peopleView(kit.identityVersions);
   }
 
@@ -449,21 +462,23 @@ export class Services {
    * What waits at `mailbox`, an HTTP mailbox that a service opened, picked
    * up by `actor`, an actor for the root of the mailbox's account.
    *
-   * - It goes by the service's acknowledgement of a request signed for the
-   *   root of `actor`, whatever way the store came to hold it.
+   * - It goes by the acknowledgement that the Opened mailbox record of
+   *   `mailbox` links to, which `open` wrote on this device or on another
+   *   whose store this one syncs with. One that came in another way, such
+   *   as at a mailbox, does not stand in for it.
+   * - A later identity version of the account that takes out the key that
+   *   signed the request does not change it, so the mailbox stays the
+   *   account's.
    * - It is picked up where the latest Service that the store holds of the
    *   service that signed the acknowledgement says, wherever the mailbox was
    *   opened.
    *
-   * @throws when the store does not hold `mailbox`, such an acknowledgement,
-   *   or a Service of the service that signed it.
+   * @throws when the store holds no Opened mailbox record of `mailbox`, or
+   *   no Service of the service that signed its acknowledgement.
    */
   async pickup(mailbox: Link<EncodedObject<Json>>, actor: Actor): Promise<Pickup> {
-    const { key, url } = (await readObject(this.#store, mailbox, this.#schemas.http)).data;
-    const root = actor.signedIdentity.identity.root.link;
-    const mailboxes = await view(this.#store, this.#mailboxes);
-    const link = await mailboxes.acknowledgementAt(new URL(url).pathname.slice(1), key, root);
-    if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox} for ${root}`);
+    const link = await (await view(this.#store, this.#mailboxes)).acknowledgementOf(mailbox);
+    if (link === undefined) throw new Error(`the store holds no record of opening ${mailbox}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
@@ -594,6 +609,7 @@ export async function loadServices(
     mailboxOffer: await compile(mailboxOfferSchema),
     mailboxRequest: await compile(mailboxRequestSchema),
     mailboxAcknowledgement: await compile(mailboxAcknowledgementSchema),
+    openedMailbox: await compile(openedMailboxSchema),
     pickupRequest: await compile(pickupRequestSchema),
     pickupAnswer: await compile(pickupAnswerSchema),
     origin: await compile(originSchema),

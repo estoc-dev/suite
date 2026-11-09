@@ -72,16 +72,18 @@ export class Intake {
   }
 
   /**
-   * Keeps `bundle` in one write with its record, which gives `via` as the channel when there is
-   * one. What comes in twice is recorded twice, once for each time it came in.
+   * Keeps `bundle` in one write with its record and, when it came in by a channel, with `via`, the
+   * object of that channel, and its schema. What comes in twice is recorded twice, once for each
+   * time it came in.
    *
    * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
-   *   the bundle nor held by the store; nothing is kept then.
+   *   that write nor held by the store; nothing is kept then.
    */
-  async receive(bundle: ReceivedBundle, via?: Link<EncodedObject<Json>>): Promise<InboundObject> {
+  async receive(bundle: ReceivedBundle, via?: EncodedObject<Json>): Promise<InboundObject> {
     const data: InboundData = { bundle: { $link: bundle.link }, at: this.#clock() };
-    const record = encodeObject(this.#schema, via === undefined ? data : { ...data, via: { $link: via } });
-    await this.#store.write({ records: [record], blobs: [...this.#schema.blobs, ...bundle.blobs()] });
+    const record = encodeObject(this.#schema, via === undefined ? data : { ...data, via: { $link: via.link } });
+    const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
+    await this.#store.write({ records: [record], blobs: [...this.#schema.blobs, ...viaBlobs, ...bundle.blobs()] });
     return record;
   }
 }

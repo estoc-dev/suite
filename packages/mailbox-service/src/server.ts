@@ -401,7 +401,7 @@ class MailboxService {
    * Answers with the bundle of one of the service's signatures and its
    * closure in the store.
    *
-   * @throws when the store does not hold `link`.
+   * @throws when the store does not hold `link` or a blob of its closure.
    */
   async #answerWith(link: Link<Signature>, status: number): Promise<Response> {
     const closure = await this.#store.closure(link);

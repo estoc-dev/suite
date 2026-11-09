@@ -174,7 +174,7 @@ export class Outbox {
    * takes the bundle, writes that it went out. Sending a root again sends the same bundle and
    * writes another record.
    *
-   * @throws when the store does not hold `root`.
+   * @throws when the store does not hold `root` or a blob of its closure; nothing is sent then.
    * @throws {UndeliveredMessage} when the transport cannot hand the bundle on; nothing is written
    *   then.
    */

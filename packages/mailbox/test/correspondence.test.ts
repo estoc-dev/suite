@@ -39,11 +39,11 @@ const note = await encodeSchema(
 const network = await MemoryNetwork.create(defaultValidator);
 
 // The kinds that the mailboxes at some queues turn a message back with.
-const turningBack = new Map<unknown, UndeliveredMessage["kind"]>();
+const undeliveredKindByQueue = new Map<unknown, UndeliveredMessage["kind"]>();
 const transport: Transport = {
   schema: network.transport.schema,
   deliver: async (mailbox, ciphertext) => {
-    const kind = turningBack.get(mailbox.name);
+    const kind = undeliveredKindByQueue.get(mailbox.name);
     if (kind !== undefined) throw new UndeliveredMessage(kind, "this queue turns it back");
     await network.transport.deliver(mailbox, ciphertext);
   },
@@ -109,7 +109,6 @@ async function grantMailboxes(from: Person, to: Person, mailboxes: readonly Open
   await handOver(from, to, signature.link);
 }
 
-// `from` opens an inbox and gives `to` a grant of it.
 async function grantInbox(from: Person, to: Person): Promise<OpenedInbox> {
   const opened = await openInbox(from);
   await grantMailboxes(from, to, [opened]);
@@ -236,21 +235,21 @@ describe("sending to someone", () => {
 
   it("has gone once one mailbox takes it, though another turned it back", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const [turning, taking] = [await openInbox(bob), await openInbox(bob)];
-    turningBack.set(turning.name, "gone");
-    await grantMailboxes(bob, alice, [turning, taking]);
+    const [turningBackInbox, takingInbox] = [await openInbox(bob), await openInbox(bob)];
+    undeliveredKindByQueue.set(turningBackInbox.name, "gone");
+    await grantMailboxes(bob, alice, [turningBackInbox, takingInbox]);
 
     const signature = await writeNote(alice, "hi Bob");
     const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
-    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([taking.inbox.mailbox]);
-    expect(await taking.inbox.collect(taking.pickup)).toHaveLength(1);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([takingInbox.inbox.mailbox]);
+    expect(await takingInbox.inbox.collect(takingInbox.pickup)).toHaveLength(1);
   });
 
   it("is turned back as later when every mailbox turned it back and one can take it later", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const [gone, busy] = [await openInbox(bob), await openInbox(bob)];
-    turningBack.set(gone.name, "gone");
-    turningBack.set(busy.name, "later");
+    undeliveredKindByQueue.set(gone.name, "gone");
+    undeliveredKindByQueue.set(busy.name, "later");
     await grantMailboxes(bob, alice, [gone, busy]);
 
     const signature = await writeNote(alice, "hi Bob");
@@ -396,11 +395,13 @@ describe("what came in at a mailbox", () => {
     expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 
-  it("fails while the store fails to give a blob of it, and reads once the store does", async () => {
+  it("fails while the store fails to give a blob of it or no longer holds one, and reads once the store gives it", async () => {
     let failingLink: Link<unknown> | undefined;
+    let lostLink: Link<unknown> | undefined;
     const diskError = new Error("the disk fails to read");
     const backend = new (class extends MemoryBackend {
       override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
+        if (link === lostLink) return Promise.resolve(undefined);
         return link === failingLink ? Promise.reject(diskError) : super.get(link);
       }
     })();
@@ -414,10 +415,18 @@ describe("what came in at a mailbox", () => {
     await alice.correspondence.send(bob.signedIdentity, signature.link);
     const [delivery] = await inbox.collect(pickup);
     assert.exists(delivery);
+    expect((await bob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
 
     failingLink = signature.link;
     await expect(bob.correspondence.messageAt(inbox.mailbox, delivery.bundle)).rejects.toBe(diskError);
     failingLink = undefined;
+    for (const link of [signature.link, signature.signedIdentity.link]) {
+      lostLink = link;
+      await expect(bob.correspondence.messageAt(inbox.mailbox, delivery.bundle)).rejects.toThrow(
+        `the store does not hold ${link}`,
+      );
+    }
+    lostLink = undefined;
     expect((await bob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 });

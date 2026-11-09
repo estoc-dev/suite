@@ -78,8 +78,8 @@ async function handOver(network: MemoryNetwork, store: Store, mailbox: EncodedOb
 }
 
 // A post whose store holds the mailbox of a new queue sealed to Bob, handed over.
-async function prepareSender(network: MemoryNetwork) {
-  const at = await postAt(network);
+async function prepareSender(network: MemoryNetwork, store?: Store) {
+  const at = await postAt(network, store);
   const queue = network.queue();
   const mailbox = queue.mailbox(bob.publicKey);
   await handOver(network, at.store, mailbox);
@@ -162,6 +162,25 @@ describe("an outbox", () => {
       `the store does not hold ${signature.link}`,
     );
     expect(queue.take()).toEqual([]);
+  });
+
+  it("refuses a root when the store no longer gives a blob of its closure, and sends and records nothing", async () => {
+    let lostLink: Link<unknown> | undefined;
+    const backend = new (class extends MemoryBackend {
+      override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
+        return link === lostLink ? Promise.resolve(undefined) : super.get(link);
+      }
+    })();
+    const network = await MemoryNetwork.create(defaultValidator);
+    const { store, post, queue, mailbox } = await prepareSender(network, new Store(json, backend));
+    await store.write({ records: [signature], blobs: signatureBlobs });
+    const outbox = await post.outbox(mailbox.link);
+    const before = await listed(store);
+
+    lostLink = hello.link;
+    await expect(outbox.send(signature.link)).rejects.toThrow(`the store does not hold ${hello.link}`);
+    expect(queue.take()).toEqual([]);
+    expect(await listed(store)).toEqual(before);
   });
 
   it("is not made for a mailbox that the store does not hold", async () => {

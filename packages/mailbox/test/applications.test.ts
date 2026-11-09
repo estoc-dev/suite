@@ -158,13 +158,13 @@ describe("a one-time invitation", () => {
       const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport] });
       await sendSigned(mailbox, encodeObject(join, { invitation: { $link: link } }), guest);
     };
-    let used = false;
+    let isUsed = false;
     const letIn = async () => {
       const admitted: IdentityObject[] = [];
       for (const bundle of await inviter.take()) {
         const { identity, object } = await readSigned(bundle, join);
-        if (used || object.data.invitation.$link !== link) continue;
-        used = true;
+        if (isUsed || object.data.invitation.$link !== link) continue;
+        isUsed = true;
         admitted.push(identity);
       }
       return admitted;
@@ -376,7 +376,7 @@ describe("two people who meet", () => {
     const duringMove = await oldInbox.collect();
     const atNew = await newInbox.collect();
 
-    // What came in at the new mailbox shows that Heidi has the grant, so Grace stops receiving at the old one.
+    // Grace signs a grant without the old mailbox, and stops receiving there.
     expect(await grace.read(atNew)).toEqual([[heidi.root, "during the move"]]);
     await grace.correspondence.send(heidi.signedIdentity, (await give([newInbox.mailbox])).link);
     await atHeidi.collect();

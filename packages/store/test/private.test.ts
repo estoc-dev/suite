@@ -125,7 +125,7 @@ describe("the store beside a private store", () => {
     const secret = object({ card: { $link: card.link } });
     await privateStore.write({ records: [secret] });
     expect(await store.get(secret.link)).toBeUndefined();
-    expect((await store.closure(secret.link)).size).toBe(0);
+    await expect(store.closure(secret.link)).rejects.toThrow(`the store does not hold ${secret.link}`);
     expect(await recordsOf(store)).toEqual([card.link]);
   });
 

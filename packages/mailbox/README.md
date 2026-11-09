@@ -393,10 +393,9 @@ left to trust is that the signed identity handed over is theirs, which the
 channel out of band answers for.
 
 Moving to another mailbox is signing a grant that lists it beside the old one,
-and sending that. Something that comes in at the new mailbox shows that they
-have the grant, so the signer then signs one without the old mailbox and stops
-receiving there. What is sent to the old one after that is lost, as any message
-can be.
+and sending that. When to sign one without the old mailbox and stop receiving
+there is the signer's to choose. What is sent to the old one after that is lost,
+as any message can be.
 
 ### Reading grants
 

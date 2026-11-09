@@ -259,9 +259,18 @@ describe("the closure of a blob", () => {
     await expect(store.closure(outer.link)).rejects.toThrow(`another blob under ${inner.link}`);
   });
 
-  it("is empty for a link the store does not hold", async () => {
-    const store = newStore();
-    expect((await store.closure(object({ text: "absent" }).link)).size).toBe(0);
+  it("is refused when the backend no longer gives a blob in it", async () => {
+    const backend = new MemoryBackend();
+    const [inner, absent] = [object({ text: "inner" }), object({ text: "absent" })];
+    const outer = object({ inner: { $link: inner.link } });
+    await newStore(backend).write({ records: [outer], blobs: [inner.bytes, ...anything.blobs] });
+    const store = newStore(backendGiving(backend, inner.link, absent.link));
+    await expect(store.closure(outer.link)).rejects.toThrow(`the store does not hold ${inner.link}`);
+  });
+
+  it("is refused for a link the store does not hold", async () => {
+    const { link } = object({ text: "absent" });
+    await expect(newStore().closure(link)).rejects.toThrow(`the store does not hold ${link}`);
   });
 });
 

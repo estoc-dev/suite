@@ -59,8 +59,10 @@ export class Correspondence {
 
   /**
    * Signs a grant of `mailboxes` to `to`, and writes the signature as a record with its closure.
-   * The grant is to the current identity version of `to` that the store holds, `to` itself when
-   * none is later. Who the grant reaches, and how, is the caller's to choose.
+   *
+   * - The grant is to the current identity version of `to` that the store holds, `to` itself when
+   *   none is later.
+   * - Who the grant reaches, and how, is the caller's to choose.
    *
    * @throws {RefusedBatch} when the store does not hold one of `mailboxes`; nothing is written then.
    */
@@ -94,7 +96,7 @@ export class Correspondence {
    * @throws {UndeliveredMessage} when every mailbox turned it back: one of kind `later` if there is
    *   one, as the same can be sent again later.
    * @throws when the post has no transport for one of the mailboxes; nothing is sent then.
-   * @throws when the store does not hold `root`.
+   * @throws when the store does not hold `root` or a blob of its closure.
    */
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
     const from = to.identity.root.link;

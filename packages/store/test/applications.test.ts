@@ -172,18 +172,18 @@ describe("a signed identity that comes in a bundle", () => {
       identity: { $link: aliceIdentityVersion.identity.link },
       signature: "00".repeat(64),
     });
-    const carried = encodeObject(carriedSchema, {
+    const carriedObject = encodeObject(carriedSchema, {
       identityVersions: [
         { $link: aliceIdentityVersion.link },
         { $link: forgedIdentityVersion.link as Link<SignedIdentityObject> },
       ],
     });
-    const signature = await sign(carried, mallory);
+    const signature = await sign(carriedObject, mallory);
     const bobStore = newStore();
     await receive(
       bobStore,
       writeBundle(signature, [
-        carried.bytes,
+        carriedObject.bytes,
         ...aliceIdentityVersion.blobs,
         forgedIdentityVersion.bytes,
         ...signature.signedIdentity.blobs,

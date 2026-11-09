@@ -72,9 +72,11 @@ export class Intake {
   }
 
   /**
-   * Keeps `bundle` in one write with its record and, when it came in by a channel, with `via`, the
-   * object of that channel, and its schema. What comes in twice is recorded twice, once for each
-   * time it came in.
+   * Keeps `bundle` with a record that it came in.
+   *
+   * - `via` is the object of the channel it came in by, when there is one. It and its schema go in
+   *   the same write as the bundle and the record, whether or not the store held them.
+   * - What comes in twice is recorded twice, once for each time it came in.
    *
    * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
    *   that write nor held by the store; nothing is kept then.

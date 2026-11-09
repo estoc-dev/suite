@@ -76,8 +76,8 @@ export class MemoryNetwork {
     const mailboxes = new Set<Link<EncodedObject<Json>>>();
     this.#queues.set(name, waiting);
     const take = () => {
-      const taken = waiting.splice(0).map(({ ciphertext }) => ciphertext);
-      return this.#faults.reversed ? taken.reverse() : taken;
+      const takenCiphertexts = waiting.splice(0).map(({ ciphertext }) => ciphertext);
+      return this.#faults.reversed ? takenCiphertexts.reverse() : takenCiphertexts;
     };
     return {
       name,
@@ -92,9 +92,10 @@ export class MemoryNetwork {
       },
       take,
       takeOne: () => {
-        const taken = take();
-        const [ciphertext] = taken;
-        if (ciphertext === undefined || taken.length > 1) throw new Error(`${taken.length} messages arrived, not one`);
+        const takenCiphertexts = take();
+        const [ciphertext] = takenCiphertexts;
+        if (ciphertext === undefined || takenCiphertexts.length > 1)
+          throw new Error(`${takenCiphertexts.length} messages arrived, not one`);
         return ciphertext;
       },
     };
@@ -103,13 +104,13 @@ export class MemoryNetwork {
   // Finds the next that waits each time, so what arrives meanwhile is
   // handed out too.
   async *#arrivals(waiting: QueuedMessage[], signal?: AbortSignal): AsyncGenerator<Arrival> {
-    const handed = new Set<QueuedMessage>();
+    const handedArrivals = new Set<QueuedMessage>();
     for (;;) {
       if (signal?.aborted) return;
-      const left = waiting.filter((each) => !handed.has(each));
+      const left = waiting.filter((each) => !handedArrivals.has(each));
       const next = this.#faults.reversed ? left.at(-1) : left[0];
       if (next === undefined) return;
-      handed.add(next);
+      handedArrivals.add(next);
       yield { ciphertext: next.ciphertext.slice(), drop: async () => this.#drop(waiting, next) };
     }
   }

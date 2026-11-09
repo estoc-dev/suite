@@ -35,8 +35,8 @@ describe("a mailbox key", () => {
     ["the first byte of the ciphertext", 32],
     ["the last byte of the tag", ciphertext.length - 1],
   ])("does not open a ciphertext with %s changed", async (_, at) => {
-    const changed = ciphertext.map((byte, i) => (i === at ? byte ^ 1 : byte));
-    await expect(bob.open(changed)).rejects.toThrow(/does not open with this key/);
+    const changedCiphertext = ciphertext.map((byte, i) => (i === at ? byte ^ 1 : byte));
+    await expect(bob.open(changedCiphertext)).rejects.toThrow(/does not open with this key/);
   });
 
   it.each([0, 31, 32 + 15])("does not open a ciphertext cut to %i bytes", async (length) => {

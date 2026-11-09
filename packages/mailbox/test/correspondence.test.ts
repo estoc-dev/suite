@@ -110,9 +110,9 @@ async function grantMailboxes(from: Person, to: Person, mailboxes: readonly Open
 }
 
 async function grantInbox(from: Person, to: Person): Promise<OpenedInbox> {
-  const opened = await openInbox(from);
-  await grantMailboxes(from, to, [opened]);
-  return opened;
+  const openedInbox = await openInbox(from);
+  await grantMailboxes(from, to, [openedInbox]);
+  return openedInbox;
 }
 
 // A signed note in the store of whoever acts, to send.
@@ -146,9 +146,9 @@ describe("a grant", () => {
     const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
 
     expect(await listed(alice)).toContain(signature.link);
-    const read = await signatures.read(signature.link, alice.store, noIdentityVersions);
-    expect(read.signedIdentity.link).toBe(alice.signedIdentity.link);
-    const { data } = await readObject(alice.store, read.object, grants.schema);
+    const readSignature = await signatures.read(signature.link, alice.store, noIdentityVersions);
+    expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
+    const { data } = await readObject(alice.store, readSignature.object, grants.schema);
     expect(data).toEqual({
       to: { $link: bob.signedIdentity.link },
       mailboxes: [{ $link: inbox.mailbox }],
@@ -269,8 +269,8 @@ describe("sending to someone", () => {
     );
     const other = encodeObject(otherSchema, { key: "00".repeat(32), place: "elsewhere" });
     await bob.store.write({ records: [other], blobs: otherSchema.blobs });
-    const given = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
-    await handOver(bob, alice, given.link);
+    const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
+    await handOver(bob, alice, givenGrant.link);
 
     const signature = await writeNote(alice, "hi Bob");
     await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toThrow(/no transport/);
@@ -281,13 +281,13 @@ describe("sending to someone", () => {
 describe("what came in at a mailbox", () => {
   const twoPeople = async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const opened = await grantInbox(bob, alice);
+    const openedInbox = await grantInbox(bob, alice);
     const receive = async () => {
-      const [delivery] = await opened.inbox.collect(opened.pickup);
+      const [delivery] = await openedInbox.inbox.collect(openedInbox.pickup);
       assert.exists(delivery);
       return delivery;
     };
-    return { alice, bob, ...opened, receive };
+    return { alice, bob, ...openedInbox, receive };
   };
 
   it("is a message from whoever signed it, at a mailbox of a grant to them", async () => {

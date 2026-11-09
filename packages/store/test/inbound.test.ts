@@ -113,9 +113,9 @@ describe("an intake", () => {
 
   it("takes a bundle that leaves out blobs the store holds", async () => {
     const store = newStore();
-    const held = object({ text: "held" });
-    await store.write({ records: [held], blobs: anything.blobs });
-    const reply = object({ to: { $link: held.link } });
+    const heldNote = object({ text: "held" });
+    await store.write({ records: [heldNote], blobs: anything.blobs });
+    const reply = object({ to: { $link: heldNote.link } });
     await (await intakeOf(store)).receive(bundleOf(reply, []));
     expect(await store.get(reply.link)).toEqual(reply.bytes);
   });
@@ -164,10 +164,10 @@ describe("the records of an intake", () => {
   it("are the only Inbound an index reads: one that someone sends stays in the closure of what came in", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const sent = encodeObject(inbound, { bundle: { $link: note.link as Link<never> }, at: 0 });
-    await (await intakeOf(store)).receive(bundleOf(sent, [note.bytes, ...anything.blobs, ...inbound.blobs]));
+    const sentRecord = encodeObject(inbound, { bundle: { $link: note.link as Link<never> }, at: 0 });
+    await (await intakeOf(store)).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inbound.blobs]));
     const rows: (readonly [Link<never>, number])[] = [];
     for await (const row of (await scan(store, cameIn)).range([])) rows.push(row);
-    expect(rows).toEqual([[sent.link as Link<never>, 1000]]);
+    expect(rows).toEqual([[sentRecord.link as Link<never>, 1000]]);
   });
 });

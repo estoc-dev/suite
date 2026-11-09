@@ -273,12 +273,12 @@ describe("a conversation", () => {
 
   it("shows a line that was lost and sent again once, when it first went out and when it came in", async () => {
     const { alice, bob } = await chat({ lost: (n) => n === 0 });
-    const lost = await alice.say("hi Bob");
+    const lostSignature = await alice.say("hi Bob");
     await alice.say("lunch at noon?");
     await bob.collect();
     expect(await bob.show()).toEqual([["inbound", "Alice", "lunch at noon?"]]);
 
-    await alice.resend(lost.link);
+    await alice.resend(lostSignature.link);
     await bob.collect();
     expect(await alice.recorded("outbound")).toHaveLength(3);
     expect(await alice.show()).toEqual([

@@ -104,9 +104,9 @@ describe("an HTTP mailbox", () => {
 
   it("rejects a send as one to send later when nothing listens at its url", async () => {
     const gone = createServer();
-    const closed = await listen(gone);
+    const closedPort = await listen(gone);
     await close(gone);
-    expect(await rejectedAs((await mailboxAt(`http://127.0.0.1:${closed}/inbox`)).send(hello, []))).toBe("later");
+    expect(await rejectedAs((await mailboxAt(`http://127.0.0.1:${closedPort}/inbox`)).send(hello, []))).toBe("later");
   });
 });
 
@@ -125,9 +125,9 @@ describe("an HTTP outbox", () => {
 
     const delivery = await outbox.send(hello.link);
     expect(new Set(await listed(store))).toEqual(new Set([...before, delivery.link]));
-    const requested = take();
-    expect(requested.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
-    const through = requested.at(-1);
+    const sentRequests = take();
+    expect(sentRequests.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
+    const through = sentRequests.at(-1);
     assert.exists(through);
     expect((await bob.open(through.body)).link).toBe(hello.link);
   });

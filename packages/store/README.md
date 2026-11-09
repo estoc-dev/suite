@@ -48,11 +48,12 @@ any schema, so listing every blob of a schema would list an unsigned contact
 that a stranger slipped in among the user's own contacts.
 
 What comes from elsewhere comes in through something the user does, and that
-is an object the user writes: a record of receiving a bundle, of taking a
-card, of importing a file. The blobs come in the same write, unlisted, and
-are read by following links from the record. A reader then knows they came
-from elsewhere without any query having to say so. Something signed carries
-its authority in its signature, and reads the same when reached by a link.
+is an object the user writes: an `Inbound` record, of receiving a bundle at a
+mailbox, of taking a card, of importing a file. The blobs come in the same
+write, unlisted, and are read by following links from the record. A reader
+then knows they came from elsewhere without any query having to say so.
+Something signed carries its authority in its signature, and reads the same
+when reached by a link.
 
 An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
@@ -267,6 +268,74 @@ one store. When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
 The value is of what the store held when it was viewed: what is written
 later is taken in when it is viewed again.
+
+## Receiving
+
+What comes from outside a store is kept with a record that it came in,
+whichever way it came. An `Intake` writes the record:
+
+```
+Inbound  {"bundle": <link of the root>, "at": <milliseconds>, "via": <link>}
+```
+
+```ts
+import { loadIntake } from "@estoc/store";
+
+const intake = await loadIntake(store, { validator });
+await intake.receive(bundle);               // handed over out of band
+await intake.receive(bundle, mailbox.link); // at a mailbox the store holds
+```
+
+`at` is by the clock of the device that writes the record, so a sender has
+no say in it. `via` links to the channel it came in by, and is left out for
+what was handed over out of band. Which channel it is shows in the object it
+links to, so another channel is another kind of object and not another
+schema, and an index that reads `inboundSchema` covers them all.
+
+`receive` takes anything with a `link` and `blobs()`, as a `Bundle` has. The
+bundle and the record go in one write, which is refused with a `RefusedBatch`
+when a blob in the closure of the bundle's root or of `via` is neither in the
+bundle nor held by the store. What comes in twice is recorded twice, and a
+reader takes the earliest `at`:
+
+```ts
+const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);
+
+// When each bundle came in: the first row of a root is the earliest.
+const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(
+  objectsOf(inbound),
+  ({ data }) => [[data.bundle.$link, data.at]],
+);
+```
+
+What the records promise is little, so that every way in can keep it:
+
+- An `Inbound` says that something came in and nothing more. Its writer
+  promises that the store holds the closure of `bundle`, and that `at` is by
+  its own clock. What calls `receive` can check more, such as not keeping
+  what does not open, but a reader cannot count on that.
+- `via` names a channel and says nothing about what was checked.
+- A reader of `Inbound` records verifies signatures and versions itself.
+  Anyone can send a bundle to a mailbox.
+- A program that checks what came in, and whose judgement another program
+  reads, writes a mark: a record of its own that links to the `Inbound`, of a
+  schema in its own package, that says what it checked. One `Inbound` can
+  have marks of several programs, or none. To take a program's judgement,
+  read its marks by their schema.
+- A mark cannot be sent from outside. What is sent stays in the closure of an
+  `Inbound`, and is not a record.
+- A mark is a judgement made at that time, and stays as it is. What can change
+  later, such as whether the version a signature carries still counts, is
+  worked out when it is read.
+- Programs that share a store need no signature on a mark. A mark is no
+  boundary between them either: whatever writes to a store can write any
+  record.
+
+`write` takes any record. That what comes from elsewhere goes through an
+`Intake`, and that a record written directly is the user's own, is a rule for
+programs that the store does not enforce. The client of
+`@estoc/mailbox-service` is the exception for now: a Service or an
+Acknowledgement that it has verified goes in directly as a record.
 
 ## Private stores
 

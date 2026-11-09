@@ -193,7 +193,8 @@ class MailboxService {
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
     const locations = await view(this.#store, this.#locations);
-    const [latest, ...earlier] = await locations.servicesOf(this.#root);
+    const people = await view(this.#store, this.#people);
+    const [latest, ...earlier] = await locations.servicesOf(this.#root, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
     const id = pathname.slice(1);
@@ -205,7 +206,6 @@ class MailboxService {
       );
     }
     if (!ID.test(id)) return answer(404);
-    const people = await view(this.#store, this.#people);
     if (await this.#serviceListsOffer(latest, id, people))
       return answerTo(request, "POST", () => this.#acceptOffer(request, id));
     for (const link of earlier) if (await this.#serviceListsOffer(link, id, people)) return answer(410);
@@ -500,7 +500,7 @@ export async function loadMailboxService(
   const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures, schemas.service));
   const serviceSignatures = await Promise.all(
-    (await locations.servicesOf(identity.$link)).map((link) => signatures.read(link, store, people)),
+    (await locations.servicesOf(identity.$link, people)).map((link) => signatures.read(link, store, people)),
   );
   const [latest] = serviceSignatures;
   const at = clock();

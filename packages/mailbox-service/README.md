@@ -17,12 +17,15 @@ goes by who signed it, not by where the bytes came from; TLS keeps them
 private, and vouches for the service on first contact alone. A refusal is
 plain text, and a client keeps nothing of it.
 
-Of the Services that identities of one root signed, the latest says where
-the service is now: the one with the greatest `at`, and of those with the
-same `at`, the one whose signature has the greater link, compared as ASCII
-strings. Services started at once can sign the same `at`, and every reader
-takes the same one of them for the latest, whatever order its store took
-them in.
+Of the Services that identities of one root signed, a reader counts those
+signed by a key that the root's current identity version it holds lists, and
+the latest of them says where the service is now: the one with the greatest
+`at`, and of those with the same `at`, the one whose signature has the
+greater link, compared as ASCII strings. A Service signed by a key that a
+later identity version takes out counts no more, whatever its `at`, so
+whoever still holds that key does not say where the service is. Services
+started at once can sign the same `at`, and every reader takes the same one
+of them for the latest, whatever order its store took them in.
 
 What a client posts to, the service gives it: each offer in a Service comes
 with an id, and the address is the origin and the id, `<origin>/<id>`.
@@ -89,7 +92,8 @@ the one it trusts on first contact.
 
 After first contact the service is its root. `latestOf` gives the latest
 Service that the store holds of the root that signed a signed identity,
-whichever channel brought it, and reaches nothing:
+whichever channel brought it, or `undefined` when none counts, and reaches
+nothing:
 
 ```ts
 const service = await services.latestOf(account.service);
@@ -223,7 +227,8 @@ gave out, so it can have seen an identity version that the service has not.
 `fetch`, `latestOf` and `accept` verify the service's signatures against
 them, so a Service, an offer or an acknowledgement signed by a key that a
 later identity version of the service does not list is refused once the store
-holds that identity version, however it came. A service from
+holds that identity version, however it came. `latestOf` passes over a
+Service so signed and takes the latest that counts. A service from
 `loadMailboxService` signs with its root's key, so its signatures are refused
 this way only after the root signs a later identity version that does not
 list that key.
@@ -232,13 +237,14 @@ list that key.
 it will be once that is kept: `stage` of `@estoc/store` gives it with the
 bundle's root as a record, and once it reads, the intake keeps the bundle
 and the staged batch is dropped. So a Service that `fetch` takes reads alike
-by `latestOf` until the store holds a later identity version of the service. The offers a Service lists are read
-as any signature is, and the store then holds the identity version that
-signed the Service, so an offer is verified by that identity version or a
-later one. When a service signs a Service by an identity version that takes
-out the key that signed an offer by an earlier one, it signs the offer again
-by a key that the identity version lists. The offer stays the same object, so
-its id and the acceptances of it stay as they were.
+by `latestOf` until the store holds a later identity version of the service.
+The offers a Service lists are read as any signature is, and the store then
+holds the identity version that signed the Service, so an offer is verified
+by that identity version or a later one. When a service signs a Service by
+an identity version that takes out the key that signed an offer by an
+earlier one, it signs the offer again by a key that the identity version
+lists. The offer stays the same object, so its id and the acceptances of it
+stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
 account is of, the service's signed identity that signed the
@@ -342,7 +348,7 @@ mailbox.
 signatures the store holds, through an index over blobs of `@estoc/store`,
 by the send id at the end of the mailbox's url, the mailbox's key, and the
 root of the actor's identity, for which the request was signed. The index
-takes an acknowledgement only when it is signed by the root that the
+takes an acknowledgement only when it is signed for the root that the
 request's offer names, and verifies it and the request by the identity
 versions they carry. Anyone can send an acknowledgement to a mailbox:
 without the request's root, one that someone signs of their own request for

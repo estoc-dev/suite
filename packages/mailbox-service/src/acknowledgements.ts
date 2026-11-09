@@ -52,7 +52,7 @@ type MailboxAcknowledgementRow = readonly [
  * not, by the id that senders post to, the key that the request named and
  * the root of the identity that signed the request.
  *
- * - An acknowledgement gives a row only when it is signed by the root that
+ * - An acknowledgement gives a row only when it is signed for the root that
  *   the request's offer names, and it and the request verify by the
  *   identity versions they carry.
  * - Anyone can send an acknowledgement to a mailbox. Without the root of the

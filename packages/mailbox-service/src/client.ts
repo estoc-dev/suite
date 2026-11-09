@@ -88,9 +88,9 @@ type Schemas = {
 };
 
 /**
- * What an offer of a service's posts with: the store that keeps what the
- * service answers and how it reads that, the intake that keeps it, and the
- * origin it is kept as coming from, where the offer was taken.
+ * What an offer of a service's posts with. Its `origin` is where the offer
+ * was taken, which a Service that the service signs later at another origin
+ * does not change.
  */
 type Posting = {
   readonly store: Store;
@@ -427,15 +427,21 @@ export class Services {
   /**
    * The latest Service of the root that signed `signedIdentity` that the
    * store holds, read without reaching the service, or `undefined` when the
-   * store holds none. A Service counts however it came, by `fetch` or at a
-   * mailbox, on this device or on another whose store this one syncs with.
+   * store holds none that counts.
+   *
+   * - A Service counts however it came, by `fetch` or at a mailbox, on this
+   *   device or on another whose store this one syncs with.
+   * - Only a Service signed by a key that the current identity version the
+   *   store holds lists counts, so one that a key taken out signs after does
+   *   not stand in for the service, whatever its `at`.
    *
    * @throws when the latest Service is one that `fetch` refuses, apart from
    *   naming another origin than the one asked.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
     const locations = await view(this.#store, this.#locations);
-    const [latest] = await locations.servicesOf(signedIdentity.identity.root.link);
+    const people = await view(this.#store, this.#people);
+    const [latest] = await locations.servicesOf(signedIdentity.identity.root.link, people);
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
 

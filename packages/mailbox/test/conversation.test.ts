@@ -1,10 +1,10 @@
+import { readBundle, writeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
   encodeSchema,
   type Json,
-  type JsonSchema,
   json,
   type Link,
   objectsOf,
@@ -12,13 +12,24 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Index, indexOver, MemoryBackend, PrivateStore, type Rows, Store, scan } from "@estoc/store";
+import {
+  type InboundData,
+  type Index,
+  type Intake,
+  inboundSchema,
+  indexOver,
+  loadIntake,
+  MemoryBackend,
+  PrivateStore,
+  type Rows,
+  Store,
+  scan,
+} from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
-  type DeliveryData,
   type Inbox,
-  inboundSchema,
   loadPost,
+  type OutboundData,
   type Outbox,
   outboundSchema,
   type Pickup,
@@ -47,21 +58,23 @@ const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   defaultValidator,
 );
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
-const delivery = (schema: JsonSchema): Promise<Schema<Json, DeliveryData>> => encodeSchema(schema, defaultValidator);
-const [inbound, outbound] = await Promise.all([delivery(inboundSchema), delivery(outboundSchema)]);
+const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
+const outbound: Schema<Json, OutboundData> = await encodeSchema(outboundSchema, defaultValidator);
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
 type DeliveryRow = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
 
-const deliveriesGoing = (direction: Direction, schema: Schema<Json, DeliveryData>) =>
-  indexOver(objectsOf(schema), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
-    [direction, mailbox.$link, at, bundle.$link],
-  ]);
-
 // The application's index of the deliveries its user wrote: a row for each,
-// by which way it went, the mailbox, when, and the bundle.
-const deliveries: Index<DeliveryRow> = deliveriesGoing("inbound", inbound).union(deliveriesGoing("outbound", outbound));
+// by which way it went, the mailbox, when, and the bundle. What was handed
+// over out of band came in at no mailbox, and gives no row.
+const deliveries: Index<DeliveryRow> = indexOver(objectsOf(inbound), ({ data: { via, at, bundle } }): DeliveryRow[] =>
+  via === undefined ? [] : [["inbound", via.$link, at, bundle.$link]],
+).union(
+  indexOver(objectsOf(outbound), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
+    ["outbound", mailbox.$link, at, bundle.$link],
+  ]),
+);
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -90,6 +103,7 @@ interface Person {
   readonly actor: Actor;
   readonly store: Store;
   readonly post: Post;
+  readonly intake: Intake;
 }
 
 async function chat(faults: Faults = {}) {
@@ -104,23 +118,21 @@ async function chat(faults: Faults = {}) {
     const store = new Store(json, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = await loadPost(store, privateStore, { transports, validator: defaultValidator, clock });
-    return { name, actor, store, post };
+    const intake = await loadIntake(store, { validator: defaultValidator, clock });
+    return { name, actor, store, post, intake };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
   const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.root.link, name]));
 
-  // `owner` opens a mailbox for `peer` and hands it over, and the peer keeps
-  // it in their store to send to it.
+  // `owner` opens a mailbox for `peer` and hands it over out of band, and the
+  // peer keeps it in their store with a record that it came in, to send to it.
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
     const inbox = await owner.post.openInbox(queue.mailbox);
     const mailboxBytes = await owner.store.get(inbox.mailbox);
     assert.exists(mailboxBytes);
-    await peer.store.write({
-      records: [{ bytes: mailboxBytes }],
-      blobs: network.transport.schema.blobs,
-    });
+    await peer.intake.receive(readBundle(writeBundle({ bytes: mailboxBytes }, network.transport.schema.blobs)));
     const outbox = await peer.post.outbox(inbox.mailbox);
     return { mailbox: inbox.mailbox, inbox, outbox, pickup: queue.pickup(inbox.mailbox) };
   };

@@ -1,3 +1,4 @@
+import { readBundle, writeBundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
@@ -11,7 +12,17 @@ import {
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
+import {
+  type InboundData,
+  type Index,
+  inboundSchema,
+  indexOver,
+  loadIntake,
+  MemoryBackend,
+  PrivateStore,
+  Store,
+  scan,
+} from "@estoc/store";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -31,6 +42,7 @@ const note = await encodeSchema(
   { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
   defaultValidator,
 );
+const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
 const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const keys: Schema<Json, MailboxKeyData> = await encodeSchema(mailboxKeySchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
@@ -59,16 +71,18 @@ async function postAt(
   return { store, privateStore, post: await loadPost(store, privateStore, options) };
 }
 
-// A post whose store holds the mailbox of a new queue sealed to Bob, as when
-// it was handed over.
+// `store` keeps a mailbox that was handed over out of band, with a record that it came in.
+async function handOver(network: MemoryNetwork, store: Store, mailbox: EncodedObject<Json>) {
+  const intake = await loadIntake(store, { validator: defaultValidator });
+  await intake.receive(readBundle(writeBundle(mailbox, network.transport.schema.blobs)));
+}
+
+// A post whose store holds the mailbox of a new queue sealed to Bob, handed over.
 async function sendingTo(network: MemoryNetwork) {
   const at = await postAt(network);
   const queue = network.queue();
   const mailbox = queue.mailbox(bob.publicKey);
-  await at.store.write({
-    records: [mailbox],
-    blobs: network.transport.schema.blobs,
-  });
+  await handOver(network, at.store, mailbox);
   return { ...at, queue, mailbox };
 }
 
@@ -120,10 +134,7 @@ describe("an outbox", () => {
     const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
     const queue = network.queue();
     const atCarol = queue.mailbox(carol.publicKey);
-    await atBob.store.write({
-      records: [atCarol],
-      blobs: network.transport.schema.blobs,
-    });
+    await handOver(network, atBob.store, atCarol);
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
@@ -135,10 +146,7 @@ describe("an outbox", () => {
     const { store, post } = await sendingTo(network);
     await store.write({ records: [signature], blobs: signatureBlobs });
     const elsewhere = (await MemoryNetwork.create(defaultValidator)).queue().mailbox(bob.publicKey);
-    await store.write({
-      records: [elsewhere],
-      blobs: network.transport.schema.blobs,
-    });
+    await handOver(network, store, elsewhere);
     const before = await listed(store);
 
     const sending = (await post.outbox(elsewhere.link)).send(signature.link);
@@ -208,6 +216,19 @@ describe("an inbox", () => {
     expect(await listed(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect((await signatures.read(signature.link, store, noVersions)).object).toBe(hello.link);
     expect(queue.take()).toEqual([]);
+  });
+
+  it("records what it keeps as an Inbound whose via is its mailbox", async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    const { store, queue, inbox } = await receivingAt(network);
+    await sendTo(network, store, inbox.mailbox, signatureBlobs);
+
+    const delivery = await inbox.receive(queue.takeOne());
+    expect((await readObject(store, delivery.link, inbound)).data).toEqual({
+      bundle: { $link: signature.link },
+      at: 1000,
+      via: { $link: inbox.mailbox },
+    });
   });
 
   it("is done with what it collects and refuses, which leaves no record", async () => {

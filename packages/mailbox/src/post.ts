@@ -13,12 +13,12 @@ import {
   readObject,
   type Schema,
 } from "@estoc/object";
-import { type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
+import { type Intake, loadIntake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
-import { type DeliveryData, inboundSchema, type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
+import { type MailboxKeyData, mailboxKeySchema, type OutboundData, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
   /** The validator that the schemas of the records are compiled with. */
@@ -27,11 +27,9 @@ export interface PostOptions extends Options {
   readonly clock?: () => number;
 }
 
-type Direction = "inbound" | "outbound";
-
 /** A record, written to a store, that a bundle came in at a mailbox or went out to one. */
 export interface Delivery {
-  readonly direction: Direction;
+  readonly direction: "inbound" | "outbound";
   /** The link of the bundle's root. */
   readonly bundle: Link<never>;
   readonly mailbox: Link<EncodedObject<Json>>;
@@ -41,11 +39,10 @@ export interface Delivery {
   readonly link: Link<EncodedObject<Json>>;
 }
 
-type DeliveryRecorder = (bundle: Link<never>, blobs?: Iterable<Bytes<unknown>>) => Promise<Delivery>;
-
 type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Json>> };
 
-interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>> {
+interface Schemas {
+  readonly outbound: Schema<Json, OutboundData>;
   readonly key: Schema<Json, MailboxKeyData>;
 }
 
@@ -53,9 +50,9 @@ interface Schemas extends Readonly<Record<Direction, Schema<Json, DeliveryData>>
  * Sending and receiving with a store.
  *
  * - What is sent is taken from the store, and what arrives is kept in it.
- * - Each is recorded there as a delivery that the user writes, an object of `inboundSchema` or
- *   `outboundSchema`, listed with the store's other records for the application to read into its
- *   indexes.
+ * - Each is recorded there as a delivery that the user writes, an object of `outboundSchema` or of
+ *   `inboundSchema` in `@estoc/store`, listed with the store's other records for the application to
+ *   read into its indexes.
  * - The keys that open what arrives are objects of `mailboxKeySchema` in a private store beside the
  *   store, so no bundle gathered from the store carries one.
  */
@@ -64,6 +61,7 @@ export class Post {
   readonly #privateStore: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
+  readonly #intake: Intake;
   readonly #schemas: Schemas;
 
   constructor(
@@ -71,19 +69,21 @@ export class Post {
     privateStore: PrivateStore,
     transports: readonly Transport[],
     clock: () => number,
+    intake: Intake,
     schemas: Schemas,
   ) {
     this.#store = store;
     this.#privateStore = privateStore;
     this.#transports = transports;
     this.#clock = clock;
+    this.#intake = intake;
     this.#schemas = schemas;
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject<Json>>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
-    return new Outbox(boundMailbox, this.#store, (bundle) => this.#write("outbound", mailbox, bundle));
+    return new Outbox(boundMailbox, this.#store, (bundle) => this.#recordOutbound(mailbox, bundle));
   }
 
   /**
@@ -127,7 +127,7 @@ export class Post {
   }
 
   #inbox(mailbox: Link<EncodedObject<Json>>, key: Link<EncodedObject<Json, MailboxKeyData>>, opener: MailboxKey) {
-    return new Inbox(mailbox, key, opener, (bundle, blobs) => this.#write("inbound", mailbox, bundle, blobs));
+    return new Inbox(mailbox, key, opener, this.#intake);
   }
 
   async #bytesAt(link: Link<unknown>): Promise<Uint8Array> {
@@ -136,17 +136,12 @@ export class Post {
     return bytes;
   }
 
-  async #write(
-    direction: Direction,
-    mailbox: Link<EncodedObject<Json>>,
-    bundle: Link<never>,
-    blobs: Iterable<Bytes<unknown>> = [],
-  ): Promise<Delivery> {
-    const schema = this.#schemas[direction];
+  async #recordOutbound(mailbox: Link<EncodedObject<Json>>, bundle: Link<never>): Promise<Delivery> {
+    const schema = this.#schemas.outbound;
     const at = this.#clock();
     const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ records: [record], blobs: [...schema.blobs, ...blobs] });
-    return { direction, bundle, mailbox, at, link: record.link };
+    await this.#store.write({ records: [record], blobs: schema.blobs });
+    return { direction: "outbound", bundle, mailbox, at, link: record.link };
   }
 }
 
@@ -154,9 +149,9 @@ export class Post {
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
-  readonly #record: DeliveryRecorder;
+  readonly #record: (bundle: Link<never>) => Promise<Delivery>;
 
-  constructor(mailbox: Mailbox, store: Store, record: DeliveryRecorder) {
+  constructor(mailbox: Mailbox, store: Store, record: (bundle: Link<never>) => Promise<Delivery>) {
     this.#mailbox = mailbox;
     this.#store = store;
     this.#record = record;
@@ -193,18 +188,18 @@ export class Inbox {
    */
   readonly key: Link<EncodedObject<Json, MailboxKeyData>>;
   readonly #opener: MailboxKey;
-  readonly #record: DeliveryRecorder;
+  readonly #intake: Intake;
 
   constructor(
     mailbox: Link<EncodedObject<Json>>,
     key: Link<EncodedObject<Json, MailboxKeyData>>,
     opener: MailboxKey,
-    record: DeliveryRecorder,
+    intake: Intake,
   ) {
     this.mailbox = mailbox;
     this.key = key;
     this.#opener = opener;
-    this.#record = record;
+    this.#intake = intake;
   }
 
   /**
@@ -216,8 +211,7 @@ export class Inbox {
    *   does not hold; nothing is kept then.
    */
   async receive(ciphertext: Uint8Array): Promise<Delivery> {
-    const bundle = await this.#opener.open(ciphertext);
-    return this.#record(bundle.link, bundle.blobs());
+    return this.#keep(await this.#opener.open(ciphertext));
   }
 
   /**
@@ -251,11 +245,16 @@ export class Inbox {
       return undefined;
     }
     try {
-      return await this.#record(bundle.link, bundle.blobs());
+      return await this.#keep(bundle);
     } catch (error) {
       if (error instanceof RefusedBatch) return undefined;
       throw error;
     }
+  }
+
+  async #keep(bundle: Bundle): Promise<Delivery> {
+    const { link, data } = await this.#intake.receive(bundle, this.mailbox);
+    return { direction: "inbound", bundle: bundle.link, mailbox: this.mailbox, at: data.at, link };
   }
 }
 
@@ -271,10 +270,10 @@ export async function loadPost(
 ): Promise<Post> {
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);
-  const [inbound, outbound, key] = await Promise.all([
-    compile<DeliveryData>(inboundSchema),
-    compile<DeliveryData>(outboundSchema),
+  const [intake, outbound, key] = await Promise.all([
+    loadIntake(store, { validator, clock }),
+    compile<OutboundData>(outboundSchema),
     compile<MailboxKeyData>(mailboxKeySchema),
   ]);
-  return new Post(store, privateStore, transports, clock, { inbound, outbound, key });
+  return new Post(store, privateStore, transports, clock, intake, { outbound, key });
 }

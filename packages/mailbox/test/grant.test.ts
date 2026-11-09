@@ -1,15 +1,17 @@
+import { readBundle, writeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, type KeyObject, loadIdentity, type Signature, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
+import { type Intake, loadIntake, MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, loadMailboxGrants, loadPost, type Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
 // takes someone's messages at some mailboxes signs a grant of them to that
-// someone, writes the signature as a record and sends it to them, and each
-// reads the latest grant of a series from their own store.
+// someone, writes the signature as a record and sends it to them or hands it
+// over out of band, and each reads the latest grant of a series from their own
+// store.
 
 const identity = await loadIdentity(defaultValidator, [ed25519]);
 const { signatures, publish } = identity;
@@ -21,6 +23,7 @@ interface Person {
   readonly root: Link<KeyObject>;
   readonly store: Store;
   readonly post: Post;
+  readonly intake: Intake;
   readonly inbox: Inbox;
   collect(): Promise<unknown>;
 }
@@ -31,10 +34,11 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const store = new Store(json, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = await loadPost(store, privateStore, { transports: [network.transport], validator: defaultValidator });
+  const intake = await loadIntake(store, { validator: defaultValidator });
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
-  return { actor, root: actor.signedIdentity.identity.root.link, store, post, inbox, collect };
+  return { actor, root: actor.signedIdentity.identity.root.link, store, post, intake, inbox, collect };
 }
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
@@ -60,11 +64,17 @@ async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<Json
   return signature;
 }
 
-// `from` sends what its store holds under `root` to the mailbox `to` receives at, and `to` collects it.
-async function send(from: Person, to: Person, root: Link<unknown>) {
-  const bytes = await to.store.get(to.inbox.mailbox);
+// `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
+async function handOver(from: Person, to: Person, root: Link<unknown>) {
+  const closure = await from.store.closure(root);
+  const bytes = closure.get(root);
   assert.exists(bytes);
-  await from.store.write({ records: [{ bytes }], blobs: network.transport.schema.blobs });
+  await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
+}
+
+// `from` is handed the mailbox `to` receives at, sends what its store holds under `root` there, and `to` collects it.
+async function send(from: Person, to: Person, root: Link<unknown>) {
+  await handOver(to, from, to.inbox.mailbox);
   await (await from.post.outbox(to.inbox.mailbox)).send(root);
   await to.collect();
 }
@@ -115,6 +125,31 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.signature.link).toBe(signature.link);
     expect(receivedGrant.object.link).toBe(givenGrant?.object.link);
     expect(receivedGrant.object.data.mailboxes).toEqual([{ $link: alice.inbox.mailbox }]);
+  });
+
+  it("reads the same from what was handed over out of band as from the record its signer wrote", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    await handOver(alice, bob, signature.link);
+
+    const [givenGrant, receivedGrant] = [await grantFrom(alice, alice, bob), await grantFrom(bob, alice, bob)];
+    assert.exists(receivedGrant);
+    expect(receivedGrant.signature.link).toBe(signature.link);
+    expect(receivedGrant.object.link).toBe(givenGrant?.object.link);
+    expect(receivedGrant.object.data.mailboxes).toEqual([{ $link: alice.inbox.mailbox }]);
+  });
+
+  it("is the one with the greatest at, whichever way each came in", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const sent = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    const handed = await give(alice, bob, [], 2_000);
+    await handOver(alice, bob, handed.link);
+    await send(alice, bob, sent.link);
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(handed.link);
+
+    const later = await give(alice, bob, [alice.inbox.mailbox], 3_000);
+    await send(alice, bob, later.link);
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(later.link);
   });
 
   it("is not one that the signer gave someone else, which was passed on", async () => {

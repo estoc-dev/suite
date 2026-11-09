@@ -144,13 +144,15 @@ is sent is taken from the store, what arrives is kept there, and each is
 recorded as an object the user writes:
 
 ```
-Inbound      {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
-Outbound     the same fields, under a schema of its own
+Inbound      {"bundle": <link of the root>, "at": <milliseconds>, "via": <link of the mailbox>}
+Outbound     {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
 Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the private store
 ```
 
-The three schemas are `inboundSchema`, `outboundSchema` and
-`mailboxKeySchema`. A key's `secret` is 32 bytes in lowercase hex.
+`Inbound` is the record of `@estoc/store` for whatever comes from outside a
+store, with the mailbox as its channel, and `inboundSchema` is exported from
+there. The other two schemas are `outboundSchema` and `mailboxKeySchema`. A
+key's `secret` is 32 bytes in lowercase hex.
 
 ```ts
 import { loadPost } from "@estoc/mailbox";
@@ -171,9 +173,19 @@ const again = await post.inbox(inbox.key); // after a restart
 ```
 
 Both mailboxes have to be in the store, since a record links to its
-mailbox and a store takes in nothing without its closure. The sender
-writes a mailbox handed to it, alone or in whatever record of the handing
-the application keeps.
+mailbox and a store takes in nothing without its closure. A mailbox handed
+to the sender comes from outside the store, so the sender keeps it with an
+`Intake` of `@estoc/store`, as the root of a bundle or in the closure of one,
+such as the signature of whoever stands behind it. `post.outbox` takes its
+link all the same.
+
+```ts
+import { readBundle, writeBundle } from "@estoc/bundle";
+import { loadIntake } from "@estoc/store";
+
+const intake = await loadIntake(store, { validator: defaultValidator });
+await intake.receive(readBundle(writeBundle({ bytes: handedOut }, transport.schema.blobs)));
+```
 
 `openInbox` makes a new key and gives its public key to `makeMailbox`,
 which gives back a mailbox sealed to it, of one of the post's transports.
@@ -199,10 +211,11 @@ bundle. When the transport cannot hand it on, `send` rejects with its
 send again. Neither the zip nor the ciphertext is kept: sending again
 seals the same bundle afresh.
 
-`receive` keeps the bundle and its `Inbound` record in one write. What does
-not open with the key is refused, and so is a bundle that leaves out a
-blob in its root's closure that the store does not hold, record and all.
-Blobs outside the root's closure are dropped.
+`receive` hands the bundle to the store's `Intake`, which keeps it and its
+`Inbound` record in one write, and the delivery it gives back names the
+mailbox. What does not open with the key is refused, and so is a bundle
+that leaves out a blob in its root's closure that the store does not hold,
+record and all. Blobs outside the root's closure are dropped.
 
 `collect` takes a pickup of the inbox's mailbox, and refuses one of
 another. It receives each arrival in turn and gives back the records it
@@ -223,13 +236,15 @@ wrote.
 Each time something comes in or goes out is a record of its own, so a
 message that arrives twice, or is sent again after it was lost, has two.
 `at` is the clock of the device that wrote the record, and is no part of
-the message. A reader takes the same `bundle` at the same `mailbox` as one
+the message. A reader takes the same `bundle` at the same mailbox as one
 message, at the earliest `at`: the bundle is named by its root, which is
 the same each time it is sent.
 
 The package keeps no index of the records. An application keeps its own,
-an index of `@estoc/store` that reads `inboundSchema` and `outboundSchema`.
-The tests give each record the row `[direction, mailbox, at, bundle]`, and
+an index of `@estoc/store` that reads `inboundSchema` of that package and
+`outboundSchema` of this one. The tests give each record the row
+`[direction, mailbox, at, bundle]`, where the mailbox of an `Inbound` is its
+`via`, and one without `via` came in at no mailbox and gives no row. They
 read a conversation from two ranges, what came in at one mailbox and what
 went out to the other, each bundle once at its first row. What a message
 says and who signed it are read from its root when it is shown.
@@ -292,9 +307,10 @@ from someone. `to` is that someone's signed identity, the version the
 signer holds when it signs, and `at` is when, by the signer's clock. The
 signer writes its signature over the grant as a record, which is its own
 account of where it takes whose messages, and sends the signature, with
-its closure, to the one the grant is to, who then sends to those mailboxes.
-A grant with no mailboxes says that the signer no longer takes their
-messages. The schema is `mailboxGrantSchema`.
+its closure, to the one the grant is to, or hands it over out of band. That
+one keeps it through an `Intake`, as `Inbox.receive` does, and then sends to
+those mailboxes. A grant with no mailboxes says that the signer no longer
+takes their messages. The schema is `mailboxGrantSchema`.
 
 The grants of one root to another are a series, by the root of the signer
 and the root of `to`. The latest of a series is the one with the greatest
@@ -324,7 +340,8 @@ await latest.grantFrom(their, mine); // where they take mine
 `grants.latest` is a `View` of `@estoc/store`, made once for the program
 as the index it holds is. Its index reads the signatures over grants that
 the user writes as records, and the bundles that `Inbound` records say
-came in whose root is such a signature. Each gives a row of the root of
+came in, at a mailbox or out of band, whose root is such a signature. Each
+gives a row of the root of
 the signer, the root of `to`, `at` and the link of the signature; the
 signature is verified by the signed identity it carries, as by
 `noVersions`. A bundle that came in and does not read as a grant gives no

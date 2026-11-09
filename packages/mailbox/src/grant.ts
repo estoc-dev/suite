@@ -18,8 +18,8 @@ import {
   readObject,
   type Schema,
 } from "@estoc/object";
-import { indexOver, type Rows, type View } from "@estoc/store";
-import { type DeliveryData, inboundSchema, type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
+import { type InboundData, inboundSchema, indexOver, type Rows, type View } from "@estoc/store";
+import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
  * A Mailbox Grant as a row: the root of whoever signed it, the root of the signed identity it is
@@ -70,7 +70,7 @@ export class MailboxGrants {
   readonly latest: View<MailboxGrantRow, LatestGrants>;
   readonly #identity: SignatureReading;
 
-  constructor(schema: Schema<Json, MailboxGrantData>, inbound: Schema<Json, DeliveryData>, identity: SignatureReading) {
+  constructor(schema: Schema<Json, MailboxGrantData>, inbound: Schema<Json, InboundData>, identity: SignatureReading) {
     this.schema = schema;
     this.#identity = identity;
     const grants = identity.signatures.selectionOver(schema);
@@ -134,6 +134,6 @@ export async function loadMailboxGrants(
   identity: SignatureReading,
 ): Promise<MailboxGrants> {
   const schema: Schema<Json, MailboxGrantData> = await encodeSchema(mailboxGrantSchema, validator);
-  const inbound: Schema<Json, DeliveryData> = await encodeSchema(inboundSchema, validator);
+  const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);
   return new MailboxGrants(schema, inbound, identity);
 }

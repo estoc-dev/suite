@@ -29,7 +29,7 @@ import {
   type Schema,
   schemaOf,
 } from "@estoc/object";
-import { type Store, view } from "@estoc/store";
+import { type Intake, loadIntake, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type MailboxAcknowledgementsView, mailboxAcknowledgementsView } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
@@ -47,6 +47,8 @@ import {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type OriginData,
+  originSchema,
   type PickupAnswerData,
   type PickupRequestData,
   pickupAnswerSchema,
@@ -80,12 +82,23 @@ type Schemas = {
   readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
   readonly pickupRequest: Schema<Json, PickupRequestData>;
   readonly pickupAnswer: Schema<Json, PickupAnswerData>;
+  readonly origin: Schema<Json, OriginData>;
   /** The schema of the HTTP mailboxes of `@estoc/mailbox`, which senders post to. */
   readonly http: Schema<Json, HttpMailboxData>;
 };
 
-/** What an offer of a service's posts with: the store that keeps what the service answers, and how it reads that. */
-type Posting = { readonly store: Store; readonly signatures: Signatures; readonly people: PeopleView };
+/**
+ * What an offer of a service's posts with: the store that keeps what the
+ * service answers and how it reads that, the intake that keeps it, and the
+ * origin it is kept as coming from, where the offer was taken.
+ */
+type Posting = {
+  readonly store: Store;
+  readonly intake: Intake;
+  readonly origin: EncodedObject<Json, OriginData>;
+  readonly signatures: Signatures;
+  readonly people: PeopleView;
+};
 
 /** An acceptance of a service's offer, acknowledged, for the account of the root of the identity that accepted. */
 export interface Account {
@@ -140,8 +153,9 @@ export class AccountOffer {
    * account unless the root has one there.
    *
    * - The actor signs the offer, and the service acknowledges that signature.
-   * - The service's signature over the acknowledgement is written to the
-   *   store as a record, with its closure.
+   * - The service's signature over the acknowledgement is kept in the store
+   *   with an Inbound record whose `via` is the origin the offer was taken
+   *   at.
    *
    * @throws when the service refuses the acceptance, or when its
    *   acknowledgement is signed by another root than the service's or is of
@@ -206,8 +220,9 @@ export class MailboxOffer {
    *
    * - The actor signs a request for it, and the service acknowledges that
    *   signature.
-   * - The service's signature over the acknowledgement is written to the
-   *   store as a record, with its closure.
+   * - The service's signature over the acknowledgement is kept in the store
+   *   with an Inbound record whose `via` is the origin the offer was taken
+   *   at.
    * - It gives the HTTP mailbox of `@estoc/mailbox` that senders post to, at
    *   the origin the offer was taken at. It is what `Post.openInbox` is to be
    *   given, as `(publicKey) => offer.open(actor, publicKey)`.
@@ -235,8 +250,8 @@ export class MailboxOffer {
 
 /**
  * Posts the bundle of `signature` to `url`, with `blobs` and the blobs of
- * its signed identity, and writes the answer to the store as a record, with
- * its closure.
+ * its signed identity, and keeps the answer in the store with an Inbound
+ * record whose `via` is the posting's origin.
  *
  * The answer is read as `service`'s signature over an acknowledgement of
  * `signature`, written to `schema`, whose `field` links to it.
@@ -254,7 +269,7 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
   },
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
-  { store, signatures, people }: Posting,
+  { store, intake, origin, signatures, people }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
   const body = await packBundle(signature, [...blobs, ...signature.signedIdentity.blobs]);
   const request = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body };
@@ -269,7 +284,7 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
   const acknowledgedSignature = data[to.field].$link;
   if (acknowledgedSignature !== signature.link)
     throw new Error(`the acknowledgement is of ${acknowledgedSignature}, not the one sent`);
-  await stagedStore.commit();
+  await intake.receive(answer, origin);
   return { signature: acknowledgement, data };
 }
 
@@ -360,17 +375,25 @@ class ServicePickup implements Pickup {
 /**
  * Mailbox services as a client reaches them, with a store that keeps the
  * Services it reaches, the accounts it opens and the mailboxes.
+ *
+ * - What a service answers is kept with an Inbound record of `@estoc/store`
+ *   whose `via` is the Origin it was reached at.
+ * - What the client reads back, it reads from the signatures the store
+ *   holds, records or not, so what came in another way, such as at a
+ *   mailbox, reads alike.
  */
 export class Services {
   readonly #store: Store;
+  readonly #intake: Intake;
   readonly #signatures: Signatures;
   readonly #schemas: Schemas;
   readonly #locations: LocationsView;
   readonly #mailboxes: MailboxAcknowledgementsView;
   readonly #people: PeopleView;
 
-  constructor(store: Store, kit: IdentityKit, schemas: Schemas) {
+  constructor(store: Store, intake: Intake, kit: IdentityKit, schemas: Schemas) {
     this.#store = store;
+    this.#intake = intake;
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
     this.#locations = locationsView(kit.signatures, schemas.service);
@@ -380,8 +403,8 @@ export class Services {
 
   /**
    * Fetches the Service at `origin`, such as `https://mail.example`, and
-   * writes the service's signature over it to the store as a record, with its
-   * closure.
+   * keeps the service's signature over it in the store with an Inbound
+   * record whose `via` is `origin`.
    *
    * What the origin answers over TLS is the service's, so the identity that
    * signed the Service is taken as the service's.
@@ -397,15 +420,15 @@ export class Services {
     const stagedStore = await this.#store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
     const service = await this.#read(bundle.link, stagedStore);
     if (service.origin !== origin) throw new Error(`the Service at ${origin} names ${service.origin}`);
-    await stagedStore.commit();
+    await this.#intake.receive(bundle, this.#originOf(origin));
     return service;
   }
 
   /**
    * The latest Service of the root that signed `signedIdentity` that the
    * store holds, read without reaching the service, or `undefined` when the
-   * store holds none. A Service gets there by `fetch`, on this device or on
-   * another whose store this one syncs with.
+   * store holds none. A Service counts however it came, by `fetch` or at a
+   * mailbox, on this device or on another whose store this one syncs with.
    *
    * @throws when the latest Service is one that `fetch` refuses, apart from
    *   naming another origin than the one asked.
@@ -420,22 +443,23 @@ export class Services {
    * What waits at `mailbox`, an HTTP mailbox that a service opened, picked
    * up by `actor`, an actor for the root of the mailbox's account.
    *
-   * It is picked up where the latest Service that the store holds of the
-   * service that signed the mailbox's acknowledgement says, wherever the
-   * mailbox was opened.
+   * - It goes by the service's acknowledgement of a request signed for the
+   *   root of `actor`, whatever way the store came to hold it.
+   * - It is picked up where the latest Service that the store holds of the
+   *   service that signed the acknowledgement says, wherever the mailbox was
+   *   opened.
    *
-   * @throws when the store does not hold `mailbox`, its acknowledgement, or
-   *   a Service of the service that signed the acknowledgement.
+   * @throws when the store does not hold `mailbox`, such an acknowledgement,
+   *   or a Service of the service that signed it.
    */
   async pickup(mailbox: Link<EncodedObject<Json>>, actor: Actor): Promise<Pickup> {
     const { key, url } = (await readObject(this.#store, mailbox, this.#schemas.http)).data;
+    const root = actor.signedIdentity.identity.root.link;
     const mailboxes = await view(this.#store, this.#mailboxes);
-    const link = await mailboxes.acknowledgementAt(new URL(url).pathname.slice(1), key);
-    if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox}`);
-    // The acknowledgement was verified against the identity versions the
-    // store held when it came. Here it says only where to pick up, which a
-    // later identity version of the service that does not list the key that
-    // signed it does not change.
+    const link = await mailboxes.acknowledgementAt(new URL(url).pathname.slice(1), key, root);
+    if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox} for ${root}`);
+    // It says only where to pick up, which a later identity version of the
+    // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
     const { request, pickupId } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
     const { object: requestObject } = (await readObject(this.#store, request.$link, this.#signatures.schema)).data;
@@ -470,7 +494,13 @@ export class Services {
     const { root } = service;
     const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
     checkOrigin(origin);
-    const posting = { store: this.#store, signatures: this.#signatures, people: this.#people };
+    const posting = {
+      store: this.#store,
+      intake: this.#intake,
+      origin: this.#originOf(origin),
+      signatures: this.#signatures,
+      people: this.#people,
+    };
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
     for (const { offer, acceptId } of offers) {
@@ -500,6 +530,10 @@ export class Services {
     }
     return { signedIdentity, origin, at, link, account, mailbox };
   }
+
+  #originOf(origin: string): EncodedObject<Json, OriginData> {
+    return encodeObject(this.#schemas.origin, { origin });
+  }
 }
 
 // Plain http is for the client's own machine alone, as in development: on
@@ -525,18 +559,29 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
 
 /**
  * Reaches mailbox services for the identities of the user of `store`, which
- * keeps what it reaches, reading keys in `schemes`.
+ * keeps what it reaches, reading keys in `schemes`. `clock` gives the time
+ * in milliseconds since the Unix epoch that the Inbound records are written
+ * at, `Date.now` unless given.
  */
 export async function loadServices(
   store: Store,
-  { validator, schemes }: { readonly validator: JsonSchemaValidator; readonly schemes: readonly Scheme[] },
+  {
+    validator,
+    schemes,
+    clock = Date.now,
+  }: {
+    readonly validator: JsonSchemaValidator;
+    readonly schemes: readonly Scheme[];
+    readonly clock?: () => number;
+  },
 ): Promise<Services> {
   const kit = await loadIdentity(validator, schemes);
+  const intake = await loadIntake(store, { validator, clock });
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);
   // The HTTP transport's schema is read as the fields every HTTP mailbox has.
   const http = (await loadHttpTransport(validator)).schema as Schema<Json, HttpMailboxData>;
-  return new Services(store, kit, {
+  return new Services(store, intake, kit, {
     service: await compile(serviceSchema),
     offer: await compile(accountOfferSchema),
     acknowledgement: await compile(acknowledgementSchema),
@@ -545,6 +590,7 @@ export async function loadServices(
     mailboxAcknowledgement: await compile(mailboxAcknowledgementSchema),
     pickupRequest: await compile(pickupRequestSchema),
     pickupAnswer: await compile(pickupAnswerSchema),
+    origin: await compile(originSchema),
     http,
   });
 }

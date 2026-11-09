@@ -68,6 +68,22 @@ export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
 }
 
 /**
+ * An origin that a client reached a service at, which the client gives as
+ * the `via` of the Inbound records that keep what the service answered
+ * there. One origin is one object, however often it is reached.
+ */
+export const originSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Origin",
+  type: "object",
+  properties: { origin: { type: "string" } },
+  required: ["origin"],
+  additionalProperties: false,
+};
+
+export type OriginData = { readonly origin: string };
+
+/**
  * What a service signs to offer an account to any identity that signs it
  * too. It names the root of the service's identity, so each service's offer
  * has a link of its own, and a signature over it accepts that service's

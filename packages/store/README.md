@@ -375,9 +375,7 @@ What the records promise is little, so that every way in can keep it:
 
 `write` takes any record. That what comes from elsewhere goes through an
 `Intake`, and that a record written directly is the user's own, is a rule for
-programs that the store does not enforce. The client of
-`@estoc/mailbox-service` is the exception for now: a Service or an
-Acknowledgement that it has verified goes in directly as a record.
+programs that the store does not enforce.
 
 ## Private stores
 

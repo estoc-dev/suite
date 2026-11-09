@@ -245,7 +245,8 @@ The package keeps no index of the records. An application keeps its own,
 an index of `@estoc/store` that reads `inboundSchema` of that package and
 `outboundSchema` of this one. The tests give each record the row
 `[direction, mailbox, at, bundle]`, where the mailbox of an `Inbound` is its
-`via`, and one without `via` came in at no mailbox and gives no row. They
+`via`, which is the mailbox's link for what came in at one, and one without
+`via` gives no row. They
 read a conversation from two ranges, what came in at one mailbox and what
 went out to the other, each bundle once at its first row. What a message
 says and who signed it are read from its root when it is shown.

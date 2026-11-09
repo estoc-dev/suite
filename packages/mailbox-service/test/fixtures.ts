@@ -26,6 +26,8 @@ import {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type OriginData,
+  originSchema,
   type PickupAnswerData,
   type PickupRequestData,
   pickupAnswerSchema,
@@ -78,6 +80,7 @@ export const pickupAnswerSchemaRead: Schema<Json, PickupAnswerData> = await enco
   pickupAnswerSchema,
   defaultValidator,
 );
+export const originSchemaRead: Schema<Json, OriginData> = await encodeSchema(originSchema, defaultValidator);
 
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 

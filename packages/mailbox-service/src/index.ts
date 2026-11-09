@@ -18,6 +18,8 @@ export {
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
+  type OriginData,
+  originSchema,
   type PickupAnswerData,
   type PickupRequestData,
   pickupAnswerSchema,

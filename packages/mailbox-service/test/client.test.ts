@@ -1,10 +1,18 @@
-import { packBundle, unpackBundle } from "@estoc/bundle";
+import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
 import { loadPost, type Pickup } from "@estoc/mailbox";
 import { loadHttpTransport } from "@estoc/mailbox/http";
-import { type EncodedObject, encodeObject, encodeSchema, type Json, type Link, readObject } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  encodeSchema,
+  type Json,
+  type Link,
+  readObject,
+  type Schema,
+} from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { MemoryBackend, PrivateStore, type Store } from "@estoc/store";
+import { type InboundData, inboundSchema, loadIntake, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadServices, type MailboxOffer, type Services } from "../src/index.ts";
 import { serve } from "../src/node.ts";
@@ -15,9 +23,12 @@ import {
   delegate,
   keys,
   mailboxAcknowledgementSchemaRead,
+  mailboxOfferSchemaRead,
+  mailboxRequestSchemaRead,
   memoryService,
   memoryStore,
   offerSchema,
+  originSchemaRead,
   schemes,
   serviceActor,
   serviceIdentity,
@@ -38,6 +49,8 @@ const phone = signer(solanaOffchain, 4);
 const mallory = signer(ed25519, 6);
 
 const offer = encodeObject(offerSchema, { identity: { $link: serviceRoot.link } });
+const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
+const http = await loadHttpTransport(defaultValidator);
 
 const agentOf = async (agent: Signer, root: Signer) => signatures.actor(agent, await delegate(root, [agent.key]));
 
@@ -70,10 +83,15 @@ async function startService(
   return { ...run, origin: server.origin, close: () => server.close() };
 }
 
-async function records(store: Store) {
-  const links: Link<never>[] = [];
-  for await (const link of store.records()) links.push(link);
-  return links.sort();
+/** What the Inbound records of `store` say came in, each as the link of its root and the origin it came from. */
+async function received(store: Store) {
+  const rows: (readonly [Link<never>, string])[] = [];
+  for await (const link of store.records()) {
+    const { bundle, via } = (await readObject(store, link, inbound)).data;
+    assert.exists(via);
+    rows.push([bundle.$link, (await readObject(store, via.$link, originSchemaRead)).data.origin]);
+  }
+  return rows.sort(([a], [b]) => (a < b ? -1 : 1));
 }
 
 async function client() {
@@ -132,7 +150,7 @@ async function acknowledgementBy(by: Actor, request: Request) {
 }
 
 describe("a service reached at its origin", () => {
-  it("is the identity that signed the Service there, which the store keeps", async () => {
+  it("is the identity that signed the Service there, which the store keeps as come in from that origin", async () => {
     const { origin } = await startService({ start: 2_000 });
     const { store, services } = await client();
     const service = await services.fetch(origin);
@@ -140,7 +158,7 @@ describe("a service reached at its origin", () => {
     expect(service.signedIdentity.identity).toEqual(serviceIdentity(2_000));
     expect(service.account?.service).toBe(service.signedIdentity);
     expect(service.account?.link).toBe(offer.link);
-    expect(await records(store)).toEqual([service.link]);
+    expect(await received(store)).toEqual([[service.link, origin]]);
     expect((await signatures.read(service.link, store, noIdentityVersions)).signedIdentity.identity.link).toBe(
       serviceIdentity(2_000).link,
     );
@@ -160,7 +178,7 @@ describe("a service reached at its origin", () => {
     const { origin } = await startServer((request) => service.fetch(request));
     const { store, services } = await client();
     await expect(services.fetch(origin)).rejects.toThrow(`the Service at ${origin} names https://mail.example`);
-    expect(await records(store)).toEqual([]);
+    expect(await received(store)).toEqual([]);
   });
 
   it("refuses a Service that lists an offer signed by another root", async () => {
@@ -182,7 +200,7 @@ describe("a service reached at its origin", () => {
     );
     const { store, services } = await client();
     await expect(services.fetch(origin)).rejects.toThrow(/does not sign for the current identity version/);
-    expect(await records(store)).toEqual([]);
+    expect(await received(store)).toEqual([]);
     offerSigner = later;
     const service = await services.fetch(origin);
     expect(service.account?.link).toBe(offer.link);
@@ -198,7 +216,7 @@ describe("a service reached at its origin", () => {
     );
     const { store, services } = await client();
     await expect(services.fetch(origin)).rejects.toThrow(/does not sign for the current identity version/);
-    expect(await records(store)).toEqual([]);
+    expect(await received(store)).toEqual([]);
   });
 
   it("refuses a Service it took once the store holds, by another record, a later identity version that does not list the key that signed it", async () => {
@@ -300,6 +318,20 @@ describe("a service found by its root", () => {
     }
   });
 
+  it("is read from a Service that came in at a mailbox as from one fetched", async () => {
+    const actor = await serviceActor(1_000);
+    const bundle = await unpackBundle(await signedService("https://mail.example", [[offer, actor]], actor));
+    const { store, services } = await client();
+    const mailbox = encodeObject(http.schema, {
+      key: "07".repeat(32),
+      url: `https://elsewhere.example/${"1".repeat(32)}`,
+    });
+    await (await loadIntake(store, { validator: defaultValidator })).receive(bundle, mailbox);
+    const service = await services.latestOf(actor.signedIdentity);
+    expect(service).toMatchObject({ origin: "https://mail.example", link: bundle.link });
+    expect(service?.account?.link).toBe(offer.link);
+  });
+
   it("is undefined for a root of which the store holds no Service", async () => {
     const { origin } = await startService();
     const { services } = await client();
@@ -324,7 +356,7 @@ describe("an account offer", () => {
       at: 7_001,
       link: account.link,
     });
-    expect(await records(store)).toEqual([service.link, account.link].sort());
+    expect(await received(store)).toEqual([service.link, account.link].sort().map((link) => [link, origin]));
     const acknowledgement = await signatures.read(account.link, store, noIdentityVersions);
     expect(acknowledgement.signedIdentity.identity.link).toBe(serviceIdentity(7_000).link);
     const { acceptance } = (await readObject(store, acknowledgement.object, acknowledgementSchemaRead)).data;
@@ -351,7 +383,7 @@ describe("an account offer", () => {
     const { store, services } = await client();
     const again = await (await accountAt(services, origin)).accept(signatures.actor(phone, signedIdentity));
     expect(again.link).not.toBe(first.link);
-    expect(await records(store)).toContain(again.link);
+    expect(await received(store)).toContainEqual([again.link, origin]);
     const acknowledgement = await readObject(
       store,
       (await signatures.read(again.link, store, noIdentityVersions)).object,
@@ -368,7 +400,7 @@ describe("an account offer", () => {
     assert.exists(service.account);
     const itself = await actorOf(serviceSigner);
     await expect(service.account.accept(itself)).rejects.toThrow(/answered 400: a service opens no account for itself/);
-    expect(await records(store)).toEqual([service.link]);
+    expect(await received(store)).toEqual([[service.link, origin]]);
   });
 });
 
@@ -378,7 +410,7 @@ describe("accepting an account offer", () => {
     const { store, services } = await client();
     const account = await accountAt(services, origin);
     await expect(account.accept(await actorOf(alice))).rejects.toThrow(/signed by another root/);
-    expect(await records(store)).toHaveLength(1);
+    expect(await received(store)).toHaveLength(1);
   });
 
   it("refuses an acknowledgement by an agent that a later identity version of the service, which the store holds, does not list", async () => {
@@ -395,7 +427,7 @@ describe("accepting an account offer", () => {
     await expect(account.accept(await actorOf(alice))).rejects.toThrow(
       /does not sign for the current identity version/,
     );
-    expect(await records(store)).toHaveLength(1);
+    expect(await received(store)).toHaveLength(1);
   });
 
   it("refuses the service's acknowledgement of another acceptance than the one it sent, and writes nothing", async () => {
@@ -408,11 +440,10 @@ describe("accepting an account offer", () => {
     const { store, services } = await client();
     const account = await accountAt(services, origin);
     await expect(account.accept(await actorOf(alice))).rejects.toThrow(/not the one sent/);
-    expect(await records(store)).toHaveLength(1);
+    expect(await received(store)).toHaveLength(1);
   });
 });
 
-const http = await loadHttpTransport(defaultValidator);
 const keyOf = (fill: number) => new Uint8Array(32).fill(fill);
 const postTo = (url: string, ciphertext: Uint8Array) => fetch(url, { method: "POST", body: ciphertext });
 
@@ -448,18 +479,21 @@ async function pickUpAll(pickup: Pickup, signal?: AbortSignal) {
 }
 
 describe("a service's offer of mailboxes", () => {
-  it("opened by an identity whose root has an account there gives an HTTP mailbox at the service's origin, and the store keeps the acknowledgement", async () => {
+  it("opened by an identity whose root has an account there gives an HTTP mailbox at the service's origin, and the store keeps the acknowledgement as come in from there", async () => {
     const actor = await actorOf(alice);
     const { run, store, offer } = await withAccount(actor);
     expect(offer.terms).toEqual(terms);
-    const before = await records(store);
+    const before = await received(store);
     const mailbox = await offer.open(actor, keyOf(7));
     expect(mailbox.schema.link).toBe(http.schema.link);
     expect(mailbox.data.key).toBe("07".repeat(32));
     const { pathname, origin } = new URL(mailbox.data.url);
     expect(origin).toBe(run.origin);
-    const [acknowledgement] = (await records(store)).filter((link) => !before.includes(link));
+    const newRows = (await received(store)).filter(([link]) => !before.some(([held]) => held === link));
+    expect(newRows).toHaveLength(1);
+    const [[acknowledgement, from] = []] = newRows;
     assert.exists(acknowledgement);
+    expect(from).toBe(run.origin);
     const signature = await signatures.read(acknowledgement as Link<never>, store, noIdentityVersions);
     const { sendId } = (await readObject(store, signature.object, mailboxAcknowledgementSchemaRead)).data;
     expect(pathname).toBe(`/${sendId}`);
@@ -471,7 +505,7 @@ describe("a service's offer of mailboxes", () => {
     const { link, mailbox } = await services.fetch(origin);
     assert.exists(mailbox);
     await expect(mailbox.open(await actorOf(alice), keyOf(7))).rejects.toThrow(/answered 403: .+ has no account here/);
-    expect(await records(store)).toEqual([link]);
+    expect(await received(store)).toEqual([[link, origin]]);
   });
 });
 
@@ -602,12 +636,21 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("whose service refuses a pickup throws what the service said", async () => {
+    const earlier = await delegate(wallet, [laptop.key, phone.key], 1_000);
+    const { store, services, offer } = await withAccount(signatures.actor(laptop, earlier));
+    const mailbox = await openMailbox(store, offer, signatures.actor(laptop, earlier));
+    const later = await delegate(wallet, [laptop.key], 2_000);
+    await openMailbox(store, offer, signatures.actor(laptop, later), keyOf(8));
+    await expect(pickUpAll(await services.pickup(mailbox.link, signatures.actor(phone, earlier)))).rejects.toThrow(
+      /answered 403: .+does not sign for the current identity version/,
+    );
+  });
+
+  it("is not picked up for another root than the one whose request opened it", async () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
     const mailbox = await openMailbox(store, offer, actor);
-    await expect(pickUpAll(await services.pickup(mailbox.link, await actorOf(bob)))).rejects.toThrow(
-      /answered 403: .+another root/,
-    );
+    await expect(services.pickup(mailbox.link, await actorOf(bob))).rejects.toThrow(/holds no acknowledgement/);
   });
 
   it("is not picked up from a store that holds no acknowledgement of it", async () => {
@@ -617,5 +660,75 @@ describe("a mailbox that a service opened", () => {
     const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${"0".repeat(32)}` });
     await store.write({ records: [mailbox], blobs: http.schema.blobs });
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/holds no acknowledgement/);
+  });
+});
+
+/**
+ * The bundle of `by`'s signature over an acknowledgement, at `sendId`, of
+ * `requester`'s request for a mailbox sealed to `keyOf(7)` by an offer that
+ * names the root of `offerer`, with its closure.
+ */
+async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string) {
+  const root = keys.encode(offerer.key);
+  const mailboxOffer = encodeObject(mailboxOfferSchemaRead, { identity: { $link: root.link }, ...terms });
+  const request = encodeObject(mailboxRequestSchemaRead, { offer: { $link: mailboxOffer.link }, key: "07".repeat(32) });
+  const requestSignature = await requester.sign(request);
+  const acknowledgement = encodeObject(mailboxAcknowledgementSchemaRead, {
+    request: { $link: requestSignature.link },
+    at: 1,
+    sendId,
+    pickupId: "2".repeat(32),
+  });
+  const signature = await by.sign(acknowledgement);
+  const blobs = [
+    acknowledgement.bytes,
+    ...mailboxAcknowledgementSchemaRead.blobs,
+    ...signature.signedIdentity.blobs,
+    ...signatures.schema.blobs,
+    requestSignature.bytes,
+    ...requestSignature.signedIdentity.blobs,
+    request.bytes,
+    ...mailboxRequestSchemaRead.blobs,
+    mailboxOffer.bytes,
+    ...mailboxOfferSchemaRead.blobs,
+    root.bytes,
+  ];
+  return unpackBundle(await packBundle(signature, blobs));
+}
+
+describe("a mailbox acknowledgement that came in at a mailbox", () => {
+  const sendId = "1".repeat(32);
+
+  /**
+   * A client whose store holds the Service of a running service, a mailbox
+   * at `sendId` there sealed to `keyOf(7)`, and `acknowledgement`, which came
+   * in at that mailbox.
+   */
+  async function clientHolding(acknowledgement: Bundle) {
+    const { origin } = await startService();
+    const { store, services } = await client();
+    await services.fetch(origin);
+    const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${sendId}` });
+    await store.write({ records: [mailbox], blobs: http.schema.blobs });
+    await (await loadIntake(store, { validator: defaultValidator })).receive(acknowledgement, mailbox);
+    return { services, mailbox };
+  }
+
+  it("says where the account picks up when the service signed it of the account's request", async () => {
+    const account = await actorOf(alice);
+    const { services, mailbox } = await clientHolding(
+      await mailboxAcknowledgementBy(await serviceActor(1_000), account, serviceSigner, sendId),
+    );
+    await expect(services.pickup(mailbox.link, account)).resolves.toMatchObject({ mailbox: mailbox.link });
+  });
+
+  it.each<[string, (account: Actor, other: Actor) => readonly [by: Actor, requester: Actor, offerer: Signer]]>([
+    ["another root signed it of its own request, for its own offer", (_, other) => [other, other, mallory]],
+    ["another root signed it of the account's request", (account, other) => [other, account, serviceSigner]],
+  ])("says nothing of where the account picks up when %s", async (_, partiesOf) => {
+    const account = await actorOf(alice);
+    const [by, requester, offerer] = partiesOf(account, await actorOf(mallory));
+    const { services, mailbox } = await clientHolding(await mailboxAcknowledgementBy(by, requester, offerer, sendId));
+    await expect(services.pickup(mailbox.link, account)).rejects.toThrow(/holds no acknowledgement/);
   });
 });

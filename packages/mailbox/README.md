@@ -313,11 +313,13 @@ those mailboxes. A grant with no mailboxes says that the signer no longer
 takes their messages. The schema is `mailboxGrantSchema`.
 
 The grants of one root to another are a series, by the root of the signer
-and the root of `to`. The latest of a series is the one with the greatest
+and the root of `to`. Of the grants of a series whose keys sign for the
+current version a reader has seen, the latest is the one with the greatest
 `at`, and of two at one `at`, the one whose signature has the greater link,
-as with the versions of an identity in `@estoc/identity`. Each side holds
-the latest it has seen, so the two agree on where messages go by comparing
-one link, without asking a transport whether a mailbox still takes them.
+as with the versions of an identity in `@estoc/identity`. Each side picks
+the latest from the grants and versions it has seen. The two agree on where
+messages go when they pick the same link, which they can compare without
+asking a transport whether a mailbox still takes them.
 `to` says which series a grant is of and grants nothing by itself: a grant
 to someone else that is passed on to you is of their series, and does not
 change where its signer takes your messages.
@@ -351,9 +353,8 @@ row, since anyone can send a bundle to a mailbox. The scan still fails
 when the store fails to give a blob of it, so a later scan of the index
 reads the bundle again. `grantFrom` takes the links of two roots and the
 `Versions` of a reader, and gives the latest grant of the first to the
-second whose key signs for the current version,
-with the signature over it and the signed identity it is to, or
-`undefined` when the store holds none.
+second, with the signature over it and the signed identity it is to, or
+`undefined` when there is none.
 
 The `Versions` of a reader are the `People` of the signed identities its store
 holds, as in `@estoc/identity`. `seen` reads them by their schema, wherever

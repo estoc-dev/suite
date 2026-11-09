@@ -67,8 +67,7 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   return { actor, root: actor.signedIdentity.identity.root.link, store, post, intake, inbox, collect };
 }
 
-// `someone`, with their store and mailbox, signing for the root of `version` as `agent`.
-const signingAs = (someone: Person, agent: Signer, version: SignedIdentityObject): Person => ({
+const personSigningAs = (someone: Person, agent: Signer, version: SignedIdentityObject): Person => ({
   ...someone,
   actor: signatures.actor(agent, version),
   root: version.identity.root.link,
@@ -105,7 +104,6 @@ async function handOver(from: Person, to: Person, root: Link<unknown>) {
   await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
 }
 
-// `someone` is handed `version` by itself, and keeps it.
 const seeVersion = (someone: Person, version: SignedIdentityObject) =>
   someone.intake.receive(readBundle(writeBundle({ bytes: version.bytes }, version.blobs)));
 
@@ -231,8 +229,8 @@ describe("a grant by an agent that a later version does not list", () => {
   const twoPeople = async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     return {
-      former: signingAs(alice, formerAgent, listingVersion),
-      current: signingAs(alice, currentAgent, removalVersion),
+      former: personSigningAs(alice, formerAgent, listingVersion),
+      current: personSigningAs(alice, currentAgent, removalVersion),
       bob,
     };
   };
@@ -292,15 +290,18 @@ describe("a grant by an agent that a later version does not list", () => {
     await handOver(former, bob, oldGrant.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(oldGrant.link);
 
-    const signedAgain = await give(current, bob, [current.inbox.mailbox], 6_000);
-    await handOver(current, bob, signedAgain.link);
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signedAgain.link);
+    const newGrant = await give(current, bob, [current.inbox.mailbox], 6_000);
+    await handOver(current, bob, newGrant.link);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(newGrant.link);
   });
 
   it("gives way to an older one by a key that the current version still lists", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const version = await delegate(wallet, [formerAgent.key, currentAgent.key], 3_000);
-    const [former, current] = [signingAs(alice, formerAgent, version), signingAs(alice, currentAgent, version)];
+    const [former, current] = [
+      personSigningAs(alice, formerAgent, version),
+      personSigningAs(alice, currentAgent, version),
+    ];
     const older = await give(current, bob, [current.inbox.mailbox], 3_000);
     const newer = await give(former, bob, [], 4_000);
     await handOver(alice, bob, older.link);
@@ -315,9 +316,9 @@ describe("a grant by an agent that a later version does not list", () => {
     const { former, current } = await twoPeople();
     const carol = await person(3);
     await give(former, carol, [former.inbox.mailbox], 9_000_000);
-    const signedAgain = await give(current, carol, [], 6_000);
+    const newGrant = await give(current, carol, [], 6_000);
 
-    expect((await grantFrom(former, former, carol))?.signature.link).toBe(signedAgain.link);
+    expect((await grantFrom(former, former, carol))?.signature.link).toBe(newGrant.link);
   });
 
   it("counts again once a later version lists its agent again", async () => {

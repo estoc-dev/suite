@@ -27,8 +27,7 @@ import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
  * A Mailbox Grant as a row: the root of whoever signed it, the root of the signed identity it is
  * to, its `at`, and the link of the signature.
  *
- * - The grants of one root to another are a series, and its rows, in the order of their keys, end
- *   with the latest.
+ * - The grants of one root to another are a series, whose rows are in the order of their `at`.
  * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
  *   versions of an identity are.
  */
@@ -116,22 +115,20 @@ export class MailboxGrants {
   #latestOf(rows: Rows<MailboxGrantRow>, reader: Reader): LatestGrants {
     return {
       grantFrom: async (from, to, versions) => {
-        let latest: Link<Signature> | undefined;
+        let latest: Signature | undefined;
         for await (const [, , , link] of rows.range([from, to])) {
-          const { signedIdentity, key } = await this.#identity.signatures.read(link, reader, noVersions);
-          const current = await versions.current(signedIdentity);
-          if (hasSigner(current.identity, key)) latest = link;
+          const signature = await this.#identity.signatures.read(link, reader, noVersions);
+          const current = await versions.current(signature.signedIdentity);
+          if (hasSigner(current.identity, signature.key)) latest = signature;
         }
-        return latest === undefined ? undefined : this.#read(latest, reader);
+        return latest === undefined ? undefined : this.#grantOf(latest, reader);
       },
     };
   }
 
-  async #read(link: Link<Signature>, reader: Reader): Promise<MailboxGrant> {
-    const { signatures, signedIdentities } = this.#identity;
-    const signature = await signatures.read(link, reader, noVersions);
+  async #grantOf(signature: Signature, reader: Reader): Promise<MailboxGrant> {
     const object = await readObject(reader, signature.object, this.schema);
-    return { object, signature, to: await signedIdentities.read(object.data.to.$link, reader) };
+    return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.$link, reader) };
   }
 }
 

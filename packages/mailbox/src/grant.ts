@@ -1,10 +1,12 @@
 import {
+  hasSigner,
   type IdentityKit,
   type KeyObject,
   noVersions,
   type Signature,
   type SignatureOver,
   type SignedIdentityObject,
+  type Versions,
 } from "@estoc/identity";
 import {
   type EncodedObject,
@@ -25,8 +27,7 @@ import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
  * A Mailbox Grant as a row: the root of whoever signed it, the root of the signed identity it is
  * to, its `at`, and the link of the signature.
  *
- * - The grants of one root to another are a series, and its rows, in the order of their keys, end
- *   with the latest.
+ * - The grants of one root to another are a series, whose rows are in the order of their `at`.
  * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
  *   versions of an identity are.
  */
@@ -46,8 +47,11 @@ export interface MailboxGrant {
 
 /** The latest Mailbox Grant of each series that a store holds. */
 export interface LatestGrants {
-  /** The latest grant that `from` signed to `to`, by the links of their roots, or `undefined` when there is none. */
-  grantFrom(from: Link<KeyObject>, to: Link<KeyObject>): Promise<MailboxGrant | undefined>;
+  /**
+   * The latest grant that `from` signed to `to`, by the links of their roots, whose key signs for
+   * the current version that `versions` gives, or `undefined` when there is none.
+   */
+  grantFrom(from: Link<KeyObject>, to: Link<KeyObject>, versions: Versions): Promise<MailboxGrant | undefined>;
 }
 
 type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
@@ -58,7 +62,8 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
  *
  * - A grant reaches `latest` as a signature over it, either written as a record or as the root of
  *   a bundle that an `Inbound` record says came in.
- * - Each signature is verified by the signed identity it carries, as by `noVersions`.
+ * - Each signature is verified by the signed identity it carries, as by `noVersions`, and `grantFrom`
+ *   says whether that version still counts.
  * - A bundle that came in and does not read as a grant gives no row, since anyone can send a
  *   bundle to a mailbox.
  * - The scan still fails when the store fails to give a blob of that bundle, so a later scan of
@@ -109,19 +114,21 @@ export class MailboxGrants {
 
   #latestOf(rows: Rows<MailboxGrantRow>, reader: Reader): LatestGrants {
     return {
-      grantFrom: async (from, to) => {
-        let last: MailboxGrantRow | undefined;
-        for await (const row of rows.range([from, to])) last = row;
-        return last === undefined ? undefined : this.#read(last[3], reader);
+      grantFrom: async (from, to, versions) => {
+        let latest: Signature | undefined;
+        for await (const [, , , link] of rows.range([from, to])) {
+          const signature = await this.#identity.signatures.read(link, reader, noVersions);
+          const current = await versions.current(signature.signedIdentity);
+          if (hasSigner(current.identity, signature.key)) latest = signature;
+        }
+        return latest === undefined ? undefined : this.#grantOf(latest, reader);
       },
     };
   }
 
-  async #read(link: Link<Signature>, reader: Reader): Promise<MailboxGrant> {
-    const { signatures, signedIdentities } = this.#identity;
-    const signature = await signatures.read(link, reader, noVersions);
+  async #grantOf(signature: Signature, reader: Reader): Promise<MailboxGrant> {
     const object = await readObject(reader, signature.object, this.schema);
-    return { object, signature, to: await signedIdentities.read(object.data.to.$link, reader) };
+    return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.$link, reader) };
   }
 }
 

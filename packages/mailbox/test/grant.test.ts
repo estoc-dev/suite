@@ -11,7 +11,7 @@ import {
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { loadIntake, MemoryBackend, PrivateStore, type ReceivedBundle, Store, view } from "@estoc/store";
+import { type Intake, loadIntake, MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, loadMailboxGrants, loadPost, type Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -32,6 +32,7 @@ interface Person {
   readonly root: Link<KeyObject>;
   readonly store: Store;
   readonly post: Post;
+  readonly intake: Intake;
   readonly inbox: Inbox;
   collect(): Promise<unknown>;
 }
@@ -44,10 +45,11 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const store = new Store(json, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = await loadPost(store, privateStore, { transports: [network.transport], validator: defaultValidator });
+  const intake = await loadIntake(store, { validator: defaultValidator });
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
-  return { actor, root: actor.signedIdentity.identity.root.link, store, post, inbox, collect };
+  return { actor, root: actor.signedIdentity.identity.root.link, store, post, intake, inbox, collect };
 }
 
 // `someone`, with their store and mailbox, signing for the root of `version` as `agent`.
@@ -80,23 +82,17 @@ async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<Json
   return signature;
 }
 
-// `to` keeps `bundle` at `at`, by its own clock.
-async function keep(to: Person, bundle: ReceivedBundle, at: number) {
-  const intake = await loadIntake(to.store, { validator: defaultValidator, clock: () => at });
-  await intake.receive(bundle);
-}
-
-// `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it at `at`.
-async function handOver(from: Person, to: Person, root: Link<unknown>, at = Date.now()) {
+// `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
+async function handOver(from: Person, to: Person, root: Link<unknown>) {
   const closure = await from.store.closure(root);
   const bytes = closure.get(root);
   assert.exists(bytes);
-  await keep(to, readBundle(writeBundle({ bytes }, closure.values())), at);
+  await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
 }
 
-// `someone` is handed `version` by itself, and keeps it at `at`.
-const seeVersion = (someone: Person, version: SignedIdentityObject, at: number) =>
-  keep(someone, readBundle(writeBundle({ bytes: version.bytes }, version.blobs)), at);
+// `someone` is handed `version` by itself, and keeps it.
+const seeVersion = (someone: Person, version: SignedIdentityObject) =>
+  someone.intake.receive(readBundle(writeBundle({ bytes: version.bytes }, version.blobs)));
 
 // `from` is handed the mailbox `to` receives at, sends what its store holds under `root` there, and `to` collects it.
 async function send(from: Person, to: Person, root: Link<unknown>) {
@@ -226,90 +222,67 @@ describe("a grant by an agent that a later version does not list", () => {
     };
   };
 
-  it("counts when it came in before that version, once the reader has seen it", async () => {
+  it("counts until the reader sees that version", async () => {
     const { former, bob } = await twoPeople();
     const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
-    await handOver(former, bob, signature.link, 3_000);
-    await seeVersion(bob, removalVersion, 6_000);
-
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
-  });
-
-  it("does not count when it came in after that version, once the reader has seen it", async () => {
-    const { former, bob } = await twoPeople();
-    const signature = await give(former, bob, [former.inbox.mailbox], 6_000);
-    await handOver(former, bob, signature.link, 7_000);
+    await handOver(former, bob, signature.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
 
-    await seeVersion(bob, removalVersion, 8_000);
+    await seeVersion(bob, removalVersion);
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
   });
 
-  it("does not count by the at it writes, which its agent chooses", async () => {
+  it("does not count when it comes in after the reader saw that version", async () => {
     const { former, bob } = await twoPeople();
+    await seeVersion(bob, removalVersion);
     const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
-    await handOver(former, bob, signature.link, 7_000);
-    await seeVersion(bob, removalVersion, 8_000);
+    await handOver(former, bob, signature.link);
 
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
   });
 
-  it("gives way to an earlier one that still counts when it does not count", async () => {
-    const { former, bob } = await twoPeople();
-    const earlier = await give(former, bob, [former.inbox.mailbox], 2_000);
-    const later = await give(former, bob, [], 3_000);
-    await handOver(former, bob, earlier.link, 4_000);
-    await handOver(former, bob, later.link, 7_000);
-    await seeVersion(bob, removalVersion, 8_000);
-
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(earlier.link);
-  });
-
-  it("still counts when it comes in again after that version", async () => {
-    const { former, bob } = await twoPeople();
-    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
-    await handOver(former, bob, signature.link, 3_000);
-    await seeVersion(bob, removalVersion, 6_000);
-    await handOver(former, bob, signature.link, 7_000);
-
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
-  });
-
-  it("comes after one by a key that the current version lists, whatever its at", async () => {
+  it("gives way to one by a key that the current version lists, whatever its at", async () => {
     const { former, current, bob } = await twoPeople();
     const oldGrant = await give(former, bob, [former.inbox.mailbox], 9_000_000);
-    await handOver(former, bob, oldGrant.link, 3_000);
-    const signedAgain = await give(current, bob, [current.inbox.mailbox], 6_000);
-    await handOver(current, bob, signedAgain.link, 7_000);
+    await handOver(former, bob, oldGrant.link);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(oldGrant.link);
 
+    const signedAgain = await give(current, bob, [current.inbox.mailbox], 6_000);
+    await handOver(current, bob, signedAgain.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signedAgain.link);
   });
 
-  it("counts for a reader that has not seen that version, whenever it came in", async () => {
-    const { former, bob } = await twoPeople();
-    const signature = await give(former, bob, [former.inbox.mailbox], 6_000);
-    await handOver(former, bob, signature.link, 7_000);
+  it("gives way to an older one by a key that the current version still lists", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const version = await delegate(wallet, [formerAgent.key, currentAgent.key], 3_000);
+    const [former, current] = [signingAs(alice, formerAgent, version), signingAs(alice, currentAgent, version)];
+    const older = await give(current, bob, [current.inbox.mailbox], 3_000);
+    const newer = await give(former, bob, [], 4_000);
+    await handOver(alice, bob, older.link);
+    await handOver(alice, bob, newer.link);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(newer.link);
 
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
+    await seeVersion(bob, removalVersion);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(older.link);
   });
 
-  it("counts from the record its signer wrote by its own at", async () => {
-    const { former } = await twoPeople();
+  it("does not count as a record once another record carries that version", async () => {
+    const { former, current } = await twoPeople();
     const carol = await person(3);
-    const beforeRemoval = await give(former, carol, [former.inbox.mailbox], 2_000);
-    await give(former, carol, [], 6_000);
-    await seeVersion(former, removalVersion, 8_000);
+    await give(former, carol, [former.inbox.mailbox], 9_000_000);
+    const signedAgain = await give(current, carol, [], 6_000);
 
-    expect((await grantFrom(former, former, carol))?.signature.link).toBe(beforeRemoval.link);
+    expect((await grantFrom(former, former, carol))?.signature.link).toBe(signedAgain.link);
   });
 
   it("counts again once a later version lists its agent again", async () => {
     const { former, bob } = await twoPeople();
     const signature = await give(former, bob, [former.inbox.mailbox], 6_000);
-    await handOver(former, bob, signature.link, 7_000);
-    await seeVersion(bob, removalVersion, 8_000);
-    await seeVersion(bob, await delegate(wallet, [formerAgent.key], 9_000), 10_000);
+    await handOver(former, bob, signature.link);
+    await seeVersion(bob, removalVersion);
+    expect(await grantFrom(bob, former, bob)).toBeUndefined();
 
+    await seeVersion(bob, await delegate(wallet, [formerAgent.key], 9_000));
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
   });
 });

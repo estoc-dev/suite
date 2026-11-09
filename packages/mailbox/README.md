@@ -343,41 +343,38 @@ as the index it holds is. Its index reads the signatures over grants that
 the user writes as records, and the bundles that `Inbound` records say
 came in, at a mailbox or out of band, whose root is such a signature. Each
 gives a row of the root of
-the signer, the root of `to`, `at`, the link of the signature and since
-when the store holds it: the `at` of the `Inbound`, or the grant's own `at`
-for a record. The signature is verified by the signed identity it carries,
-as by `noVersions`. A bundle that came in and does not read as a grant gives no
+the signer, the root of `to`, `at` and the link of the signature; the
+signature is verified by the signed identity it carries, as by
+`noVersions`. A bundle that came in and does not read as a grant gives no
 row, since anyone can send a bundle to a mailbox. The scan still fails
 when the store fails to give a blob of it, so a later scan of the index
 reads the bundle again. `grantFrom` takes the links of two roots and the
-`People` of the versions a reader has seen, and gives the latest grant of
-the first to the second that counts by them,
+`Versions` of a reader, and gives the latest grant of the first to the
+second whose key signs for the current version,
 with the signature over it and the signed identity it is to, or
-`undefined` when the store holds none that does.
+`undefined` when the store holds none.
 
-`grants.people` is a `View` that gives those `People`, from the versions the
+`grants.people` is a `View` that gives the `People` of the versions the
 store has seen in its grants and in what came in: the one a signature
 carries, for a signature over a grant written as a record or at the root of
-a bundle, and a signed identity at the root of a bundle. Its `index` can be
-joined with `union` to an application's own index of versions.
+a bundle, and a signed identity at the root of a bundle. Those `People` are
+`Versions` too. Its `index` can be joined with `union` to an application's
+own index of versions.
 
 A root removes an agent by signing a version that does not list it, as in
-`@estoc/identity`. The grants the agent signed before stay in use, so a
-sender keeps sending to those mailboxes, and the agent cannot add new ones:
+`@estoc/identity`. A reader that has seen that version no longer counts the
+grants the agent signed, whenever they came in and whatever `at` they write:
 
-- A grant signed by a key that the current version does not list counts when
-  the store held it before the `at` of the version that removed the key, the
-  first the reader has seen after the last that lists it. The time it came in
-  is by the reader's clock, which the agent cannot change, and the agent
-  chooses the grant's own `at`, so that does not say when.
-- A grant signed by a key that the current version lists comes before any
-  signed by a key it does not list, whatever their `at`s. So a root replaces
-  what a removed agent signed by having a key it lists sign a grant, however
-  late an `at` the agent wrote.
-- A reader holds only the versions it has seen, so a key counts as listed
-  until the reader sees the version that removes it. Once it does, a grant
-  that came in after that version's `at` stops counting, even one that came
-  in before the reader saw it.
+- `grantFrom` then gives the latest grant by a key the current version lists,
+  which may be an older one, or `undefined` when there is none.
+- To keep taking messages at a mailbox, the signer has a key the current
+  version lists sign a grant of it again, and sends it to the one it is to.
+  The signature carries the new version, so that reader sees the removal and
+  the new grant together.
+- A reader holds only the versions it has seen, so a key counts until the
+  reader sees the version that removes it.
+- The store keeps what came in, so a later version that lists the agent again
+  makes its grants count again.
 
 ## Transports
 

@@ -164,23 +164,24 @@ its own acceptance. The client refuses an
 acknowledgement that is signed by another root than the service's or that
 acknowledges another acceptance than the one it sent.
 
-The identity versions the service holds come from what it gave out: the
-versions that signed its Services and its acknowledgements, and those that
-the acceptances and the requests for mailboxes it acknowledged carry. Each
-acceptance it takes is acknowledged, so the version it carries counts from
-then on. A wallet takes a device out by signing a later version of its
-identity that does not list it, and the service refuses an acceptance by an
-agent that the current version does not list: the later of the latest it has
-seen and the one the acceptance carries. It verifies that first, so a
-removed device is refused even when the wallet has an account, and even for
-an acceptance that the service acknowledged before. Say the wallet's first
-version lists a laptop and its second only a phone: once the phone has
-accepted by the second, the laptop's acceptance by the first is refused,
-whichever of them opened the account. What a removed key signed stops
-counting for a reader that has seen the later version; what has to keep
-counting is signed again by a key that the current version lists. Two
-acceptances that open one account at once are both acknowledged, and one of
-them is answered 201, the other 200.
+The identity versions the service holds are the signed identities in its
+store, which it reads by their schema. The store keeps what the service gave
+out, with its closure, so these are the versions that signed its Services and
+its acknowledgements, and those that the acceptances and the requests for
+mailboxes it acknowledged carry. Each acceptance it takes is acknowledged, so
+the version it carries counts from then on. A wallet takes a device out by
+signing a later version of its identity that does not list it, and the
+service refuses an acceptance by an agent that the current version does not
+list: the later of the latest it has seen and the one the acceptance carries.
+It verifies that first, so a removed device is refused even when the wallet
+has an account, and even for an acceptance that the service acknowledged
+before. Say the wallet's first version lists a laptop and its second only a
+phone: once the phone has accepted by the second, the laptop's acceptance by
+the first is refused, whichever of them opened the account. What a removed
+key signed stops counting for a reader that has seen the later version; what
+has to keep counting is signed again by a key that the current version lists.
+Two acceptances that open one account at once are both acknowledged, and one
+of them is answered 201, the other 200.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service took this
@@ -196,13 +197,15 @@ which services the identity has accounts and mailboxes at, by their roots,
 and where they are, without asking them. When the service refuses, or its
 answer is refused, `accept` and `open` write nothing.
 
-The client holds identity versions as the service does, from the same
-records in its store: the versions that signed the Services and the
-acknowledgements, and those that the acknowledged acceptances and requests
-carry. `fetch`, `latestOf` and `accept` verify the service's signatures
-against them, so a Service, an offer or an acknowledgement signed by a key
-that a later version of the service's identity does not list is refused once
-the store holds that version.
+The client holds identity versions as the service does, as the signed
+identities in its store. That store can hold other records than the service
+gave out, so it can have seen a version that the service has not. `fetch`,
+`latestOf` and `accept` verify the service's signatures against them, so a
+Service, an offer or an acknowledgement signed by a key that a later version
+of the service's identity does not list is refused once the store holds that
+version, whatever record brought it. A service from `loadMailboxService` signs
+with its root's key, so its signatures are refused this way only after the
+root signs a later version that does not list that key.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is written, as `stage` of `@estoc/store` gives it. So a

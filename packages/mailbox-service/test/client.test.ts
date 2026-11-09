@@ -19,6 +19,7 @@ import {
   memoryStore,
   offerSchema,
   schemes,
+  serviceActor,
   serviceIdentity,
   serviceRoot,
   serviceSchemaRead,
@@ -186,6 +187,36 @@ describe("a service reached at its origin", () => {
     const service = await services.fetch(origin);
     expect(service.account?.link).toBe(offer.link);
     expect((await services.latestOf(service.signedIdentity))?.link).toBe(service.link);
+  });
+
+  it("refuses a Service by an agent that the version signing an offer it lists takes out", async () => {
+    const [removedAgent, listedAgent] = [signer(ed25519, 7), signer(ed25519, 8)];
+    const earlier = signatures.actor(removedAgent, await delegate(serviceSigner, [removedAgent.key], 1_000));
+    const later = signatures.actor(listedAgent, await delegate(serviceSigner, [listedAgent.key], 2_000));
+    const { origin } = await startServer(
+      async (_, origin) => new Response(await signedService(origin, [[offer, later]], earlier)),
+    );
+    const { store, services } = await client();
+    await expect(services.fetch(origin)).rejects.toThrow(/does not sign for the current version/);
+    expect(await records(store)).toEqual([]);
+  });
+
+  it("refuses a Service it took once the store holds, by another record, a later version that does not list the key that signed it", async () => {
+    const { origin } = await startService();
+    const { store, services } = await client();
+    const { signedIdentity } = await services.fetch(origin);
+    const later = await delegate(serviceSigner, [signer(ed25519, 7).key], 2_000);
+    await store.write({ records: [later], blobs: later.blobs });
+    await expect(services.latestOf(signedIdentity)).rejects.toThrow(/does not sign for the current version/);
+  });
+
+  it("takes what a service signs by its root while the store holds a later version that lists the root, which the service has not seen", async () => {
+    const { origin } = await startService({ start: 1_000 });
+    const { store, services } = await client();
+    const { signedIdentity: later } = await serviceActor(2_000);
+    await store.write({ records: [later], blobs: later.blobs });
+    const account = await (await accountAt(services, origin)).accept(await actorOf(alice));
+    expect(account.service.identity.link).toBe(serviceIdentity(1_000).link);
   });
 
   it("refuses an account offer that names another root than that of the identity that signed it", async () => {

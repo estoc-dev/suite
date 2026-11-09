@@ -168,12 +168,13 @@ class MailboxService {
     root: Link<KeyObject>,
     kit: IdentityKit,
     schemas: Schemas,
+    people: PeopleView,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#actor = actor;
     this.#root = root;
     this.#locations = locationsView(kit.signatures, schemas.service);
-    this.#people = peopleView(kit, schemas);
+    this.#people = people;
     this.#acknowledgements = acknowledgementsView(kit.signatures, schemas.acknowledgement);
     this.#signatures = kit.signatures;
     this.#schemas = schemas;
@@ -495,7 +496,8 @@ export async function loadMailboxService(
     encodeObject(schemas.mailboxOffer, { identity, ...terms }),
   ];
 
-  const people = await view(store, peopleView(kit, schemas));
+  const seenPeople = peopleView(kit.versions);
+  const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures, schemas.service));
   const serviceSignatures = await Promise.all(
     (await locations.servicesOf(identity.$link)).map((link) => signatures.read(link, store, people)),
@@ -527,7 +529,7 @@ export async function loadMailboxService(
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, identity.$link, kit, schemas, { ...options, clock });
+  return new MailboxService(actor, identity.$link, kit, schemas, seenPeople, { ...options, clock });
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

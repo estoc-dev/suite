@@ -97,13 +97,14 @@ export interface Store {
   records(): AsyncIterable<Link<never>>;
   /**
    * The closure of the blob that `link` names: the blob and every blob it links to, directly or
-   * through others. It is empty when the store does not hold the blob.
+   * through others.
    *
    * - An object of the store's encoding links to the blobs whose links it holds, its schema among
    *   them.
    * - Any other blob is bytes and links to nothing, such as an image, or JSON that names no schema
    *   whatever links it seems to hold.
    *
+   * @throws when the store does not hold a blob of the closure, the one `link` names among them.
    * @throws when the backend gives other bytes under a link in the closure.
    */
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
@@ -233,7 +234,7 @@ class StoreOf<D> implements Store, RowKeeper {
     const pendingLinks = [link];
     for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
       const bytes = await this.get(next);
-      if (bytes === undefined) continue;
+      if (bytes === undefined) throw new Error(`the store does not hold ${next}`);
       closureBlobs.set(next, bytes);
       for (const targetLink of this.#linksIn(bytes)) {
         if (seenLinks.has(targetLink)) continue;

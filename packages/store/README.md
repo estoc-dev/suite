@@ -156,9 +156,10 @@ staged batch is not a store: it has no `write`, `closure` or `stage`.
 
 ## Reading
 
-`closure(link)` gathers the closure of the blob that `link` names, all of
-which the store holds. The closure of an object is what a bundle carrying
-it holds:
+`closure(link)` gathers the closure of the blob that `link` names, and rejects
+when the store does not hold all of it; `get` gives nothing for a blob the
+store does not hold. The closure of an object is what a bundle carrying it
+holds:
 
 ```ts
 const files = writeBundle(signature, (await store.closure(signature.link)).values());

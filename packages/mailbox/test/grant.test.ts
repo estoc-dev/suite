@@ -11,7 +11,7 @@ import {
   type Signer,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Json, json, type Link } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, json, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import {
   type Intake,
@@ -115,7 +115,7 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
 }
 
 const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
-  (await view(store, grants.latest)).grantFrom(from.root, to.root, await view(store, seenPeople));
+  (await view(store, grants.series)).grantFrom(from.root, to.root, await view(store, seenPeople));
 
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {
@@ -178,6 +178,16 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.object.data.mailboxes).toEqual([{ $link: alice.inbox.mailbox }]);
   });
 
+  it("reads the same from below the root of what came in as from the record its signer wrote", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    const countersignature = await alice.actor.sign(signature);
+    await alice.store.write({ records: [countersignature] });
+    await handOver(alice, bob, countersignature.link);
+
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
+  });
+
   it("is the one with the greatest at, whichever way each came in", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const mailedGrant = await give(alice, bob, [alice.inbox.mailbox], 1_000);
@@ -214,6 +224,20 @@ describe("the latest grant of one person to another", () => {
     const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: { $link: grant.link } });
     await mallory.store.write({ records: [forgedSignature], blobs: blobsOf(grant, signature, bob) });
     await send(mallory, bob, forgedSignature.link);
+
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
+  });
+
+  it("is not one that came in over an object that names the schema of a grant and does not fit it", async () => {
+    const [alice, bob, mallory] = await Promise.all([person(1), person(2), person(4)]);
+    const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    await send(alice, bob, signature.link);
+
+    const { encoding, link } = grants.schema;
+    const misfit = encoding.encode(encoding.object({ at: 2_000 }, link));
+    const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
+    const blobs = [misfit, ...grants.schema.blobs, ...signatures.schema.blobs, ...misfitSignature.signedIdentity.blobs];
+    await bob.intake.receive(readBundle(writeBundle({ bytes: misfitSignature.bytes }, blobs)));
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
   });

@@ -1,4 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
+import type { Actor } from "@estoc/identity";
 import {
   type Bytes,
   type EncodedObject,
@@ -15,6 +16,8 @@ import {
 } from "@estoc/object";
 import { type Intake, loadIntake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
+import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
+import { loadMailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
@@ -61,6 +64,7 @@ export class Post {
   readonly #privateStore: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
+  readonly #validator: JsonSchemaValidator;
   readonly #intake: Intake;
   readonly #schemas: Schemas;
 
@@ -69,6 +73,7 @@ export class Post {
     privateStore: PrivateStore,
     transports: readonly Transport[],
     clock: () => number,
+    validator: JsonSchemaValidator,
     intake: Intake,
     schemas: Schemas,
   ) {
@@ -76,8 +81,15 @@ export class Post {
     this.#privateStore = privateStore;
     this.#transports = transports;
     this.#clock = clock;
+    this.#validator = validator;
     this.#intake = intake;
     this.#schemas = schemas;
+  }
+
+  /** Sending and reading as `actor`, by the Mailbox Grants and the identity versions the store holds. */
+  async correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Promise<Correspondence> {
+    const grants = await loadMailboxGrants(this.#validator, identity);
+    return new Correspondence(this.#store, this, actor, this.#clock, grants, identity);
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
@@ -162,7 +174,7 @@ export class Outbox {
    * takes the bundle, writes that it went out. Sending a root again sends the same bundle and
    * writes another record.
    *
-   * @throws when the store does not hold `root`.
+   * @throws when the store does not hold `root` or a blob of its closure; nothing is sent then.
    * @throws {UndeliveredMessage} when the transport cannot hand the bundle on; nothing is written
    *   then.
    */
@@ -275,5 +287,5 @@ export async function loadPost(
     compile<OutboundData>(outboundSchema),
     compile<MailboxKeyData>(mailboxKeySchema),
   ]);
-  return new Post(store, privateStore, transports, clock, intake, { outbound, key });
+  return new Post(store, privateStore, transports, clock, validator, intake, { outbound, key });
 }

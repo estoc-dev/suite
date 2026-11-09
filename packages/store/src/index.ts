@@ -1,7 +1,7 @@
 export {
   type InboundData,
   type InboundObject,
-  Intake,
+  type Intake,
   type IntakeOptions,
   inboundSchema,
   loadIntake,

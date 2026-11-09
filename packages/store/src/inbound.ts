@@ -75,8 +75,8 @@ export class Intake {
    * Keeps `bundle` in one write with its record, which gives `via` as the channel when there is
    * one. What comes in twice is recorded twice, once for each time it came in.
    *
-   * @throws {RefusedBatch} when the bundle leaves out a blob in its root's closure that the store
-   *   does not hold, or the store does not hold `via`; nothing is kept then.
+   * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
+   *   the bundle nor held by the store; nothing is kept then.
    */
   async receive(bundle: ReceivedBundle, via?: Link<EncodedObject<Json>>): Promise<InboundObject> {
     const data: InboundData = { bundle: { $link: bundle.link }, at: this.#clock() };

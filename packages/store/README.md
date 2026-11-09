@@ -294,9 +294,9 @@ schema, and an index that reads `inboundSchema` covers them all.
 
 `receive` takes anything with a `link` and `blobs()`, as a `Bundle` has. The
 bundle and the record go in one write, which is refused with a `RefusedBatch`
-when the store does not hold `via`, or the bundle leaves out a blob in its
-root's closure that the store does not hold. What comes in twice is recorded
-twice, and a reader takes the earliest `at`:
+when a blob in the closure of the bundle's root or of `via` is neither in the
+bundle nor held by the store. What comes in twice is recorded twice, and a
+reader takes the earliest `at`:
 
 ```ts
 const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);

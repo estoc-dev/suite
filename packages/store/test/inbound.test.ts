@@ -127,7 +127,16 @@ describe("an intake", () => {
     expect(await store.get(note.link)).toBeUndefined();
   });
 
-  it("refuses a via that the store does not hold", async () => {
+  it("takes a via that the bundle carries", async () => {
+    const store = newStore();
+    const mailbox = object({ name: "a mailbox" });
+    const bundle = bundleOf(object({ text: "hello" }), [mailbox.bytes, ...anything.blobs]);
+    const record = await (await intakeOf(store)).receive(bundle, mailbox.link);
+    expect(record.data.via).toEqual({ $link: mailbox.link });
+    expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
+  });
+
+  it("refuses a via that neither the bundle nor the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const intake = await intakeOf(store);

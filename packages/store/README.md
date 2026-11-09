@@ -323,8 +323,8 @@ Inbound  {"bundle": <link of the root>, "at": <milliseconds>, "via": <link>}
 import { loadIntake } from "@estoc/store";
 
 const intake = await loadIntake(store, { validator });
-await intake.receive(bundle);               // handed over out of band
-await intake.receive(bundle, mailbox.link); // at a mailbox the store holds
+await intake.receive(bundle);          // handed over out of band
+await intake.receive(bundle, mailbox); // at a mailbox
 ```
 
 `at` is by the clock of the device that writes the record, so a sender has
@@ -333,11 +333,12 @@ what was handed over out of band. Which channel it is shows in the object it
 links to, so another channel is another kind of object and not another
 schema, and an index that reads `inboundSchema` covers them all.
 
-`receive` takes anything with a `link` and `blobs()`, as a `Bundle` has. The
-bundle and the record go in one write, which is refused with a `RefusedBatch`
-when a blob in the closure of the bundle's root or of `via` is neither in the
-bundle nor held by the store. What comes in twice is recorded twice, and a
-reader takes the earliest `at`:
+`receive` takes anything with a `link` and `blobs()`, as a `Bundle` has, and
+the channel's object, which it keeps with its schema whether or not the
+store held them. The bundle, the channel and the record go in one write,
+which is refused with a `RefusedBatch` when a blob in the closure of the
+bundle's root or of `via` is neither in that write nor held by the store.
+What comes in twice is recorded twice, and a reader takes the earliest `at`:
 
 ```ts
 const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);

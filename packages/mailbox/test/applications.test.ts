@@ -103,10 +103,10 @@ describe("a chat line", () => {
     const [receivedBundle] = await atBob.take();
     assert.exists(receivedBundle);
     // Bob passes on what he read: the signature, with the line and the signed identity it names.
-    const read = await readSigned(receivedBundle, chat);
-    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
-      read.object.bytes,
-      ...read.signature.signedIdentity.blobs,
+    const signedLine = await readSigned(receivedBundle, chat);
+    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(signedLine.signature, [
+      signedLine.object.bytes,
+      ...signedLine.signature.signedIdentity.blobs,
     ]);
     const [passedBundle] = await atCarol.take();
     assert.exists(passedBundle);
@@ -302,15 +302,15 @@ describe("two people who meet", () => {
       };
       // Who wrote each line among `deliveries`, and its text, leaving out what is no message and what is no line.
       const read = async (deliveries: readonly Delivery[]) => {
-        const shown: [Link<KeyObject>, string][] = [];
+        const shownLines: [Link<KeyObject>, string][] = [];
         for (const { mailbox, bundle } of deliveries) {
           const message = await correspondence.messageAt(mailbox, bundle);
           const line = await lines.read(bundle, store);
           if (message !== undefined && line !== undefined) {
-            shown.push([message.signedIdentity.identity.root.link, line.object.data.text]);
+            shownLines.push([message.signedIdentity.identity.root.link, line.object.data.text]);
           }
         }
-        return shown;
+        return shownLines;
       };
       const { signedIdentity } = actor;
       const root = signedIdentity.identity.root.link;

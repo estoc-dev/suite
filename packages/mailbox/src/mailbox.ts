@@ -88,20 +88,25 @@ export async function mailboxFrom(bytes: Bytes<EncodedObject<Json>>, { transport
   return new Mailbox(data, await publicKeyFrom(hex.decode(data.key)), transport);
 }
 
-/** The data of a mailbox, its key checked, and the transport whose schema it is written to. */
+/** A mailbox, its data with the key checked, and the transport whose schema it is written to. */
 export function readMailbox(
   bytes: Bytes<EncodedObject<Json>>,
   transports: readonly Transport[],
-): { readonly data: JsonObject & { readonly key: string }; readonly transport: Transport } {
+): {
+  readonly mailbox: EncodedObject<Json>;
+  readonly data: JsonObject & { readonly key: string };
+  readonly transport: Transport;
+} {
   const named = schemaOf(bytes, json);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);
-  const { data } = decodeObject(bytes, transport.schema);
+  const mailbox = decodeObject(bytes, transport.schema);
+  const { data } = mailbox;
   // A transport may write its schema by hand, so the key every mailbox has is
   // checked here and not left to it.
   const { key } = data;
   if (typeof key !== "string" || !/^[0-9a-f]{64}$/.test(key)) {
     throw new Error("a mailbox's key is an x25519 public key, 32 bytes in lowercase hex");
   }
-  return { data: data as JsonObject & { key: string }, transport };
+  return { mailbox, data: data as JsonObject & { key: string }, transport };
 }

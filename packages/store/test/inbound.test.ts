@@ -81,13 +81,16 @@ describe("an intake", () => {
     expect(await store.get(inbound.link)).toEqual(inbound.bytes);
   });
 
-  it("gives the channel a bundle came in by as via", async () => {
+  it("keeps the channel a bundle came in by with its schema, and gives it as via", async () => {
     const store = newStore();
-    const mailbox = object({ name: "a mailbox" });
-    await store.write({ records: [mailbox], blobs: anything.blobs });
+    const channel = await encodeSchema({ $schema: DRAFT, title: "Channel" }, defaultValidator);
+    const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
-    const record = await (await intakeOf(store)).receive(bundleOf(note), mailbox.link);
+    const record = await (await intakeOf(store)).receive(bundleOf(note), mailbox);
     expect(record.data).toEqual({ bundle: { $link: note.link }, at: 1000, via: { $link: mailbox.link } });
+    expect(await recordsOf(store)).toEqual([record.link]);
+    expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
+    expect(await store.get(channel.link)).toEqual(channel.bytes);
   });
 
   it("takes the time from Date.now unless given a clock", async () => {
@@ -110,9 +113,9 @@ describe("an intake", () => {
 
   it("takes a bundle that leaves out blobs the store holds", async () => {
     const store = newStore();
-    const held = object({ text: "held" });
-    await store.write({ records: [held], blobs: anything.blobs });
-    const reply = object({ to: { $link: held.link } });
+    const heldNote = object({ text: "held" });
+    await store.write({ records: [heldNote], blobs: anything.blobs });
+    const reply = object({ to: { $link: heldNote.link } });
     await (await intakeOf(store)).receive(bundleOf(reply, []));
     expect(await store.get(reply.link)).toEqual(reply.bytes);
   });
@@ -127,22 +130,15 @@ describe("an intake", () => {
     expect(await store.get(note.link)).toBeUndefined();
   });
 
-  it("takes a via that the bundle carries", async () => {
+  it("refuses a channel that links to a blob neither the bundle nor the store holds, and keeps nothing", async () => {
     const store = newStore();
-    const mailbox = object({ name: "a mailbox" });
-    const bundle = bundleOf(object({ text: "hello" }), [mailbox.bytes, ...anything.blobs]);
-    const record = await (await intakeOf(store)).receive(bundle, mailbox.link);
-    expect(record.data.via).toEqual({ $link: mailbox.link });
-    expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
-  });
-
-  it("refuses a via that neither the bundle nor the store holds", async () => {
-    const store = newStore();
+    const mailbox = object({ name: "a mailbox", icon: { $link: linkOf(utf8("not in the bundle")) } });
     const note = object({ text: "hello" });
     const intake = await intakeOf(store);
-    await expect(intake.receive(bundleOf(note), object({ name: "a mailbox" }).link)).rejects.toThrow(RefusedBatch);
+    await expect(intake.receive(bundleOf(note), mailbox)).rejects.toThrow(RefusedBatch);
     expect(await recordsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
+    expect(await store.get(mailbox.link)).toBeUndefined();
   });
 });
 
@@ -168,10 +164,10 @@ describe("the records of an intake", () => {
   it("are the only Inbound an index reads: one that someone sends stays in the closure of what came in", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const sent = encodeObject(inbound, { bundle: { $link: note.link as Link<never> }, at: 0 });
-    await (await intakeOf(store)).receive(bundleOf(sent, [note.bytes, ...anything.blobs, ...inbound.blobs]));
+    const sentRecord = encodeObject(inbound, { bundle: { $link: note.link as Link<never> }, at: 0 });
+    await (await intakeOf(store)).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inbound.blobs]));
     const rows: (readonly [Link<never>, number])[] = [];
     for await (const row of (await scan(store, cameIn)).range([])) rows.push(row);
-    expect(rows).toEqual([[sent.link as Link<never>, 1000]]);
+    expect(rows).toEqual([[sentRecord.link as Link<never>, 1000]]);
   });
 });

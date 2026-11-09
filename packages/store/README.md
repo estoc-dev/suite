@@ -260,8 +260,9 @@ const versionsHeld = indexOverBlobs(
 - A blob that is not an object in the encoding of the schema, or that names
   the schema and does not fit it, gives no row, though a record that does not
   fit makes a scan of `indexOver` throw. Anyone can send such a blob, and a scan
-  that threw on it would fail from then on. `selection` and `rows` give no row
-  of what they cannot read, for the same reason.
+  that threw on it would fail from then on. What `selection` or `rows` throw
+  fails the scan, so for the same reason they have to catch what they cannot
+  read and give no row of it.
 - What is out of reach of links is out of reach here too: what is encrypted,
   or a bundle wrapped up in a blob, is one blob of bytes.
 - A link does not say what it names, so a scan reads every blob, attachments

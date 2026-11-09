@@ -33,7 +33,6 @@ export type Prefix<K extends Key> =
 
 type Part<K extends Key> = (blob: ScannedBlob) => AsyncIterable<K>;
 
-/** The parts of an index, by what a scan hands them. */
 interface Parts<K extends Key> {
   readonly records: readonly Part<K>[];
   readonly blobs: readonly Part<K>[];
@@ -44,12 +43,12 @@ let partsOf: <K extends Key>(index: Index<K>) => Parts<K>;
 
 /**
  * What an application keeps of what some selections take from a store, as rows: of the records its
- * user writes, or, for an index over blobs, of the blobs the store holds. An index is the set of
- * rows that those give, so going through all of them and adding each as it is written come to the
- * same rows, whatever the order and however often one is added.
+ * user writes, or, for an index over blobs, of the blobs the store holds.
  *
- * An index comes only from `indexOver`, `indexOverBlobs` and `union`, so what it reads is said by
- * its selections and not by its rows.
+ * - An index is the set of rows that those give, so going through all of them and adding each as it
+ *   is written come to the same rows, whatever the order and however often one is added.
+ * - An index comes only from `indexOver`, `indexOverBlobs` and `union`, so what it reads is said by
+ *   its selections and not by its rows.
  */
 export class Index<K extends Key> {
   readonly #parts: Parts<K>;
@@ -108,8 +107,9 @@ export function indexOver<K extends Key, T>(
  *   be a stranger's.
  * - A blob that is not an object in the encoding of the schema, or that names the schema and does
  *   not fit it, gives no row. Anyone can send one, and a scan that threw on it would fail from then
- *   on. For the same reason `selection` and `rows` give no row of what they cannot read, rather
- *   than throw.
+ *   on.
+ * - What `selection` or `rows` throw fails the scan, so for the same reason they have to catch what
+ *   they cannot read and give no row of it.
  * - `reader` throws as it does for `indexOver`, and a scan of the index fails with that even where
  *   `selection` or `rows` catch it.
  * - A scan reads every blob the store holds, attachments as well, once for each index.

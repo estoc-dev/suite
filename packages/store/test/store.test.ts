@@ -28,6 +28,7 @@ const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unkno
   has: (link) => backend.has(link),
   put: (blobs, records) => backend.put(blobs, records),
   records: (start) => backend.records(start),
+  blobs: (start) => backend.blobs(start),
 });
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
@@ -156,6 +157,7 @@ describe("a store", () => {
       has: () => Promise.reject(diskError),
       put: () => Promise.reject(diskError),
       records: (start) => backend.records(start),
+      blobs: (start) => backend.blobs(start),
     });
     await expect(failingStore.write({ records: [note], blobs: anything.blobs })).rejects.toBe(diskError);
     await expect(failingStore.write({ records: [note], blobs: [image, ...anything.blobs] })).rejects.toBe(diskError);

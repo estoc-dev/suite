@@ -51,6 +51,11 @@ export class SqliteBackend implements Backend {
     for (const { link } of rows) yield link as Link<never>;
   }
 
+  async *blobs(start = 0): AsyncIterable<Link<unknown>> {
+    const rows = this.#sql.all`SELECT link FROM blobs ORDER BY rowid LIMIT -1 OFFSET ${start}`;
+    for (const { link } of rows) yield link as Link<unknown>;
+  }
+
   /** Closes the file, after which every call rejects. */
   close(): void {
     this.#database.close();

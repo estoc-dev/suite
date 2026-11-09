@@ -59,6 +59,14 @@ An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
 to them. So the store keeps the list itself rather than working it out.
 
+An index can still read the blobs a store holds by schema, through
+`indexOverBlobs`, and that is for objects that carry their authority in a
+signature. A signed identity reads the same whoever sent it and wherever it
+sits in a closure, and all that a stranger can send is a version its root
+signed. An unsigned contact read this way would be the stranger's, among the
+user's own. The types do not tell the two apart, so this rule is kept by the
+schema a program gives it. A `Store` has no method that lists its blobs.
+
 ## Writing
 
 A write puts in a batch: objects the user writes, under `records`, and
@@ -193,9 +201,9 @@ const rows = await scan(store, byTag);
 for await (const [, at, note] of rows.range(["lunch"])) …;
 ```
 
-An index comes only from `indexOver`, of one selection, and from `union`,
-of indexes whose rows are of one type, so which records an index reads is
-said by its selections and not worked out in `rows`. Each part of a union
+An index comes only from `indexOver` and `indexOverBlobs`, of one selection,
+and from `union`, of indexes whose rows are of one type, so what an index reads
+is said by its selections and not worked out in `rows`. Each part of a union
 reads its own records and hands what it reads them as to its own rows, so
 the rows of objects of several schemas, or of several selections of one
 schema, need not tell one kind of object from another.
@@ -205,7 +213,7 @@ selection of the index, and what the selection reads it as to `rows`. A
 `SelectionBySchema` is handed instead the record read with its schema, and
 only a record of that schema: a record is checked against a schema once,
 however many selections by that schema read it. What came from elsewhere
-reaches an index only by following links from what the user wrote. A blob
+reaches `indexOver` only by following links from what the user wrote. A blob
 is read from the store once for a record, the record among them, however
 many selections and rows read it. `range(prefix)` gives the rows whose
 keys start with `prefix`, in the order of their keys. What does not fit in
@@ -223,13 +231,54 @@ index as long as the program holds it, so a program makes each index once:
 one made again by `indexOver` is another, and is read from all the records,
 as each index is once a program starts.
 
+`indexOverBlobs` reads the blobs a store holds in place of its records, for
+objects that carry their authority in a signature, as
+[What is listed](#what-is-listed) says. It takes a `SelectionBySchema`, which
+looks only at the objects of its schema:
+
+```ts
+import { SelectionBySchema } from "@estoc/object";
+import { indexOverBlobs } from "@estoc/store";
+
+// The signed identities a store holds, by root, however deep in a closure they
+// came. One whose root did not sign it gives no row.
+const versionsHeld = indexOverBlobs(
+  new SelectionBySchema(signedIdentities.schema, async ({ link }, reader) => {
+    try {
+      return await signedIdentities.read(link as Link<SignedIdentityObject>, reader);
+    } catch {
+      return undefined;
+    }
+  }),
+  ({ identity, link }) => [[identity.root.link, link]],
+);
+```
+
+- A write keeps only the blobs in the closures of its records, so these are
+  the blobs reached from what the user wrote, and a write cut short can leave
+  some besides, each with its closure.
+- A blob that is not an object in the encoding of the schema, or that names
+  the schema and does not fit it, gives no row, though a record that does not
+  fit makes a scan of `indexOver` throw. Anyone can send such a blob, and a scan
+  that threw on it would fail from then on. What `selection` or `rows` throw
+  fails the scan, so for the same reason they have to catch what they cannot
+  read and give no row of it.
+- What is out of reach of links is out of reach here too: what is encrypted,
+  or a bundle wrapped up in a blob, is one blob of bytes.
+- A link does not say what it names, so a scan reads every blob, attachments
+  as well, once for each index. A later scan reads only the blobs put since. A
+  staged batch reads the blobs it keeps on top of the rows its store keeps. A
+  private store reads only the blobs kept in it, as
+  [Private stores](#private-stores) says.
+
 Rows that catch what they fail to read, so as to give none of something
 that came from elsewhere and does not read as they expect, cannot tell that
 from a store that fails. A scan therefore fails when the store throws, or
 gives no blob, for a link that a selection or its rows read, even where they
 catch it: the rows of that record would be cut short. A scan that fails
 leaves the rows a store keeps as they were, so the next one reads that
-record again.
+record again. The same goes for an index over blobs, and for a blob that it
+reads and that turns out to be no object of its schema.
 
 ## Views
 
@@ -369,7 +418,9 @@ store's as well.
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,
 and one that the store holds already is not kept again. `scan` and `view`
-take a private store as they take a store.
+take a private store as they take a store. An index over blobs reads only the
+blobs kept in the private store, as its `records` lists only what was written
+to it, so one that the store beside holds is read only by following a link.
 
 A private store is only on the device that keeps it. Like a store, it only
 grows, so a key that is no longer used is still kept. Whether it is
@@ -381,7 +432,8 @@ A store keeps its blobs and its list in a backend, which keeps bytes and
 links as it is given them; the store does the hashing and decoding, of
 what goes in and of what comes back. The list keeps the order in which
 links were first put, and a backend gives it from any point on, so a store
-reads only the records listed since it last scanned.
+reads only the records listed since it last scanned. A backend gives the links
+of its blobs in the same way, which a store uses only for an index over blobs.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 

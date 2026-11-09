@@ -23,4 +23,8 @@ export class MemoryBackend implements Backend {
   async *records(start = 0): AsyncIterable<Link<never>> {
     yield* [...this.#records].slice(start);
   }
+
+  async *blobs(start = 0): AsyncIterable<Link<unknown>> {
+    yield* [...this.#blobs.keys()].slice(start);
+  }
 }

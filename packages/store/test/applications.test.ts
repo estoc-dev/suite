@@ -1,5 +1,13 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { ed25519, loadIdentity, noVersions, type Signer, SoftwareSigner } from "@estoc/identity";
+import {
+  ed25519,
+  loadIdentity,
+  noVersions,
+  type SignedIdentityObject,
+  type Signer,
+  SoftwareSigner,
+  signedIdentitySchema,
+} from "@estoc/identity";
 import {
   decodeObject,
   type EncodedObject,
@@ -18,7 +26,7 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
-import { MemoryBackend, Store } from "../src/index.ts";
+import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
 // is listed in their store; what comes from the other is kept with a record
@@ -40,7 +48,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     },
     defaultValidator,
   );
-const { identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { identities, signatures, signedIdentities, versions, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
@@ -49,10 +57,15 @@ const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
 const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
 const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", { bundle: linkSchema });
 const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { name: { type: "string" } });
+const carriedSchema = await schemaFor<{ readonly versions: readonly JsonLink<SignedIdentityObject>[] }>("Carried", {
+  versions: { type: "array", items: linkSchema },
+});
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
-const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema].flatMap(({ blobs }) => blobs);
+const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema, carriedSchema].flatMap(
+  ({ blobs }) => blobs,
+);
 const newStore = () => new Store(json, new MemoryBackend());
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
@@ -142,5 +155,66 @@ describe("an object slipped into a bundle", () => {
     );
     expect((await readListed(bobStore, contactSchema)).map(({ data }) => data.name)).toEqual(["Alice"]);
     expect(await recordsOf(bobStore)).toContain(receivedRecord.link);
+  });
+});
+
+describe("a signed identity that comes in a bundle", () => {
+  const versionsHeld = indexOverBlobs(versions.selection, (version) => [version]);
+
+  it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
+    const aliceVersion = await publish(alice, 5);
+    const forgedVersion = encodeObject(signedIdentities.schema, {
+      identity: { $link: aliceVersion.identity.link },
+      signature: "00".repeat(64),
+    });
+    const carried = encodeObject(carriedSchema, {
+      versions: [{ $link: aliceVersion.link }, { $link: forgedVersion.link as Link<SignedIdentityObject> }],
+    });
+    const signature = await sign(carried, mallory);
+    const bobStore = newStore();
+    await receive(
+      bobStore,
+      writeBundle(signature, [
+        carried.bytes,
+        ...aliceVersion.blobs,
+        forgedVersion.bytes,
+        ...signature.signedIdentity.blobs,
+      ]),
+    );
+    expect(await bobStore.get(forgedVersion.link)).toEqual(forgedVersion.bytes);
+
+    const rows = [];
+    for await (const row of (await scan(bobStore, versionsHeld)).range([])) rows.push(row);
+    const expectedRows = [aliceVersion, signature.signedIdentity]
+      .map((version) => versions.versionOf(version))
+      .sort(([a], [b]) => (a < b ? -1 : 1));
+    expect(rows).toEqual(expectedRows);
+  });
+
+  it("is validated once by a scan", async () => {
+    let validationCount = 0;
+    const kit = await loadIdentity(
+      {
+        language: defaultValidator.language,
+        async compile(schema) {
+          const check = await defaultValidator.compile(schema);
+          return (data) => {
+            if (schema.title === signedIdentitySchema.title) validationCount++;
+            return check(data);
+          };
+        },
+      },
+      [ed25519],
+    );
+    const version = await kit.publish(alice, 5);
+    const store = newStore();
+    await store.write({ records: [version], blobs: version.blobs });
+
+    validationCount = 0;
+    await scan(
+      store,
+      indexOverBlobs(kit.versions.selection, (row) => [row]),
+    );
+    expect(validationCount).toBe(1);
   });
 });

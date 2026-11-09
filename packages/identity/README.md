@@ -257,12 +257,13 @@ root signs, by its clock: where a version signed by a clock that is off
 falls among the others is the root's to answer for, as anything else it
 does by that clock. Both write the identity before the root signs, so
 a signer is not asked to sign an identity that would not read, such as one
-that lists an agent twice. `signedIdentities.read` takes the link of a
+that lists an agent twice. `signedIdentities.verify` takes the object of a
 signed identity and a `Reader`, reads its identity through an
 `Implementations` of the identity schemas, which picks the schema to read
 the identity's object with by `schemaOf`, and refuses a signature that the
-identity's root did not make. A signed identity carries as `blobs` its
-object and its schema's blobs with the identity's `blobs`.
+identity's root did not make. `signedIdentities.read` reads that object from
+its link first. A signed identity carries as `blobs` its object and its
+schema's blobs with the identity's `blobs`.
 
 The implementation of an identity's schema is picked once, as
 `signedIdentities.read` reads it, and the identity carries it. So
@@ -278,17 +279,35 @@ it accepted before stays accepted. A reader holds only the versions it has
 seen, and nothing tells it of the others.
 
 `versions.versionOf` gives the version a signed identity is, as a row: its
-root, its `at` and its link. An application keeps the rows of the versions
-it sees in an index of its own, such as one of `@estoc/store`, from the
-signed identities in the closures of its own objects. In the order of their
-keys, a root's rows end with its current version. `versions.people` takes
-those rows and a `Reader`, and gives the `People` of the versions the
-reader has seen, which are `Versions` too: their `current` gives the
-current version of a signed identity's identity, the later of the one given
-and the signed identity of its root's last row, read from the reader.
-`noVersions` is a reader that has seen no versions, so the current version
-is the one given and a signature is verified by the version it carries
-alone.
+root, its `at` and its link. In the order of their keys, a root's rows end
+with its current version.
+
+`versions.selection` is the `SelectionBySchema` of signed identities, each
+read as its row. A signed identity carries its authority in its root's
+signature, so it reads the same however it arrived, and an application keeps
+the rows of every one it holds in an index of its own, such as
+`indexOverBlobs` of `@estoc/store`. A stranger can add no version of a root
+that the root did not sign, and an older version leaves the current one as it
+is.
+
+Anyone can send a signed identity, so one whose identity does not read, such
+as one whose root has a scheme the application does not accept, or whose root
+did not sign it, gives `undefined`. A reader that throws or gives no blob for
+what the signed identity names leaves it out the same way, so what reads with a
+reader that can fail has to notice that itself, as a scan of `@estoc/store`
+does. The object itself is read before any of this: `selection.read` throws as
+that of any `SelectionBySchema` does when the reader gives no blob for it, or
+when it names the schema and does not fit it. `indexOverBlobs` gives no row for
+a blob that does not fit the schema, and a scan still fails when the store does
+not give a blob it lists.
+
+`versions.people` takes those rows and a `Reader`, and gives the `People` of
+the versions the reader has seen, which are `Versions` too: their `current`
+gives the current version of a signed identity's identity, the later of the
+one given and the signed identity of its root's last row, read from the
+reader. `noVersions` is a reader that has seen no versions, so the current
+version is the one given and a signature is verified by the version it
+carries alone.
 
 ## People
 
@@ -325,6 +344,7 @@ are for the caller to choose, so `hasSigned` takes one already read. With
 reads its rows:
 
 ```ts
+const seen = indexOverBlobs(versions.selection, (version) => [version]);
 const people = await view(store, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
 const signature = await signatures.read(link, store, people);
 const author = people.personOf(signature.signedIdentity);

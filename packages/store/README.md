@@ -36,8 +36,8 @@ const signature = await actor.sign(note);
 // the store keeps those named here.
 await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
-for await (const link of store.records()) …;               // note.link, signature.link
-await signatures.read(signature.link, store, noVersions);  // the signature, verified
+for await (const link of store.records()) …;                       // note.link, signature.link
+await signatures.read(signature.link, store, noIdentityVersions);  // the signature, verified
 ```
 
 ## What is listed
@@ -62,10 +62,11 @@ to them. So the store keeps the list itself rather than working it out.
 An index can still read the blobs a store holds by schema, through
 `indexOverBlobs`, and that is for objects that carry their authority in a
 signature. A signed identity reads the same whoever sent it and wherever it
-sits in a closure, and all that a stranger can send is a version its root
-signed. An unsigned contact read this way would be the stranger's, among the
-user's own. The types do not tell the two apart, so this rule is kept by the
-schema a program gives it. A `Store` has no method that lists its blobs.
+sits in a closure, and all that a stranger can send is an identity version
+its root signed. An unsigned contact read this way would be the stranger's,
+among the user's own. The types do not tell the two apart, so this rule is
+kept by the schema a program gives it. A `Store` has no method that lists its
+blobs.
 
 ## Writing
 
@@ -116,7 +117,7 @@ keeps, and the links of the store's records with those of the batch.
 
 ```ts
 const stagedStore = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
-const people = await view(stagedStore, { index: seenVersions, read: (rows, reader) => versions.people(rows, reader) });
+const people = await view(stagedStore, { index: seenIdentityVersions, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(bundle.link, stagedStore, people);
 // … whether whoever signed is someone to take it from …
 await stagedStore.commit();
@@ -130,11 +131,11 @@ so the rows and the objects they name come from the store as it will be.
 
 Staged on a store that holds nothing, a batch is read by what it holds
 alone, which is what its sender chose to show. Staged on the user's
-store, it is read by what the user has seen as well, so a version of an
-identity that took an agent out counts even when the batch leaves it out.
+store, it is read by what the user has seen as well, so an identity version
+that took an agent out counts even when the batch leaves it out.
 
 The records of a staged batch are listed before anything has verified
-them. A row stands on its object and its closure, as a version
+them. A row stands on its object and its closure, as an identity version
 stands on its root's signature, and not on whether the user took the
 object.
 
@@ -142,7 +143,7 @@ The batch is fixed when it is staged, and the store is read as it is at
 each read, so what is written to the store afterwards shows on the staged
 batch too. What is verified on it reads the same from the store once it is
 committed when nothing else is written in between. A write in between,
-such as of a version of an identity that took an agent out, can change
+such as of an identity version that took an agent out, can change
 what a view comes to when it is viewed again, on the staged batch as on
 the store. A value already viewed stays as it was, and `commit` does not
 verify the batch again: as with a write, there is no transaction that
@@ -239,9 +240,9 @@ looks only at the objects of its schema:
 ```ts
 import { indexOverBlobs } from "@estoc/store";
 
-// The versions of the signed identities a store holds, however deep in a
-// closure they came. One whose root did not sign it gives no row.
-const versionsHeld = indexOverBlobs(versions.selection, (version) => [version]);
+// The identity versions a store holds, however deep in a closure they came.
+// One whose root did not sign it gives no row.
+const identityVersionsHeld = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 ```
 
 - A write keeps only the blobs in the closures of its records, so these are
@@ -354,8 +355,8 @@ What the records promise is little, so that every way in can keep it:
   its own clock. What calls `receive` can check more, such as not keeping
   what does not open, but a reader cannot count on that.
 - `via` names a channel and says nothing about what was checked.
-- A reader of `Inbound` records verifies signatures and versions itself.
-  Anyone can send a bundle to a mailbox.
+- A reader of `Inbound` records verifies signatures and identity versions
+  itself. Anyone can send a bundle to a mailbox.
 - A program that checks what came in, and whose judgement another program
   reads, writes a mark: a record of its own that links to the `Inbound`, of a
   schema in its own package, that says what it checked. One `Inbound` can
@@ -364,8 +365,8 @@ What the records promise is little, so that every way in can keep it:
 - A mark cannot be sent from outside. What is sent stays in the closure of an
   `Inbound`, and is not a record.
 - A mark is a judgement made at that time, and stays as it is. What can change
-  later, such as whether the version a signature carries still counts, is
-  worked out when it is read.
+  later, such as whether the identity version a signature carries still
+  counts, is worked out when it is read.
 - Programs that share a store need no signature on a mark. A mark is no
   boundary between them either: whatever writes to a store can write any
   record.

@@ -22,7 +22,8 @@ import {
   eip191,
   isSameKey,
   loadIdentity,
-  noVersions,
+  noIdentityVersions,
+  type SeenIdentityVersions,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -30,15 +31,18 @@ import {
   SoftwareSigner,
   signatureSchema,
   solanaOffchain,
-  type Versions,
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const { identities, signatures, versions, publish, delegate } = await loadIdentity(defaultValidator, schemes);
-const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map(), versions = noVersions) =>
-  by.verify(decodeObject(bytes, by.schema), blobs, versions);
-const verified = (bytes: Uint8Array, blobs?: Reader, versions?: Versions) =>
-  verifiedBy(signatures, bytes, blobs, versions);
+const { identities, signatures, identityVersions, publish, delegate } = await loadIdentity(defaultValidator, schemes);
+const verifiedBy = async (
+  by: Signatures,
+  bytes: Uint8Array,
+  blobs: Reader = new Map(),
+  seenIdentityVersions = noIdentityVersions,
+) => by.verify(decodeObject(bytes, by.schema), blobs, seenIdentityVersions);
+const verified = (bytes: Uint8Array, blobs?: Reader, seenIdentityVersions?: SeenIdentityVersions) =>
+  verifiedBy(signatures, bytes, blobs, seenIdentityVersions);
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -51,7 +55,7 @@ const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-  versions.people(rowsOf(versions, ...signed), byLink(...signed));
+  identityVersions.people(rowsOf(identityVersions, ...signed), byLink(...signed));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, 0)).sign(object);
 
@@ -208,7 +212,7 @@ describe("a signature for a Delegated Identity", () => {
 describe("a signature by an agent", () => {
   const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
 
-  it("counts when the latest version the reader has seen lists its agent, whichever version it carries", async () => {
+  it("counts when the latest identity version the reader has seen lists its agent, whichever identity version it carries", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     const second = await delegate(wallet, [phone.key, laptop.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
@@ -216,16 +220,16 @@ describe("a signature by an agent", () => {
     expect(read.signedIdentity).toEqual(first);
   });
 
-  it("is refused when the latest version the reader has seen no longer lists its agent", async () => {
+  it("is refused when the latest identity version the reader has seen no longer lists its agent", async () => {
     const first = await delegate(wallet, [laptop.key, phone.key], 1_000);
     const second = await delegate(wallet, [phone.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
     await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(first, second))).rejects.toThrow(
-      /does not sign for the current version/,
+      /does not sign for the current identity version/,
     );
   });
 
-  it("is verified against the version it carries when that is later than any the reader has seen", async () => {
+  it("is verified against the identity version it carries when that is later than any the reader has seen", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     const second = await delegate(wallet, [laptop.key, phone.key], 2_000);
     const signature = await signatures.actor(phone, second).sign(hello);
@@ -233,7 +237,7 @@ describe("a signature by an agent", () => {
     expect(isSameKey(read.key, phone.key)).toBe(true);
   });
 
-  it("is verified, against a version at the same at that drops its agent, by whichever has the greater link", async () => {
+  it("is verified, against an identity version at the same at that drops its agent, by whichever has the greater link", async () => {
     const listing = await delegate(wallet, [laptop.key, phone.key], 1_000);
     const dropping = await delegate(wallet, [phone.key], 1_000);
     const signature = await signatures.actor(laptop, listing).sign(hello);
@@ -244,27 +248,27 @@ describe("a signature by an agent", () => {
     expect(counts).toBe(listing.link > dropping.link);
   });
 
-  it("counts by the version it carries when the reader has seen no versions", async () => {
+  it("counts by the identity version it carries when the reader has seen no identity versions", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     await delegate(wallet, [phone.key], 2_000);
     const signature = await signatures.actor(laptop, first).sign(hello);
-    expect((await verified(signature.bytes, identityOf(signature), noVersions)).link).toBe(signature.link);
+    expect((await verified(signature.bytes, identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
   });
 });
 
 describe("a signature by a root through its Identity", () => {
   const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
 
-  it("is refused once the reader has seen a later version that does not list the root", async () => {
+  it("is refused once the reader has seen a later identity version that does not list the root", async () => {
     const published = await publish(wallet, 1_000);
     const later = await delegate(wallet, [laptop.key], 2_000);
     const signature = await signatures.actor(wallet, published).sign(hello);
     await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(published, later))).rejects.toThrow(
-      /does not sign for the current version/,
+      /does not sign for the current identity version/,
     );
   });
 
-  it("counts when the later version the reader has seen lists the root", async () => {
+  it("counts when the later identity version the reader has seen lists the root", async () => {
     const published = await publish(wallet, 1_000);
     const later = await delegate(wallet, [laptop.key, wallet.key], 2_000);
     const signature = await signatures.actor(wallet, published).sign(hello);
@@ -272,14 +276,14 @@ describe("a signature by a root through its Identity", () => {
   });
 });
 
-describe("a signature by an agent of a version before the root's Identity", () => {
+describe("a signature by an agent of an identity version before the root's Identity", () => {
   it("is refused once the reader has seen the Identity", async () => {
     const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
     const earlier = await delegate(wallet, [laptop.key], 1_000);
     const published = await publish(wallet, 2_000);
     const signature = await signatures.actor(laptop, earlier).sign(hello);
     await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(published))).rejects.toThrow(
-      /does not sign for the current version/,
+      /does not sign for the current identity version/,
     );
   });
 });

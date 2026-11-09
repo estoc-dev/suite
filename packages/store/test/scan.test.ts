@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -115,7 +115,7 @@ describe("an index scanned from a store", () => {
     const bySigner: Index<[signer: string, object: string]> = indexOver(
       objectsOf(signatures.schema),
       async function* (object, reader) {
-        const signature = await signatures.verify(object, reader, noVersions);
+        const signature = await signatures.verify(object, reader, noIdentityVersions);
         yield [signature.signedIdentity.identity.root.link, signature.object];
       },
     );

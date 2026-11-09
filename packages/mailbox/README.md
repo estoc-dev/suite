@@ -90,12 +90,13 @@ bundle inside. It refuses a ciphertext that does not open with its key, and what
 opens but does not unpack to a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.read` and the bundle as the reader. A receiver that keeps the
-versions it has seen passes its `Versions` in place of `noVersions`, and an
-agent its root removed no longer reads as the root.
+identity versions it has seen passes its `SeenIdentityVersions` in place of
+`noIdentityVersions`, and an agent its root removed no longer reads as the
+root.
 
 ```ts
 const bundle = await key.open(ciphertext);
-const signature = await signatures.read(bundle.link, bundle, noVersions);
+const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
 ```
 
 ## Sending
@@ -303,8 +304,8 @@ Mailbox Grant  {"to": <link of a signed identity>, "mailboxes": [<link of a mail
 ```
 
 A Mailbox Grant says at which mailboxes whoever signs it takes messages
-from someone. `to` is that someone's signed identity, the version the
-signer holds when it signs, and `at` is when, by the signer's clock. The
+from someone. `to` is that someone's signed identity, the identity version
+the signer holds when it signs, and `at` is when, by the signer's clock. The
 signer writes its signature over the grant as a record, which is its own
 account of where it takes whose messages, and sends the signature, with
 its closure, to the one the grant is to, or hands it over out of band. That
@@ -314,12 +315,12 @@ takes their messages. The schema is `mailboxGrantSchema`.
 
 The grants of one root to another are a series, by the root of the signer
 and the root of `to`. Of the grants of a series whose keys sign for the
-current version a reader has seen, the latest is the one with the greatest
-`at`, and of two at one `at`, the one whose signature has the greater link,
-as with the versions of an identity in `@estoc/identity`. Each side picks
-the latest from the grants and versions it has seen. The two agree on where
-messages go when they pick the same link, which they can compare without
-asking a transport whether a mailbox still takes them.
+current identity version a reader has seen, the latest is the one with the
+greatest `at`, and of two at one `at`, the one whose signature has the
+greater link, as with identity versions in `@estoc/identity`. Each side picks
+the latest from the grants and identity versions it has seen. The two agree
+on where messages go when they pick the same link, which they can compare
+without asking a transport whether a mailbox still takes them.
 `to` says which series a grant is of and grants nothing by itself: a grant
 to someone else that is passed on to you is of their series, and does not
 change where its signer takes your messages.
@@ -334,9 +335,9 @@ const signature = await actor.sign(grant);
 await store.write({ records: [signature], blobs: [grant.bytes, ...grants.schema.blobs, ...] });
 await (await post.outbox(theirMailbox)).send(signature.link);
 
-const seen = indexOverBlobs(versions.selection, (version) => [version]);
+const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 const latest = await view(store, grants.latest);
-const people = await view(store, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
+const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 await latest.grantFrom(mine, their, people); // where I take their messages
 await latest.grantFrom(their, mine, people); // where they take mine
 ```
@@ -348,33 +349,34 @@ came in, at a mailbox or out of band, whose root is such a signature. Each
 gives a row of the root of
 the signer, the root of `to`, `at` and the link of the signature; the
 signature is verified by the signed identity it carries, as by
-`noVersions`. A bundle that came in and does not read as a grant gives no
-row, since anyone can send a bundle to a mailbox. The scan still fails
-when the store fails to give a blob of it, so a later scan of the index
+`noIdentityVersions`. A bundle that came in and does not read as a grant
+gives no row, since anyone can send a bundle to a mailbox. The scan still
+fails when the store fails to give a blob of it, so a later scan of the index
 reads the bundle again. `grantFrom` takes the links of two roots and the
-`Versions` of a reader, and gives the latest grant of the first to the
-second, with the signature over it and the signed identity it is to, or
-`undefined` when there is none.
+`SeenIdentityVersions` of a reader, and gives the latest grant of the first
+to the second, with the signature over it and the signed identity it is to,
+or `undefined` when there is none.
 
-The `Versions` of a reader are the `People` of the signed identities its store
-holds, as in `@estoc/identity`. `seen` reads them by their schema, wherever
-they sit in the closure of a record or of what came in, and is made once for
-the program too.
+The `SeenIdentityVersions` of a reader are the `People` of the signed
+identities its store holds, as in `@estoc/identity`. `seen` reads them by
+their schema, wherever they sit in the closure of a record or of what came
+in, and is made once for the program too.
 
-A root removes an agent by signing a version that does not list it, as in
-`@estoc/identity`. A reader that has seen that version no longer counts the
-grants the agent signed, whenever they came in and whatever `at` they write:
+A root removes an agent by signing an identity version that does not list it,
+as in `@estoc/identity`. A reader that has seen that identity version no
+longer counts the grants the agent signed, whenever they came in and whatever
+`at` they write:
 
-- `grantFrom` then gives the latest grant by a key the current version lists,
-  which may be an older one, or `undefined` when there is none.
+- `grantFrom` then gives the latest grant by a key the current identity
+  version lists, which may be an older one, or `undefined` when there is none.
 - To keep taking messages at a mailbox, the signer has a key the current
-  version lists sign a grant of it again, and sends it to the one it is to.
-  The signature carries the new version, so that reader sees the removal and
-  the new grant together.
-- A reader holds only the versions it has seen, so a key counts until the
-  reader sees the version that removes it.
-- The store keeps what came in, so a later version that lists the agent again
-  makes its grants count again.
+  identity version lists sign a grant of it again, and sends it to the one it
+  is to. The signature carries the new identity version, so that reader sees
+  the removal and the new grant together.
+- A reader holds only the identity versions it has seen, so a key counts until
+  the reader sees the identity version that removes it.
+- The store keeps what came in, so a later identity version that lists the
+  agent again makes its grants count again.
 
 ## Transports
 

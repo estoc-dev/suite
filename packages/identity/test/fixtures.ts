@@ -31,9 +31,12 @@ export function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, U
   return reached;
 }
 
-/** The rows of the versions `signedIdentities` are, in the order of their keys, as an index of a store gives them. */
-export function rowsOf(versions: IdentityVersions, ...signedIdentities: readonly SignedIdentityObject[]) {
-  const rows = signedIdentities.map((signedIdentity) => versions.versionOf(signedIdentity));
+/**
+ * The rows of the identity versions `signedIdentities` are, in the order of
+ * their keys, as an index of a store gives them.
+ */
+export function rowsOf(identityVersions: IdentityVersions, ...signedIdentities: readonly SignedIdentityObject[]) {
+  const rows = signedIdentities.map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity));
   rows.sort(
     ([, at, link], [, otherAt, otherLink]) => at - otherAt || (link < otherLink ? -1 : link > otherLink ? 1 : 0),
   );

@@ -34,10 +34,10 @@ Lineage Node  an Object written to the Lineage Node schema, with the fields
   gives the head no authority, and this package does not depend on
   identities.
 
-Versions that someone has authority over are not a lineage. The versions
-of an identity are signed by its root, each with the root's own `at`, and
-a reader takes as current the one with the greatest `at` it has seen;
-they stay as `@estoc/identity` writes them.
+Versions that someone has authority over are not a lineage. Identity
+versions are signed by their root, each with the root's own `at`, and a
+reader takes as current the one with the greatest `at` it has seen; they
+stay as `@estoc/identity` writes them.
 
 ## Reading and building
 

@@ -20,12 +20,12 @@ export type IdentityData = { readonly root: JsonLink<KeyObject>; readonly at: nu
  *   implementation of its schema that read or wrote it, so what a signature
  *   asks of it is asked of the identity in hand.
  * - `at` is when the root signs it, in milliseconds since the Unix epoch by
- *   the root's clock. Each identity a root signs is a version, whatever
- *   schema it is written to.
- * - Of a root's versions the current one is that with the greatest `at`,
- *   and of those with the same `at`, that whose signed identity has the
- *   greater link. The current version says who signs for the root, the root
- *   itself included.
+ *   the root's clock. Each identity a root signs is an identity version,
+ *   whatever schema it is written to.
+ * - Of a root's identity versions the current one is that with the greatest
+ *   `at`, and of those with the same `at`, that whose signed identity has the
+ *   greater link. The current identity version says who signs for the root,
+ *   the root itself included.
  * - `blobs` are the identity's closure, each blob once: the bytes of its
  *   object and of the keys it names, and the blobs of the schemas they are
  *   written to.

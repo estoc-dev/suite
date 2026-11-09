@@ -19,7 +19,7 @@ import {
   type IdentityObject,
   type KeyObject,
   loadIdentity,
-  noVersions,
+  noIdentityVersions,
   type Signature,
   type Signer,
   SoftwareSigner,
@@ -50,7 +50,7 @@ interface ReceivedSignatures {
 
 async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignatures): Promise<IdentityObject[]> {
   const read = receivedSignatures.signatures.map((bytes) =>
-    signatures.verify(decodeObject(bytes, signatures.schema), receivedSignatures.blobs, noVersions),
+    signatures.verify(decodeObject(bytes, signatures.schema), receivedSignatures.blobs, noIdentityVersions),
   );
   return (await Promise.all(read))
     .filter((signature) => signature.object === link)
@@ -79,7 +79,11 @@ async function loggedInIdentity(
   identity: readonly Uint8Array[],
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
-  const read = await signatures.verify(decodeObject(signature, signatures.schema), byLink(identity), noVersions);
+  const read = await signatures.verify(
+    decodeObject(signature, signatures.schema),
+    byLink(identity),
+    noIdentityVersions,
+  );
   return read.object === expected.link ? read.signedIdentity.identity : undefined;
 }
 

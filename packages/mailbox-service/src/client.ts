@@ -3,7 +3,7 @@ import {
   type Actor,
   type IdentityKit,
   loadIdentity,
-  noVersions,
+  noIdentityVersions,
   type Scheme,
   type Signature,
   type Signatures,
@@ -375,7 +375,7 @@ export class Services {
     this.#schemas = schemas;
     this.#locations = locationsView(kit.signatures, schemas.service);
     this.#mailboxes = mailboxAcknowledgementsView(kit.signatures, schemas);
-    this.#people = peopleView(kit.versions);
+    this.#people = peopleView(kit.identityVersions);
   }
 
   /**
@@ -434,9 +434,9 @@ export class Services {
     if (link === undefined) throw new Error(`the store holds no acknowledgement of ${mailbox}`);
     // The acknowledgement was verified against the identity versions the
     // store held when it came. Here it says only where to pick up, which a
-    // later version of the service's identity that does not list the key that
+    // later identity version of the service that does not list the key that
     // signed it does not change.
-    const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noVersions);
+    const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
     const { request, pickupId } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
     const { object: requestObject } = (await readObject(this.#store, request.$link, this.#signatures.schema)).data;
     const { offer } = (await readObject(this.#store, requestObject.$link, this.#schemas.mailboxRequest)).data;
@@ -453,10 +453,10 @@ export class Services {
    * that `reader` holds.
    *
    * - `fetch` reads it on the store as it will be once it keeps the Service,
-   *   so the version that signed the Service is among those, and an offer is
-   *   verified by that version or a later one.
+   *   so the identity version that signed the Service is among those, and an
+   *   offer is verified by that identity version or a later one.
    * - A Service that `fetch` takes so reads alike by `latestOf` until the
-   *   store holds a later version of the service's identity.
+   *   store holds a later identity version of the service.
    * - Offers of schemas the client does not read are passed over.
    *
    * @throws when the Service's origin is not one that a client reaches, when

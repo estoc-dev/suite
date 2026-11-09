@@ -35,10 +35,8 @@ import {
 } from "../src/index.ts";
 import { byLink, closure, rowsOf, schemes } from "./fixtures.ts";
 
-const { keys, identities, delegatedIdentities, signedIdentities, versions, publish, delegate } = await loadIdentity(
-  defaultValidator,
-  schemes,
-);
+const { keys, identities, delegatedIdentities, signedIdentities, identityVersions, publish, delegate } =
+  await loadIdentity(defaultValidator, schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -336,27 +334,31 @@ describe("a Delegated Identity", () => {
   });
 });
 
-describe("the version of a signed identity", () => {
+describe("the identity version of a signed identity", () => {
   it.each([
     ["an Identity", () => publish(signer(ed25519), 1_000)],
     ["a Delegated Identity", () => delegate(signer(ed25519), [key(ed25519, 2)], 1_000)],
   ])("is the root, the at and the link of %s", async (_, signed) => {
     const signedIdentity = await signed();
-    expect(versions.versionOf(signedIdentity)).toEqual([signedIdentity.identity.root.link, 1_000, signedIdentity.link]);
+    expect(identityVersions.identityVersionOf(signedIdentity)).toEqual([
+      signedIdentity.identity.root.link,
+      1_000,
+      signedIdentity.link,
+    ]);
   });
 });
 
-describe("the selection of versions", () => {
-  const { selection } = versions;
+describe("the selection of identity versions", () => {
+  const { selection } = identityVersions;
   const root = signer(ed25519, 4);
 
   it.each([
     ["an Identity", () => publish(root, 1_000)],
     ["a Delegated Identity", () => delegate(root, [key(ed25519, 2)], 1_000)],
-  ])("reads the signed identity of %s as its version", async (_, signIdentity) => {
+  ])("reads the signed identity of %s as its identity version", async (_, signIdentity) => {
     const signedIdentity = await signIdentity();
     expect(await selection.read(signedIdentity.link, byLink(signedIdentity.blobs))).toEqual(
-      versions.versionOf(signedIdentity),
+      identityVersions.identityVersionOf(signedIdentity),
     );
   });
 
@@ -364,7 +366,7 @@ describe("the selection of versions", () => {
     const signedIdentity = await publish(root, 1_000);
     const object = decodeObject(signedIdentity.bytes, signedIdentities.schema);
     const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
-    expect(await selection.itemOf(object, linkedBlobs)).toEqual(versions.versionOf(signedIdentity));
+    expect(await selection.itemOf(object, linkedBlobs)).toEqual(identityVersions.identityVersionOf(signedIdentity));
   });
 
   it("leaves out a signed identity that another key signed", async () => {
@@ -392,9 +394,11 @@ describe("the selection of versions", () => {
   });
 
   it("leaves out a signed identity whose root's scheme the application does not accept", async () => {
-    const { versions: ed25519Versions } = await loadIdentity(defaultValidator, [ed25519]);
+    const { identityVersions: ed25519IdentityVersions } = await loadIdentity(defaultValidator, [ed25519]);
     const signedIdentity = await publish(signer(eip191), 1_000);
-    expect(await ed25519Versions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs))).toBeUndefined();
+    expect(
+      await ed25519IdentityVersions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs)),
+    ).toBeUndefined();
   });
 
   it("leaves out a signed identity whose identity the reader does not give", async () => {
@@ -415,20 +419,20 @@ describe("the selection of versions", () => {
   });
 });
 
-describe("the versions a reader has seen", () => {
+describe("the identity versions a reader has seen", () => {
   const wallet = signer(eip191);
   const blobsOf = (...signed: { readonly blobs: readonly Uint8Array[] }[]) =>
     byLink(signed.flatMap(({ blobs }) => blobs));
   const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-    versions.people(rowsOf(versions, ...signed), blobsOf(...signed));
+    identityVersions.people(rowsOf(identityVersions, ...signed), blobsOf(...signed));
 
-  it("give as current the version of a root with the greatest at", async () => {
+  it("give as current the identity version of a root with the greatest at", async () => {
     const later = await delegate(wallet, [key(ed25519, 2)], 2_000);
     const earlier = await delegate(wallet, [key(ed25519, 3)], 1_000);
     expect((await peopleHavingSeen(later, earlier).current(earlier)).link).toBe(later.link);
   });
 
-  it("give as current of two versions at the same at that whose signed identity has the greater link", async () => {
+  it("give as current of two identity versions at the same at that whose signed identity has the greater link", async () => {
     const [one, other] = await Promise.all([
       delegate(wallet, [key(ed25519, 2)], 1_000),
       delegate(wallet, [key(ed25519, 3)], 1_000),
@@ -439,19 +443,19 @@ describe("the versions a reader has seen", () => {
     expect((await peopleHavingSeen(lesser).current(greater)).link).toBe(greater.link);
   });
 
-  it("give the version given as current when it is later than any of them", async () => {
+  it("give the identity version given as current when it is later than any of them", async () => {
     const earlier = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const later = await delegate(wallet, [key(ed25519, 3)], 2_000);
     expect((await peopleHavingSeen(earlier).current(later)).link).toBe(later.link);
   });
 
-  it("give the version given as current when none of them is of its root", async () => {
+  it("give the identity version given as current when none of them is of its root", async () => {
     const signed = await delegate(wallet, [key(ed25519, 2)], 1_000);
     const other = await delegate(signer(ed25519, 4), [key(ed25519, 2)], 2_000);
     expect((await peopleHavingSeen(other).current(signed)).link).toBe(signed.link);
   });
 
-  it("give as current the latest version, whichever identity schema each is written to", async () => {
+  it("give as current the latest identity version, whichever identity schema each is written to", async () => {
     const published = await publish(wallet, 1_000);
     const delegated = await delegate(wallet, [key(ed25519, 2)], 2_000);
     const republished = await publish(wallet, 3_000);

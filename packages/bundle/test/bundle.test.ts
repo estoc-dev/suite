@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ed25519, eip191, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, eip191, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -97,8 +97,10 @@ describe("a bundle", () => {
   it("reads with a signature as its root, which links to the object it is over and to its signed identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
     expect(bundle.link).toBe(signature.link);
-    const signed = await signatures.read(bundle.link, bundle, noVersions);
-    expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noVersions)).toEqual(signed);
+    const signed = await signatures.read(bundle.link, bundle, noIdentityVersions);
+    expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noIdentityVersions)).toEqual(
+      signed,
+    );
     expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
@@ -123,7 +125,7 @@ describe("a bundle", () => {
     const identityBytes = new Map([...signature.signedIdentity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       await expect(async () =>
-        signatures.verify(decodeObject(blob, signatures.schema), identityBytes, noVersions),
+        signatures.verify(decodeObject(blob, signatures.schema), identityBytes, noIdentityVersions),
       ).rejects.toThrow();
       expect(readBundle(filesOf(root.bytes, blob)).get(linkOf(blob))).toEqual(blob);
     }
@@ -181,7 +183,7 @@ describe("a bundle", () => {
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    const signed = await signatures.read(signature.link, bundle, noVersions);
+    const signed = await signatures.read(signature.link, bundle, noIdentityVersions);
     expect(bundle.get(signed.object)).toEqual(hello.bytes);
   });
 });

@@ -6,6 +6,7 @@ export {
 } from "./identity/delegated.ts";
 export { type Identities, identitySchema } from "./identity/identity.ts";
 export { hasSigner, type IdentityData, type IdentityObject } from "./identity/interface.ts";
+export type { IdentityVersion, IdentityVersions } from "./identity-versions.ts";
 export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";
 export { eip191 } from "./key/eip191.ts";
@@ -32,14 +33,13 @@ export {
   signatureSchema,
 } from "./signature.ts";
 export {
-  noVersions,
+  noIdentityVersions,
+  type SeenIdentityVersions,
   type SignedIdentities,
   type SignedIdentityData,
   type SignedIdentityObject,
   signedIdentitySchema,
-  type Versions,
 } from "./signed-identity.ts";
 export { type Signer, SoftwareSigner } from "./signer.ts";
 export { signingText } from "./signing-text.ts";
-export type { IdentityVersion, IdentityVersions } from "./versions.ts";
 export { type WalletKeyData, type WalletKeyObject, type WalletKeys, walletKeySchema } from "./wallet-key.ts";

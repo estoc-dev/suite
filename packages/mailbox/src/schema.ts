@@ -80,8 +80,8 @@ export type OutboundData = {
  * The draft 2020-12 schema of a Mailbox Grant, which says at which mailboxes whoever signs it
  * takes messages from someone.
  *
- * - `to` is the link of that someone's signed identity, the version the signer holds when it
- *   signs.
+ * - `to` is the link of that someone's signed identity, the identity version the signer holds
+ *   when it signs.
  * - `mailboxes` are the links of the mailboxes. A grant with none says the signer no longer takes
  *   their messages.
  * - `at` is when, in milliseconds since the Unix epoch, by the signer's clock.

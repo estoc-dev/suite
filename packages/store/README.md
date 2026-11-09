@@ -249,12 +249,12 @@ const identityVersionsHeld = indexOverBlobs(identityVersions.selection, (identit
 - A write keeps only the blobs in the closures of its records, so these are
   the blobs reached from what the user wrote, and a write cut short can leave
   some besides, each with its closure.
-- A blob that is not an object in the encoding of the schema, or that names
-  the schema and does not fit it, gives no row, though a record that does not
-  fit makes a scan of `indexOver` throw. Anyone can send such a blob, and a scan
-  that threw on it would fail from then on. What `selection` or `rows` throw
-  fails the scan, so for the same reason they have to catch what they cannot
-  read and give no row of it.
+- A blob gives no row when it is not an object in the encoding of the schema,
+  when it names the schema and does not fit it, or when `selection` or `rows`
+  throw on it, though a record that does not fit makes a scan of `indexOver`
+  throw. Anyone can send such a blob, and a scan that threw on it would fail
+  from then on. A mistake in `selection` or `rows` therefore shows only as rows
+  that are missing.
 - What is out of reach of links is out of reach here too: what is encrypted,
   or a bundle wrapped up in a blob, is one blob of bytes.
 - A link does not say what it names, so a scan reads every blob, attachments
@@ -269,8 +269,8 @@ from a store that fails. A scan therefore fails when the store throws, or
 gives no blob, for a link that a selection or its rows read, even where they
 catch it: the rows of that record would be cut short. A scan that fails
 leaves the rows a store keeps as they were, so the next one reads that
-record again. The same goes for an index over blobs, and for a blob that it
-reads and that turns out to be no object of its schema.
+record again. The same goes for an index over blobs, which catches for them,
+and for a blob that it reads and that turns out to be no object of its schema.
 
 ## Views
 

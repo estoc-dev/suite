@@ -30,6 +30,11 @@ export interface Backend {
    * first `start`.
    */
   records(start?: number): AsyncIterable<Link<never>>;
+  /**
+   * The links of the blobs put, each once and in the order they were first put, leaving out the
+   * first `start`. A write cut short can leave blobs here that no listed link reaches.
+   */
+  blobs(start?: number): AsyncIterable<Link<unknown>>;
 }
 
 /** What one write puts in a store. */
@@ -53,6 +58,8 @@ export interface Batch {
  * - Blobs are kept by link, whoever wrote them, and are not listed.
  * - Only records are listed, and anything else is reached by following links from them, so an
  *   object that someone else slipped into a bundle is read only as part of what it came with.
+ * - The one exception is an index made by `indexOverBlobs`, which reads the blobs by schema, for
+ *   objects that carry their authority in a signature.
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its records.
@@ -152,7 +159,7 @@ class StoreOf<D> implements Store, RowKeeper {
   constructor(encoding: Encoding<D>, backend: Backend) {
     this.#encoding = encoding;
     this.#backend = backend;
-    this.#keptRows = new KeptRows(this, (start) => backend.records(start));
+    this.#keptRows = new KeptRows(this, backend);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -215,6 +222,7 @@ class StoreOf<D> implements Store, RowKeeper {
         await backend.put(ownBlobs, records);
       },
       records: (start) => backend.records(start),
+      blobs: (start) => backend.blobs(start),
     });
   }
 
@@ -325,7 +333,11 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   }
 
   async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
-    return (await this.#store[rowsOf](index)).adding(this.#records, this, index);
+    return (await this.#store[rowsOf](index)).adding(
+      { records: this.#records, blobs: this.#blobs.keys() },
+      this,
+      index,
+    );
   }
 
   commit(): Promise<void> {

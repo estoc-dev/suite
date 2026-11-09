@@ -74,6 +74,7 @@ describe("a private store", () => {
       has: (link) => backend.has(link),
       put: (blobs, records) => backend.put(blobs, records),
       records: (start) => backend.records(start),
+      blobs: (start) => backend.blobs(start),
     });
     await expect(privateStore.get(card.link)).rejects.toThrow(`another blob under ${card.link}`);
   });

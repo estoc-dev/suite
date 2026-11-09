@@ -25,6 +25,12 @@ async function recordsOf(backend: Backend, start?: number): Promise<Link<never>[
   return links;
 }
 
+async function blobsIn(backend: Backend, start?: number): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of backend.blobs(start)) links.push(link);
+  return links;
+}
+
 describe.each([
   { name: "a MemoryBackend", open: async (): Promise<Backend> => new MemoryBackend() },
   { name: "a SqliteBackend", open: openInTemporaryFolder },
@@ -69,5 +75,22 @@ describe.each([
     await backend.put(blobsOf("c"), [c, a]);
     expect(await recordsOf(backend, 1)).toEqual([b, c]);
     expect(await recordsOf(backend, 3)).toEqual([]);
+  });
+
+  it("lists blobs in the order they were first put, each once, listed as records or not", async () => {
+    const backend = await open();
+    const [a, b, c] = [linkOf(utf8("a")), linkOf(utf8("b")), linkOf(utf8("c"))];
+    await backend.put(blobsOf("a", "b"), [a]);
+    await backend.put(blobsOf("c", "a"), [c]);
+    expect(await blobsIn(backend)).toEqual([a, b, c]);
+  });
+
+  it("lists the blobs after the first `start`, in the order they were first put", async () => {
+    const backend = await open();
+    const [b, c] = [linkOf(utf8("b")), linkOf(utf8("c"))];
+    await backend.put(blobsOf("a", "b"), []);
+    await backend.put(blobsOf("c", "a"), []);
+    expect(await blobsIn(backend, 1)).toEqual([b, c]);
+    expect(await blobsIn(backend, 3)).toEqual([]);
   });
 });

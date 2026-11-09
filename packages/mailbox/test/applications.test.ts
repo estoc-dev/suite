@@ -94,24 +94,28 @@ describe("a chat line", () => {
   const passOn = async (line: EncodedObject<Json>) => {
     const network = await MemoryNetwork.create(defaultValidator);
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
-    const sent = await sendSigned(await mailboxFrom(atBob.mailbox, { transports: [network.transport] }), line, alice);
-    const [received] = await atBob.take();
-    assert.exists(received);
+    const sentSignature = await sendSigned(
+      await mailboxFrom(atBob.mailbox, { transports: [network.transport] }),
+      line,
+      alice,
+    );
+    const [receivedBundle] = await atBob.take();
+    assert.exists(receivedBundle);
     // Bob passes on what he read: the signature, with the line and the signed identity it names.
-    const read = await readSigned(received, chat);
+    const read = await readSigned(receivedBundle, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(read.signature, [
       read.object.bytes,
       ...read.signature.signedIdentity.blobs,
     ]);
-    const [passed] = await atCarol.take();
-    assert.exists(passed);
-    return { sent, received, passed };
+    const [passedBundle] = await atCarol.take();
+    assert.exists(passedBundle);
+    return { sentSignature, receivedBundle, passedBundle };
   };
 
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
-    const { sent, passed } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
-    expect(passed.link).toBe(sent.link);
-    expect(await readChat(passed, identities.encode(carol.key, 0))).toEqual({
+    const { sentSignature, passedBundle } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
+    expect(passedBundle.link).toBe(sentSignature.link);
+    expect(await readChat(passedBundle, identities.encode(carol.key, 0))).toEqual({
       author: identities.encode(alice.key, 0),
       text: "lunch at noon?",
       forReader: undefined,
@@ -120,9 +124,9 @@ describe("a chat line", () => {
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
     const line = encodeObject(chat, { to: { $link: keys.encode(bob.key).link }, text: "lunch at noon?" });
-    const { received, passed } = await passOn(line);
-    expect((await readChat(received, identities.encode(bob.key, 0))).forReader).toBe(true);
-    expect((await readChat(passed, identities.encode(carol.key, 0))).forReader).toBe(false);
+    const { receivedBundle, passedBundle } = await passOn(line);
+    expect((await readChat(receivedBundle, identities.encode(bob.key, 0))).forReader).toBe(true);
+    expect((await readChat(passedBundle, identities.encode(carol.key, 0))).forReader).toBe(false);
   });
 });
 
@@ -205,9 +209,9 @@ const sale: Schema<Json, Sale> = await encodeSchema(
 // it. Each party sends its own signature with the terms to the registry's
 // mailbox, and the registry reads all it has received, in whatever order
 // and as many times as it arrived.
-async function salesInForce(received: readonly Bundle[]): Promise<Sale[]> {
+async function salesInForce(receivedBundles: readonly Bundle[]): Promise<Sale[]> {
   const signers = new Map<string, { terms: Sale; identities: IdentityObject[] }>();
-  for (const bundle of received) {
+  for (const bundle of receivedBundles) {
     const { identity, object } = await readSigned(bundle, sale);
     const record = signers.get(object.link) ?? { terms: object.data, identities: [] };
     record.identities.push(identity);
@@ -241,18 +245,18 @@ describe("a sale sent to a registry", () => {
     const { send, take } = await withRegistry({ twice: true, reversed: true });
     await send(buyer);
     await send(seller);
-    const received = await take();
-    expect(received).toHaveLength(4);
-    expect(await salesInForce(received)).toEqual([terms.data]);
+    const receivedBundles = await take();
+    expect(receivedBundles).toHaveLength(4);
+    expect(await salesInForce(receivedBundles)).toEqual([terms.data]);
   });
 
   it("is not in force while the buyer's signature is lost, and is once the buyer sends it again", async () => {
     const { send, take } = await withRegistry({ lost: (n) => n === 0 });
     await send(buyer);
     await send(seller);
-    const received = await take();
-    expect(await salesInForce(received)).toEqual([]);
+    const receivedBundles = await take();
+    expect(await salesInForce(receivedBundles)).toEqual([]);
     await send(buyer);
-    expect(await salesInForce([...received, ...(await take())])).toEqual([terms.data]);
+    expect(await salesInForce([...receivedBundles, ...(await take())])).toEqual([terms.data]);
   });
 });

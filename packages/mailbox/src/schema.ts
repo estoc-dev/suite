@@ -55,35 +55,26 @@ export type MailboxKeyData = {
   readonly secret: string;
 };
 
-/** The draft 2020-12 schema of a record that a bundle came in at a mailbox of the user's. */
-export const inboundSchema: JsonSchema = deliverySchema("Inbound");
+/**
+ * The draft 2020-12 schema of a record that a bundle, named by the link of its root, went out to a
+ * mailbox. `at` is when, in milliseconds since the Unix epoch, by the clock of the device that wrote
+ * the record.
+ */
+export const outboundSchema: JsonSchema = {
+  $schema: DRAFT_2020_12,
+  title: "Outbound",
+  type: "object",
+  properties: { bundle: linkSchema, mailbox: linkSchema, at: { type: "integer", minimum: 0 } },
+  required: ["bundle", "mailbox", "at"],
+  additionalProperties: false,
+};
 
-/** The draft 2020-12 schema of a record that a bundle went out to a mailbox. */
-export const outboundSchema: JsonSchema = deliverySchema("Outbound");
-
-/** The data of a record of either way, as `inboundSchema` and `outboundSchema` describe it. */
-export type DeliveryData = {
+/** The data of an Outbound record, as `outboundSchema` describes it. */
+export type OutboundData = {
   readonly bundle: JsonLink<never>;
   readonly mailbox: JsonLink<EncodedObject<Json>>;
   readonly at: number;
 };
-
-/**
- * A record that a bundle, named by the link of its root, came in at a
- * mailbox or went out to one. `at` is when, in milliseconds since the Unix
- * epoch by the clock of the device that wrote the record. Records of both
- * ways have the same fields, and the title tells them apart.
- */
-function deliverySchema(title: string): JsonSchema {
-  return {
-    $schema: DRAFT_2020_12,
-    title,
-    type: "object",
-    properties: { bundle: linkSchema, mailbox: linkSchema, at: { type: "integer", minimum: 0 } },
-    required: ["bundle", "mailbox", "at"],
-    additionalProperties: false,
-  };
-}
 
 /**
  * The draft 2020-12 schema of a Mailbox Grant, which says at which mailboxes whoever signs it

@@ -115,7 +115,7 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
 }
 
 const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
-  (await view(store, grants.latest)).grantFrom(from.root, to.root, await view(store, seenPeople));
+  (await view(store, grants.series)).grantFrom(from.root, to.root, await view(store, seenPeople));
 
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {

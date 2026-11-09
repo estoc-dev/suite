@@ -1,0 +1,423 @@
+import { readBundle, writeBundle } from "@estoc/bundle";
+import {
+  type Actor,
+  ed25519,
+  loadIdentity,
+  noIdentityVersions,
+  type SignedIdentityObject,
+  SoftwareSigner,
+} from "@estoc/identity";
+import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
+import { defaultValidator } from "@estoc/object/default-validator";
+import { type Intake, loadIntake, MemoryBackend, PrivateStore, RefusedBatch, Store } from "@estoc/store";
+import { assert, describe, expect, it } from "vitest";
+import {
+  type Correspondence,
+  type Inbox,
+  loadMailboxGrants,
+  loadPost,
+  mailboxSchema,
+  type Pickup,
+  type Post,
+  type Transport,
+  UndeliveredMessage,
+} from "../src/index.ts";
+import { MemoryNetwork } from "./memory-network.ts";
+
+// People who each keep a store and correspond as one actor: each gives the
+// other a grant of a mailbox, sends by the grant they were given, and reads
+// what came in by the grants they gave.
+
+const identity = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, publish, delegate } = identity;
+const grants = await loadMailboxGrants(defaultValidator, identity);
+const DRAFT = "https://json-schema.org/draft/2020-12/schema";
+const note = await encodeSchema(
+  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
+  defaultValidator,
+);
+const network = await MemoryNetwork.create(defaultValidator);
+
+// The kinds that the mailboxes at some queues turn a message back with.
+const turningBack = new Map<unknown, UndeliveredMessage["kind"]>();
+const transport: Transport = {
+  schema: network.transport.schema,
+  deliver: async (mailbox, ciphertext) => {
+    const kind = turningBack.get(mailbox.name);
+    if (kind !== undefined) throw new UndeliveredMessage(kind, "this queue turns it back");
+    await network.transport.deliver(mailbox, ciphertext);
+  },
+};
+
+// One clock for everyone, so that what is done later has the greater `at`.
+let now = 0;
+const clock = () => ++now;
+
+interface Person {
+  readonly actor: Actor;
+  readonly signedIdentity: SignedIdentityObject;
+  readonly store: Store;
+  readonly post: Post;
+  readonly intake: Intake;
+  readonly correspondence: Correspondence;
+}
+
+const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
+
+async function personActingAs(actor: Actor, store = new Store(json, new MemoryBackend())): Promise<Person> {
+  const privateStore = new PrivateStore(store, new MemoryBackend());
+  const post = await loadPost(store, privateStore, { transports: [transport], validator: defaultValidator, clock });
+  const intake = await loadIntake(store, { validator: defaultValidator, clock });
+  const correspondence = await post.correspondenceAs(actor, identity);
+  return { actor, signedIdentity: actor.signedIdentity, store, post, intake, correspondence };
+}
+
+async function person(fill: number): Promise<Person> {
+  const signer = signerOf(fill);
+  return personActingAs(signatures.actor(signer, await publish(signer, 0)));
+}
+
+interface OpenedInbox {
+  readonly name: string;
+  readonly inbox: Inbox;
+  readonly pickup: Pickup;
+}
+
+async function openInbox({ post }: Person): Promise<OpenedInbox> {
+  const queue = network.queue();
+  const inbox = await post.openInbox(queue.mailbox);
+  return { name: queue.name, inbox, pickup: queue.pickup(inbox.mailbox) };
+}
+
+// `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
+async function handOver(from: Person, to: Person, root: Link<unknown>) {
+  const closure = await from.store.closure(root);
+  const bytes = closure.get(root);
+  assert.exists(bytes);
+  await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
+}
+
+const seeIdentityVersion = ({ intake }: Person, identityVersion: SignedIdentityObject) =>
+  intake.receive(readBundle(writeBundle({ bytes: identityVersion.bytes }, identityVersion.blobs)));
+
+// `from` gives `to` a grant of `mailboxes` and hands it over out of band.
+async function grantMailboxes(from: Person, to: Person, mailboxes: readonly OpenedInbox[]) {
+  const signature = await from.correspondence.grant(
+    to.signedIdentity,
+    mailboxes.map(({ inbox }) => inbox.mailbox),
+  );
+  await handOver(from, to, signature.link);
+}
+
+// `from` opens an inbox and gives `to` a grant of it.
+async function grantInbox(from: Person, to: Person): Promise<OpenedInbox> {
+  const opened = await openInbox(from);
+  await grantMailboxes(from, to, [opened]);
+  return opened;
+}
+
+// A signed note in the store of whoever acts, to send.
+async function writeNote({ actor, store }: Person, text: string) {
+  const object = encodeObject(note, { text });
+  const signature = await actor.sign(object);
+  await store.write({
+    records: [signature],
+    blobs: [object.bytes, ...signature.signedIdentity.blobs, ...note.blobs, ...signatures.schema.blobs],
+  });
+  return signature;
+}
+
+async function listed({ store }: Person): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.records()) links.push(link);
+  return links;
+}
+
+// A wallet lists one agent at 1_000, and at 2_000 lists another in its place.
+const wallet = signerOf(11);
+const [formerAgent, currentAgent] = [signerOf(12), signerOf(13)];
+const listingIdentityVersion = await delegate(wallet, [formerAgent.key], 1_000);
+const removalIdentityVersion = await delegate(wallet, [currentAgent.key], 2_000);
+
+describe("a grant", () => {
+  it("is written as a record, signed by the actor, of the mailboxes, at the post's clock", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const { inbox } = await openInbox(alice);
+    const before = now;
+    const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
+
+    expect(await listed(alice)).toContain(signature.link);
+    const read = await signatures.read(signature.link, alice.store, noIdentityVersions);
+    expect(read.signedIdentity.link).toBe(alice.signedIdentity.link);
+    const { data } = await readObject(alice.store, read.object, grants.schema);
+    expect(data).toEqual({
+      to: { $link: bob.signedIdentity.link },
+      mailboxes: [{ $link: inbox.mailbox }],
+      at: before + 1,
+    });
+  });
+
+  it("is to the current identity version that the store holds of whoever it is given", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const { inbox } = await openInbox(alice);
+    await seeIdentityVersion(alice, removalIdentityVersion);
+    const signature = await alice.correspondence.grant(listingIdentityVersion, [inbox.mailbox]);
+    const { data } = await readObject(alice.store, signature.object, grants.schema);
+    expect(data.to.$link).toBe(removalIdentityVersion.link);
+
+    const toBob = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
+    const { data: dataToBob } = await readObject(alice.store, toBob.object, grants.schema);
+    expect(dataToBob.to.$link).toBe(bob.signedIdentity.link);
+  });
+
+  it("is refused when the store does not hold a mailbox it names, and nothing is written", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const elsewhere = network.queue().mailbox(new Uint8Array(32).fill(7));
+    const before = await listed(alice);
+    await expect(alice.correspondence.grant(bob.signedIdentity, [elsewhere.link])).rejects.toThrow(RefusedBatch);
+    expect(await listed(alice)).toEqual(before);
+  });
+});
+
+describe("sending to someone", () => {
+  it("goes to each mailbox of their latest grant, with a record for each", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const [first, second] = [await openInbox(bob), await openInbox(bob)];
+    await grantMailboxes(bob, alice, [first, second]);
+
+    const signature = await writeNote(alice, "hi Bob");
+    const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([first.inbox.mailbox, second.inbox.mailbox]);
+    expect(await listed(alice)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
+    expect(await first.inbox.collect(first.pickup)).toHaveLength(1);
+    expect(await second.inbox.collect(second.pickup)).toHaveLength(1);
+  });
+
+  it("goes by their latest grant and not an earlier one", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const earlier = await grantInbox(bob, alice);
+    const later = await grantInbox(bob, alice);
+
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(await earlier.inbox.collect(earlier.pickup)).toEqual([]);
+    expect(await later.inbox.collect(later.pickup)).toHaveLength(1);
+  });
+
+  it("is turned back as gone when they have given no grant", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const signature = await writeNote(alice, "hi Bob");
+    const sending = alice.correspondence.send(bob.signedIdentity, signature.link);
+    await expect(sending).rejects.toThrow(UndeliveredMessage);
+    await expect(sending).rejects.toMatchObject({ kind: "gone" });
+  });
+
+  it("is turned back as gone when their latest grant names no mailbox", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const { inbox, pickup } = await grantInbox(bob, alice);
+    await grantMailboxes(bob, alice, []);
+
+    const signature = await writeNote(alice, "hi Bob");
+    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({ kind: "gone" });
+    expect(await inbox.collect(pickup)).toEqual([]);
+  });
+
+  it("is turned back as gone when their only grant is by a key that their root has removed", async () => {
+    const [alice, bob] = await Promise.all([
+      person(1),
+      personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
+    ]);
+    await grantInbox(bob, alice);
+    await seeIdentityVersion(alice, removalIdentityVersion);
+
+    const signature = await writeNote(alice, "hi Bob");
+    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({ kind: "gone" });
+  });
+
+  it("has gone once one mailbox takes it, though another turned it back", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const [turning, taking] = [await openInbox(bob), await openInbox(bob)];
+    turningBack.set(turning.name, "gone");
+    await grantMailboxes(bob, alice, [turning, taking]);
+
+    const signature = await writeNote(alice, "hi Bob");
+    const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([taking.inbox.mailbox]);
+    expect(await taking.inbox.collect(taking.pickup)).toHaveLength(1);
+  });
+
+  it("is turned back as later when every mailbox turned it back and one can take it later", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const [gone, busy] = [await openInbox(bob), await openInbox(bob)];
+    turningBack.set(gone.name, "gone");
+    turningBack.set(busy.name, "later");
+    await grantMailboxes(bob, alice, [gone, busy]);
+
+    const signature = await writeNote(alice, "hi Bob");
+    const before = await listed(alice);
+    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({
+      kind: "later",
+    });
+    expect(await listed(alice)).toEqual(before);
+  });
+
+  it("sends nothing when the post has no transport for a mailbox of the grant", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const { inbox, pickup } = await openInbox(bob);
+    const otherSchema = await encodeSchema(
+      mailboxSchema("Other mailbox", { place: { type: "string" } }, ["place"]),
+      defaultValidator,
+    );
+    const other = encodeObject(otherSchema, { key: "00".repeat(32), place: "elsewhere" });
+    await bob.store.write({ records: [other], blobs: otherSchema.blobs });
+    const given = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
+    await handOver(bob, alice, given.link);
+
+    const signature = await writeNote(alice, "hi Bob");
+    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toThrow(/no transport/);
+    expect(await inbox.collect(pickup)).toEqual([]);
+  });
+});
+
+describe("what came in at a mailbox", () => {
+  const twoPeople = async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const opened = await grantInbox(bob, alice);
+    const receive = async () => {
+      const [delivery] = await opened.inbox.collect(opened.pickup);
+      assert.exists(delivery);
+      return delivery;
+    };
+    return { alice, bob, ...opened, receive };
+  };
+
+  it("is a message from whoever signed it, at a mailbox of a grant to them", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const { bundle } = await receive();
+
+    const message = await bob.correspondence.messageAt(inbox.mailbox, bundle);
+    expect(message?.link).toBe(signature.link);
+    expect(message?.signedIdentity.link).toBe(alice.signedIdentity.link);
+  });
+
+  it("is no message when someone with no grant signed it, who was passed the mailbox", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const mallory = await person(4);
+    await handOver(alice, mallory, inbox.mailbox);
+    const signature = await writeNote(mallory, "hi Bob");
+    await (await mallory.post.outbox(inbox.mailbox)).send(signature.link);
+    const { bundle } = await receive();
+
+    expect(await bob.correspondence.messageAt(inbox.mailbox, bundle)).toBeUndefined();
+  });
+
+  it("is a message only at a mailbox that was granted to whoever signed it", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const carol = await person(3);
+    const toCarol = await grantInbox(bob, carol);
+    await handOver(alice, carol, inbox.mailbox);
+
+    const signature = await writeNote(carol, "hi Bob");
+    await (await carol.post.outbox(inbox.mailbox)).send(signature.link);
+    const { bundle } = await receive();
+
+    expect(await bob.correspondence.messageAt(inbox.mailbox, bundle)).toBeUndefined();
+    expect((await bob.correspondence.messageAt(toCarol.inbox.mailbox, bundle))?.link).toBe(signature.link);
+  });
+
+  it("is no message when its root is not a signature", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const object = encodeObject(note, { text: "no one signed this" });
+    await alice.store.write({ records: [object], blobs: note.blobs });
+    await (await alice.post.outbox(inbox.mailbox)).send(object.link);
+    const { bundle } = await receive();
+
+    expect(await bob.correspondence.messageAt(inbox.mailbox, bundle)).toBeUndefined();
+  });
+
+  it("is no message when its signature does not verify", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const signature = await writeNote(alice, "hi Bob");
+    const other = encodeObject(note, { text: "not what was signed" });
+    const forged = encodeObject(signatures.schema, { ...signature.data, object: { $link: other.link } });
+    await alice.store.write({ records: [forged], blobs: [other.bytes] });
+    await (await alice.post.outbox(inbox.mailbox)).send(forged.link);
+    const { bundle } = await receive();
+
+    expect(await bob.correspondence.messageAt(inbox.mailbox, bundle)).toBeUndefined();
+  });
+
+  it("is no message once its signer's root has removed the key that made it", async () => {
+    const [alice, bob] = await Promise.all([
+      personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
+      person(2),
+    ]);
+    const { inbox, pickup } = await grantInbox(bob, alice);
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const [delivery] = await inbox.collect(pickup);
+    assert.exists(delivery);
+    expect((await bob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
+
+    await seeIdentityVersion(bob, removalIdentityVersion);
+    expect(await bob.correspondence.messageAt(inbox.mailbox, delivery.bundle)).toBeUndefined();
+  });
+
+  it("is still a message once the mailbox has left the latest grant", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const { bundle } = await receive();
+
+    await grantInbox(bob, alice);
+    expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
+  });
+
+  it("is no message once the receiver's root has removed the key that signed its grant, until a listed key signs one", async () => {
+    const store = new Store(json, new MemoryBackend());
+    const [formerBob, currentBob, alice] = await Promise.all([
+      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), store),
+      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), store),
+      person(1),
+    ]);
+    const { inbox, pickup } = await grantInbox(formerBob, alice);
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(formerBob.signedIdentity, signature.link);
+    const [delivery] = await inbox.collect(pickup);
+    assert.exists(delivery);
+    expect((await formerBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
+
+    await seeIdentityVersion(currentBob, removalIdentityVersion);
+    expect(await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle)).toBeUndefined();
+
+    await currentBob.correspondence.grant(alice.signedIdentity, [inbox.mailbox]);
+    expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
+  });
+
+  it("fails while the store fails to give a blob of it, and reads once the store does", async () => {
+    let failingLink: Link<unknown> | undefined;
+    const diskError = new Error("the disk fails to read");
+    const backend = new (class extends MemoryBackend {
+      override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
+        return link === failingLink ? Promise.reject(diskError) : super.get(link);
+      }
+    })();
+    const signer = signerOf(2);
+    const [alice, bob] = await Promise.all([
+      person(1),
+      personActingAs(signatures.actor(signer, await publish(signer, 0)), new Store(json, backend)),
+    ]);
+    const { inbox, pickup } = await grantInbox(bob, alice);
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const [delivery] = await inbox.collect(pickup);
+    assert.exists(delivery);
+
+    failingLink = signature.link;
+    await expect(bob.correspondence.messageAt(inbox.mailbox, delivery.bundle)).rejects.toBe(diskError);
+    failingLink = undefined;
+    expect((await bob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
+  });
+});

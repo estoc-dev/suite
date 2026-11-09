@@ -1,5 +1,6 @@
+export type { Correspondence, CorrespondenceIdentity } from "./correspondence.ts";
 export {
-  type LatestGrants,
+  type GrantSeries,
   loadMailboxGrants,
   type MailboxGrant,
   type MailboxGrantRow,

@@ -1,4 +1,4 @@
-import type { Bundle } from "@estoc/bundle";
+import { type Bundle, readBundle, writeBundle } from "@estoc/bundle";
 import {
   type CurveScheme,
   ed25519,
@@ -7,6 +7,7 @@ import {
   type KeyObject,
   loadIdentity,
   noIdentityVersions,
+  type SignedIdentityObject,
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
@@ -17,14 +18,17 @@ import {
   type Fields,
   type Json,
   type JsonLink,
+  json,
+  type Link,
   linkOf,
   linkSchema,
   readObject,
   type Schema,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
+import { loadIntake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Mailbox, MailboxKey, mailboxFrom } from "../src/index.ts";
+import { type Delivery, loadPost, type Mailbox, MailboxKey, mailboxFrom } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes, each as a bundle
@@ -33,11 +37,8 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator, [
-  ed25519,
-  eip191,
-  solanaOffchain,
-]);
+const identity = await loadIdentity(defaultValidator, [ed25519, eip191, solanaOffchain]);
+const { keys, identities, signatures, signedIdentities, publish } = identity;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
@@ -258,5 +259,134 @@ describe("a sale sent to a registry", () => {
     expect(await salesInForce(receivedBundles)).toEqual([]);
     await send(buyer);
     expect(await salesInForce([...receivedBundles, ...(await take())])).toEqual([terms.data]);
+  });
+});
+
+// Two people who meet hand over what it takes once, out of band: first the
+// signed identity of the one, and then a grant to them from the other, which
+// says who the other is and where to send. From then on all goes through
+// their mailboxes. Whoever receives reads what came in by the grants they gave,
+// so a grant that came in reads as a message, and the application shows the
+// lines among those.
+describe("two people who meet", () => {
+  const lines = signatures.selectionOver(chat);
+
+  const twoPeople = async () => {
+    const network = await MemoryNetwork.create(defaultValidator);
+    // One clock for both, so that what one does reads as before what the other does next.
+    let now = 0;
+    const clock = () => ++now;
+    const person = async (fill: number) => {
+      const by = signer(ed25519, fill);
+      const actor = signatures.actor(by, await publish(by, 0));
+      const store = new Store(json, new MemoryBackend());
+      const privateStore = new PrivateStore(store, new MemoryBackend());
+      const options = { transports: [network.transport], validator: defaultValidator, clock };
+      const post = await loadPost(store, privateStore, options);
+      const intake = await loadIntake(store, options);
+      const correspondence = await post.correspondenceAs(actor, identity);
+      const openInbox = async () => {
+        const queue = network.queue();
+        const inbox = await post.openInbox(queue.mailbox);
+        const pickup = queue.pickup(inbox.mailbox);
+        return { mailbox: inbox.mailbox, collect: () => inbox.collect(pickup) };
+      };
+      const say = async (to: SignedIdentityObject, text: string) => {
+        const object = encodeObject(chat, { text });
+        const signature = await actor.sign(object);
+        await store.write({
+          records: [signature],
+          blobs: [object.bytes, ...signature.signedIdentity.blobs, ...chat.blobs, ...signatures.schema.blobs],
+        });
+        return correspondence.send(to, signature.link);
+      };
+      // Who wrote each line among `deliveries`, and its text, leaving out what is no message and what is no line.
+      const read = async (deliveries: readonly Delivery[]) => {
+        const shown: [Link<KeyObject>, string][] = [];
+        for (const { mailbox, bundle } of deliveries) {
+          const message = await correspondence.messageAt(mailbox, bundle);
+          const line = await lines.read(bundle, store);
+          if (message !== undefined && line !== undefined) {
+            shown.push([message.signedIdentity.identity.root.link, line.object.data.text]);
+          }
+        }
+        return shown;
+      };
+      const { signedIdentity } = actor;
+      const root = signedIdentity.identity.root.link;
+      return { root, signedIdentity, store, intake, correspondence, openInbox, say, read };
+    };
+    return { grace: await person(8), heidi: await person(9) };
+  };
+  type Correspondent = Awaited<ReturnType<typeof twoPeople>>["grace"];
+
+  // What the store holds under `root`, as a bundle to hand over out of band.
+  const bundleIn = async ({ store }: Correspondent, root: Link<unknown>) => {
+    const closure = await store.closure(root);
+    const bytes = closure.get(root);
+    assert.exists(bytes);
+    return readBundle(writeBundle({ bytes }, closure.values()));
+  };
+
+  it("first hand over a signed identity and a grant, and from then on write through their mailboxes", async () => {
+    const { grace, heidi } = await twoPeople();
+
+    // Heidi hands over a signed identity, and Grace hands back a grant of a mailbox.
+    const handedIdentity = readBundle(writeBundle(heidi.signedIdentity, heidi.signedIdentity.blobs));
+    await grace.intake.receive(handedIdentity);
+    const heidiAsSeen = await signedIdentities.read(heidi.signedIdentity.link, handedIdentity);
+    const atGrace = await grace.openInbox();
+    const handedGrant = await bundleIn(grace, (await grace.correspondence.grant(heidiAsSeen, [atGrace.mailbox])).link);
+    await heidi.intake.receive(handedGrant);
+
+    // That grant says who Grace is, and Heidi's own grant goes to the mailbox it names.
+    const graceAsSeen = (await signatures.read(handedGrant.link, handedGrant, noIdentityVersions)).signedIdentity;
+    expect(graceAsSeen.link).toBe(grace.signedIdentity.link);
+    const atHeidi = await heidi.openInbox();
+    const heidisGrant = await heidi.correspondence.grant(graceAsSeen, [atHeidi.mailbox]);
+    expect(await heidi.correspondence.send(graceAsSeen, heidisGrant.link)).toMatchObject([
+      { mailbox: atGrace.mailbox },
+    ]);
+    expect(await grace.read(await atGrace.collect())).toEqual([]);
+
+    await grace.say(heidiAsSeen, "hi Heidi");
+    expect(await heidi.read(await atHeidi.collect())).toEqual([[grace.root, "hi Heidi"]]);
+    await heidi.say(graceAsSeen, "hi Grace");
+    expect(await grace.read(await atGrace.collect())).toEqual([[heidi.root, "hi Grace"]]);
+  });
+
+  it("move a mailbox with nothing lost, and what came in at the old one still reads as a message", async () => {
+    const { grace, heidi } = await twoPeople();
+    const give = async (mailboxes: readonly Link<EncodedObject<Json>>[]) =>
+      grace.correspondence.grant(heidi.signedIdentity, mailboxes);
+
+    const oldInbox = await grace.openInbox();
+    await heidi.intake.receive(await bundleIn(grace, (await give([oldInbox.mailbox])).link));
+    const atHeidi = await heidi.openInbox();
+    const heidisGrant = await heidi.correspondence.grant(grace.signedIdentity, [atHeidi.mailbox]);
+    await grace.intake.receive(await bundleIn(heidi, heidisGrant.link));
+    await heidi.say(grace.signedIdentity, "before the move");
+    const beforeMove = await oldInbox.collect();
+
+    // Grace lists the new mailbox beside the old, and goes on receiving at both.
+    const newInbox = await grace.openInbox();
+    await grace.correspondence.send(heidi.signedIdentity, (await give([oldInbox.mailbox, newInbox.mailbox])).link);
+    await atHeidi.collect();
+    await heidi.say(grace.signedIdentity, "during the move");
+    const duringMove = await oldInbox.collect();
+    const atNew = await newInbox.collect();
+
+    // What came in at the new mailbox shows that Heidi has the grant, so Grace stops receiving at the old one.
+    expect(await grace.read(atNew)).toEqual([[heidi.root, "during the move"]]);
+    await grace.correspondence.send(heidi.signedIdentity, (await give([newInbox.mailbox])).link);
+    await atHeidi.collect();
+    await heidi.say(grace.signedIdentity, "after the move");
+    expect(await oldInbox.collect()).toEqual([]);
+
+    expect(await grace.read([...beforeMove, ...duringMove, ...(await newInbox.collect())])).toEqual([
+      [heidi.root, "before the move"],
+      [heidi.root, "during the move"],
+      [heidi.root, "after the move"],
+    ]);
   });
 });

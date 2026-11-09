@@ -1,5 +1,13 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import {
+  type Actor,
+  ed25519,
+  loadIdentity,
+  noIdentityVersions,
+  type Signature,
+  type SignedIdentityObject,
+  SoftwareSigner,
+} from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -27,10 +35,10 @@ import {
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
+  type Correspondence,
   type Inbox,
   loadPost,
   type OutboundData,
-  type Outbox,
   outboundSchema,
   type Pickup,
   type Post,
@@ -38,13 +46,16 @@ import {
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a store and a mailbox for the other,
-// whose key they keep in a private store beside it. What one sends is a
+// whose key they keep in a private store beside it, and each with a grant of
+// that mailbox from the other, handed over out of band. What one sends is a
 // signed line from their store, recorded there as gone out; what arrives is
 // kept with a record that it came in. The application reads a conversation
 // out of those records alone, through an index of all that its user wrote,
-// and reads each line from its bundle when it shows it.
+// and reads each line from its bundle when it shows it, as a message from
+// whoever signed it where the reader gave them that mailbox.
 
-const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const identity = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, publish } = identity;
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const line: Schema<Json, { readonly text: string }> = await encodeSchema(
   {
@@ -104,6 +115,15 @@ interface Person {
   readonly store: Store;
   readonly post: Post;
   readonly intake: Intake;
+  readonly correspondence: Correspondence;
+}
+
+// `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
+async function handOver(from: Person, to: Person, root: Link<unknown>) {
+  const closure = await from.store.closure(root);
+  const bytes = closure.get(root);
+  assert.exists(bytes);
+  await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
 }
 
 async function chat(faults: Faults = {}) {
@@ -119,67 +139,88 @@ async function chat(faults: Faults = {}) {
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = await loadPost(store, privateStore, { transports, validator: defaultValidator, clock });
     const intake = await loadIntake(store, { validator: defaultValidator, clock });
-    return { name, actor, store, post, intake };
+    const correspondence = await post.correspondenceAs(actor, identity);
+    return { name, actor, store, post, intake, correspondence };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
   const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.root.link, name]));
 
-  // `owner` opens a mailbox for `peer` and hands it over out of band, and the
-  // peer keeps it in their store with a record that it came in, to send to it.
+  // `owner` opens a mailbox for `peer`, signs a grant of it and hands it over
+  // out of band, and the peer keeps it in their store with a record that it
+  // came in, to send to it.
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
     const inbox = await owner.post.openInbox(queue.mailbox);
-    const mailboxBytes = await owner.store.get(inbox.mailbox);
-    assert.exists(mailboxBytes);
-    await peer.intake.receive(readBundle(writeBundle({ bytes: mailboxBytes }, network.transport.schema.blobs)));
-    const outbox = await peer.post.outbox(inbox.mailbox);
-    return { mailbox: inbox.mailbox, inbox, outbox, pickup: queue.pickup(inbox.mailbox) };
+    const grant = await owner.correspondence.grant(peer.actor.signedIdentity, [inbox.mailbox]);
+    await handOver(owner, peer, grant.link);
+    return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup(inbox.mailbox) };
   };
   const atAlice = await mailboxFor(alice, bob);
   const atBob = await mailboxFor(bob, alice);
 
-  const say = async (from: Person, outbox: Outbox, text: string) => {
+  const writeLine = async ({ actor, store }: Person, text: string) => {
     const object = encodeObject(line, { text });
-    const signature = await from.actor.sign(object);
-    await from.store.write({
+    const signature = await actor.sign(object);
+    await store.write({
       records: [signature],
       blobs: [object.bytes, ...signature.signedIdentity.blobs, ...schemas],
     });
-    await outbox.send(signature.link);
+    return signature;
+  };
+  const say = async (from: Person, to: SignedIdentityObject, text: string) => {
+    const signature = await writeLine(from, text);
+    await from.correspondence.send(to, signature.link);
     return signature;
   };
   const collect = ({ inbox, pickup }: { inbox: Inbox; pickup: Pickup }) => inbox.collect(pickup);
 
   // What the person sees of their conversation with the other: each line,
-  // which way it went and who wrote it.
-  const show = async (person: Person, mine: Mailbox, theirs: Mailbox) =>
-    Promise.all(
-      (await conversation(await scan(person.store, deliveries), mine, theirs)).map(async ([direction, , , bundle]) => {
-        const signature = await signatures.read(bundle, person.store, noIdentityVersions);
+  // which way it went and who wrote it. What came in and is no message from
+  // anyone the person gave that mailbox is left out.
+  const show = async (person: Person, mine: Mailbox, theirs: Mailbox) => {
+    const rows = await conversation(await scan(person.store, deliveries), mine, theirs);
+    const lines = await Promise.all(
+      rows.map(async ([direction, mailbox, , bundle]) => {
+        const signature: Signature | undefined =
+          direction === "inbound"
+            ? await person.correspondence.messageAt(mailbox, bundle)
+            : await signatures.read(bundle, person.store, noIdentityVersions);
+        if (signature === undefined) return undefined;
         const { data } = await readObject(person.store, signature.object, line);
         return [direction, names.get(signature.signedIdentity.identity.root.link), data.text];
       }),
     );
+    return lines.filter((shown) => shown !== undefined);
+  };
   // What the person's store records as having come in, or gone out, at any mailbox.
   const recorded = async ({ store }: Person, direction: Direction) =>
     all((await scan(store, deliveries)).range([direction]));
 
+  // Someone who was given no grant, and was passed the mailbox that Alice gave
+  // Bob, sends a line of their own there.
+  const carol = await person("Carol", 3);
+  await handOver(bob, carol, atAlice.mailbox);
+
   return {
     alice: {
-      say: (text: string) => say(alice, atBob.outbox, text),
+      say: (text: string) => say(alice, bob.actor.signedIdentity, text),
       collect: () => collect(atAlice),
       show: () => show(alice, atAlice.mailbox, atBob.mailbox),
       recorded: (direction: Direction) => recorded(alice, direction),
-      resend: (root: Link<unknown>) => atBob.outbox.send(root),
+      resend: (root: Link<unknown>) => alice.correspondence.send(bob.actor.signedIdentity, root),
       store: alice.store,
       conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox, atBob.mailbox),
     },
     bob: {
-      say: (text: string) => say(bob, atAlice.outbox, text),
+      say: (text: string) => say(bob, alice.actor.signedIdentity, text),
       collect: () => collect(atBob),
       show: () => show(bob, atBob.mailbox, atAlice.mailbox),
       recorded: (direction: Direction) => recorded(bob, direction),
+    },
+    carol: {
+      sayToAlice: async (text: string) =>
+        (await carol.post.outbox(atAlice.mailbox)).send((await writeLine(carol, text)).link),
     },
   };
 }
@@ -248,6 +289,16 @@ describe("a conversation", () => {
       ["inbound", "Alice", "lunch at noon?"],
       ["inbound", "Alice", "hi Bob"],
     ]);
+  });
+
+  it("leaves out a line by someone who was given no grant, though it is recorded", async () => {
+    const { alice, bob, carol } = await chat();
+    await bob.say("hi Alice");
+    await carol.sayToAlice("hi Alice, I am Bob");
+    await alice.collect();
+
+    expect(await alice.recorded("inbound")).toHaveLength(2);
+    expect(await alice.show()).toEqual([["inbound", "Bob", "hi Alice"]]);
   });
 
   it("reads the same when the records are added in another order and more than once", async () => {

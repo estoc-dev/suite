@@ -290,12 +290,13 @@ someone else signed, and passing on a signed contract is ordinary use; the
 receiver reads who stands behind what it holds, not who sent it. An
 application that needs to know whom a message was meant for, such as a
 chat, writes the recipient into its own object, as `to`, so that it is
-signed with the content.
+signed with the content. Two people who have given each other grants read
+what comes in by those grants, as told under "Corresponding".
 
 Authenticated modes, such as HPKE's auth mode or DIDComm's authcrypt, are
-not used: they need the sender to hold an x25519 key that the receiver
-already knows, which a sender that has only been handed a mailbox does not
-have.
+not used. A store keeps the bundle and not the ciphertext, so what such a
+mode says of who sealed it is gone once `open` has run, and a reader that
+comes to the bundle later has only the signature to go by.
 
 ## Mailbox Grants
 
@@ -325,37 +326,106 @@ without asking a transport whether a mailbox still takes them.
 to someone else that is passed on to you is of their series, and does not
 change where its signer takes your messages.
 
+### Corresponding
+
+`correspondenceAs` binds a post to an actor, to give grants and to send and
+read by them. It reads the grants and identity versions the store holds at
+each call, through indexes it makes once, so a program makes it once for an
+actor.
+
+```ts
+const correspondence = await post.correspondenceAs(actor, identity);
+
+const inbox = await post.openInbox(makeMailbox);
+const signature = await correspondence.grant(theirs, [inbox.mailbox]);
+await correspondence.send(theirs, signature.link); // or hand it over out of band
+
+await correspondence.send(theirs, line.link);
+const message = await correspondence.messageAt(inbox.mailbox, bundle);
+```
+
+`grant` signs a grant, at the post's clock, to the current identity version
+of `theirs` that the store holds, and writes the signature as a record. It
+refuses a mailbox the store does not hold, and writes nothing then.
+
+`send` sends a root that the store holds to each mailbox of the latest grant
+of their root to the actor's root, and gives back a record for each mailbox
+that takes it.
+
+- They take messages at each of those mailboxes, so the message has gone once
+  one of them takes it. A mailbox that turns it back leaves no record and does
+  not stop the others.
+- When there is no grant that counts, or the latest names no mailbox, it rejects
+  with an `UndeliveredMessage` of kind `gone`, since another mailbox is needed.
+- When every mailbox turns it back, it rejects with an `UndeliveredMessage`, of
+  kind `later` if there is one.
+- When the post has no transport for one of the mailboxes, it rejects before
+  sending anything.
+
+`messageAt` takes a mailbox and the link of a bundle that came in there, as an
+application's index reads them from `Inbound`, and gives the signature at the
+root of the bundle when it counts as a message from whoever signed it. For that,
+the key that made it signs for their current identity version, and the mailbox
+is in a grant the actor's root gave their root. Anything else gives `undefined`,
+since `collect` keeps whatever opens and anyone can send to a mailbox. A store
+that fails to give a blob makes it reject.
+
+What counts is worked out when it is read, by what the store holds then:
+
+- An earlier grant counts as the latest does, so what came in before a move
+  still reads as theirs.
+- A grant with no mailboxes stops them sending and does not take back the
+  earlier grants. A mailbox that was given to one person retires by no longer
+  receiving there. One that was given to several still counts what comes in
+  from each, whichever of them has been told to stop.
+- Once a reader has seen an identity version that removes an agent, what that
+  agent signed no longer counts, what came in before included: messages it
+  signed, and grants it signed, until a listed key signs a grant of that mailbox
+  again.
+
+Two people who have not met hand over what it takes out of band. One hands over
+their signed identity, as a bundle whose root it is, and the other a grant to
+them, whose closure says who signed it and where to send. The first keeps that
+through an `Intake`, and sends their own grant to the mailbox it names, and from
+then on all goes through their mailboxes. A grant names whom it is to, so one
+that leaks lets no one else in, and nothing has to be used only once. What is
+left to trust is that the signed identity handed over is theirs, which the
+channel out of band answers for.
+
+Moving to another mailbox is signing a grant that lists it beside the old one,
+and sending that. Something that comes in at the new mailbox shows that they
+have the grant, so the signer then signs one without the old mailbox and stops
+receiving there. What is sent to the old one after that is lost, as any message
+can be.
+
+### Reading grants
+
 ```ts
 import { loadMailboxGrants } from "@estoc/mailbox";
 import { indexOverBlobs, view } from "@estoc/store";
 
 const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities });
-const grant = grants.encode(theirs, [inbox.mailbox], Date.now());
-const signature = await actor.sign(grant);
-await store.write({ records: [signature], blobs: [grant.bytes, ...grants.schema.blobs, ...] });
-await (await post.outbox(theirMailbox)).send(signature.link);
-
 const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
-const latest = await view(store, grants.latest);
+const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
-await latest.grantFrom(mine, their, people); // where I take their messages
-await latest.grantFrom(their, mine, people); // where they take mine
+await series.grantFrom(mine, their, people); // where I take their messages
+await series.grantFrom(their, mine, people); // where they take mine
 ```
 
-`grants.latest` is a `View` of `@estoc/store`, made once for the program
+`grants.series` is a `View` of `@estoc/store`, made once for the program
 as the index it holds is. Its index reads the signatures over grants that
 the user writes as records, and the bundles that `Inbound` records say
 came in, at a mailbox or out of band, whose root is such a signature. Each
-gives a row of the root of
-the signer, the root of `to`, `at` and the link of the signature; the
-signature is verified by the signed identity it carries, as by
-`noIdentityVersions`. A bundle that came in and does not read as a grant
+gives a row of the root of the signer, the root of `to`, `at` and the link of
+the signature; the signature is verified by the signed identity it carries, as
+by `noIdentityVersions`. A bundle that came in and does not read as a grant
 gives no row, since anyone can send a bundle to a mailbox. The scan still
 fails when the store fails to give a blob of it, so a later scan of the index
-reads the bundle again. `grantFrom` takes the links of two roots and the
-`SeenIdentityVersions` of a reader, and gives the latest grant of the first
-to the second, with the signature over it and the signed identity it is to,
-or `undefined` when there is none.
+reads the bundle again. `grantsFrom` takes the links of two roots and the
+`SeenIdentityVersions` of a reader, and gives the grants of the first to the
+second that count, in the order of the series, each with the signature over it
+and the signed identity it is to. `grantFrom` gives the last of those, the latest
+grant, or `undefined` when there is none.
 
 The `SeenIdentityVersions` of a reader are the `People` of the signed
 identities its store holds, as in `@estoc/identity`. `seen` reads them by

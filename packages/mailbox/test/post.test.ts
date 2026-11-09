@@ -1,5 +1,5 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -138,7 +138,7 @@ describe("an outbox", () => {
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
-    expect((await signatures.read(bundle.link, bundle, noVersions)).object).toBe(hello.link);
+    expect((await signatures.read(bundle.link, bundle, noIdentityVersions)).object).toBe(hello.link);
   });
 
   it("records nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
@@ -214,7 +214,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1001 },
     ]);
     expect(await listed(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
-    expect((await signatures.read(signature.link, store, noVersions)).object).toBe(hello.link);
+    expect((await signatures.read(signature.link, store, noIdentityVersions)).object).toBe(hello.link);
     expect(queue.take()).toEqual([]);
   });
 

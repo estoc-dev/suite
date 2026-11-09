@@ -173,15 +173,17 @@ const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   },
 };
 
-const { signatures, signedIdentities, versions, delegate, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, signedIdentities, identityVersions, delegate, publish } = await loadIdentity(defaultValidator, [
+  ed25519,
+]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
 const people: View<IdentityVersion, People> = {
   index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
-    yield versions.versionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
+    yield identityVersions.identityVersionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
   }),
-  read: (rows, reader) => versions.people(rows, reader),
+  read: (rows, reader) => identityVersions.people(rows, reader),
 };
 
 describe("a view of a staged batch", () => {
@@ -223,7 +225,7 @@ describe("a view of a staged batch", () => {
       blobs: [agentsOut.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byRoot.signedIdentity.blobs],
     });
     await expect(signatures.read(byAgent.link, stagedStore, await view(stagedStore, people))).rejects.toThrow(
-      "does not sign for the current version",
+      "does not sign for the current identity version",
     );
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 

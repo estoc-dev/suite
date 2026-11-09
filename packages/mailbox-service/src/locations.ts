@@ -1,4 +1,4 @@
-import { type KeyObject, noVersions, type Signature, type Signatures } from "@estoc/identity";
+import { type KeyObject, noIdentityVersions, type Signature, type Signatures } from "@estoc/identity";
 import type { Json, Link, Schema } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
 import type { ServiceData } from "./schemas.ts";
@@ -22,9 +22,9 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
   return {
     index: indexOver(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
-      // verified by the version it carries; whether that version still
-      // counts is for whoever reads the Service to check.
-      const { signedIdentity, link } = await signatures.verify(signature, reader, noVersions);
+      // verified by the identity version it carries; whether that identity
+      // version still counts is for whoever reads the Service to check.
+      const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
       yield [signedIdentity.identity.root.link, object.data.at, link];
     }),
     read: (rows) => ({

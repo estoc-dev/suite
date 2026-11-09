@@ -3,7 +3,7 @@ import {
   type Actor,
   ed25519,
   eip191,
-  noVersions,
+  noIdentityVersions,
   type Signature,
   type SignedIdentityObject,
   type Signer,
@@ -65,14 +65,14 @@ const records = async (store: { records(): AsyncIterable<Link<never>> }) => {
  */
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
-  const signature = await signatures.read(bundle.link, bundle, noVersions);
+  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
   assert.exists(listedMailbox);
-  const offerSignature = await signatures.read(listedAccount.offer.$link, bundle, noVersions);
+  const offerSignature = await signatures.read(listedAccount.offer.$link, bundle, noIdentityVersions);
   const offer = await readObject(bundle, offerSignature.object, offerSchema);
-  const mailboxOfferSignature = await signatures.read(listedMailbox.offer.$link, bundle, noVersions);
+  const mailboxOfferSignature = await signatures.read(listedMailbox.offer.$link, bundle, noIdentityVersions);
   const mailbox = {
     offerSignature: mailboxOfferSignature,
     offer: await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchemaRead),
@@ -96,9 +96,13 @@ async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
-/** The bundle that accepts `offer` by `agent`, which `version` of the wallet's Delegated Identity lists. */
-async function acceptanceBy(agent: Signer, version: SignedIdentityObject, offer: { readonly link: Link<unknown> }) {
-  const signature = await signatures.actor(agent, version).sign(offer);
+/** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet's Delegated Identity lists. */
+async function acceptanceBy(
+  agent: Signer,
+  identityVersion: SignedIdentityObject,
+  offer: { readonly link: Link<unknown> },
+) {
+  const signature = await signatures.actor(agent, identityVersion).sign(offer);
   return packBundle(signature, signature.signedIdentity.blobs);
 }
 
@@ -122,7 +126,7 @@ function heldSigner(signer: Signer) {
 
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle, noVersions);
+  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchemaRead) };
 }
 
@@ -158,7 +162,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ acceptance: { $link: acceptance.signature.link }, at: 5_001 });
-    const read = await signatures.read(acceptance.signature.link, bundle, noVersions);
+    const read = await signatures.read(acceptance.signature.link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
   });
@@ -191,7 +195,7 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { acceptance: link } = acknowledgement.data;
     expect(link.$link).toBe(acceptance.signature.link);
-    const read = await signatures.read(link.$link, bundle, noVersions);
+    const read = await signatures.read(link.$link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
     expect(read.key.link).toBe(keys.encode(device.key).link);
@@ -207,7 +211,7 @@ describe("a mailbox service", () => {
     expect((await acknowledgementIn(response)).acknowledgement.data.acceptance.$link).toBe(again.signature.link);
   });
 
-  it("answers 400 to an agent that a later version of its root removed, though the root has an account", async () => {
+  it("answers 400 to an agent that a later identity version of its root removed, though the root has an account", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     const first = await delegate(wallet, [device.key, phone.key], 1_000);
@@ -216,11 +220,11 @@ describe("a mailbox service", () => {
     const recordsBefore = await records(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current identity version/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
-  it("answers 400 to an agent that a later version removed, though the agent opened the account before it came", async () => {
+  it("answers 400 to an agent that a later identity version removed, though the agent opened the account before it came", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
@@ -232,7 +236,7 @@ describe("a mailbox service", () => {
     expect((await postAcceptance(again, removedAcceptance)).status).toBe(400);
   });
 
-  it("answers 400 to an agent whose body comes in only after a later version removed it, and signs nothing for it", async () => {
+  it("answers 400 to an agent whose body comes in only after a later identity version removed it, and signs nothing for it", async () => {
     const { service, store } = await memoryService();
     const { offer, acceptId } = await rootOf(service);
     const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
@@ -261,11 +265,11 @@ describe("a mailbox service", () => {
     release();
     const response = await pendingResponse;
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current identity version/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
-  it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and has seen the versions of both", async () => {
+  it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and has seen the identity versions of both", async () => {
     const holder = heldSigner(serviceSigner);
     const { service } = await memoryService({ by: holder.signer });
     const { offer } = await rootOf(service);
@@ -442,7 +446,7 @@ describe("a mailbox service", () => {
       ),
     );
     const serviceSignatures = await Promise.all(
-      (await records(store)).map((link) => signatures.read(link, store, noVersions)),
+      (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const ats = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
@@ -494,7 +498,7 @@ describe("a mailbox service started again", () => {
     const { service: movedService } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(movedService)).data).toEqual(before.data);
     const serviceSignatures = await Promise.all(
-      (await records(store)).map((link) => signatures.read(link, store, noVersions)),
+      (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const services = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
@@ -561,7 +565,7 @@ const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
 
 async function mailboxAcknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle, noVersions);
+  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   return {
     bundle,
     signature,
@@ -627,7 +631,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(sendId).toMatch(/^[0-9a-f]{32}$/);
     expect(pickupId).toMatch(/^[0-9a-f]{32}$/);
     expect(sendId).not.toBe(pickupId);
-    const read = await signatures.read(signature.link, bundle, noVersions);
+    const read = await signatures.read(signature.link, bundle, noIdentityVersions);
     const request = await readObject(bundle, read.object, mailboxRequestSchemaRead);
     expect(request.data).toEqual({ offer: { $link: mailbox.offer.link }, key: keyOf(0x11) });
     expect((await readObject(bundle, request.data.offer.$link, mailboxOfferSchemaRead)).data).toEqual(
@@ -697,7 +701,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(await records(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
-  it("answers 400 to a request by an agent that a later version of its root removed, though the root has an account", async () => {
+  it("answers 400 to a request by an agent that a later identity version of its root removed, though the root has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
     const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
@@ -705,7 +709,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(await acceptAccount(service, signatures.actor(phone, await delegate(wallet, [phone.key], 2_000)))).toBe(200);
     const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).zip);
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current identity version/);
   });
 
   it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
@@ -884,7 +888,7 @@ describe("a mailbox that a service opened", () => {
     expect(await linksAt([c])).toEqual([linkOf(d)]);
   });
 
-  it("answers a pickup by an agent that a version of the root lists which it has not seen, by the version that the request carries", async () => {
+  it("answers a pickup by an agent that an identity version of the root lists which it has not seen, by the identity version that the request carries", async () => {
     const { service, mailbox } = await serviceWithMailbox();
     const listedAgent = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
@@ -902,7 +906,7 @@ describe("a mailbox that a service opened", () => {
     expect(await queueAt(service, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
-  it("answers 403 to a pickup by an agent that a later version of the root, which it has seen, takes out", async () => {
+  it("answers 403 to a pickup by an agent that a later identity version of the root, which it has seen, takes out", async () => {
     const { service } = await memoryService();
     const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
     await openAccount(service, removedAgent);
@@ -911,7 +915,7 @@ describe("a mailbox that a service opened", () => {
     expect(await acceptAccount(service, listedAgent)).toBe(200);
     const response = await post(service, mailbox.pickupId, await pickupRequest(removedAgent, mailbox.link));
     expect(response.status).toBe(403);
-    expect(await response.text()).toMatch(/does not sign for the current version/);
+    expect(await response.text()).toMatch(/does not sign for the current identity version/);
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([]);
   });
 

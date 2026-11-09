@@ -1,6 +1,7 @@
 import { encodeSchema, type Json, type JsonSchemaValidator, type Schema } from "@estoc/object";
 import { DelegatedIdentities, type DelegatedIdentityObject, delegatedIdentitySchema } from "./identity/delegated.ts";
 import { Identities, identitySchema } from "./identity/identity.ts";
+import { IdentityVersions } from "./identity-versions.ts";
 import type { Key, KeyData, Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
 import { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts";
@@ -8,7 +9,6 @@ import { SecretKeys, secretKeySchema } from "./secret-key.ts";
 import { Signatures, signatureSchema } from "./signature.ts";
 import { SignedIdentities, type SignedIdentityObject, signedIdentitySchema } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
-import { IdentityVersions } from "./versions.ts";
 import { WalletKeys, walletKeySchema } from "./wallet-key.ts";
 
 /** Each schema of this package, compiled, as what reads and writes its objects, side by side. */
@@ -18,14 +18,14 @@ export interface IdentityKit {
   readonly delegatedIdentities: DelegatedIdentities;
   readonly signedIdentities: SignedIdentities;
   readonly signatures: Signatures;
-  readonly versions: IdentityVersions;
+  readonly identityVersions: IdentityVersions;
   readonly secretKeys: SecretKeys;
   readonly walletKeys: WalletKeys;
   /**
    * Writes the Identity whose root is `root`'s key, at `at`, and has `root`
-   * sign it. Where a version signed by a clock that is off falls among the
-   * others is for the root to answer for, as anything else it does by that
-   * clock.
+   * sign it. Where an identity version signed by a clock that is off falls
+   * among the others is for the root to answer for, as anything else it does
+   * by that clock.
    */
   publish(root: Signer, at?: number): Promise<SignedIdentityObject>;
   /**
@@ -64,7 +64,7 @@ export async function loadIdentity(validator: JsonSchemaValidator, schemes: read
     delegatedIdentities,
     signedIdentities,
     signatures: new Signatures(await encodeSchema(signatureSchema, validator), signedIdentities),
-    versions: new IdentityVersions(signedIdentities),
+    identityVersions: new IdentityVersions(signedIdentities),
     secretKeys: new SecretKeys(await encodeSchema(secretKeySchema, validator), keys),
     walletKeys: new WalletKeys(await encodeSchema(walletKeySchema, validator), keys),
     publish: async (root, at = Date.now()) => signedIdentities.sign(root, identities.encode(root.key, at)),

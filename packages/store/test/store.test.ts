@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
+import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -274,7 +274,7 @@ describe("a signature read from a store", () => {
       records: [note, signature],
       blobs: [...signature.signedIdentity.blobs, ...anything.blobs, ...signatureSchemas],
     });
-    const readSignature = await signatures.read(signature.link, store, noVersions);
+    const readSignature = await signatures.read(signature.link, store, noIdentityVersions);
     expect(readSignature.object).toBe(note.link);
     expect(readSignature.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
@@ -284,12 +284,12 @@ describe("a signature read from a store", () => {
     const note = object({ text: "hello" });
     await store.write({ records: [note], blobs: anything.blobs });
     // @ts-expect-error: refused at compile time too
-    await expect(signatures.read(note.link, store, noVersions)).rejects.toThrow(/is written to/);
+    await expect(signatures.read(note.link, store, noIdentityVersions)).rejects.toThrow(/is written to/);
   });
 
   it("fails to read when the store does not hold it", async () => {
     const store = newStore();
     const link = linkOf(utf8("absent"));
-    await expect(signatures.read(link, store, noVersions)).rejects.toThrow(`no blob is given for ${link}`);
+    await expect(signatures.read(link, store, noIdentityVersions)).rejects.toThrow(`no blob is given for ${link}`);
   });
 });

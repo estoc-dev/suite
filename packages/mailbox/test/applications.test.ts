@@ -6,7 +6,7 @@ import {
   type IdentityObject,
   type KeyObject,
   loadIdentity,
-  noVersions,
+  noIdentityVersions,
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
@@ -49,7 +49,7 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: Sof
 };
 
 async function readSigned<F extends Fields<Json>>(bundle: Bundle, schema: Schema<Json, F>) {
-  const signature = await signatures.read(bundle.link, bundle, noVersions);
+  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   return {
     signature,
     identity: signature.signedIdentity.identity,

@@ -147,7 +147,7 @@ and their closure.
 |---|---|
 | 201 | the account opened; the answer is the acknowledgement of this acceptance |
 | 200 | the identity's root had an account; the answer is the acknowledgement of this acceptance |
-| 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that the current version of its identity lists |
+| 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that its current identity version lists |
 | 413 | the body is over 64 KiB |
 
 A root has one account at a service. When an identity of a root that has
@@ -166,22 +166,23 @@ acknowledges another acceptance than the one it sent.
 
 The identity versions the service holds are the signed identities in its
 store, which it reads by their schema. The store keeps what the service gave
-out, with its closure, so these are the versions that signed its Services and
-its acknowledgements, and those that the acceptances and the requests for
-mailboxes it acknowledged carry. Each acceptance it takes is acknowledged, so
-the version it carries counts from then on. A wallet takes a device out by
-signing a later version of its identity that does not list it, and the
-service refuses an acceptance by an agent that the current version does not
-list: the later of the latest it has seen and the one the acceptance carries.
-It verifies that first, so a removed device is refused even when the wallet
-has an account, and even for an acceptance that the service acknowledged
-before. Say the wallet's first version lists a laptop and its second only a
-phone: once the phone has accepted by the second, the laptop's acceptance by
-the first is refused, whichever of them opened the account. What a removed
-key signed stops counting for a reader that has seen the later version; what
-has to keep counting is signed again by a key that the current version lists.
-Two acceptances that open one account at once are both acknowledged, and one
-of them is answered 201, the other 200.
+out, with its closure, so these are the identity versions that signed its
+Services and its acknowledgements, and those that the acceptances and the
+requests for mailboxes it acknowledged carry. Each acceptance it takes is
+acknowledged, so the identity version it carries counts from then on. A
+wallet takes a device out by signing a later identity version that does not
+list it, and the service refuses an acceptance by an agent that the current
+identity version does not list: the later of the latest it has seen and the
+one the acceptance carries. It verifies that first, so a removed device is
+refused even when the wallet has an account, and even for an acceptance that
+the service acknowledged before. Say the wallet's first identity version
+lists a laptop and its second only a phone: once the phone has accepted by
+the second, the laptop's acceptance by the first is refused, whichever of
+them opened the account. What a removed key signed stops counting for a
+reader that has seen the later identity version; what has to keep counting is
+signed again by a key that the current identity version lists. Two acceptances
+that open one account at once are both acknowledged, and one of them is
+answered 201, the other 200.
 
 The service signed the offer and the acknowledgement, and the identity
 signed the offer, so together they show anyone that this service took this
@@ -199,24 +200,25 @@ answer is refused, `accept` and `open` write nothing.
 
 The client holds identity versions as the service does, as the signed
 identities in its store. That store can hold other records than the service
-gave out, so it can have seen a version that the service has not. `fetch`,
-`latestOf` and `accept` verify the service's signatures against them, so a
-Service, an offer or an acknowledgement signed by a key that a later version
-of the service's identity does not list is refused once the store holds that
-version, whatever record brought it. A service from `loadMailboxService` signs
-with its root's key, so its signatures are refused this way only after the
-root signs a later version that does not list that key.
+gave out, so it can have seen an identity version that the service has not.
+`fetch`, `latestOf` and `accept` verify the service's signatures against
+them, so a Service, an offer or an acknowledgement signed by a key that a
+later identity version of the service does not list is refused once the store
+holds that identity version, whatever record brought it. A service from
+`loadMailboxService` signs with its root's key, so its signatures are refused
+this way only after the root signs a later identity version that does not
+list that key.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is written, as `stage` of `@estoc/store` gives it. So a
 Service that `fetch` takes reads alike by `latestOf` until the store holds a
-later version of the service's identity. The offers a Service lists are read
-as any signature is, and the store then holds the version that signed the
-Service, so an offer is verified by that version or a later one. When a
-service signs a Service by a version that takes out the key that signed an
-offer by an earlier one, it signs the offer again by a key that the version
-lists. The offer stays the same object, so its id and the acceptances of it
-stay as they were.
+later identity version of the service. The offers a Service lists are read
+as any signature is, and the store then holds the identity version that
+signed the Service, so an offer is verified by that identity version or a
+later one. When a service signs a Service by an identity version that takes
+out the key that signed an offer by an earlier one, it signs the offer again
+by a key that the identity version lists. The offer stays the same object, so
+its id and the acceptances of it stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
 account is of, the service's signed identity that signed the
@@ -269,7 +271,7 @@ account.
 |---|---|
 | 201 | the mailbox opened; the answer is the acknowledgement of this request |
 | 200 | this request opened a mailbox before; the answer is its acknowledgement |
-| 400 | the bundle does not read, or its root is not a signature over a request for this service's offer by a key that the current version of its identity lists |
+| 400 | the bundle does not read, or its root is not a signature over a request for this service's offer by a key that its current identity version lists |
 | 403 | the root of the identity has no account |
 | 413 | the body is over 64 KiB |
 
@@ -308,11 +310,11 @@ const delivered = await inbox.collect(await services.pickup(inbox.mailbox, actor
 ```
 
 The actor is any of the root of the account. The service verifies each
-pickup by the current version of the root's identity, as it verifies an
-acceptance: an agent that the root lists picks up without opening the
-mailbox again, and one that a later version takes out picks up no more
-once the service has seen that version, in an acceptance or a request that
-it acknowledges. Opening what arrives takes the mailbox's key, which
+pickup by the root's current identity version, as it verifies an acceptance:
+an agent that the root lists picks up without opening the mailbox again, and
+one that a later identity version takes out picks up no more once the service
+has seen that identity version, in an acceptance or a request that it
+acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 
@@ -341,7 +343,7 @@ opens: whoever posts it again sees how much waits, and no more.
 |---|---|
 | 200 | the answer is what waits, once what the request has receipts for no longer does |
 | 400 | the bundle does not read, or its root is not a signature over a pickup request of this mailbox |
-| 403 | the request is signed for another root than the account's, or by a key that the current version of the root's identity does not list |
+| 403 | the request is signed for another root than the account's, or by a key that the root's current identity version does not list |
 | 413 | the body is over 64 KiB and 128 bytes for each of the 100 messages that an answer holds at most |
 
 Devices that pick up at once each get what waits, so each receives it, as

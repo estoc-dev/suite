@@ -53,17 +53,20 @@ export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Which signed identity of a root is current, of the versions a reader has seen. */
-export interface Versions {
+/** Which signed identity of a root is current, of the identity versions a reader has seen. */
+export interface SeenIdentityVersions {
   /**
-   * The current version of `signedIdentity`'s identity among those the reader
-   * has seen, `signedIdentity` itself when none is later.
+   * The current identity version of `signedIdentity`'s root among those the
+   * reader has seen, `signedIdentity` itself when none is later.
    */
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
 }
 
-/** A reader that has seen no versions, so a signature is verified by the version it carries alone. */
-export const noVersions: Versions = { current: async (signedIdentity) => signedIdentity };
+/**
+ * A reader that has seen no identity versions, so a signature is verified by
+ * the identity version it carries alone.
+ */
+export const noIdentityVersions: SeenIdentityVersions = { current: async (signedIdentity) => signedIdentity };
 
 /** Signed identities, with the identity schemas their identities are read with. */
 export class SignedIdentities {

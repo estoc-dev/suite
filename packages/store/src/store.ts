@@ -118,8 +118,9 @@ export interface Store {
  *   written to the store afterwards shows here too.
  * - What a verifier or a view reads from it reads the same from the store once it is committed,
  *   when nothing else is written in between.
- * - A write in between, such as of a version that takes an agent out, can change what a view comes
- *   to when it is viewed again, here as on the store. `commit` does not verify the batch again.
+ * - A write in between, such as of an identity version that takes an agent out, can change what a
+ *   view comes to when it is viewed again, here as on the store. `commit` does not verify the batch
+ *   again.
  * - A store only grows, so the batch can still be committed after other writes, and what it found
  *   held is still held.
  */

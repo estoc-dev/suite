@@ -33,7 +33,7 @@ the agent that signed and that agent's signature.
 application picks, writes the object of each scheme it picks, and gives
 what reads and writes the objects of each,
 side by side: `keys`, `identities`, `delegatedIdentities`,
-`signedIdentities`, `signatures`, `versions`, `secretKeys` and
+`signedIdentities`, `signatures`, `identityVersions`, `secretKeys` and
 `walletKeys`, with `publish` and `delegate`, which write an identity and
 have its root sign it. The code is
 laid out as the objects are. Each schema has a file of its own, an
@@ -208,13 +208,13 @@ signature names a signed identity of the identity it is made for.
   holds `at` too.
 
 `at` is when the root signs an identity, in milliseconds since the Unix
-epoch. Each identity a root signs is a version, whichever schema it is
-written to, and of a root's versions the current one is that with the
-greatest `at`, and of those with the same `at`, that whose signed identity
-has the greater link. The current version says who signs for the root, the
-root itself among them: once a root lists agents in a Delegated Identity,
-it signs for itself only where that version lists it as well, and an
-Identity it signs after that takes every agent out.
+epoch. Each identity a root signs is an identity version, whichever schema
+it is written to, and of a root's identity versions the current one is that
+with the greatest `at`, and of those with the same `at`, that whose signed
+identity has the greater link. The current identity version says who signs
+for the root, the root itself among them: once a root lists agents in a
+Delegated Identity, it signs for itself only where that identity version
+lists it as well, and an Identity it signs after that takes every agent out.
 
 Each identity schema has an implementation of the Identity interface,
 which reads its objects with the keys they name and says what a signature
@@ -253,9 +253,9 @@ identities they sign by.
 unless it is given, has the root sign it, and gives the signed identity.
 `delegate` takes the root's `Signer` and the agents' keys, and does the
 same with the Delegated Identity that lists them. Either `at` is when the
-root signs, by its clock: where a version signed by a clock that is off
-falls among the others is the root's to answer for, as anything else it
-does by that clock. Both write the identity before the root signs, so
+root signs, by its clock: where an identity version signed by a clock that
+is off falls among the others is the root's to answer for, as anything else
+it does by that clock. Both write the identity before the root signs, so
 a signer is not asked to sign an identity that would not read, such as one
 that lists an agent twice. `signedIdentities.verify` takes the object of a
 signed identity and a `Reader`, reads its identity through an
@@ -270,25 +270,25 @@ The implementation of an identity's schema is picked once, as
 `signatures` asks the identity what a signature needs of it, and depends
 on signed identities and on no identity schema.
 
-## Versions
+## Identity Versions
 
-A root removes an agent by signing a version that does not list it, and
-every agent by signing an Identity. A reader that has seen that version no
-longer counts the agent's signatures, whichever version they carry; what
-it accepted before stays accepted. A reader holds only the versions it has
-seen, and nothing tells it of the others.
+A root removes an agent by signing an identity version that does not list
+it, and every agent by signing an Identity. A reader that has seen that
+identity version no longer counts the agent's signatures, whichever identity
+version they carry; what it accepted before stays accepted. A reader holds
+only the identity versions it has seen, and nothing tells it of the others.
 
-`versions.versionOf` gives the version a signed identity is, as a row: its
-root, its `at` and its link. In the order of their keys, a root's rows end
-with its current version.
+`identityVersions.identityVersionOf` gives the identity version a signed
+identity is, as a row: its root, its `at` and its link. In the order of
+their keys, a root's rows end with its current identity version.
 
-`versions.selection` is the `SelectionBySchema` of signed identities, each
-read as its row. A signed identity carries its authority in its root's
+`identityVersions.selection` is the `SelectionBySchema` of signed identities,
+each read as its row. A signed identity carries its authority in its root's
 signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
-`indexOverBlobs` of `@estoc/store`. A stranger can add no version of a root
-that the root did not sign, and an older version leaves the current one as it
-is.
+`indexOverBlobs` of `@estoc/store`. A stranger can add no identity version of
+a root that the root did not sign, and an older identity version leaves the
+current one as it is.
 
 Anyone can send a signed identity, so one whose identity does not read, such
 as one whose root has a scheme the application does not accept, or whose root
@@ -301,51 +301,52 @@ when it names the schema and does not fit it. `indexOverBlobs` gives no row for
 a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
-`versions.people` takes those rows and a `Reader`, and gives the `People` of
-the versions the reader has seen, which are `Versions` too: their `current`
-gives the current version of a signed identity's identity, the later of the
-one given and the signed identity of its root's last row, read from the
-reader. `noVersions` is a reader that has seen no versions, so the current
-version is the one given and a signature is verified by the version it
-carries alone.
+`identityVersions.people` takes those rows and a `Reader`, and gives the
+`People` of the identity versions the reader has seen, which are
+`SeenIdentityVersions` too: their `current` gives the current identity
+version of a signed identity's root, the later of the one given and the
+signed identity of its root's last row, read from the reader.
+`noIdentityVersions` is a reader that has seen no identity versions, so the
+current identity version is the one given and a signature is verified by the
+identity version it carries alone.
 
 ## People
 
-A person is a root and the versions of its identity that a reader has
-seen. `people.personOf` takes a signed identity in hand, such as that
-of a signature just read, and gives the `Person` of its root:
+A person is a root and its identity versions that a reader has seen.
+`people.personOf` takes a signed identity in hand, such as that of a
+signature just read, and gives the `Person` of its root:
 
 - `root`, the root's key, as the signed identity holds it.
-- `versions()`, the versions of the root's identity the reader has seen, with
-  the one in hand, each once and in the order of their rows. Each is read
+- `identityVersions()`, the root's identity versions the reader has seen,
+  with the one in hand, each once and in the order of their rows. Each is read
   from the reader, signed by the root.
 - `current()`, the last of them, which says who signs for the person now.
 - `hasSigned(signature)`, whether a signature already read was made for an
   identity of the root.
 
-The versions are those the reader has seen, in the order of the root's
-clock, and none of them names the one before, so one between two of them
-may be missing, and `current()` is the latest the reader has seen, not the
-latest the root signed. `current` of `People` is that of the person of the
-signed identity it is given.
+The identity versions are those the reader has seen, in the order of the
+root's clock, and none of them names the one before, so one between two of
+them may be missing, and `current()` is the latest the reader has seen, not
+the latest the root signed. `current` of `People` is that of the person of
+the signed identity it is given.
 
 A person is worked out from the rows when they are read and is not
 written: their root names them, but what they hold changes as the reader
 sees more. Two people are one when the links of their roots are. Two taken
-from different signed identities of a root may differ in `versions()`,
+from different signed identities of a root may differ in `identityVersions()`,
 since each holds the one it was taken from, but their `current()` differs
 only when the one in hand is later than any the reader has seen, which a
 signature carrying it counts as well.
 
 A person reads no signatures. What a signature is read from, and whether
-it is verified against the versions a store holds or by `noVersions` alone,
-are for the caller to choose, so `hasSigned` takes one already read. With
-`@estoc/store`, an application gives the index and `versions.people`
-reads its rows:
+it is verified against the identity versions a store holds or by
+`noIdentityVersions` alone, are for the caller to choose, so `hasSigned`
+takes one already read. With `@estoc/store`, an application gives the index
+and `identityVersions.people` reads its rows:
 
 ```ts
-const seen = indexOverBlobs(versions.selection, (version) => [version]);
-const people = await view(store, { index: seen, read: (rows, reader) => versions.people(rows, reader) });
+const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
+const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(link, store, people);
 const author = people.personOf(signature.signedIdentity);
 ```
@@ -373,25 +374,26 @@ signatures by it, stay as they are.
 
 `signatures` holds the signature schema and `actor`. `signatures.verify`
 is the verifier of a signature: it takes the signature as an object of
-`signatures.schema`, a `Reader` and `Versions`, reads its signed identity
-from the reader with `signedIdentities.read`, and verifies the signature's
-bytes by the key the identity's schema reads from them, over the text for
-the object by that signed identity; `signatures.read` does the same from
-the link of the signature. It also checks the key against the current
-version, as `current` of the `Versions` gives it, the later of the one the
-signature carries and the latest the reader has seen, and refuses a key
-that does not sign for it: the root of an Identity, or an agent of a
-Delegated Identity. The one the signature carries counts, as a device a
-wallet has just listed signs by a version the reader has not seen yet. The
-`Versions` are not optional, so a reader that keeps no versions says so
-with `noVersions`, and a signature is then verified by the version it
-carries alone. Verifying a signature takes the blobs of its signed
-identity, but not that of the object signed, since the digest it signs is
-in the link. It gives the signature's object with the signed identity it read as
-`signedIdentity`, the key that signed as `key`, the link of what it is over
-as `object`, and the signature as bytes. Reading a signature with
-`decodeObject` and the signature schema alone, as a viewer of arbitrary
-objects would, reads its fields without verifying it.
+`signatures.schema`, a `Reader` and `SeenIdentityVersions`, reads its signed
+identity from the reader with `signedIdentities.read`, and verifies the
+signature's bytes by the key the identity's schema reads from them, over the
+text for the object by that signed identity; `signatures.read` does the same
+from the link of the signature. It also checks the key against the current
+identity version, as `current` of the `SeenIdentityVersions` gives it, the
+later of the one the signature carries and the latest the reader has seen,
+and refuses a key that does not sign for it: the root of an Identity, or an
+agent of a Delegated Identity. The one the signature carries counts, as a
+device a wallet has just listed signs by an identity version the reader has
+not seen yet. The `SeenIdentityVersions` are not optional, so a reader that
+keeps no identity versions says so with `noIdentityVersions`, and a signature
+is then verified by the identity version it carries alone. Verifying a
+signature takes the blobs of its signed identity, but not that of the object
+signed, since the digest it signs is in the link. It gives the signature's
+object with the signed identity it read as `signedIdentity`, the key that
+signed as `key`, the link of what it is over as `object`, and the signature
+as bytes. Reading a signature with `decodeObject` and the signature schema
+alone, as a viewer of arbitrary objects would, reads its fields without
+verifying it.
 
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
 signed identity whose identity the signer's key signs for, the root of an
@@ -409,7 +411,7 @@ in `@estoc/object` itself, and take back only the signature, with the
 signed identity's blobs:
 
 ```ts
-import { ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 
@@ -422,7 +424,7 @@ const signature = await actor.sign(object);
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 const signed = decodeObject(signatureBytes, signatures.schema);
 const blobs = new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes]));
-const read = await signatures.verify(signed, blobs, noVersions);
+const read = await signatures.verify(signed, blobs, noIdentityVersions);
 const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 
@@ -433,13 +435,14 @@ signature with the object it signs, read with `schema`. A signature over
 an object of another schema is left out. It does not verify the
 signatures it takes, since what a selection takes depends on the record
 and its closure alone, and whether a signature counts depends on the
-versions a reader has seen. An index whose rows need a signature verified
-verifies it in `rows`, by `noVersions`, and leaves whether that version
-still counts to what reads the rows. Here the notes each root has signed:
+identity versions a reader has seen. An index whose rows need a signature
+verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
+that identity version still counts to what reads the rows. Here the notes
+each root has signed:
 
 ```ts
 const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {
-  const { signedIdentity } = await signatures.verify(signature, reader, noVersions);
+  const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
   yield [signedIdentity.identity.root.link, object.link];
 });
 ```

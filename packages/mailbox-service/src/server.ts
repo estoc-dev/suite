@@ -5,7 +5,7 @@ import {
   type IdentityKit,
   type KeyObject,
   loadIdentity,
-  noVersions,
+  noIdentityVersions,
   type People,
   type Scheme,
   type Signature,
@@ -323,8 +323,8 @@ class MailboxService {
   /**
    * Signs `acknowledgement` of what `bundle` holds at its root, and writes it
    * to the store as a record, with `blobs` from the closure of what it
-   * acknowledges. From then on the service holds the version that signed what
-   * it acknowledges.
+   * acknowledges. From then on the service holds the identity version that
+   * signed what it acknowledges.
    */
   async #acknowledge(
     acknowledgement: EncodedObject<Json>,
@@ -364,8 +364,8 @@ class MailboxService {
    * wait no more, and answers with what waits then.
    *
    * The request is verified as signed for the root of the mailbox's account
-   * by a key that the current version of the root's identity lists. When it
-   * is not, it is refused with 403, though it reads.
+   * by a key that the root's current identity version lists. When it is not,
+   * it is refused with 403, though it reads.
    */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
     const zip = await readBody(request.body, PICKUP_LIMIT);
@@ -375,7 +375,7 @@ class MailboxService {
     let receipts: Link<Uint8Array>[];
     try {
       const bundle = await unpackBundle(zip);
-      signature = await this.#signatures.read(bundle.link, bundle, noVersions);
+      signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
       const { data } = await readObject(bundle, signature.object, this.#schemas.pickupRequest);
       if (data.mailbox.$link !== mailbox.acknowledgement)
         throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
@@ -387,7 +387,7 @@ class MailboxService {
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
     if (!hasSigner((await people.current(signedIdentity)).identity, key))
-      return answer(403, `${key.link} does not sign for the current version of ${mailbox.root}`);
+      return answer(403, `${key.link} does not sign for the current identity version of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
@@ -496,7 +496,7 @@ export async function loadMailboxService(
     encodeObject(schemas.mailboxOffer, { identity, ...terms }),
   ];
 
-  const seenPeople = peopleView(kit.versions);
+  const seenPeople = peopleView(kit.identityVersions);
   const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures, schemas.service));
   const serviceSignatures = await Promise.all(

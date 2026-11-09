@@ -1,5 +1,5 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, loadIdentity, noVersions, SoftwareSigner } from "@estoc/identity";
+import { type Actor, ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -156,7 +156,7 @@ async function chat(faults: Faults = {}) {
   const show = async (person: Person, mine: Mailbox, theirs: Mailbox) =>
     Promise.all(
       (await conversation(await scan(person.store, deliveries), mine, theirs)).map(async ([direction, , , bundle]) => {
-        const signature = await signatures.read(bundle, person.store, noVersions);
+        const signature = await signatures.read(bundle, person.store, noIdentityVersions);
         const { data } = await readObject(person.store, signature.object, line);
         return [direction, names.get(signature.signedIdentity.identity.root.link), data.text];
       }),

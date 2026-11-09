@@ -19,7 +19,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
 import { hasSigner, signerOf, signingFunction } from "./identity/interface.ts";
 import type { KeyObject } from "./key/interface.ts";
-import type { SignedIdentities, SignedIdentityObject, Versions } from "./signed-identity.ts";
+import type { SeenIdentityVersions, SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 
 /**
@@ -112,32 +112,36 @@ export class Signatures {
    *   `reader`.
    * - The identity's schema says which key made the signature and how its
    *   bytes are laid out, and the key's scheme how its signature is read.
-   * - The current version of the identity is the later of the one the
-   *   signature carries and the latest in `versions`: a device a wallet has
-   *   just listed signs by a version the reader has not seen yet.
+   * - The current identity version is the later of the one the signature
+   *   carries and the latest in `seenIdentityVersions`: a device a wallet has
+   *   just listed signs by an identity version the reader has not seen yet.
    *
    * @throws when `signature` is not written to the signature schema.
    * @throws when no key that signs for the identity signed the object it
    *   names by that signed identity.
-   * @throws when the key that made it does not sign for the current version
-   *   of the identity.
+   * @throws when the key that made it does not sign for the current identity
+   *   version.
    */
-  async verify(signature: EncodedObject<Json, SignatureData>, reader: Reader, versions: Versions): Promise<Signature> {
+  async verify(
+    signature: EncodedObject<Json, SignatureData>,
+    reader: Reader,
+    seenIdentityVersions: SeenIdentityVersions,
+  ): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
-    const current = await versions.current(signedIdentity);
+    const current = await seenIdentityVersions.current(signedIdentity);
     if (!hasSigner(current.identity, verifiedSignature.key)) {
       throw new Error(
-        `${verifiedSignature.key.link} does not sign for the current version of ${current.identity.root.link}`,
+        `${verifiedSignature.key.link} does not sign for the current identity version of ${current.identity.root.link}`,
       );
     }
     return verifiedSignature;
   }
 
-  /** Reads the signature that `link` names from `reader`, and verifies it by `versions`. */
-  async read(link: Link<Signature>, reader: Reader, versions: Versions): Promise<Signature> {
-    return this.verify(await readObject(reader, link, this.schema), reader, versions);
+  /** Reads the signature that `link` names from `reader`, and verifies it by `seenIdentityVersions`. */
+  async read(link: Link<Signature>, reader: Reader, seenIdentityVersions: SeenIdentityVersions): Promise<Signature> {
+    return this.verify(await readObject(reader, link, this.schema), reader, seenIdentityVersions);
   }
 
   /**
@@ -147,7 +151,7 @@ export class Signatures {
    * - A signature over an object of another schema is left out.
    * - It does not verify them, as what a selection takes depends on the
    *   record and its closure alone, and whether a signature counts depends
-   *   on the versions a reader has seen.
+   *   on the identity versions a reader has seen.
    * - Reading a signature with it throws when the reader gives no blob for
    *   the object, and where `decodeObject` throws for an object of `schema`.
    */

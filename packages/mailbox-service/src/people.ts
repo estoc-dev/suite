@@ -8,13 +8,13 @@ export type PeopleView = View<IdentityVersion, People>;
  * identities the store holds, wherever they sit in the closure of a record.
  *
  * - A client's store can hold other records than the service gave out, so it
- *   can have seen a version that the service has not.
- * - Each version's root signature is verified; the signatures that carry it
- *   are not checked here against the versions seen.
+ *   can have seen an identity version that the service has not.
+ * - Each identity version's root signature is verified; the signatures that
+ *   carry it are not checked here against the identity versions seen.
  */
-export function peopleView(versions: IdentityVersions): PeopleView {
+export function peopleView(identityVersions: IdentityVersions): PeopleView {
   return {
-    index: indexOverBlobs(versions.selection, (version) => [version]),
-    read: (rows, reader) => versions.people(rows, reader),
+    index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
+    read: (rows, reader) => identityVersions.people(rows, reader),
   };
 }

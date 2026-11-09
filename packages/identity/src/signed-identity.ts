@@ -76,16 +76,22 @@ export class SignedIdentities {
   }
 
   /**
-   * Reads the signed identity that `link` names from `reader`, with its
-   * identity, written to any of the identity schemas, and the keys it names.
-   * An identity stands for someone only as its root signed it, which reading
-   * its object and keys alone does not verify.
+   * Verifies `object`, giving it with its identity, written to any of the
+   * identity schemas, and the keys it names, both read from `reader`. An
+   * identity stands for someone only as its root signed it, which reading its
+   * object and keys alone does not verify.
    *
+   * @throws when `object` is not written to the signed identity schema.
    * @throws when the identity's root did not sign it.
    */
-  async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
-    const object = await readObject(reader, link, this.schema);
+  async verify(object: EncodedObject<Json, SignedIdentityData>, reader: Reader): Promise<SignedIdentityObject> {
+    if (object.schema.link !== this.schema.link) throw new Error(`a signed identity is written to ${this.schema.link}`);
     return signedIdentityOf(object, await this.#identities.read(object.data.identity.$link, reader));
+  }
+
+  /** Reads the signed identity that `link` names from `reader`, and verifies it. */
+  async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
+    return this.verify(await readObject(reader, link, this.schema), reader);
   }
 
   /**

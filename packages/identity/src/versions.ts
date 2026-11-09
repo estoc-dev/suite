@@ -21,20 +21,23 @@ export class IdentityVersions {
    * The selection of signed identities, each read as the row `versionOf`
    * gives.
    *
-   * - Anyone can send a signed identity, so one that its root did not sign, or
-   *   that does not read, gives `undefined` and throws nothing.
+   * - Anyone can send a signed identity, so one whose identity does not read,
+   *   or whose root did not sign it, gives `undefined`.
    * - A reader that throws or gives no blob for what the signed identity names
    *   leaves it out the same way, so what reads with a reader that can fail
    *   has to notice that itself.
+   *
+   * @throws from `read`, when the reader gives no blob for the record, and
+   *   where `decodeObject` throws for an object of the signed identity schema.
    */
   readonly selection: SelectionBySchema<Json, IdentityVersion, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
     this.#signedIdentities = signedIdentities;
-    this.selection = new SelectionBySchema(signedIdentities.schema, async ({ link }, reader) => {
+    this.selection = new SelectionBySchema(signedIdentities.schema, async (object, reader) => {
       try {
-        return this.versionOf(await signedIdentities.read(link as Link<SignedIdentityObject>, reader));
+        return this.versionOf(await signedIdentities.verify(object, reader));
       } catch {
         return undefined;
       }

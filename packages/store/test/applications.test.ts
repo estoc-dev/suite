@@ -6,6 +6,7 @@ import {
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
+  signedIdentitySchema,
 } from "@estoc/identity";
 import {
   decodeObject,
@@ -188,5 +189,32 @@ describe("a signed identity that comes in a bundle", () => {
       .map((version) => versions.versionOf(version))
       .sort(([a], [b]) => (a < b ? -1 : 1));
     expect(rows).toEqual(expectedRows);
+  });
+
+  it("is validated once by a scan", async () => {
+    let validationCount = 0;
+    const kit = await loadIdentity(
+      {
+        language: defaultValidator.language,
+        async compile(schema) {
+          const check = await defaultValidator.compile(schema);
+          return (data) => {
+            if (schema.title === signedIdentitySchema.title) validationCount++;
+            return check(data);
+          };
+        },
+      },
+      [ed25519],
+    );
+    const version = await kit.publish(alice, 5);
+    const store = newStore();
+    await store.write({ records: [version], blobs: version.blobs });
+
+    validationCount = 0;
+    await scan(
+      store,
+      indexOverBlobs(kit.versions.selection, (row) => [row]),
+    );
+    expect(validationCount).toBe(1);
   });
 });

@@ -297,8 +297,9 @@ what the signed identity names leaves it out the same way, so what reads with a
 reader that can fail has to notice that itself, as a scan of `@estoc/store`
 does. The object itself is read before any of this: `selection.read` throws as
 that of any `SelectionBySchema` does when the reader gives no blob for it, or
-when it names the schema and does not fit it, and `indexOverBlobs` gives no row
-for such a blob.
+when it names the schema and does not fit it. `indexOverBlobs` gives no row for
+a blob that does not fit the schema, and a scan still fails when the store does
+not give a blob it lists.
 
 `versions.people` takes those rows and a `Reader`, and gives the `People` of
 the versions the reader has seen, which are `Versions` too: their `current`

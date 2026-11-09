@@ -42,7 +42,7 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
 }
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
-async function mailboxIn({ store }: Person): Promise<Link<EncodedObject<Json>>> {
+async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<Json>>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
   await store.write({ records: [mailbox], blobs: network.transport.schema.blobs });
   return mailbox.link;
@@ -85,7 +85,11 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const [first, second, third] = [await mailboxIn(alice), await mailboxIn(alice), await mailboxIn(alice)];
+    const [first, second, third] = [
+      await writeMailboxIn(alice),
+      await writeMailboxIn(alice),
+      await writeMailboxIn(alice),
+    ];
     const latest = await give(alice, bob, [second, third], 2_000);
     await give(alice, bob, [first], 1_000);
     await give(alice, bob, [third], 1_500);
@@ -100,7 +104,7 @@ describe("the latest grant of one person to another", () => {
   it("is, of two at one at, the one whose signature has the greater link", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const givenSignatures = [
-      await give(alice, bob, [await mailboxIn(alice)], 1_000),
+      await give(alice, bob, [await writeMailboxIn(alice)], 1_000),
       await give(alice, bob, [], 1_000),
     ];
     const greaterLink = givenSignatures.map(({ link }) => link).sort()[1];
@@ -141,15 +145,15 @@ describe("the latest grant of one person to another", () => {
 
   it("is the one with the greatest at, whichever way each came in", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const sent = await give(alice, bob, [alice.inbox.mailbox], 1_000);
-    const handed = await give(alice, bob, [], 2_000);
-    await handOver(alice, bob, handed.link);
-    await send(alice, bob, sent.link);
-    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(handed.link);
+    const mailedGrant = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    const handedGrant = await give(alice, bob, [], 2_000);
+    await handOver(alice, bob, handedGrant.link);
+    await send(alice, bob, mailedGrant.link);
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(handedGrant.link);
 
-    const later = await give(alice, bob, [alice.inbox.mailbox], 3_000);
-    await send(alice, bob, later.link);
-    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(later.link);
+    const laterGrant = await give(alice, bob, [alice.inbox.mailbox], 3_000);
+    await send(alice, bob, laterGrant.link);
+    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(laterGrant.link);
   });
 
   it("is not one that the signer gave someone else, which was passed on", async () => {

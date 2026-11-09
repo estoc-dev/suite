@@ -3,7 +3,7 @@ export {
   loadMailboxGrants,
   type MailboxGrant,
   type MailboxGrantRow,
-  MailboxGrants,
+  type MailboxGrants,
 } from "./grant.ts";
 export { MailboxKey } from "./key.ts";
 export { type Mailbox, mailboxFrom, type Options, type Transport, UndeliveredMessage } from "./mailbox.ts";

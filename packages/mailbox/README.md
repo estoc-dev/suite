@@ -413,15 +413,17 @@ await series.grantFrom(their, mine, people); // where they take mine
 ```
 
 `grants.series` is a `View` of `@estoc/store`, made once for the program
-as the index it holds is. Its index reads the signatures over grants that
-the user writes as records, and the bundles that `Inbound` records say
-came in, at a mailbox or out of band, whose root is such a signature. Each
-gives a row of the root of the signer, the root of `to`, `at` and the link of
-the signature; the signature is verified by the signed identity it carries, as
-by `noIdentityVersions`. A bundle that came in and does not read as a grant
-gives no row, since anyone can send a bundle to a mailbox. The scan still
-fails when the store fails to give a blob of it, so a later scan of the index
-reads the bundle again. `grantsFrom` takes the links of two roots and the
+as the index it holds is. Its index reads the signatures over grants among
+the blobs a store holds, by their schema, wherever they sit in the closure of a
+record or of what came in: a signature carries its authority in itself, so it
+reads the same whoever sent it. Each gives a row of the root of the signer, the
+root of `to`, `at` and the link of the signature; the signature is verified by
+the signed identity it carries, as by `noIdentityVersions`. One that does not
+verify, or that is over an object that does not read as a grant, gives no row,
+since anyone can send a bundle to a mailbox. The scan still fails when the store
+fails to give a blob, so a later scan of the index reads it again. The first
+scan reads every blob the store holds, attachments as well, and a later one
+reads only those put since. `grantsFrom` takes the links of two roots and the
 `SeenIdentityVersions` of a reader, and gives the grants of the first to the
 second that count, in the order of the series, each with the signature over it
 and the signed identity it is to. `grantFrom` gives the last of those, the latest

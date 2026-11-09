@@ -15,12 +15,12 @@ import {
   type Json,
   type JsonSchemaValidator,
   type Link,
-  objectsOf,
   type Reader,
   readObject,
   type Schema,
+  SelectionBySchema,
 } from "@estoc/object";
-import { type InboundData, inboundSchema, indexOver, type Rows, type View } from "@estoc/store";
+import { indexOverBlobs, type Rows, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
@@ -69,14 +69,14 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 /**
  * Mailbox Grants: writing one for a signer to sign, and reading each series from a store.
  *
- * - A grant reaches `series` as a signature over it, either written as a record or as the root of
- *   a bundle that an `Inbound` record says came in.
+ * - A grant reaches `series` as a signature over it that the store holds, whichever way it came and
+ *   wherever it sits in a closure, as a signature carries its authority in itself.
  * - Each signature is verified by the signed identity it carries, as by `noIdentityVersions`, and
  *   `grantFrom` says whether that identity version still counts.
- * - A bundle that came in and does not read as a grant gives no row, since anyone can send a
- *   bundle to a mailbox.
- * - The scan still fails when the store fails to give a blob of that bundle, so a later scan of
- *   the index reads it again.
+ * - A signature that does not verify, or that is over an object that does not read as a grant,
+ *   gives no row, since anyone can send a bundle to a mailbox.
+ * - The scan still fails when the store fails to give a blob, so a later scan of the index reads it
+ *   again.
  */
 export class MailboxGrants {
   readonly schema: Schema<Json, MailboxGrantData>;
@@ -84,25 +84,22 @@ export class MailboxGrants {
   readonly series: View<MailboxGrantRow, GrantSeries>;
   readonly #identity: SignatureReading;
 
-  constructor(schema: Schema<Json, MailboxGrantData>, inbound: Schema<Json, InboundData>, identity: SignatureReading) {
+  constructor(schema: Schema<Json, MailboxGrantData>, identity: SignatureReading) {
     this.schema = schema;
     this.#identity = identity;
     const grants = identity.signatures.selectionOver(schema);
-    const rowOf = (grant: SignatureOver<MailboxGrantData>, reader: Reader) => this.#rowOf(grant, reader);
-    const recordedGrants = indexOver(grants, async function* (grant, reader) {
-      yield await rowOf(grant, reader);
-    });
-    const receivedGrants = indexOver(objectsOf(inbound), async function* ({ data }, reader) {
-      let row: MailboxGrantRow | undefined;
+    const selection = new SelectionBySchema(identity.signatures.schema, async (signature, reader) => {
       try {
-        const grant = await grants.read(data.bundle.$link, reader);
-        row = grant === undefined ? undefined : await rowOf(grant, reader);
+        const grant = await grants.itemOf(signature, reader);
+        return grant === undefined ? undefined : await this.#rowOf(grant, reader);
       } catch {
-        return;
+        return undefined;
       }
-      if (row !== undefined) yield row;
     });
-    this.series = { index: recordedGrants.union(receivedGrants), read: (rows, reader) => this.#seriesOf(rows, reader) };
+    this.series = {
+      index: indexOverBlobs(selection, (row) => [row]),
+      read: (rows, reader) => this.#seriesOf(rows, reader),
+    };
   }
 
   /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */
@@ -162,6 +159,5 @@ export async function loadMailboxGrants(
   identity: SignatureReading,
 ): Promise<MailboxGrants> {
   const schema: Schema<Json, MailboxGrantData> = await encodeSchema(mailboxGrantSchema, validator);
-  const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);
-  return new MailboxGrants(schema, inbound, identity);
+  return new MailboxGrants(schema, identity);
 }

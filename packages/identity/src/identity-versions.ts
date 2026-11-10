@@ -73,11 +73,11 @@ export class IdentityVersions {
    */
   people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> }, reader: Reader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
-    const countingOf = async (signedIdentity: SignedIdentityObject) => {
+    const countingVersionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
       for await (const row of rows.range([signedIdentity.identity.root.link])) seen.set(row[2], row);
-      const links = countingAmong([...seen.values()].sort(compareIdentityVersions)).map(([, , link]) => link);
+      const links = countingVersionsAmong([...seen.values()].sort(compareIdentityVersions)).map(([, , link]) => link);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
       // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
       return { links, signedIdentityOf, current: () => signedIdentityOf(links[links.length - 1]!) };
@@ -87,10 +87,10 @@ export class IdentityVersions {
       return {
         root,
         identityVersions: async () => {
-          const { links, signedIdentityOf } = await countingOf(signedIdentity);
+          const { links, signedIdentityOf } = await countingVersionsOf(signedIdentity);
           return Promise.all(links.map(signedIdentityOf));
         },
-        current: async () => (await countingOf(signedIdentity)).current(),
+        current: async () => (await countingVersionsOf(signedIdentity)).current(),
         hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
     };
@@ -98,7 +98,7 @@ export class IdentityVersions {
       personOf,
       current: (signedIdentity) => personOf(signedIdentity).current(),
       counts: async ({ signedIdentity, key }) => {
-        const { links, current } = await countingOf(signedIdentity);
+        const { links, current } = await countingVersionsOf(signedIdentity);
         return links.includes(signedIdentity.link) && hasSigner((await current()).identity, key);
       },
     };
@@ -124,15 +124,15 @@ function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentity
  * when none is a crisis. Those that follow a crisis come after it, so each
  * crisis met starts them over.
  */
-function countingAmong(ordered: readonly IdentityVersion[]): IdentityVersion[] {
-  let counting: IdentityVersion[] = [];
+function countingVersionsAmong(ordered: readonly IdentityVersion[]): IdentityVersion[] {
+  let countingVersions: IdentityVersion[] = [];
   let cut: Link<SignedIdentityObject> | undefined;
   for (const row of ordered) {
     const [, , link, lastCrisis] = row;
-    if (link === lastCrisis) [cut, counting] = [link, [row]];
-    else if (lastCrisis === cut) counting.push(row);
+    if (link === lastCrisis) [cut, countingVersions] = [link, [row]];
+    else if (lastCrisis === cut) countingVersions.push(row);
   }
-  return counting;
+  return countingVersions;
 }
 
 function compareIdentityVersions([, at, link]: IdentityVersion, [, otherAt, otherLink]: IdentityVersion): number {

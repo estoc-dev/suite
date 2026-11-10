@@ -1,11 +1,11 @@
 export {
-  type DelegatedIdentities,
-  type DelegatedIdentityData,
-  type DelegatedIdentityObject,
-  delegatedIdentitySchema,
-} from "./identity/delegated.ts";
-export { type Identities, identitySchema } from "./identity/identity.ts";
-export { hasSigner, type IdentityData, type IdentityObject } from "./identity/interface.ts";
+  hasSigner,
+  type Identities,
+  type IdentityContent,
+  type IdentityData,
+  type IdentityObject,
+  identitySchema,
+} from "./identity.ts";
 export type { IdentityVersion, IdentityVersions } from "./identity-versions.ts";
 export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";

@@ -202,7 +202,7 @@ export type MailboxAcknowledgementData = {
  * What a client writes once a service acknowledged its request for a
  * mailbox, unsigned: `mailbox` is the link of the HTTP mailbox that senders
  * post to, and `acknowledgement` the link of the service's signature over
- * the mailbox's acknowledgement, by which the mailbox is picked up.
+ * the mailbox's acknowledgement, which says where the mailbox is picked up.
  */
 export const openedMailboxSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -220,9 +220,13 @@ export type OpenedMailboxData = {
 
 /**
  * What an identity signs to pick up at a mailbox: `mailbox` is the link of
- * the service's signature over the mailbox's acknowledgement, and
- * `receipts` the links of the ciphertexts that the receiver is done with,
- * which no longer wait.
+ * the signature over the request that opened the mailbox, and `receipts` the
+ * links of the ciphertexts that the receiver is done with, which no longer
+ * wait.
+ *
+ * The mailbox goes by its request rather than by the service's signature over
+ * its acknowledgement, which the service signs again once a crisis of its
+ * root cuts the signature.
  */
 export const pickupRequestSchema: JsonSchema = {
   $schema: DRAFT_2020_12,

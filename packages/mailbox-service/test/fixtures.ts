@@ -49,11 +49,11 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(
+export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = await loadIdentity(
   defaultValidator,
   schemes,
 );
-export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, 0));
+export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, { at: 0 }));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
 export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(
@@ -87,7 +87,7 @@ export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 
 export const serviceSigner = signer(ed25519, 9);
 export const serviceRoot = keys.encode(serviceSigner.key);
 /** The Identity a service by `serviceSigner` signs when it first starts, at `start`. */
-export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, start);
+export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, { at: start });
 /** An actor for that Identity, which signs as the service does. */
 export const serviceActor = async (start: number) =>
   signatures.actor(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));

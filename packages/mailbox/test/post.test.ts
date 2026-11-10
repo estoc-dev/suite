@@ -47,7 +47,7 @@ const outbound = await encodeSchema(outboundSchema, defaultValidator);
 const keys: Schema<Json, MailboxKeyData> = await encodeSchema(mailboxKeySchema, defaultValidator);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await publish(alice, 0)).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
 const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
 const signatureBlobs = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));

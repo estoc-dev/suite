@@ -1,7 +1,7 @@
 # @estoc/identity
 
 Someone who signs, as others see them: an identity, the key that stands
-behind it, its root, and the keys that sign for it, the root itself or the
+behind it, its root, and the keys that sign for it, the root itself and the
 agents it lists. A key signs the links of objects of `@estoc/object`. The
 keys, the identity, the root's signature over the identity and each
 signature are written as objects, which another object names by its link.
@@ -12,9 +12,9 @@ Scheme              an Object written to the scheme schema, with the fields
 Key                 an Object written to its Scheme, with the field
                     "publicKey": <hex>
 Identity            an Object written to the Identity schema, with the fields
-                    "root": <the Key's link>, "at": <Unix ms>
-Delegated Identity  an Object written to the Delegated Identity schema, with the fields
-                    "root": <the Key's link>, "agents": [<a Key's link>, …], "at": <Unix ms>
+                    "prior": <a Signed identity's link>, "root": <the Key's link>,
+                    "agents": [<a Key's link>, …], "crisis": true, "at": <Unix ms>,
+                    and "prior" and "crisis" only where they hold
 Signed identity     an Object written to the signed identity schema, with the fields
                     "identity": <the identity's link>, "signature": <hex>
 Signature           an Object written to the signature schema, with the fields
@@ -25,21 +25,20 @@ Wallet Key          an Object written to the Wallet Key schema, with the field
                     "key": <the Key's link>
 ```
 
-The bytes of a Signature are read as the schema of its identity says: an
-Identity's are its root's signature, a Delegated Identity's the index of
-the agent that signed and that agent's signature.
+The bytes of a Signature are read as the Identity schema says: the index of
+the key that signed, the root first and its agents after it, and that key's
+signature.
 
 `loadIdentity` compiles every schema here with the validator the
 application picks, writes the object of each scheme it picks, and gives
 what reads and writes the objects of each,
-side by side: `keys`, `identities`, `delegatedIdentities`,
-`signedIdentities`, `signatures`, `identityVersions`, `secretKeys` and
-`walletKeys`, with `publish` and `delegate`, which write an identity and
-have its root sign it. The code is
-laid out as the objects are. Each schema has a file of its own, an
-interface and the schemas read as it share a directory, `src/key/` and
-`src/identity/`, with the interface in `interface.ts`, and one file imports
-another where an object of the one links to an object of the other.
+side by side: `keys`, `identities`, `signedIdentities`, `signatures`,
+`identityVersions`, `secretKeys` and `walletKeys`, with `publish`, which
+writes an identity and has its root sign it. The code is laid out as the
+objects are. Each schema has a file of its own, the key interface and the
+schemes read as it share `src/key/`, with the interface in `interface.ts`,
+and one file imports another where an object of the one links to an object
+of the other.
 
 ## Schemes
 
@@ -114,10 +113,10 @@ a key signs an object for an identity:  Estoc Object (sha256:<the object's diges
 ```
 
 The first text is signed only when a root signs an identity, and every
-signature for an identity, a root's for its Identity too, is over the
-second. So a signature a root makes for an identity does not stand it
-behind another identity, even when the object signed is a Delegated
-Identity of that root listing someone else. The second text names the
+signature for an identity, a root's too, is over the second. So a
+signature a root makes for an identity does not stand it behind another
+identity, even when the object signed is another identity of that root
+listing someone else. The second text names the
 Signed identity, not only the identity: the Signed identity is the
 identity as its root publishes it, and a signature is made for what the
 root published, as it is. Everything in a Signature but its signature is
@@ -182,59 +181,47 @@ plugin an application gives `loadIdentity`.
 
 ## Identities
 
-An identity is written to one of two schemas, whatever the scheme of its
-root, and names its root by the link of the root's object. The two differ
-in shape and share no template, so they are JSON Schema schemas, and
-`signedIdentities` is what reads both as identities. Whichever schema it is
-written to, an identity reads as an `IdentityObject`, with its root as `root`, and that is
-all a reader that does not sign needs. Someone who signs is a person by
-their root, a wallet as much as a device or a service: two identities are
-of the same person when the links of their roots are the same, so a
-wallet's Identity and its Delegated Identities are all the wallet. An
-object that names someone names their root by that link, while a
-signature names a signed identity of the identity it is made for.
+An identity is written to `identitySchema`, whatever the scheme of its
+root, and names its root by the link of the root's object. It reads as an
+`IdentityObject`, with its root as `root`, and that is all a reader that
+does not sign needs. Someone who signs is a person by their root, a wallet
+as much as a device or a service: two identities are of the same person
+when the links of their roots are the same, so every identity a wallet
+signs is the wallet. An object that names someone names their root by that
+link, while a signature names a signed identity of the identity it is made
+for.
 
-- An Identity, written to `identitySchema`, holds its root and `at`: the
-  identity of a key on its own. Its root alone signs for it. A wallet, a
-  service or a device that signs for itself uses one.
-- A Delegated Identity, written to `delegatedIdentitySchema`, holds its
-  root and its agents, the keys the root lists to sign for it, and reads as
-  a `DelegatedIdentityObject` with `agents` in the order the root lists
-  them. A signature for it names the agent that signed by its index in that
-  order, one byte, so it lists at most 256 agents, and each of them once,
-  or one signature would verify under two indexes. An agent need not sign
-  in its root's scheme, as a browser key can sign for a wallet. The root
-  signs for it only if it lists itself; with no agents no one does. It
-  holds `at` too.
+An identity holds its root, its agents, which are the keys the root lists
+to sign for it, and `at`. It reads with `agents` in the order the root
+lists them. The root signs for it, and so do its agents, and an agent need
+not sign in its root's scheme, as a browser key can sign for a wallet. A
+signature for it names the key that signed by its index, one byte: the
+root is 0 and the agents follow, so it lists at most 255 agents, each of
+them once and not the root, or one signature would verify under two
+indexes. A wallet, a service or a device that signs for itself lists none.
 
 `at` is when the root signs an identity, in milliseconds since the Unix
-epoch. Each identity a root signs is an identity version, whichever schema
-it is written to, and of a root's identity versions the current one is that
-with the greatest `at`, and of those with the same `at`, that whose signed
-identity has the greater link. The current identity version says who signs
-for the root, the root itself among them: once a root lists agents in a
-Delegated Identity, it signs for itself only where that identity version
-lists it as well, and an Identity it signs after that takes every agent out.
+epoch. Each identity a root signs is an identity version. `prior` names
+the signed identity of the identity version it follows, of the same root
+and with an earlier `at`, and one without it starts a chain. `crisis`
+marks a crisis, below. An identity holds `prior` and `crisis` only where
+they hold, so it has one object.
 
-Each identity schema has an implementation of the Identity interface,
-which reads its objects with the keys they name and says what a signature
-asks of it: which of its keys made a signature, how a signer signs for it,
-and whether a key signs for it. An identity carries as `implementation`
-the implementation that read or wrote it, so these are asked of the
-identity in hand: `hasSigner(identity, key)` says whether `key` signs for
-it. `identities` is the implementation of
-`identitySchema`, and `identities.encode` writes the Identity whose root
-is a key, at its `at`; `delegatedIdentities` is that of `delegatedIdentitySchema`, and
-`delegatedIdentities.encode` writes the Delegated Identity of a root, its
-agents and its `at`. An identity stands for someone only as its root
-signed it: `identities.read` and `delegatedIdentities.read` read an
-identity's object with the keys it names and do not authenticate it, and
-`signedIdentities.read` verifies that its root signed it. Reading an
-identity takes the blobs of its object and of its keys; an identity
-carries them as `blobs`, with the blobs of the schemas they are written
-to, each once. That is the identity's closure, so
-where an identity goes, as into a store or a bundle, `...identity.blobs`
-goes along and carries all it links to.
+`identities` writes identities. `identities.encode(root, content)` writes
+the identity of a root that an `IdentityContent` says: `prior`, the signed
+identity it follows, `agents`, `isCrisis` and `at`, now unless it is given.
+It refuses agents that list the root, and a prior of another root or one
+that is not earlier. An identity stands for someone only as its root signed
+it: `identities.read` reads an identity's object with the keys it names, as
+following the signed identity its `prior` names, which the caller reads,
+and does not authenticate it, while `signedIdentities.read` verifies that
+its root signed it. `hasSigner(identity, key)` says whether `key` signs for
+an identity. Reading an identity takes the blobs of its object, of its keys
+and of the signed identity it follows; an identity carries them as `blobs`,
+with the blobs of the schemas they are written to, each once. That is the
+identity's closure, so where an identity goes, as into a store or a bundle,
+`...identity.blobs` goes along and carries all it links to, the identity
+versions it follows among them.
 
 ## Signed identities
 
@@ -249,38 +236,55 @@ signature reads that the root stands behind the identity. Two signers are
 the same someone when the roots of their identities are, whichever signed
 identities they sign by.
 
-`publish` takes the root's `Signer`, writes its Identity at `at`, now
-unless it is given, has the root sign it, and gives the signed identity.
-`delegate` takes the root's `Signer` and the agents' keys, and does the
-same with the Delegated Identity that lists them. Either `at` is when the
-root signs, by its clock: where an identity version signed by a clock that
-is off falls among the others is the root's to answer for, as anything else
-it does by that clock. Both write the identity before the root signs, so
-a signer is not asked to sign an identity that would not read, such as one
-that lists an agent twice. `signedIdentities.verify` takes the object of a
-signed identity and a `Reader`, reads its identity through an
-`Implementations` of the identity schemas, which picks the schema to read
-the identity's object with by `schemaOf`, and refuses a signature that the
-identity's root did not make. `signedIdentities.read` reads that object from
-its link first. A signed identity carries as `blobs` its object and its
-schema's blobs with the identity's `blobs`.
+`publish` takes the root's `Signer` and an `IdentityContent`, writes the
+identity, at `at`, now unless it is given, has the root sign it, and gives
+the signed identity. `at` is when the root signs, by its clock: where an
+identity version signed by a clock that is off falls among the others is
+the root's to answer for, as anything else it does by that clock. It
+writes the identity before the root signs, so a signer is not asked to sign
+an identity that would not read, such as one that lists an agent twice.
+`signedIdentities.verify` takes the object of a signed identity and a
+`Reader`, reads its identity with the keys it names and the signed
+identities it follows, each verified, and refuses a signature that the
+identity's root did not make. `signedIdentities.read` reads that object
+from its link first. A signed identity carries as `blobs` its object and
+its schema's blobs with the identity's `blobs`.
 
-The implementation of an identity's schema is picked once, as
-`signedIdentities.read` reads it, and the identity carries it. So
-`signatures` asks the identity what a signature needs of it, and depends
-on signed identities and on no identity schema.
+What a signature asks of an identity, which key made it and how a signer
+signs for it, is asked of the identity in hand, so `signatures` depends on
+signed identities alone.
 
 ## Identity Versions
 
+Each identity version names the one it follows as `prior`, so a root's
+identity versions are a chain, and the closure of each holds those it
+follows. Two that follow the same one are a fork, and both stay.
+
 A root removes an agent by signing an identity version that does not list
-it, and every agent by signing an Identity. A reader that has seen that
-identity version no longer counts the agent's signatures, whichever identity
-version they carry; what it accepted before stays accepted. A reader holds
-only the identity versions it has seen, and nothing tells it of the others.
+it. A reader that has seen that identity version no longer counts the
+agent's signatures, whichever identity version they carry; what it
+accepted before stays accepted. A reader holds only the identity versions
+it has seen, and nothing tells it of the others.
+
+A root that no longer relies on what it signed before, as when the store of
+an agent leaks, signs a crisis, an identity version that holds `crisis`.
+Of a root's identity versions, the latest crisis, by `at` and then by the
+link of its signed identity, and the ones that follow it count. The others
+do not: those before it, and those on a branch that does not follow it.
+With no crisis, all of them count. A signature by an identity version that
+does not count does not count either, whoever made it, the root among them,
+and whenever the reader took it in. Which records still stand, and what to
+sign again, is for each application to say: a crisis rebuilds from the
+root and does not undo what was done. Each identity version after a crisis
+follows it, so a reader that has seen only a later one has seen the crisis
+too.
 
 `identityVersions.identityVersionOf` gives the identity version a signed
-identity is, as a row: its root, its `at` and its link. In the order of
-their keys, a root's rows end with its current identity version.
+identity is, as a row: its root, its `at`, its link and, where there is
+one, its last crisis, the latest crisis among it and those it follows. Each
+identity version is later than the one it follows, so no crisis follows the
+latest crisis, and those that count are the ones whose last crisis it is.
+The rows of a root are in the order of their keys, `at` and then the link.
 
 `identityVersions.selection` is the `SelectionBySchema` of signed identities,
 each read as its row. A signed identity carries its authority in its root's
@@ -288,7 +292,8 @@ signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
 `indexOverBlobs` of `@estoc/store`. A stranger can add no identity version of
 a root that the root did not sign, and an older identity version leaves the
-current one as it is.
+current one as it is, unless it is a crisis that the current one does not
+follow.
 
 Anyone can send a signed identity, so one whose identity does not read, such
 as one whose root has a scheme the application does not accept, or whose root
@@ -302,14 +307,17 @@ a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
 `identityVersions.people` takes those rows and a `Reader`, and gives the
-`People` of the identity versions the reader has seen. Their `current` gives
-the current identity version of a signed identity's root, the later of the one
-given and the signed identity of its root's last row, read from the reader.
-They are the reader's `SeenIdentityVersions` too, which say whether a
-signature counts: their `counts` says whether the key that made it signs for
-the current identity version of the root of the signed identity it carries.
+`People` of the identity versions the reader has seen. The rows hold those
+each identity version follows, as an index over the blobs of a store does.
+Their `current` gives the current identity version of a signed identity's
+root: of those the reader has seen and the one given with those it follows,
+the latest that counts, read from the reader. They are the reader's
+`SeenIdentityVersions` too, which say whether a signature counts: their
+`counts` says whether the identity version it carries counts, and whether
+the key that made it signs for the current identity version of its root.
 `noIdentityVersions` is a reader that has seen no identity versions, so a
-signature counts by the identity version it carries alone.
+signature counts by the identity version it carries and those it follows
+alone, of which it is the latest.
 
 ## People
 
@@ -318,26 +326,29 @@ A person is a root and its identity versions that a reader has seen.
 signature just read, and gives the `Person` of its root:
 
 - `root`, the root's key, as the signed identity holds it.
-- `identityVersions()`, the root's identity versions the reader has seen,
-  with the one in hand, each once and in the order of their rows. Each is read
-  from the reader, signed by the root.
+- `identityVersions()`, the root's identity versions that count, of those
+  the reader has seen and the one in hand with those it follows, each once
+  and in the order of their rows. Each is read from the reader, signed by
+  the root.
 - `current()`, the last of them, which says who signs for the person now.
 - `hasSigned(signature)`, whether a signature already read was made for an
   identity of the root.
 
-The identity versions are those the reader has seen, in the order of the
-root's clock, and none of them names the one before, so one between two of
-them may be missing, and `current()` is the latest the reader has seen, not
-the latest the root signed. `current` of `People` is that of the person of
-the signed identity it is given.
+The identity versions are in the order of the root's clock. Each names the
+one it follows, so the reader has seen every one before each it has seen,
+on that branch. One the root signed later, or one on another branch, may be
+missing, and `current()` is the latest that counts of those the reader has
+seen, not the latest the root signed. `current` of `People` is that of the
+person of the signed identity it is given.
 
 A person is worked out from the rows when they are read and is not
 written: their root names them, but what they hold changes as the reader
 sees more. Two people are one when the links of their roots are. Two taken
-from different signed identities of a root may differ in `identityVersions()`,
-since each holds the one it was taken from, but their `current()` differs
-only when the one in hand is later than any the reader has seen, which a
-signature carrying it counts as well.
+from different signed identities of a root may differ in `identityVersions()`
+and in `current()`: each takes the identity versions the reader has seen with
+the one it was taken from and those it follows, and of those the latest
+crisis and the ones that follow it count, or all of them when none is a
+crisis. A signature that carries the one in hand counts by the same.
 
 A person reads no signatures. What a signature is read from, and whether
 it is verified against the identity versions a store holds or by
@@ -367,11 +378,10 @@ a signature. It names a signed identity and the object it is over by their
 links, and holds the signature as bytes, in lowercase hex, which writes
 each byte string one way. The schema of the identity says which key signs
 and how the bytes are laid out, and that key's scheme how its signature in
-them reads: in each scheme here, one signature of 64 bytes. Signing with a
-threshold of keys would be another identity schema; a scheme whose
+them reads: in each scheme here, one signature of 64 bytes. A scheme whose
 signature holds more, such as a passkey's authenticator data, lays it out
-in its own bytes. Either way the signature schema, and what reads
-signatures by it, stay as they are.
+in its own bytes, and the signature schema, and what reads signatures by
+it, stay as they are.
 
 `signatures` holds the signature schema and `actor`. `signatures.verify`
 is the verifier of a signature: it takes the signature as an object of
@@ -380,14 +390,15 @@ identity from the reader with `signedIdentities.read`, and verifies the
 signature's bytes by the key the identity's schema reads from them, over the
 text for the object by that signed identity; `signatures.read` does the same
 from the link of the signature. It also refuses a signature that does not
-count by the `SeenIdentityVersions`: one whose key does not sign for the
-current identity version, the later of the one the signature carries and the
-latest the reader has seen. The root of an Identity signs for it, or an agent
-of a Delegated Identity. The one the signature carries counts, as a
-device a wallet has just listed signs by an identity version the reader has
-not seen yet. The `SeenIdentityVersions` are not optional, so a reader that
-keeps no identity versions says so with `noIdentityVersions`, and a signature
-is then verified by the identity version it carries alone. Verifying a
+count by the `SeenIdentityVersions`: one whose identity version a crisis
+cuts, or whose key does not sign for the current identity version, the
+latest that counts of those the reader has seen and the one the signature
+carries. The root signs for an identity, and so do its agents. The one the
+signature carries counts, as a device a wallet has just listed signs by an
+identity version the reader has not seen yet. The `SeenIdentityVersions`
+are not optional, so a reader that keeps no identity versions says so with
+`noIdentityVersions`, and a signature is then verified by the identity
+version it carries alone. Verifying a
 signature takes the blobs of its signed identity, but not that of the object
 signed, since the digest it signs is in the link. It gives the signature's
 object with the signed identity it read as `signedIdentity`, the key that
@@ -397,10 +408,10 @@ alone, as a viewer of arbitrary objects would, reads its fields without
 verifying it.
 
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
-signed identity whose identity the signer's key signs for, the root of an
-Identity or an agent of a Delegated Identity, gives an `Actor` for it, and
-refuses any other signer. So a wallet that lists a key on a device as an
-agent does not confirm what the device signs for it. `actor.sign` signs the
+signed identity whose identity the signer's key signs for, its root or one
+of its agents, gives an `Actor` for it, and refuses any other signer. So a
+wallet that lists a key on a device as an agent does not confirm what the
+device signs for it. `actor.sign` signs the
 link of an object, so it takes anything that has one, and gives a signature
 whose `signedIdentity` is
 `actor.signedIdentity`, the signed identity the actor was made for, whose

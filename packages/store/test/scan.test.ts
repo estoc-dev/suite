@@ -122,7 +122,7 @@ describe("an index scanned from a store", () => {
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
     const hello = encodeObject(note, {});
     const helloSignatures = await Promise.all(
-      signers.map(async (by) => signatures.actor(by, await publish(by, 0)).sign(hello)),
+      signers.map(async (by) => signatures.actor(by, await publish(by, { at: 0 })).sign(hello)),
     );
     const store = new Store(json, new MemoryBackend());
     await store.write({

@@ -17,7 +17,6 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test, vi } from "vitest";
 import {
   type CurveScheme,
-  type DelegatedIdentityObject,
   ed25519,
   eip191,
   isSameKey,
@@ -34,7 +33,7 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes } from "./fixtures.ts";
 
-const { identities, signatures, identityVersions, publish, delegate } = await loadIdentity(defaultValidator, schemes);
+const { identities, signatures, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
 const verifiedBy = async (
   by: Signatures,
   bytes: Uint8Array,
@@ -57,7 +56,7 @@ const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
   identityVersions.people(rowsOf(identityVersions, ...signed), byLink(...signed));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, 0)).sign(object);
+  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
 const note: Schema<Json, { readonly text: string }> = await encodeSchema(
   {
@@ -77,7 +76,7 @@ describe("a signature", () => {
     const signature = await sign(hello, by);
     const read = await verified(signature.bytes, identityOf(signature));
     expect(read.signedIdentity).toEqual(signature.signedIdentity);
-    expect(read.signedIdentity.identity).toEqual(identities.encode(by.key, 0));
+    expect(read.signedIdentity.identity).toEqual(identities.encode(by.key, { at: 0 }));
     expect(read.object).toBe(hello.link);
     expect(read.signature).toEqual(signature.signature);
     expect(read.link).toBe(signature.link);
@@ -123,11 +122,11 @@ describe("a signature", () => {
     ["an object named by something other than a link", (f) => ({ ...f, object: { $link: "hello" } })],
     [
       "an identity written in place of the link to its signed identity",
-      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer(ed25519).key, 0)) }),
+      (f) => ({ ...f, signedIdentity: dataOf(identities.encode(signer(ed25519).key, { at: 0 })) }),
     ],
     [
       "its identity in place of its signed identity",
-      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer(ed25519).key, 0).link } }),
+      (f) => ({ ...f, signedIdentity: { $link: identities.encode(signer(ed25519).key, { at: 0 }).link } }),
     ],
   ])("is refused with %s", async (_, change) => {
     const signature = await sign(hello, signer(ed25519));
@@ -166,33 +165,32 @@ describe("a signature", () => {
   });
 });
 
-describe("a signature for a Delegated Identity", () => {
-  const agentsOf = ({ identity }: SignedIdentityObject<DelegatedIdentityObject>) => identity.agents;
-
-  it("by its second agent reads back with that agent as its key", async () => {
-    const signedIdentity = await delegate(signer(ed25519), [key(ed25519, 2), key(ed25519, 3)]);
+describe("a signature by an agent", () => {
+  it("by the second agent reads back with that agent as its key, named by its index after the root's", async () => {
+    const signedIdentity = await publish(signer(ed25519), { agents: [key(ed25519, 2), key(ed25519, 3)] });
     const signature = await signatures.actor(signer(ed25519, 3), signedIdentity).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature));
     expect(read.signedIdentity).toEqual(signedIdentity);
-    expect(read.key).toEqual(agentsOf(signedIdentity)[1]);
-    expect(read.signature[0]).toBe(1);
+    expect(read.key).toEqual(signedIdentity.identity.agents[1]);
+    expect(read.signature[0]).toBe(2);
     expect(read.signature).toHaveLength(65);
   });
 
-  it("by an agent in another scheme than its root is read in the agent's scheme", async () => {
-    const signedIdentity = await delegate(signer(eip191), [key(ed25519, 2)]);
+  it("in another scheme than its root is read in the agent's scheme", async () => {
+    const signedIdentity = await publish(signer(eip191), { agents: [key(ed25519, 2)] });
     const signature = await signatures.actor(signer(ed25519, 2), signedIdentity).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature));
     expect(isSameKey(read.key, key(ed25519, 2))).toBe(true);
   });
 
   it.each<[string, (signature: Uint8Array) => Uint8Array]>([
-    ["another agent's index", (signature) => Uint8Array.of(0, ...signature.subarray(1))],
-    ["an index past its agents", (signature) => Uint8Array.of(2, ...signature.subarray(1))],
+    ["another agent's index", (signature) => Uint8Array.of(1, ...signature.subarray(1))],
+    ["the root's index", (signature) => Uint8Array.of(0, ...signature.subarray(1))],
+    ["an index past its agents", (signature) => Uint8Array.of(3, ...signature.subarray(1))],
     ["no index", (signature) => signature.subarray(1)],
     ["no bytes", () => new Uint8Array()],
   ])("is refused with %s", async (_, change) => {
-    const signedIdentity = await delegate(signer(ed25519), [key(ed25519, 2), key(ed25519, 3)]);
+    const signedIdentity = await publish(signer(ed25519), { agents: [key(ed25519, 2), key(ed25519, 3)] });
     const signature = await signatures.actor(signer(ed25519, 3), signedIdentity).sign(hello);
     const bytes = rewritten(signature, { signature: bytesToHex(change(signature.signature)) });
     await expect(verified(bytes, identityOf(signature))).rejects.toThrow(/does not verify/);
@@ -200,46 +198,56 @@ describe("a signature for a Delegated Identity", () => {
 
   it("made for one identity does not verify for another that lists the same agent", async () => {
     const agent = signer(ed25519, 3);
-    const signedIdentity = await delegate(signer(ed25519), [agent.key]);
+    const signedIdentity = await publish(signer(ed25519), { agents: [agent.key] });
     const signature = await signatures.actor(agent, signedIdentity).sign(hello);
-    const other = await delegate(signer(ed25519, 2), [agent.key]);
+    const other = await publish(signer(ed25519, 2), { agents: [agent.key] });
     await expect(
       verified(rewritten(signature, { signedIdentity: { $link: other.link } }), byLink(other)),
     ).rejects.toThrow(/does not verify/);
   });
 });
 
-describe("a signature by an agent", () => {
+describe("a signature by an agent, as identity versions follow one another", () => {
   const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
 
   it("counts when the latest identity version the reader has seen lists its agent, whichever identity version it carries", async () => {
-    const first = await delegate(wallet, [laptop.key], 1_000);
-    const second = await delegate(wallet, [phone.key, laptop.key], 2_000);
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [phone.key, laptop.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(first, second));
+    const read = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(second));
     expect(read.signedIdentity).toEqual(first);
   });
 
   it("is refused when the latest identity version the reader has seen no longer lists its agent", async () => {
-    const first = await delegate(wallet, [laptop.key, phone.key], 1_000);
-    const second = await delegate(wallet, [phone.key], 2_000);
+    const first = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(first, second))).rejects.toThrow(
-      /does not sign for the current identity version/,
+    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(second))).rejects.toThrow(
+      /does not count/,
+    );
+  });
+
+  it("is refused when the latest identity version the reader has seen lists no agents", async () => {
+    const earlier = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const later = await publish(wallet, { prior: earlier, at: 2_000 });
+    const signature = await signatures.actor(laptop, earlier).sign(hello);
+    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(later))).rejects.toThrow(
+      /does not count/,
     );
   });
 
   it("is verified against the identity version it carries when that is later than any the reader has seen", async () => {
-    const first = await delegate(wallet, [laptop.key], 1_000);
-    const second = await delegate(wallet, [laptop.key, phone.key], 2_000);
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [laptop.key, phone.key], at: 2_000 });
     const signature = await signatures.actor(phone, second).sign(hello);
     const read = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(first));
     expect(isSameKey(read.key, phone.key)).toBe(true);
   });
 
   it("is verified, against an identity version at the same at that drops its agent, by whichever has the greater link", async () => {
-    const listing = await delegate(wallet, [laptop.key, phone.key], 1_000);
-    const dropping = await delegate(wallet, [phone.key], 1_000);
+    const first = await publish(wallet, { at: 500 });
+    const listing = await publish(wallet, { prior: first, agents: [laptop.key, phone.key], at: 1_000 });
+    const dropping = await publish(wallet, { prior: first, agents: [phone.key], at: 1_000 });
     const signature = await signatures.actor(laptop, listing).sign(hello);
     const counts = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(dropping)).then(
       () => true,
@@ -249,58 +257,131 @@ describe("a signature by an agent", () => {
   });
 
   it("counts by the people of what the reader has seen as it is verified by them", async () => {
-    const first = await delegate(wallet, [laptop.key, phone.key], 1_000);
-    const second = await delegate(wallet, [phone.key], 2_000);
-    const people = peopleHavingSeen(first, second);
+    const first = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
+    const people = peopleHavingSeen(second);
     expect(await people.counts(await signatures.actor(laptop, first).sign(hello))).toBe(false);
     expect(await people.counts(await signatures.actor(phone, first).sign(hello))).toBe(true);
   });
 
   it("counts by the identity version it carries when the reader has seen no identity versions", async () => {
-    const first = await delegate(wallet, [laptop.key], 1_000);
-    await delegate(wallet, [phone.key], 2_000);
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
     expect((await verified(signature.bytes, identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
   });
 });
 
-describe("a signature by a root through its Identity", () => {
+describe("a signature by a root", () => {
   const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
 
-  it("is refused once the reader has seen a later identity version that does not list the root", async () => {
-    const published = await publish(wallet, 1_000);
-    const later = await delegate(wallet, [laptop.key], 2_000);
-    const signature = await signatures.actor(wallet, published).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(published, later))).rejects.toThrow(
-      /does not sign for the current identity version/,
-    );
+  it("is named by index 0, before the agents", async () => {
+    const signedIdentity = await publish(wallet, { agents: [laptop.key] });
+    const signature = await signatures.actor(wallet, signedIdentity).sign(hello);
+    const read = await verified(signature.bytes, identityOf(signature));
+    expect(read.key).toEqual(signedIdentity.identity.root);
+    expect(read.signature[0]).toBe(0);
   });
 
-  it("counts when the later identity version the reader has seen lists the root", async () => {
-    const published = await publish(wallet, 1_000);
-    const later = await delegate(wallet, [laptop.key, wallet.key], 2_000);
+  it("counts whichever agents the latest identity version the reader has seen lists", async () => {
+    const published = await publish(wallet, { at: 1_000 });
+    const later = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });
     const signature = await signatures.actor(wallet, published).sign(hello);
     expect((await verified(signature.bytes, identityOf(signature), peopleHavingSeen(later))).link).toBe(signature.link);
   });
 });
 
-describe("a signature by an agent of an identity version before the root's Identity", () => {
-  it("is refused once the reader has seen the Identity", async () => {
-    const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
-    const earlier = await delegate(wallet, [laptop.key], 1_000);
-    const published = await publish(wallet, 2_000);
-    const signature = await signatures.actor(laptop, earlier).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(published))).rejects.toThrow(
-      /does not sign for the current identity version/,
+describe("a signature by an identity version before a crisis", () => {
+  const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+  const chain = async () => {
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
+    const after = await publish(wallet, { prior: crisis, agents: [laptop.key], at: 3_000 });
+    return { first, crisis, after };
+  };
+
+  it.each([
+    ["an agent the crisis lists again", laptop],
+    ["the root", wallet],
+  ])("by %s is refused once the reader has seen the crisis", async (_, by) => {
+    const { first, crisis } = await chain();
+    const signature = await signatures.actor(by, first).sign(hello);
+    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(crisis))).rejects.toThrow(
+      /does not count/,
     );
+  });
+
+  it("is refused by a reader that has seen only an identity version that follows the crisis", async () => {
+    const { first, after } = await chain();
+    const people = identityVersions.people(rowsOf(identityVersions, after), byLink(after));
+    expect(await people.counts(await signatures.actor(wallet, first).sign(hello))).toBe(false);
+    expect(await people.counts(await signatures.actor(laptop, first).sign(hello))).toBe(false);
+  });
+
+  it("is refused once the signature of an identity version that follows the crisis carries it to the reader", async () => {
+    const { first, after } = await chain();
+    const reading = peopleHavingSeen(first);
+    expect(await reading.counts(await signatures.actor(laptop, after).sign(hello))).toBe(true);
+    expect(await reading.counts(await signatures.actor(laptop, first).sign(hello))).toBe(true);
+    const seeing = peopleHavingSeen(first, after);
+    expect(await seeing.counts(await signatures.actor(laptop, first).sign(hello))).toBe(false);
+  });
+
+  it("counts by the identity version it carries when the reader has seen no identity versions", async () => {
+    const { first } = await chain();
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    expect((await verified(signature.bytes, identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
+  });
+
+  it("is refused once the reader has seen a later crisis that follows it", async () => {
+    const { crisis } = await chain();
+    const later = await publish(wallet, { prior: crisis, agents: [laptop.key], isCrisis: true, at: 4_000 });
+    const people = peopleHavingSeen(later);
+    expect(await people.counts(await signatures.actor(laptop, crisis).sign(hello))).toBe(false);
+    expect(await people.counts(await signatures.actor(laptop, later).sign(hello))).toBe(true);
+  });
+});
+
+describe("a signature by the crisis or an identity version that follows it", () => {
+  it("counts, by the root and by an agent", async () => {
+    const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, isCrisis: true, at: 2_000 });
+    const after = await publish(wallet, { prior: crisis, agents: [laptop.key], at: 3_000 });
+    const people = peopleHavingSeen(after);
+    expect(await people.counts(await signatures.actor(wallet, crisis).sign(hello))).toBe(true);
+    expect(await people.counts(await signatures.actor(laptop, after).sign(hello))).toBe(true);
+  });
+});
+
+describe("a signature on a branch that does not follow the crisis", () => {
+  const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+
+  it("is refused once the reader has seen the crisis, though the branch is later", async () => {
+    const first = await publish(wallet, { at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, isCrisis: true, at: 2_000 });
+    const branch = await publish(wallet, { prior: first, agents: [laptop.key], at: 3_000 });
+    const people = peopleHavingSeen(crisis, branch);
+    expect(await people.counts(await signatures.actor(laptop, branch).sign(hello))).toBe(false);
+    expect(await people.counts(await signatures.actor(wallet, branch).sign(hello))).toBe(false);
+    expect(await peopleHavingSeen(branch).counts(await signatures.actor(laptop, branch).sign(hello))).toBe(true);
+  });
+
+  it("with a crisis of its own counts over an earlier crisis on another branch", async () => {
+    const first = await publish(wallet, { at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, isCrisis: true, at: 2_000 });
+    const branch = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 3_000 });
+    const people = peopleHavingSeen(crisis, branch);
+    expect(await people.counts(await signatures.actor(laptop, branch).sign(hello))).toBe(true);
+    expect(await people.counts(await signatures.actor(wallet, crisis).sign(hello))).toBe(false);
   });
 });
 
 describe("what a signature signs", () => {
   it("is the signed identity it names, not only its root and the index of its agent", async () => {
     const [root, agent] = [signer(ed25519), signer(ed25519, 3)];
-    const signedIdentity = await delegate(root, [agent.key, key(ed25519, 2)]);
-    const other = await delegate(root, [agent.key]);
+    const signedIdentity = await publish(root, { agents: [agent.key, key(ed25519, 2)] });
+    const other = await publish(root, { agents: [agent.key] });
     const signature = await signatures.actor(agent, signedIdentity).sign(hello);
     expect((await verified(signature.bytes, identityOf(signature))).link).toBe(signature.link);
     await expect(
@@ -382,16 +463,17 @@ describe("an identity actor", () => {
     expect(signature.data.signedIdentity.$link).toBe(signedIdentity.link);
   });
 
-  it("is not made for a signer that is not the root of an Identity", async () => {
+  it("is not made for a signer that is not the root of its identity nor an agent", async () => {
     const signedIdentity = await publish(signer(ed25519));
     expect(() => signatures.actor(signer(ed25519, 2), signedIdentity)).toThrow(/does not sign for/);
     expect(() => signatures.actor(signer(solanaOffchain), signedIdentity)).toThrow(/does not sign for/);
   });
 
-  it("is not made for a signer that a Delegated Identity does not list, though it is its root", async () => {
-    const signedIdentity = await delegate(signer(ed25519), [key(ed25519, 2)]);
+  it("is made for the root and the agents of its identity", async () => {
+    const signedIdentity = await publish(signer(ed25519), { agents: [key(ed25519, 2)] });
+    expect(signatures.actor(signer(ed25519), signedIdentity).signedIdentity).toBe(signedIdentity);
+    expect(signatures.actor(signer(ed25519, 2), signedIdentity).signedIdentity).toBe(signedIdentity);
     expect(() => signatures.actor(signer(ed25519, 3), signedIdentity)).toThrow(/does not sign for/);
-    expect(() => signatures.actor(signer(ed25519), signedIdentity)).toThrow(/does not sign for/);
   });
 
   it("refuses a signature that does not verify for its key", async () => {

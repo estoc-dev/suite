@@ -1,6 +1,5 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
-  type Actor,
   type IdentityKit,
   type KeyObject,
   loadIdentity,
@@ -150,7 +149,8 @@ export interface ServiceOptions {
  *   pickup id picks up what waits.
  */
 class MailboxService {
-  readonly #actor: Actor;
+  readonly #signer: Signer;
+  readonly #signedIdentity: SignedIdentityObject;
   readonly #root: Link<KeyObject>;
   readonly #locations: LocationsView;
   readonly #people: PeopleView;
@@ -163,14 +163,16 @@ class MailboxService {
   readonly #clock: () => number;
 
   constructor(
-    actor: Actor,
+    signer: Signer,
+    signedIdentity: SignedIdentityObject,
     root: Link<KeyObject>,
     kit: IdentityKit,
     schemas: Schemas,
     people: PeopleView,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
-    this.#actor = actor;
+    this.#signer = signer;
+    this.#signedIdentity = signedIdentity;
     this.#root = root;
     this.#locations = locationsView(kit.signatures, schemas.service);
     this.#people = people;
@@ -254,21 +256,24 @@ class MailboxService {
       bundle = await unpackBundle(zip);
       acceptance = await this.#signatures.read(bundle.link, bundle, people);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (people.personOf(this.#actor.signedIdentity).hasSigned(acceptance))
+      if (people.personOf(this.#signedIdentity).hasSigned(acceptance))
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, reasonOf(error));
     }
     const acknowledgements = await view(this.#store, this.#acknowledgements);
+    const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
-      (await acknowledgements.acknowledgementOf(acceptance.link)) ??
-      (
-        await this.#acknowledge(
-          encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
-          bundle,
-          acceptance.signedIdentity,
-        )
-      ).link;
+      heldAcknowledgement === undefined
+        ? (
+            await this.#acknowledge(
+              encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
+              people,
+              bundle,
+              acceptance.signedIdentity,
+            )
+          ).link
+        : await this.#renew(heldAcknowledgement, people);
     const isNewAccount = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
     return this.#answerWith(acknowledgement, isNewAccount ? 201 : 200);
   }
@@ -300,10 +305,12 @@ class MailboxService {
     const root = signature.signedIdentity.identity.root.link;
     if (!(await this.#accounts.has(root))) return answer(403, `${root} has no account here`);
     const existingMailbox = await this.#mailboxes.mailboxOpenedBy(signature.link);
-    if (existingMailbox !== undefined) return this.#answerWith(existingMailbox.acknowledgement, 200);
+    if (existingMailbox !== undefined)
+      return this.#answerWith(await this.#renew(existingMailbox.acknowledgement, people), 200);
     const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = await this.#acknowledge(
       encodeObject(this.#schemas.mailboxAcknowledgement, { request: { $link: signature.link }, at, sendId, pickupId }),
+      people,
       bundle,
       signature.signedIdentity,
       this.#schemas.mailboxRequest.blobs,
@@ -313,10 +320,8 @@ class MailboxService {
     // Requests of one mailbox at once can each sign an acknowledgement, and
     // each is answered with the one that opened it.
     const keptMailbox = await this.#mailboxes.open(mailbox);
-    return this.#answerWith(
-      keptMailbox.acknowledgement,
-      keptMailbox.acknowledgement === acknowledgement.link ? 201 : 200,
-    );
+    if (keptMailbox.acknowledgement === acknowledgement.link) return this.#answerWith(acknowledgement.link, 201);
+    return this.#answerWith(await this.#renew(keptMailbox.acknowledgement, people), 200);
   }
 
   /**
@@ -327,11 +332,12 @@ class MailboxService {
    */
   async #acknowledge(
     acknowledgement: EncodedObject<Json>,
+    people: People,
     bundle: Bundle,
     signedIdentity: SignedIdentityObject,
     blobs: readonly Bytes<unknown>[] = [],
   ): Promise<Signature> {
-    const signature = await this.#actor.sign(acknowledgement);
+    const signature = await this.#sign(acknowledgement, people);
     // Reading what is acknowledged takes none of the schemas in its signed
     // identity's closure, so the bundle need not hold them, and the store
     // takes a blob in only with its whole closure.
@@ -339,6 +345,29 @@ class MailboxService {
     const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
+  }
+
+  /**
+   * The service's signature at `link` over an acknowledgement while it counts
+   * by `people`. Once a crisis of the service's root cuts it, the service
+   * signs the same acknowledgement as its current identity version, and
+   * writes that signature to the store as a record.
+   */
+  async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
+    const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
+    if (await people.counts(signature)) return link;
+    const renewedSignature = await this.#sign({ link: signature.object }, people);
+    await this.#store.write({ records: [renewedSignature] });
+    return renewedSignature.link;
+  }
+
+  /**
+   * Signs `object` as the current identity version of the service's root by
+   * `people`, which a crisis that the store comes to hold changes while the
+   * service runs.
+   */
+  async #sign(object: { readonly link: Link<unknown> }, people: People): Promise<Signature> {
+    return this.#signatures.actor(this.#signer, await people.current(this.#signedIdentity)).sign(object);
   }
 
   /**
@@ -376,7 +405,7 @@ class MailboxService {
       const bundle = await unpackBundle(zip);
       signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
       const { data } = await readObject(bundle, signature.object, this.#schemas.pickupRequest);
-      if (data.mailbox.$link !== mailbox.acknowledgement)
+      if (data.mailbox.$link !== mailbox.request)
         throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
       receipts = data.receipts.map(({ $link }) => $link);
     } catch (error) {
@@ -386,7 +415,7 @@ class MailboxService {
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
     if (!(await people.counts(signature)))
-      return answer(403, `${key.link} does not sign for the current identity version of ${mailbox.root}`);
+      return answer(403, `the signature by ${key.link} does not count by the identity versions of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
@@ -457,14 +486,16 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  * Makes the service of `signer`'s identity at `origin`.
  *
  * - The store holds the Services the service signed before, the latest of
- *   which says where it was and what it offered there.
+ *   which that counts says where it was and what it offered there.
  * - When the service says the same now, that Service stays the latest, and
- *   else the service signs a new one.
+ *   else the service signs a new one, as it does when none counts once its
+ *   root signed a crisis.
  * - Either way the latest lists the offer of an account and the offer of
  *   mailboxes on `terms`, each under its link, with the service's signature
  *   over it from the latest Service that lists it.
- * - The service signs as the signed identity of its latest Service, and
- *   publishes its identity only when the store holds no Service of it.
+ * - The service signs as the current identity version of its root, by the
+ *   identity versions the store holds, and publishes its identity only when
+ *   the store holds no Service of it.
  *
  * @throws when `origin` is not an origin: a scheme, a host and a port alone.
  */
@@ -498,12 +529,16 @@ export async function loadMailboxService(
   const seenPeople = peopleView(kit.identityVersions);
   const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures, schemas.service));
+  const at = clock();
+  const [signedBefore] = await locations.servicesOf(identity.$link, noIdentityVersions);
+  const signedIdentity =
+    signedBefore === undefined
+      ? await publish(signer, { at })
+      : await people.current((await signatures.read(signedBefore, store, noIdentityVersions)).signedIdentity);
+  const actor = signatures.actor(signer, signedIdentity);
   const serviceSignatures = await Promise.all(
     (await locations.servicesOf(identity.$link, people)).map((link) => signatures.read(link, store, people)),
   );
-  const [latest] = serviceSignatures;
-  const at = clock();
-  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, at)));
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];
@@ -528,7 +563,10 @@ export async function loadMailboxService(
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, identity.$link, kit, schemas, seenPeople, { ...options, clock });
+  return new MailboxService(signer, actor.signedIdentity, identity.$link, kit, schemas, seenPeople, {
+    ...options,
+    clock,
+  });
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

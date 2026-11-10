@@ -13,7 +13,7 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { type Index, indexOver, indexOverBlobs, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
@@ -173,16 +173,12 @@ const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   },
 };
 
-const { signatures, signedIdentities, identityVersions, delegate, publish } = await loadIdentity(defaultValidator, [
-  ed25519,
-]);
+const { signatures, identityVersions, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
 const people: View<IdentityVersion, People> = {
-  index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
-    yield identityVersions.identityVersionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
-  }),
+  index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 
@@ -210,7 +206,8 @@ describe("a view of a staged batch", () => {
   it("takes in, when viewed again, what is written to the store after the batch was staged, and the batch is still committed", async () => {
     const store = newStore();
     const hello = object({ text: "hello" });
-    const byAgent = await signatures.actor(agent, await delegate(root, [agent.key], 1_000)).sign(hello);
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const byAgent = await signatures.actor(agent, listing).sign(hello);
     const stagedStore = await store.stage({
       records: [byAgent],
       blobs: [hello.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byAgent.signedIdentity.blobs],
@@ -219,13 +216,13 @@ describe("a view of a staged batch", () => {
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 
     const agentsOut = object({ text: "agents out" });
-    const byRoot = await signatures.actor(root, await publish(root, 2_000)).sign(agentsOut);
+    const byRoot = await signatures.actor(root, await publish(root, { prior: listing, at: 2_000 })).sign(agentsOut);
     await store.write({
       records: [byRoot],
       blobs: [agentsOut.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byRoot.signedIdentity.blobs],
     });
     await expect(signatures.read(byAgent.link, stagedStore, await view(stagedStore, people))).rejects.toThrow(
-      "does not sign for the current identity version",
+      "does not count",
     );
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 

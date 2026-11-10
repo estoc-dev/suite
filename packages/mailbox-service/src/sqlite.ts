@@ -1,5 +1,5 @@
 import { DatabaseSync, type SQLTagStore } from "node:sqlite";
-import type { KeyObject, Signature } from "@estoc/identity";
+import type { Identifier, Signature } from "@estoc/identity";
 import { type Link, linkOf } from "@estoc/object";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import type { Accounts } from "./server.ts";
@@ -17,17 +17,17 @@ export class SqliteAccounts implements Accounts {
   constructor(path: string) {
     this.#database = openDatabase(
       path,
-      "CREATE TABLE IF NOT EXISTS accounts (root TEXT PRIMARY KEY, acknowledgement TEXT NOT NULL);",
+      "CREATE TABLE IF NOT EXISTS accounts (identifier TEXT PRIMARY KEY, acknowledgement TEXT NOT NULL);",
     );
     this.#sql = this.#database.createTagStore();
   }
 
-  async add(root: Link<KeyObject>, acknowledgement: Link<Signature>): Promise<boolean> {
-    return this.#sql.run`INSERT OR IGNORE INTO accounts VALUES (${root}, ${acknowledgement})`.changes === 1;
+  async add(identifier: Identifier, acknowledgement: Link<Signature>): Promise<boolean> {
+    return this.#sql.run`INSERT OR IGNORE INTO accounts VALUES (${identifier}, ${acknowledgement})`.changes === 1;
   }
 
-  async has(root: Link<KeyObject>): Promise<boolean> {
-    return this.#sql.get`SELECT 1 FROM accounts WHERE root = ${root}` !== undefined;
+  async has(identifier: Identifier): Promise<boolean> {
+    return this.#sql.get`SELECT 1 FROM accounts WHERE identifier = ${identifier}` !== undefined;
   }
 
   /** Closes the file, after which every call rejects. */
@@ -53,7 +53,7 @@ export class SqliteMailboxes implements Mailboxes {
       CREATE TABLE IF NOT EXISTS mailboxes (
         request TEXT PRIMARY KEY,
         acknowledgement TEXT NOT NULL,
-        root TEXT NOT NULL,
+        identifier TEXT NOT NULL,
         send_id TEXT NOT NULL UNIQUE,
         pickup_id TEXT NOT NULL UNIQUE,
         retention INTEGER NOT NULL,
@@ -73,10 +73,10 @@ export class SqliteMailboxes implements Mailboxes {
   }
 
   async open(mailbox: OpenMailbox): Promise<OpenMailbox> {
-    const { request, acknowledgement, root, sendId, pickupId, terms } = mailbox;
+    const { request, acknowledgement, identifier, sendId, pickupId, terms } = mailbox;
     const { changes } = this.#sql.run`
       INSERT OR IGNORE INTO mailboxes
-      VALUES (${request}, ${acknowledgement}, ${root}, ${sendId}, ${pickupId},
+      VALUES (${request}, ${acknowledgement}, ${identifier}, ${sendId}, ${pickupId},
         ${terms.retention}, ${terms.quota}, ${terms.size})
     `;
     if (changes === 1) return mailbox;
@@ -152,7 +152,7 @@ export class SqliteMailboxes implements Mailboxes {
 type MailboxRow = {
   readonly request: Link<Signature>;
   readonly acknowledgement: Link<Signature>;
-  readonly root: Link<KeyObject>;
+  readonly identifier: Identifier;
   readonly send_id: string;
   readonly pickup_id: string;
   readonly retention: number;
@@ -163,7 +163,7 @@ type MailboxRow = {
 const mailboxOf = ({
   request,
   acknowledgement,
-  root,
+  identifier,
   send_id,
   pickup_id,
   retention,
@@ -172,7 +172,7 @@ const mailboxOf = ({
 }: MailboxRow): OpenMailbox => ({
   request,
   acknowledgement,
-  root,
+  identifier,
   sendId: send_id,
   pickupId: pickup_id,
   terms: { retention, quota, size },

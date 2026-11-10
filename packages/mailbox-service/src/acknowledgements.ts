@@ -41,10 +41,10 @@ type OpenedMailboxRow = readonly [mailbox: Link<EncodedObject<Json>>, acknowledg
  * The mailboxes that the user's client opened, by the records that it
  * writes once a service acknowledged its request for each. An
  * acknowledgement that the store came to hold another way, such as at a
- * mailbox, opens none: a key that a later identity version of the account's
- * root takes out still signs requests by the identity version before, so the
- * signature does not tell a request sent while the key was listed from one
- * sent after.
+ * mailbox, opens none: a key that a later identity version of whoever holds
+ * the account takes out still signs requests by the identity version before,
+ * so the signature does not tell a request sent while the key was listed
+ * from one sent after.
  */
 export interface OpenedMailboxes {
   /**

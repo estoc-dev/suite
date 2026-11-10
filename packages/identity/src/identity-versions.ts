@@ -1,27 +1,26 @@
 import { type Json, type Link, type Reader, SelectionBySchema } from "@estoc/object";
-import { hasSigner } from "./identity.ts";
-import type { KeyObject } from "./key/interface.ts";
+import { hasSigner, type Identifier } from "./identity.ts";
 import type { People, Person } from "./person.ts";
 import type { Signature } from "./signature.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
- * An identity version as a row: its root, its `at`, its signed identity, and
- * the last crisis of its chain.
+ * An identity version as a row: its identifier, its `at`, its signed
+ * identity, and the last crisis of its chain.
  *
  * - A root that signs one identity twice with a signer that signs with
  *   randomness makes two identity versions at one `at`, told apart by the
  *   links of their signed identities.
- * - The rows of a root's identity versions are in the order of their keys,
+ * - The rows of someone's identity versions are in the order of their keys,
  *   `at` and then the link of the signed identity.
  * - `lastCrisis` is the signed identity of the latest crisis among it and
  *   those it follows, itself when it is one. A row has none when none of them
  *   is a crisis.
  */
 export type IdentityVersion =
-  | readonly [root: Link<KeyObject>, at: number, signedIdentity: Link<SignedIdentityObject>]
+  | readonly [identifier: Identifier, at: number, signedIdentity: Link<SignedIdentityObject>]
   | readonly [
-      root: Link<KeyObject>,
+      identifier: Identifier,
       at: number,
       signedIdentity: Link<SignedIdentityObject>,
       lastCrisis: Link<SignedIdentityObject>,
@@ -68,7 +67,7 @@ export class IdentityVersions {
   identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersion {
     const { identity, link } = signedIdentity;
     const lastCrisis = lastCrisisOf(signedIdentity);
-    const row = [identity.root.link, identity.data.at, link] as const;
+    const row = [identity.identifier, identity.data.at, link] as const;
     return lastCrisis === undefined ? row : [...row, lastCrisis];
   }
 
@@ -82,15 +81,12 @@ export class IdentityVersions {
    * the blobs of a store does: the store holds the closure of each, and a
    * signed identity whose closure it lacks does not read.
    */
-  people(
-    rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> },
-    store: StoreReader,
-  ): People {
+  people(rows: { range(prefix: readonly [Identifier]): AsyncIterable<IdentityVersion> }, store: StoreReader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, store);
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
-      for await (const row of rows.range([signedIdentity.identity.root.link])) seen.set(row[2], row);
+      for await (const row of rows.range([signedIdentity.identity.identifier])) seen.set(row[2], row);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
       return {
         inHand,
@@ -102,9 +98,9 @@ export class IdentityVersions {
       };
     };
     const personOf = (signedIdentity: SignedIdentityObject): Person => {
-      const { root } = signedIdentity.identity;
+      const { identifier } = signedIdentity.identity;
       return {
-        root,
+        identifier,
         identityVersions: async () => {
           const { seen, signedIdentityOf } = await versionsOf(signedIdentity);
           return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
@@ -113,7 +109,7 @@ export class IdentityVersions {
           const { seen, currentAmong } = await versionsOf(signedIdentity);
           return currentAmong(countingVersionsAmong(seen));
         },
-        hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
+        hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
       };
     };
     // A signature taken in at `position` is honored by the identity versions the store held before it,
@@ -159,10 +155,10 @@ function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentity
 }
 
 /**
- * The links of the identity versions of `ordered`, rows of one root in their
- * order, that count: the latest crisis and those that follow it, or all of
- * them when none is a crisis. Those that follow a crisis come after it, so
- * each crisis met starts them over.
+ * The links of the identity versions of `ordered`, rows of one identifier in
+ * their order, that count: the latest crisis and those that follow it, or
+ * all of them when none is a crisis. Those that follow a crisis come after
+ * it, so each crisis met starts them over.
  */
 function countingVersionsAmong(ordered: readonly IdentityVersion[]): Link<SignedIdentityObject>[] {
   let countingVersions: Link<SignedIdentityObject>[] = [];

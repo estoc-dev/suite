@@ -11,7 +11,7 @@ const limits = { at: 1, since: 0, quota: 100 };
 const mailboxRequested = (name: string): OpenMailbox => ({
   request: linkNamed(`request ${name}`),
   acknowledgement: linkNamed(`acknowledgement ${name}`),
-  root: linkNamed("alice"),
+  identifier: linkNamed("alice"),
   sendId: `send ${name}`,
   pickupId: `pickup ${name}`,
   terms,

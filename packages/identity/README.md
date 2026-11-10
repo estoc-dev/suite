@@ -184,12 +184,12 @@ plugin an application gives `loadIdentity`.
 An identity is written to `identitySchema`, whatever the scheme of its
 root, and names its root by the link of the root's object. It reads as an
 `IdentityObject`, with its root as `root`, and that is all a reader that
-does not sign needs. Someone who signs is a person by their root, a wallet
-as much as a device or a service: two identities are of the same person
-when the links of their roots are the same, so every identity a wallet
-signs is the wallet. An object that names someone names their root by that
-link, while a signature names a signed identity of the identity it is made
-for.
+does not sign needs. Someone who signs is a person by their `identifier`,
+the link of their root, a wallet as much as a device or a service: two
+identities are of the same person when their identifiers are the same, so
+every identity a wallet signs is the wallet. An object that names someone
+names them by their identifier, while a signature names a signed identity
+of the identity it is made for.
 
 An identity holds its root, its agents, which are the keys the root lists
 to sign for it, and `at`. It reads with `agents` in the order the root
@@ -233,8 +233,8 @@ where its signer signs with randomness, as a passkey does, each signed
 identity has a link of its own. A signature names who makes it by the
 link of a signed identity, what the root published as it is, so reading a
 signature reads that the root stands behind the identity. Two signers are
-the same someone when the roots of their identities are, whichever signed
-identities they sign by.
+the same someone when the identifiers of their identities are, whichever
+signed identities they sign by.
 
 `publish` takes the root's `Signer` and an `IdentityContent`, writes the
 identity, at `at`, now unless it is given, has the root sign it, and gives
@@ -283,18 +283,19 @@ follows it, so a reader that has seen only a later one has seen the crisis
 too.
 
 `identityVersions.identityVersionOf` gives the identity version a signed
-identity is, as a row: its root, its `at`, its link and, where there is
-one, its last crisis, the latest crisis among it and those it follows. Each
+identity is, as a row: its identifier, its `at`, its link and, where there
+is one, its last crisis, the latest crisis among it and those it follows. Each
 identity version is later than the one it follows, so no crisis follows the
 latest crisis, and those that count are the ones whose last crisis it is.
-The rows of a root are in the order of their keys, `at` and then the link.
+The rows of one identifier are in the order of their keys, `at` and then
+the link.
 
 `identityVersions.selection` is the `SelectionBySchema` of signed identities,
 each read as its row. A signed identity carries its authority in its root's
 signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
 `indexOverBlobs` of `@estoc/store`. A stranger can add no identity version of
-a root that the root did not sign, and an older identity version leaves the
+someone that their root did not sign, and an older identity version leaves the
 current one as it is, unless it is a crisis that the current one does not
 follow.
 
@@ -314,13 +315,13 @@ not give a blob it lists.
 store of `@estoc/store` does. It gives the `People` of the identity versions
 the reader has seen. The rows hold those each identity version follows, as
 an index over the blobs of a store does.
-Their `current` gives the current identity version of a signed identity's
-root: of those the reader has seen and the one given with those it follows,
+Their `current` gives the current identity version of the person of a
+signed identity: of those the reader has seen and the one given with those it follows,
 the latest that counts, read from the reader. They are the reader's
 `SeenIdentityVersions` too, which say whether the reader honors a
 signature: their `honors` says whether the identity version it carries
 counts, and whether the key that made it signs for the current identity
-version of its root. That is how a signature that comes in now is honored,
+version of whoever made it. That is how a signature that comes in now is honored,
 such as a request a service answers, whether or not the store took it in
 before.
 
@@ -349,18 +350,18 @@ alone, of which it is the latest.
 
 ## People
 
-A person is a root and its identity versions that a reader has seen.
-`people.personOf` takes a signed identity in hand, such as that of a
-signature just read, and gives the `Person` of its root:
+A person is an identifier and the identity versions of theirs that a
+reader has seen. `people.personOf` takes a signed identity in hand, such as
+that of a signature just read, and gives the `Person` of it:
 
-- `root`, the root's key, as the signed identity holds it.
-- `identityVersions()`, the root's identity versions that count, of those
+- `identifier`, the identifier of the signed identity's identity.
+- `identityVersions()`, the person's identity versions that count, of those
   the reader has seen and the one in hand with those it follows, each once
   and in the order of their rows. Each is read from the reader, signed by
-  the root.
+  its root.
 - `current()`, the last of them, which says who signs for the person now.
 - `hasSigned(signature)`, whether a signature already read was made for an
-  identity of the root.
+  identity of the person.
 
 The identity versions are in the order of the root's clock. Each names the
 one it follows, so the reader has seen every one before each it has seen,
@@ -370,9 +371,9 @@ seen, not the latest the root signed. `current` of `People` is that of the
 person of the signed identity it is given.
 
 A person is worked out from the rows when they are read and is not
-written: their root names them, but what they hold changes as the reader
-sees more. Two people are one when the links of their roots are. Two taken
-from different signed identities of a root may differ in `identityVersions()`
+written: their identifier names them, but what they hold changes as the
+reader sees more. Two people are one when their identifiers are. Two taken
+from different signed identities of someone may differ in `identityVersions()`
 and in `current()`: each takes the identity versions the reader has seen with
 the one it was taken from and those it follows, and of those the latest
 crisis and the ones that follow it count, or all of them when none is a
@@ -480,12 +481,13 @@ and its closure alone, and whether a signature is honored depends on the
 identity versions a reader has seen. An index whose rows need a signature
 verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
 it is still honored to what reads the rows, which asks `honors` of a
-reader's `SeenIdentityVersions`. Here the notes each root has signed:
+reader's `SeenIdentityVersions`. Here the notes each person has signed, by
+their identifier:
 
 ```ts
 const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {
   const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-  yield [signedIdentity.identity.root.link, object.link];
+  yield [signedIdentity.identity.identifier, object.link];
 });
 ```
 

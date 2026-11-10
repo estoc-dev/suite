@@ -9,17 +9,18 @@ is the service.
 
 ## Addressing
 
-A service is named by the root of its identity. Its origin is where the
-service is reached for now, and it says so by signing a Service: at `at` it
-is at `origin`, and makes these offers. What the service gives out, its
-Services and its acknowledgements, is signed by its identity, so a client
-goes by who signed it, not by where the bytes came from; TLS keeps them
-private, and vouches for the service on first contact alone. A refusal is
-plain text, and a client keeps nothing of it.
+A service is named by the identifier of its identity, as anyone who signs
+is in `@estoc/identity`. Its origin is where the service is reached for
+now, and it says so by signing a Service: at `at` it is at `origin`, and
+makes these offers. What the service gives out, its Services and its
+acknowledgements, is signed by its identity, so a client goes by who signed
+it, not by where the bytes came from; TLS keeps them private, and vouches
+for the service on first contact alone. A refusal is plain text, and a
+client keeps nothing of it.
 
-Of the Services that identities of one root signed, a reader honors those
-whose signatures are honored by the identity versions of the root it holds,
-as `honors` of `@estoc/identity` says, and the latest of them says where the
+Of the Services that identities of one identifier signed, a reader honors
+those whose signatures are honored by the identity versions it holds, as
+`honors` of `@estoc/identity` says, and the latest of them says where the
 service is now: the one with the greatest `at`, and of those with the same
 `at`, the one whose signature has the greater link, compared as ASCII
 strings. A Service signed by a key that a later identity version takes out
@@ -42,9 +43,9 @@ nor a signature changes.
 
 ```
 Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "acceptId": <link of the offer>}, …]}, signed by the service
-Account offer            {"identity": <link of the service's root>}, signed by the service
+Account offer            {"identity": <the service's identifier>}, signed by the service
 Acknowledgement          {"acceptance": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
-Mailbox offer            {"identity": <link of the service's root>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
+Mailbox offer            {"identity": <the service's identifier>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
 Mailbox request          {"offer": <link of the mailbox offer>, "key": <x25519 public key>}, signed by an identity with an account
 Mailbox acknowledgement  {"request": <link of the signature over the request>, "at": <milliseconds>, "sendId": <id>, "pickupId": <id>}, signed by the service
 Pickup request           {"mailbox": <link of the signature over the mailbox request>, "receipts": [<link of a ciphertext>, …]}, signed by an identity of the account
@@ -78,7 +79,7 @@ the service's signatures over them, the service's identity and their
 schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
-offer signed by an identity of another root. It keeps the bundle in the
+offer signed for another identifier. It keeps the bundle in the
 store with an `Inbound` record of `@estoc/store`, and gives a `Service`:
 the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
@@ -93,8 +94,8 @@ machine, `localhost`, `127.0.0.1` or `[::1]`, as in development. It
 follows no redirect, since a redirect would take it to another origin than
 the one it trusts on first contact.
 
-After first contact the service is its root. `latestOf` gives the latest
-Service that the store holds of the root that signed a signed identity,
+After first contact the service is its identifier. `latestOf` gives the
+latest Service that the store holds of the person of a signed identity,
 whichever channel brought it, or `undefined` when none is honored, and reaches
 nothing:
 
@@ -112,26 +113,27 @@ Service that the store holds, through an index over blobs of
 
 ## Opening an account
 
-An identity has an account at a service, one for each root, and opens it
-by signing the service's offer. The account is found by the identity's
-root: the service hands out no secret to keep, and whoever signs as an
-identity of that root reaches the account from any device.
+An identity has an account at a service, one for each identifier, and
+opens it by signing the service's offer. The account is found by the
+identity's identifier: the service hands out no secret to keep, and whoever
+signs as an identity of that identifier reaches the account from any
+device.
 
 A service has an identity of its own. It signs one offer, which names the
-root of that identity, so each service's offer has a link of its own, and a
-signature that accepts one service's offer accepts no other's. An account
-offer that names another root than that of the identity that signed it is
-refused.
+service by its identifier, so each service's offer has a link of its own,
+and a signature that accepts one service's offer accepts no other's. An
+account offer that names another identifier than that of the identity that
+signed it is refused.
 
 Opening an account is accepting the offer: an identity signs it, and the
-account is the account of its root. A wallet asks its holder to confirm
+account is the account of its identifier. A wallet asks its holder to confirm
 each signature, so the wallet can instead list a key on the device as an
 agent of its identity of `@estoc/identity`, and the device signs the offer
 for it. The account is still the wallet's.
 
 `accept` takes an actor of `@estoc/identity`, for the wallet itself or for
 the device's key that its identity lists, and opens the account of its
-identity's root:
+identity's identifier:
 
 ```ts
 const account = await service.account.accept(signatures.actor(wallet, await publish(wallet)));
@@ -146,8 +148,8 @@ the signature schema are left out, since the service has them.
 
 The service reads the signature at the bundle's root with `signatures.read`,
 against the identity versions it holds, refuses it unless it is over the
-offer, opens an account for the root of its identity unless the root has
-one, and answers with its signature over an acknowledgement of the bundle's
+offer, opens an account for the identifier of its identity unless that
+has one, and answers with its signature over an acknowledgement of the bundle's
 root. `at` is when it received that. The answer is a bundle: the service's
 signature as the root, with the acknowledgement, the acceptance, the offer
 and their closure.
@@ -155,12 +157,12 @@ and their closure.
 | Status | Meaning |
 |---|---|
 | 201 | the account opened; the answer is the acknowledgement of this acceptance |
-| 200 | the identity's root had an account; the answer is the acknowledgement of this acceptance |
+| 200 | the identity's identifier had an account; the answer is the acknowledgement of this acceptance |
 | 400 | the bundle does not read, or its root is not a signature over this service's offer that is honored by the identity versions the service holds |
 | 413 | the body is over 64 KiB |
 
-A root has one account at a service. When an identity of a root that has
-an account accepts again, by another device or another identity, the
+An identifier has one account at a service. When an identity of an
+identifier that has an account accepts again, by another device or another identity, the
 service answers 200 with an acknowledgement of that acceptance. When the
 same acceptance comes again, and the store holds an acknowledgement of it,
 the service answers with that one while the service's signature over it
@@ -173,8 +175,8 @@ acceptance. Of more than one, the service answers with the one whose
 signature has the least link, compared as ASCII strings, so services that
 share a store answer alike. Either way a device gets an acknowledgement of
 its own acceptance. The client refuses an
-acknowledgement that is signed by another root than the service's or that
-acknowledges another acceptance than the one it sent.
+acknowledgement that is signed for another identifier than the service's or
+that acknowledges another acceptance than the one it sent.
 
 The identity versions the service holds are the signed identities in its
 store, which it reads by their schema. The store keeps what the service gave
@@ -227,8 +229,8 @@ What the client reads back of where services are, it reads from the
 signatures the store holds, records or not, by who signed them, as it reads
 identity versions. A Service that came in at a mailbox, or that another
 device fetched, reads as one that came from the service here. Another device
-that syncs the store learns where the services are, by their roots, without
-asking them.
+that syncs the store learns where the services are, by their identifiers,
+without asking them.
 
 The mailboxes it opened, it reads back from a record that `open` writes once
 the service acknowledged the request, written to `openedMailboxSchema`:
@@ -240,8 +242,8 @@ Opened mailbox  {"mailbox": <link of the HTTP mailbox>, "acknowledgement": <link
 The record is the user's own, so another device that syncs the store picks
 up at the mailbox too. An acknowledgement that came in another way, such as
 at a mailbox, opens no mailbox to pick up at, even one that the service
-signed of the account's request. A key that a later identity version of the
-account's root takes out still signs requests by the identity version
+signed of the account's request. A key that a later identity version of
+whoever holds the account takes out still signs requests by the identity version
 before, so a signature over a request does not tell one sent while the key
 was listed from one sent after; the record does.
 
@@ -272,14 +274,14 @@ as one that takes out the key that signed it, or a crisis, it signs the
 offer again by a key that the identity version lists. The offer stays the same object, so its id and the acceptances of it
 stay as they were.
 
-`accept` gives the `Account`: the actor's signed identity, whose root the
-account is of, the service's signed identity that signed the
+`accept` gives the `Account`: the actor's signed identity, whose identifier
+the account is of, the service's signed identity that signed the
 acknowledgement, `at`, when the service received this acceptance, and the
 link of the service's signature over the acknowledgement.
 
 ## Opening a mailbox
 
-A mailbox opens under an account. An identity of a root that has an
+A mailbox opens under an account. An identity of an identifier that has an
 account signs a request for one, which names the service's offer of
 mailboxes and the key that messages to the mailbox are sealed to. The
 service answers with its signature over an acknowledgement of the request,
@@ -318,15 +320,15 @@ terms are another offer, which a new Service lists, and a mailbox keeps
 the terms of the offer that opened it.
 
 The service reads the signature over the request as it reads an acceptance,
-against the identity versions it holds, and refuses it when its root has no
-account.
+against the identity versions it holds, and refuses it when its identifier
+has no account.
 
 | Status | Meaning |
 |---|---|
 | 201 | the mailbox opened; the answer is the acknowledgement of this request |
 | 200 | this request opened a mailbox before; the answer is its acknowledgement |
 | 400 | the bundle does not read, or its root is not a signature over a request for this service's offer that is honored by the identity versions the service holds |
-| 403 | the root of the identity has no account |
+| 403 | the identifier of the identity has no account |
 | 413 | the body is over 64 KiB |
 
 Requests of one mailbox that arrive together can each sign an
@@ -363,12 +365,13 @@ of `@estoc/mailbox`, for an inbox to collect:
 const delivered = await inbox.collect(await services.pickup(inbox.mailbox, actor));
 ```
 
-The actor is any of the root of the account. The service verifies each
-pickup as it verifies an acceptance, by whether the identity versions of the
-root it holds honor its signature: an agent that the root lists picks
-up without opening the mailbox again, and one that a later identity version
-takes out, or a crisis cuts off, picks up no more once the service has seen
-that identity version, in an acceptance or a request that it acknowledges. Opening what arrives takes the mailbox's key, which
+The actor signs for the identifier of the account. The service verifies
+each pickup as it verifies an acceptance, by whether the identity versions
+of that identifier it holds honor its signature: an agent that the root
+lists picks up without opening the mailbox again, and one that a later
+identity version takes out, or a crisis cuts off, picks up no more once the
+service has seen that identity version, in an acceptance or a request that
+it acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 
@@ -401,7 +404,7 @@ opens: whoever posts it again sees how much waits, and no more.
 |---|---|
 | 200 | the answer is what waits, once what the request has receipts for no longer does |
 | 400 | the bundle does not read, or its root is not a signature over a pickup request of this mailbox |
-| 403 | the request is signed for another root than the account's, or its signature is not honored by the identity versions the service holds |
+| 403 | the request is signed for another identifier than the account's, or its signature is not honored by the identity versions the service holds |
 | 413 | the body is over 64 KiB and 128 bytes for each of the 100 messages that an answer holds at most |
 
 Devices that pick up at once each get what waits, so each receives it, as
@@ -433,14 +436,13 @@ store, it has the signer sign the service's identity, then the offer of an
 account, the offer of mailboxes on `terms`, and a Service at that origin
 that lists each offer under its link, and writes the signature over the
 Service to `store`, a store of `@estoc/store`, as a record, with its
-closure. Started with a store that holds a Service of its, it signs as the
-current identity version of its root, by the identity versions the store
-holds, and the signer does not sign the identity again. Once the store holds
+closure. Started with a store that holds a Service of its, it signs as its
+current identity version, by the identity versions the store holds, and the signer does not sign the identity again. Once the store holds
 a crisis of the root, no Service signed before it is honored, so the service
 signs its offers and a Service again, as the crisis or one that follows it,
 and they list the offers under the same ids. It signs each acknowledgement
-as the current identity version of its root by the identity versions the
-store holds then. So once another start on the same store has signed a
+as its current identity version by the identity versions the store holds
+then. So once another start on the same store has signed a
 Service as a crisis of the root, or one that follows it, a service that
 started before signs as that identity version without starting again.
 While the store holds the crisis and no honored Service, `fetch` throws
@@ -471,18 +473,18 @@ stays the latest. Two started at once on one store can sign the same `at`,
 and the latest of the two is then the one whose signature has the greater
 link.
 
-`accounts` holds one row for each root: the link of the root of an
-identity, and the link of the service's signature over the acknowledgement
-of the acceptance that opened its account. Its `add` keeps a row only for a
-root without one, in one step, so two acceptances of one root that arrive
-together open one account, and the service answers 201 to the acceptance
-whose row was kept and 200 to any other. Its `has` says whether a root has
-an account, which opening a mailbox asks. `MemoryAccounts` keeps the rows
+`accounts` holds one row for each identifier: the identifier, and the link
+of the service's signature over the acknowledgement of the acceptance that
+opened its account. Its `add` keeps a row only for an identifier without
+one, in one step, so two acceptances of one identifier that arrive together
+open one account, and the service answers 201 to the acceptance whose row
+was kept and 200 to any other. Its `has` says whether an identifier has an
+account, which opening a mailbox asks. `MemoryAccounts` keeps the rows
 in memory, and `SqliteAccounts` in a SQLite file.
 
 `mailboxes` holds the mailboxes the service opened, each with the request
 that opened it, the link of the service's signature over its
-acknowledgement, the root of its account, its two ids and its terms, and
+acknowledgement, the identifier of its account, its two ids and its terms, and
 the ciphertexts that wait at each. Its `open` keeps a mailbox only for a
 request without one, in one step, so requests of one mailbox that arrive
 together open one. Its `put` keeps a ciphertext unless what waits would
@@ -527,8 +529,8 @@ Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
 them, and are read with `unpackBundle`, so a small body cannot unzip to
 much more than arrived.
 
-A service opens no account for its own root: a signature of its own over
-its offer accepts nothing.
+A service opens no account for its own identifier: a signature of its own
+over its offer accepts nothing.
 
 ## Running with Node
 
@@ -547,7 +549,7 @@ node packages/mailbox-service/src/main.ts key /var/lib/mailbox/private.db
 its owner alone reads, holding a new Ed25519 Secret Key of
 `@estoc/identity` for the service's identity, and prints the link of its
 key. It refuses to write over a file that is there. The service is named by
-the root of that identity, so a lost key is a lost service: keep a copy of
+the identifier of that identity, so a lost key is a lost service: keep a copy of
 the file offline, and take a new one whenever it changes. Only `main.ts key`
 writes it for now. It is apart from the database so that each is backed up
 on its own: the private store when it changes, the database often.

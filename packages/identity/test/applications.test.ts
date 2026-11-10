@@ -16,8 +16,8 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
+  type Identifier,
   type IdentityObject,
-  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type Signature,
@@ -113,15 +113,15 @@ describe("a login", () => {
     );
     const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
     expect(identity?.link).not.toBe(identities.encode(user.key, { at: 0 }).link);
-    expect(identity?.root.link).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.root.link);
+    expect(identity?.identifier).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.identifier);
   });
 });
 
-// A sale names its parties by the links of their roots, and a signature its
-// signer by a signed identity whose closure holds one.
+// A sale names its parties by their identifiers, and a signature its signer
+// by a signed identity whose closure holds one.
 type Sale = {
-  readonly buyer: JsonLink<KeyObject>;
-  readonly seller: JsonLink<KeyObject>;
+  readonly buyer: { readonly $link: Identifier };
+  readonly seller: { readonly $link: Identifier };
   readonly goods: string;
   readonly price: string;
 };
@@ -164,7 +164,8 @@ async function saleInForce(
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, receivedSignatures);
-  const signed = (party: JsonLink<KeyObject>) => signers.some((identity) => identity.root.link === party.$link);
+  const signed = (party: { readonly $link: Identifier }) =>
+    signers.some((identity) => identity.identifier === party.$link);
   return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
 }
 
@@ -175,7 +176,7 @@ async function isDeliveryConfirmed(link: Link<unknown>, receivedSignatures: Rece
   const terms = await saleInForce(decodeObject(bytes, delivery).data.sale.$link, receivedSignatures);
   return (
     terms !== undefined &&
-    (await signersOf(link, receivedSignatures)).some((identity) => identity.root.link === terms.buyer.$link)
+    (await signersOf(link, receivedSignatures)).some((identity) => identity.identifier === terms.buyer.$link)
   );
 }
 

@@ -92,7 +92,7 @@ the root: the receiver does that, against the object it expects, with
 `signatures.read` and the bundle as the reader. A receiver that keeps the
 identity versions it has seen passes its `SeenIdentityVersions` in place of
 `noIdentityVersions`, and an agent its root removed no longer reads as the
-root.
+one it signed for.
 
 ```ts
 const bundle = await key.open(ciphertext);
@@ -315,10 +315,10 @@ one keeps it through an `Intake`, as `Inbox.receive` does, and then sends to
 those mailboxes. A grant with no mailboxes says that the signer no longer
 takes their messages. The schema is `mailboxGrantSchema`.
 
-The grants of one root to another are a series, by the root of the signer
-and the root of `to`. Of the grants of a series whose signatures are honored
-by the `SeenIdentityVersions` a reader gives, the latest is the one with the
-greatest `at`, and of two at one `at`, the one whose signature has the
+The grants of someone to someone else are a series, by the identifier of the
+signer and that of `to`. Of the grants of a series whose signatures are
+honored by the `SeenIdentityVersions` a reader gives, the latest is the one
+with the greatest `at`, and of two at one `at`, the one whose signature has the
 greater link, as with identity versions in `@estoc/identity`. Each side picks
 the latest from the grants and identity versions it has seen. The two agree
 on where messages go when they pick the same link, which they can compare
@@ -350,8 +350,7 @@ of `theirs` that the store holds, and writes the signature as a record. It
 refuses a mailbox the store does not hold, and writes nothing then.
 
 `send` sends a root that the store holds to each mailbox of the latest grant
-of their root to the actor's root, and gives back a record for each mailbox
-that takes it.
+of theirs to the actor, and gives back a record for each mailbox that takes it.
 
 - They take messages at each of those mailboxes, so the message has gone once
   one of them takes it. A mailbox that turns it back leaves no record and does
@@ -367,7 +366,7 @@ that takes it.
 application's index reads them from `Inbound`, and gives the signature at the
 root of the bundle when it is honored as a message from whoever signed it. For
 that, `asTakenIn` of the reader's people honors the signature, and the mailbox
-is in a grant the actor's root gave their root that it honors too. Anything
+is in a grant the actor gave them that it honors too. Anything
 else gives `undefined`, since `collect` keeps whatever opens and anyone can
 send to a mailbox. A store that fails to give a blob makes it reject.
 
@@ -420,14 +419,14 @@ await series.grantFrom(their, mine, people.asTakenIn); // where they take mine
 as the index it holds is. Its index reads the signatures over grants among
 the blobs a store holds, by their schema, wherever they sit in the closure of a
 record or of what came in: a signature carries its authority in itself, so it
-reads the same whoever sent it. Each gives a row of the root of the signer, the
-root of `to`, `at` and the link of the signature; the signature is verified by
+reads the same whoever sent it. Each gives a row of the identifier of the
+signer, that of `to`, `at` and the link of the signature; the signature is verified by
 the signed identity it carries, as by `noIdentityVersions`. One that does not
 verify, or that is over an object that does not read as a grant, gives no row,
 since anyone can send a bundle to a mailbox. The scan still fails when the store
 fails to give a blob, so a later scan of the index reads it again. The first
 scan reads every blob the store holds, attachments as well, and a later one
-reads only those put since. `grantsFrom` takes the links of two roots and the
+reads only those put since. `grantsFrom` takes two identifiers and the
 `SeenIdentityVersions` of a reader, and gives the grants of the first to the
 second that they honor, in the order of the series, each with the signature over it
 and the signed identity it is to. `grantFrom` gives the last of those, the latest

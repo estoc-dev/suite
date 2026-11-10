@@ -33,9 +33,9 @@ const hello = encodeObject(note, { text: "hello" });
 describe("a person", () => {
   const wallet = signer(eip191);
 
-  it("is the root of the signed identity they are taken from", async () => {
+  it("is named by the identifier of the signed identity they are taken from", async () => {
     const published = await publish(wallet, { at: 1_000 });
-    expect(peopleHavingSeen().personOf(published).root).toBe(published.identity.root);
+    expect(peopleHavingSeen().personOf(published).identifier).toBe(published.identity.identifier);
   });
 
   it("has the identity versions of their root the reader has seen and the one in hand with those it follows, in order, each once", async () => {
@@ -89,7 +89,7 @@ describe("a person", () => {
     expect((await person.current()).link).toBe(crisis.link);
   });
 
-  it("signed a signature made for any identity of their root, and no other", async () => {
+  it("signed a signature made for any of their identities, and no other", async () => {
     const laptop = signer(ed25519, 2);
     const published = await publish(wallet, { at: 1_000 });
     const identityVersion = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });

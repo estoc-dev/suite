@@ -144,7 +144,7 @@ async function chat(faults: Faults = {}) {
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.root.link, name]));
+  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.identifier, name]));
 
   // `owner` opens a mailbox for `peer`, signs a grant of it and hands it over
   // out of band, and the peer keeps it in their store with a record that it
@@ -188,7 +188,7 @@ async function chat(faults: Faults = {}) {
             : await signatures.read(bundle, person.store, noIdentityVersions);
         if (signature === undefined) return undefined;
         const { data } = await readObject(person.store, signature.object, line);
-        return [direction, names.get(signature.signedIdentity.identity.root.link), data.text];
+        return [direction, names.get(signature.signedIdentity.identity.identifier), data.text];
       }),
     );
     return lines.filter((shown) => shown !== undefined);

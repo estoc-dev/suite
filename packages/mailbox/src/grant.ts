@@ -1,6 +1,6 @@
 import {
+  type Identifier,
   type IdentityKit,
-  type KeyObject,
   noIdentityVersions,
   type SeenIdentityVersions,
   type Signature,
@@ -22,19 +22,14 @@ import { indexOverBlobs, type Rows, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
- * A Mailbox Grant as a row: the root of whoever signed it, the root of the signed identity it is
- * to, its `at`, and the link of the signature.
+ * A Mailbox Grant as a row: the identifier of whoever signed it, the identifier of the signed
+ * identity it is to, its `at`, and the link of the signature.
  *
- * - The grants of one root to another are a series, whose rows are in the order of their `at`.
+ * - The grants of someone to someone else are a series, whose rows are in the order of their `at`.
  * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
  *   identity versions are.
  */
-export type MailboxGrantRow = readonly [
-  from: Link<KeyObject>,
-  to: Link<KeyObject>,
-  at: number,
-  signature: Link<Signature>,
-];
+export type MailboxGrantRow = readonly [from: Identifier, to: Identifier, at: number, signature: Link<Signature>];
 
 /** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
 export interface MailboxGrant {
@@ -46,18 +41,14 @@ export interface MailboxGrant {
 /** The Mailbox Grants of each series that a store holds. */
 export interface GrantSeries {
   /**
-   * The grants that `from` signed to `to`, by the links of their roots, that
+   * The grants that `from` signed to `to`, by their identifiers, that
    * `seenIdentityVersions` honor, in the order of the series.
    */
-  grantsFrom(
-    from: Link<KeyObject>,
-    to: Link<KeyObject>,
-    seenIdentityVersions: SeenIdentityVersions,
-  ): AsyncIterable<MailboxGrant>;
+  grantsFrom(from: Identifier, to: Identifier, seenIdentityVersions: SeenIdentityVersions): AsyncIterable<MailboxGrant>;
   /** The last of `grantsFrom`, which is the latest grant, or `undefined` when there is none. */
   grantFrom(
-    from: Link<KeyObject>,
-    to: Link<KeyObject>,
+    from: Identifier,
+    to: Identifier,
     seenIdentityVersions: SeenIdentityVersions,
   ): Promise<MailboxGrant | undefined>;
 }
@@ -107,15 +98,15 @@ export class MailboxGrants {
     const { signatures, signedIdentities } = this.#identity;
     const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
     const to = await signedIdentities.read(object.data.to.$link, reader);
-    yield [signedIdentity.identity.root.link, to.identity.root.link, object.data.at, link];
+    yield [signedIdentity.identity.identifier, to.identity.identifier, object.data.at, link];
   }
 
   #seriesOf(rows: Rows<MailboxGrantRow>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (
-      from: Link<KeyObject>,
-      to: Link<KeyObject>,
+      from: Identifier,
+      to: Identifier,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
       for await (const [, , , link] of rows.range([from, to])) {

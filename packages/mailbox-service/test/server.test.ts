@@ -186,7 +186,7 @@ describe("a mailbox service", () => {
     expect(await records(store)).toEqual(recordsBefore);
   });
 
-  it("opens the account of a root for the signature of an agent that an identity of the root's lists", async () => {
+  it("opens the account of someone for the signature of an agent that an identity of theirs lists", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
     const acceptance = await delegatedAcceptance(offer);
@@ -201,7 +201,7 @@ describe("a mailbox service", () => {
     expect(read.key.link).toBe(keys.encode(device.key).link);
   });
 
-  it("answers a root that accepts again, by another identity, with 200 and an acknowledgement of that acceptance", async () => {
+  it("answers someone who accepts again, by another identity, with 200 and an acknowledgement of that acceptance", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
     expect((await postAcceptance(service, (await directAcceptance(offer, wallet)).zip)).status).toBe(201);
@@ -211,7 +211,7 @@ describe("a mailbox service", () => {
     expect((await acknowledgementIn(response)).acknowledgement.data.acceptance.$link).toBe(again.signature.link);
   });
 
-  it("answers 400 to an agent that a later identity version of its root removed, though the root has an account", async () => {
+  it("answers 400 to an agent that a later identity version of its root removed, though its identifier has an account", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     const first = await publish(wallet, { agents: [device.key, phone.key], at: 1_000 });
@@ -631,7 +631,7 @@ async function acceptAccount(service: MailboxService, actor: Actor) {
   return (await postAcceptance(service, await packBundle(signature, signature.signedIdentity.blobs))).status;
 }
 
-/** Opens the account of `actor`'s root at `service`, by the actor's acceptance of its offer. */
+/** Opens the account of whoever `actor` signs for at `service`, by the actor's acceptance of its offer. */
 const openAccount = async (service: MailboxService, actor: Actor) =>
   expect(await acceptAccount(service, actor)).toBe(201);
 
@@ -657,7 +657,7 @@ async function mailboxAcknowledgementIn(response: Response) {
 
 /**
  * A mailbox sealed to `key` that `actor` opens at `service`, under the
- * account of its root, which is open already: the link of the service's
+ * account of whoever it signs for, which is open already: the link of the service's
  * signature over the acknowledgement, and what the acknowledgement says.
  */
 async function openMailbox(service: MailboxService, actor: Actor, key = keyOf(0x11)) {
@@ -698,7 +698,7 @@ async function queueAt(
 }
 
 describe("a mailbox service's offer of mailboxes", () => {
-  it("opens a mailbox under the account of the root whose identity signs a request for one, and answers 201 with its signature over an acknowledgement", async () => {
+  it("opens a mailbox under the account of whoever signs a request for one, and answers 201 with its signature over an acknowledgement", async () => {
     const { service } = await memoryService({ start: 5_000 });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
@@ -802,7 +802,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect((await signatures.read(second.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
   });
 
-  it("answers 403 to a request by a root that has no account, and opens no mailbox", async () => {
+  it("answers 403 to a request by someone who has no account, and opens no mailbox", async () => {
     const { service, store } = await memoryService();
     const { zip } = await mailboxRequest(await actorOf(alice), (await rootOf(service)).mailbox.offer);
     const response = await postMailboxRequest(service, zip);
@@ -811,7 +811,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(await records(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
-  it("answers 400 to a request by an agent that a later identity version of its root removed, though the root has an account", async () => {
+  it("answers 400 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
     const removedAgent = signatures.actor(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
@@ -1016,14 +1016,14 @@ describe("a mailbox that a service opened", () => {
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([ciphertextOf(1)]);
   });
 
-  it("answers 403 to a pickup signed for another root, and is done with nothing", async () => {
+  it("answers 403 to a pickup signed for another identifier, and is done with nothing", async () => {
     const { service, actor, mailbox } = await serviceWithMailbox();
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     const other = await actorOf(bob);
     await openAccount(service, other);
     const response = await post(service, mailbox.pickupId, await pickupRequest(other, mailbox, [ciphertextOf(1)]));
     expect(response.status).toBe(403);
-    expect(await response.text()).toMatch(/another root/);
+    expect(await response.text()).toMatch(/another identifier/);
     expect(await queueAt(service, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 

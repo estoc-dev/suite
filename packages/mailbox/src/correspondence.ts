@@ -1,6 +1,5 @@
 import {
   type Actor,
-  hasSigner,
   type IdentityKit,
   type IdentityVersion,
   type KeyObject,
@@ -123,10 +122,9 @@ export class Correspondence {
    * The signature at the root of `bundle`, which came in at `mailbox`, when it counts as a message
    * from whoever signed it.
    *
-   * - The key that made it signs for the signer's current identity version.
-   * - `mailbox` is in a grant of the actor's root to the signer's root, whose key signs for the
-   *   actor's current identity version. An earlier grant counts as the latest does, so what came in
-   *   before a move still reads as theirs.
+   * - It counts by the identity versions the store holds.
+   * - `mailbox` is in a grant of the actor's root to the signer's root that counts by them too. An
+   *   earlier grant counts as the latest does, so what came in before a move still reads as theirs.
    * - Anything else gives `undefined`, since anyone can send anything to a mailbox.
    *
    * @throws when the store fails to give a blob.
@@ -135,8 +133,7 @@ export class Correspondence {
     const signature = await this.#signatureAtRootOf(bundle);
     if (signature === undefined) return undefined;
     const people = await view(this.#store, this.#seenPeople);
-    const current = await people.current(signature.signedIdentity);
-    if (!hasSigner(current.identity, signature.key)) return undefined;
+    if (!(await people.counts(signature))) return undefined;
     const series = await view(this.#store, this.#grants.series);
     const signer = signature.signedIdentity.identity.root.link;
     for await (const { object } of series.grantsFrom(this.#root, signer, people)) {

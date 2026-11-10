@@ -248,6 +248,14 @@ describe("a signature by an agent", () => {
     expect(counts).toBe(listing.link > dropping.link);
   });
 
+  it("counts by the people of what the reader has seen as it is verified by them", async () => {
+    const first = await delegate(wallet, [laptop.key, phone.key], 1_000);
+    const second = await delegate(wallet, [phone.key], 2_000);
+    const people = peopleHavingSeen(first, second);
+    expect(await people.counts(await signatures.actor(laptop, first).sign(hello))).toBe(false);
+    expect(await people.counts(await signatures.actor(phone, first).sign(hello))).toBe(true);
+  });
+
   it("counts by the identity version it carries when the reader has seen no identity versions", async () => {
     const first = await delegate(wallet, [laptop.key], 1_000);
     await delegate(wallet, [phone.key], 2_000);

@@ -1,7 +1,6 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
   type Actor,
-  hasSigner,
   type IdentityKit,
   type KeyObject,
   loadIdentity,
@@ -363,8 +362,8 @@ class MailboxService {
    * Lets the ciphertexts that the posted pickup request has receipts for
    * wait no more, and answers with what waits then.
    *
-   * The request is verified as signed for the root of the mailbox's account
-   * by a key that the root's current identity version lists. When it is not,
+   * The request is verified as signed for the root of the mailbox's account,
+   * and as counting by the identity versions the store holds. When it is not,
    * it is refused with 403, though it reads.
    */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
@@ -386,7 +385,7 @@ class MailboxService {
     const { signedIdentity, key } = signature;
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
-    if (!hasSigner((await people.current(signedIdentity)).identity, key))
+    if (!(await people.counts(signature)))
       return answer(403, `${key.link} does not sign for the current identity version of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);

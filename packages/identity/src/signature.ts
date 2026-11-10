@@ -17,9 +17,9 @@ import {
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
-import { hasSigner, signerOf, signingFunction } from "./identity/interface.ts";
+import { signerOf, signingFunction } from "./identity/interface.ts";
 import type { KeyObject } from "./key/interface.ts";
-import type { SeenIdentityVersions, SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
+import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 
 /**
@@ -73,6 +73,25 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly signature: Uint8Array;
 }
 
+/** Whether a signature counts, by the identity versions a reader has seen. */
+export interface SeenIdentityVersions {
+  /**
+   * Whether `signature` counts: the key that made it signs for the current
+   * identity version of its root, the later of the one it carries and the
+   * latest the reader has seen. The one it carries counts, as a device a
+   * wallet has just listed signs by an identity version the reader has not
+   * seen yet.
+   */
+  counts(signature: Signature): Promise<boolean>;
+}
+
+/**
+ * A reader that has seen no identity versions, so a signature counts by the
+ * identity version it carries alone, which its key signs for once it
+ * verifies.
+ */
+export const noIdentityVersions: SeenIdentityVersions = { counts: async () => true };
+
 /** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
 export interface SignatureOver<F extends Fields<Json>> {
   readonly signature: EncodedObject<Json, SignatureData>;
@@ -112,15 +131,11 @@ export class Signatures {
    *   `reader`.
    * - The identity's schema says which key made the signature and how its
    *   bytes are laid out, and the key's scheme how its signature is read.
-   * - The current identity version is the later of the one the signature
-   *   carries and the latest in `seenIdentityVersions`: a device a wallet has
-   *   just listed signs by an identity version the reader has not seen yet.
    *
    * @throws when `signature` is not written to the signature schema.
    * @throws when no key that signs for the identity signed the object it
    *   names by that signed identity.
-   * @throws when the key that made it does not sign for the current identity
-   *   version.
+   * @throws when it does not count by `seenIdentityVersions`.
    */
   async verify(
     signature: EncodedObject<Json, SignatureData>,
@@ -130,10 +145,9 @@ export class Signatures {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
-    const current = await seenIdentityVersions.current(signedIdentity);
-    if (!hasSigner(current.identity, verifiedSignature.key)) {
+    if (!(await seenIdentityVersions.counts(verifiedSignature))) {
       throw new Error(
-        `${verifiedSignature.key.link} does not sign for the current identity version of ${current.identity.root.link}`,
+        `${verifiedSignature.key.link} does not sign for the current identity version of ${signedIdentity.identity.root.link}`,
       );
     }
     return verifiedSignature;

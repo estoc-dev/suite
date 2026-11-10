@@ -302,13 +302,14 @@ a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
 `identityVersions.people` takes those rows and a `Reader`, and gives the
-`People` of the identity versions the reader has seen, which are
-`SeenIdentityVersions` too: their `current` gives the current identity
-version of a signed identity's root, the later of the one given and the
-signed identity of its root's last row, read from the reader.
-`noIdentityVersions` is a reader that has seen no identity versions, so the
-current identity version is the one given and a signature is verified by the
-identity version it carries alone.
+`People` of the identity versions the reader has seen. Their `current` gives
+the current identity version of a signed identity's root, the later of the one
+given and the signed identity of its root's last row, read from the reader.
+They are the reader's `SeenIdentityVersions` too, which say whether a
+signature counts: their `counts` says whether the key that made it signs for
+the current identity version of the root of the signed identity it carries.
+`noIdentityVersions` is a reader that has seen no identity versions, so a
+signature counts by the identity version it carries alone.
 
 ## People
 
@@ -378,11 +379,11 @@ is the verifier of a signature: it takes the signature as an object of
 identity from the reader with `signedIdentities.read`, and verifies the
 signature's bytes by the key the identity's schema reads from them, over the
 text for the object by that signed identity; `signatures.read` does the same
-from the link of the signature. It also checks the key against the current
-identity version, as `current` of the `SeenIdentityVersions` gives it, the
-later of the one the signature carries and the latest the reader has seen,
-and refuses a key that does not sign for it: the root of an Identity, or an
-agent of a Delegated Identity. The one the signature carries counts, as a
+from the link of the signature. It also refuses a signature that does not
+count by the `SeenIdentityVersions`: one whose key does not sign for the
+current identity version, the later of the one the signature carries and the
+latest the reader has seen. The root of an Identity signs for it, or an agent
+of a Delegated Identity. The one the signature carries counts, as a
 device a wallet has just listed signs by an identity version the reader has
 not seen yet. The `SeenIdentityVersions` are not optional, so a reader that
 keeps no identity versions says so with `noIdentityVersions`, and a signature
@@ -437,8 +438,8 @@ signatures it takes, since what a selection takes depends on the record
 and its closure alone, and whether a signature counts depends on the
 identity versions a reader has seen. An index whose rows need a signature
 verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
-that identity version still counts to what reads the rows. Here the notes
-each root has signed:
+it still counts to what reads the rows, which asks `counts` of a reader's
+`SeenIdentityVersions`. Here the notes each root has signed:
 
 ```ts
 const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {

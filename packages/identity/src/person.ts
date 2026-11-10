@@ -1,6 +1,6 @@
 import type { KeyObject } from "./key/interface.ts";
-import type { Signature } from "./signature.ts";
-import type { SeenIdentityVersions, SignedIdentityObject } from "./signed-identity.ts";
+import type { SeenIdentityVersions, Signature } from "./signature.ts";
+import type { SignedIdentityObject } from "./signed-identity.ts";
 
 /**
  * Someone who signs, as a reader has seen them: a root, and its identity
@@ -27,12 +27,10 @@ export interface Person {
   hasSigned(signature: Signature): boolean;
 }
 
-/**
- * The people of the identity versions a reader has seen. They are
- * `SeenIdentityVersions` too: the current identity version of a signed
- * identity is its person's.
- */
+/** The people of the identity versions a reader has seen. */
 export interface People extends SeenIdentityVersions {
   /** The person whose root signed `signedIdentity`, which counts among their identity versions. */
   personOf(signedIdentity: SignedIdentityObject): Person;
+  /** The current identity version of the person of `signedIdentity`. */
+  current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
 }

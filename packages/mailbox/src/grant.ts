@@ -1,5 +1,4 @@
 import {
-  hasSigner,
   type IdentityKit,
   type KeyObject,
   noIdentityVersions,
@@ -47,8 +46,8 @@ export interface MailboxGrant {
 /** The Mailbox Grants of each series that a store holds. */
 export interface GrantSeries {
   /**
-   * The grants that `from` signed to `to`, by the links of their roots, whose keys sign for the
-   * current identity version that `seenIdentityVersions` gives, in the order of the series.
+   * The grants that `from` signed to `to`, by the links of their roots, that count by
+   * `seenIdentityVersions`, in the order of the series.
    */
   grantsFrom(
     from: Link<KeyObject>,
@@ -70,8 +69,8 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
  *
  * - A grant reaches `series` as a signature over it that the store holds, whichever way it came and
  *   wherever it sits in a closure, as a signature carries its authority in itself.
- * - Each signature is verified by the signed identity it carries, as by `noIdentityVersions`, and
- *   `grantFrom` says whether that identity version still counts.
+ * - Each signature is verified by the signed identity it carries, as by `noIdentityVersions`.
+ *   `grantsFrom` and `grantFrom` read the grants whose signatures count by `seenIdentityVersions`.
  * - A signature that does not verify, or that is over an object that does not read as a grant,
  *   gives no row, since anyone can send a bundle to a mailbox.
  * - The scan still fails when the store fails to give a blob, so a later scan of the index reads it
@@ -121,8 +120,7 @@ export class MailboxGrants {
     ) {
       for await (const [, , , link] of rows.range([from, to])) {
         const signature = await signatures.read(link, reader, noIdentityVersions);
-        const current = await seenIdentityVersions.current(signature.signedIdentity);
-        if (hasSigner(current.identity, signature.key)) yield signature;
+        if (await seenIdentityVersions.counts(signature)) yield signature;
       }
     };
     return {

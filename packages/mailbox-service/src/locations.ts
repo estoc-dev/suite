@@ -1,5 +1,4 @@
 import {
-  hasSigner,
   type KeyObject,
   noIdentityVersions,
   type SeenIdentityVersions,
@@ -24,10 +23,9 @@ type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signa
  */
 export interface Locations {
   /**
-   * The links of the signatures over the Services of `root` whose keys sign
-   * for the current identity version that `seenIdentityVersions` gives, from
-   * the latest back. One by a key that a later identity version takes out
-   * does not count, whatever its `at`.
+   * The links of the signatures over the Services of `root` that count by
+   * `seenIdentityVersions`, from the latest back. One by a key that a later
+   * identity version takes out does not count, whatever its `at`.
    */
   servicesOf(root: Link<KeyObject>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
@@ -38,8 +36,8 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
   return {
     index: indexOverBlobs(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
-      // verified by the identity version it carries; whether that identity
-      // version still counts is checked as the rows are read.
+      // verified by the identity version it carries; whether the signature
+      // counts is checked as the rows are read.
       const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
       yield [signedIdentity.identity.root.link, object.data.at, link];
     }),
@@ -47,9 +45,8 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
       async servicesOf(root, seenIdentityVersions) {
         const links: Link<Signature>[] = [];
         for await (const [, , link] of rows.range([root])) {
-          const { signedIdentity, key } = await signatures.read(link, reader, noIdentityVersions);
-          const current = await seenIdentityVersions.current(signedIdentity);
-          if (hasSigner(current.identity, key)) links.unshift(link);
+          const signature = await signatures.read(link, reader, noIdentityVersions);
+          if (await seenIdentityVersions.counts(signature)) links.unshift(link);
         }
         return links;
       },

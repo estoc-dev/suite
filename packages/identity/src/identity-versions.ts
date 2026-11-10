@@ -1,4 +1,5 @@
 import { type Json, type Link, type Reader, SelectionBySchema } from "@estoc/object";
+import { hasSigner } from "./identity/interface.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { People, Person } from "./person.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
@@ -77,7 +78,12 @@ export class IdentityVersions {
         hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
     };
-    return { personOf, current: (signedIdentity) => personOf(signedIdentity).current() };
+    const current = (signedIdentity: SignedIdentityObject) => personOf(signedIdentity).current();
+    return {
+      personOf,
+      current,
+      counts: async ({ signedIdentity, key }) => hasSigner((await current(signedIdentity)).identity, key),
+    };
   }
 }
 

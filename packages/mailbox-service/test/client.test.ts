@@ -622,6 +622,35 @@ describe("a mailbox that a service opened", () => {
     expect(await pickUpAll(await services.pickup(mailbox.link, actor))).toEqual([new Uint8Array([1])]);
   });
 
+  it("is opened again by the same request, and picked up, once the root of its service signed a crisis and the service started again", async () => {
+    let current: MailboxService | undefined;
+    const server = await startServer(async (request) => {
+      assert.exists(current);
+      return current.fetch(request);
+    });
+    const run = await memoryService({ origin: server.origin });
+    current = run.service;
+    const actor = await actorOf(alice);
+    const { store, services } = await client();
+    const before = await services.fetch(server.origin);
+    assert.exists(before.account);
+    assert.exists(before.mailbox);
+    await before.account.accept(actor);
+    const mailbox = await openMailbox(store, before.mailbox, actor);
+    expect((await postTo(mailbox.data.url, new Uint8Array([1]))).status).toBe(204);
+    const crisis = await publish(serviceSigner, { prior: before.signedIdentity, isCrisis: true, at: 2_000 });
+    await run.store.write({ records: [crisis], blobs: crisis.blobs });
+    const { accounts, mailboxes } = run;
+    current = (await memoryService({ store: run.store, accounts, mailboxes, origin: server.origin, start: 3_000 }))
+      .service;
+    const after = await services.fetch(server.origin);
+    assert.exists(after.account);
+    assert.exists(after.mailbox);
+    expect((await after.account.accept(actor)).service.link).toBe(crisis.link);
+    expect((await openMailbox(store, after.mailbox, actor)).link).toBe(mailbox.link);
+    expect(await pickUpAll(await services.pickup(mailbox.link, actor))).toEqual([new Uint8Array([1])]);
+  });
+
   it("is picked up where the service is, however late a Service by a key taken out is", async () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);

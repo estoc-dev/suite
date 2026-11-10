@@ -1,6 +1,5 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import {
-  type Actor,
   type IdentityKit,
   type KeyObject,
   loadIdentity,
@@ -150,7 +149,8 @@ export interface ServiceOptions {
  *   pickup id picks up what waits.
  */
 class MailboxService {
-  readonly #actor: Actor;
+  readonly #signer: Signer;
+  readonly #signedIdentity: SignedIdentityObject;
   readonly #root: Link<KeyObject>;
   readonly #locations: LocationsView;
   readonly #people: PeopleView;
@@ -163,14 +163,16 @@ class MailboxService {
   readonly #clock: () => number;
 
   constructor(
-    actor: Actor,
+    signer: Signer,
+    signedIdentity: SignedIdentityObject,
     root: Link<KeyObject>,
     kit: IdentityKit,
     schemas: Schemas,
     people: PeopleView,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
-    this.#actor = actor;
+    this.#signer = signer;
+    this.#signedIdentity = signedIdentity;
     this.#root = root;
     this.#locations = locationsView(kit.signatures, schemas.service);
     this.#people = people;
@@ -237,7 +239,7 @@ class MailboxService {
    * the root of its identity unless the root has one.
    *
    * - Either way the answer is an acknowledgement of this acceptance, one that
-   *   the store holds or a new one.
+   *   the store holds or a new one, signed as `#renew` does.
    * - The signature is verified against the identity versions the service
    *   holds once the whole body has come in, however long the sender took to
    *   send it. So an agent its root removed is refused even when the root has
@@ -254,21 +256,24 @@ class MailboxService {
       bundle = await unpackBundle(zip);
       acceptance = await this.#signatures.read(bundle.link, bundle, people);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (people.personOf(this.#actor.signedIdentity).hasSigned(acceptance))
+      if (people.personOf(this.#signedIdentity).hasSigned(acceptance))
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, reasonOf(error));
     }
     const acknowledgements = await view(this.#store, this.#acknowledgements);
+    const acknowledged = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
-      (await acknowledgements.acknowledgementOf(acceptance.link)) ??
-      (
-        await this.#acknowledge(
-          encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
-          bundle,
-          acceptance.signedIdentity,
-        )
-      ).link;
+      acknowledged === undefined
+        ? (
+            await this.#acknowledge(
+              encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
+              people,
+              bundle,
+              acceptance.signedIdentity,
+            )
+          ).link
+        : await this.#renew(acknowledged, people);
     const isNewAccount = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
     return this.#answerWith(acknowledgement, isNewAccount ? 201 : 200);
   }
@@ -278,7 +283,8 @@ class MailboxService {
    * identity signed the posted request for it, unless that request opened one
    * before.
    *
-   * - Either way the answer is the acknowledgement of the request.
+   * - Either way the answer is the acknowledgement of the request, signed as
+   *   `#renew` does.
    * - The signature is verified as an acceptance of the offer of an account
    *   is, and refused when its root has no account.
    */
@@ -300,10 +306,12 @@ class MailboxService {
     const root = signature.signedIdentity.identity.root.link;
     if (!(await this.#accounts.has(root))) return answer(403, `${root} has no account here`);
     const existingMailbox = await this.#mailboxes.mailboxOpenedBy(signature.link);
-    if (existingMailbox !== undefined) return this.#answerWith(existingMailbox.acknowledgement, 200);
+    if (existingMailbox !== undefined)
+      return this.#answerWith(await this.#renew(existingMailbox.acknowledgement, people), 200);
     const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = await this.#acknowledge(
       encodeObject(this.#schemas.mailboxAcknowledgement, { request: { $link: signature.link }, at, sendId, pickupId }),
+      people,
       bundle,
       signature.signedIdentity,
       this.#schemas.mailboxRequest.blobs,
@@ -327,11 +335,12 @@ class MailboxService {
    */
   async #acknowledge(
     acknowledgement: EncodedObject<Json>,
+    people: People,
     bundle: Bundle,
     signedIdentity: SignedIdentityObject,
     blobs: readonly Bytes<unknown>[] = [],
   ): Promise<Signature> {
-    const signature = await this.#actor.sign(acknowledgement);
+    const signature = await this.#sign(acknowledgement, people);
     // Reading what is acknowledged takes none of the schemas in its signed
     // identity's closure, so the bundle need not hold them, and the store
     // takes a blob in only with its whole closure.
@@ -339,6 +348,29 @@ class MailboxService {
     const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
+  }
+
+  /**
+   * The service's signature at `link` over an acknowledgement while it counts
+   * by `people`. Once a crisis of the service's root cuts it, the service
+   * signs the same acknowledgement as its current identity version, and
+   * writes that signature to the store as a record.
+   */
+  async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
+    const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
+    if (await people.counts(signature)) return link;
+    const renewed = await this.#sign({ link: signature.object }, people);
+    await this.#store.write({ records: [renewed] });
+    return renewed.link;
+  }
+
+  /**
+   * Signs `object` as the current identity version of the service's root by
+   * `people`, which a crisis that the store comes to hold changes while the
+   * service runs.
+   */
+  async #sign(object: { readonly link: Link<unknown> }, people: People): Promise<Signature> {
+    return this.#signatures.actor(this.#signer, await people.current(this.#signedIdentity)).sign(object);
   }
 
   /**
@@ -376,7 +408,7 @@ class MailboxService {
       const bundle = await unpackBundle(zip);
       signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
       const { data } = await readObject(bundle, signature.object, this.#schemas.pickupRequest);
-      if (data.mailbox.$link !== mailbox.acknowledgement)
+      if (data.mailbox.$link !== mailbox.request)
         throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
       receipts = data.receipts.map(({ $link }) => $link);
     } catch (error) {
@@ -534,7 +566,10 @@ export async function loadMailboxService(
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(actor, identity.$link, kit, schemas, seenPeople, { ...options, clock });
+  return new MailboxService(signer, actor.signedIdentity, identity.$link, kit, schemas, seenPeople, {
+    ...options,
+    clock,
+  });
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

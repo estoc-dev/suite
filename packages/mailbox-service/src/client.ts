@@ -309,7 +309,7 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
  */
 class ServicePickup implements Pickup {
   readonly mailbox: Link<EncodedObject<Json>>;
-  readonly #acknowledgement: Link<Signature>;
+  readonly #request: Link<Signature>;
   readonly #url: URL;
   readonly #actor: Actor;
   readonly #limit: number;
@@ -318,7 +318,7 @@ class ServicePickup implements Pickup {
   constructor(
     target: {
       readonly mailbox: Link<EncodedObject<Json>>;
-      readonly acknowledgement: Link<Signature>;
+      readonly request: Link<Signature>;
       readonly url: URL;
       readonly size: number;
     },
@@ -326,7 +326,7 @@ class ServicePickup implements Pickup {
     schemas: Pick<Schemas, "pickupRequest" | "pickupAnswer">,
   ) {
     this.mailbox = target.mailbox;
-    this.#acknowledgement = target.acknowledgement;
+    this.#request = target.request;
     this.#url = target.url;
     this.#actor = actor;
     // Room for the Pickup answer at the root, and for the zip around the ciphertexts.
@@ -368,7 +368,7 @@ class ServicePickup implements Pickup {
 
   async #pickUp(receipts: readonly Link<Uint8Array>[], signal: AbortSignal | undefined): Promise<Uint8Array[]> {
     const request = encodeObject(this.#schemas.pickupRequest, {
-      mailbox: { $link: this.#acknowledgement },
+      mailbox: { $link: this.#request },
       receipts: receipts.map(($link) => ({ $link })),
     });
     const signature = await this.#actor.sign(request);
@@ -488,7 +488,7 @@ export class Services {
     const { size } = (await readObject(this.#store, offer.$link, this.#schemas.mailboxOffer)).data;
     const service = await this.latestOf(signedIdentity);
     if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.root.link}`);
-    const target = { mailbox, acknowledgement: link, url: new URL(`/${pickupId}`, service.origin), size };
+    const target = { mailbox, request: request.$link, url: new URL(`/${pickupId}`, service.origin), size };
     return new ServicePickup(target, actor, this.#schemas);
   }
 

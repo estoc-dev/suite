@@ -47,7 +47,7 @@ Acknowledgement          {"acceptance": <link of the signature over the offer>, 
 Mailbox offer            {"identity": <link of the service's root>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
 Mailbox request          {"offer": <link of the mailbox offer>, "key": <x25519 public key>}, signed by an identity with an account
 Mailbox acknowledgement  {"request": <link of the signature over the request>, "at": <milliseconds>, "sendId": <id>, "pickupId": <id>}, signed by the service
-Pickup request           {"mailbox": <link of the service's signature over the mailbox acknowledgement>, "receipts": [<link of a ciphertext>, …]}, signed by an identity of the account
+Pickup request           {"mailbox": <link of the signature over the mailbox request>, "receipts": [<link of a ciphertext>, …]}, signed by an identity of the account
 Pickup answer            {"ciphertexts": [<link of a ciphertext>, …]}, unsigned
 ```
 
@@ -163,7 +163,10 @@ A root has one account at a service. When an identity of a root that has
 an account accepts again, by another device or another identity, the
 service answers 200 with an acknowledgement of that acceptance. When the
 same acceptance comes again, and the store holds an acknowledgement of it,
-the service answers with that one. Requests of one acceptance that arrive
+the service answers with that one while the service's signature over it
+counts. Once a crisis of the service's root cuts that signature, the
+service signs the same acknowledgement again, as its current identity
+version, and answers with that. Requests of one acceptance that arrive
 together, as when a client tries again before it hears back, can each
 sign an acknowledgement of it, and each answer acknowledges that
 acceptance. Of more than one, the service answers with the one whose
@@ -286,8 +289,9 @@ sender, who holds the send id alone, learns nothing of the account.
 
 Each mailbox has a key of its own, so each request is one of its own too,
 and one account opens as many mailboxes as it asks for. The same request
-posted again is answered with the same acknowledgement, so a client that
-did not hear back posts it again.
+posted again is answered with the same acknowledgement, signed again as an
+acceptance's is once a crisis of the service's root cuts the signature, so a
+client that did not hear back posts it again.
 
 `open` takes an actor, as `accept` does, and the public key of a
 `MailboxKey` of `@estoc/mailbox`, so it is what `Post.openInbox` is given:
@@ -379,7 +383,8 @@ wherever the service moved. Senders still post to the url that the mailbox
 names.
 
 Each request is a pickup request that the actor signs. It names the mailbox
-by the service's signature over the acknowledgement, and lists by link, as
+by the signature over the request that opened it, which stays when the
+service signs the acknowledgement again, and lists by link, as
 receipts, the ciphertexts that the receiver was done with since the request
 before. The service lets those wait no more, and answers with a bundle whose
 root is a Pickup answer, unsigned, which lists by link what waits, the
@@ -433,9 +438,12 @@ current identity version of its root, by the identity versions the store
 holds, and the signer does not sign the identity again. Once the store holds
 a crisis of the root, no Service signed before it counts, so the service
 signs its offers and a Service again, as the crisis or one that follows it,
-and they list the offers under the same ids. Each acknowledgement it signs is written there too, as a
-record, with the acceptance or the request and its closure, and what the
-bundle holds besides is dropped.
+and they list the offers under the same ids. It signs each acknowledgement
+as the current identity version of its root by the identity versions the
+store holds then, so once the store holds a crisis of the root, it signs as
+the crisis or one that follows it without starting again. Each
+acknowledgement is written there too, as a record, with the acceptance or
+the request and its closure, and what the bundle holds besides is dropped.
 
 The Services in the store are what the service gave out. Of those that
 count, the latest is the one it answers `GET /` with, as a client takes it for where

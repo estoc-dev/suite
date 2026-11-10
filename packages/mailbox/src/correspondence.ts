@@ -20,9 +20,9 @@ export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIde
 /**
  * Sending and reading as one actor, by the Mailbox Grants and the identity versions a store holds.
  *
- * - The store's grants and identity versions are read anew at each call, so what came in since
- *   counts.
- * - A signature counts as the store took it in, by the identity versions it held then, so a key
+ * - The store's grants and identity versions are read anew at each call, so each call reads what
+ *   came in since.
+ * - A signature is honored as the store took it in, by the identity versions it held then, so a key
  *   that a later identity version takes out leaves what it signed before standing, until a crisis.
  * - The indexes they are read through are made once, with the correspondence, so a store keeps
  *   their rows between scans.
@@ -93,7 +93,7 @@ export class Correspondence {
    * - Sending a root again sends the same bundle and writes other records.
    *
    * @throws {UndeliveredMessage} of kind `gone` when the latest grant names no mailbox, or the store
-   *   holds no grant that counts.
+   *   holds no grant that is honored.
    * @throws {UndeliveredMessage} when every mailbox turned it back: one of kind `later` if there is
    *   one, as the same can be sent again later.
    * @throws when the post has no transport for one of the mailboxes; nothing is sent then.
@@ -121,13 +121,13 @@ export class Correspondence {
   }
 
   /**
-   * The signature at the root of `bundle`, which came in at `mailbox`, when it counts as a message
-   * from whoever signed it.
+   * The signature at the root of `bundle`, which came in at `mailbox`, when it is honored as a
+   * message from whoever signed it.
    *
-   * - It counts as the store took it in.
-   * - `mailbox` is in a grant of the actor's root to the signer's root that counts as the store took
-   *   it in too. An earlier grant counts as the latest does, so what came in before a move still
-   *   reads as theirs.
+   * - It is honored as the store took it in.
+   * - `mailbox` is in a grant of the actor's root to the signer's root that is honored as the store
+   *   took it in too. An earlier grant is honored as the latest is, so what came in before a move
+   *   still reads as theirs.
    * - Anything else gives `undefined`, since anyone can send anything to a mailbox.
    *
    * @throws when the store fails to give a blob.
@@ -136,7 +136,7 @@ export class Correspondence {
     const signature = await this.#signatureAtRootOf(bundle);
     if (signature === undefined) return undefined;
     const { asTakenIn } = await view(this.#store, this.#seenPeople);
-    if (!(await asTakenIn.counts(signature))) return undefined;
+    if (!(await asTakenIn.honors(signature))) return undefined;
     const series = await view(this.#store, this.#grants.series);
     const signer = signature.signedIdentity.identity.root.link;
     for await (const { object } of series.grantsFrom(this.#root, signer, asTakenIn)) {

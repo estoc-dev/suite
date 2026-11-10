@@ -19,13 +19,14 @@ type Location = readonly [root: Link<KeyObject>, at: number, service: Link<Signa
 /**
  * The Services that the signatures a store holds sign, records or not, by
  * the root of the identity that signed each. A Service carries its authority
- * in the signature, so one that came in at a mailbox counts as one fetched.
+ * in the signature, so one that came in at a mailbox is honored as one
+ * fetched.
  */
 export interface Locations {
   /**
-   * The links of the signatures over the Services of `root` that count by
-   * `seenIdentityVersions`, from the latest back. One by a key that a later
-   * identity version takes out does not count, whatever its `at`.
+   * The links of the signatures over the Services of `root` that
+   * `seenIdentityVersions` honor, from the latest back. One by a key that a
+   * later identity version takes out is not honored, whatever its `at`.
    */
   servicesOf(root: Link<KeyObject>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
@@ -37,7 +38,7 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
     index: indexOverBlobs(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
       // verified by the identity version it carries; whether the signature
-      // counts is checked as the rows are read.
+      // is honored is checked as the rows are read.
       const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
       yield [signedIdentity.identity.root.link, object.data.at, link];
     }),
@@ -46,7 +47,7 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
         const links: Link<Signature>[] = [];
         for await (const [, , link] of rows.range([root])) {
           const signature = await signatures.read(link, reader, noIdentityVersions);
-          if (await seenIdentityVersions.counts(signature)) links.unshift(link);
+          if (await seenIdentityVersions.honors(signature)) links.unshift(link);
         }
         return links;
       },

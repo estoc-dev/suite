@@ -440,12 +440,12 @@ export class Services {
   /**
    * The latest Service of the root that signed `signedIdentity` that the
    * store holds, read without reaching the service, or `undefined` when the
-   * store holds none that counts.
+   * store holds none that is honored.
    *
-   * - A Service counts however it came, by `fetch` or at a mailbox, on this
+   * - A Service is honored however it came, by `fetch` or at a mailbox, on this
    *   device or on another whose store this one syncs with.
    * - Only a Service signed by a key that the current identity version the
-   *   store holds lists counts, so one that a key taken out signs after does
+   *   store holds lists is honored, so one that a key taken out signs after does
    *   not stand in for the service, whatever its `at`.
    *
    * @throws when the latest Service is one that `fetch` refuses, apart from

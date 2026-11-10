@@ -241,7 +241,7 @@ describe("a view of a staged batch", () => {
       blobs: [agentsOut.bytes, ...anything.blobs, ...signatures.schema.blobs, ...byRoot.signedIdentity.blobs],
     });
     await expect(signatures.read(byAgent.link, stagedStore, await view(stagedStore, people))).rejects.toThrow(
-      "does not count",
+      "is not honored",
     );
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 
@@ -250,7 +250,7 @@ describe("a view of a staged batch", () => {
     expect(await store.get(hello.link)).toEqual(hello.bytes);
   });
 
-  it("takes in the batch after what the store holds, so a signature the store holds counts as it took it in", async () => {
+  it("takes in the batch after what the store holds, so a signature the store holds is honored as it took it in", async () => {
     const store = newStore();
     const hello = object({ text: "hello" });
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
@@ -263,8 +263,8 @@ describe("a view of a staged batch", () => {
     const stagedStore = await store.stage({ records: [agentsOut], blobs: agentsOut.blobs });
     const stagedPeople = await view(stagedStore, people);
     const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
-    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(true);
-    expect(await stagedPeople.counts(signature)).toBe(false);
+    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(true);
+    expect(await stagedPeople.honors(signature)).toBe(false);
   });
 
   it("takes a signature that only the batch holds as coming in now, and as the store took it in once committed", async () => {
@@ -279,10 +279,10 @@ describe("a view of a staged batch", () => {
     });
     const stagedPeople = await view(stagedStore, people);
     const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
-    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(false);
+    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(false);
 
     await stagedStore.commit();
-    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(true);
-    expect(await (await view(store, people)).asTakenIn.counts(signature)).toBe(true);
+    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(true);
+    expect(await (await view(store, people)).asTakenIn.honors(signature)).toBe(true);
   });
 });

@@ -46,8 +46,8 @@ export interface MailboxGrant {
 /** The Mailbox Grants of each series that a store holds. */
 export interface GrantSeries {
   /**
-   * The grants that `from` signed to `to`, by the links of their roots, that count by
-   * `seenIdentityVersions`, in the order of the series.
+   * The grants that `from` signed to `to`, by the links of their roots, that
+   * `seenIdentityVersions` honor, in the order of the series.
    */
   grantsFrom(
     from: Link<KeyObject>,
@@ -70,7 +70,7 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
  * - A grant reaches `series` as a signature over it that the store holds, whichever way it came and
  *   wherever it sits in a closure, as a signature carries its authority in itself.
  * - Each signature is verified by the signed identity it carries, as by `noIdentityVersions`.
- *   `grantsFrom` and `grantFrom` read the grants whose signatures count by `seenIdentityVersions`.
+ *   `grantsFrom` and `grantFrom` read the grants whose signatures `seenIdentityVersions` honor.
  * - A signature that does not verify, or that is over an object that does not read as a grant,
  *   gives no row, since anyone can send a bundle to a mailbox.
  * - The scan still fails when the store fails to give a blob, so a later scan of the index reads it
@@ -113,23 +113,23 @@ export class MailboxGrants {
   #seriesOf(rows: Rows<MailboxGrantRow>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
-    const countedSignatures = async function* (
+    const honoredSignatures = async function* (
       from: Link<KeyObject>,
       to: Link<KeyObject>,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
       for await (const [, , , link] of rows.range([from, to])) {
         const signature = await signatures.read(link, reader, noIdentityVersions);
-        if (await seenIdentityVersions.counts(signature)) yield signature;
+        if (await seenIdentityVersions.honors(signature)) yield signature;
       }
     };
     return {
       grantsFrom: async function* (from, to, seenIdentityVersions) {
-        for await (const signature of countedSignatures(from, to, seenIdentityVersions)) yield grantOf(signature);
+        for await (const signature of honoredSignatures(from, to, seenIdentityVersions)) yield grantOf(signature);
       },
       grantFrom: async (from, to, seenIdentityVersions) => {
         let latest: Signature | undefined;
-        for await (const signature of countedSignatures(from, to, seenIdentityVersions)) latest = signature;
+        for await (const signature of honoredSignatures(from, to, seenIdentityVersions)) latest = signature;
         return latest === undefined ? undefined : grantOf(latest);
       },
     };

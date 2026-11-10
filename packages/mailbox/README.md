@@ -316,8 +316,8 @@ those mailboxes. A grant with no mailboxes says that the signer no longer
 takes their messages. The schema is `mailboxGrantSchema`.
 
 The grants of one root to another are a series, by the root of the signer
-and the root of `to`. Of the grants of a series whose signatures count by
-the `SeenIdentityVersions` a reader gives, the latest is the one with the
+and the root of `to`. Of the grants of a series whose signatures are honored
+by the `SeenIdentityVersions` a reader gives, the latest is the one with the
 greatest `at`, and of two at one `at`, the one whose signature has the
 greater link, as with identity versions in `@estoc/identity`. Each side picks
 the latest from the grants and identity versions it has seen. The two agree
@@ -356,7 +356,7 @@ that takes it.
 - They take messages at each of those mailboxes, so the message has gone once
   one of them takes it. A mailbox that turns it back leaves no record and does
   not stop the others.
-- When there is no grant that counts, or the latest names no mailbox, it rejects
+- When no grant is honored, or the latest names no mailbox, it rejects
   with an `UndeliveredMessage` of kind `gone`, since another mailbox is needed.
 - When every mailbox turns it back, it rejects with an `UndeliveredMessage`, of
   kind `later` if there is one.
@@ -365,25 +365,25 @@ that takes it.
 
 `messageAt` takes a mailbox and the link of a bundle that came in there, as an
 application's index reads them from `Inbound`, and gives the signature at the
-root of the bundle when it counts as a message from whoever signed it. For that,
-the signature counts by `asTakenIn` of the reader's people, and the mailbox is
-in a grant the actor's root gave their root that counts the same way. Anything else gives `undefined`,
-since `collect` keeps whatever opens and anyone can send to a mailbox. A store
-that fails to give a blob makes it reject.
+root of the bundle when it is honored as a message from whoever signed it. For
+that, `asTakenIn` of the reader's people honors the signature, and the mailbox
+is in a grant the actor's root gave their root that it honors too. Anything
+else gives `undefined`, since `collect` keeps whatever opens and anyone can
+send to a mailbox. A store that fails to give a blob makes it reject.
 
-What counts is worked out when it is read, by what the store holds then and
+What is honored is worked out when it is read, by what the store holds then and
 the order it took it in:
 
-- An earlier grant counts as the latest does, so what came in before a move
+- An earlier grant is honored as the latest is, so what came in before a move
   still reads as theirs.
 - A grant with no mailboxes stops them sending and does not take back the
   earlier grants. A mailbox that was given to one person retires by no longer
-  receiving there. One that was given to several still counts what comes in
-  from each, whichever of them has been told to stop.
-- A message, and each grant, counts as the store took it in, by the identity
-  versions it held then. Once the store holds an identity version that removes
-  an agent, what that agent signs no longer counts, whichever identity version
-  it carries, while what came in before still does.
+  receiving there. What comes in at one that was given to several is still
+  honored from each, whichever of them has been told to stop.
+- A message, and each grant, is honored as the store took it in, by the
+  identity versions it held then. Once the store holds an identity version
+  that removes an agent, what that agent signs is no longer honored, whichever
+  identity version it carries, while what came in before still is.
 - A crisis cuts what came in before as well: messages and grants signed by an
   identity version before it. A grant that a key it lists signs gives the
   mailbox again, and the messages the crisis cut stay cut.
@@ -429,7 +429,7 @@ fails to give a blob, so a later scan of the index reads it again. The first
 scan reads every blob the store holds, attachments as well, and a later one
 reads only those put since. `grantsFrom` takes the links of two roots and the
 `SeenIdentityVersions` of a reader, and gives the grants of the first to the
-second that count, in the order of the series, each with the signature over it
+second that they honor, in the order of the series, each with the signature over it
 and the signed identity it is to. `grantFrom` gives the last of those, the latest
 grant, or `undefined` when there is none.
 
@@ -439,22 +439,22 @@ their schema, wherever they sit in the closure of a record or of what came
 in, and is made once for the program too.
 
 A root removes an agent by signing an identity version that does not list it,
-as in `@estoc/identity`. By `asTakenIn` of the reader's people, a grant counts
-as the store took it in: one the agent signed counts when it came in before the
-store held that identity version, and does not when it came in after, whatever
+as in `@estoc/identity`. `asTakenIn` of the reader's people honors a grant as
+the store took it in: one the agent signed is honored when it came in before
+the store held that identity version, and is not when it came in after, whatever
 identity version it carries and whatever `at` it writes:
 
-- `grantFrom` gives the latest grant that counts so, which may be one the
+- `grantFrom` gives the latest grant honored so, which may be one the
   removed agent signed before, or `undefined` when there is none.
-- To take messages at a mailbox that no grant counts for, the signer has a key
+- To take messages at a mailbox that no honored grant names, the signer has a key
   the current identity version lists sign a grant of it again, and sends it to
   the one it is to. The signature carries the new identity version, so that
   reader sees the removal and the new grant together.
-- A reader holds only the identity versions it has seen, so a key counts until
-  the reader sees the identity version that removes it.
-- A grant that came in after the removal does not count once a later identity
-  version lists the agent again either: it counts by what the store held when
-  it took the grant in, so reading the store again gives the same.
+- A reader holds only the identity versions it has seen, so what a key signs
+  is honored until the reader sees the identity version that removes it.
+- A grant that came in after the removal is not honored once a later identity
+  version lists the agent again either: it is honored by what the store held
+  when it took the grant in, so reading the store again gives the same.
 - A crisis cuts every grant by an identity version before it, whenever it came
   in.
 

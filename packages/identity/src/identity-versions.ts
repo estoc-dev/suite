@@ -96,8 +96,9 @@ export class IdentityVersions {
         inHand,
         seen: [...seen.values()].sort(compareIdentityVersions),
         signedIdentityOf,
-        // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
-        currentAmong: (counting: readonly Link<SignedIdentityObject>[]) => signedIdentityOf(counting.at(-1)!),
+        currentAmong: (countingVersions: readonly Link<SignedIdentityObject>[]) =>
+          // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
+          signedIdentityOf(countingVersions.at(-1)!),
       };
     };
     const personOf = (signedIdentity: SignedIdentityObject): Person => {
@@ -115,12 +116,12 @@ export class IdentityVersions {
         hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
     };
-    // A signature taken in at `position` counts by the identity versions the store held before it,
+    // A signature taken in at `position` is honored by the identity versions the store held before it,
     // and by the crises it holds now. One with no position comes in now.
-    const countsTakenIn = async ({ signedIdentity, key }: Signature, position: number | undefined) => {
+    const honorsTakenIn = async ({ signedIdentity, key }: Signature, position: number | undefined) => {
       const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
-      const counting = countingVersionsAmong(seen);
-      let countingThen = counting;
+      const countingVersions = countingVersionsAmong(seen);
+      let countingVersionsThen = countingVersions;
       if (position !== undefined) {
         const heldThen: IdentityVersion[] = [];
         for (const row of seen) {
@@ -128,15 +129,18 @@ export class IdentityVersions {
           const heldAt = await store.positionOf(link);
           if (inHand.has(link) || (heldAt !== undefined && heldAt < position)) heldThen.push(row);
         }
-        countingThen = countingVersionsAmong(heldThen);
+        countingVersionsThen = countingVersionsAmong(heldThen);
       }
-      return counting.includes(signedIdentity.link) && hasSigner((await currentAmong(countingThen)).identity, key);
+      return (
+        countingVersions.includes(signedIdentity.link) &&
+        hasSigner((await currentAmong(countingVersionsThen)).identity, key)
+      );
     };
     return {
       personOf,
       current: (signedIdentity) => personOf(signedIdentity).current(),
-      counts: (signature) => countsTakenIn(signature, undefined),
-      asTakenIn: { counts: async (signature) => countsTakenIn(signature, await store.positionOf(signature.link)) },
+      honors: (signature) => honorsTakenIn(signature, undefined),
+      asTakenIn: { honors: async (signature) => honorsTakenIn(signature, await store.positionOf(signature.link)) },
     };
   }
 }

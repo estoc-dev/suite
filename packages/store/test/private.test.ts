@@ -41,6 +41,17 @@ describe("a private store", () => {
     expect(await recordsOf(store)).toEqual([card.link]);
   });
 
+  it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
+    const { store, privateStore } = sides();
+    const card = object({ name: "Alice" });
+    await store.write({ records: [card], blobs: anything.blobs });
+    const secret = object({ card: { $link: card.link }, secret: "00" });
+    await privateStore.write({ records: [secret] });
+    expect(await privateStore.positionOf(secret.link)).toBe(0);
+    expect(await privateStore.positionOf(card.link)).toBeUndefined();
+    expect(await store.positionOf(card.link)).toBe(2);
+  });
+
   it("keeps in its backend nothing that the store beside it holds already", async () => {
     const backend = new MemoryBackend();
     const { store, privateStore } = sides(new MemoryBackend(), backend);
@@ -75,6 +86,7 @@ describe("a private store", () => {
       put: (blobs, records) => backend.put(blobs, records),
       records: (start) => backend.records(start),
       blobs: (start) => backend.blobs(start),
+      positionOf: (link) => backend.positionOf(link),
     });
     await expect(privateStore.get(card.link)).rejects.toThrow(`another blob under ${card.link}`);
   });
@@ -86,6 +98,7 @@ describe("a private store", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       records: () => store.records(),
+      positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
     expect(() => new PrivateStore(lookalike, new MemoryBackend())).toThrow(TypeError);

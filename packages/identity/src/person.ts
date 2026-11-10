@@ -33,10 +33,30 @@ export interface Person {
   hasSigned(signature: Signature): boolean;
 }
 
-/** The people of the identity versions a reader has seen. */
+/**
+ * The people of the identity versions a reader has seen.
+ *
+ * - Their `counts` takes a signature as one that comes in now, by all the
+ *   identity versions the reader's store holds, as a service takes a request.
+ * - `asTakenIn` takes a signature as the store took it in.
+ */
 export interface People extends SeenIdentityVersions {
   /** The person whose root signed `signedIdentity`, taken with it in hand. */
   personOf(signedIdentity: SignedIdentityObject): Person;
   /** The current identity version of the person of `signedIdentity`. */
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
+  /**
+   * Whether a signature counts as the reader's store took it in.
+   *
+   * - The identity version it carries counts, and the key that made it signs
+   *   for the current identity version, by those the store held when it took
+   *   the signature in. One the store takes in later that does not list the
+   *   key leaves it counting.
+   * - The identity version it carries still counts by those the store holds
+   *   now, so a crisis the store takes in later cuts it.
+   * - A signature the store does not hold comes in now, and counts as by
+   *   `counts`, as does one that only a staged batch holds until the batch
+   *   is committed.
+   */
+  readonly asTakenIn: SeenIdentityVersions;
 }

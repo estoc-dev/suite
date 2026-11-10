@@ -1,4 +1,3 @@
-import type { Reader } from "@estoc/object";
 import { type Index, type Key, type Rows, scan } from "./scan.ts";
 import type { Store } from "./store.ts";
 
@@ -12,25 +11,27 @@ import type { Store } from "./store.ts";
 export interface View<K extends Key, V> {
   readonly index: Index<K>;
   /**
-   * The value of `rows`, with `reader` giving by link the objects they name.
-   * It may be a promise, as when the value is worked out from all the rows
-   * at once.
+   * The value of `rows`, with `store` giving by link the objects they name,
+   * and where it took each in. It may be a promise, as when the value is
+   * worked out from all the rows at once.
    */
-  read(rows: Rows<K>, reader: Reader): V;
+  read(rows: Rows<K>, store: Pick<Store, "get" | "positionOf">): V;
 }
 
 /**
  * The value of `view` for what `store` holds now. The store may also be a `PrivateStore` or a
  * `StagedStore`.
  *
- * - The index is scanned from the store and read with the store as the reader, so the rows and
- *   the objects they name come from one store.
- * - Later writes do not change the value; it takes them in when viewed again.
+ * - The index is scanned from the store and read with the store, so the rows, the objects they name
+ *   and where each was taken in come from one store.
+ * - Later writes do not change the rows the value is worked out from; it takes them in when viewed
+ *   again. A value that asks the store later where a blob was taken in finds where the store has
+ *   taken it in by then, as for a blob of a staged batch once it is committed.
  *
  * @throws as `scan` does.
  */
 export async function view<K extends Key, V>(
-  store: Pick<Store, "get" | "records">,
+  store: Pick<Store, "get" | "records" | "positionOf">,
   view: View<K, V>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);

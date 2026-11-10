@@ -58,6 +58,7 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
   put: (blobs, records) => backend.put(blobs, records),
   records: (start) => backend.records(start),
   blobs: (start) => backend.blobs(start),
+  positionOf: (link) => backend.positionOf(link),
 });
 
 describe("an index scanned from a store", () => {
@@ -289,6 +290,7 @@ describe("an index scanned from a store", () => {
       put: (blobs, records) => backend.put(blobs, records),
       records: (start) => backend.records(start),
       blobs: (start) => backend.blobs(start),
+      positionOf: (link) => backend.positionOf(link),
     };
     await expect(scan(new Store(json, swappedBackend), byKeys)).rejects.toThrow(
       `another blob under ${listedObject.link}`,
@@ -586,6 +588,7 @@ describe("an index over blobs", () => {
         put: (blobs, records) => backend.put(blobs, records),
         records: (start) => backend.records(start),
         blobs: (start) => backend.blobs(start),
+        positionOf: (link) => backend.positionOf(link),
       });
       await store.write({
         records: [record],

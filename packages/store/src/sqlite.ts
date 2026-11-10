@@ -56,6 +56,12 @@ export class SqliteBackend implements Backend {
     for (const { link } of rows) yield link as Link<unknown>;
   }
 
+  async positionOf(link: Link<unknown>): Promise<number | undefined> {
+    // No blob is deleted, and one put again is ignored, so the rowids run from 1 without a gap.
+    const rowid = this.#sql.get`SELECT rowid FROM blobs WHERE link = ${link}`?.rowid as number | undefined;
+    return rowid === undefined ? undefined : rowid - 1;
+  }
+
   /** Closes the file, after which every call rejects. */
   close(): void {
     this.#database.close();

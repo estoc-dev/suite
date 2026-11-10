@@ -85,6 +85,15 @@ describe.each([
     expect(await blobsIn(backend)).toEqual([a, b, c]);
   });
 
+  it("gives where a blob is in the order they were first put, and nothing for a link it was not given", async () => {
+    const backend = await open();
+    const [a, b, c] = [linkOf(utf8("a")), linkOf(utf8("b")), linkOf(utf8("c"))];
+    await backend.put(blobsOf("a", "b"), [a]);
+    await backend.put(blobsOf("c", "a"), [c]);
+    expect(await Promise.all([a, b, c].map((link) => backend.positionOf(link)))).toEqual([0, 1, 2]);
+    expect(await backend.positionOf(linkOf(utf8("d")))).toBeUndefined();
+  });
+
   it("lists the blobs after the first `start`, in the order they were first put", async () => {
     const backend = await open();
     const [b, c] = [linkOf(utf8("b")), linkOf(utf8("c"))];

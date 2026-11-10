@@ -113,7 +113,7 @@ export class MailboxGrants {
   #seriesOf(rows: Rows<MailboxGrantRow>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
-    const countedSignatures = async function* (
+    const honoredSignatures = async function* (
       from: Link<KeyObject>,
       to: Link<KeyObject>,
       seenIdentityVersions: SeenIdentityVersions,
@@ -125,11 +125,11 @@ export class MailboxGrants {
     };
     return {
       grantsFrom: async function* (from, to, seenIdentityVersions) {
-        for await (const signature of countedSignatures(from, to, seenIdentityVersions)) yield grantOf(signature);
+        for await (const signature of honoredSignatures(from, to, seenIdentityVersions)) yield grantOf(signature);
       },
       grantFrom: async (from, to, seenIdentityVersions) => {
         let latest: Signature | undefined;
-        for await (const signature of countedSignatures(from, to, seenIdentityVersions)) latest = signature;
+        for await (const signature of honoredSignatures(from, to, seenIdentityVersions)) latest = signature;
         return latest === undefined ? undefined : grantOf(latest);
       },
     };

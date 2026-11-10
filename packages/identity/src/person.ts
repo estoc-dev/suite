@@ -55,7 +55,8 @@ export interface People extends SeenIdentityVersions {
    * - The identity version it carries still counts by those the store holds
    *   now, so a crisis the store takes in later cuts it.
    * - A signature the store does not hold comes in now, and counts as by
-   *   `counts`.
+   *   `counts`, as does one that only a staged batch holds until the batch
+   *   is committed.
    */
   readonly asTakenIn: SeenIdentityVersions;
 }

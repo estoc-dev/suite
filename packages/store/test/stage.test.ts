@@ -266,4 +266,23 @@ describe("a view of a staged batch", () => {
     expect(await stagedPeople.asTakenIn.counts(signature)).toBe(true);
     expect(await stagedPeople.counts(signature)).toBe(false);
   });
+
+  it("takes a signature that only the batch holds as coming in now, and as the store took it in once committed", async () => {
+    const store = newStore();
+    const hello = object({ text: "hello" });
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const byAgent = await signatures.actor(agent, listing).sign(hello);
+    const agentsOut = await publish(root, { prior: listing, at: 2_000 });
+    const stagedStore = await store.stage({
+      records: [byAgent, agentsOut],
+      blobs: [hello.bytes, ...anything.blobs, ...signatures.schema.blobs, ...agentsOut.blobs],
+    });
+    const stagedPeople = await view(stagedStore, people);
+    const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
+    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(false);
+
+    await stagedStore.commit();
+    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(true);
+    expect(await (await view(store, people)).asTakenIn.counts(signature)).toBe(true);
+  });
 });

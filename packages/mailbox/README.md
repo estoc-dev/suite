@@ -316,8 +316,8 @@ those mailboxes. A grant with no mailboxes says that the signer no longer
 takes their messages. The schema is `mailboxGrantSchema`.
 
 The grants of one root to another are a series, by the root of the signer
-and the root of `to`. Of the grants of a series whose keys sign for the
-current identity version a reader has seen, the latest is the one with the
+and the root of `to`. Of the grants of a series whose signatures count by
+the `SeenIdentityVersions` a reader gives, the latest is the one with the
 greatest `at`, and of two at one `at`, the one whose signature has the
 greater link, as with identity versions in `@estoc/identity`. Each side picks
 the latest from the grants and identity versions it has seen. The two agree
@@ -366,8 +366,8 @@ that takes it.
 `messageAt` takes a mailbox and the link of a bundle that came in there, as an
 application's index reads them from `Inbound`, and gives the signature at the
 root of the bundle when it counts as a message from whoever signed it. For that,
-the key that made it signs for their current identity version, and the mailbox
-is in a grant the actor's root gave their root. Anything else gives `undefined`,
+the signature counts by `asTakenIn` of the reader's people, and the mailbox is
+in a grant the actor's root gave their root that counts the same way. Anything else gives `undefined`,
 since `collect` keeps whatever opens and anyone can send to a mailbox. A store
 that fails to give a blob makes it reject.
 
@@ -385,8 +385,8 @@ the order it took it in:
   an agent, what that agent signs no longer counts, whichever identity version
   it carries, while what came in before still does.
 - A crisis cuts what came in before as well: messages and grants signed by an
-  identity version before it, until a key it lists signs a grant of that
-  mailbox again.
+  identity version before it. A grant that a key it lists signs gives the
+  mailbox again, and the messages the crisis cut stay cut.
 
 Two people who have not met hand over what it takes out of band. One hands over
 their signed identity, as a bundle whose root it is, and the other a grant to

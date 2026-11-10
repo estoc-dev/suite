@@ -145,6 +145,10 @@ that took an agent out counts even when the batch leaves it out.
 The batch is taken in only once it is committed. The `positionOf` of a
 staged batch is the store's, and gives nothing for a blob that only the
 batch holds, so a reader takes what the batch adds as coming in now.
+`commit` takes the blobs in one after another, so what depends on the order
+the store took them in can read otherwise once the batch is committed, such
+as a signature the batch holds before an identity version that took its
+agent out.
 
 The records of a staged batch are listed before anything has verified
 them. A row stands on its object and its closure, as an identity version
@@ -154,12 +158,14 @@ object.
 The batch is fixed when it is staged, and the store is read as it is at
 each read, so what is written to the store afterwards shows on the staged
 batch too. What is verified on it reads the same from the store once it is
-committed when nothing else is written in between. A write in between,
-such as of an identity version that took an agent out, can change
-what a view comes to when it is viewed again, on the staged batch as on
-the store. A value already viewed stays as it was, and `commit` does not
-verify the batch again: as with a write, there is no transaction that
-reads and then writes.
+committed when nothing else is written in between, apart from what depends
+on that order. A write in between, such as of an identity version that took
+an agent out, can change what a view comes to when it is viewed again, on
+the staged batch as on the store. The rows a value already viewed was worked
+out from stay as they were, though a value that asks the store later where
+a blob was taken in finds where `commit` put it. `commit` does not verify
+the batch again: as with a write, there is no transaction that reads and
+then writes.
 
 A store only grows, so what a staged batch found held is still held when
 it is committed, whatever was written in between. A batch that is not
@@ -320,8 +326,9 @@ await notes.noteTagged("lunch");
 the store, so the rows, the objects they name and where each was taken in
 come from one store. When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
-The value is of what the store held when it was viewed: what is written
-later is taken in when it is viewed again.
+The rows are of what the store held when it was viewed: what is written
+later is taken in when it is viewed again. A value that asks the store later
+where a blob was taken in finds where the store has taken it in by then.
 
 ## Receiving
 

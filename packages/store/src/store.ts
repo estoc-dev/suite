@@ -128,7 +128,9 @@ export interface Store {
  * - The batch is fixed when it is staged, and the store is read as it is at each read, so what is
  *   written to the store afterwards shows here too.
  * - What a verifier or a view reads from it reads the same from the store once it is committed,
- *   when nothing else is written in between.
+ *   when nothing else is written in between, apart from what depends on the order the store took
+ *   blobs in: here a blob that only the batch holds comes in now, and `commit` takes the batch's
+ *   blobs in one after another.
  * - A write in between, such as of an identity version that takes an agent out, can change what a
  *   view comes to when it is viewed again, here as on the store. `commit` does not verify the batch
  *   again.
@@ -151,7 +153,8 @@ export interface StagedStore {
   records(): AsyncIterable<Link<never>>;
   /**
    * Where the store took in the blob of `link`, as its `positionOf` gives it. The batch is taken in
-   * only once it is committed, so a blob of the batch that the store does not hold has none.
+   * only once it is committed, so a blob of the batch that the store does not hold has none until
+   * then.
    */
   positionOf(link: Link<unknown>): Promise<number | undefined>;
   /** Writes the batch as `write` writes it. Committing again writes nothing more. */

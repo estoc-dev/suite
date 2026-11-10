@@ -24,7 +24,9 @@ export interface View<K extends Key, V> {
  *
  * - The index is scanned from the store and read with the store, so the rows, the objects they name
  *   and where each was taken in come from one store.
- * - Later writes do not change the value; it takes them in when viewed again.
+ * - Later writes do not change the rows the value is worked out from; it takes them in when viewed
+ *   again. A value that asks the store later where a blob was taken in finds where the store has
+ *   taken it in by then, as for a blob of a staged batch once it is committed.
  *
  * @throws as `scan` does.
  */

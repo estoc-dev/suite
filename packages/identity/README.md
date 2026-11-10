@@ -263,9 +263,10 @@ follows. Two that follow the same one are a fork, and both stay.
 A root removes an agent by signing an identity version that does not list
 it. A reader that has seen that identity version takes in none of the
 agent's signatures after it, whichever identity version they carry; what it
-accepted before stays accepted. The agent names the identity version and
-writes `at` itself, so the reader cannot tell when it signed, only when the
-signature came in. A reader holds only the identity versions it has seen,
+accepted before stays accepted. The agent chooses which identity version
+its signature carries, and a signature carries no time: a time in the
+signed record is its author's own. So the reader cannot tell when the agent
+signed, only when the signature came in. A reader holds only the identity versions it has seen,
 and nothing tells it of the others.
 
 A root that no longer relies on what it signed before, as when the store of
@@ -334,7 +335,8 @@ holds. It counts a signature as the store took it in:
 - By the identity versions the store holds now, as for its identity version
   counting: a crisis cuts it, whenever the store took the crisis in.
 - A signature the store does not hold comes in now, and counts as by
-  `counts`.
+  `counts`, as does one that only a staged batch holds until the batch is
+  committed.
 
 The store keeps the order it took blobs in, so reading it again gives the
 same. The order is of one store: another device that takes in the same
@@ -415,10 +417,12 @@ identity from the reader with `signedIdentities.read`, and verifies the
 signature's bytes by the key the identity's schema reads from them, over the
 text for the object by that signed identity; `signatures.read` does the same
 from the link of the signature. It also refuses a signature that does not
-count by the `SeenIdentityVersions`: one whose identity version a crisis
-cuts, or whose key does not sign for the current identity version, the
-latest that counts of those the reader has seen and the one the signature
-carries. The root signs for an identity, and so do its agents. The one the
+count by the `SeenIdentityVersions` it is given. By `counts` of `People`,
+that is one whose identity version a crisis cuts, or whose key does not
+sign for the current identity version, the latest that counts of those the
+reader has seen and the one the signature carries; by `asTakenIn`, the
+current identity version is of those the store held when it took the
+signature in. The root signs for an identity, and so do its agents. The one the
 signature carries counts, as a device a wallet has just listed signs by an
 identity version the reader has not seen yet. The `SeenIdentityVersions`
 are not optional, so a reader that keeps no identity versions says so with

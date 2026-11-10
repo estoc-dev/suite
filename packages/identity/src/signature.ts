@@ -72,31 +72,32 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
   readonly signature: Uint8Array;
 }
 
-/** Whether a signature counts, by the identity versions a reader has seen. */
+/** Whether a reader honors a signature, by the identity versions it has seen. */
 export interface SeenIdentityVersions {
   /**
-   * Whether `signature` counts, by the identity versions of its root that the
-   * reader has seen, and the one it carries with those it follows.
+   * Whether the reader honors `signature`, by the identity versions of its
+   * root that the reader has seen, and the one it carries with those it
+   * follows.
    *
    * - Of those, the latest crisis and the ones that follow it count, or all
    *   of them when none is a crisis. A root signs a crisis when it no longer
    *   relies on what it signed before, so the signatures by an identity
-   *   version before it do not count, the root's own among them.
+   *   version before it are not honored, the root's own among them.
    * - The identity version it carries counts.
    * - The key that made it signs for the current identity version, the
    *   latest that counts. The one it carries is among them, as a device a
    *   wallet has just listed signs by an identity version the reader has not
    *   seen yet.
    */
-  counts(signature: Signature): Promise<boolean>;
+  honors(signature: Signature): Promise<boolean>;
 }
 
 /**
- * A reader that has seen no identity versions, so a signature counts by the
- * identity version it carries and those it follows alone. No crisis comes
- * after the one it carries among them, so it counts once it verifies.
+ * A reader that has seen no identity versions, so a signature is honored by
+ * the identity version it carries and those it follows alone. No crisis comes
+ * after the one it carries among them, so it is honored once it verifies.
  */
-export const noIdentityVersions: SeenIdentityVersions = { counts: async () => true };
+export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
 
 /** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
 export interface SignatureOver<F extends Fields<Json>> {
@@ -141,7 +142,7 @@ export class Signatures {
    * @throws when `signature` is not written to the signature schema.
    * @throws when no key that signs for the identity signed the object it
    *   names by that signed identity.
-   * @throws when it does not count by `seenIdentityVersions`.
+   * @throws when `seenIdentityVersions` do not honor it.
    */
   async verify(
     signature: EncodedObject<Json, SignatureData>,
@@ -151,9 +152,9 @@ export class Signatures {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
-    if (!(await seenIdentityVersions.counts(verifiedSignature))) {
+    if (!(await seenIdentityVersions.honors(verifiedSignature))) {
       throw new Error(
-        `the signature by ${verifiedSignature.key.link} does not count by the identity versions of ${signedIdentity.identity.root.link}`,
+        `the signature by ${verifiedSignature.key.link} is not honored by the identity versions of ${signedIdentity.identity.root.link}`,
       );
     }
     return verifiedSignature;
@@ -170,8 +171,8 @@ export class Signatures {
    *
    * - A signature over an object of another schema is left out.
    * - It does not verify them, as what a selection takes depends on the
-   *   record and its closure alone, and whether a signature counts depends
-   *   on the identity versions a reader has seen.
+   *   record and its closure alone, and whether a signature is honored
+   *   depends on the identity versions a reader has seen.
    * - Reading a signature with it throws when the reader gives no blob for
    *   the object, and where `decodeObject` throws for an object of `schema`.
    */

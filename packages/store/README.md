@@ -105,7 +105,7 @@ many blobs it had taken in before that one, or `undefined` for one it does
 not hold. A blob is taken in by the first write that holds it, and writing
 it again leaves it where it was. A store only grows, so a blob keeps its
 position, and a reader can tell what the store held when the blob came in,
-as `@estoc/identity` does to count a signature by the identity versions the
+as `@estoc/identity` does to honor a signature by the identity versions the
 store held when it took the signature in.
 
 There is no transaction that reads and then writes. Two devices that each
@@ -140,7 +140,7 @@ so the rows and the objects they name come from the store as it will be.
 Staged on a store that holds nothing, a batch is read by what it holds
 alone, which is what its sender chose to show. Staged on the user's
 store, it is read by what the user has seen as well, so an identity version
-that took an agent out counts even when the batch leaves it out.
+that took an agent out applies even when the batch leaves it out.
 
 The batch is taken in only once it is committed. The `positionOf` of a
 staged batch is the store's, and gives nothing for a blob that only the

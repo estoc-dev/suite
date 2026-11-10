@@ -236,7 +236,7 @@ describe("a service reached at its origin", () => {
       async (_, origin) => new Response(await signedService(origin, [[offer, offerSigner]], later)),
     );
     const { store, services } = await client();
-    await expect(services.fetch(origin)).rejects.toThrow(/does not count/);
+    await expect(services.fetch(origin)).rejects.toThrow(/is not honored/);
     expect(await inboundRowsOf(store)).toEqual([]);
     offerSigner = later;
     const service = await services.fetch(origin);
@@ -258,7 +258,7 @@ describe("a service reached at its origin", () => {
       async (_, origin) => new Response(await signedService(origin, [[offer, later]], earlier)),
     );
     const { store, services } = await client();
-    await expect(services.fetch(origin)).rejects.toThrow(/does not count/);
+    await expect(services.fetch(origin)).rejects.toThrow(/is not honored/);
     expect(await inboundRowsOf(store)).toEqual([]);
   });
 
@@ -482,7 +482,7 @@ describe("accepting an account offer", () => {
     );
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(await actorOf(alice))).rejects.toThrow(/does not count/);
+    await expect(account.accept(await actorOf(alice))).rejects.toThrow(/is not honored/);
     expect(await inboundRowsOf(store)).toHaveLength(1);
   });
 
@@ -732,7 +732,7 @@ describe("a mailbox that a service opened", () => {
     const later = await publish(wallet, { prior: earlier, agents: [laptop.key], at: 2_000 });
     await openMailbox(store, offer, signatures.actor(laptop, later), keyOf(8));
     await expect(pickUpAll(await services.pickup(mailbox.link, signatures.actor(phone, earlier)))).rejects.toThrow(
-      /answered 403: .+does not count/,
+      /answered 403: .+is not honored/,
     );
   });
 

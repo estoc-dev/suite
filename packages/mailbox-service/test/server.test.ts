@@ -220,7 +220,7 @@ describe("a mailbox service", () => {
     const recordsBefore = await records(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not count/);
+    expect(await response.text()).toMatch(/is not honored/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
@@ -267,7 +267,7 @@ describe("a mailbox service", () => {
     release();
     const response = await pendingResponse;
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not count/);
+    expect(await response.text()).toMatch(/is not honored/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
@@ -827,7 +827,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     ).toBe(200);
     const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).zip);
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not count/);
+    expect(await response.text()).toMatch(/is not honored/);
   });
 
   it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
@@ -1039,7 +1039,7 @@ describe("a mailbox that a service opened", () => {
     expect(await acceptAccount(service, listedAgent)).toBe(200);
     const response = await post(service, mailbox.pickupId, await pickupRequest(removedAgent, mailbox));
     expect(response.status).toBe(403);
-    expect(await response.text()).toMatch(/does not count/);
+    expect(await response.text()).toMatch(/is not honored/);
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([]);
   });
 

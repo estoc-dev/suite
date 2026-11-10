@@ -275,7 +275,7 @@ Of a root's identity versions, the latest crisis, by `at` and then by the
 link of its signed identity, and the ones that follow it count. The others
 do not: those before it, and those on a branch that does not follow it.
 With no crisis, all of them count. A signature by an identity version that
-does not count does not count either, whoever made it, the root among them,
+does not count is not honored, whoever made it, the root among them,
 and whenever the reader took it in. Which records still stand, and what to
 sign again, is for each application to say: a crisis rebuilds from the
 root and does not undo what was done. Each identity version after a crisis
@@ -317,33 +317,34 @@ an index over the blobs of a store does.
 Their `current` gives the current identity version of a signed identity's
 root: of those the reader has seen and the one given with those it follows,
 the latest that counts, read from the reader. They are the reader's
-`SeenIdentityVersions` too, which say whether a signature counts: their
-`counts` says whether the identity version it carries counts, and whether
-the key that made it signs for the current identity version of its root.
-That is how a signature that comes in now counts, such as a request a
-service answers, whether or not the store took it in before.
+`SeenIdentityVersions` too, which say whether the reader honors a
+signature: their `honors` says whether the identity version it carries
+counts, and whether the key that made it signs for the current identity
+version of its root. That is how a signature that comes in now is honored,
+such as a request a service answers, whether or not the store took it in
+before.
 
 `asTakenIn` of `People` is the `SeenIdentityVersions` of what the store
-holds. It counts a signature as the store took it in:
+holds. It honors a signature as the store took it in:
 
 - By the identity versions the store held when it took the signature in,
   with the one the signature carries and those it follows: its identity
   version counts by them, and its key signs for the current one of them.
   An identity version the store takes in later that does not list the key
-  leaves it counting, and one taken in before refuses it, whichever
+  leaves it honored, and one taken in before refuses it, whichever
   identity version it carries.
 - By the identity versions the store holds now, as for its identity version
   counting: a crisis cuts it, whenever the store took the crisis in.
-- A signature the store does not hold comes in now, and counts as by
-  `counts`, as does one that only a staged batch holds until the batch is
+- A signature the store does not hold comes in now, and is honored as by
+  `honors`, as is one that only a staged batch holds until the batch is
   committed.
 
 The store keeps the order it took blobs in, so reading it again gives the
 same. The order is of one store: another device that takes in the same
-blobs in another order may count otherwise.
+blobs in another order may honor a signature otherwise.
 
-`noIdentityVersions` is a reader that has seen no identity versions, so a
-signature counts by the identity version it carries and those it follows
+`noIdentityVersions` is a reader that has seen no identity versions, so it
+honors a signature by the identity version it carries and those it follows
 alone, of which it is the latest.
 
 ## People
@@ -375,7 +376,7 @@ from different signed identities of a root may differ in `identityVersions()`
 and in `current()`: each takes the identity versions the reader has seen with
 the one it was taken from and those it follows, and of those the latest
 crisis and the ones that follow it count, or all of them when none is a
-crisis. A signature that carries the one in hand counts by the same.
+crisis. A signature that carries the one in hand is honored by the same.
 
 A person reads no signatures. What a signature is read from, and whether
 it is verified against the identity versions a store holds or by
@@ -416,8 +417,8 @@ is the verifier of a signature: it takes the signature as an object of
 identity from the reader with `signedIdentities.read`, and verifies the
 signature's bytes by the key the identity's schema reads from them, over the
 text for the object by that signed identity; `signatures.read` does the same
-from the link of the signature. It also refuses a signature that does not
-count by the `SeenIdentityVersions` it is given. By `counts` of `People`,
+from the link of the signature. It also refuses a signature that the
+`SeenIdentityVersions` it is given do not honor. By `honors` of `People`,
 that is one whose identity version a crisis cuts, or whose key does not
 sign for the current identity version, the latest that counts of those the
 reader has seen and the one the signature carries; by `asTakenIn`, the
@@ -475,11 +476,11 @@ signatures over objects of `schema`, each as a `SignatureOver`: the
 signature with the object it signs, read with `schema`. A signature over
 an object of another schema is left out. It does not verify the
 signatures it takes, since what a selection takes depends on the record
-and its closure alone, and whether a signature counts depends on the
+and its closure alone, and whether a signature is honored depends on the
 identity versions a reader has seen. An index whose rows need a signature
 verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
-it still counts to what reads the rows, which asks `counts` of a reader's
-`SeenIdentityVersions`. Here the notes each root has signed:
+it is still honored to what reads the rows, which asks `honors` of a
+reader's `SeenIdentityVersions`. Here the notes each root has signed:
 
 ```ts
 const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {

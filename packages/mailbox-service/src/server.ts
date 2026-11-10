@@ -348,14 +348,14 @@ class MailboxService {
   }
 
   /**
-   * The service's signature at `link` over an acknowledgement while it counts
-   * by `people`. Once a crisis of the service's root cuts it, the service
+   * The service's signature at `link` over an acknowledgement while `people`
+   * honor it. Once a crisis of the service's root cuts it, the service
    * signs the same acknowledgement as its current identity version, and
    * writes that signature to the store as a record.
    */
   async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
-    if (await people.counts(signature)) return link;
+    if (await people.honors(signature)) return link;
     const renewedSignature = await this.#sign({ link: signature.object }, people);
     await this.#store.write({ records: [renewedSignature] });
     return renewedSignature.link;
@@ -392,7 +392,7 @@ class MailboxService {
    * wait no more, and answers with what waits then.
    *
    * The request is verified as signed for the root of the mailbox's account,
-   * and as counting by the identity versions the store holds. When it is not,
+   * and as honored by the identity versions the store holds. When it is not,
    * it is refused with 403, though it reads.
    */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
@@ -414,8 +414,8 @@ class MailboxService {
     const { signedIdentity, key } = signature;
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
-    if (!(await people.counts(signature)))
-      return answer(403, `the signature by ${key.link} does not count by the identity versions of ${mailbox.root}`);
+    if (!(await people.honors(signature)))
+      return answer(403, `the signature by ${key.link} is not honored by the identity versions of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
@@ -485,11 +485,11 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
 /**
  * Makes the service of `signer`'s identity at `origin`.
  *
- * - The store holds the Services the service signed before, the latest of
- *   which that counts says where it was and what it offered there.
+ * - The store holds the Services the service signed before, and the latest
+ *   of them that is honored says where it was and what it offered there.
  * - When the service says the same now, that Service stays the latest, and
- *   else the service signs a new one, as it does when none counts once its
- *   root signed a crisis.
+ *   else the service signs a new one, as it does when none is honored once
+ *   its root signed a crisis.
  * - Either way the latest lists the offer of an account and the offer of
  *   mailboxes on `terms`, each under its link, with the service's signature
  *   over it from the latest Service that lists it.

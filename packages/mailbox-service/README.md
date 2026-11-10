@@ -365,12 +365,13 @@ of `@estoc/mailbox`, for an inbox to collect:
 const delivered = await inbox.collect(await services.pickup(inbox.mailbox, actor));
 ```
 
-The actor is any of the identifier of the account. The service verifies
+The actor signs for the identifier of the account. The service verifies
 each pickup as it verifies an acceptance, by whether the identity versions
-of that identifier it holds honor its signature: an agent that the root lists picks
-up without opening the mailbox again, and one that a later identity version
-takes out, or a crisis cuts off, picks up no more once the service has seen
-that identity version, in an acceptance or a request that it acknowledges. Opening what arrives takes the mailbox's key, which
+of that identifier it holds honor its signature: an agent that the root
+lists picks up without opening the mailbox again, and one that a later
+identity version takes out, or a crisis cuts off, picks up no more once the
+service has seen that identity version, in an acceptance or a request that
+it acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 

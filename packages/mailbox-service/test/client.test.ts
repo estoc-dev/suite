@@ -303,7 +303,7 @@ describe("a service reached at its origin", () => {
   });
 });
 
-describe("a service found by its root", () => {
+describe("a service found by its identifier", () => {
   it("is the Service with the latest at that the store holds, whichever came first, read without reaching the service", async () => {
     const first = await startService({ start: 1_000 });
     const movedService = await startService({ start: 5_000 });

@@ -173,8 +173,9 @@ export class Signatures {
    * - It does not verify them, as what a selection takes depends on the
    *   record and its closure alone, and whether a signature is honored
    *   depends on the identity versions a reader has seen.
-   * - Reading a signature with it throws when the reader gives no blob for
-   *   the object, and where `decodeObject` throws for an object of `schema`.
+   *
+   * @throws from `read`, when the reader gives no blob for the object, and
+   *   where `decodeObject` throws for an object of `schema`.
    */
   selectionOver<F extends Fields<Json>>(
     schema: Schema<Json, F>,

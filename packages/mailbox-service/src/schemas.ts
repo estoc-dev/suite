@@ -1,4 +1,4 @@
-import type { KeyObject, Signature } from "@estoc/identity";
+import type { Identifier, Signature } from "@estoc/identity";
 import {
   DRAFT_2020_12,
   type EncodedObject,
@@ -83,8 +83,8 @@ export type OriginData = { readonly origin: string };
 
 /**
  * What a service signs to offer an account to any identity that signs it
- * too. It names the root of the service's identity, so each service's offer
- * has a link of its own, and a signature over it accepts that service's
+ * too. It names the service by its identifier, so each service's offer has
+ * a link of its own, and a signature over it accepts that service's
  * offer alone.
  */
 export const accountOfferSchema: JsonSchema = {
@@ -96,7 +96,7 @@ export const accountOfferSchema: JsonSchema = {
   additionalProperties: false,
 };
 
-export type AccountOfferData = { readonly identity: JsonLink<KeyObject> };
+export type AccountOfferData = { readonly identity: { readonly $link: Identifier } };
 
 /**
  * What a service signs to acknowledge an acceptance of its offer:
@@ -131,7 +131,7 @@ const mailboxIdSchema: JsonObject = { type: "string", pattern: MAILBOX_ID.source
  * - What waits is kept for `retention` milliseconds.
  * - A mailbox holds at most `quota` bytes waiting.
  * - A message is at most `size` bytes.
- * - It names the root of the service's identity, as the offer of an account
+ * - It names the service by its identifier, as the offer of an account
  *   does, so a request for it asks this service alone.
  */
 export const mailboxOfferSchema: JsonSchema = {
@@ -150,14 +150,14 @@ export const mailboxOfferSchema: JsonSchema = {
 
 export type MailboxTerms = { readonly retention: number; readonly quota: number; readonly size: number };
 
-export type MailboxOfferData = MailboxTerms & { readonly identity: JsonLink<KeyObject> };
+export type MailboxOfferData = MailboxTerms & { readonly identity: { readonly $link: Identifier } };
 
 /**
- * What an identity signs to ask a service for a mailbox under the account
- * of its root: `offer` is the link of the offer of mailboxes, and `key` the
- * x25519 public key that messages to the mailbox are sealed to, as 32 bytes
- * in lowercase hex. Each mailbox has a key of its own, so each request is
- * one of its own too.
+ * What an identity signs to ask a service for a mailbox under its account:
+ * `offer` is the link of the offer of mailboxes, and `key` the x25519 public
+ * key that messages to the mailbox are sealed to, as 32 bytes in lowercase
+ * hex. Each mailbox has a key of its own, so each request is one of its own
+ * too.
  */
 export const mailboxRequestSchema: JsonSchema = {
   $schema: DRAFT_2020_12,

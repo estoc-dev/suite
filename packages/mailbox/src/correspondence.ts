@@ -1,8 +1,8 @@
 import {
   type Actor,
+  type Identifier,
   type IdentityKit,
   type IdentityVersion,
-  type KeyObject,
   noIdentityVersions,
   type People,
   type Signature,
@@ -31,7 +31,7 @@ export class Correspondence {
   readonly #store: Store;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
-  readonly #root: Link<KeyObject>;
+  readonly #identifier: Identifier;
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
@@ -48,7 +48,7 @@ export class Correspondence {
     this.#store = store;
     this.#post = post;
     this.#actor = actor;
-    this.#root = actor.signedIdentity.identity.root.link;
+    this.#identifier = actor.signedIdentity.identity.identifier;
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
@@ -85,8 +85,8 @@ export class Correspondence {
   }
 
   /**
-   * Sends `root` and its closure in the store to each mailbox of the latest grant of `to`'s root
-   * to the actor's root, and writes a record for each mailbox that takes it.
+   * Sends `root` and its closure in the store to each mailbox of the latest grant of the person of
+   * `to` to the actor, and writes a record for each mailbox that takes it.
    *
    * - `to` takes messages at each of those mailboxes, so the message has gone once one takes it. A
    *   mailbox that turns it back leaves no record and does not stop the others.
@@ -100,11 +100,12 @@ export class Correspondence {
    * @throws when the store does not hold `root` or a blob of its closure.
    */
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
-    const from = to.identity.root.link;
+    const from = to.identity.identifier;
     const series = await view(this.#store, this.#grants.series);
-    const grant = await series.grantFrom(from, this.#root, (await view(this.#store, this.#seenPeople)).asTakenIn);
+    const { asTakenIn } = await view(this.#store, this.#seenPeople);
+    const grant = await series.grantFrom(from, this.#identifier, asTakenIn);
     const mailboxes = grant?.object.data.mailboxes ?? [];
-    if (mailboxes.length === 0) throw new UndeliveredMessage("gone", `${from} grants ${this.#root} no mailbox`);
+    if (mailboxes.length === 0) throw new UndeliveredMessage("gone", `${from} grants ${this.#identifier} no mailbox`);
     const outboxes = await Promise.all(mailboxes.map(({ $link }) => this.#post.outbox($link)));
     const deliveries: Delivery[] = [];
     const turnedBack: UndeliveredMessage[] = [];
@@ -125,8 +126,8 @@ export class Correspondence {
    * message from whoever signed it.
    *
    * - It is honored as the store took it in.
-   * - `mailbox` is in a grant of the actor's root to the signer's root that is honored as the store
-   *   took it in too. An earlier grant is honored as the latest is, so what came in before a move
+   * - `mailbox` is in a grant of the actor to the signer that is honored as the store took it in
+   *   too. An earlier grant is honored as the latest is, so what came in before a move
    *   still reads as theirs.
    * - Anything else gives `undefined`, since anyone can send anything to a mailbox.
    *
@@ -138,8 +139,8 @@ export class Correspondence {
     const { asTakenIn } = await view(this.#store, this.#seenPeople);
     if (!(await asTakenIn.honors(signature))) return undefined;
     const series = await view(this.#store, this.#grants.series);
-    const signer = signature.signedIdentity.identity.root.link;
-    for await (const { object } of series.grantsFrom(this.#root, signer, asTakenIn)) {
+    const signer = signature.signedIdentity.identity.identifier;
+    for await (const { object } of series.grantsFrom(this.#identifier, signer, asTakenIn)) {
       if (object.data.mailboxes.some(({ $link }) => $link === mailbox)) return signature;
     }
     return undefined;

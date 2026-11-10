@@ -3,8 +3,8 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
+  type Identifier,
   type IdentityObject,
-  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type SignedIdentityObject,
@@ -67,7 +67,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<KeyObject> }> = await encodeSchema(
+const chat: Schema<Json, { readonly text: string; readonly to?: { readonly $link: Identifier } }> = await encodeSchema(
   {
     $schema: DRAFT,
     title: "Chat",
@@ -80,11 +80,11 @@ const chat: Schema<Json, { readonly text: string; readonly to?: JsonLink<KeyObje
 );
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
-// is for by the link of their root, whether that is the reader.
+// is for by their identifier, whether that is the reader.
 async function readChat(bundle: Bundle, reader: IdentityObject) {
   const { identity, object } = await readSigned(bundle, chat);
   const { text, to } = object.data;
-  return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.root.link };
+  return { author: identity, text, forReader: to === undefined ? undefined : to.$link === reader.identifier };
 }
 
 describe("a chat line", () => {
@@ -183,8 +183,8 @@ describe("a one-time invitation", () => {
 });
 
 type Sale = {
-  readonly buyer: JsonLink<KeyObject>;
-  readonly seller: JsonLink<KeyObject>;
+  readonly buyer: { readonly $link: Identifier };
+  readonly seller: { readonly $link: Identifier };
   readonly goods: string;
   readonly price: string;
 };
@@ -218,8 +218,8 @@ async function salesInForce(receivedBundles: readonly Bundle[]): Promise<Sale[]>
     record.identities.push(identity);
     signers.set(object.link, record);
   }
-  const signedBy = (identities: IdentityObject[]) => (party: JsonLink<KeyObject>) =>
-    identities.some((identity) => identity.root.link === party.$link);
+  const signedBy = (identities: IdentityObject[]) => (party: { readonly $link: Identifier }) =>
+    identities.some((identity) => identity.identifier === party.$link);
   return [...signers.values()]
     .filter(({ terms, identities }) => [terms.buyer, terms.seller].every(signedBy(identities)))
     .map(({ terms }) => terms);
@@ -302,19 +302,19 @@ describe("two people who meet", () => {
       };
       // Who wrote each line among `deliveries`, and its text, leaving out what is no message and what is no line.
       const read = async (deliveries: readonly Delivery[]) => {
-        const shownLines: [Link<KeyObject>, string][] = [];
+        const shownLines: [Identifier, string][] = [];
         for (const { mailbox, bundle } of deliveries) {
           const message = await correspondence.messageAt(mailbox, bundle);
           const line = await lines.read(bundle, store);
           if (message !== undefined && line !== undefined) {
-            shownLines.push([message.signedIdentity.identity.root.link, line.object.data.text]);
+            shownLines.push([message.signedIdentity.identity.identifier, line.object.data.text]);
           }
         }
         return shownLines;
       };
       const { signedIdentity } = actor;
-      const root = signedIdentity.identity.root.link;
-      return { root, signedIdentity, store, intake, correspondence, openInbox, say, read };
+      const { identifier } = signedIdentity.identity;
+      return { identifier, signedIdentity, store, intake, correspondence, openInbox, say, read };
     };
     return { grace: await person(8), heidi: await person(9) };
   };
@@ -350,9 +350,9 @@ describe("two people who meet", () => {
     expect(await grace.read(await atGrace.collect())).toEqual([]);
 
     await grace.say(heidiAsSeen, "hi Heidi");
-    expect(await heidi.read(await atHeidi.collect())).toEqual([[grace.root, "hi Heidi"]]);
+    expect(await heidi.read(await atHeidi.collect())).toEqual([[grace.identifier, "hi Heidi"]]);
     await heidi.say(graceAsSeen, "hi Grace");
-    expect(await grace.read(await atGrace.collect())).toEqual([[heidi.root, "hi Grace"]]);
+    expect(await grace.read(await atGrace.collect())).toEqual([[heidi.identifier, "hi Grace"]]);
   });
 
   it("move a mailbox with nothing lost, and what came in at the old one still reads as a message", async () => {
@@ -377,16 +377,16 @@ describe("two people who meet", () => {
     const atNew = await newInbox.collect();
 
     // Grace signs a grant without the old mailbox, and stops receiving there.
-    expect(await grace.read(atNew)).toEqual([[heidi.root, "during the move"]]);
+    expect(await grace.read(atNew)).toEqual([[heidi.identifier, "during the move"]]);
     await grace.correspondence.send(heidi.signedIdentity, (await give([newInbox.mailbox])).link);
     await atHeidi.collect();
     await heidi.say(grace.signedIdentity, "after the move");
     expect(await oldInbox.collect()).toEqual([]);
 
     expect(await grace.read([...beforeMove, ...duringMove, ...(await newInbox.collect())])).toEqual([
-      [heidi.root, "before the move"],
-      [heidi.root, "during the move"],
-      [heidi.root, "after the move"],
+      [heidi.identifier, "before the move"],
+      [heidi.identifier, "during the move"],
+      [heidi.identifier, "after the move"],
     ]);
   });
 });

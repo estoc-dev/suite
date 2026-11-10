@@ -2,8 +2,8 @@ import { readBundle, writeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
+  type Identifier,
   type IdentityVersion,
-  type KeyObject,
   loadIdentity,
   type People,
   type Signature,
@@ -44,7 +44,7 @@ const network = await MemoryNetwork.create(defaultValidator);
 
 interface Person {
   readonly actor: Actor;
-  readonly root: Link<KeyObject>;
+  readonly identifier: Identifier;
   readonly store: Store;
   readonly post: Post;
   readonly intake: Intake;
@@ -64,13 +64,13 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
-  return { actor, root: actor.signedIdentity.identity.root.link, store, post, intake, inbox, collect };
+  return { actor, identifier: actor.signedIdentity.identity.identifier, store, post, intake, inbox, collect };
 }
 
 const personSigningAs = (someone: Person, agent: Signer, identityVersion: SignedIdentityObject): Person => ({
   ...someone,
   actor: signatures.actor(agent, identityVersion),
-  root: identityVersion.identity.root.link,
+  identifier: identityVersion.identity.identifier,
 });
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
@@ -115,7 +115,11 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
 }
 
 const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
-  (await view(store, grants.series)).grantFrom(from.root, to.root, (await view(store, seenPeople)).asTakenIn);
+  (await view(store, grants.series)).grantFrom(
+    from.identifier,
+    to.identifier,
+    (await view(store, seenPeople)).asTakenIn,
+  );
 
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {

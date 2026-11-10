@@ -75,9 +75,9 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
 /** Whether a reader honors a signature, by the identity versions it has seen. */
 export interface SeenIdentityVersions {
   /**
-   * Whether the reader honors `signature`, by the identity versions of its
-   * root that the reader has seen, and the one it carries with those it
-   * follows.
+   * Whether the reader honors `signature`, by the identity versions of
+   * whoever signed it that the reader has seen, and the one it carries with
+   * those it follows.
    *
    * - Of those, the latest crisis and the ones that follow it count, or all
    *   of them when none is a crisis. A root signs a crisis when it no longer
@@ -154,7 +154,7 @@ export class Signatures {
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
     if (!(await seenIdentityVersions.honors(verifiedSignature))) {
       throw new Error(
-        `the signature by ${verifiedSignature.key.link} is not honored by the identity versions of ${signedIdentity.identity.root.link}`,
+        `the signature by ${verifiedSignature.key.link} is not honored by the identity versions of ${signedIdentity.identity.identifier}`,
       );
     }
     return verifiedSignature;

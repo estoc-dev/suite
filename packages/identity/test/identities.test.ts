@@ -63,6 +63,11 @@ describe("an identity", () => {
     expect(identity.data).toEqual({ root: { $link: keys.encode(key(ed25519)).link }, agents: [], at: 1_000 });
   });
 
+  it("has the link of its root as its identifier", () => {
+    const identity = identities.encode(key(ed25519), { at: 1_000 });
+    expect(identity.identifier).toBe(identity.root.link);
+  });
+
   it("is another identity for the same public key in another scheme", () => {
     const { publicKey } = key(ed25519);
     const plain = identities.encode({ scheme: ed25519, publicKey }, { at: 0 });
@@ -255,11 +260,12 @@ describe("the agents of an identity", () => {
     });
   });
 
-  it("make another identity of the same root", async () => {
+  it("make another identity of the same root, and of the same someone", async () => {
     const { identity } = await publish(signer(ed25519), { agents: [key(ed25519, 2)], at: 0 });
     const own = identities.encode(key(ed25519), { at: 0 });
     expect(identity.link).not.toBe(own.link);
     expect(identity.root.link).toBe(own.root.link);
+    expect(identity.identifier).toBe(own.identifier);
   });
 
   it("in another scheme than the root are carried with each blob of the closure once, and nothing else", async () => {
@@ -408,10 +414,10 @@ describe("the identity version of a signed identity", () => {
   it.each([
     ["with no agents", () => publish(root, { at: 1_000 })],
     ["with agents", () => publish(root, { agents: [key(ed25519, 2)], at: 1_000 })],
-  ])("is the root, the at and the link of an identity %s", async (_, signed) => {
+  ])("is the identifier, the at and the link of an identity %s", async (_, signed) => {
     const signedIdentity = await signed();
     expect(identityVersions.identityVersionOf(signedIdentity)).toEqual([
-      signedIdentity.identity.root.link,
+      signedIdentity.identity.identifier,
       1_000,
       signedIdentity.link,
     ]);
@@ -420,7 +426,7 @@ describe("the identity version of a signed identity", () => {
   it("names itself as its last crisis when it is a crisis", async () => {
     const crisis = await publish(root, { prior: await publish(root, { at: 1_000 }), isCrisis: true, at: 2_000 });
     expect(identityVersions.identityVersionOf(crisis)).toEqual([
-      crisis.identity.root.link,
+      crisis.identity.identifier,
       2_000,
       crisis.link,
       crisis.link,
@@ -432,7 +438,7 @@ describe("the identity version of a signed identity", () => {
     const crisis = await publish(root, { prior: first, isCrisis: true, at: 2_000 });
     const after = await publish(root, { prior: await publish(root, { prior: crisis, at: 3_000 }), at: 4_000 });
     expect(identityVersions.identityVersionOf(after)).toEqual([
-      after.identity.root.link,
+      after.identity.identifier,
       4_000,
       after.link,
       crisis.link,

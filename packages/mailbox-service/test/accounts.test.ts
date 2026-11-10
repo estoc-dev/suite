@@ -16,7 +16,7 @@ describe.each([
   { name: "a MemoryAccounts", open: async (): Promise<Accounts> => new MemoryAccounts() },
   { name: "a SqliteAccounts", open: openInTemporaryFolder },
 ])("$name", ({ open }) => {
-  it("keeps one account for a root, of two added at once", async () => {
+  it("keeps one account for an identifier, of two added at once", async () => {
     const accounts = await open();
     const [alice, bob] = [linkNamed("alice"), linkNamed("bob")];
     expect(await Promise.all([accounts.add(alice, linkNamed("one")), accounts.add(alice, linkNamed("two"))])).toEqual([

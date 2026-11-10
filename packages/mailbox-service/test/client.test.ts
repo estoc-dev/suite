@@ -212,13 +212,13 @@ describe("a service reached at its origin", () => {
     expect(await inboundRowsOf(store)).toEqual([]);
   });
 
-  it("refuses a Service that lists an offer signed by another root", async () => {
+  it("refuses a Service that lists an offer signed for another identifier", async () => {
     const { origin } = await startServer(
       async (_, origin) =>
         new Response(await signedService(origin, [[offer, await actorOf(mallory)]], await actorOf(serviceSigner))),
     );
     const { services } = await client();
-    await expect(services.fetch(origin)).rejects.toThrow(/lists an offer signed by another root/);
+    await expect(services.fetch(origin)).rejects.toThrow(/lists an offer signed for another identifier/);
   });
 
   it("refuses a Service that lists an offer by an agent that the identity version signing the Service takes out, until the offer is signed again", async () => {
@@ -271,14 +271,14 @@ describe("a service reached at its origin", () => {
     expect(account.service.identity.link).toBe(serviceIdentity(1_000).link);
   });
 
-  it("refuses an account offer that names another root than that of the identity that signed it", async () => {
+  it("refuses an account offer that names another identifier than that of the identity that signed it", async () => {
     const zip = async (origin: string) => {
       const actor = await actorOf(mallory);
       return signedService(origin, [[offer, actor]], actor);
     };
     const { origin } = await startServer(async (_, origin) => new Response(await zip(origin)));
     const { services } = await client();
-    await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another root/);
+    await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another identifier/);
   });
 
   it("passes over an offer of a schema it does not read", async () => {
@@ -384,7 +384,7 @@ describe("a service found by its root", () => {
     expect(await services.latestOf(signedIdentity)).toBeUndefined();
   });
 
-  it("is undefined for a root of which the store holds no Service", async () => {
+  it("is undefined for someone of whom the store holds no Service", async () => {
     const { origin } = await startService();
     const { services } = await client();
     const { signedIdentity } = await actorOf(serviceSigner);
@@ -417,7 +417,7 @@ describe("an account offer", () => {
     expect(acceptanceSignature.signedIdentity.link).toBe(account.signedIdentity.link);
   });
 
-  it("accepted by an agent that an identity lists opens the account of its root", async () => {
+  it("accepted by an agent that an identity lists opens the account of whoever it signs for", async () => {
     const { origin } = await startService();
     const { services } = await client();
     const actor = await agentOf(laptop, wallet);
@@ -457,11 +457,11 @@ describe("an account offer", () => {
 });
 
 describe("accepting an account offer", () => {
-  it("refuses an acknowledgement signed by another root than the service's, and writes nothing", async () => {
+  it("refuses an acknowledgement signed for another identifier than the service's, and writes nothing", async () => {
     const { origin } = await startService({}, async (_, request) => acknowledgementBy(await actorOf(mallory), request));
     const { store, services } = await client();
     const account = await accountAt(services, origin);
-    await expect(account.accept(await actorOf(alice))).rejects.toThrow(/signed by another root/);
+    await expect(account.accept(await actorOf(alice))).rejects.toThrow(/signed for another identifier/);
     expect(await inboundRowsOf(store)).toHaveLength(1);
   });
 
@@ -505,7 +505,7 @@ const postTo = (url: string, ciphertext: Uint8Array) => fetch(url, { method: "PO
 
 /**
  * A service running at an origin of 127.0.0.1, and a client whose store
- * holds its Service, at which `actor`'s root opened an account.
+ * holds its Service, at which whoever `actor` signs for opened an account.
  */
 async function withAccount(actor: Actor, options: Parameters<typeof startService>[0] = {}) {
   const run = await startService(options);
@@ -535,7 +535,7 @@ async function pickUpAll(pickup: Pickup, signal?: AbortSignal) {
 }
 
 describe("a service's offer of mailboxes", () => {
-  it("opened by an identity whose root has an account there gives an HTTP mailbox at the service's origin, and the store keeps the acknowledgement as come in from there", async () => {
+  it("opened by an identity whose identifier has an account there gives an HTTP mailbox at the service's origin, and the store keeps the acknowledgement as come in from there", async () => {
     const actor = await actorOf(alice);
     const { run, store, offer } = await withAccount(actor);
     expect(offer.terms).toEqual(terms);
@@ -555,7 +555,7 @@ describe("a service's offer of mailboxes", () => {
     expect(pathname).toBe(`/${sendId}`);
   });
 
-  it("opened by an identity whose root has no account there throws what the service said, and writes nothing", async () => {
+  it("opened by an identity whose identifier has no account there throws what the service said, and writes nothing", async () => {
     const { origin } = await startService();
     const { store, services } = await client();
     const { link, mailbox } = await services.fetch(origin);
@@ -776,12 +776,12 @@ describe("a mailbox that a service opened", () => {
     expect(await pickUpAll(await services.pickup(mailbox.link, actor))).toEqual([new Uint8Array([1])]);
   });
 
-  it("is not picked up for another root than the one whose request opened it", async () => {
+  it("is not picked up for another identifier than the one whose request opened it", async () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
     const mailbox = await openMailbox(store, offer, actor);
     await expect(pickUpAll(await services.pickup(mailbox.link, await actorOf(bob)))).rejects.toThrow(
-      /answered 403: the request is signed for another root/,
+      /answered 403: the request is signed for another identifier/,
     );
   });
 
@@ -798,7 +798,7 @@ describe("a mailbox that a service opened", () => {
 /**
  * The bundle of `by`'s signature over an acknowledgement from `at`, at
  * `sendId`, of `requester`'s request for a mailbox sealed to `keyOf(7)` by an
- * offer that names the root of `offerer`, with its closure.
+ * offer that names `offerer` by its identifier, with its closure.
  */
 async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string, at = 1) {
   const root = keys.encode(offerer.key);
@@ -852,8 +852,8 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
         "the service signed it of the account's request",
         async (account) => [await serviceActor(1_000), account, serviceSigner],
       ],
-      ["another root signed it of its own request, for its own offer", async (_, other) => [other, other, mallory]],
-      ["another root signed it of the account's request", async (account, other) => [other, account, serviceSigner]],
+      ["someone else signed it of their own request, for their own offer", async (_, other) => [other, other, mallory]],
+      ["someone else signed it of the account's request", async (account, other) => [other, account, serviceSigner]],
     ],
   )("does not open the mailbox for the account to pick up, though %s", async (_, partiesOf) => {
     const account = await actorOf(alice);

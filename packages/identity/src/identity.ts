@@ -54,13 +54,16 @@ export type IdentityData = {
   readonly at: number;
 };
 
+/** What names someone across their identity versions: the link of their root. */
+export type Identifier = Link<KeyObject>;
+
 /**
  * Someone who signs, as others see them: an identity read from its object
  * with its root, its agents and the signed identity it follows.
  *
- * - Someone is their root: two identities are of the same someone when the
- *   links of their roots are the same. An object that names someone names
- *   their root by that link, while a signature names a signed identity of
+ * - Someone is their `identifier`: two identities are of the same someone
+ *   when their identifiers are the same. An object that names someone names
+ *   them by their identifier, while a signature names a signed identity of
  *   the identity it is made for.
  * - Its root signs for it, and so do its agents.
  * - `at` is when the root signs it, in milliseconds since the Unix epoch by
@@ -72,6 +75,7 @@ export type IdentityData = {
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;
+  readonly identifier: Identifier;
   readonly prior: SignedIdentityObject | undefined;
   readonly root: KeyObject;
   readonly agents: readonly KeyObject[];
@@ -183,6 +187,7 @@ function identityOf(
   return {
     ...object,
     link: object.link as Link<IdentityObject>,
+    identifier: root.link,
     prior,
     root,
     agents,

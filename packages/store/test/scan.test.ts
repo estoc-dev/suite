@@ -117,7 +117,7 @@ describe("an index scanned from a store", () => {
       objectsOf(signatures.schema),
       async function* (object, reader) {
         const signature = await signatures.verify(object, reader, noIdentityVersions);
-        yield [signature.signedIdentity.identity.root.link, signature.object];
+        yield [signature.signedIdentity.identity.identifier, signature.object];
       },
     );
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
@@ -135,7 +135,7 @@ describe("an index scanned from a store", () => {
       ],
     });
     const expectedRows = helloSignatures
-      .map(({ signedIdentity }) => signedIdentity.identity.root.link)
+      .map(({ signedIdentity }) => signedIdentity.identity.identifier)
       .sort()
       .map((link) => [link, hello.link]);
     expect(await whole(await scan(store, bySigner))).toEqual(expectedRows);

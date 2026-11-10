@@ -103,9 +103,9 @@ type Posting = {
   readonly people: PeopleView;
 };
 
-/** An acceptance of a service's offer, acknowledged, for the account of the root of the identity that accepted. */
+/** An acceptance of a service's offer, acknowledged, for the account of whoever accepted. */
 export interface Account {
-  /** The signed identity of the actor that accepted the offer, whose root the account is of. */
+  /** The signed identity of the actor that accepted the offer, whose identifier the account is of. */
   readonly signedIdentity: SignedIdentityObject;
   /** The service's signed identity that signed the acknowledgement. */
   readonly service: SignedIdentityObject;
@@ -132,7 +132,7 @@ export interface Service {
 
 /** A service's offer of an account, taken at the id that the Service lists for it. */
 export class AccountOffer {
-  /** The service's signed identity that signed the Service listing the offer, whose root the offer names. */
+  /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
   readonly service: SignedIdentityObject;
   readonly link: Link<EncodedObject<Json, AccountOfferData>>;
   readonly #url: URL;
@@ -152,8 +152,8 @@ export class AccountOffer {
   }
 
   /**
-   * Accepts the offer for the root of the actor's identity, which opens its
-   * account unless the root has one there.
+   * Accepts the offer for whoever the actor signs for, which opens their
+   * account unless they have one there.
    *
    * - The actor signs the offer, and the service acknowledges that signature.
    * - The service's signature over the acknowledgement is kept in the store
@@ -161,8 +161,8 @@ export class AccountOffer {
    *   at.
    *
    * @throws when the service refuses the acceptance, or when its
-   *   acknowledgement is signed by another root than the service's or is of
-   *   another signature. Nothing is written then.
+   *   acknowledgement is signed for another identifier than the service's or
+   *   is of another signature. Nothing is written then.
    */
   async accept(actor: Actor): Promise<Account> {
     // The service holds the offer and the signature schema, so they are left out.
@@ -187,7 +187,7 @@ export class AccountOffer {
  * taken at the id that the Service lists for it.
  */
 export class MailboxOffer {
-  /** The service's signed identity that signed the Service listing the offer, whose root the offer names. */
+  /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
   readonly service: SignedIdentityObject;
   readonly link: Link<EncodedObject<Json, MailboxOfferData>>;
   readonly terms: MailboxTerms;
@@ -219,7 +219,7 @@ export class MailboxOffer {
 
   /**
    * Opens a mailbox sealed to `key`, an x25519 public key, under the account
-   * of the root of the actor's identity, which the service opened before.
+   * of whoever the actor signs for, which the service opened before.
    *
    * - The actor signs a request for it, and the service acknowledges that
    *   signature.
@@ -231,8 +231,8 @@ export class MailboxOffer {
    *   given, as `(publicKey) => offer.open(actor, publicKey)`.
    *
    * @throws when the service refuses the request, or when its
-   *   acknowledgement is signed by another root than the service's or is of
-   *   another signature. Nothing is written then.
+   *   acknowledgement is signed for another identifier than the service's or
+   *   is of another signature. Nothing is written then.
    */
   async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<Json, HttpMailboxData>> {
     const request = encodeObject(this.#schemas.mailboxRequest, { offer: { $link: this.link }, key: hex.encode(key) });
@@ -269,8 +269,8 @@ export class MailboxOffer {
  * `signature`, written to `schema`, whose `field` links to it.
  *
  * @throws when the service answers another status than 200 or 201, or when
- *   the acknowledgement is signed by another root than the service's or is
- *   of another signature. Nothing is written then.
+ *   the acknowledgement is signed for another identifier than the service's
+ *   or is of another signature. Nothing is written then.
  */
 async function post<K extends string, F extends Readonly<Record<K, JsonLink<Signature>>> & Fields<Json>>(
   to: {
@@ -290,7 +290,7 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
   const stagedPeople = await view(stagedStore, people);
   const acknowledgement = await signatures.read(answer.link, stagedStore, stagedPeople);
   if (!stagedPeople.personOf(to.service).hasSigned(acknowledgement)) {
-    throw new Error("the acknowledgement is signed by another root than the service's");
+    throw new Error("the acknowledgement is signed for another identifier than the service's");
   }
   const { data } = await readObject(stagedStore, acknowledgement.object, to.schema);
   const acknowledgedSignature = data[to.field].$link;
@@ -302,7 +302,7 @@ async function post<K extends string, F extends Readonly<Record<K, JsonLink<Sign
 
 /**
  * What waits at a mailbox that a service opened, which an actor for the
- * root of the mailbox's account picks up.
+ * mailbox's account picks up.
  *
  * Each request is signed, and carries receipts for what was dropped since
  * the one before, which the service drops before it answers with what waits.
@@ -424,8 +424,9 @@ export class Services {
    *
    * @throws when `origin` is not an https origin or an http one on this
    *   machine, when the service answers another status than 200, when the
-   *   Service names another origin, or when it lists an offer signed by
-   *   another root or one that names another root. Nothing is written then.
+   *   Service names another origin, or when it lists an offer signed for
+   *   another identifier or one that names another identifier. Nothing is
+   *   written then.
    */
   async fetch(origin: string): Promise<Service> {
     checkOrigin(origin);
@@ -438,8 +439,8 @@ export class Services {
   }
 
   /**
-   * The latest Service of the root that signed `signedIdentity` that the
-   * store holds, read without reaching the service, or `undefined` when the
+   * The latest Service of the person of `signedIdentity` that the store
+   * holds, read without reaching the service, or `undefined` when the
    * store holds none that is honored.
    *
    * - A Service is honored however it came, by `fetch` or at a mailbox, on this
@@ -454,13 +455,13 @@ export class Services {
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
     const locations = await view(this.#store, this.#locations);
     const people = await view(this.#store, this.#people);
-    const [latest] = await locations.servicesOf(signedIdentity.identity.root.link, people);
+    const [latest] = await locations.servicesOf(signedIdentity.identity.identifier, people);
     return latest === undefined ? undefined : this.#read(latest, this.#store);
   }
 
   /**
    * What waits at `mailbox`, an HTTP mailbox that a service opened, picked
-   * up by `actor`, an actor for the root of the mailbox's account.
+   * up by `actor`, an actor for the mailbox's account.
    *
    * - It goes by the acknowledgement that the Opened mailbox record of
    *   `mailbox` links to, which `open` wrote on this device or on another
@@ -487,7 +488,7 @@ export class Services {
     const { offer } = (await readObject(this.#store, requestObject.$link, this.#schemas.mailboxRequest)).data;
     const { size } = (await readObject(this.#store, offer.$link, this.#schemas.mailboxOffer)).data;
     const service = await this.latestOf(signedIdentity);
-    if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.root.link}`);
+    if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.identifier}`);
     const target = { mailbox, request: request.$link, url: new URL(`/${pickupId}`, service.origin), size };
     return new ServicePickup(target, actor, this.#schemas);
   }
@@ -505,14 +506,14 @@ export class Services {
    * - Offers of schemas the client does not read are passed over.
    *
    * @throws when the Service's origin is not one that a client reaches, when
-   *   an offer it lists is signed by an identity of another root, or when its
-   *   offer of an account or of mailboxes names another root.
+   *   an offer it lists is signed for another identifier, or when its offer
+   *   of an account or of mailboxes names another identifier.
    */
   async #read(link: Link<Signature>, reader: Pick<Store, "get" | "records" | "positionOf">): Promise<Service> {
     const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.personOf(signedIdentity);
-    const { root } = service;
+    const { identifier } = service;
     const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
     checkOrigin(origin);
     const posting = {
@@ -527,14 +528,14 @@ export class Services {
     for (const { offer, acceptId } of offers) {
       const signature = await this.#signatures.read(offer.$link, reader, people);
       if (!service.hasSigned(signature))
-        throw new Error(`the Service of ${root.link} lists an offer signed by another root`);
+        throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
       const bytes = await reader.get(signature.object);
       if (bytes === undefined) throw new Error(`no blob is given for ${signature.object}`);
       const schema = schemaOf(bytes, json);
       const url = new URL(`/${acceptId}`, origin);
       if (account === undefined && schema === this.#schemas.offer.link) {
-        if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== root.link) {
-          throw new Error(`the Service of ${root.link} lists an account offer that names another root`);
+        if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== identifier) {
+          throw new Error(`the Service of ${identifier} lists an account offer that names another identifier`);
         }
         account = new AccountOffer(
           { service: signedIdentity, offer: signature.object, url },
@@ -543,8 +544,8 @@ export class Services {
         );
       } else if (mailbox === undefined && schema === this.#schemas.mailboxOffer.link) {
         const decodedOffer = decodeObject(bytes, this.#schemas.mailboxOffer);
-        if (decodedOffer.data.identity.$link !== root.link) {
-          throw new Error(`the Service of ${root.link} lists a mailbox offer that names another root`);
+        if (decodedOffer.data.identity.$link !== identifier) {
+          throw new Error(`the Service of ${identifier} lists a mailbox offer that names another identifier`);
         }
         mailbox = new MailboxOffer({ service: signedIdentity, offer: decodedOffer, url }, posting, this.#schemas);
       }

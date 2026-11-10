@@ -1,5 +1,6 @@
 export {
   hasSigner,
+  type Identifier,
   type Identities,
   type IdentityContent,
   type IdentityData,

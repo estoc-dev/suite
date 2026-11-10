@@ -239,7 +239,7 @@ class MailboxService {
    * the root of its identity unless the root has one.
    *
    * - Either way the answer is an acknowledgement of this acceptance, one that
-   *   the store holds or a new one, signed as `#renew` does.
+   *   the store holds or a new one.
    * - The signature is verified against the identity versions the service
    *   holds once the whole body has come in, however long the sender took to
    *   send it. So an agent its root removed is refused even when the root has
@@ -262,9 +262,9 @@ class MailboxService {
       return answer(400, reasonOf(error));
     }
     const acknowledgements = await view(this.#store, this.#acknowledgements);
-    const acknowledged = await acknowledgements.acknowledgementOf(acceptance.link);
+    const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
-      acknowledged === undefined
+      heldAcknowledgement === undefined
         ? (
             await this.#acknowledge(
               encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
@@ -273,7 +273,7 @@ class MailboxService {
               acceptance.signedIdentity,
             )
           ).link
-        : await this.#renew(acknowledged, people);
+        : await this.#renew(heldAcknowledgement, people);
     const isNewAccount = await this.#accounts.add(acceptance.signedIdentity.identity.root.link, acknowledgement);
     return this.#answerWith(acknowledgement, isNewAccount ? 201 : 200);
   }
@@ -283,8 +283,7 @@ class MailboxService {
    * identity signed the posted request for it, unless that request opened one
    * before.
    *
-   * - Either way the answer is the acknowledgement of the request, signed as
-   *   `#renew` does.
+   * - Either way the answer is the acknowledgement of the request.
    * - The signature is verified as an acceptance of the offer of an account
    *   is, and refused when its root has no account.
    */
@@ -321,10 +320,8 @@ class MailboxService {
     // Requests of one mailbox at once can each sign an acknowledgement, and
     // each is answered with the one that opened it.
     const keptMailbox = await this.#mailboxes.open(mailbox);
-    return this.#answerWith(
-      keptMailbox.acknowledgement,
-      keptMailbox.acknowledgement === acknowledgement.link ? 201 : 200,
-    );
+    if (keptMailbox.acknowledgement === acknowledgement.link) return this.#answerWith(acknowledgement.link, 201);
+    return this.#answerWith(await this.#renew(keptMailbox.acknowledgement, people), 200);
   }
 
   /**
@@ -359,9 +356,9 @@ class MailboxService {
   async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.counts(signature)) return link;
-    const renewed = await this.#sign({ link: signature.object }, people);
-    await this.#store.write({ records: [renewed] });
-    return renewed.link;
+    const renewedSignature = await this.#sign({ link: signature.object }, people);
+    await this.#store.write({ records: [renewedSignature] });
+    return renewedSignature.link;
   }
 
   /**

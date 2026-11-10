@@ -6,7 +6,7 @@ import type { MailboxTerms } from "./schemas.ts";
 export interface OpenMailbox {
   /** The link of the signature over the request that opened it. */
   readonly request: Link<Signature>;
-  /** The link of the service's signature over the acknowledgement of the request, which a repeated request is answered with. */
+  /** The link of the service's original signature over the acknowledgement of the request. */
   readonly acknowledgement: Link<Signature>;
   /** The root of the identity whose account it is opened under, whose identities pick up there. */
   readonly root: Link<KeyObject>;

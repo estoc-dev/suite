@@ -423,9 +423,10 @@ describe("a mailbox service", () => {
     await store.write({ records: [crisis], blobs: crisis.blobs });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const actor = await actorOf(alice);
-    const accepted = await postAcceptance(service, (await directAcceptance((await rootOf(service)).offer)).zip);
-    expect(accepted.status).toBe(201);
-    const { signature } = await acknowledgementIn(accepted);
+    const { zip } = await directAcceptance((await rootOf(service)).offer);
+    const acceptanceResponse = await postAcceptance(service, zip);
+    expect(acceptanceResponse.status).toBe(201);
+    const { signature } = await acknowledgementIn(acceptanceResponse);
     const mailbox = await openMailbox(service, actor);
     const people = await view(store, peopleView(identityVersions));
     for (const link of [signature.link, mailbox.link])
@@ -539,33 +540,37 @@ describe("a mailbox service started again", () => {
     const actor = await actorOf(alice);
     const before = await rootOf(service);
     const acceptance = await directAcceptance(before.offer);
-    const accepted = await acknowledgementIn(await postAcceptance(service, acceptance.zip));
+    const firstAccountAcknowledgement = await acknowledgementIn(await postAcceptance(service, acceptance.zip));
     const { zip } = await mailboxRequest(actor, before.mailbox.offer);
-    const opened = await mailboxAcknowledgementIn(await postMailboxRequest(service, zip));
-    expect((await post(service, opened.acknowledgement.data.sendId, ciphertextOf(1))).status).toBe(204);
+    const firstMailboxAcknowledgement = await mailboxAcknowledgementIn(await postMailboxRequest(service, zip));
+    const { sendId } = firstMailboxAcknowledgement.acknowledgement.data;
+    expect((await post(service, sendId, ciphertextOf(1))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
     await store.write({ records: [crisis], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
-    const acceptedAgain = await postAcceptance(again, acceptance.zip);
-    expect(acceptedAgain.status).toBe(200);
-    const reaccepted = await acknowledgementIn(acceptedAgain);
-    const openedAgain = await postMailboxRequest(again, zip);
-    expect(openedAgain.status).toBe(200);
-    const reopened = await mailboxAcknowledgementIn(openedAgain);
+    const repeatedAcceptanceResponse = await postAcceptance(again, acceptance.zip);
+    expect(repeatedAcceptanceResponse.status).toBe(200);
+    const renewedAccountAcknowledgement = await acknowledgementIn(repeatedAcceptanceResponse);
+    const repeatedRequestResponse = await postMailboxRequest(again, zip);
+    expect(repeatedRequestResponse.status).toBe(200);
+    const renewedMailboxAcknowledgement = await mailboxAcknowledgementIn(repeatedRequestResponse);
     const people = await view(store, peopleView(identityVersions));
-    for (const [renewed, first] of [
-      [reaccepted, accepted],
-      [reopened, opened],
+    for (const [renewal, first] of [
+      [renewedAccountAcknowledgement, firstAccountAcknowledgement],
+      [renewedMailboxAcknowledgement, firstMailboxAcknowledgement],
     ] as const) {
-      expect(renewed.signature.object).toBe(first.signature.object);
-      expect((await signatures.read(renewed.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
+      expect(renewal.signature.object).toBe(first.signature.object);
+      expect((await signatures.read(renewal.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
     }
     const recordsBefore = await records(store);
     expect((await acknowledgementIn(await postAcceptance(again, acceptance.zip))).signature.link).toBe(
-      reaccepted.signature.link,
+      renewedAccountAcknowledgement.signature.link,
     );
     expect(await records(store)).toEqual(recordsBefore);
-    const mailbox = { link: reopened.signature.link, ...reopened.acknowledgement.data };
+    const mailbox = {
+      link: renewedMailboxAcknowledgement.signature.link,
+      ...renewedMailboxAcknowledgement.acknowledgement.data,
+    };
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
@@ -767,6 +772,34 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect((await mailboxAcknowledgementIn(await postMailboxRequest(service, zip))).signature.link).toBe(
       first?.signature.link,
     );
+  });
+
+  it("answers one request posted again once its root signed a crisis, while the first post still signs, with the acknowledgement of the mailbox the first opened, signed again as the crisis", async () => {
+    const holder = heldSigner(serviceSigner);
+    const { service, store, accounts, mailboxes } = await memoryService({ by: holder.signer });
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const before = await rootOf(service);
+    const { zip } = await mailboxRequest(actor, before.mailbox.offer);
+    holder.isHolding = true;
+    const opener = postMailboxRequest(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
+    const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
+    await store.write({ records: [crisis], blobs: crisis.blobs });
+    await memoryService({ store, accounts, mailboxes, start: 3_000 });
+    const racer = postMailboxRequest(service, zip);
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
+    holder.isHolding = false;
+    holder.release();
+    const openerAnswer = await opener;
+    holder.release();
+    const racerAnswer = await racer;
+    expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
+    const [first, second] = await Promise.all([openerAnswer, racerAnswer].map(mailboxAcknowledgementIn));
+    expect(second?.signature.object).toBe(first?.signature.object);
+    const people = await view(store, peopleView(identityVersions));
+    assert.exists(second);
+    expect((await signatures.read(second.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
   });
 
   it("answers 403 to a request by a root that has no account, and opens no mailbox", async () => {

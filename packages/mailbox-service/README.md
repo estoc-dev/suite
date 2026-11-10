@@ -440,8 +440,11 @@ a crisis of the root, no Service signed before it counts, so the service
 signs its offers and a Service again, as the crisis or one that follows it,
 and they list the offers under the same ids. It signs each acknowledgement
 as the current identity version of its root by the identity versions the
-store holds then, so once the store holds a crisis of the root, it signs as
-the crisis or one that follows it without starting again. Each
+store holds then. So once another start on the same store has signed a
+Service as a crisis of the root, or one that follows it, a service that
+started before signs as that identity version without starting again.
+While the store holds the crisis and no Service that counts, `fetch` throws
+for each request until a service starts on the store again. Each
 acknowledgement is written there too, as a record, with the acceptance or
 the request and its closure, and what the bundle holds besides is dropped.
 

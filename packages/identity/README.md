@@ -261,10 +261,12 @@ identity versions are a chain, and the closure of each holds those it
 follows. Two that follow the same one are a fork, and both stay.
 
 A root removes an agent by signing an identity version that does not list
-it. A reader that has seen that identity version no longer counts the
-agent's signatures, whichever identity version they carry; what it
-accepted before stays accepted. A reader holds only the identity versions
-it has seen, and nothing tells it of the others.
+it. A reader that has seen that identity version takes in none of the
+agent's signatures after it, whichever identity version they carry; what it
+accepted before stays accepted. The agent names the identity version and
+writes `at` itself, so the reader cannot tell when it signed, only when the
+signature came in. A reader holds only the identity versions it has seen,
+and nothing tells it of the others.
 
 A root that no longer relies on what it signed before, as when the store of
 an agent leaks, signs a crisis, an identity version that holds `crisis`.
@@ -306,15 +308,38 @@ when it names the schema and does not fit it. `indexOverBlobs` gives no row for
 a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
-`identityVersions.people` takes those rows and a `Reader`, and gives the
-`People` of the identity versions the reader has seen. The rows hold those
-each identity version follows, as an index over the blobs of a store does.
+`identityVersions.people` takes those rows and the store they are of, a
+`StoreReader`, which gives blobs by link and where it took each in, as a
+store of `@estoc/store` does. It gives the `People` of the identity versions
+the reader has seen. The rows hold those each identity version follows, as
+an index over the blobs of a store does.
 Their `current` gives the current identity version of a signed identity's
 root: of those the reader has seen and the one given with those it follows,
 the latest that counts, read from the reader. They are the reader's
 `SeenIdentityVersions` too, which say whether a signature counts: their
 `counts` says whether the identity version it carries counts, and whether
 the key that made it signs for the current identity version of its root.
+That is how a signature that comes in now counts, such as a request a
+service answers, whether or not the store took it in before.
+
+`asTakenIn` of `People` is the `SeenIdentityVersions` of what the store
+holds. It counts a signature as the store took it in:
+
+- By the identity versions the store held when it took the signature in,
+  with the one the signature carries and those it follows: its identity
+  version counts by them, and its key signs for the current one of them.
+  An identity version the store takes in later that does not list the key
+  leaves it counting, and one taken in before refuses it, whichever
+  identity version it carries.
+- By the identity versions the store holds now, as for its identity version
+  counting: a crisis cuts it, whenever the store took the crisis in.
+- A signature the store does not hold comes in now, and counts as by
+  `counts`.
+
+The store keeps the order it took blobs in, so reading it again gives the
+same. The order is of one store: another device that takes in the same
+blobs in another order may count otherwise.
+
 `noIdentityVersions` is a reader that has seen no identity versions, so a
 signature counts by the identity version it carries and those it follows
 alone, of which it is the latest.
@@ -359,7 +384,7 @@ and `identityVersions.people` reads its rows:
 ```ts
 const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
-const signature = await signatures.read(link, store, people);
+const signature = await signatures.read(link, store, people.asTakenIn);
 const author = people.personOf(signature.signedIdentity);
 ```
 

@@ -29,6 +29,7 @@ const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unkno
   put: (blobs, records) => backend.put(blobs, records),
   records: (start) => backend.records(start),
   blobs: (start) => backend.blobs(start),
+  positionOf: (link) => backend.positionOf(link),
 });
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
@@ -158,6 +159,7 @@ describe("a store", () => {
       put: () => Promise.reject(diskError),
       records: (start) => backend.records(start),
       blobs: (start) => backend.blobs(start),
+      positionOf: (link) => backend.positionOf(link),
     });
     await expect(failingStore.write({ records: [note], blobs: anything.blobs })).rejects.toBe(diskError);
     await expect(failingStore.write({ records: [note], blobs: [image, ...anything.blobs] })).rejects.toBe(diskError);
@@ -201,6 +203,18 @@ describe("a store", () => {
     const outer = object({ inner: { $link: inner.link } });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     expect(order).toEqual([jsonSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
+  });
+
+  it("gives where it took in each blob, after the blobs it links to, and keeps it when the blob is written again", async () => {
+    const store = newStore();
+    const image = utf8("an image");
+    const inner = object({ image: { $link: linkOf(image) } });
+    const outer = object({ inner: { $link: inner.link } });
+    await store.write({ records: [inner], blobs: [image, ...anything.blobs] });
+    await store.write({ records: [outer, inner], blobs: [image] });
+    const links = [jsonSchema.link, anything.link, linkOf(image), inner.link, outer.link];
+    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
+    expect(await store.positionOf(linkOf(utf8("never written")))).toBeUndefined();
   });
 
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {

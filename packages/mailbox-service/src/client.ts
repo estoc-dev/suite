@@ -508,7 +508,7 @@ export class Services {
    *   an offer it lists is signed by an identity of another root, or when its
    *   offer of an account or of mailboxes names another root.
    */
-  async #read(link: Link<Signature>, reader: Pick<Store, "get" | "records">): Promise<Service> {
+  async #read(link: Link<Signature>, reader: Pick<Store, "get" | "records" | "positionOf">): Promise<Service> {
     const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.personOf(signedIdentity);

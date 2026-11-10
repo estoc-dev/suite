@@ -67,6 +67,20 @@ describe("a SqliteBackend", () => {
     expect(await recordsOf(backend)).toEqual([]);
   });
 
+  it("gives a blob put after a put that fails partway the position after those put before", async () => {
+    const backend = open(await makeTemporaryPath());
+    await backend.put(blobsOf("zero"), []);
+    const failure = new Error("cut short");
+    const records = {
+      [Symbol.iterator](): Iterator<Link<never>> {
+        throw failure;
+      },
+    };
+    await expect(backend.put(blobsOf("one", "two"), records)).rejects.toBe(failure);
+    await backend.put(blobsOf("three"), []);
+    expect(await backend.positionOf(linkOf(utf8("three")))).toBe(1);
+  });
+
   it("rejects every call once it is closed", async () => {
     const backend = new SqliteBackend(await makeTemporaryPath());
     backend.close();

@@ -371,7 +371,8 @@ is in a grant the actor's root gave their root. Anything else gives `undefined`,
 since `collect` keeps whatever opens and anyone can send to a mailbox. A store
 that fails to give a blob makes it reject.
 
-What counts is worked out when it is read, by what the store holds then:
+What counts is worked out when it is read, by what the store holds then and
+the order it took it in:
 
 - An earlier grant counts as the latest does, so what came in before a move
   still reads as theirs.
@@ -379,10 +380,13 @@ What counts is worked out when it is read, by what the store holds then:
   earlier grants. A mailbox that was given to one person retires by no longer
   receiving there. One that was given to several still counts what comes in
   from each, whichever of them has been told to stop.
-- Once a reader has seen an identity version that removes an agent, what that
-  agent signed no longer counts, what came in before included: messages it
-  signed, and grants it signed, until a listed key signs a grant of that mailbox
-  again.
+- A message, and each grant, counts as the store took it in, by the identity
+  versions it held then. Once the store holds an identity version that removes
+  an agent, what that agent signs no longer counts, whichever identity version
+  it carries, while what came in before still does.
+- A crisis cuts what came in before as well: messages and grants signed by an
+  identity version before it, until a key it lists signs a grant of that
+  mailbox again.
 
 Two people who have not met hand over what it takes out of band. One hands over
 their signed identity, as a bundle whose root it is, and the other a grant to
@@ -408,8 +412,8 @@ const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIde
 const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
-await series.grantFrom(mine, their, people); // where I take their messages
-await series.grantFrom(their, mine, people); // where they take mine
+await series.grantFrom(mine, their, people.asTakenIn); // where I take their messages
+await series.grantFrom(their, mine, people.asTakenIn); // where they take mine
 ```
 
 `grants.series` is a `View` of `@estoc/store`, made once for the program
@@ -435,20 +439,24 @@ their schema, wherever they sit in the closure of a record or of what came
 in, and is made once for the program too.
 
 A root removes an agent by signing an identity version that does not list it,
-as in `@estoc/identity`. A reader that has seen that identity version no
-longer counts the grants the agent signed, whenever they came in and whatever
-`at` they write:
+as in `@estoc/identity`. By `asTakenIn` of the reader's people, a grant counts
+as the store took it in: one the agent signed counts when it came in before the
+store held that identity version, and does not when it came in after, whatever
+identity version it carries and whatever `at` it writes:
 
-- `grantFrom` then gives the latest grant by a key the current identity
-  version lists, which may be an older one, or `undefined` when there is none.
-- To keep taking messages at a mailbox, the signer has a key the current
-  identity version lists sign a grant of it again, and sends it to the one it
-  is to. The signature carries the new identity version, so that reader sees
-  the removal and the new grant together.
+- `grantFrom` gives the latest grant that counts so, which may be one the
+  removed agent signed before, or `undefined` when there is none.
+- To take messages at a mailbox that no grant counts for, the signer has a key
+  the current identity version lists sign a grant of it again, and sends it to
+  the one it is to. The signature carries the new identity version, so that
+  reader sees the removal and the new grant together.
 - A reader holds only the identity versions it has seen, so a key counts until
   the reader sees the identity version that removes it.
-- The store keeps what came in, so a later identity version that lists the
-  agent again makes its grants count again.
+- A grant that came in after the removal does not count once a later identity
+  version lists the agent again either: it counts by what the store held when
+  it took the grant in, so reading the store again gives the same.
+- A crisis cuts every grant by an identity version before it, whenever it came
+  in.
 
 ## Transports
 

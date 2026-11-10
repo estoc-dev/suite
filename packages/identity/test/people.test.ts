@@ -1,4 +1,4 @@
-import { encodeObject, encodeSchema, type Json, linkOf, type Schema } from "@estoc/object";
+import { encodeObject, encodeSchema, type Json, type Schema } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,17 +9,14 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "../src/index.ts";
-import { rowsOf, schemes } from "./fixtures.ts";
+import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
 const { signatures, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-  identityVersions.people(
-    rowsOf(identityVersions, ...signed),
-    new Map(signed.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes])),
-  );
+  identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
 const linksOf = (signed: readonly SignedIdentityObject[]) => signed.map(({ link }) => link);
 
 const note: Schema<Json, { readonly text: string }> = await encodeSchema(

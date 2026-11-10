@@ -1,4 +1,11 @@
-import { ed25519, type IdentityVersion, loadIdentity, type People, SoftwareSigner } from "@estoc/identity";
+import {
+  ed25519,
+  type IdentityVersion,
+  loadIdentity,
+  noIdentityVersions,
+  type People,
+  SoftwareSigner,
+} from "@estoc/identity";
 import {
   encodeObject,
   encodeSchema,
@@ -52,6 +59,18 @@ describe("a staged batch", () => {
     });
     expect(await stagedStore.get(linkOf(stray))).toBeUndefined();
     expect(await stagedStore.get(carriedObject.link)).toBeUndefined();
+  });
+
+  it("gives where the store took in a blob it holds, and nothing for one that only the batch holds", async () => {
+    const store = newStore();
+    const held = object({ text: "held" });
+    await store.write({ records: [held], blobs: anything.blobs });
+    const note = object({ held: { $link: held.link } });
+    const stagedStore = await store.stage({ records: [note, held] });
+    expect(await stagedStore.positionOf(held.link)).toBe(2);
+    expect(await stagedStore.positionOf(note.link)).toBeUndefined();
+    await stagedStore.commit();
+    expect(await stagedStore.positionOf(note.link)).toBe(3);
   });
 
   it("lists the records of the store and of the batch, each once", async () => {
@@ -229,5 +248,22 @@ describe("a view of a staged batch", () => {
     await stagedStore.commit();
     expect(await store.get(byAgent.link)).toEqual(byAgent.bytes);
     expect(await store.get(hello.link)).toEqual(hello.bytes);
+  });
+
+  it("takes in the batch after what the store holds, so a signature the store holds counts as it took it in", async () => {
+    const store = newStore();
+    const hello = object({ text: "hello" });
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const byAgent = await signatures.actor(agent, listing).sign(hello);
+    await store.write({
+      records: [byAgent],
+      blobs: [hello.bytes, ...anything.blobs, ...signatures.schema.blobs, ...listing.blobs],
+    });
+    const agentsOut = await publish(root, { prior: listing, at: 2_000 });
+    const stagedStore = await store.stage({ records: [agentsOut], blobs: agentsOut.blobs });
+    const stagedPeople = await view(stagedStore, people);
+    const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
+    expect(await stagedPeople.asTakenIn.counts(signature)).toBe(true);
+    expect(await stagedPeople.counts(signature)).toBe(false);
   });
 });

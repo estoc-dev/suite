@@ -35,6 +35,8 @@ export interface Backend {
    * first `start`. A write cut short can leave blobs here that no listed link reaches.
    */
   blobs(start?: number): AsyncIterable<Link<unknown>>;
+  /** Where the blob under `link` is in `blobs`, counting from 0, or `undefined` when none was put under it. */
+  positionOf(link: Link<unknown>): Promise<number | undefined>;
 }
 
 /** What one write puts in a store. */
@@ -63,6 +65,8 @@ export interface Batch {
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its records.
+ * - A store keeps the order it took its blobs in, which a later write leaves as it is, so a reader
+ *   can tell what it held when a blob came in.
  */
 export interface Store {
   /**
@@ -95,6 +99,12 @@ export interface Store {
   stage(batch: Batch): Promise<StagedStore>;
   /** The links of the records, each once, in no particular order. */
   records(): AsyncIterable<Link<never>>;
+  /**
+   * How many blobs the store had taken in before the one of `link`, or `undefined` when it holds
+   * none. A blob is taken in once, by the first write that holds it, and after the blobs it links
+   * to.
+   */
+  positionOf(link: Link<unknown>): Promise<number | undefined>;
   /**
    * The closure of the blob that `link` names: the blob and every blob it links to, directly or
    * through others.
@@ -139,6 +149,11 @@ export interface StagedStore {
    * of the batch are listed here before anything has verified them.
    */
   records(): AsyncIterable<Link<never>>;
+  /**
+   * Where the store took in the blob of `link`, as its `positionOf` gives it. The batch is taken in
+   * only once it is committed, so a blob of the batch that the store does not hold has none.
+   */
+  positionOf(link: Link<unknown>): Promise<number | undefined>;
   /** Writes the batch as `write` writes it. Committing again writes nothing more. */
   commit(): Promise<void>;
 }
@@ -203,6 +218,10 @@ class StoreOf<D> implements Store, RowKeeper {
     return this.#backend.records();
   }
 
+  positionOf(link: Link<unknown>): Promise<number | undefined> {
+    return this.#backend.positionOf(link);
+  }
+
   [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
     return this.#keptRows.rowsOf(index);
   }
@@ -225,6 +244,7 @@ class StoreOf<D> implements Store, RowKeeper {
       },
       records: (start) => backend.records(start),
       blobs: (start) => backend.blobs(start),
+      positionOf: (link) => backend.positionOf(link),
     });
   }
 
@@ -301,13 +321,13 @@ class StoreOf<D> implements Store, RowKeeper {
 }
 
 class StagedStoreOf implements StagedStore, RowKeeper {
-  readonly #store: Pick<Store, "get"> & RowKeeper;
+  readonly #store: Pick<Store, "get" | "positionOf"> & RowKeeper;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly #records: readonly Link<never>[];
 
   constructor(
-    store: Pick<Store, "get"> & RowKeeper,
+    store: Pick<Store, "get" | "positionOf"> & RowKeeper,
     backend: Backend,
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
     records: readonly Link<never>[],
@@ -332,6 +352,10 @@ class StagedStoreOf implements StagedStore, RowKeeper {
       yield link;
     }
     yield* unlistedLinks;
+  }
+
+  positionOf(link: Link<unknown>): Promise<number | undefined> {
+    return this.#store.positionOf(link);
   }
 
   async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
@@ -405,6 +429,14 @@ export class PrivateStore {
   /** The links of the records written here, each once, in no particular order. */
   records(): AsyncIterable<Link<never>> {
     return this.#store.records();
+  }
+
+  /**
+   * How many blobs were kept here before the one of `link`, as a store's `positionOf` gives it. A
+   * blob that only the store beside holds was not kept here, and has none.
+   */
+  positionOf(link: Link<unknown>): Promise<number | undefined> {
+    return this.#store.positionOf(link);
   }
 
   [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {

@@ -115,7 +115,7 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
 }
 
 const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
-  (await view(store, grants.series)).grantFrom(from.root, to.root, await view(store, seenPeople));
+  (await view(store, grants.series)).grantFrom(from.root, to.root, (await view(store, seenPeople)).asTakenIn);
 
 describe("the latest grant of one person to another", () => {
   it("is the one with the greatest at, whatever order they were written in", async () => {
@@ -263,14 +263,14 @@ describe("a grant by an agent that a later identity version does not list", () =
     };
   };
 
-  it("counts until the reader sees that identity version", async () => {
+  it("still counts once the reader sees that identity version, as the store took it in before", async () => {
     const { former, bob } = await twoPeople();
     const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
     await handOver(former, bob, signature.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
 
     await seeIdentityVersion(bob, removalIdentityVersion);
-    expect(await grantFrom(bob, former, bob)).toBeUndefined();
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
   });
 
   it("does not count when it comes in after the reader saw that identity version", async () => {
@@ -282,25 +282,20 @@ describe("a grant by an agent that a later identity version does not list", () =
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
   });
 
-  it("does not count once that identity version comes in below the root of a bundle", async () => {
+  it("does not count when it comes in after that identity version came in below the root of a bundle", async () => {
     const { former, current, bob } = await twoPeople();
     const carol = await person(3);
-    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
-    await handOver(former, bob, signature.link);
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
-
     // Carol's grant is to that identity version, and only her signature is at the root.
     const toWallet = await give(carol, current, [carol.inbox.mailbox], 6_000);
     await handOver(carol, bob, toWallet.link);
 
+    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, signature.link);
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
   });
 
-  it("counts when that identity version comes in without the signature of its root", async () => {
+  it("counts when that identity version came in before it without the signature of its root", async () => {
     const { former, bob } = await twoPeople();
-    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
-    await handOver(former, bob, signature.link);
-
     const forgedIdentityVersion = encodeObject(signedIdentities.schema, {
       identity: { $link: removalIdentityVersion.identity.link },
       signature: "00".repeat(64),
@@ -309,21 +304,21 @@ describe("a grant by an agent that a later identity version does not list", () =
     await bob.intake.receive(readBundle(writeBundle(forgedIdentityVersion, blobs)));
     expect(await bob.store.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
 
+    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, signature.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
   });
 
-  it("gives way to one by a key that the current identity version lists, whatever its at", async () => {
+  it("gives way, when it came in after that identity version, to one by a key that the current identity version lists, whatever its at", async () => {
     const { former, current, bob } = await twoPeople();
-    const oldGrant = await give(former, bob, [former.inbox.mailbox], 9_000_000);
-    await handOver(former, bob, oldGrant.link);
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(oldGrant.link);
-
     const newGrant = await give(current, bob, [current.inbox.mailbox], 6_000);
     await handOver(current, bob, newGrant.link);
+    const oldGrant = await give(former, bob, [former.inbox.mailbox], 9_000_000);
+    await handOver(former, bob, oldGrant.link);
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(newGrant.link);
   });
 
-  it("gives way to an older one by a key that the current identity version still lists", async () => {
+  it("stays the latest once that identity version comes in, over an older one by a key that it still lists", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const identityVersion = await publish(wallet, {
       prior: listingIdentityVersion,
@@ -341,30 +336,51 @@ describe("a grant by an agent that a later identity version does not list", () =
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(newer.link);
 
     await seeIdentityVersion(bob, removalIdentityVersion);
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(older.link);
+    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(newer.link);
   });
 
-  it("does not count as a record once another record carries that identity version", async () => {
-    const { former, current } = await twoPeople();
-    const carol = await person(3);
-    await give(former, carol, [former.inbox.mailbox], 9_000_000);
-    const newGrant = await give(current, carol, [], 6_000);
-
-    expect((await grantFrom(former, former, carol))?.signature.link).toBe(newGrant.link);
-  });
-
-  it("counts again once a later identity version lists its agent again", async () => {
+  it("does not count when it came in after that identity version, even once a later one lists its agent again", async () => {
     const { former, bob } = await twoPeople();
+    await seeIdentityVersion(bob, removalIdentityVersion);
     const signature = await give(former, bob, [former.inbox.mailbox], 6_000);
     await handOver(former, bob, signature.link);
-    await seeIdentityVersion(bob, removalIdentityVersion);
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
 
     await seeIdentityVersion(
       bob,
       await publish(wallet, { prior: removalIdentityVersion, agents: [formerAgent.key], at: 9_000 }),
     );
-    expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
+    expect(await grantFrom(bob, former, bob)).toBeUndefined();
+  });
+
+  it("does not count once the reader sees a crisis that does not follow the identity version it carries", async () => {
+    const { former, bob } = await twoPeople();
+    const signature = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, signature.link);
+
+    await seeIdentityVersion(
+      bob,
+      await publish(wallet, { prior: listingIdentityVersion, agents: [formerAgent.key], isCrisis: true, at: 3_000 }),
+    );
+    expect(await grantFrom(bob, former, bob)).toBeUndefined();
+  });
+
+  it("reads alike from a store made again on the same backend", async () => {
+    const backend = new MemoryBackend();
+    const [alice, bob] = await Promise.all([person(1), person(2, backend)]);
+    const [former, current] = [
+      personSigningAs(alice, formerAgent, listingIdentityVersion),
+      personSigningAs(alice, currentAgent, removalIdentityVersion),
+    ];
+    const before = await give(former, bob, [former.inbox.mailbox], 2_000);
+    await handOver(former, bob, before.link);
+    await seeIdentityVersion(bob, removalIdentityVersion);
+    await handOver(former, bob, (await give(former, bob, [], 9_000)).link);
+    const latest = await grantFrom(bob, current, bob);
+
+    const again = { ...bob, store: new Store(json, backend) };
+    expect(latest?.signature.link).toBe(before.link);
+    expect((await grantFrom(again, current, bob))?.signature.link).toBe(before.link);
   });
 });
 

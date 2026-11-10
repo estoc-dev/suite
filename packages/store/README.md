@@ -100,6 +100,14 @@ Each blob goes in after the blobs it links to, and before the links that
 list it, so a write cut short leaves at worst blobs that nothing lists,
 each with its closure.
 
+A store keeps the order it took its blobs in. `positionOf(link)` gives how
+many blobs it had taken in before that one, or `undefined` for one it does
+not hold. A blob is taken in by the first write that holds it, and writing
+it again leaves it where it was. A store only grows, so a blob keeps its
+position, and a reader can tell what the store held when the blob came in,
+as `@estoc/identity` does to count a signature by the identity versions the
+store held when it took the signature in.
+
 There is no transaction that reads and then writes. Two devices that each
 check that something is missing before writing it will both write it, and
 when their stores are joined there are two. What has to come out as one is
@@ -133,6 +141,10 @@ Staged on a store that holds nothing, a batch is read by what it holds
 alone, which is what its sender chose to show. Staged on the user's
 store, it is read by what the user has seen as well, so an identity version
 that took an agent out counts even when the batch leaves it out.
+
+The batch is taken in only once it is committed. The `positionOf` of a
+staged batch is the store's, and gives nothing for a blob that only the
+batch holds, so a reader takes what the batch adds as coming in now.
 
 The records of a staged batch are listed before anything has verified
 them. A row stands on its object and its closure, as an identity version
@@ -276,7 +288,8 @@ and for a blob that it reads and that turns out to be no object of its schema.
 
 What depends on what else is written is worked out from the rows when they
 are read, and a `View` does it: an index, and `read`, which works a value
-out from the rows of that index, reading what they name from a `Reader`.
+out from the rows of that index, reading what they name from the store,
+which also gives where it took each in.
 The index says which objects are read, and `read` what their rows come to,
 so an application can give the one and a module that knows what the objects
 mean the other. The two meet in the type of a row.
@@ -304,8 +317,8 @@ await notes.noteTagged("lunch");
 ```
 
 `view(store, view)` scans the store for the index and reads the rows with
-the store as the reader, so the rows and the objects they name come from
-one store. When `read` gives a promise, as it does when it works the value
+the store, so the rows, the objects they name and where each was taken in
+come from one store. When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
 The value is of what the store held when it was viewed: what is written
 later is taken in when it is viewed again.
@@ -412,6 +425,8 @@ and one that the store holds already is not kept again. `scan` and `view`
 take a private store as they take a store. An index over blobs reads only the
 blobs kept in the private store, as its `records` lists only what was written
 to it, so one that the store beside holds is read only by following a link.
+Its `positionOf` gives where it kept a blob, and nothing for one that only
+the store beside holds.
 
 A private store is only on the device that keeps it. Like a store, it only
 grows, so a key that is no longer used is still kept. Whether it is
@@ -424,7 +439,8 @@ links as it is given them; the store does the hashing and decoding, of
 what goes in and of what comes back. The list keeps the order in which
 links were first put, and a backend gives it from any point on, so a store
 reads only the records listed since it last scanned. A backend gives the links
-of its blobs in the same way, which a store uses only for an index over blobs.
+of its blobs in the same way, which a store uses for an index over blobs, and
+where a blob is among them, which is the store's `positionOf`.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 

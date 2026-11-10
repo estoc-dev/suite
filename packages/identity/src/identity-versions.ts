@@ -2,6 +2,7 @@ import { type Json, type Link, type Reader, SelectionBySchema } from "@estoc/obj
 import { hasSigner } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { People, Person } from "./person.ts";
+import type { Signature } from "./signature.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
@@ -25,6 +26,15 @@ export type IdentityVersion =
       signedIdentity: Link<SignedIdentityObject>,
       lastCrisis: Link<SignedIdentityObject>,
     ];
+
+/**
+ * A reader of the blobs a store holds that also says in what order the store
+ * took them in, as a store of `@estoc/store` does.
+ */
+export interface StoreReader extends Reader {
+  /** How many blobs the store had taken in before the one of `link`, or `undefined` when it holds none. */
+  positionOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
+}
 
 /** Identity versions: the row each is, their selection, and the people of those a reader has seen. */
 export class IdentityVersions {
@@ -63,44 +73,74 @@ export class IdentityVersions {
   }
 
   /**
-   * The people of the identity versions a reader has seen, from `rows`, the
-   * rows of its index of those identity versions, each as `identityVersionOf`
-   * gives it. An identity version a row names is read from `reader`.
+   * The people of the identity versions a store holds, from `rows`, the rows
+   * of its index of those identity versions, each as `identityVersionOf`
+   * gives it. An identity version a row names is read from `store`, which
+   * also says where it took each in, for `asTakenIn`.
    *
    * The rows hold those that each identity version follows, as an index over
    * the blobs of a store does: the store holds the closure of each, and a
    * signed identity whose closure it lacks does not read.
    */
-  people(rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> }, reader: Reader): People {
-    const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
-    const countingVersionsOf = async (signedIdentity: SignedIdentityObject) => {
+  people(
+    rows: { range(prefix: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> },
+    store: StoreReader,
+  ): People {
+    const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, store);
+    const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
       for await (const row of rows.range([signedIdentity.identity.root.link])) seen.set(row[2], row);
-      const links = countingVersionsAmong([...seen.values()].sort(compareIdentityVersions)).map(([, , link]) => link);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
-      // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
-      return { links, signedIdentityOf, current: () => signedIdentityOf(links[links.length - 1]!) };
+      return {
+        inHand,
+        seen: [...seen.values()].sort(compareIdentityVersions),
+        signedIdentityOf,
+        // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
+        currentAmong: (counting: readonly Link<SignedIdentityObject>[]) => signedIdentityOf(counting.at(-1)!),
+      };
     };
     const personOf = (signedIdentity: SignedIdentityObject): Person => {
       const { root } = signedIdentity.identity;
       return {
         root,
         identityVersions: async () => {
-          const { links, signedIdentityOf } = await countingVersionsOf(signedIdentity);
-          return Promise.all(links.map(signedIdentityOf));
+          const { seen, signedIdentityOf } = await versionsOf(signedIdentity);
+          return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
         },
-        current: async () => (await countingVersionsOf(signedIdentity)).current(),
+        current: async () => {
+          const { seen, currentAmong } = await versionsOf(signedIdentity);
+          return currentAmong(countingVersionsAmong(seen));
+        },
         hasSigned: (signature) => signature.signedIdentity.identity.root.link === root.link,
       };
+    };
+    // A signature taken in at `position` counts by the identity versions the store held before it,
+    // and by the crises it holds now. One with no position comes in now.
+    const countsTakenIn = async ({ signedIdentity, key }: Signature, position: number | undefined) => {
+      const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
+      const counting = countingVersionsAmong(seen);
+      let countingThen = counting;
+      if (position !== undefined) {
+        const heldThen: IdentityVersion[] = [];
+        for (const row of seen) {
+          const [, , link] = row;
+          const heldAt = await store.positionOf(link);
+          if (inHand.has(link) || (heldAt !== undefined && heldAt < position)) heldThen.push(row);
+        }
+        countingThen = countingVersionsAmong(heldThen);
+      }
+      return (
+        countingThen.includes(signedIdentity.link) &&
+        counting.includes(signedIdentity.link) &&
+        hasSigner((await currentAmong(countingThen)).identity, key)
+      );
     };
     return {
       personOf,
       current: (signedIdentity) => personOf(signedIdentity).current(),
-      counts: async ({ signedIdentity, key }) => {
-        const { links, current } = await countingVersionsOf(signedIdentity);
-        return links.includes(signedIdentity.link) && hasSigner((await current()).identity, key);
-      },
+      counts: (signature) => countsTakenIn(signature, undefined),
+      asTakenIn: { counts: async (signature) => countsTakenIn(signature, await store.positionOf(signature.link)) },
     };
   }
 }
@@ -119,18 +159,17 @@ function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentity
 }
 
 /**
- * The rows of `ordered`, rows of one root in their order, whose identity
- * versions count: the latest crisis and those that follow it, or all of them
- * when none is a crisis. Those that follow a crisis come after it, so each
- * crisis met starts them over.
+ * The links of the identity versions of `ordered`, rows of one root in their
+ * order, that count: the latest crisis and those that follow it, or all of
+ * them when none is a crisis. Those that follow a crisis come after it, so
+ * each crisis met starts them over.
  */
-function countingVersionsAmong(ordered: readonly IdentityVersion[]): IdentityVersion[] {
-  let countingVersions: IdentityVersion[] = [];
+function countingVersionsAmong(ordered: readonly IdentityVersion[]): Link<SignedIdentityObject>[] {
+  let countingVersions: Link<SignedIdentityObject>[] = [];
   let cut: Link<SignedIdentityObject> | undefined;
-  for (const row of ordered) {
-    const [, , link, lastCrisis] = row;
-    if (link === lastCrisis) [cut, countingVersions] = [link, [row]];
-    else if (lastCrisis === cut) countingVersions.push(row);
+  for (const [, , link, lastCrisis] of ordered) {
+    if (link === lastCrisis) [cut, countingVersions] = [link, [link]];
+    else if (lastCrisis === cut) countingVersions.push(link);
   }
   return countingVersions;
 }

@@ -31,7 +31,7 @@ import {
   signatureSchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { rowsOf, schemes } from "./fixtures.ts";
+import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
 const { identities, signatures, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
 const verifiedBy = async (
@@ -54,7 +54,7 @@ const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-  identityVersions.people(rowsOf(identityVersions, ...signed), byLink(...signed));
+  identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
@@ -272,6 +272,56 @@ describe("a signature by an agent, as identity versions follow one another", () 
   });
 });
 
+describe("a signature as the store took it in", () => {
+  const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
+  const chain = async () => {
+    const first = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
+    return { first, second, signature: await signatures.actor(laptop, first).sign(hello) };
+  };
+
+  it("counts when the store took it in before an identity version that takes its key out", async () => {
+    const { first, second, signature } = await chain();
+    const people = identityVersions.people(
+      rowsOf(identityVersions, second),
+      storeOf([...first.blobs, signature.bytes, ...second.blobs]),
+    );
+    expect(await people.asTakenIn.counts(signature)).toBe(true);
+    expect(await people.counts(signature)).toBe(false);
+  });
+
+  it("does not count when the store took it in after, though the identity version it carries lists its key", async () => {
+    const { first, second, signature } = await chain();
+    const people = identityVersions.people(
+      rowsOf(identityVersions, second),
+      storeOf([...first.blobs, ...second.blobs, signature.bytes]),
+    );
+    expect(await people.asTakenIn.counts(signature)).toBe(false);
+  });
+
+  it("is cut by a crisis that the store took in after it", async () => {
+    const { first, signature } = await chain();
+    const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
+    const byCrisis = await signatures.actor(laptop, crisis).sign(hello);
+    const people = identityVersions.people(
+      rowsOf(identityVersions, crisis),
+      storeOf([...first.blobs, signature.bytes, ...crisis.blobs, byCrisis.bytes]),
+    );
+    expect(await people.asTakenIn.counts(signature)).toBe(false);
+    expect(await people.asTakenIn.counts(byCrisis)).toBe(true);
+  });
+
+  it("counts as one that comes in now when the store does not hold it", async () => {
+    const { first, second, signature } = await chain();
+    const people = identityVersions.people(
+      rowsOf(identityVersions, second),
+      storeOf([...first.blobs, ...second.blobs]),
+    );
+    expect(await people.asTakenIn.counts(signature)).toBe(false);
+    expect(await people.asTakenIn.counts(await signatures.actor(phone, first).sign(hello))).toBe(true);
+  });
+});
+
 describe("a signature by a root", () => {
   const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
 
@@ -313,7 +363,7 @@ describe("a signature by an identity version before a crisis", () => {
 
   it("is refused by a reader that has seen only an identity version that follows the crisis", async () => {
     const { first, after } = await chain();
-    const people = identityVersions.people(rowsOf(identityVersions, after), byLink(after));
+    const people = identityVersions.people(rowsOf(identityVersions, after), storeOf(after.blobs));
     expect(await people.counts(await signatures.actor(wallet, first).sign(hello))).toBe(false);
     expect(await people.counts(await signatures.actor(laptop, first).sign(hello))).toBe(false);
   });

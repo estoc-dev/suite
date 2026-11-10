@@ -130,11 +130,7 @@ export class IdentityVersions {
         }
         countingThen = countingVersionsAmong(heldThen);
       }
-      return (
-        countingThen.includes(signedIdentity.link) &&
-        counting.includes(signedIdentity.link) &&
-        hasSigner((await currentAmong(countingThen)).identity, key)
-      );
+      return counting.includes(signedIdentity.link) && hasSigner((await currentAmong(countingThen)).identity, key);
     };
     return {
       personOf,

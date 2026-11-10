@@ -34,7 +34,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 // store.
 
 const identity = await loadIdentity(defaultValidator, [ed25519]);
-const { signatures, signedIdentities, identityVersions, publish, delegate } = identity;
+const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = await loadMailboxGrants(defaultValidator, identity);
 const seenPeople: View<IdentityVersion, People> = {
   index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
@@ -56,7 +56,7 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 
 async function person(fill: number, backend = new MemoryBackend()): Promise<Person> {
   const signer = signerOf(fill);
-  const actor = signatures.actor(signer, await publish(signer, 0));
+  const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
   const store = new Store(json, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = await loadPost(store, privateStore, { transports: [network.transport], validator: defaultValidator });
@@ -246,8 +246,12 @@ describe("the latest grant of one person to another", () => {
 // A wallet lists one agent at 1_000, and at 5_000 lists another in its place.
 const wallet = signerOf(11);
 const [formerAgent, currentAgent] = [signerOf(12), signerOf(13)];
-const listingIdentityVersion = await delegate(wallet, [formerAgent.key], 1_000);
-const removalIdentityVersion = await delegate(wallet, [currentAgent.key], 5_000);
+const listingIdentityVersion = await publish(wallet, { agents: [formerAgent.key], at: 1_000 });
+const removalIdentityVersion = await publish(wallet, {
+  prior: listingIdentityVersion,
+  agents: [currentAgent.key],
+  at: 5_000,
+});
 
 describe("a grant by an agent that a later identity version does not list", () => {
   const twoPeople = async () => {
@@ -321,7 +325,11 @@ describe("a grant by an agent that a later identity version does not list", () =
 
   it("gives way to an older one by a key that the current identity version still lists", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
-    const identityVersion = await delegate(wallet, [formerAgent.key, currentAgent.key], 3_000);
+    const identityVersion = await publish(wallet, {
+      prior: listingIdentityVersion,
+      agents: [formerAgent.key, currentAgent.key],
+      at: 3_000,
+    });
     const [former, current] = [
       personSigningAs(alice, formerAgent, identityVersion),
       personSigningAs(alice, currentAgent, identityVersion),
@@ -352,7 +360,10 @@ describe("a grant by an agent that a later identity version does not list", () =
     await seeIdentityVersion(bob, removalIdentityVersion);
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
 
-    await seeIdentityVersion(bob, await delegate(wallet, [formerAgent.key], 9_000));
+    await seeIdentityVersion(
+      bob,
+      await publish(wallet, { prior: removalIdentityVersion, agents: [formerAgent.key], at: 9_000 }),
+    );
     expect((await grantFrom(bob, former, bob))?.signature.link).toBe(signature.link);
   });
 });

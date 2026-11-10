@@ -386,7 +386,7 @@ class MailboxService {
     if (signedIdentity.identity.root.link !== mailbox.root)
       return answer(403, "the request is signed for another root than the mailbox's account");
     if (!(await people.counts(signature)))
-      return answer(403, `${key.link} does not sign for the current identity version of ${mailbox.root}`);
+      return answer(403, `the signature by ${key.link} does not count by the identity versions of ${mailbox.root}`);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
@@ -503,7 +503,7 @@ export async function loadMailboxService(
   );
   const [latest] = serviceSignatures;
   const at = clock();
-  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, at)));
+  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, { at })));
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];

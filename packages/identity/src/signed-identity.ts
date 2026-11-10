@@ -3,11 +3,9 @@ import {
   digestOf,
   type EncodedObject,
   encodeObject,
-  Implementations,
   type Json,
   type JsonLink,
   type JsonSchema,
-  json,
   type Link,
   linkSchema,
   type Reader,
@@ -16,7 +14,7 @@ import {
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
-import type { IdentityImplementation, IdentityObject } from "./identity/interface.ts";
+import type { Identities, IdentityObject } from "./identity.ts";
 import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
@@ -36,8 +34,7 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * An identity as its root publishes it: an object written to
  * `signedIdentitySchema`, read with the identity and verified.
  *
- * - `signature` holds the root's signature over the identity's link,
- *   whichever identity schema it is written to.
+ * - `signature` holds the root's signature over the identity's link.
  * - What the root publishes is this object as it is, so a signature names
  *   the identity it is made for by the link of this object.
  * - Two signers are the same someone when the roots of their identities are
@@ -45,36 +42,39 @@ export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; 
  * - `blobs` are what it takes to read it again: the bytes of its object, the
  *   blobs of its schema, and the identity's `blobs`.
  */
-export interface SignedIdentityObject<I extends IdentityObject = IdentityObject>
-  extends EncodedObject<Json, SignedIdentityData> {
+export interface SignedIdentityObject extends EncodedObject<Json, SignedIdentityData> {
   readonly link: Link<SignedIdentityObject>;
-  readonly identity: I;
+  readonly identity: IdentityObject;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Signed identities, with the identity schemas their identities are read with. */
+/** Signed identities, with the identities they sign. */
 export class SignedIdentities {
   readonly schema: Schema<Json, SignedIdentityData>;
-  readonly #identities: Implementations<Json, IdentityObject, IdentityImplementation>;
+  readonly #identities: Identities;
 
-  constructor(schema: Schema<Json, SignedIdentityData>, identities: Iterable<IdentityImplementation>) {
+  constructor(schema: Schema<Json, SignedIdentityData>, identities: Identities) {
     this.schema = schema;
-    this.#identities = new Implementations(json, identities);
+    this.#identities = identities;
   }
 
   /**
-   * Verifies `object`, giving it with its identity, written to any of the
-   * identity schemas, and the keys it names, both read from `reader`. An
+   * Verifies `object`, giving it with its identity, the keys it names and the
+   * signed identities it follows, each verified, all read from `reader`. An
    * identity stands for someone only as its root signed it, which reading its
    * object and keys alone does not verify.
    *
    * @throws when `object` is not written to the signed identity schema.
    * @throws when the identity's root did not sign it.
+   * @throws when the identity follows a signed identity of another root, or
+   *   one that is not earlier.
    */
   async verify(object: EncodedObject<Json, SignedIdentityData>, reader: Reader): Promise<SignedIdentityObject> {
     if (object.schema.link !== this.schema.link) throw new Error(`a signed identity is written to ${this.schema.link}`);
-    return signedIdentityOf(object, await this.#identities.read(object.data.identity.$link, reader));
+    const identity = await readObject(reader, object.data.identity.$link, this.#identities.schema);
+    const prior = identity.data.prior === undefined ? undefined : await this.read(identity.data.prior.$link, reader);
+    return signedIdentityOf(object, await this.#identities.read(identity, prior, reader));
   }
 
   /** Reads the signed identity that `link` names from `reader`, and verifies it. */
@@ -87,17 +87,17 @@ export class SignedIdentities {
    * written before its root is asked to sign, so a root is not asked to sign
    * an identity that would not read.
    */
-  async sign<I extends IdentityObject>(root: Signer, identity: I): Promise<SignedIdentityObject<I>> {
+  async sign(root: Signer, identity: IdentityObject): Promise<SignedIdentityObject> {
     const signature = await root.sign(digestOf(identity.link));
     const data = { identity: { $link: identity.link }, signature: bytesToHex(signature) };
     return signedIdentityOf(encodeObject(this.schema, data), identity);
   }
 }
 
-function signedIdentityOf<I extends IdentityObject>(
+function signedIdentityOf(
   object: EncodedObject<Json, SignedIdentityData>,
-  identity: I,
-): SignedIdentityObject<I> {
+  identity: IdentityObject,
+): SignedIdentityObject {
   const signature = hexToBytes(object.data.signature);
   if (!verify(identity.root, digestOf(identity.link), signature)) {
     throw new Error(`the root of ${identity.link} did not sign ${object.link}`);

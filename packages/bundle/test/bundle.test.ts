@@ -16,10 +16,7 @@ import { defaultValidator } from "@estoc/object/default-validator";
 import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
-const { identities, signedIdentities, signatures, publish, delegate } = await loadIdentity(defaultValidator, [
-  ed25519,
-  eip191,
-]);
+const { identities, signedIdentities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519, eip191]);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -41,7 +38,7 @@ const links = await encodeSchema(
 );
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const asAlice = signatures.actor(alice, await publish(alice, 0));
+const asAlice = signatures.actor(alice, await publish(alice, { at: 0 }));
 const signature = await asAlice.sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
@@ -101,13 +98,13 @@ describe("a bundle", () => {
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noIdentityVersions)).toEqual(
       signed,
     );
-    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
+    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
     expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
   });
 
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
-    const signed = await delegate(wallet, [alice.key]);
+    const signed = await publish(wallet, { agents: [alice.key] });
     const bundle = readBundle(writeBundle(signed, [...signed.schema.blobs, ...signed.identity.blobs]));
     expect(bundle.link).toBe(signed.link);
     expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signed);

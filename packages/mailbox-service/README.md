@@ -122,18 +122,18 @@ refused.
 
 Opening an account is accepting the offer: an identity signs it, and the
 account is the account of its root. A wallet asks its holder to confirm
-each signature, so the wallet can instead list a key on the device in a
-Delegated Identity of `@estoc/identity`, and the device signs the offer for
-it. The account is still the wallet's.
+each signature, so the wallet can instead list a key on the device as an
+agent of its identity of `@estoc/identity`, and the device signs the offer
+for it. The account is still the wallet's.
 
-`accept` takes an actor of `@estoc/identity`, for the wallet's own Identity
-or for one that lists the device's key, and opens the account of its
+`accept` takes an actor of `@estoc/identity`, for the wallet itself or for
+the device's key that its identity lists, and opens the account of its
 identity's root:
 
 ```ts
 const account = await service.account.accept(signatures.actor(wallet, await publish(wallet)));
 // or, for the wallet, by a key on the device that it lists:
-const account = await service.account.accept(signatures.actor(device, await delegate(wallet, [device.key])));
+const account = await service.account.accept(signatures.actor(device, await publish(wallet, { agents: [device.key] })));
 ```
 
 The actor signs the offer, and `accept` posts the bundle of that signature

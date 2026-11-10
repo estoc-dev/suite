@@ -28,7 +28,7 @@ export interface TestMailbox {
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
-  const actor = signatures.actor(signer, await publish(signer, 0));
+  const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
   const store = new Store(json, new MemoryBackend());
   const services = await loadServices(store, { validator: defaultValidator, schemes: [ed25519] });
   const { account, mailbox: offer } = await services.fetch(origin);

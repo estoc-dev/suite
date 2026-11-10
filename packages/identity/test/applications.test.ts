@@ -31,13 +31,13 @@ import { byLink, schemes } from "./fixtures.ts";
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const { keys, identities, signatures, publish, delegate } = await loadIdentity(defaultValidator, schemes);
+const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator, schemes);
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, 0)).sign(object);
+  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
 /**
  * What an application holds: blobs by link, the objects of the identities
@@ -96,7 +96,7 @@ describe("a login", () => {
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
-    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.key, 0));
+    expect(await logIn("https://app.estoc.dev", "6f1c0a9e")).toEqual(identities.encode(user.key, { at: 0 }));
   });
 
   it("for another nonce or audience logs no one in", async () => {
@@ -104,14 +104,15 @@ describe("a login", () => {
     expect(await logIn("https://other.example", "6f1c0a9e")).toBeUndefined();
   });
 
-  it("signed by a browser key that the user's Delegated Identity lists logs the user in", async () => {
+  it("signed by a browser key that a later identity version of the user lists logs the user in", async () => {
     const browser = signer(ed25519, 5);
-    const actor = signatures.actor(browser, await delegate(user, [browser.key]));
+    const prior = (await signed).signedIdentity;
+    const actor = signatures.actor(browser, await publish(user, { prior, agents: [browser.key], at: 1 }));
     const { bytes, signedIdentity } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
     const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
-    expect(identity?.link).not.toBe(identities.encode(user.key, 0).link);
+    expect(identity?.link).not.toBe(identities.encode(user.key, { at: 0 }).link);
     expect(identity?.root.link).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.root.link);
   });
 });
@@ -205,7 +206,7 @@ describe("a sale", () => {
   it("takes a signature from someone it does not name, without counting it as a party's", async () => {
     const witnessed = await sign(terms, witness);
     const receivedSignatures = receive([...(await signedBy([terms, buyer])), witnessed]);
-    expect(await signersOf(terms.link, receivedSignatures)).toContainEqual(identities.encode(witness.key, 0));
+    expect(await signersOf(terms.link, receivedSignatures)).toContainEqual(identities.encode(witness.key, { at: 0 }));
     expect(await saleInForce(terms.link, receivedSignatures)).toBeUndefined();
   });
 });

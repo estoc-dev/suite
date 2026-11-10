@@ -29,7 +29,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 // what came in by the grants they gave.
 
 const identity = await loadIdentity(defaultValidator, [ed25519]);
-const { signatures, publish, delegate } = identity;
+const { signatures, publish } = identity;
 const grants = await loadMailboxGrants(defaultValidator, identity);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const note = await encodeSchema(
@@ -74,7 +74,7 @@ async function personActingAs(actor: Actor, store = new Store(json, new MemoryBa
 
 async function person(fill: number): Promise<Person> {
   const signer = signerOf(fill);
-  return personActingAs(signatures.actor(signer, await publish(signer, 0)));
+  return personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })));
 }
 
 interface OpenedInbox {
@@ -135,8 +135,12 @@ async function listed({ store }: Person): Promise<Link<unknown>[]> {
 // A wallet lists one agent at 1_000, and at 2_000 lists another in its place.
 const wallet = signerOf(11);
 const [formerAgent, currentAgent] = [signerOf(12), signerOf(13)];
-const listingIdentityVersion = await delegate(wallet, [formerAgent.key], 1_000);
-const removalIdentityVersion = await delegate(wallet, [currentAgent.key], 2_000);
+const listingIdentityVersion = await publish(wallet, { agents: [formerAgent.key], at: 1_000 });
+const removalIdentityVersion = await publish(wallet, {
+  prior: listingIdentityVersion,
+  agents: [currentAgent.key],
+  at: 2_000,
+});
 
 describe("a grant", () => {
   it("is written as a record, signed by the actor, of the mailboxes, at the post's clock", async () => {
@@ -408,7 +412,7 @@ describe("what came in at a mailbox", () => {
     const signer = signerOf(2);
     const [alice, bob] = await Promise.all([
       person(1),
-      personActingAs(signatures.actor(signer, await publish(signer, 0)), new Store(json, backend)),
+      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), new Store(json, backend)),
     ]);
     const { inbox, pickup } = await grantInbox(bob, alice);
     const signature = await writeNote(alice, "hi Bob");

@@ -134,7 +134,7 @@ async function chat(faults: Faults = {}) {
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
-    const actor = signatures.actor(signer, await publish(signer, 0));
+    const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
     const store = new Store(json, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = await loadPost(store, privateStore, { transports, validator: defaultValidator, clock });

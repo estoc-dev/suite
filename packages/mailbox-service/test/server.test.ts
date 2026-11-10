@@ -18,7 +18,6 @@ import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
-  delegate,
   identities,
   keys,
   mailboxAcknowledgementSchemaRead,
@@ -90,13 +89,13 @@ async function directAcceptance(offer: { readonly link: Link<unknown> }, by = al
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
-/** The bundle that accepts `offer` for the wallet by the device, which a Delegated Identity of the wallet's lists. */
+/** The bundle that accepts `offer` for the wallet by the device, which an identity of the wallet's lists. */
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
-  const signature = await signatures.actor(device, await delegate(wallet, [device.key])).sign(offer);
+  const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
   return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
 }
 
-/** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet's Delegated Identity lists. */
+/** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet lists. */
 async function acceptanceBy(
   agent: Signer,
   identityVersion: SignedIdentityObject,
@@ -164,7 +163,7 @@ describe("a mailbox service", () => {
     expect(acknowledgement.data).toEqual({ acceptance: { $link: acceptance.signature.link }, at: 5_001 });
     const read = await signatures.read(acceptance.signature.link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
-    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
+    expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
   });
 
   it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {
@@ -186,7 +185,7 @@ describe("a mailbox service", () => {
     expect(await records(store)).toEqual(recordsBefore);
   });
 
-  it("opens the account of a root for the signature of an agent that a Delegated Identity of the root's lists", async () => {
+  it("opens the account of a root for the signature of an agent that an identity of the root's lists", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
     const acceptance = await delegatedAcceptance(offer);
@@ -214,22 +213,23 @@ describe("a mailbox service", () => {
   it("answers 400 to an agent that a later identity version of its root removed, though the root has an account", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
-    const first = await delegate(wallet, [device.key, phone.key], 1_000);
-    const second = await delegate(wallet, [phone.key], 2_000);
+    const first = await publish(wallet, { agents: [device.key, phone.key], at: 1_000 });
+    const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
     const recordsBefore = await records(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current identity version/);
+    expect(await response.text()).toMatch(/does not count/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
   it("answers 400 to an agent that a later identity version removed, though the agent opened the account before it came", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
-    const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    const removed = await publish(wallet, { agents: [device.key], at: 1_000 });
+    const removedAcceptance = await acceptanceBy(device, removed, offer);
     expect((await postAcceptance(service, removedAcceptance)).status).toBe(201);
-    const second = await delegate(wallet, [phone.key], 2_000);
+    const second = await publish(wallet, { prior: removed, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(200);
     expect((await postAcceptance(service, removedAcceptance)).status).toBe(400);
     const { service: again } = await memoryService({ store });
@@ -239,7 +239,8 @@ describe("a mailbox service", () => {
   it("answers 400 to an agent whose body comes in only after a later identity version removed it, and signs nothing for it", async () => {
     const { service, store } = await memoryService();
     const { offer, acceptId } = await rootOf(service);
-    const removedAcceptance = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
+    const removed = await publish(wallet, { agents: [device.key], at: 1_000 });
+    const removedAcceptance = await acceptanceBy(device, removed, offer);
     let reportPull = () => {};
     const firstPull = new Promise<void>((resolve) => (reportPull = resolve));
     let release = () => {};
@@ -259,13 +260,13 @@ describe("a mailbox service", () => {
       request(`/${acceptId}`, { method: "POST", body, duplex: "half" } as RequestInit),
     );
     await firstPull;
-    const second = await delegate(wallet, [phone.key], 2_000);
+    const second = await publish(wallet, { prior: removed, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
     const recordsBefore = await records(store);
     release();
     const response = await pendingResponse;
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current identity version/);
+    expect(await response.text()).toMatch(/does not count/);
     expect(await records(store)).toEqual(recordsBefore);
   });
 
@@ -273,8 +274,9 @@ describe("a mailbox service", () => {
     const holder = heldSigner(serviceSigner);
     const { service } = await memoryService({ by: holder.signer });
     const { offer } = await rootOf(service);
-    const earlier = await acceptanceBy(device, await delegate(wallet, [device.key], 1_000), offer);
-    const later = await acceptanceBy(wallet, await publish(wallet, 2_000), offer);
+    const listing = await publish(wallet, { agents: [device.key], at: 1_000 });
+    const earlier = await acceptanceBy(device, listing, offer);
+    const later = await acceptanceBy(wallet, await publish(wallet, { prior: listing, at: 2_000 }), offer);
     holder.isHolding = true;
     const opener = postAcceptance(service, earlier);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
@@ -639,10 +641,10 @@ describe("a mailbox service's offer of mailboxes", () => {
     );
   });
 
-  it("opens a mailbox for an agent that a Delegated Identity of the root lists, under the account its wallet opened", async () => {
+  it("opens a mailbox for an agent that an identity of the root lists, under the account its wallet opened", async () => {
     const { service } = await memoryService();
     await openAccount(service, await actorOf(wallet));
-    const agent = signatures.actor(device, await delegate(wallet, [device.key]));
+    const agent = signatures.actor(device, await publish(wallet, { agents: [device.key] }));
     const { zip } = await mailboxRequest(agent, (await rootOf(service)).mailbox.offer);
     expect((await postMailboxRequest(service, zip)).status).toBe(201);
   });
@@ -704,12 +706,20 @@ describe("a mailbox service's offer of mailboxes", () => {
   it("answers 400 to a request by an agent that a later identity version of its root removed, though the root has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
-    const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    const removedAgent = signatures.actor(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
     await openAccount(service, removedAgent);
-    expect(await acceptAccount(service, signatures.actor(phone, await delegate(wallet, [phone.key], 2_000)))).toBe(200);
+    expect(
+      await acceptAccount(
+        service,
+        signatures.actor(
+          phone,
+          await publish(wallet, { prior: removedAgent.signedIdentity, agents: [phone.key], at: 2_000 }),
+        ),
+      ),
+    ).toBe(200);
     const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).zip);
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/does not sign for the current identity version/);
+    expect(await response.text()).toMatch(/does not count/);
   });
 
   it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
@@ -889,8 +899,11 @@ describe("a mailbox that a service opened", () => {
   });
 
   it("answers a pickup by an agent that an identity version of the root lists which it has not seen, by the identity version that the request carries", async () => {
-    const { service, mailbox } = await serviceWithMailbox();
-    const listedAgent = signatures.actor(phone, await delegate(alice, [phone.key], 2_000));
+    const { service, actor, mailbox } = await serviceWithMailbox();
+    const listedAgent = signatures.actor(
+      phone,
+      await publish(alice, { prior: actor.signedIdentity, agents: [phone.key], at: 2_000 }),
+    );
     expect((await post(service, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([ciphertextOf(1)]);
   });
@@ -908,14 +921,17 @@ describe("a mailbox that a service opened", () => {
 
   it("answers 403 to a pickup by an agent that a later identity version of the root, which it has seen, takes out", async () => {
     const { service } = await memoryService();
-    const removedAgent = signatures.actor(device, await delegate(wallet, [device.key], 1_000));
+    const removedAgent = signatures.actor(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
     await openAccount(service, removedAgent);
     const mailbox = await openMailbox(service, removedAgent);
-    const listedAgent = signatures.actor(phone, await delegate(wallet, [phone.key], 2_000));
+    const listedAgent = signatures.actor(
+      phone,
+      await publish(wallet, { prior: removedAgent.signedIdentity, agents: [phone.key], at: 2_000 }),
+    );
     expect(await acceptAccount(service, listedAgent)).toBe(200);
     const response = await post(service, mailbox.pickupId, await pickupRequest(removedAgent, mailbox.link));
     expect(response.status).toBe(403);
-    expect(await response.text()).toMatch(/does not sign for the current identity version/);
+    expect(await response.text()).toMatch(/does not count/);
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([]);
   });
 

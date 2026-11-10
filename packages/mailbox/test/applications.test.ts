@@ -44,7 +44,7 @@ const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
-  const signature = await signatures.actor(by, await publish(by, 0)).sign(object);
+  const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
@@ -116,8 +116,8 @@ describe("a chat line", () => {
   it("that Bob passes on reads at Carol's as Alice's, and nothing in it shows that Bob sent it", async () => {
     const { sentSignature, passedBundle } = await passOn(encodeObject(chat, { text: "lunch at noon?" }));
     expect(passedBundle.link).toBe(sentSignature.link);
-    expect(await readChat(passedBundle, identities.encode(carol.key, 0))).toEqual({
-      author: identities.encode(alice.key, 0),
+    expect(await readChat(passedBundle, identities.encode(carol.key, { at: 0 }))).toEqual({
+      author: identities.encode(alice.key, { at: 0 }),
       text: "lunch at noon?",
       forReader: undefined,
     });
@@ -126,8 +126,8 @@ describe("a chat line", () => {
   it("written to Bob shows at Carol's that it is not for her", async () => {
     const line = encodeObject(chat, { to: { $link: keys.encode(bob.key).link }, text: "lunch at noon?" });
     const { receivedBundle, passedBundle } = await passOn(line);
-    expect((await readChat(receivedBundle, identities.encode(bob.key, 0))).forReader).toBe(true);
-    expect((await readChat(passedBundle, identities.encode(carol.key, 0))).forReader).toBe(false);
+    expect((await readChat(receivedBundle, identities.encode(bob.key, { at: 0 }))).forReader).toBe(true);
+    expect((await readChat(passedBundle, identities.encode(carol.key, { at: 0 }))).forReader).toBe(false);
   });
 });
 
@@ -176,7 +176,7 @@ describe("a one-time invitation", () => {
     const { answer, letIn } = await invite();
     await answer(dave);
     await answer(erin);
-    expect(await letIn()).toEqual([identities.encode(dave.key, 0)]);
+    expect(await letIn()).toEqual([identities.encode(dave.key, { at: 0 })]);
     await answer(erin);
     expect(await letIn()).toEqual([]);
   });
@@ -278,7 +278,7 @@ describe("two people who meet", () => {
     const clock = () => ++now;
     const person = async (fill: number) => {
       const by = signer(ed25519, fill);
-      const actor = signatures.actor(by, await publish(by, 0));
+      const actor = signatures.actor(by, await publish(by, { at: 0 }));
       const store = new Store(json, new MemoryBackend());
       const privateStore = new PrivateStore(store, new MemoryBackend());
       const options = { transports: [network.transport], validator: defaultValidator, clock };

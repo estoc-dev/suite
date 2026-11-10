@@ -17,7 +17,7 @@ import {
 } from "@estoc/object";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hexSchema } from "./hex.ts";
-import { signerOf, signingFunction } from "./identity/interface.ts";
+import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
@@ -31,8 +31,7 @@ import type { Signer } from "./signer.ts";
  * schema of the identity the signature is made for says which key signs and
  * how the bytes are laid out, and that key's scheme how its signature in them
  * reads. However they are laid out, they stay bytes, so this schema and those
- * who read signatures by it do not change for an identity schema or a scheme
- * added later.
+ * who read signatures by it do not change for a scheme added later.
  */
 export const signatureSchema: JsonSchema = {
   $schema: DRAFT_2020_12,
@@ -76,19 +75,26 @@ export interface Signature extends EncodedObject<Json, SignatureData> {
 /** Whether a signature counts, by the identity versions a reader has seen. */
 export interface SeenIdentityVersions {
   /**
-   * Whether `signature` counts: the key that made it signs for the current
-   * identity version of its root, the later of the one it carries and the
-   * latest the reader has seen. The one it carries counts, as a device a
-   * wallet has just listed signs by an identity version the reader has not
-   * seen yet.
+   * Whether `signature` counts, by the identity versions of its root that the
+   * reader has seen, and the one it carries with those it follows.
+   *
+   * - Of those, the latest crisis and the ones that follow it count, or all
+   *   of them when none is a crisis. A root signs a crisis when it no longer
+   *   relies on what it signed before, so the signatures by an identity
+   *   version before it do not count, the root's own among them.
+   * - The identity version it carries counts.
+   * - The key that made it signs for the current identity version, the
+   *   latest that counts. The one it carries is among them, as a device a
+   *   wallet has just listed signs by an identity version the reader has not
+   *   seen yet.
    */
   counts(signature: Signature): Promise<boolean>;
 }
 
 /**
  * A reader that has seen no identity versions, so a signature counts by the
- * identity version it carries alone, which its key signs for once it
- * verifies.
+ * identity version it carries and those it follows alone. No crisis comes
+ * after the one it carries among them, so it counts once it verifies.
  */
 export const noIdentityVersions: SeenIdentityVersions = { counts: async () => true };
 
@@ -147,7 +153,7 @@ export class Signatures {
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
     if (!(await seenIdentityVersions.counts(verifiedSignature))) {
       throw new Error(
-        `${verifiedSignature.key.link} does not sign for the current identity version of ${signedIdentity.identity.root.link}`,
+        `the signature by ${verifiedSignature.key.link} does not count by the identity versions of ${signedIdentity.identity.root.link}`,
       );
     }
     return verifiedSignature;

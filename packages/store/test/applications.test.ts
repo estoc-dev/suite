@@ -54,7 +54,7 @@ const { identities, signatures, signedIdentities, identityVersions, publish } = 
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, 0)).sign(object);
+  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
 const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
 const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", { bundle: linkSchema });
@@ -113,7 +113,7 @@ describe("a signed note", () => {
     const [record] = await readListed(bobStore, receivedSchema);
     assert.exists(record);
     const bundleSignature = await signatures.read(record.data.bundle.$link, bobStore, noIdentityVersions);
-    expect(bundleSignature.signedIdentity.identity).toEqual(identities.encode(alice.key, 0));
+    expect(bundleSignature.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
     expect((await readObject(bobStore, bundleSignature.object, noteSchema)).data.text).toBe("hello");
   });
 });
@@ -167,7 +167,7 @@ describe("a signed identity that comes in a bundle", () => {
   const identityVersionsHeld = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 
   it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
-    const aliceIdentityVersion = await publish(alice, 5);
+    const aliceIdentityVersion = await publish(alice, { at: 5 });
     const forgedIdentityVersion = encodeObject(signedIdentities.schema, {
       identity: { $link: aliceIdentityVersion.identity.link },
       signature: "00".repeat(64),
@@ -214,7 +214,7 @@ describe("a signed identity that comes in a bundle", () => {
       },
       [ed25519],
     );
-    const identityVersion = await kit.publish(alice, 5);
+    const identityVersion = await kit.publish(alice, { at: 5 });
     const store = newStore();
     await store.write({ records: [identityVersion], blobs: identityVersion.blobs });
 

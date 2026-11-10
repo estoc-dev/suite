@@ -36,8 +36,8 @@ export function locationsView(signatures: Signatures, service: Schema<Json, Serv
   return {
     index: indexOverBlobs(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
-      // verified by the identity version it carries; whether that identity
-      // version still counts is checked as the rows are read.
+      // verified by the identity version it carries; whether the signature
+      // counts is checked as the rows are read.
       const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
       yield [signedIdentity.identity.root.link, object.data.at, link];
     }),

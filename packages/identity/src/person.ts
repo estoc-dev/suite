@@ -27,10 +27,7 @@ export interface Person {
   hasSigned(signature: Signature): boolean;
 }
 
-/**
- * The people of the identity versions a reader has seen. They are the
- * `SeenIdentityVersions` of the reader too.
- */
+/** The people of the identity versions a reader has seen. */
 export interface People extends SeenIdentityVersions {
   /** The person whose root signed `signedIdentity`, which counts among their identity versions. */
   personOf(signedIdentity: SignedIdentityObject): Person;

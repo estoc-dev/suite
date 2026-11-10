@@ -49,7 +49,7 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, signatures, publish } = await loadIdentity(
+export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = await loadIdentity(
   defaultValidator,
   schemes,
 );

@@ -13,7 +13,7 @@ import {
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
-import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { type Index, indexOver, indexOverBlobs, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
@@ -173,14 +173,12 @@ const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   },
 };
 
-const { signatures, signedIdentities, identityVersions, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, identityVersions, publish } = await loadIdentity(defaultValidator, [ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
 const people: View<IdentityVersion, People> = {
-  index: indexOver(objectsOf(signatures.schema), async function* ({ data }, reader) {
-    yield identityVersions.identityVersionOf(await signedIdentities.read(data.signedIdentity.$link, reader));
-  }),
+  index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 

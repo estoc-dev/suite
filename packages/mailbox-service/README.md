@@ -18,13 +18,16 @@ private, and vouches for the service on first contact alone. A refusal is
 plain text, and a client keeps nothing of it.
 
 Of the Services that identities of one root signed, a reader counts those
-signed by a key that the root's current identity version it holds lists, and
-the latest of them says where the service is now: the one with the greatest
-`at`, and of those with the same `at`, the one whose signature has the
-greater link, compared as ASCII strings. A Service signed by a key that a
-later identity version takes out counts no more, whatever its `at`, so
-whoever still holds that key does not say where the service is. Services
-started at once can sign the same `at`, and every reader takes the same one
+whose signatures count by the identity versions of the root it holds, as
+`counts` of `@estoc/identity` says, and the latest of them says where the
+service is now: the one with the greatest `at`, and of those with the same
+`at`, the one whose signature has the greater link, compared as ASCII
+strings. A Service signed by a key that a later identity version takes out
+counts no more, whatever its `at`, so whoever still holds that key does not
+say where the service is. Once the root signs a crisis, a Service counts
+only when the identity version that signed it is the crisis or follows it,
+so one that the root itself signed before, or on another branch however
+late, counts no more. Services started at once can sign the same `at`, and every reader takes the same one
 of them for the latest, whatever order its store took them in.
 
 What a client posts to, the service gives it: each offer in a Service comes
@@ -153,7 +156,7 @@ and their closure.
 |---|---|
 | 201 | the account opened; the answer is the acknowledgement of this acceptance |
 | 200 | the identity's root had an account; the answer is the acknowledgement of this acceptance |
-| 400 | the bundle does not read, or its root is not a signature over this service's offer by a key that its current identity version lists |
+| 400 | the bundle does not read, or its root is not a signature over this service's offer that counts by the identity versions the service holds |
 | 413 | the body is over 64 KiB |
 
 A root has one account at a service. When an identity of a root that has
@@ -178,15 +181,18 @@ requests for mailboxes it acknowledged carry. Each acceptance it takes is
 acknowledged, so the identity version it carries counts from then on. A
 wallet takes a device out by signing a later identity version that does not
 list it, and the service refuses an acceptance by an agent that the current
-identity version does not list: the later of the latest it has seen and the
-one the acceptance carries. It verifies that first, so a removed device is
+identity version does not list: the latest that counts of those it has seen
+and of the one the acceptance carries with those it follows. It verifies that first, so a removed device is
 refused even when the wallet has an account, and even for an acceptance that
 the service acknowledged before. Say the wallet's first identity version
 lists a laptop and its second only a phone: once the phone has accepted by
 the second, the laptop's acceptance by the first is refused, whichever of
 them opened the account. What a removed key signed stops counting for a
 reader that has seen the later identity version; what has to keep counting is
-signed again by a key that the current identity version lists. Two acceptances
+signed again by a key that the current identity version lists. A crisis
+takes out more: once the service has seen one, it refuses an acceptance
+signed by an identity version that is neither the crisis nor one that
+follows it, by the root as by an agent, however late its `at`. Two acceptances
 that open one account at once are both acknowledged, and one of them is
 answered 201, the other 200.
 
@@ -240,25 +246,27 @@ The client holds identity versions as the service does, as the signed
 identities in its store. That store can hold other records than the service
 gave out, so it can have seen an identity version that the service has not.
 `fetch`, `latestOf` and `accept` verify the service's signatures against
-them, so a Service, an offer or an acknowledgement signed by a key that a
-later identity version of the service does not list is refused once the store
-holds that identity version, however it came. `latestOf` passes over a
-Service so signed and takes the latest that counts. A service from
-`loadMailboxService` signs with its root's key, so its signatures are refused
-this way only after the root signs a later identity version that does not
-list that key.
+them, so a Service, an offer or an acknowledgement whose signature does not
+count by them is refused once the store holds the identity version that
+takes it out, however it came: a later one that does not list the key that
+signed it, or a crisis that the identity version it carries neither is nor
+follows. `latestOf` passes over a Service so signed and takes the latest
+that counts. A service from `loadMailboxService` signs with its root's key,
+which each identity version of the root lists, so its signatures are refused
+this way only after the root signs a crisis.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is kept: `stage` of `@estoc/store` gives it with the
 bundle's root as a record, and once it reads, the intake keeps the bundle
 and the staged batch is dropped. So a Service that `fetch` takes reads alike
-by `latestOf` until the store holds a later identity version of the service.
+by `latestOf` until the store holds an identity version of the service by
+which it no longer counts.
 The offers a Service lists are read as any signature is, and the store then
 holds the identity version that signed the Service, so an offer is verified
 by that identity version or a later one. When a service signs a Service by
-an identity version that takes out the key that signed an offer by an
-earlier one, it signs the offer again by a key that the identity version
-lists. The offer stays the same object, so its id and the acceptances of it
+an identity version by which its signature over an offer no longer counts,
+as one that takes out the key that signed it, or a crisis, it signs the
+offer again by a key that the identity version lists. The offer stays the same object, so its id and the acceptances of it
 stay as they were.
 
 `accept` gives the `Account`: the actor's signed identity, whose root the
@@ -313,7 +321,7 @@ account.
 |---|---|
 | 201 | the mailbox opened; the answer is the acknowledgement of this request |
 | 200 | this request opened a mailbox before; the answer is its acknowledgement |
-| 400 | the bundle does not read, or its root is not a signature over a request for this service's offer by a key that its current identity version lists |
+| 400 | the bundle does not read, or its root is not a signature over a request for this service's offer that counts by the identity versions the service holds |
 | 403 | the root of the identity has no account |
 | 413 | the body is over 64 KiB |
 
@@ -352,11 +360,11 @@ const delivered = await inbox.collect(await services.pickup(inbox.mailbox, actor
 ```
 
 The actor is any of the root of the account. The service verifies each
-pickup by the root's current identity version, as it verifies an acceptance:
-an agent that the root lists picks up without opening the mailbox again, and
-one that a later identity version takes out picks up no more once the service
-has seen that identity version, in an acceptance or a request that it
-acknowledges. Opening what arrives takes the mailbox's key, which
+pickup as it verifies an acceptance, by whether its signature counts by the
+identity versions of the root it holds: an agent that the root lists picks
+up without opening the mailbox again, and one that a later identity version
+takes out, or a crisis cuts off, picks up no more once the service has seen
+that identity version, in an acceptance or a request that it acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the private store of the device that opened the
 mailbox.
 
@@ -388,7 +396,7 @@ opens: whoever posts it again sees how much waits, and no more.
 |---|---|
 | 200 | the answer is what waits, once what the request has receipts for no longer does |
 | 400 | the bundle does not read, or its root is not a signature over a pickup request of this mailbox |
-| 403 | the request is signed for another root than the account's, or by a key that the root's current identity version does not list |
+| 403 | the request is signed for another root than the account's, or its signature does not count by the identity versions the service holds |
 | 413 | the body is over 64 KiB and 128 bytes for each of the 100 messages that an answer holds at most |
 
 Devices that pick up at once each get what waits, so each receives it, as
@@ -421,13 +429,16 @@ account, the offer of mailboxes on `terms`, and a Service at that origin
 that lists each offer under its link, and writes the signature over the
 Service to `store`, a store of `@estoc/store`, as a record, with its
 closure. Started with a store that holds a Service of its, it signs as the
-signed identity that the latest Service names, and the signer does not sign
-the identity again. Each acknowledgement it signs is written there too, as a
+current identity version of its root, by the identity versions the store
+holds, and the signer does not sign the identity again. Once the store holds
+a crisis of the root, no Service signed before it counts, so the service
+signs its offers and a Service again, as the crisis or one that follows it,
+and they list the offers under the same ids. Each acknowledgement it signs is written there too, as a
 record, with the acceptance or the request and its closure, and what the
 bundle holds besides is dropped.
 
-The Services in the store are what the service gave out. Of them, the
-latest is the one it answers `GET /` with, as a client takes it for where
+The Services in the store are what the service gave out. Of those that
+count, the latest is the one it answers `GET /` with, as a client takes it for where
 a service is, and the ids they list are the ids it gave out: one that the
 latest lists takes what is posted for the offer under it, one that only an
 earlier one lists is answered 410, and one that none lists 404. The

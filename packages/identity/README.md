@@ -344,10 +344,11 @@ person of the signed identity it is given.
 A person is worked out from the rows when they are read and is not
 written: their root names them, but what they hold changes as the reader
 sees more. Two people are one when the links of their roots are. Two taken
-from different signed identities of a root may differ in `identityVersions()`,
-since each holds the one it was taken from, but their `current()` differs
-only when the one in hand, or a crisis it follows, is later than any the
-reader has seen, which a signature carrying it counts as well.
+from different signed identities of a root may differ in `identityVersions()`
+and in `current()`: each takes the identity versions the reader has seen with
+the one it was taken from and those it follows, and of those the latest
+crisis and the ones that follow it count, or all of them when none is a
+crisis. A signature that carries the one in hand counts by the same.
 
 A person reads no signatures. What a signature is read from, and whether
 it is verified against the identity versions a store holds or by

@@ -10,15 +10,17 @@ import {
 } from "@estoc/identity";
 import { decodeObject, encodeObject, encodeSchema, json, type Link, linkOf, readObject } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { Store } from "@estoc/store";
+import { Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
+import { peopleView } from "../src/people.ts";
 import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   acknowledgementSchemaRead,
   actorOf,
   identities,
+  identityVersions,
   keys,
   mailboxAcknowledgementSchemaRead,
   mailboxOfferSchemaRead,
@@ -482,7 +484,7 @@ describe("a mailbox service started again", () => {
     expect((await post(moved, after.acceptId, (await directAcceptance(after.offer)).zip)).status).toBe(201);
   });
 
-  it("signs as the signed identity of its latest Service, which its signer does not sign again", async () => {
+  it("signs as the current identity version of its root, which its signer does not sign again", async () => {
     const { service, store } = await memoryService();
     const before = await rootOf(service);
     const sign = vi.fn((digest: Uint8Array, signedIdentity?: Uint8Array) => serviceSigner.sign(digest, signedIdentity));
@@ -492,6 +494,26 @@ describe("a mailbox service started again", () => {
     expect(after.data.origin).toBe("https://post.example");
     expect(after.signature.signedIdentity.link).toBe(before.signature.signedIdentity.link);
     expect(sign).toHaveBeenCalledOnce();
+  });
+
+  it("once its root signed a crisis, signs as it, and keeps the accounts and the mailboxes it opened", async () => {
+    const { service, store, accounts, mailboxes } = await memoryService();
+    const actor = await actorOf(alice);
+    await openAccount(service, actor);
+    const mailbox = await openMailbox(service, actor);
+    const before = await rootOf(service);
+    const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
+    await store.write({ records: [crisis], blobs: crisis.blobs });
+    const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
+    const after = await rootOf(again);
+    expect(after.signature.signedIdentity.link).toBe(crisis.link);
+    expect(after.acceptId).toBe(before.acceptId);
+    const people = await view(store, peopleView(identityVersions));
+    for (const { link } of [after.signature, after.offerSignature, after.mailbox.offerSignature])
+      expect((await signatures.read(link, store, people)).signedIdentity.link).toBe(crisis.link);
+    await openMailbox(again, actor, keyOf(0x22));
+    expect((await post(again, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
+    expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
   it("at another origin with its clock behind signs a Service earlier than the one before, which stays the latest", async () => {

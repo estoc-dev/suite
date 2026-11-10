@@ -158,7 +158,6 @@ export function signingFunction(identity: IdentityObject, signer: Signer): Signi
   return async (object, signedIdentity) => concatBytes(Uint8Array.of(index), await signer.sign(object, signedIdentity));
 }
 
-/** Whether `key` signs for `identity`. */
 export function hasSigner(identity: IdentityObject, key: KeyObject): boolean {
   return signersOf(identity).some(({ link }) => link === key.link);
 }

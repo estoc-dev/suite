@@ -457,14 +457,16 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  * Makes the service of `signer`'s identity at `origin`.
  *
  * - The store holds the Services the service signed before, the latest of
- *   which says where it was and what it offered there.
+ *   which that counts says where it was and what it offered there.
  * - When the service says the same now, that Service stays the latest, and
- *   else the service signs a new one.
+ *   else the service signs a new one, as it does when none counts once its
+ *   root signed a crisis.
  * - Either way the latest lists the offer of an account and the offer of
  *   mailboxes on `terms`, each under its link, with the service's signature
  *   over it from the latest Service that lists it.
- * - The service signs as the signed identity of its latest Service, and
- *   publishes its identity only when the store holds no Service of it.
+ * - The service signs as the current identity version of its root, by the
+ *   identity versions the store holds, and publishes its identity only when
+ *   the store holds no Service of it.
  *
  * @throws when `origin` is not an origin: a scheme, a host and a port alone.
  */
@@ -498,12 +500,16 @@ export async function loadMailboxService(
   const seenPeople = peopleView(kit.identityVersions);
   const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures, schemas.service));
+  const at = clock();
+  const [signedBefore] = await locations.servicesOf(identity.$link, noIdentityVersions);
+  const signedIdentity =
+    signedBefore === undefined
+      ? await publish(signer, { at })
+      : await people.current((await signatures.read(signedBefore, store, noIdentityVersions)).signedIdentity);
+  const actor = signatures.actor(signer, signedIdentity);
   const serviceSignatures = await Promise.all(
     (await locations.servicesOf(identity.$link, people)).map((link) => signatures.read(link, store, people)),
   );
-  const [latest] = serviceSignatures;
-  const at = clock();
-  const actor = signatures.actor(signer, latest?.signedIdentity ?? (await publish(signer, { at })));
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, schemas.service)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];

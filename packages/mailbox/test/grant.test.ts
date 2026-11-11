@@ -66,15 +66,15 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
 async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<Json>>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
-  await store.write({ records: [mailbox], blobs: network.transport.schema.blobs });
+  await store.write({ records: [mailbox], blobs: [network.transport.schema.bytes] });
   return mailbox.link;
 }
 
 // The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`, as a record.
 const blobsOf = (grant: EncodedObject<Json>, signature: Signature, to: Person) => [
   grant.bytes,
-  ...grants.schema.blobs,
-  ...signatures.schema.blobs,
+  grants.schema.bytes,
+  signatures.schema.bytes,
   ...signature.signedIdentity.blobs,
   ...to.actor.signedIdentity.blobs,
 ];
@@ -230,7 +230,7 @@ describe("the latest grant of one person to another", () => {
     const { encoding, link } = grants.schema;
     const misfit = encoding.encode(encoding.object({ at: 2_000 }, link));
     const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
-    const blobs = [misfit, ...grants.schema.blobs, ...signatures.schema.blobs, ...misfitSignature.signedIdentity.blobs];
+    const blobs = [misfit, grants.schema.bytes, signatures.schema.bytes, ...misfitSignature.signedIdentity.blobs];
     await bob.intake.receive(readBundle(writeBundle({ bytes: misfitSignature.bytes }, blobs)));
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);

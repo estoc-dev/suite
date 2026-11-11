@@ -395,7 +395,7 @@ describe("a mailbox service", () => {
       at: 2_000,
       offers: [{ $link: offerSignature.link }],
     });
-    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
+    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, droppedSchema.bytes];
     await store.write({ records: [await asService.sign(earlier)], blobs });
     expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).zip)).status).toBe(410);
   });

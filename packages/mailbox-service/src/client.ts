@@ -224,7 +224,7 @@ export class MailboxOffer {
     });
     await this.#posting.store.write({
       records: [openedMailbox],
-      blobs: [mailbox.bytes, ...mailbox.schema.blobs, ...openedMailbox.schema.blobs],
+      blobs: [mailbox.bytes, mailbox.schema.bytes, openedMailbox.schema.bytes],
     });
     return mailbox;
   }

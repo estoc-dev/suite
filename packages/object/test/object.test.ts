@@ -9,7 +9,6 @@ import {
   json,
   readObject,
   schemaOf,
-  selfDescribingObject,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
@@ -21,6 +20,7 @@ const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
   ["without a $schema", '{"v":1}'],
+  ["whose $schema is null", '{"$schema":null,"v":1}'],
   ["whose $schema is not a link", '{"$schema":{"$link":"login"},"v":1}'],
   ["whose $schema is a link as a bare string", `{"$schema":"${anything.link}","v":1}`],
   ["whose $schema has a member besides $link", `{"$schema":{"$link":"${anything.link}","note":"x"},"v":1}`],
@@ -105,27 +105,15 @@ describe("the schema an object names", () => {
     expect(schemaOf(utf8(`{"$schema":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
   });
 
-  it("is the object's own link for one that describes itself", () => {
-    const itself = selfDescribingObject(json, { language: "Example" });
-    expect(new TextDecoder().decode(itself.bytes)).toBe('{"$schema":null,"language":"Example"}');
-    expect(schemaOf(itself.bytes, json)).toBe(itself.link);
-  });
-
   it.each(malformed)("is not read from an object %s", (_, text) => {
     expect(() => schemaOf(utf8(text), json)).toThrow();
   });
 });
 
-test("a schema is an object of its root, and not of any schema", () => {
-  expect(schemaOf(login.bytes, json)).toBe(fieldNames.language.link);
+test("a schema is bytes, which name no schema and are an object of none", () => {
+  expect(() => schemaOf(login.bytes, json)).toThrow(/names its schema/);
   // @ts-expect-error: refused at compile time too
-  expect(() => decodeObject(login.bytes, anything)).toThrow();
-});
-
-test("an object that describes itself is not an object of any schema", () => {
-  const itself = selfDescribingObject(json, { v: 1 });
-  // @ts-expect-error: refused at compile time too
-  expect(() => decodeObject(itself.bytes, anything)).toThrow(/not to/);
+  expect(() => decodeObject(login.bytes, anything)).toThrow(/names its schema/);
 });
 
 test("an object read with a schema decoded from the same bytes keeps its link", () => {

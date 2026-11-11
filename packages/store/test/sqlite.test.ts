@@ -97,7 +97,7 @@ describe("a store in a SqliteBackend", () => {
     const note = object({ text: "hello" });
     const reply = object({ text: "hi", to: { $link: note.link } });
     const writer = new Store(json, open(path));
-    await writer.write({ records: [note, reply], blobs: anything.blobs });
+    await writer.write({ records: [note, reply], blobs: [anything.bytes] });
     const reader = new Store(json, open(path));
     expect(await recordsOf(reader)).toEqual(await recordsOf(writer));
     expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
@@ -107,7 +107,7 @@ describe("a store in a SqliteBackend", () => {
     const path = await makeTemporaryPath();
     const store = new Store(json, open(path));
     const note = object({ text: "hello" });
-    await store.write({ records: [note], blobs: anything.blobs });
+    await store.write({ records: [note], blobs: [anything.bytes] });
     const database = new DatabaseSync(path);
     database.prepare("UPDATE blobs SET bytes = ? WHERE link = ?").run(utf8("changed"), note.link);
     database.close();

@@ -19,8 +19,8 @@ export type SecretKeyData = DataOf<typeof secretKeySchema>;
 /**
  * A Secret Key read from its object, with its key and `signer`, which signs
  * with the secret. `blobs` are its closure: the bytes of its object and of
- * its key, and the blobs of the schemas they are written to, so one write
- * puts it in an empty store.
+ * its key, and the schemas they are written to, so one write puts it in an
+ * empty store.
  */
 export interface SecretKeyObject extends EncodedObject<Json, SecretKeyData> {
   readonly link: Link<SecretKeyObject>;

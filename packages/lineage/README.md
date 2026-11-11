@@ -49,9 +49,9 @@ first node, each node an object of the node schema. It holds:
 - `first`, `head`, and `nodes` from the first to the head.
 - `items`, the links the nodes carry, in their order and one for each
   node, so an item carried twice is there twice.
-- `blobs`, the bytes of the nodes and the blobs of the node schema: the
-  closure of `head` but for the closures of the items, which the caller
-  holds and sends along.
+- `blobs`, the bytes of the nodes and the node schema: the closure of
+  `head` but for the closures of the items, which the caller holds and
+  sends along.
 - `appending(item)`, the lineage with one node more, which carries `item`
   and names `head` as `previous`.
 

@@ -13,7 +13,7 @@ const note = schema("Note", { text: string() });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
-const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
+const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
 const signatureBlobs = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
@@ -39,7 +39,7 @@ async function postAt(
 // `store` keeps a mailbox that was handed over out of band, with a record that it came in.
 async function handOver(network: MemoryNetwork, store: Store, mailbox: EncodedObject<Json>) {
   const intake = new Intake(store);
-  await intake.receive(readBundle(writeBundle(mailbox, network.transport.schema.blobs)));
+  await intake.receive(readBundle(writeBundle(mailbox, [network.transport.schema.bytes])));
 }
 
 // A post whose store holds the mailbox of a new queue sealed to Bob, handed over.

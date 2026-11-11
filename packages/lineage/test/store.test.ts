@@ -24,7 +24,7 @@ async function writeHeads(store: Store, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
   await store.write({
     records: chains.map(({ head }) => head),
-    blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs],
+    blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, note.bytes],
   });
 }
 

@@ -37,7 +37,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
 const line = schema("Line", { text: string() });
-const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
+const schemas = [line, signatures.schema].map(({ bytes }) => bytes);
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;

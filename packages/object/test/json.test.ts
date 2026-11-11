@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
 import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
-import { fieldNames, fieldNamesRoot } from "./field-names.ts";
+import { fieldNames } from "./field-names.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = encodeSchema({}, fieldNames);
@@ -67,8 +67,7 @@ describe("an object with a $link member", () => {
   });
 
   it("is refused in a schema too", () => {
-    const text = `{"$schema":{"$link":"${fieldNamesRoot.link}"},"fields":[{"$link":"text"}]}`;
-    expect(() => decodeSchema(utf8(text), fieldNames)).toThrow(/\$link/);
+    expect(() => decodeSchema(utf8('{"fields":[{"$link":"text"}]}'), fieldNames)).toThrow(/\$link/);
   });
 });
 
@@ -108,13 +107,9 @@ describe("the links in a JSON value", () => {
     expect([...json.links(json.decode(object.bytes))].sort()).toEqual([anything.link, a, b, b].sort());
   });
 
-  it("are those of its data in an object that describes itself", () => {
-    const value = json.object({ data: [{ $link: a }] }, null);
-    expect([...json.links(value)]).toEqual([a]);
-  });
-
   it.each([
     ["has no $schema", { list: [{ $link: a }] }],
+    ["has a $schema that is null", { $schema: null, list: [{ $link: a }] }],
     ["names its dialect in $schema, as a JSON Schema document does", { $schema: DRAFT, list: [{ $link: a }] }],
     ["names its schema by a bare string", { $schema: a, list: [{ $link: a }] }],
     ["is an array", [{ $schema: { $link: a } }]],
@@ -123,11 +118,11 @@ describe("the links in a JSON value", () => {
   });
 
   it("leave out a string that is a link as a whole, as a member or as a member's name", () => {
-    const value = json.object({ list: [a, { [a]: "named by a link", text: a }] }, null);
-    expect([...json.links(value)]).toEqual([]);
+    const value = json.object({ list: [a, { [a]: "named by a link", text: a }] }, anything.link);
+    expect([...json.links(value)]).toEqual([anything.link]);
   });
 
   it("are refused at an object with a $link member that is not a link", () => {
-    expect(() => [...json.links(json.object({ list: [{ $link: a, note: "x" }] }, null))]).toThrow(/\$link/);
+    expect(() => [...json.links(json.object({ list: [{ $link: a, note: "x" }] }, anything.link))]).toThrow(/\$link/);
   });
 });

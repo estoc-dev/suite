@@ -81,9 +81,9 @@ export class Post {
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
     if (data.key !== hex.encode(key.publicKey))
       throw new Error("the mailbox made names another key than the one given");
-    await this.#store.write({ records: [mailbox], blobs: mailbox.schema.blobs });
+    await this.#store.write({ records: [mailbox], blobs: [mailbox.schema.bytes] });
     const object = encodeObject(mailboxKeySchema, { mailbox: { $link: mailbox.link }, secret: hex.encode(secret) });
-    await this.#privateStore.write({ records: [object], blobs: mailboxKeySchema.blobs });
+    await this.#privateStore.write({ records: [object], blobs: [mailboxKeySchema.bytes] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -116,7 +116,7 @@ export class Post {
   async #recordOutbound(mailbox: Link<EncodedObject<Json>>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
     const record = encodeObject(outboundSchema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ records: [record], blobs: outboundSchema.blobs });
+    await this.#store.write({ records: [record], blobs: [outboundSchema.bytes] });
     return { direction: "outbound", bundle, mailbox, at, link: record.link };
   }
 }

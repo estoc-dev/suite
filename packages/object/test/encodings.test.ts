@@ -7,15 +7,13 @@ import {
   type Link,
   type SchemaValidator,
   schemaOf,
-  selfDescribingObject,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
 // An encoding with nothing of JSON in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written
 // `name=text` in the order of their names. An object names its schema in the
-// field `schema`, left empty in one that describes itself, and a link is
-// written as it is.
+// field `schema`, and a link is written as it is.
 type Text = string | { readonly [name: string]: Text };
 
 // Kept, a byte order mark is part of the first name, so that bytes with one
@@ -54,35 +52,32 @@ const lines: Encoding<Text> = {
   },
   object(data, schema) {
     if (Object.hasOwn(data, "schema")) throw new Error("the data has no field schema");
-    return { ...data, schema: schema ?? "" };
+    return { ...data, schema };
   },
   fields(value) {
     if (typeof value === "string") throw new Error("an object is fields");
     const { schema, ...data } = value;
-    if (schema === "") return { data, schema: null };
     if (!isLink(schema)) throw new Error("an object names its schema by link");
     return { data, schema };
   },
   links(value) {
-    if (typeof value === "string" || !(value.schema === "" || isLink(value.schema))) return [];
+    if (typeof value === "string" || !isLink(value.schema)) return [];
     return Object.values(value).filter(isLink);
   },
 };
-
-const fieldCountRoot = selfDescribingObject(lines, { language: "Field count" });
 
 // A document says how many fields the data has.
 const fieldCount: SchemaValidator<Text, string> = {
   language: {
     encoding: lines,
-    link: fieldCountRoot.link,
-    blobs: [fieldCountRoot.bytes],
-    data: (count) => ({ document: count }),
-    document({ document, ...rest }) {
-      if (Object.keys(rest).length > 0 || typeof document !== "string" || !/^(0|[1-9][0-9]*)$/.test(document)) {
+    value: (count) => ({ count }),
+    document(value) {
+      if (typeof value === "string") throw new Error("a schema is fields");
+      const { count, ...rest } = value;
+      if (Object.keys(rest).length > 0 || typeof count !== "string" || !/^(0|[1-9][0-9]*)$/.test(count)) {
         throw new Error("a schema holds a count of fields alone");
       }
-      return document;
+      return count;
     },
   },
   compile: (count) => (data) => {
@@ -102,12 +97,9 @@ describe("an encoding other than JSON", () => {
     expect(schemaOf(object.bytes, lines)).toBe(pair.link);
   });
 
-  it("writes its schemas as objects of its root", () => {
-    const root = fieldCountRoot;
-    expect(new TextDecoder().decode(root.bytes)).toBe("language=Field count\nschema=\n");
-    expect(new TextDecoder().decode(pair.bytes)).toBe(`document=2\nschema=${root.link}\n`);
-    expect(schemaOf(pair.bytes, lines)).toBe(root.link);
-    expect(schemaOf(root.bytes, lines)).toBe(root.link);
+  it("writes its schemas as bytes, which name no schema", () => {
+    expect(new TextDecoder().decode(pair.bytes)).toBe("count=2\n");
+    expect(() => schemaOf(pair.bytes, lines)).toThrow(/names its schema/);
   });
 
   it("refuses an object whose data does not fit its schema", () => {

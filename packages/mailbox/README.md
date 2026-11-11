@@ -184,7 +184,7 @@ import { readBundle, writeBundle } from "@estoc/bundle";
 import { Intake } from "@estoc/store";
 
 const intake = new Intake(store);
-await intake.receive(readBundle(writeBundle({ bytes: handedOut }, transport.schema.blobs)));
+await intake.receive(readBundle(writeBundle({ bytes: handedOut }, [transport.schema.bytes])));
 ```
 
 `openInbox` makes a new key and gives its public key to `makeMailbox`,

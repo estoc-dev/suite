@@ -23,7 +23,7 @@ const anything = schema("Anything", {
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
-const bundleOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array> = anything.blobs) =>
+const bundleOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array> = [anything.bytes]) =>
   readBundle(writeBundle(root, blobs));
 
 const newStore = () => new Store(json, new MemoryBackend());
@@ -66,7 +66,7 @@ describe("an intake", () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
-    const record = await intakeOf(store).receive(bundleOf(note, [image, ...anything.blobs]));
+    const record = await intakeOf(store).receive(bundleOf(note, [image, anything.bytes]));
     expect(record.data).toEqual({ bundle: { $link: note.link }, at: 1000 });
     expect(await recordsOf(store)).toEqual([record.link]);
     expect(await store.get(note.link)).toEqual(note.bytes);
@@ -107,7 +107,7 @@ describe("an intake", () => {
   it("takes a bundle that leaves out blobs the store holds", async () => {
     const store = newStore();
     const heldNote = object({ text: "held" });
-    await store.write({ records: [heldNote], blobs: anything.blobs });
+    await store.write({ records: [heldNote], blobs: [anything.bytes] });
     const reply = object({ to: { $link: heldNote.link } });
     await intakeOf(store).receive(bundleOf(reply, []));
     expect(await store.get(reply.link)).toEqual(reply.bytes);
@@ -158,7 +158,7 @@ describe("the records of an intake", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const sentRecord = encodeObject(inboundSchema, { bundle: { $link: note.link as Link<never> }, at: 0 });
-    await intakeOf(store).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
+    await intakeOf(store).receive(bundleOf(sentRecord, [note.bytes, anything.bytes, inboundSchema.bytes]));
     const rows: (readonly [Link<never>, number])[] = [];
     for await (const row of (await scan(store, cameIn)).range([])) rows.push(row);
     expect(rows).toEqual([[sentRecord.link as Link<never>, 1000]]);

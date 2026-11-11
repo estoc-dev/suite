@@ -1,9 +1,7 @@
-import { encodeSchema, type Json, type Schema } from "@estoc/object";
 import { Identities, type IdentityContent } from "./identity.ts";
 import { IdentityVersions } from "./identity-versions.ts";
-import type { KeyData, Scheme } from "./key/interface.ts";
+import type { Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
-import { type SchemeData, schemeValidator } from "./key/scheme.ts";
 import { SecretKeys } from "./secret-key.ts";
 import { Signatures } from "./signature.ts";
 import { SignedIdentities, type SignedIdentityObject } from "./signed-identity.ts";
@@ -30,19 +28,13 @@ export interface IdentityKit {
 
 /**
  * What reads and writes the objects of this package's schemas, with the
- * keys of `schemes`, each written to its scheme's object. The application
+ * keys of `schemes`, each written to its scheme's schema. The application
  * picks the schemes, so which keys it accepts is its own to say.
  *
- * @throws when the data of one of `schemes` does not fit the scheme schema,
- * or two of them have one object.
+ * @throws when two of `schemes` have one name.
  */
 export function loadIdentity(schemes: readonly Scheme[]): IdentityKit {
-  const keySchemas = new Map<Scheme, Schema<Json, KeyData>>();
-  for (const scheme of schemes) {
-    const data = { name: scheme.name, publicKeyLength: scheme.publicKeyLength };
-    keySchemas.set(scheme, encodeSchema<Json, SchemeData, KeyData>(data, schemeValidator));
-  }
-  const keys = new Keys(keySchemas);
+  const keys = new Keys(schemes);
   const identities = new Identities(keys);
   const signedIdentities = new SignedIdentities(identities);
   return {

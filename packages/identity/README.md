@@ -7,9 +7,7 @@ keys, the identity, the root's signature over the identity and each
 signature are written as objects, which another object names by its link.
 
 ```
-Scheme              an Object written to the scheme schema, with the fields
-                    "name": <the scheme's name>, "publicKeyLength": <bytes>
-Key                 an Object written to its Scheme, with the field
+Key                 an Object written to the schema of its scheme, with the field
                     "publicKey": <hex>
 Identity            an Object written to the Identity schema, with the fields
                     "prior": <a Signed identity's link>, "root": <the Key's link>,
@@ -30,7 +28,7 @@ the key that signed, the root first and its agents after it, and that key's
 signature.
 
 The schemas here are written in the language of `@estoc/schema`.
-`loadIdentity` writes the object of each scheme the application picks, and
+`loadIdentity` writes the schema of each scheme the application picks, and
 gives what reads and writes the objects of each schema, side by side:
 `keys`, `identities`, `signedIdentities`, `signatures`, `identityVersions`,
 `secretKeys` and `walletKeys`, with `publish`, which writes an identity and
@@ -42,18 +40,18 @@ another where an object of the one links to an object of the other.
 ## Schemes
 
 A scheme is how a key signs: how the text it signs is framed, the code
-that verifies a signature over it, and the object its keys are written to.
+that verifies a signature over it, and the schema its keys are written to.
 A key kept in a chain wallet signs only in that chain's off-chain message
 framing, so the framing belongs to the key, and a verifier does not accept
 a framing its holder did not choose.
 
-A scheme is a plugin, a `Scheme` value: `name` and `publicKeyLength`, the
-data of its object, and `verify`, which says whether a signature is a
+A scheme is a plugin, a `Scheme` value: `name`, the title of its schema,
+`publicKeyLength`, and `verify`, which says whether a signature is a
 public key's over a text. The application picks the schemes it reads keys
 in, `loadIdentity(schemes)`, so which keys it accepts is its own
-to say, and no registry holds them. Two schemes with one object are
+to say, and no registry holds them. Two schemes with one name are
 refused. This package keeps what is the same in every scheme: the signing
-text, picking a scheme by the link of its object, and the rules of
+text, picking a scheme by the link of its schema, and the rules of
 identities and signatures. A scheme only answers whether a key's signature
 over a text holds. A `Signer` is not part of it, and a plugin can give one
 of its own, as a wallet or a passkey would.
@@ -91,12 +89,12 @@ of its own under `src/key/`, written with the public API alone:
 
 A plugin depends on `@estoc/identity` as a peer dependency, so a program
 holds one copy of it, which `isSameKey` and `keys.encode` need. A scheme is picked by the link of
-its object, so a plugin with a bug wrongly accepts only signatures by keys
+its schema, so a plugin with a bug wrongly accepts only signatures by keys
 in its scheme, those of the identities whose root or agent is in it. That
 does not hold against code meant to harm, which runs in the same
 JavaScript realm as the application. A program does not fetch the verifier
 of a scheme it has not seen by its link: the link proves the bytes, not
-that the verifier is right, and whoever wrote the scheme's object would
+that the verifier is right, and whoever wrote the scheme's schema would
 have written its verifier too. Trust in the code comes from the
 application that picks it.
 
@@ -136,36 +134,33 @@ signing is asynchronous.
 
 ## Keys
 
-Each scheme has an object, written to `schemeSchema`, that holds its name
-and how many bytes its public keys are, and that object is the schema its
-keys are written to:
+Each scheme has a schema that its keys are written to, with the scheme's
+name as its title:
 
 ```
 key                 {"$schema": {"$link": <ed25519>}, "publicKey": "…"}
-ed25519             {"$schema": {"$link": <the scheme schema>}, "name": "ed25519", "publicKeyLength": 32}
-the scheme schema   {"$schema": {"$link": <the root of @estoc/schema>}, "title": "Key Scheme", "fields": {…}}
+ed25519             {"$schema": {"$link": <the root of @estoc/schema>}, "title": "ed25519",
+                     "fields": {"publicKey": {"type": "bytes"}}}
 ```
 
-Each line is the type of the one above it. The scheme schema is a schema of
-`@estoc/schema`, and the objects of the schemes are the schemas of a
-language of their own, which `schemeValidator` reads. A key holds its
-public key, in lowercase hex at its scheme's length, and no other field, so
-each key has one object and one link, and no scheme writes its keys another
-way. The objects of `ed25519` and `solana-offchain` differ only in their
-names: one public key in the two schemes is two objects, with two links, as
-it is two keys. A scheme's object carries as its `blobs` itself, the scheme
-schema and the root the scheme schema is written to.
+Each line is the type of the one above it. A key holds its public key, in
+lowercase hex, and no other field, so each key has one object and one
+link, and no scheme writes its keys another way. The schemas of `ed25519`
+and `solana-offchain` differ only in their titles: one public key in the
+two schemes is two objects, with two links, as it is two keys. A schema
+does not say how long its bytes are, so `keys` refuses a public key of
+another length than its scheme's.
 
-That an object is a scheme is its type, not a mark in a document. What a
-program reads a scheme's keys as is still the program's to say: another
-program could read an `ed25519` key as a Solana address.
+The scheme of a key is its type, its `$schema`, not a field of its data.
+What a program reads a scheme's keys as is still the program's to say:
+another program could read an `ed25519` key as a Solana address.
 
-A scheme added later comes with an object of its own, so keys already
-written keep their links. A program reads keys written to the objects of
+A scheme added later comes with a schema of its own, so keys already
+written keep their links. A program reads keys written to the schemas of
 the schemes it supports, as it says which schemas it reads, and refuses one
 written to any other, as it would a key in a scheme it does not support.
 Verifying is code, which no object holds, so a program refuses a scheme it
-has no verifier for whatever its object says.
+has no verifier for whatever its schema says.
 
 `keys` reads keys through an `Implementations` of `@estoc/object`, with
 one implementation for each scheme. `keys.check` is the verifier of a key:
@@ -173,8 +168,8 @@ it takes a key's object and gives the key, in the scheme of the schema the
 object is written to. `keys.read` does the same from the
 link of the object and a `Reader`, and picks the schema to read the object
 with by `schemaOf`. `keys.encode` writes a key as its object, and refuses a
-public key that its scheme's object does not take, and a scheme that is not
-one of those `loadIdentity` writes an object for. A scheme added later is one more
+public key of another length than its scheme's, and a scheme that is not
+one of those given to `loadIdentity`. A scheme added later is one more
 plugin an application gives `loadIdentity`.
 
 ## Identities

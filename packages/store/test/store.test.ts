@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
+import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, json, type Link, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, schema, schemaRoot, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -127,19 +127,6 @@ describe("a store", () => {
     );
     expect(await store.get(carriedObject.link)).toBeUndefined();
     expect(await recordsOf(store)).toEqual([]);
-  });
-
-  it("takes an object of a schema written to another schema only along with that one too", async () => {
-    const store = newStore();
-    const { root: key } = identities.encode(signer.key, { at: 0 });
-    const withoutSchemeSchema = key.schema.blobs.filter((bytes) => linkOf(bytes) !== schemeSchema.link);
-    await expect(store.write({ records: [key], blobs: withoutSchemeSchema })).rejects.toThrow(
-      `${key.schema.link} links to ${schemeSchema.link}, which neither the batch nor the store holds`,
-    );
-    await store.write({ records: [key], blobs: key.schema.blobs });
-    expect([...(await store.closure(key.link)).keys()].sort()).toEqual(
-      [key.link, key.schema.link, ...schemeSchema.blobs.map((bytes) => linkOf(bytes))].sort(),
-    );
   });
 
   it("refuses a batch for what it is with a RefusedBatch, and passes on a backend's own failure as it is", async () => {

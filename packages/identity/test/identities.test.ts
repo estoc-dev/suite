@@ -25,7 +25,6 @@ import {
   type SignedIdentityData,
   type SignedIdentityObject,
   SoftwareSigner,
-  schemeSchema,
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
@@ -91,7 +90,6 @@ describe("an identity", () => {
       identitySchema.link,
       schemaRoot.link,
       identity.root.schema.link,
-      schemeSchema.link,
     ]);
   });
 
@@ -290,7 +288,6 @@ describe("the agents of an identity", () => {
       identitySchema.link,
       schemaRoot.link,
       identity.root.schema.link,
-      schemeSchema.link,
       first.schema.link,
     ]);
   });

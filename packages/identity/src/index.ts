@@ -20,7 +20,6 @@ export {
   verify,
 } from "./key/interface.ts";
 export type { Keys } from "./key/keys.ts";
-export { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts";
 export { solanaOffchain } from "./key/solana-offchain.ts";
 export { type IdentityKit, loadIdentity } from "./load.ts";
 export type { People, Person } from "./person.ts";

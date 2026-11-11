@@ -7,34 +7,36 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, encodeSchema, json, type Link, linkOf, readObject } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { decodeObject, encodeObject, json, type Link, linkOf, readObject } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import { Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  accountOfferSchema,
+  acknowledgementSchema,
+  mailboxAcknowledgementSchema,
+  mailboxOfferSchema,
+  mailboxRequestSchema,
+  pickupAnswerSchema,
+  pickupRequestSchema,
+  serviceSchema,
+} from "../src/index.ts";
 import { peopleView } from "../src/people.ts";
 import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
-  acknowledgementSchemaRead,
   actorOf,
   identities,
   identityVersions,
   keys,
-  mailboxAcknowledgementSchemaRead,
-  mailboxOfferSchemaRead,
-  mailboxRequestSchemaRead,
   makeTemporaryPath,
   memoryService,
   memoryStore,
-  offerSchema,
-  pickupAnswerSchemaRead,
-  pickupRequestSchemaRead,
   publish,
   serviceActor,
   serviceIdentity,
   serviceRoot,
-  serviceSchemaRead,
   serviceSigner,
   signatures,
   signedAtOrigins,
@@ -66,19 +68,16 @@ const records = async (store: { records(): AsyncIterable<Link<never>> }) => {
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
   const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
-  const { data } = await readObject(bundle, signature.object, serviceSchemaRead);
+  const { data } = await readObject(bundle, signature.object, serviceSchema);
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
   assert.exists(listedMailbox);
-  const offerSignature = await signatures.read(listedAccount.offer.$link, bundle, noIdentityVersions);
-  const offer = await readObject(bundle, offerSignature.object, offerSchema);
-  const mailboxOfferSignature = await signatures.read(listedMailbox.offer.$link, bundle, noIdentityVersions);
-  const mailbox = {
-    offerSignature: mailboxOfferSignature,
-    offer: await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchemaRead),
-    acceptId: listedMailbox.acceptId,
-  };
-  return { signature, data, offerSignature, offer, acceptId: listedAccount.acceptId, mailbox };
+  const offerSignature = await signatures.read(listedAccount.$link, bundle, noIdentityVersions);
+  const offer = await readObject(bundle, offerSignature.object, accountOfferSchema);
+  const mailboxOfferSignature = await signatures.read(listedMailbox.$link, bundle, noIdentityVersions);
+  const mailboxOffer = await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchema);
+  const mailbox = { offerSignature: mailboxOfferSignature, offer: mailboxOffer, acceptId: mailboxOffer.link };
+  return { signature, data, offerSignature, offer, acceptId: offer.link, mailbox };
 }
 
 const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
@@ -127,26 +126,22 @@ function heldSigner(signer: Signer) {
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
   const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
-  return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchemaRead) };
+  return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchema) };
 }
 
 describe("a mailbox service", () => {
-  it("answers GET / with its signature over a Service at its origin, which lists its offers of an account and of mailboxes, each under the offer's link", async () => {
+  it("answers GET / with its signature over a Service at its origin, which lists its signatures over its offers of an account and of mailboxes", async () => {
     const { service } = await memoryService({ start: 3_000 });
     const response = await getRoot(service);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
-    const { signature, data, offerSignature, offer, acceptId, mailbox } = await rootOf(service);
+    const { signature, data, offerSignature, offer, mailbox } = await rootOf(service);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
-      offers: [
-        { offer: { $link: offerSignature.link }, acceptId },
-        { offer: { $link: mailbox.offerSignature.link }, acceptId: mailbox.acceptId },
-      ],
+      offers: [{ $link: offerSignature.link }, { $link: mailbox.offerSignature.link }],
     });
-    expect([acceptId, mailbox.acceptId]).toEqual([offer.link, mailbox.offer.link]);
     for (const { signedIdentity } of [offerSignature, mailbox.offerSignature])
       expect(signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
@@ -391,16 +386,16 @@ describe("a mailbox service", () => {
 
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
-    const schema = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-    const droppedOffer = encodeObject(schema, { identity: { $link: serviceRoot.link } });
+    const droppedSchema = await schema("Dropped offer", { identity: link() });
+    const droppedOffer = encodeObject(droppedSchema, { identity: { $link: serviceRoot.link } });
     const asService = await serviceActor(3_000);
     const offerSignature = await asService.sign(droppedOffer);
-    const earlier = encodeObject(serviceSchemaRead, {
+    const earlier = encodeObject(serviceSchema, {
       origin: "https://mail.example",
       at: 2_000,
-      offers: [{ offer: { $link: offerSignature.link }, acceptId: droppedOffer.link }],
+      offers: [{ $link: offerSignature.link }],
     });
-    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...schema.blobs];
+    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
     await store.write({ records: [await asService.sign(earlier)], blobs });
     expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).zip)).status).toBe(410);
   });
@@ -472,7 +467,7 @@ describe("a mailbox service", () => {
       (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const ats = await Promise.all(
-      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data.at),
+      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data.at),
     );
     expect(ats).toEqual([10_000, 10_000]);
     const [one, two] = await Promise.all(starts.map(({ service }) => rootOf(service)));
@@ -583,7 +578,7 @@ describe("a mailbox service started again", () => {
       (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const services = await Promise.all(
-      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchemaRead)).data),
+      serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data),
     );
     expect(services).toContainEqual({ ...before.data, origin: "https://post.example", at: 1_000 });
   });
@@ -637,7 +632,7 @@ const openAccount = async (service: MailboxService, actor: Actor) =>
 
 /** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
 async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
-  const request = encodeObject(mailboxRequestSchemaRead, { offer: { $link: offer.link as Link<never> }, key });
+  const request = encodeObject(mailboxRequestSchema, { offer: { $link: offer.link as Link<never> }, key });
   const signature = await actor.sign(request);
   return { signature, zip: await packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
 }
@@ -651,7 +646,7 @@ async function mailboxAcknowledgementIn(response: Response) {
   return {
     bundle,
     signature,
-    acknowledgement: await readObject(bundle, signature.object, mailboxAcknowledgementSchemaRead),
+    acknowledgement: await readObject(bundle, signature.object, mailboxAcknowledgementSchema),
   };
 }
 
@@ -670,7 +665,7 @@ async function openMailbox(service: MailboxService, actor: Actor, key = keyOf(0x
 
 /** The bundle of `actor`'s request to pick up at the mailbox `mailbox` opened, with `receipts` for what it is done with. */
 async function pickupRequest(actor: Actor, mailbox: OpenedMailbox, receipts: readonly Uint8Array[] = []) {
-  const request = encodeObject(pickupRequestSchemaRead, {
+  const request = encodeObject(pickupRequestSchema, {
     mailbox: mailbox.request,
     receipts: receipts.map((ciphertext) => ({ $link: linkOf(ciphertext) })),
   });
@@ -690,7 +685,7 @@ async function queueAt(
   const response = await post(service, mailbox.pickupId, await pickupRequest(actor, mailbox, receipts));
   expect(response.status).toBe(200);
   const bundle = await bundleOf(response);
-  return decodeObject(bundle.root, pickupAnswerSchemaRead).data.ciphertexts.map(({ $link }) => {
+  return decodeObject(bundle.root, pickupAnswerSchema).data.ciphertexts.map(({ $link }) => {
     const ciphertext = bundle.get($link);
     assert.exists(ciphertext);
     return ciphertext;
@@ -714,11 +709,9 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(pickupId).toMatch(/^[0-9a-f]{32}$/);
     expect(sendId).not.toBe(pickupId);
     const read = await signatures.read(signature.link, bundle, noIdentityVersions);
-    const request = await readObject(bundle, read.object, mailboxRequestSchemaRead);
+    const request = await readObject(bundle, read.object, mailboxRequestSchema);
     expect(request.data).toEqual({ offer: { $link: mailbox.offer.link }, key: keyOf(0x11) });
-    expect((await readObject(bundle, request.data.offer.$link, mailboxOfferSchemaRead)).data).toEqual(
-      mailbox.offer.data,
-    );
+    expect((await readObject(bundle, request.data.offer.$link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);
   });
 
   it("opens a mailbox for an agent that an identity of the root lists, under the account its wallet opened", async () => {
@@ -901,7 +894,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
     const mailbox = await openMailbox(behind, actor, keyOf(0x22));
     expect((await post(behind, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
-    const own = encodeObject(mailboxOfferSchemaRead, { identity: { $link: serviceRoot.link }, ...offeredTerms });
+    const own = encodeObject(mailboxOfferSchema, { identity: { $link: serviceRoot.link }, ...offeredTerms });
     expect((await post(behind, own.link, (await mailboxRequest(actor, own)).zip)).status).toBe(410);
   });
 });

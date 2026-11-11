@@ -5,9 +5,9 @@ import {
   type Signature,
   type Signatures,
 } from "@estoc/identity";
-import type { Json, Link, Schema } from "@estoc/object";
+import type { Link } from "@estoc/object";
 import { indexOverBlobs, type View } from "@estoc/store";
-import type { ServiceData } from "./schemas.ts";
+import { serviceSchema } from "./schemas.ts";
 
 /**
  * The signature's link comes after `at`, so that of two Services at the same
@@ -33,9 +33,9 @@ export interface Locations {
 
 export type LocationsView = View<Location, Locations>;
 
-export function locationsView(signatures: Signatures, service: Schema<Json, ServiceData>): LocationsView {
+export function locationsView(signatures: Signatures): LocationsView {
   return {
-    index: indexOverBlobs(signatures.selectionOver(service), async function* ({ signature, object }, reader) {
+    index: indexOverBlobs(signatures.selectionOver(serviceSchema), async function* ({ signature, object }, reader) {
       // A row depends on the signature and its closure alone, so it is
       // verified by the identity version it carries; whether the signature
       // is honored is checked as the rows are read.

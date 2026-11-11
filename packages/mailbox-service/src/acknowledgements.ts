@@ -1,7 +1,7 @@
 import type { Signature, Signatures } from "@estoc/identity";
-import { type EncodedObject, type Json, type Link, objectsOf, type Schema } from "@estoc/object";
+import { type EncodedObject, type Json, type Link, objectsOf } from "@estoc/object";
 import { indexOver, type View } from "@estoc/store";
-import type { AcknowledgementData, OpenedMailboxData } from "./schemas.ts";
+import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
 
 type AcknowledgementRow = readonly [acceptance: Link<Signature>, acknowledgement: Link<Signature>];
 
@@ -18,12 +18,9 @@ export interface Acknowledgements {
 
 export type AcknowledgementsView = View<AcknowledgementRow, Acknowledgements>;
 
-export function acknowledgementsView(
-  signatures: Signatures,
-  acknowledgement: Schema<Json, AcknowledgementData>,
-): AcknowledgementsView {
+export function acknowledgementsView(signatures: Signatures): AcknowledgementsView {
   return {
-    index: indexOver(signatures.selectionOver(acknowledgement), ({ signature, object }) => [
+    index: indexOver(signatures.selectionOver(acknowledgementSchema), ({ signature, object }) => [
       [object.data.acceptance.$link, signature.link as Link<Signature>],
     ]),
     read: (rows) => ({
@@ -56,9 +53,9 @@ export interface OpenedMailboxes {
 
 export type OpenedMailboxesView = View<OpenedMailboxRow, OpenedMailboxes>;
 
-export function openedMailboxesView(openedMailbox: Schema<Json, OpenedMailboxData>): OpenedMailboxesView {
+export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(objectsOf(openedMailbox), ({ data }) => [[data.mailbox.$link, data.acknowledgement.$link]]),
+    index: indexOver(objectsOf(openedMailboxSchema), ({ data }) => [[data.mailbox.$link, data.acknowledgement.$link]]),
     read: (rows) => ({
       async acknowledgementOf(mailbox) {
         for await (const [, link] of rows.range([mailbox])) return link;

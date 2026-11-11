@@ -15,16 +15,11 @@ import {
   type Bytes,
   type EncodedObject,
   encodeObject,
-  encodeSchema,
-  type Fields,
   type Json,
-  type JsonSchema,
-  type JsonSchemaValidator,
   json,
   type Link,
   linkOf,
   readObject,
-  type Schema,
   schemaOf,
 } from "@estoc/object";
 import { type Store, view } from "@estoc/store";
@@ -35,22 +30,16 @@ import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import { type PeopleView, peopleView } from "./people.ts";
 import {
-  type AccountOfferData,
-  type AcknowledgementData,
   accountOfferSchema,
   acknowledgementSchema,
   formOf,
   ID,
   MAILBOX_ID,
-  type MailboxAcknowledgementData,
   type MailboxOfferData,
-  type MailboxRequestData,
   type MailboxTerms,
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
-  type PickupAnswerData,
-  type PickupRequestData,
   pickupAnswerSchema,
   pickupRequestSchema,
   type ServiceData,
@@ -66,17 +55,6 @@ const REQUEST_LIMIT = 64 * 1024;
 // the answer before: PICKUP.count ciphertexts at most, each by a link of under
 // 128 bytes.
 const PICKUP_LIMIT = REQUEST_LIMIT + PICKUP.count * 128;
-
-type Schemas = {
-  readonly service: Schema<Json, ServiceData>;
-  readonly accountOffer: Schema<Json, AccountOfferData>;
-  readonly mailboxOffer: Schema<Json, MailboxOfferData>;
-  readonly acknowledgement: Schema<Json, AcknowledgementData>;
-  readonly mailboxRequest: Schema<Json, MailboxRequestData>;
-  readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
-  readonly pickupRequest: Schema<Json, PickupRequestData>;
-  readonly pickupAnswer: Schema<Json, PickupAnswerData>;
-};
 
 /**
  * The accounts of a service, one for each identifier, as the link of the
@@ -129,8 +107,6 @@ export interface ServiceOptions {
    *   which another start on the same store may have signed, and keeps them.
    */
   readonly terms: MailboxTerms;
-  /** The validator that the schemas are compiled with. */
-  readonly validator: JsonSchemaValidator;
   /** The schemes of the keys the service reads, its own and those of whoever signs to it. */
   readonly schemes: readonly Scheme[];
   /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
@@ -141,8 +117,8 @@ export interface ServiceOptions {
  * A mailbox service, as a handler of HTTP requests.
  *
  * - `GET /` answers the service's signed Service.
- * - A `POST` to the id that the Service lists for the offer of an account
- *   opens one for whoever signed the offer.
+ * - A `POST` to the id of the offer of an account, which is the offer's
+ *   link, opens one for whoever signed the offer.
  * - A `POST` to the id of the offer of mailboxes opens a mailbox under that
  *   account.
  * - A `POST` to a mailbox's send id leaves a ciphertext there, and to its
@@ -156,7 +132,6 @@ class MailboxService {
   readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
-  readonly #schemas: Schemas;
   readonly #store: Store;
   readonly #accounts: Accounts;
   readonly #mailboxes: Mailboxes;
@@ -167,18 +142,16 @@ class MailboxService {
     signedIdentity: SignedIdentityObject,
     identifier: Identifier,
     kit: IdentityKit,
-    schemas: Schemas,
     people: PeopleView,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#signer = signer;
     this.#signedIdentity = signedIdentity;
     this.#identifier = identifier;
-    this.#locations = locationsView(kit.signatures, schemas.service);
+    this.#locations = locationsView(kit.signatures);
     this.#people = people;
-    this.#acknowledgements = acknowledgementsView(kit.signatures, schemas.acknowledgement);
+    this.#acknowledgements = acknowledgementsView(kit.signatures);
     this.#signatures = kit.signatures;
-    this.#schemas = schemas;
     this.#store = store;
     this.#accounts = accounts;
     this.#mailboxes = mailboxes;
@@ -215,8 +188,14 @@ class MailboxService {
 
   async #serviceListsOffer(link: Link<Signature>, id: string, people: People): Promise<boolean> {
     const { object } = await this.#signatures.read(link, this.#store, people);
-    const { offers } = (await readObject(this.#store, object, this.#schemas.service)).data;
-    return offers.some(({ acceptId }) => acceptId === id);
+    const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
+    // The store's own signatures say which offer each is over, and are read
+    // for that alone.
+    for (const { $link } of offers) {
+      const signature = await readObject(this.#store, $link, this.#signatures.schema);
+      if (signature.data.object.$link === id) return true;
+    }
+    return false;
   }
 
   /**
@@ -230,8 +209,8 @@ class MailboxService {
     const offer = id as Link<EncodedObject<Json>>;
     const bytes = await this.#store.get(offer);
     if (bytes === undefined) throw new Error(`the store does not hold ${offer}`);
-    if (schemaOf(bytes, json) === this.#schemas.accountOffer.link) return this.#openAccount(request, offer);
-    return this.#openMailbox(request, await readObject(this.#store, offer, this.#schemas.mailboxOffer));
+    if (schemaOf(bytes, json) === accountOfferSchema.link) return this.#openAccount(request, offer);
+    return this.#openMailbox(request, await readObject(this.#store, offer, mailboxOfferSchema));
   }
 
   /**
@@ -267,7 +246,7 @@ class MailboxService {
       heldAcknowledgement === undefined
         ? (
             await this.#acknowledge(
-              encodeObject(this.#schemas.acknowledgement, { acceptance: { $link: acceptance.link }, at }),
+              encodeObject(acknowledgementSchema, { acceptance: { $link: acceptance.link }, at }),
               people,
               bundle,
               acceptance.signedIdentity,
@@ -296,7 +275,7 @@ class MailboxService {
     try {
       bundle = await unpackBundle(zip);
       signature = await this.#signatures.read(bundle.link, bundle, people);
-      const { data } = await readObject(bundle, signature.object, this.#schemas.mailboxRequest);
+      const { data } = await readObject(bundle, signature.object, mailboxRequestSchema);
       if (data.offer.$link !== offer.link) throw new Error(`the request asks for ${data.offer.$link}, not the offer`);
     } catch (error) {
       return answer(400, reasonOf(error));
@@ -308,11 +287,11 @@ class MailboxService {
       return this.#answerWith(await this.#renew(existingMailbox.acknowledgement, people), 200);
     const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = await this.#acknowledge(
-      encodeObject(this.#schemas.mailboxAcknowledgement, { request: { $link: signature.link }, at, sendId, pickupId }),
+      encodeObject(mailboxAcknowledgementSchema, { request: { $link: signature.link }, at, sendId, pickupId }),
       people,
       bundle,
       signature.signedIdentity,
-      this.#schemas.mailboxRequest.blobs,
+      mailboxRequestSchema.blobs,
     );
     const { identity: _, ...terms } = offer.data;
     const mailbox = {
@@ -410,7 +389,7 @@ class MailboxService {
     try {
       const bundle = await unpackBundle(zip);
       signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
-      const { data } = await readObject(bundle, signature.object, this.#schemas.pickupRequest);
+      const { data } = await readObject(bundle, signature.object, pickupRequestSchema);
       if (data.mailbox.$link !== mailbox.request)
         throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
       receipts = data.receipts.map(({ $link }) => $link);
@@ -428,7 +407,7 @@ class MailboxService {
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
-    const pickupAnswer = encodeObject(this.#schemas.pickupAnswer, {
+    const pickupAnswer = encodeObject(pickupAnswerSchema, {
       ciphertexts: ciphertexts.map((bytes) => ({ $link: linkOf(bytes) })),
     });
     return bundleAnswer(200, await packBundle(pickupAnswer, ciphertexts));
@@ -500,8 +479,8 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  *   else the service signs a new one, as it does when none is honored once
  *   its root signed a crisis.
  * - Either way the latest lists the offer of an account and the offer of
- *   mailboxes on `terms`, each under its link, with the service's signature
- *   over it from the latest Service that lists it.
+ *   mailboxes on `terms`, each as the service's signature over it from the
+ *   latest Service that lists it.
  * - The service signs as its current identity version, by the identity
  *   versions the store holds, and publishes its identity only when the store
  *   holds no Service of it.
@@ -510,35 +489,23 @@ function bundleAnswer(status: number, zip: Uint8Array): Response {
  */
 export async function loadMailboxService(
   signer: Signer,
-  { origin, validator, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
+  { origin, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
   const kit = await loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
-  const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
-    encodeSchema(schema, validator);
-  const schemas: Schemas = {
-    service: await compile(serviceSchema),
-    accountOffer: await compile(accountOfferSchema),
-    mailboxOffer: await compile(mailboxOfferSchema),
-    acknowledgement: await compile(acknowledgementSchema),
-    mailboxRequest: await compile(mailboxRequestSchema),
-    mailboxAcknowledgement: await compile(mailboxAcknowledgementSchema),
-    pickupRequest: await compile(pickupRequestSchema),
-    pickupAnswer: await compile(pickupAnswerSchema),
-  };
   const identifier: Identifier = keys.encode(signer.key).link;
   const identity = { $link: identifier };
   const offers = [
-    encodeObject(schemas.accountOffer, { identity }),
-    encodeObject(schemas.mailboxOffer, { identity, ...terms }),
+    encodeObject(accountOfferSchema, { identity }),
+    encodeObject(mailboxOfferSchema, { identity, ...terms }),
   ];
 
   const seenPeople = peopleView(kit.identityVersions);
   const people = await view(store, seenPeople);
-  const locations = await view(store, locationsView(signatures, schemas.service));
+  const locations = await view(store, locationsView(signatures));
   const at = clock();
   const [signedBefore] = await locations.servicesOf(identifier, noIdentityVersions);
   const signedIdentity =
@@ -549,7 +516,7 @@ export async function loadMailboxService(
   const serviceSignatures = await Promise.all(
     (await locations.servicesOf(identifier, people)).map((link) => signatures.read(link, store, people)),
   );
-  const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, schemas.service)));
+  const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];
   for (const offer of offers) {
@@ -560,20 +527,20 @@ export async function loadMailboxService(
   const next: ServiceData = {
     origin,
     at,
-    offers: signedOffers.map(([offer, signature]) => ({ offer: { $link: signature.link }, acceptId: offer.link })),
+    offers: signedOffers.map(([, signature]) => ({ $link: signature.link })),
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
-    const object = encodeObject(schemas.service, next);
+    const object = encodeObject(serviceSchema, next);
     const blobs = [
       object.bytes,
-      ...schemas.service.blobs,
+      ...serviceSchema.blobs,
       ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
       ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
   }
-  return new MailboxService(signer, actor.signedIdentity, identifier, kit, schemas, seenPeople, {
+  return new MailboxService(signer, actor.signedIdentity, identifier, kit, seenPeople, {
     ...options,
     clock,
   });
@@ -588,8 +555,8 @@ async function signatureListedIn(
   people: People,
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
-    for (const { offer: listedOffer } of data.offers) {
-      const signature = await signatures.read(listedOffer.$link, store, people);
+    for (const { $link } of data.offers) {
+      const signature = await signatures.read($link, store, people);
       if (signature.object === offer) return signature;
     }
   }

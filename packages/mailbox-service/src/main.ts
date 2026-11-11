@@ -1,7 +1,6 @@
 import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
 import { json, type Link, objectsOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
@@ -52,7 +51,6 @@ async function start(): Promise<void> {
     accounts,
     mailboxes,
     terms,
-    validator: defaultValidator,
     schemes,
   });
   const server = await serve(

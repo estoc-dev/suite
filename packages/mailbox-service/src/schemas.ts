@@ -1,16 +1,6 @@
-import type { Identifier, Signature } from "@estoc/identity";
-import {
-  DRAFT_2020_12,
-  type EncodedObject,
-  type Json,
-  type JsonLink,
-  type JsonObject,
-  type JsonSchema,
-  json,
-  type Link,
-  linkOf,
-  linkSchema,
-} from "@estoc/object";
+import type { KeyObject, Signature } from "@estoc/identity";
+import { type EncodedObject, type Json, json, type Link, linkOf } from "@estoc/object";
+import { array, bytes, type DataOf, integer, link, schema, string } from "@estoc/schema";
 
 /**
  * An id that a service gives out in an address. The id of an offer is the
@@ -19,42 +9,22 @@ import {
  */
 export const ID = /^sha256:[0-9a-f]{64}$/;
 
-const idSchema: JsonObject = { type: "string", pattern: ID.source };
-
 /**
  * What a service signs to say where it is and what it offers.
  *
  * - At `at`, in milliseconds since the Unix epoch by the service's clock,
  *   its identity is reached at `origin` and makes the offers listed.
- * - Each offer is listed as the link of the service's signature over the
- *   offer and `acceptId`, the id that takes acceptances of it.
+ * - Each offer is listed as the link of the service's signature over it.
+ *   The id that takes acceptances of an offer is the link of the offer,
+ *   which that signature names as its object.
  */
-export const serviceSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Service",
-  type: "object",
-  properties: {
-    origin: { type: "string" },
-    at: { type: "integer", minimum: 0 },
-    offers: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { offer: linkSchema, acceptId: idSchema },
-        required: ["offer", "acceptId"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["origin", "at", "offers"],
-  additionalProperties: false,
-};
+export const serviceSchema = await schema("Service", {
+  origin: string(),
+  at: integer(),
+  offers: array(link<Signature>()),
+});
 
-export type ServiceData = {
-  readonly origin: string;
-  readonly at: number;
-  readonly offers: readonly { readonly offer: JsonLink<Signature>; readonly acceptId: string }[];
-};
+export type ServiceData = DataOf<typeof serviceSchema>;
 
 /**
  * A Service's form apart from when it was signed: two Services that say the
@@ -70,16 +40,9 @@ export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
  * the `via` of the Inbound records that keep what the service answered
  * there. One origin is one object, however often it is reached.
  */
-export const originSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Origin",
-  type: "object",
-  properties: { origin: { type: "string" } },
-  required: ["origin"],
-  additionalProperties: false,
-};
+export const originSchema = await schema("Origin", { origin: string() });
 
-export type OriginData = { readonly origin: string };
+export type OriginData = DataOf<typeof originSchema>;
 
 /**
  * What a service signs to offer an account to any identity that signs it
@@ -87,16 +50,9 @@ export type OriginData = { readonly origin: string };
  * a link of its own, and a signature over it accepts that service's
  * offer alone.
  */
-export const accountOfferSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Account offer",
-  type: "object",
-  properties: { identity: linkSchema },
-  required: ["identity"],
-  additionalProperties: false,
-};
+export const accountOfferSchema = await schema("Account offer", { identity: link<KeyObject>() });
 
-export type AccountOfferData = { readonly identity: { readonly $link: Identifier } };
+export type AccountOfferData = DataOf<typeof accountOfferSchema>;
 
 /**
  * What a service signs to acknowledge an acceptance of its offer:
@@ -104,16 +60,12 @@ export type AccountOfferData = { readonly identity: { readonly $link: Identifier
  * `at` when the service received it, in milliseconds since the Unix epoch
  * by the service's clock.
  */
-export const acknowledgementSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Acknowledgement",
-  type: "object",
-  properties: { acceptance: linkSchema, at: { type: "integer", minimum: 0 } },
-  required: ["acceptance", "at"],
-  additionalProperties: false,
-};
+export const acknowledgementSchema = await schema("Acknowledgement", {
+  acceptance: link<Signature>(),
+  at: integer(),
+});
 
-export type AcknowledgementData = { readonly acceptance: JsonLink<Signature>; readonly at: number };
+export type AcknowledgementData = DataOf<typeof acknowledgementSchema>;
 
 /**
  * An id that a service makes up for a mailbox it opens, 16 random bytes in
@@ -122,8 +74,6 @@ export type AcknowledgementData = { readonly acceptance: JsonLink<Signature>; re
  * mailbox is.
  */
 export const MAILBOX_ID = /^[0-9a-f]{32}$/;
-
-const mailboxIdSchema: JsonObject = { type: "string", pattern: MAILBOX_ID.source };
 
 /**
  * What a service signs to offer mailboxes under an account it opened.
@@ -134,41 +84,26 @@ const mailboxIdSchema: JsonObject = { type: "string", pattern: MAILBOX_ID.source
  * - It names the service by its identifier, as the offer of an account
  *   does, so a request for it asks this service alone.
  */
-export const mailboxOfferSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Mailbox offer",
-  type: "object",
-  properties: {
-    identity: linkSchema,
-    retention: { type: "integer", minimum: 1 },
-    quota: { type: "integer", minimum: 1 },
-    size: { type: "integer", minimum: 1 },
-  },
-  required: ["identity", "retention", "quota", "size"],
-  additionalProperties: false,
-};
+export const mailboxOfferSchema = await schema("Mailbox offer", {
+  identity: link<KeyObject>(),
+  retention: integer(),
+  quota: integer(),
+  size: integer(),
+});
 
-export type MailboxTerms = { readonly retention: number; readonly quota: number; readonly size: number };
+export type MailboxOfferData = DataOf<typeof mailboxOfferSchema>;
 
-export type MailboxOfferData = MailboxTerms & { readonly identity: { readonly $link: Identifier } };
+export type MailboxTerms = Omit<MailboxOfferData, "identity">;
 
 /**
  * What an identity signs to ask a service for a mailbox under its account:
  * `offer` is the link of the offer of mailboxes, and `key` the x25519 public
- * key that messages to the mailbox are sealed to, as 32 bytes in lowercase
- * hex. Each mailbox has a key of its own, so each request is one of its own
- * too.
+ * key that messages to the mailbox are sealed to. Each mailbox has a key of
+ * its own, so each request is one of its own too.
  */
-export const mailboxRequestSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Mailbox request",
-  type: "object",
-  properties: { offer: linkSchema, key: { type: "string", pattern: "^[0-9a-f]{64}$" } },
-  required: ["offer", "key"],
-  additionalProperties: false,
-};
+export const mailboxRequestSchema = await schema("Mailbox request", { offer: link<never>(), key: bytes() });
 
-export type MailboxRequestData = { readonly offer: JsonLink<never>; readonly key: string };
+export type MailboxRequestData = DataOf<typeof mailboxRequestSchema>;
 
 /**
  * What a service signs to acknowledge a request for a mailbox, which it
@@ -177,26 +112,14 @@ export type MailboxRequestData = { readonly offer: JsonLink<never>; readonly key
  * service's clock, `sendId` the id that senders post to, and `pickupId` the
  * id that the account picks up at.
  */
-export const mailboxAcknowledgementSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Mailbox acknowledgement",
-  type: "object",
-  properties: {
-    request: linkSchema,
-    at: { type: "integer", minimum: 0 },
-    sendId: mailboxIdSchema,
-    pickupId: mailboxIdSchema,
-  },
-  required: ["request", "at", "sendId", "pickupId"],
-  additionalProperties: false,
-};
+export const mailboxAcknowledgementSchema = await schema("Mailbox acknowledgement", {
+  request: link<Signature>(),
+  at: integer(),
+  sendId: bytes(),
+  pickupId: bytes(),
+});
 
-export type MailboxAcknowledgementData = {
-  readonly request: JsonLink<Signature>;
-  readonly at: number;
-  readonly sendId: string;
-  readonly pickupId: string;
-};
+export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSchema>;
 
 /**
  * What a client writes once a service acknowledged its request for a
@@ -204,19 +127,12 @@ export type MailboxAcknowledgementData = {
  * post to, and `acknowledgement` the link of the service's signature over
  * the mailbox's acknowledgement, which says where the mailbox is picked up.
  */
-export const openedMailboxSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Opened mailbox",
-  type: "object",
-  properties: { mailbox: linkSchema, acknowledgement: linkSchema },
-  required: ["mailbox", "acknowledgement"],
-  additionalProperties: false,
-};
+export const openedMailboxSchema = await schema("Opened mailbox", {
+  mailbox: link<EncodedObject<Json>>(),
+  acknowledgement: link<Signature>(),
+});
 
-export type OpenedMailboxData = {
-  readonly mailbox: JsonLink<EncodedObject<Json>>;
-  readonly acknowledgement: JsonLink<Signature>;
-};
+export type OpenedMailboxData = DataOf<typeof openedMailboxSchema>;
 
 /**
  * What an identity signs to pick up at a mailbox: `mailbox` is the link of
@@ -228,32 +144,18 @@ export type OpenedMailboxData = {
  * its acknowledgement, which the service signs again once a crisis of its
  * root cuts the signature.
  */
-export const pickupRequestSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Pickup request",
-  type: "object",
-  properties: { mailbox: linkSchema, receipts: { type: "array", items: linkSchema } },
-  required: ["mailbox", "receipts"],
-  additionalProperties: false,
-};
+export const pickupRequestSchema = await schema("Pickup request", {
+  mailbox: link<Signature>(),
+  receipts: array(link<Uint8Array>()),
+});
 
-export type PickupRequestData = {
-  readonly mailbox: JsonLink<Signature>;
-  readonly receipts: readonly JsonLink<Uint8Array>[];
-};
+export type PickupRequestData = DataOf<typeof pickupRequestSchema>;
 
 /**
  * What a service answers a pickup with, unsigned: the links of the
  * ciphertexts that wait at the mailbox, the earliest first, which come with
  * it.
  */
-export const pickupAnswerSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Pickup answer",
-  type: "object",
-  properties: { ciphertexts: { type: "array", items: linkSchema } },
-  required: ["ciphertexts"],
-  additionalProperties: false,
-};
+export const pickupAnswerSchema = await schema("Pickup answer", { ciphertexts: array(link<Uint8Array>()) });
 
-export type PickupAnswerData = { readonly ciphertexts: readonly JsonLink<Uint8Array>[] };
+export type PickupAnswerData = DataOf<typeof pickupAnswerSchema>;

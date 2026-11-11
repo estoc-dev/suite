@@ -1,6 +1,6 @@
 export type { Encoding, Fields } from "./encoding.ts";
 export { type Implementation, Implementations } from "./implementation.ts";
-export { type Json, type JsonLink, type JsonObject, json } from "./json.ts";
+export { isJsonLink, isJsonObject, type Json, type JsonLink, type JsonObject, json } from "./json.ts";
 export {
   DRAFT_2020_12,
   type JsonSchema,

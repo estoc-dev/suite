@@ -1,5 +1,5 @@
 import type { Json } from "@estoc/object";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { array, boolean, bytes, integer, link, optional, schema, string } from "../src/index.ts";
 
 const blob = { $link: `sha256:${"0f".repeat(32)}` };
@@ -57,10 +57,11 @@ describe("the data of an object", async () => {
       "#/more: not a field of the schema; #/at: left out; #/text: not a string",
     );
   });
+});
 
-  it("holds a member an object inherits only when it is a field", async () => {
-    expect(() => note.validate({ text: "", at: 0, constructor: "" })).toThrow("#/constructor: not a field");
-    const named = await schema("Named", { constructor: string() });
-    expect(() => named.validate({})).toThrow("#/constructor: left out");
-  });
+test("a name every object inherits is a field or a member only where it is written", async () => {
+  const note = await schema("Note", { text: string() });
+  expect(() => note.validate({ text: "", constructor: "" })).toThrow("#/constructor: not a field");
+  const named = await schema("Named", { constructor: string() });
+  expect(() => named.validate({})).toThrow("#/constructor: left out");
 });

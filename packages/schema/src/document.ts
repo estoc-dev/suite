@@ -33,7 +33,6 @@ export type SchemaDocument = {
   readonly fields: { readonly [name: string]: Field };
 };
 
-/** The root of the language, `{"$schema": null, "language": "Estoc Schema"}`. */
 export const schemaRoot: SelfDescribingObject<Json> = selfDescribingObject(json, { language: "Estoc Schema" });
 
 /**
@@ -59,27 +58,27 @@ export const schemaLanguage: SchemaLanguage<Json, SchemaDocument> = {
     if (fields === undefined || !isJsonObject(fields)) throw new Error("a schema holds fields, each by name");
     for (const [name, field] of Object.entries(fields)) {
       if (name === "$schema") throw new Error("a field is not named $schema, which names the object's schema");
-      checkField(field, `the field ${name}`);
+      validateField(field, `the field ${name}`);
     }
     return data as SchemaDocument;
   },
 };
 
-function checkField(field: Json, place: string): void {
+function validateField(field: Json, place: string): void {
   const { optional, ...type } = membersOf(field, place);
   if (optional !== undefined && optional !== true)
     throw new Error(`${place} is marked optional with true, or not marked`);
-  checkType(type, place);
+  validateType(type, place);
 }
 
-function checkType(value: Json, place: string): void {
+function validateType(value: Json, place: string): void {
   const { type, items, ...rest } = membersOf(value, place);
   refuseMembers(rest, `${place} holds a type, and items when it is an array`);
   if (!types.includes(type as (typeof types)[number]))
     throw new Error(`the type of ${place} is one of ${types.join(", ")}`);
   if (type === "array") {
     if (items === undefined) throw new Error(`${place} is an array, and says what its items are`);
-    checkType(items, `the items of ${place}`);
+    validateType(items, `the items of ${place}`);
   } else if (items !== undefined) {
     throw new Error(`${place} is not an array, and has no items`);
   }

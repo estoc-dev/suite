@@ -6,26 +6,19 @@ import {
   type People,
   SoftwareSigner,
 } from "@estoc/identity";
-import {
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonObject,
-  json,
-  type Link,
-  linkOf,
-  objectsOf,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
+import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Index, indexOver, indexOverBlobs, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+// Every field these tests write, each optional, so that one schema takes all their objects.
+const anything = await schema("Anything", {
+  text: optional(string()),
+  image: optional(link()),
+  held: optional(link()),
+});
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: JsonObject) => encodeObject(anything, data);
+const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 const newStore = () => new Store(json, new MemoryBackend());
 
@@ -157,23 +150,8 @@ describe("a staged batch", () => {
   });
 });
 
-type Note = { readonly text: string; readonly tags: readonly string[]; readonly at: number };
-
-const noteSchema: Schema<Json, Note> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Note",
-    type: "object",
-    properties: {
-      text: { type: "string" },
-      tags: { type: "array", items: { type: "string" } },
-      at: { type: "integer" },
-    },
-    required: ["text", "tags", "at"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const noteSchema = await schema("Note", { text: string(), tags: array(string()), at: integer() });
+type Note = DataOf<typeof noteSchema>;
 const note = (data: Note) => encodeObject(noteSchema, data);
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];

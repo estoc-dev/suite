@@ -12,19 +12,15 @@ import {
   decodeObject,
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Fields,
   type Json,
-  type JsonLink,
-  type JsonObject,
   json,
   type Link,
-  linkSchema,
   readObject,
   type Schema,
   schemaOf,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it, vi } from "vitest";
 import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 
@@ -32,37 +28,16 @@ import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 // is listed in their store; what comes from the other is kept with a record
 // of receiving it, and read by following links from that record.
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const schemaFor = <F extends Fields<Json> = Fields<Json>>(
-  title: string,
-  properties: JsonObject,
-): Promise<Schema<Json, F>> =>
-  encodeSchema(
-    {
-      $schema: DRAFT,
-      title,
-      type: "object",
-      properties,
-      required: Object.keys(properties),
-      additionalProperties: false,
-    },
-    defaultValidator,
-  );
 const { identities, signatures, signedIdentities, identityVersions, publish } = await loadIdentity([ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
-const noteSchema = await schemaFor<{ readonly text: string }>("Note", { text: { type: "string" } });
-const receivedSchema = await schemaFor<{ readonly bundle: JsonLink<never> }>("Received", { bundle: linkSchema });
-const contactSchema = await schemaFor<{ readonly name: string }>("Contact", { name: { type: "string" } });
-const carriedSchema = await schemaFor<{ readonly identityVersions: readonly JsonLink<SignedIdentityObject>[] }>(
-  "Carried",
-  {
-    identityVersions: { type: "array", items: linkSchema },
-  },
-);
+const noteSchema = await schema("Note", { text: string() });
+const receivedSchema = await schema("Received", { bundle: link<never>() });
+const contactSchema = await schema("Contact", { name: string() });
+const carriedSchema = await schema("Carried", { identityVersions: array(link<SignedIdentityObject>()) });
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.

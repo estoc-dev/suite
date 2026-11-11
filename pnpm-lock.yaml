@@ -79,6 +79,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@estoc/store':
         specifier: workspace:*

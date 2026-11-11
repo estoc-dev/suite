@@ -41,11 +41,10 @@ stay as `@estoc/identity` writes them.
 
 ## Reading and building
 
-`loadLineage(validator)` compiles the lineage node schema with the
-validator the application picks and gives `Lineages`: `schema`,
-`startingWith`, `read`, `selection` and `schemaLineageOf`. A `Lineage`
-comes from them, so it is a chain read back from its head to its first
-node, each node an object of the node schema. It holds:
+`lineages` reads and builds lineages with the lineage node schema:
+`schema`, `startingWith`, `read`, `selection` and `schemaLineageOf`. A
+`Lineage` comes from them, so it is a chain read back from its head to its
+first node, each node an object of the node schema. It holds:
 
 - `first`, `head`, and `nodes` from the first to the head.
 - `items`, the links the nodes carry, in their order and one for each
@@ -70,12 +69,10 @@ A program writes a head as a record, with the lineage's `blobs` and the
 closures of its items:
 
 ```ts
-import { loadLineage } from "@estoc/lineage";
+import { lineages } from "@estoc/lineage";
 import { encodeObject } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
 import { indexOver, scan } from "@estoc/store";
 
-const lineages = await loadLineage(defaultValidator);
 const firstDraft = encodeObject(note, { text: "first draft" });
 const secondDraft = encodeObject(note, { text: "second draft" });
 const finalDraft = encodeObject(note, { text: "final draft" });

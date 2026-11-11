@@ -1,32 +1,13 @@
-import {
-  encodeObject,
-  encodeSchema,
-  type Implementation,
-  type Json,
-  json,
-  type Link,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, type Implementation, type Json, json, type Link } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { type Index, indexOver, MemoryBackend, Store, scan } from "@estoc/store";
 import { describe, expect, it } from "vitest";
-import { type Lineage, type LineageNodeObject, loadLineage } from "../src/index.ts";
+import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
 // An application that keeps notes in series, and writes the head of a
 // lineage as a record each time it appends a version.
 
-const lineages = await loadLineage(defaultValidator);
-const note: Schema<Json, { readonly text: string }> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const first = encodeObject(note, { text: "first" });
 const second = encodeObject(note, { text: "second" });
 const third = encodeObject(note, { text: "third" });
@@ -93,17 +74,7 @@ interface TitledText {
   readonly text: string;
 }
 
-const titledNote: Schema<Json, { readonly title: string; readonly body: string }> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { title: { type: "string" }, body: { type: "string" } },
-    required: ["title", "body"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const titledNote = await schema("Note", { title: string(), body: string() });
 const v1: Implementation<Json, TitledText, { readonly text: string }> = {
   schema: note,
   read: ({ data }) => ({ text: data.text }),

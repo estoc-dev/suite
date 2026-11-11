@@ -1,20 +1,9 @@
-import { encodeObject, encodeSchema, type Json, type Link, linkOf, type Schema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, type Link, linkOf } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type LineageNodeObject, loadLineage } from "../src/index.ts";
+import { type LineageNodeObject, lineages } from "../src/index.ts";
 
-const lineages = await loadLineage(defaultValidator);
-const note: Schema<Json, { readonly text: string }> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const first = encodeObject(note, { text: "first" });
 const second = encodeObject(note, { text: "second" });
 const third = encodeObject(note, { text: "third" });

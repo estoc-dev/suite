@@ -1,52 +1,22 @@
-import {
-  encodeObject,
-  encodeSchema,
-  type Implementation,
-  type Json,
-  json,
-  type Link,
-  linkOf,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, type Implementation, type Json, json, type Link, linkOf } from "@estoc/object";
+import { type DataOf, schema, schemaRoot, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { loadLineage, SelectionBySchemaLineage } from "../src/index.ts";
+import { lineages, SelectionBySchemaLineage } from "../src/index.ts";
 
 interface Note {
   readonly title?: string;
   readonly text: string;
 }
 
-type NoteV1Data = { readonly text: string };
-type NoteV2Data = { readonly title: string; readonly body: string };
+const noteV1 = await schema("Note", { text: string() });
+const noteV2 = await schema("Note", { title: string(), body: string() });
+const other = await schema("Other", { text: string() });
 
-const lineages = await loadLineage(defaultValidator);
-const noteV1: Schema<Json, NoteV1Data> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
-const noteV2: Schema<Json, NoteV2Data> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { title: { type: "string" }, body: { type: "string" } },
-    required: ["title", "body"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
-const other = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
-
-const v1: Implementation<Json, Note, NoteV1Data> = { schema: noteV1, read: ({ data }) => ({ text: data.text }) };
-const v2: Implementation<Json, Note, NoteV2Data> = {
+const v1: Implementation<Json, Note, DataOf<typeof noteV1>> = {
+  schema: noteV1,
+  read: ({ data }) => ({ text: data.text }),
+};
+const v2: Implementation<Json, Note, DataOf<typeof noteV2>> = {
   schema: noteV2,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };
@@ -75,7 +45,7 @@ describe("the schema lineage of versions", () => {
   it("holds the closure of its head in its blobs", async () => {
     const blobs = byLink(notes.blobs);
     expect((await lineages.read(notes.lineage.head.link, blobs)).items).toEqual(notes.lineage.items);
-    for (const link of [noteV1.link, noteV2.link, defaultValidator.language.link]) expect(blobs.has(link)).toBe(true);
+    for (const link of [noteV1.link, noteV2.link, schemaRoot.link]) expect(blobs.has(link)).toBe(true);
   });
 
   it("has the schema that an object of a version names, and no other", () => {

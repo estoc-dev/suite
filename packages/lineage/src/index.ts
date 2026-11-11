@@ -4,6 +4,6 @@ export {
   type LineageNodeObject,
   type Lineages,
   lineageNodeSchema,
-  loadLineage,
+  lineages,
 } from "./lineage.ts";
 export { type SchemaLineage, SelectionBySchemaLineage } from "./schema-lineage.ts";

@@ -33,6 +33,9 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.5

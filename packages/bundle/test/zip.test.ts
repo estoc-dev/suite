@@ -1,6 +1,6 @@
 import { constants, deflateRawSync } from "node:zlib";
-import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, linkOf } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import {
   configure,
   resetConfiguration,
@@ -19,15 +19,7 @@ const linksOf = (files: ReadonlyMap<string, Uint8Array>) =>
   new Map([...files].map(([path, bytes]) => [path, linkOf(bytes)]));
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
-const note = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: { text: { type: "string" } },
-  },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const root = encodeObject(note, { text: "a note" });
 const another = encodeObject(note, { text: "another note" });
 const text = new TextEncoder().encode("a blob");

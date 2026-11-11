@@ -1,24 +1,12 @@
 import { createHash } from "node:crypto";
 import { ed25519, eip191, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import {
-  decodeObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonObject,
-  json,
-  linkOf,
-  linkSchema,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { decodeObject, encodeObject, type JsonObject, json, linkOf, readObject } from "@estoc/object";
+import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
 const { identities, signedIdentities, signatures, publish } = await loadIdentity([ed25519, eip191]);
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const hexOf = (bytes: Uint8Array) => linkOf(bytes).slice("sha256:".length);
 const filesOf = (root: Uint8Array, ...blobs: Uint8Array[]) =>
@@ -28,14 +16,8 @@ const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) 
   return json.encode(json.object(change(data), schema));
 };
 
-const note: Schema<Json, { readonly text?: string }> = await encodeSchema(
-  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
-const links = await encodeSchema(
-  { $schema: DRAFT, title: "Links", type: "object", properties: { links: { type: "array", items: linkSchema } } },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
+const links = await schema("Links", { links: array(link()) });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
 const asAlice = signatures.actor(alice, await publish(alice, { at: 0 }));
@@ -77,7 +59,7 @@ describe("a bundle", () => {
       "an index.json formatted by hand",
       () => filesOf(utf8(JSON.stringify(json.object({ text: "hello" }, note.link), null, 2))),
     ],
-    ["an index.json that is a JSON Schema document, which is bytes", () => filesOf(json.encode({ $schema: DRAFT }))],
+    ["an index.json that names no schema, which is bytes", () => filesOf(json.encode({ text: "hello" }))],
     ["an index.json that is not JSON", () => filesOf(image)],
     [
       "a blob that does not have the link its name says",
@@ -116,7 +98,7 @@ describe("a bundle", () => {
       return { ...fields, signature: `${hex.slice(0, -1)}${hex.endsWith("0") ? "1" : "0"}` };
     });
     const { data } = json.fields(json.decode(signature.signedIdentity.bytes));
-    const laterSchema = linkOf(json.encode({ $schema: DRAFT, title: "A later signed identity" }));
+    const laterSchema = linkOf(json.encode({ title: "A later signed identity" }));
     const later = json.encode(json.object(data, laterSchema));
     const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, signedIdentity: { $link: linkOf(later) } }));
     const identityBytes = new Map([...signature.signedIdentity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));

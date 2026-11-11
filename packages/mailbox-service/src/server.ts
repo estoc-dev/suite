@@ -291,7 +291,7 @@ class MailboxService {
       people,
       bundle,
       signature.signedIdentity,
-      mailboxRequestSchema.blobs,
+      [mailboxRequestSchema.bytes],
     );
     const { identity: _, ...terms } = offer.data;
     const mailbox = {
@@ -327,7 +327,7 @@ class MailboxService {
     // identity's closure, so the bundle need not hold them, and the store
     // takes a blob in only with its whole closure.
     const { schema } = acknowledgement;
-    const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
+    const own = [acknowledgement.bytes, schema.bytes, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
   }
@@ -533,9 +533,9 @@ export async function loadMailboxService(
     const object = encodeObject(serviceSchema, next);
     const blobs = [
       object.bytes,
-      ...serviceSchema.blobs,
-      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
-      ...signatures.schema.blobs,
+      serviceSchema.bytes,
+      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, offer.schema.bytes]),
+      signatures.schema.bytes,
       ...actor.signedIdentity.blobs,
     ];
     await store.write({ records: [await actor.sign(object)], blobs });

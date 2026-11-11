@@ -1,5 +1,5 @@
 import { decodeObject, type JsonObject, json, linkOf } from "@estoc/object";
-import { bytes, schema, schemaRoot } from "@estoc/schema";
+import { bytes, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
@@ -84,15 +84,6 @@ describe("a key", () => {
 describe("the schema of a scheme", () => {
   it.each(schemes)("of $name has the scheme's name as its title, and takes a public key alone", (scheme) => {
     const { schema } = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
-    expect(json.decode(schema.bytes)).toEqual({
-      $schema: { $link: schemaRoot.link },
-      title: scheme.name,
-      fields: { publicKey: { type: "bytes" } },
-    });
-  });
-
-  it("carries as its blobs itself and the root it is written to", () => {
-    const { schema } = keys.encode(SoftwareSigner.fromSecretKey(ed25519, secretKey).key);
-    expect(schema.blobs.map((blob) => linkOf(blob))).toEqual([schema.link, schemaRoot.link]);
+    expect(json.decode(schema.bytes)).toEqual({ title: scheme.name, fields: { publicKey: { type: "bytes" } } });
   });
 });

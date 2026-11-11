@@ -41,9 +41,7 @@ const carriedSchema = schema("Carried", { identityVersions: array(link<SignedIde
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
-const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema, carriedSchema].flatMap(
-  ({ blobs }) => blobs,
-);
+const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema, carriedSchema].map(({ bytes }) => bytes);
 const newStore = () => new Store(json, new MemoryBackend());
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {

@@ -30,8 +30,9 @@ bundle is by the root's schema. Loose files put together would leave it
 guessing. `index.json` has to be the canonical JSON of an object, naming its
 schema in `$schema`. An `index.json` formatted by hand, or one that is not
 an object, such as JSON that names no schema, makes the whole bundle
-refused. A schema is an object too, and so is a signature, so either can be
-the root, a signature with what it is over carried in the bundle.
+refused. A signature is an object, so it can be the root, with what it is
+over carried in the bundle. A schema names no schema, so it is not the
+root, and is carried under `blobs/` as any other bytes are.
 `writeBundle` takes the root as whatever type the program holds it as, such
 as a signed identity of `@estoc/identity`, and writes its bytes, so the root
 is written as it was signed. It refuses a root that is not an object, since

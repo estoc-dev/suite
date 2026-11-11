@@ -75,8 +75,8 @@ export class Correspondence {
       records: [signature],
       blobs: [
         grant.bytes,
-        ...this.#grants.schema.blobs,
-        ...this.#signatures.schema.blobs,
+        this.#grants.schema.bytes,
+        this.#signatures.schema.bytes,
         ...signature.signedIdentity.blobs,
         ...current.blobs,
       ],

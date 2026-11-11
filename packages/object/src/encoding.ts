@@ -24,17 +24,17 @@ export interface Encoding<D> {
   /**
    * An object as one value: the fields of its data, and one field more,
    * which the encoding keeps for the link of the schema the data is written
-   * to, or for `null` in an object that describes itself.
+   * to.
    *
    * @throws when `data` has that field itself.
    */
-  object(data: Fields<D>, schema: Link<unknown> | null): D;
+  object(data: Fields<D>, schema: Link<unknown>): D;
   /**
    * The data and the schema of a value that `object` gives.
    *
    * @throws for any other value, which is not an object but bytes.
    */
-  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> | null };
+  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> };
   /**
    * The links in an object, its schema included, so that a blob's closure
    * can be gathered without reading it through a schema.

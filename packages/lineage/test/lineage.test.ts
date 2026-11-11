@@ -85,7 +85,7 @@ describe("reading a lineage", () => {
       previous: { $link: first.link as Link<never> },
       item: { $link: second.link },
     });
-    const blobs = byLink([head.bytes, ...lineages.schema.blobs, first.bytes, ...note.blobs]);
+    const blobs = byLink([head.bytes, lineages.schema.bytes, first.bytes, note.bytes]);
     await expect(lineages.read(head.link, blobs)).rejects.toThrow(
       `the object is written to ${note.link}, not to ${lineages.schema.link}`,
     );

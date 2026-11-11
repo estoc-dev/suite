@@ -1,5 +1,5 @@
 import { encodeObject, type Implementation, type Json, json, type Link, linkOf } from "@estoc/object";
-import { type DataOf, schema, schemaRoot, string } from "@estoc/schema";
+import { type DataOf, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { lineages, SelectionBySchemaLineage } from "../src/index.ts";
 
@@ -45,7 +45,7 @@ describe("the schema lineage of versions", () => {
   it("holds the closure of its head in its blobs", async () => {
     const blobs = byLink(notes.blobs);
     expect((await lineages.read(notes.lineage.head.link, blobs)).items).toEqual(notes.lineage.items);
-    for (const link of [noteV1.link, noteV2.link, schemaRoot.link]) expect(blobs.has(link)).toBe(true);
+    for (const link of [noteV1.link, noteV2.link]) expect(blobs.has(link)).toBe(true);
   });
 
   it("has the schema that an object of a version names, and no other", () => {

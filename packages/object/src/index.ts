@@ -8,9 +8,7 @@ export {
   encodeObject,
   type Reader,
   readObject,
-  type SelfDescribingObject,
   schemaOf,
-  selfDescribingObject,
 } from "./object.ts";
 export {
   type Check,

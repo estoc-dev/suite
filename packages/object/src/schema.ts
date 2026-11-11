@@ -7,37 +7,29 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
 /**
  * A language of schemas over the data of one encoding, with documents `S`.
  *
- * - A schema is an object written to what the language names by `link`: the root of a standard
- *   language, which describes itself, or a schema whose objects are schemas. Changing language is
- *   changing what schemas are written to.
- * - A schema links to nothing but what it is written to, so that its closure is itself and the
- *   language's `blobs`.
- * - `document` reads a schema's data as the language takes it. A language written to a schema
- *   reads the data with that schema; one written to a root reads it itself, since no schema reads
- *   a root, as an encoding is told by the caller rather than by a blob.
+ * - A schema is a value of the encoding that is not an object: bytes, which link to nothing. An
+ *   object names it by link, and that alone makes the bytes its schema.
+ * - No blob says which language a schema is in, as none says which encoding some bytes are in:
+ *   the program that reads a schema names the language.
  */
 export interface SchemaLanguage<D, S> {
   /** The encoding of the schemas, and so of the objects written to them. */
   readonly encoding: Encoding<D>;
-  /** What the schemas of the language are written to. */
-  readonly link: Link<unknown>;
-  /** The bytes of what the schemas are written to, and of all it links to, which go wherever a schema goes. */
-  readonly blobs: readonly Uint8Array[];
-  /** The data of the schema whose document is `document`. */
-  data(document: S): Fields<D>;
+  /** The value that the schema whose document is `document` is written as. */
+  value(document: S): D;
   /**
-   * The document of the schema whose data is `data`.
+   * The document of the schema written as `value`.
    *
-   * @throws when `data` is not that of a schema of the language.
+   * @throws when `value` is not a schema of the language.
    */
-  document(data: Fields<D>): S;
+  document(value: D): S;
 }
 
 /**
  * Compiles the documents of one language into checks.
  *
- * - A check answers from the document and the data alone. A schema links to nothing but what it
- *   is written to, and compiling and checking wait for nothing, so the link of a schema fixes all
+ * - A check answers from the document and the data alone. A schema links to nothing, and
+ *   compiling and checking wait for nothing, so in one language the link of a schema fixes all
  *   that its data is checked against.
  * - What fits a schema is the language's to say. Where a language leaves something to its
  *   validators, a signature commits to the bytes and a validator is one reading of them, so a
@@ -58,24 +50,22 @@ export interface SchemaValidator<D, S> {
 export class Schema<D, F extends Fields<D> = Fields<D>> {
   /** The encoding of the objects written to this schema, which is that of its language. */
   readonly encoding: Encoding<D>;
+  /**
+   * The schema as a blob, which is its whole closure, as a schema links to nothing. It goes
+   * wherever an object written to the schema goes.
+   */
   readonly bytes: Bytes<Schema<D>>;
   readonly link: Link<Schema<D>>;
-  /**
-   * The schema's closure, which goes wherever it goes: its bytes and the blobs of its language, as
-   * a schema links to nothing but what it is written to.
-   */
-  readonly blobs: readonly Uint8Array[];
   readonly #check: Check<D>;
 
   constructor(
-    language: SchemaLanguage<D, unknown>,
+    encoding: Encoding<D>,
     { bytes, link }: { readonly bytes: Bytes<Schema<D>>; readonly link: Link<Schema<D>> },
     check: Check<D>,
   ) {
-    this.encoding = language.encoding;
+    this.encoding = encoding;
     this.bytes = bytes;
     this.link = link;
-    this.blobs = [bytes, ...language.blobs];
     this.#check = check;
   }
 
@@ -94,9 +84,8 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
 /**
  * Reads the schema that `bytes` hold, and compiles its document with `validator`.
  *
- * @throws when the bytes are not an object written to what the validator's language names, or
- * hold anything but the data of a schema of the language.
- * @throws when the schema links to anything but what it is written to.
+ * @throws when the bytes are an object, which links to its schema, and not bytes.
+ * @throws when the bytes do not hold a schema of the validator's language.
  * @throws when the validator cannot compile the document.
  */
 export function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
@@ -106,12 +95,9 @@ export function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   const { language } = validator;
   const { encoding } = language;
   const { value, bytes: owned, link } = decodeBlob(encoding, bytes);
-  const { data, schema } = encoding.fields(value);
-  if (schema !== language.link)
-    throw new Error(`a schema of this language is written to ${language.link}, not to ${schema ?? "itself"}`);
-  for (const linked of encoding.links(value))
-    if (linked !== language.link) throw new Error(`a schema links only to what it is written to, not to ${linked}`);
-  return new Schema<D, F>(language, { bytes: owned, link }, validator.compile(language.document(data)));
+  const [linked] = encoding.links(value);
+  if (linked !== undefined) throw new Error(`a schema is bytes and links to nothing, not to ${linked}`);
+  return new Schema<D, F>(encoding, { bytes: owned, link }, validator.compile(language.document(value)));
 }
 
 /** Writes `document` as a schema, and compiles it as `decodeSchema` does. */
@@ -120,6 +106,5 @@ export function encodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   validator: SchemaValidator<D, S>,
 ): Schema<D, F> {
   const { language } = validator;
-  const { encoding } = language;
-  return decodeSchema<D, S, F>(encoding.encode(encoding.object(language.data(document), language.link)), validator);
+  return decodeSchema<D, S, F>(language.encoding.encode(language.value(document)), validator);
 }

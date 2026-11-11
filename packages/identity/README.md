@@ -139,11 +139,10 @@ name as its title:
 
 ```
 key                 {"$schema": {"$link": <ed25519>}, "publicKey": "…"}
-ed25519             {"$schema": {"$link": <the root of @estoc/schema>}, "title": "ed25519",
-                     "fields": {"publicKey": {"type": "bytes"}}}
+ed25519             {"title": "ed25519", "fields": {"publicKey": {"type": "bytes"}}}
 ```
 
-Each line is the type of the one above it. A key holds its public key, in
+The second line is the schema of the first. A key holds its public key, in
 lowercase hex, and no other field, so each key has one object and one
 link, and no scheme writes its keys another way. The schemas of `ed25519`
 and `solana-offchain` differ only in their titles: one public key in the
@@ -216,8 +215,8 @@ its `prior` names, which the caller reads, and does not authenticate it,
 while `signedIdentities.read` verifies that its root signed it.
 `hasSigner(identity, key)` says whether `key` signs for an identity. Reading
 an identity takes the blobs of its object, of its keys and of the signed
-identity it follows; an identity carries them as `blobs`, with the blobs of
-the schemas they are written to, each once. That is the identity's closure,
+identity it follows; an identity carries them as `blobs`, with the
+schemas they are written to, each once. That is the identity's closure,
 so where an identity goes, as into a store or a bundle, `...identity.blobs`
 goes along and carries all it links to, the identity versions it follows
 among them.
@@ -247,7 +246,7 @@ an identity that would not read, such as one that lists an agent twice.
 identities it follows, each verified, and refuses a signature that the
 identity's root did not make. `signedIdentities.read` reads that object
 from its link first. A signed identity carries as `blobs` its object and
-its schema's blobs with the identity's `blobs`.
+its schema with the identity's `blobs`.
 
 What a signature asks of an identity, which key made it and how a signer
 signs for it, is asked of the identity in hand, so `signatures` depends on
@@ -528,8 +527,8 @@ in a scheme no curve signs in, and one whose secret is not that of its key.
 `walletKeys.encode(key)` and `walletKeys.read` do the same for a Wallet
 Key, which reads with its key alone: connecting the wallet is for the
 application, and what signs takes a `Signer` either way. Each carries as
-`blobs` its closure, its object, its key's and the blobs of the schemas
-they are written to, so one write puts it in an empty private store:
+`blobs` its closure, its object, its key's and the schemas they are
+written to, so one write puts it in an empty private store:
 
 ```ts
 const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));

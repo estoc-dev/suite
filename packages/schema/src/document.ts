@@ -1,11 +1,4 @@
-import {
-  isJsonObject,
-  type Json,
-  json,
-  type SchemaLanguage,
-  type SelfDescribingObject,
-  selfDescribingObject,
-} from "@estoc/object";
+import { isJsonObject, type Json, json, type SchemaLanguage } from "@estoc/object";
 
 const types = ["array", "link", "bytes", "integer", "string", "boolean"] as const;
 
@@ -20,8 +13,8 @@ export type Item = Type & { readonly optional?: never };
 export type Field = Type & { readonly optional?: true };
 
 /**
- * A schema as its data: a `title`, and the `fields` of the objects written
- * to it, each by name.
+ * What a schema holds: a `title`, and the `fields` of the objects written to
+ * it, each by name.
  *
  * - The title sets apart two schemas of the same fields, and says nothing a validator checks.
  * - An object written to the schema holds the fields listed and no other, and may leave out
@@ -32,14 +25,10 @@ export type SchemaDocument = {
   readonly fields: { readonly [name: string]: Field };
 };
 
-export const schemaRoot: SelfDescribingObject<Json> = selfDescribingObject(json, { language: "Estoc Schema" });
-
 /**
- * The language of schemas over JSON whose schemas are written to
- * `schemaRoot`.
+ * Estoc Schema, the language of schemas over JSON.
  *
- * - The data of a schema is its document as it is, `title` and `fields`. No schema reads a root,
- *   so `document` checks that the data is one.
+ * - A schema is its document as it is, the JSON object of `title` and `fields`.
  * - A document has one spelling: every member is one the language names, `optional` is `true` or
  *   left out, and the encoding orders the members. So the same title and fields are the same
  *   blob.
@@ -47,11 +36,9 @@ export const schemaRoot: SelfDescribingObject<Json> = selfDescribingObject(json,
  */
 export const schemaLanguage: SchemaLanguage<Json, SchemaDocument> = {
   encoding: json,
-  link: schemaRoot.link,
-  blobs: [schemaRoot.bytes],
-  data: (document) => document,
-  document(data) {
-    const { title, fields, ...rest } = data;
+  value: (document) => document,
+  document(value) {
+    const { title, fields, ...rest } = membersOf(value, "a schema");
     refuseMembers(rest, "a schema holds a title and fields alone");
     if (typeof title !== "string") throw new Error("a schema holds a title, a string");
     if (fields === undefined || !isJsonObject(fields)) throw new Error("a schema holds fields, each by name");
@@ -59,7 +46,7 @@ export const schemaLanguage: SchemaLanguage<Json, SchemaDocument> = {
       if (name === "$schema") throw new Error("a field is not named $schema, which names the object's schema");
       validateField(field, `the field ${name}`);
     }
-    return data as SchemaDocument;
+    return value as SchemaDocument;
   },
 };
 

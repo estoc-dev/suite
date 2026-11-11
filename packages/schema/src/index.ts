@@ -1,4 +1,4 @@
-export { type Field, type Item, type SchemaDocument, schemaLanguage, schemaRoot } from "./document.ts";
+export { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 export {
   array,
   boolean,

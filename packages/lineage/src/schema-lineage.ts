@@ -14,7 +14,7 @@ import type { Lineage } from "./lineage.ts";
 export class SchemaLineage<T> {
   /** The lineage whose items are the schemas of the versions, in their order. */
   readonly lineage: Lineage;
-  /** The closure of the lineage's head: its `blobs` and the blobs of every version's schema. */
+  /** The closure of the lineage's head: its `blobs` and every version's schema. */
   readonly blobs: readonly Uint8Array[];
   /** The selection of every object of a version, each read as `T`. */
   readonly selection: SelectionBySchemaLineage<T, T>;
@@ -22,8 +22,8 @@ export class SchemaLineage<T> {
   readonly #schemaOf: (record: Uint8Array) => Link<unknown>;
 
   /**
-   * `lineage` is that of the schemas of the versions, and `schemaBlobs` the
-   * blobs of those schemas. `implementations` reads with the versions and
+   * `lineage` is that of the schemas of the versions, and `schemaBlobs` those
+   * schemas as blobs. `implementations` reads with the versions and
    * `schemaOf` gives the schema a record of their encoding names, so the
    * encoding stays in them and a schema lineage carries `T` alone.
    */

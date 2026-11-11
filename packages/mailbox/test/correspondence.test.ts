@@ -116,7 +116,7 @@ async function writeNote({ actor, store }: Person, text: string) {
   const signature = await actor.sign(object);
   await store.write({
     records: [signature],
-    blobs: [object.bytes, ...signature.signedIdentity.blobs, ...note.blobs, ...signatures.schema.blobs],
+    blobs: [object.bytes, ...signature.signedIdentity.blobs, note.bytes, signatures.schema.bytes],
   });
   return signature;
 }
@@ -277,7 +277,7 @@ describe("sending to someone", () => {
     const { inbox, pickup } = await openInbox(bob);
     const otherSchema = mailboxSchema("Other mailbox", { place: string() });
     const other = encodeObject(otherSchema, { key: "00".repeat(32), place: "elsewhere" });
-    await bob.store.write({ records: [other], blobs: otherSchema.blobs });
+    await bob.store.write({ records: [other], blobs: [otherSchema.bytes] });
     const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
     await handOver(bob, alice, givenGrant.link);
 
@@ -338,7 +338,7 @@ describe("what came in at a mailbox", () => {
   it("is no message when its root is not a signature", async () => {
     const { alice, bob, inbox, receive } = await twoPeople();
     const object = encodeObject(note, { text: "no one signed this" });
-    await alice.store.write({ records: [object], blobs: note.blobs });
+    await alice.store.write({ records: [object], blobs: [note.bytes] });
     await (await alice.post.outbox(inbox.mailbox)).send(object.link);
     const { bundle } = await receive();
 

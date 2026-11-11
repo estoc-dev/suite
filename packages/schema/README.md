@@ -6,8 +6,7 @@ all it can say. So what fits a schema is settled by the language, and two
 validators have nothing to differ on.
 
 ```
-Root       {"$schema": null, "language": "Estoc Schema"}
-Schema     {"$schema": <the link of the root>, "title": <a string>, "fields": {<name>: <field>, …}}
+Schema     {"title": <a string>, "fields": {<name>: <field>, …}}
 Field      {"type": <a type>}, with "items" in an array, and "optional": true where it may be left out
 ```
 
@@ -15,7 +14,6 @@ The schema of an identity:
 
 ```json
 {
-  "$schema": { "$link": "sha256:854038464fe14f61bc8c9de12ecf81566d48c55b18223f38ba49e5d3c4d04d9d" },
   "title": "Identity",
   "fields": {
     "root": { "type": "link" },
@@ -29,10 +27,11 @@ The schema of an identity:
 
 ## Schemas
 
-A schema is an object written to the root of the language, `schemaRoot`,
-and links to nothing else.
+A schema is a JSON object, written as `json` writes any value. It is
+bytes and not an object of `@estoc/object`: it names no schema and links
+to nothing, and the objects that name it are what make it a schema.
 
-- Its data is `title` and `fields`, both of them and nothing more.
+- Its members are `title` and `fields`, both of them and nothing more.
 - `title` is a string. It sets apart two schemas of the same fields, which
   would otherwise be one blob with one link, and nothing is checked by it.
 - `fields` holds each field by its name. A field is not named `$schema`,
@@ -116,4 +115,4 @@ const identity = encodeObject(identitySchema, { root: { $link: rootKey.link }, a
 
 A schema someone else wrote is read from its bytes with
 `decodeSchema(bytes, schemaValidator)`. `schemaLanguage` is the language
-as `@estoc/object` takes one, and a `SchemaDocument` the data of a schema.
+as `@estoc/object` takes one, and a `SchemaDocument` what a schema holds.

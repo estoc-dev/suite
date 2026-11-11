@@ -30,8 +30,8 @@ export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
  *   the identity it is made for by the link of this object.
  * - Two signers are the same someone when the roots of their identities are
  *   the same, whichever signed identities they sign by.
- * - `blobs` are what it takes to read it again: the bytes of its object, the
- *   blobs of its schema, and the identity's `blobs`.
+ * - `blobs` are what it takes to read it again: the bytes of its object, its
+ *   schema, and the identity's `blobs`.
  */
 export interface SignedIdentityObject extends EncodedObject<Json, SignedIdentityData> {
   readonly link: Link<SignedIdentityObject>;
@@ -97,6 +97,6 @@ function signedIdentityOf(
     link: object.link as Link<SignedIdentityObject>,
     identity,
     signature,
-    blobs: [object.bytes, ...object.schema.blobs, ...identity.blobs],
+    blobs: [object.bytes, object.schema.bytes, ...identity.blobs],
   };
 }

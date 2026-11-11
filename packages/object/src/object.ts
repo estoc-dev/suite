@@ -1,5 +1,5 @@
 import { decodeBlob, type Encoding, type Fields } from "./encoding.ts";
-import { type Bytes, type Link, linkOf } from "./link.ts";
+import type { Bytes, Link } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -41,7 +41,7 @@ export function decodeObject<D, F extends Fields<D>>(
   const { value, bytes: owned, link } = decodeBlob(schema.encoding, bytes);
   const fields = schema.encoding.fields(value);
   if (fields.schema !== schema.link)
-    throw new Error(`the object is written to ${fields.schema ?? "itself"}, not to ${schema.link}`);
+    throw new Error(`the object is written to ${fields.schema}, not to ${schema.link}`);
   return { schema, data: schema.validate(fields.data), bytes: owned, link };
 }
 
@@ -88,31 +88,10 @@ export function decodeObjectAt<D, F extends Fields<D>>(
  * The link of the schema an object names, read before the object is: a
  * program that takes objects of several schemas picks by it which schema to
  * read the object with. With no schema yet to say so, the caller names the
- * encoding of the object. An object that describes itself is its own
- * schema, so for it this is its own link.
+ * encoding of the object.
  *
  * @throws when the bytes are not an object in `encoding`.
  */
 export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
-  return encoding.fields(encoding.decode(bytes)).schema ?? (linkOf(bytes) as Link<Schema<D>>);
-}
-
-/**
- * An object that is its own schema, as the root of a schema language is.
- *
- * - Only what has one instance describes itself: its link fixes every byte, so no schema could
- *   say more of it. A blob cannot hold its own hash, so it names its schema as `null`.
- * - It is known by its link alone. A program holds the links of those it reads, and does not read
- *   a blob as one by its fields, since anyone can write a blob of that shape.
- * - Its data says what kind of thing it stands for, as a root's `language` does: its link is all
- *   it means, and two kinds of thing written by name alone would be one blob.
- */
-export interface SelfDescribingObject<D> {
-  readonly bytes: Bytes<SelfDescribingObject<D>>;
-  readonly link: Link<SelfDescribingObject<D>>;
-}
-
-export function selfDescribingObject<D>(encoding: Encoding<D>, data: Fields<D>): SelfDescribingObject<D> {
-  const bytes: Bytes<SelfDescribingObject<D>> = encoding.encode(encoding.object(data, null));
-  return { bytes, link: linkOf(bytes) };
+  return encoding.fields(encoding.decode(bytes)).schema;
 }

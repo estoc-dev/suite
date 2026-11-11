@@ -1,21 +1,14 @@
-import { decodeSchema, type JsonObject, json, schemaOf } from "@estoc/object";
+import { decodeSchema, encodeObject, type Json, json, schemaOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
-import { array, integer, link, optional, schema, schemaRoot, schemaValidator, string } from "../src/index.ts";
+import { array, integer, link, optional, schema, schemaValidator, string } from "../src/index.ts";
 
-const written = (data: JsonObject) => json.encode(json.object(data, schemaRoot.link));
-
-describe("the root", () => {
-  it("describes itself, and stands for the language", () => {
-    expect(new TextDecoder().decode(schemaRoot.bytes)).toBe('{"$schema":null,"language":"Estoc Schema"}');
-    expect(schemaOf(schemaRoot.bytes, json)).toBe(schemaRoot.link);
-  });
-});
+const written = (document: Json) => json.encode(document);
 
 describe("a schema", () => {
-  it("is an object of the root holding its title and its fields", () => {
+  it("is its title and its fields as bytes, which name no schema", () => {
     const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()) });
+    expect(() => schemaOf(note.bytes, json)).toThrow(/names its schema/);
     expect(json.decode(note.bytes)).toEqual({
-      $schema: { $link: schemaRoot.link },
       title: "Note",
       fields: {
         text: { type: "string" },
@@ -23,7 +16,6 @@ describe("a schema", () => {
         at: { type: "integer", optional: true },
       },
     });
-    expect(note.blobs).toEqual([note.bytes, schemaRoot.bytes]);
   });
 
   it("is one blob however its fields are ordered", () => {
@@ -59,6 +51,8 @@ describe("a schema", () => {
     ["without fields", { title: "Note" }, /holds fields/],
     ["whose fields are an array", { title: "Note", fields: [] }, /holds fields/],
     ["with another member", { title: "Note", fields: {}, description: "A note." }, /alone, not description/],
+    ["with a $schema that is null", { $schema: null, title: "Note", fields: {} }, /alone, not \$schema/],
+    ["when it is an array", [], /a schema is a JSON object/],
     ["with a field named $schema", { title: "Note", fields: { $schema: { type: "string" } } }, /not named \$schema/],
     [
       "with a field that is a type by name",
@@ -99,6 +93,13 @@ describe("a schema", () => {
     ],
   ])("is refused %s", (_, data, reason) => {
     expect(() => decodeSchema(written(data), schemaValidator)).toThrow(reason);
+  });
+
+  it("is refused as an object written to a schema, though its data is a title and fields", () => {
+    const note = schema("Note", { title: string(), fields: array(string()) });
+    const object = encodeObject(note, { title: "Note", fields: [] });
+    // @ts-expect-error: refused at compile time too
+    expect(() => decodeSchema(object.bytes, schemaValidator)).toThrow(/links to nothing/);
   });
 });
 

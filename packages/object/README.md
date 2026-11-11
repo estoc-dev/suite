@@ -13,12 +13,11 @@ In that pair:
 ```
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
 Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
-Schema     {"$schema": <the link of the root>, "title": <a string>, "fields": <the fields of its objects>}
-Root       {"$schema": null, "language": "Estoc Schema"}
+Schema     {"title": <a string>, "fields": <the fields of its objects>}
 ```
 
-A schema is an object too, written to its language: here the root, an
-object that describes itself. A blob that is not an object is bytes.
+A schema is not an object. It is bytes, as every blob that is not an
+object is, and the objects that name it are what make it a schema.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -36,17 +35,15 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     before the schema is.
   - The data of an object is fields, values of the encoding by name
     (`Fields<D>`). The encoding writes an object as one value, those fields
-    and one more for the link of its schema, or for `null` in an object that
-    describes itself, and refuses any other value as an object. Any other
-    value is bytes.
+    and one more for the link of its schema, and refuses any other value as
+    an object. Any other value is bytes.
   - The encoding finds the links in an object, so that the blobs in a
     blob's closure can be gathered without a schema to read it by, as a
     store gathers the closure it carries along with an object. Bytes link
     to nothing, whatever they hold.
 - A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
-  one encoding, which it names, with documents `S`. It names what its
-  schemas are written to, a root that stands for it or a schema whose
-  objects are schemas, and reads a schema's document out of its data.
+  one encoding, which it names, with documents `S`. It writes a document
+  as a value of the encoding, and reads a schema's document out of one.
 - A `SchemaValidator<D, S>` compiles the documents of one language, which
   it names, into checks of the fields of an object's data.
 
@@ -67,47 +64,34 @@ neither reads as the other, just as the same data under two schemas is two
 objects. Moving to another encoding means writing new objects, not
 translating old ones.
 
-## Schemas and roots
+## Schemas
 
-A schema is an object like any other, written to its language.
+A schema is bytes: a value of its encoding that is not an object, and so
+names no schema of its own.
 
-- The schemas of a standard language are written to its root, which stands
-  for it. What the data of a schema holds is the language's to say: in
-  Estoc Schema, a title and the fields of its objects.
-- A schema can be a language too, whose objects are schemas in turn. Each is
-  the type of the next, its `$schema`, and none inherits from another.
-- A root describes itself: its `$schema` is `null`, since a blob cannot
-  hold its own hash, and `schemaOf` gives it its own link. Only what has
-  one instance describes itself, since its link fixes every byte and no
-  schema could say more of it.
-- A root is known by its link alone. A program holds the root of each
-  language it reads, with the code that reads it, and does not take a blob
-  for a root by its fields, since anyone can write `{"$schema": null, …}`.
-  Its data says what kind of thing it stands for, as `language` does: its
-  link is all it means, and two kinds of thing written by name alone would
-  be one blob.
-- Reading stops at a root, which no schema reads. Reading a schema checks
-  that it names what the validator's language names, and the language
-  reads the document out of its data: a language written to a schema with
-  that schema, one written to a root by itself. An encoding stops the same
-  way: no blob says that some bytes are JCS, and `schemaOf` is given the
-  encoding by its caller.
-- A schema links to nothing but what it is written to, and one that links
-  to anything else is refused, in writing and in reading. A schema says
-  that a field holds a link without holding one: in Estoc Schema the field
-  is `{"type": "link"}`. So the closure of a schema is itself and the
-  blobs of its language, up to the root, and the schema gives them as
-  `blobs`. They go wherever the schema goes, and so wherever an object of
-  it goes, as into a store or a bundle.
+- What a schema holds is its language's to say: in Estoc Schema, a title
+  and the fields of its objects.
+- An object names its schema by link, and that is what makes the bytes a
+  schema. A schema is reached from its objects, and no schema describes a
+  schema: an object is written to a schema, and a schema to nothing.
+- No blob says which language a schema is in. The program that reads one
+  names the language, by the validator it reads with. An encoding is told
+  the same way: no blob says that some bytes are JCS, and `schemaOf` is
+  given the encoding by its caller.
+- A schema links to nothing, as bytes link to nothing whatever they hold,
+  and an object, which links to its schema, is refused as a schema. A
+  schema says that a field holds a link without holding one: in Estoc
+  Schema the field is `{"type": "link"}`. So the closure of a schema is
+  the schema alone, and its `bytes` go wherever an object of it goes, as
+  into a store or a bundle.
 
-Changing language is changing what schemas are written to: schemas in CDDL
-over CBOR would name `{"$schema": null, "language": "CDDL"}`. A language
-that changes what its schemas mean is another language, with another root.
+The link of a schema fixes its bytes, and not the language they are read
+in. Programs that share objects share the language, as they share the
+encoding.
 
-A blob that is not an object is bytes: an image, a JSON Schema document on
-its own, or a JSON file such as a `biome.json`, whose `$schema` is a
-string, even when it happens to be JCS. Only the links in an object are
-followed.
+A blob that is not an object is bytes: a schema, an image, or a JSON file
+such as a `biome.json`, whose `$schema` is a string, even when it happens
+to be JCS. Only the links in an object are followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
@@ -147,18 +131,17 @@ followed.
   them, and no others; in bytes it finds none. In TypeScript a link in JSON data is a
   `JsonLink<T>`, `{ $link: Link<T> }`.
 - An object is the JSON object of the fields of its data and `$schema`,
-  which holds the link of its schema, or `null` in an object that
-  describes itself. Only there does `$schema` name a schema: deeper in the
-  data it is a field like any other, and data with a `$schema` of its own
-  is refused. JSON without a `$schema` that is a link or `null` is bytes.
-- A schema is an object, `{"$schema": {"$link": <what it is written to>}, …}`,
-  and a root is `{"$schema": null, …}`. Their fields are the language's:
-  those of Estoc Schema are in the README of `@estoc/schema`.
+  which holds the link of its schema. Only there does `$schema` name a
+  schema: deeper in the data it is a field like any other, and data with a
+  `$schema` of its own is refused. JSON without a `$schema` that is a link
+  is bytes.
+- A schema is JSON that is not an object. What it holds is the language's:
+  the schemas of Estoc Schema are in the README of `@estoc/schema`.
 - A blob does not say what kind of blob it is, or which version of the
-  format. A reader knows which kind it expects, and the kinds cannot pass
-  for one another: an object names its schema, a schema names its
-  language, and a root is known by its link. A signature is an object, and like any
-  object it cannot pass for one of another schema.
+  format. A reader knows which kind it expects. An object names its
+  schema, so it cannot pass for an object of another, and a signature is
+  an object like any other. A schema names nothing: it is read as one
+  where an object names it, in the language the reader names.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
 
@@ -211,8 +194,8 @@ only because the reader it gets the blob from may answer with one.
 
 What a check may turn on follows from how schemas and languages are built:
 
-- A schema holds all that its data is checked against. It links to nothing
-  but what it is written to, and compiling it fetches nothing, so the link
+- A schema holds all that its data is checked against. It links to
+  nothing, and compiling it fetches nothing, so in one language the link
   of a schema fixes what its objects may hold, and no one changes that
   later by changing what a URL names.
 - What fits a schema is the language's to say. Estoc Schema leaves nothing
@@ -220,9 +203,8 @@ What a check may turn on follows from how schemas and languages are built:
   of them. Where a language leaves something open, a signature commits to
   bytes and a validator is one reading of them, so a stricter validator can
   replace another without any blob changing.
-- A language is what its schemas are written to, and a validator reads the
-  schemas of one language. A schema written to anything else is refused
-  rather than read by other rules.
+- A validator reads the schemas of one language, and bytes that are not a
+  schema of it are refused rather than read by other rules.
 
 ## Verifiers
 

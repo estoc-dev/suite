@@ -48,8 +48,8 @@ export type Identifier = Link<KeyObject>;
  *   the root's clock. Each identity a root signs is an identity version.
  * - `prior` is of the same root, and earlier.
  * - `blobs` are the identity's closure, each blob once: the bytes of its
- *   object and of the keys it names, the blobs of the schemas they are
- *   written to, and those of `prior`.
+ *   object and of the keys it names, the schemas they are written to, and
+ *   the blobs of `prior`.
  */
 export interface IdentityObject extends EncodedObject<Json, IdentityData> {
   readonly link: Link<IdentityObject>;

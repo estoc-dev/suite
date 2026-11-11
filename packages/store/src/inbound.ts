@@ -57,8 +57,8 @@ export class Intake {
   async receive(bundle: ReceivedBundle, via?: EncodedObject<Json>): Promise<InboundObject> {
     const data: InboundData = { bundle: { $link: bundle.link }, at: this.#clock() };
     const record = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: { $link: via.link } });
-    const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
-    await this.#store.write({ records: [record], blobs: [...inboundSchema.blobs, ...viaBlobs, ...bundle.blobs()] });
+    const viaBlobs = via === undefined ? [] : [via.bytes, via.schema.bytes];
+    await this.#store.write({ records: [record], blobs: [inboundSchema.bytes, ...viaBlobs, ...bundle.blobs()] });
     return record;
   }
 }

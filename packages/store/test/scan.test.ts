@@ -52,7 +52,7 @@ const fields = {
 const note = schema("Note", fields);
 const tag = schema("Tag", fields);
 type Entry = DataOf<typeof note>;
-const schemas = [note, tag].flatMap(({ blobs }) => blobs);
+const schemas = [note, tag].map(({ bytes }) => bytes);
 const keysOf = ({ data }: { readonly data: Entry }) => data.keys ?? [];
 
 const byKeys: Index<Key> = indexOver(objectsOf(note), keysOf);
@@ -154,7 +154,7 @@ describe("an index scanned from a store", () => {
       records: [hello, ...helloSignatures],
       blobs: [
         ...helloSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
-        ...signatures.schema.blobs,
+        signatures.schema.bytes,
         ...schemas,
       ],
     });
@@ -536,7 +536,7 @@ describe("an index over blobs", () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [carrying(misfit.bytes, fitting.bytes)],
-      blobs: [misfit.bytes, fitting.bytes, ...strict.blobs, ...schemas],
+      blobs: [misfit.bytes, fitting.bytes, strict.bytes, ...schemas],
     });
     expect(await whole(await scan(store, indexOverBlobs(objectsOf(strict), keysOf)))).toEqual([["fitting"]]);
   });

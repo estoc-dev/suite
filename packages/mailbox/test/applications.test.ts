@@ -263,7 +263,7 @@ describe("two people who meet", () => {
         const signature = await actor.sign(object);
         await store.write({
           records: [signature],
-          blobs: [object.bytes, ...signature.signedIdentity.blobs, ...chat.blobs, ...signatures.schema.blobs],
+          blobs: [object.bytes, ...signature.signedIdentity.blobs, chat.bytes, signatures.schema.bytes],
         });
         return correspondence.send(to, signature.link);
       };

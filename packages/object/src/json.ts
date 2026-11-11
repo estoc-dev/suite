@@ -45,12 +45,11 @@ function checkLinks(value: Json): void {
   for (const _ of linksIn(value));
 }
 
-// The schema that `value` names as an object, `null` for one that describes
-// itself, or `undefined` for a value that is not an object.
-function schemaNamedBy(value: Json): Link<never> | null | undefined {
-  if (!isJsonObject(value) || !Object.hasOwn(value, "$schema")) return undefined;
+// The schema that `value` names as an object, or `undefined` for a value that
+// is not an object.
+function schemaNamedBy(value: Json): Link<never> | undefined {
+  if (!isJsonObject(value)) return undefined;
   const { $schema } = value;
-  if ($schema === null) return null;
   return $schema !== undefined && isJsonLink($schema) ? $schema.$link : undefined;
 }
 
@@ -65,10 +64,10 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
  *   out of order or repeated, and numbers or escapes not written the shortest way.
  * - A link is written `{"$link": <link>}`, and any other object with a `$link` member is refused.
  * - An object is the JSON object of the fields of its data and `"$schema": {"$link": <link>}`, the
- *   link of its schema, or `"$schema": null` for one that describes itself. Only there does
- *   `$schema` name a schema: deeper in the data it is a field like any other.
- * - Any other value is bytes, and links to nothing: a JSON Schema document on its own, whose
- *   `$schema` is a string, is one.
+ *   link of its schema. Only there does `$schema` name a schema: deeper in the data it is a field
+ *   like any other.
+ * - Any other value is bytes, and links to nothing: a schema is one, and so is a JSON Schema
+ *   document, whose `$schema` is a string.
  */
 export const json: Encoding<Json> = {
   encode(value) {
@@ -87,12 +86,11 @@ export const json: Encoding<Json> = {
   object(data, schema) {
     if (Object.hasOwn(data, "$schema"))
       throw new Error("the data of an object holds no $schema, which names the object's schema");
-    return { ...data, $schema: schema === null ? null : { $link: schema } };
+    return { ...data, $schema: { $link: schema } };
   },
   fields(value) {
     const schema = schemaNamedBy(value);
-    if (schema === undefined)
-      throw new Error("an object names its schema by link in $schema, or describes itself with null");
+    if (schema === undefined) throw new Error("an object names its schema by link in $schema");
     const { $schema: _, ...data } = value as JsonObject;
     return { data, schema };
   },

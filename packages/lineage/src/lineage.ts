@@ -40,9 +40,8 @@ export interface LineageNodeObject extends EncodedObject<Json, LineageNodeData> 
  *   first names the one before it as `previous`.
  * - `items` are the links the nodes carry, in their order, one for each
  *   node, so an item carried twice is there twice.
- * - `blobs` are the bytes of the nodes and the blobs of the node schema: the
- *   closure of `head` but for the closures of the items, which the caller
- *   holds.
+ * - `blobs` are the bytes of the nodes and the node schema: the closure of
+ *   `head` but for the closures of the items, which the caller holds.
  */
 export interface Lineage {
   readonly first: LineageNodeObject;
@@ -93,7 +92,7 @@ export class Lineages {
     const { encoding } = first.schema;
     return new SchemaLineage(
       later.reduce((earlier, { schema }) => earlier.appending(schema), this.startingWith(first.schema)),
-      versions.flatMap(({ schema }) => schema.blobs),
+      versions.map(({ schema }) => schema.bytes),
       new Implementations(encoding, versions),
       (record) => schemaOf(record, encoding),
     );
@@ -128,7 +127,7 @@ function lineageOf(before: readonly LineageNodeObject[], head: LineageNodeObject
     head,
     nodes,
     items: nodes.map((node) => node.data.item.$link),
-    blobs: [...nodes.map((node) => node.bytes), ...lineageNodeSchema.blobs],
+    blobs: [...nodes.map((node) => node.bytes), lineageNodeSchema.bytes],
     appending: (item) =>
       lineageOf(nodes, encodeObject(lineageNodeSchema, { previous: { $link: head.link }, item: { $link: item.link } })),
   };

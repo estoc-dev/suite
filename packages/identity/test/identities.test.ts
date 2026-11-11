@@ -9,7 +9,7 @@ import {
   linkOf,
   type Schema,
 } from "@estoc/object";
-import { bytes, link, schema, schemaRoot } from "@estoc/schema";
+import { bytes, link, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assert, describe, expect, it, vi } from "vitest";
 import {
@@ -82,13 +82,12 @@ describe("an identity", () => {
     expect(hasSigner(identity, keys.encode(key(ed25519, 3)))).toBe(false);
   });
 
-  it("carries as its blobs its object, its root's, and the blobs of the schemas they are written to, each once", async () => {
+  it("carries as its blobs its object, its root's, and the schemas they are written to, each once", async () => {
     const identity = identities.encode(key(eip191), { at: 0 });
     expect(linksOf(identity.blobs)).toEqual([
       identity.link,
       identity.root.link,
       identitySchema.link,
-      schemaRoot.link,
       identity.root.schema.link,
     ]);
   });
@@ -175,14 +174,9 @@ describe("a signed identity", () => {
     expect(read.signature).toEqual(signed.signature);
   });
 
-  it("carries as its blobs its object, its schema's blobs, and its identity's", async () => {
+  it("carries as its blobs its object, its schema, and its identity's", async () => {
     const signed = await publish(signer(ed25519));
-    expect(linksOf(signed.blobs)).toEqual([
-      signed.link,
-      signedIdentitySchema.link,
-      schemaRoot.link,
-      ...linksOf(signed.identity.blobs),
-    ]);
+    expect(linksOf(signed.blobs)).toEqual([signed.link, signedIdentitySchema.link, ...linksOf(signed.identity.blobs)]);
   });
 
   it.each(schemes)("published by a $name root carries its closure as its blobs, and nothing else", async (scheme) => {
@@ -275,7 +269,7 @@ describe("the agents of an identity", () => {
     expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
   });
 
-  it("are carried with the root and the blobs of the schemas they are written to, each once", async () => {
+  it("are carried with the root and the schemas they are written to, each once", async () => {
     const { identity } = await publish(signer(eip191), { agents: [key(ed25519, 2), key(ed25519, 3)] });
     const [first, second] = identity.agents;
     assert.exists(first);
@@ -286,7 +280,6 @@ describe("the agents of an identity", () => {
       first.link,
       second.link,
       identitySchema.link,
-      schemaRoot.link,
       identity.root.schema.link,
       first.schema.link,
     ]);
@@ -382,7 +375,7 @@ describe("an identity that follows another", () => {
       agents: [],
       at,
     });
-    const reader = byLink([...signed.blobs, rootKey.bytes, ...rootKey.schema.blobs, ...prior.blobs]);
+    const reader = byLink([...signed.blobs, rootKey.bytes, rootKey.schema.bytes, ...prior.blobs]);
     await expect(signedIdentities.read(signed.link, reader)).rejects.toThrow(error);
   });
 

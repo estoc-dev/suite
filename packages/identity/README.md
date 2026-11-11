@@ -29,16 +29,15 @@ The bytes of a Signature are read as the Identity schema says: the index of
 the key that signed, the root first and its agents after it, and that key's
 signature.
 
-`loadIdentity` compiles every schema here with the validator the
-application picks, writes the object of each scheme it picks, and gives
-what reads and writes the objects of each,
-side by side: `keys`, `identities`, `signedIdentities`, `signatures`,
-`identityVersions`, `secretKeys` and `walletKeys`, with `publish`, which
-writes an identity and has its root sign it. The code is laid out as the
-objects are. Each schema has a file of its own, the key interface and the
-schemes read as it share `src/key/`, with the interface in `interface.ts`,
-and one file imports another where an object of the one links to an object
-of the other.
+The schemas here are written in the language of `@estoc/schema`.
+`loadIdentity` writes the object of each scheme the application picks, and
+gives what reads and writes the objects of each schema, side by side:
+`keys`, `identities`, `signedIdentities`, `signatures`, `identityVersions`,
+`secretKeys` and `walletKeys`, with `publish`, which writes an identity and
+has its root sign it. The code is laid out as the objects are. Each schema
+has a file of its own, the key interface and the schemes read as it share
+`src/key/`, with the interface in `interface.ts`, and one file imports
+another where an object of the one links to an object of the other.
 
 ## Schemes
 
@@ -51,7 +50,7 @@ a framing its holder did not choose.
 A scheme is a plugin, a `Scheme` value: `name` and `publicKeyLength`, the
 data of its object, and `verify`, which says whether a signature is a
 public key's over a text. The application picks the schemes it reads keys
-in, `loadIdentity(validator, schemes)`, so which keys it accepts is its own
+in, `loadIdentity(schemes)`, so which keys it accepts is its own
 to say, and no registry holds them. Two schemes with one object are
 refused. This package keeps what is the same in every scheme: the signing
 text, picking a scheme by the link of its object, and the rules of
@@ -144,19 +143,18 @@ keys are written to:
 ```
 key                 {"$schema": {"$link": <ed25519>}, "publicKey": "…"}
 ed25519             {"$schema": {"$link": <the scheme schema>}, "name": "ed25519", "publicKeyLength": 32}
-the scheme schema   {"$schema": {"$link": <the root of JSON Schema>}, "document": {…}}
+the scheme schema   {"$schema": {"$link": <the root of @estoc/schema>}, "title": "Key Scheme", "fields": {…}}
 ```
 
-Each line is the type of the one above it. The scheme schema is a JSON
-Schema schema, and the objects of the schemes are the schemas of a language
-of their own, which `schemeValidator` reads. It checks a key without a JSON
-Schema validator: a key holds its public key, in lowercase hex at its
-scheme's length, and no other field, so each key has one object and one
-link, and no scheme writes its keys another way. The objects of `ed25519`
-and `solana-offchain` differ only in their names: one public key in the two
-schemes is two objects, with two links, as it is two keys. A scheme's
-object carries as its `blobs` itself, the scheme schema and the root of
-JSON Schema.
+Each line is the type of the one above it. The scheme schema is a schema of
+`@estoc/schema`, and the objects of the schemes are the schemas of a
+language of their own, which `schemeValidator` reads. A key holds its
+public key, in lowercase hex at its scheme's length, and no other field, so
+each key has one object and one link, and no scheme writes its keys another
+way. The objects of `ed25519` and `solana-offchain` differ only in their
+names: one public key in the two schemes is two objects, with two links, as
+it is two keys. A scheme's object carries as its `blobs` itself, the scheme
+schema and the root the scheme schema is written to.
 
 That an object is a scheme is its type, not a mark in a document. What a
 program reads a scheme's keys as is still the program's to say: another
@@ -207,21 +205,27 @@ and with an earlier `at`, and one without it starts a chain. `crisis`
 marks a crisis, below. An identity holds `prior` and `crisis` only where
 they hold, so it has one object.
 
+The schema says the fields of an identity and their types. That it lists
+each agent once and not its root, lists at most 255, and writes `crisis`
+as `true` alone is checked where an identity is read or written, so a
+reader that reads one as an object of the schema alone does not check it.
+
 `identities` writes identities. `identities.encode(root, content)` writes
 the identity of a root that an `IdentityContent` says: `prior`, the signed
 identity it follows, `agents`, `isCrisis` and `at`, now unless it is given.
-It refuses agents that list the root, and a prior of another root or one
-that is not earlier. An identity stands for someone only as its root signed
-it: `identities.read` reads an identity's object with the keys it names, as
-following the signed identity its `prior` names, which the caller reads,
-and does not authenticate it, while `signedIdentities.read` verifies that
-its root signed it. `hasSigner(identity, key)` says whether `key` signs for
-an identity. Reading an identity takes the blobs of its object, of its keys
-and of the signed identity it follows; an identity carries them as `blobs`,
-with the blobs of the schemas they are written to, each once. That is the
-identity's closure, so where an identity goes, as into a store or a bundle,
-`...identity.blobs` goes along and carries all it links to, the identity
-versions it follows among them.
+It refuses agents that list the root or one of them twice, or are more than
+255, and a prior of another root or one that is not earlier. An identity
+stands for someone only as its root signed it: `identities.read` reads an
+identity's object with the keys it names, as following the signed identity
+its `prior` names, which the caller reads, and does not authenticate it,
+while `signedIdentities.read` verifies that its root signed it.
+`hasSigner(identity, key)` says whether `key` signs for an identity. Reading
+an identity takes the blobs of its object, of its keys and of the signed
+identity it follows; an identity carries them as `blobs`, with the blobs of
+the schemas they are written to, each once. That is the identity's closure,
+so where an identity goes, as into a store or a bundle, `...identity.blobs`
+goes along and carries all it links to, the identity versions it follows
+among them.
 
 ## Signed identities
 
@@ -456,9 +460,8 @@ signed identity's blobs:
 ```ts
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
 
-const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, publish } = await loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, secretKey);
 const actor = signatures.actor(signer, await publish(signer));
 const signature = await actor.sign(object);

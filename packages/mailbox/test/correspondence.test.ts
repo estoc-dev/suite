@@ -28,7 +28,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 // other a grant of a mailbox, sends by the grant they were given, and reads
 // what came in by the grants they gave.
 
-const identity = await loadIdentity(defaultValidator, [ed25519]);
+const identity = await loadIdentity([ed25519]);
 const { signatures, publish } = identity;
 const grants = await loadMailboxGrants(defaultValidator, identity);
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";

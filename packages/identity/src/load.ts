@@ -1,16 +1,16 @@
-import { encodeSchema, type Json, type JsonSchemaValidator, type Schema } from "@estoc/object";
-import { Identities, type IdentityContent, identitySchema } from "./identity.ts";
+import { encodeSchema, type Json, type Schema } from "@estoc/object";
+import { Identities, type IdentityContent } from "./identity.ts";
 import { IdentityVersions } from "./identity-versions.ts";
 import type { KeyData, Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
-import { type SchemeData, schemeSchema, schemeValidator } from "./key/scheme.ts";
-import { SecretKeys, secretKeySchema } from "./secret-key.ts";
-import { Signatures, signatureSchema } from "./signature.ts";
-import { SignedIdentities, type SignedIdentityObject, signedIdentitySchema } from "./signed-identity.ts";
+import { type SchemeData, schemeValidator } from "./key/scheme.ts";
+import { SecretKeys } from "./secret-key.ts";
+import { Signatures } from "./signature.ts";
+import { SignedIdentities, type SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
-import { WalletKeys, walletKeySchema } from "./wallet-key.ts";
+import { WalletKeys } from "./wallet-key.ts";
 
-/** Each schema of this package, compiled, as what reads and writes its objects, side by side. */
+/** What reads and writes the objects of each schema of this package, side by side. */
 export interface IdentityKit {
   readonly keys: Keys;
   readonly identities: Identities;
@@ -29,31 +29,30 @@ export interface IdentityKit {
 }
 
 /**
- * The schemas of this package compiled by `validator`, with the keys of
- * `schemes`, each written to its scheme's object. The application picks the
- * schemes, so which keys it accepts is its own to say.
+ * What reads and writes the objects of this package's schemas, with the
+ * keys of `schemes`, each written to its scheme's object. The application
+ * picks the schemes, so which keys it accepts is its own to say.
  *
  * @throws when the data of one of `schemes` does not fit the scheme schema,
  * or two of them have one object.
  */
-export async function loadIdentity(validator: JsonSchemaValidator, schemes: readonly Scheme[]): Promise<IdentityKit> {
-  const keySchemaValidator = schemeValidator(await encodeSchema(schemeSchema, validator));
+export async function loadIdentity(schemes: readonly Scheme[]): Promise<IdentityKit> {
   const keySchemas = new Map<Scheme, Schema<Json, KeyData>>();
   for (const scheme of schemes) {
     const data = { name: scheme.name, publicKeyLength: scheme.publicKeyLength };
-    keySchemas.set(scheme, await encodeSchema<Json, SchemeData, KeyData>(data, keySchemaValidator));
+    keySchemas.set(scheme, await encodeSchema<Json, SchemeData, KeyData>(data, schemeValidator));
   }
   const keys = new Keys(keySchemas);
-  const identities = new Identities(await encodeSchema(identitySchema, validator), keys);
-  const signedIdentities = new SignedIdentities(await encodeSchema(signedIdentitySchema, validator), identities);
+  const identities = new Identities(keys);
+  const signedIdentities = new SignedIdentities(identities);
   return {
     keys,
     identities,
     signedIdentities,
-    signatures: new Signatures(await encodeSchema(signatureSchema, validator), signedIdentities),
+    signatures: new Signatures(signedIdentities),
     identityVersions: new IdentityVersions(signedIdentities),
-    secretKeys: new SecretKeys(await encodeSchema(secretKeySchema, validator), keys),
-    walletKeys: new WalletKeys(await encodeSchema(walletKeySchema, validator), keys),
+    secretKeys: new SecretKeys(keys),
+    walletKeys: new WalletKeys(keys),
     publish: async (root, content) => signedIdentities.sign(root, identities.encode(root.key, content)),
   };
 }

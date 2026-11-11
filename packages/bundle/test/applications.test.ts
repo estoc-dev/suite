@@ -49,7 +49,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     defaultValidator,
   );
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
-const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519, eip191]);
+const { keys, identities, signatures, publish } = await loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 

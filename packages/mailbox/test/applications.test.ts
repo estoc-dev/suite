@@ -37,7 +37,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const identity = await loadIdentity(defaultValidator, [ed25519, eip191, solanaOffchain]);
+const identity = await loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";

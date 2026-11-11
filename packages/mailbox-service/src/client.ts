@@ -597,7 +597,7 @@ export async function loadServices(
     readonly clock?: () => number;
   },
 ): Promise<Services> {
-  const kit = await loadIdentity(validator, schemes);
+  const kit = await loadIdentity(schemes);
   const intake = await loadIntake(store, { validator, clock });
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);

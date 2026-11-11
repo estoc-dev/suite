@@ -1,16 +1,5 @@
-import {
-  DRAFT_2020_12,
-  type EncodedObject,
-  encodeObject,
-  type Json,
-  type JsonLink,
-  type JsonSchema,
-  type Link,
-  linkSchema,
-  type Reader,
-  readObject,
-  type Schema,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
+import { type DataOf, link, schema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
@@ -23,16 +12,9 @@ import type { Keys } from "./key/keys.ts";
  * - Which wallet holds the key, the program finds by the public key the
  *   wallet gives.
  */
-export const walletKeySchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Wallet Key",
-  type: "object",
-  properties: { key: linkSchema },
-  required: ["key"],
-  additionalProperties: false,
-};
+export const walletKeySchema = await schema("Wallet Key", { key: link<KeyObject>() });
 
-export type WalletKeyData = { readonly key: JsonLink<KeyObject> };
+export type WalletKeyData = DataOf<typeof walletKeySchema>;
 
 /**
  * A Wallet Key read from its object, with its key. `blobs` are its closure,
@@ -46,11 +28,10 @@ export interface WalletKeyObject extends EncodedObject<Json, WalletKeyData> {
 
 /** Wallet Keys, written to `walletKeySchema` and read with the keys they name. */
 export class WalletKeys {
-  readonly schema: Schema<Json, WalletKeyData>;
+  readonly schema = walletKeySchema;
   readonly #keys: Keys;
 
-  constructor(schema: Schema<Json, WalletKeyData>, keys: Keys) {
-    this.schema = schema;
+  constructor(keys: Keys) {
     this.#keys = keys;
   }
 

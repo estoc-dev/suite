@@ -25,7 +25,7 @@ import {
   schemaOf,
 } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
@@ -48,9 +48,7 @@ const schemaFor = <F extends Fields<Json> = Fields<Json>>(
     },
     defaultValidator,
   );
-const { identities, signatures, signedIdentities, identityVersions, publish } = await loadIdentity(defaultValidator, [
-  ed25519,
-]);
+const { identities, signatures, signedIdentities, identityVersions, publish } = await loadIdentity([ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
@@ -200,29 +198,17 @@ describe("a signed identity that comes in a bundle", () => {
   });
 
   it("is validated once by a scan", async () => {
-    let validationCount = 0;
-    const kit = await loadIdentity(
-      {
-        language: defaultValidator.language,
-        async compile(schema) {
-          const check = await defaultValidator.compile(schema);
-          return (data) => {
-            if (schema.title === signedIdentitySchema.title) validationCount++;
-            return check(data);
-          };
-        },
-      },
-      [ed25519],
-    );
-    const identityVersion = await kit.publish(alice, { at: 5 });
+    const validate = vi.spyOn(signedIdentitySchema, "validate");
+    const identityVersion = await publish(alice, { at: 5 });
     const store = newStore();
     await store.write({ records: [identityVersion], blobs: identityVersion.blobs });
 
-    validationCount = 0;
+    validate.mockClear();
     await scan(
       store,
-      indexOverBlobs(kit.identityVersions.selection, (row) => [row]),
+      indexOverBlobs(identityVersions.selection, (row) => [row]),
     );
-    expect(validationCount).toBe(1);
+    expect(validate).toHaveBeenCalledTimes(1);
+    validate.mockRestore();
   });
 });

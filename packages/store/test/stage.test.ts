@@ -192,7 +192,7 @@ const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   },
 };
 
-const { signatures, identityVersions, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { signatures, identityVersions, publish } = await loadIdentity([ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 

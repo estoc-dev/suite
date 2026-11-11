@@ -49,10 +49,8 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = await loadIdentity(
-  defaultValidator,
-  schemes,
-);
+export const { keys, identities, signedIdentities, identityVersions, signatures, publish } =
+  await loadIdentity(schemes);
 export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, { at: 0 }));
 export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
 export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);

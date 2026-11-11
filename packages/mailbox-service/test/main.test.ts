@@ -6,7 +6,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
 import { json, objectsOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -70,7 +69,7 @@ async function start(settings: Readonly<Record<string, string>>) {
 }
 
 async function secretKeysAt(path: string) {
-  const { secretKeys } = await loadIdentity(defaultValidator, [ed25519, eip191, solanaOffchain]);
+  const { secretKeys } = await loadIdentity([ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
   const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);

@@ -1,5 +1,5 @@
-import { encodeObject, encodeSchema, type Json, type Schema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
   type CurveScheme,
@@ -11,7 +11,7 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { signatures, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
+const { signatures, identityVersions, publish } = await loadIdentity(schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -19,15 +19,7 @@ const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
   identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
 const linksOf = (signed: readonly SignedIdentityObject[]) => signed.map(({ link }) => link);
 
-const note: Schema<Json, { readonly text: string }> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-  },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello" });
 
 describe("a person", () => {

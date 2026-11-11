@@ -3,11 +3,11 @@ import { equalBytes } from "@noble/curves/utils.js";
 import { signingText } from "../signing-text.ts";
 
 /**
- * How a key signs, as a plugin gives it: the data of the scheme's object,
- * and the code that verifies a signature in it. A key kept in a chain
- * wallet signs only in that chain's off-chain message framing, so the
- * framing belongs to the scheme, and a verifier does not accept a framing
- * its holder did not choose.
+ * How a key signs, as a plugin gives it: the scheme's name, the length of
+ * its public keys, and the code that verifies a signature in it. A key kept
+ * in a chain wallet signs only in that chain's off-chain message framing, so
+ * the framing belongs to the scheme, and a verifier does not accept a
+ * framing its holder did not choose.
  *
  * - One signing act has one valid encoding. Signatures are stored and
  *   hashed as bytes, and a second encoding of the same signature would give
@@ -17,7 +17,7 @@ import { signingText } from "../signing-text.ts";
  *   signs what it says.
  */
 export interface Scheme {
-  /** Sets the link of its scheme object apart from every other scheme's. */
+  /** The title of the schema its keys are written to, which sets it apart from every other scheme's. */
   readonly name: string;
   readonly publicKeyLength: number;
   /** Whether `signature` is `publicKey`'s over `text` in this scheme. */
@@ -39,7 +39,7 @@ export interface Key {
 export type KeyData = { readonly publicKey: string };
 
 /**
- * A key read from its object, written to the object of its scheme. An
+ * A key read from its object, written to the schema of its scheme. An
  * identity names its root by the link of this object.
  */
 export interface KeyObject extends EncodedObject<Json, KeyData>, Key {

@@ -141,7 +141,7 @@ describe("loadIdentity", () => {
     );
   });
 
-  it("refuses two schemes with one object", () => {
+  it("refuses two schemes of one name", () => {
     const copy = curveScheme("ed25519", ed25519Curve, ed25519.message);
     expect(() => loadIdentity([ed25519, copy])).toThrow(/is given two implementations/);
   });

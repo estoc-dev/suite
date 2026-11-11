@@ -8,8 +8,8 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
  * A language of schemas over the data of one encoding, with documents `S`.
  *
  * - A schema is an object written to what the language names by `link`: the root of a standard
- *   language, which describes itself, or a schema whose objects are schemas, as each key scheme is
- *   the schema of its keys. Changing language is changing what schemas are written to.
+ *   language, which describes itself, or a schema whose objects are schemas. Changing language is
+ *   changing what schemas are written to.
  * - A schema links to nothing but what it is written to, so that its closure is itself and the
  *   language's `blobs`.
  * - `document` reads a schema's data as the language takes it. A language written to a schema

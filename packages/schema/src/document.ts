@@ -23,8 +23,7 @@ export type Field = Type & { readonly optional?: true };
  * A schema as its data: a `title`, and the `fields` of the objects written
  * to it, each by name.
  *
- * - The title sets apart two schemas of the same fields, as the name of a key scheme does, and
- *   says nothing a validator checks.
+ * - The title sets apart two schemas of the same fields, and says nothing a validator checks.
  * - An object written to the schema holds the fields listed and no other, and may leave out
  *   only those marked `optional`.
  */

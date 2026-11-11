@@ -74,9 +74,7 @@ A schema is an object like any other, written to its language.
 - The schemas of a standard language are written to its root, which stands
   for it. What the data of a schema holds is the language's to say: in
   Estoc Schema, a title and the fields of its objects.
-- A schema can be a language too, whose objects are schemas in turn. The
-  key schemes of `@estoc/identity` are one: the object of each scheme,
-  written to the scheme schema, is the schema of the keys in it. Each is
+- A schema can be a language too, whose objects are schemas in turn. Each is
   the type of the next, its `$schema`, and none inherits from another.
 - A root describes itself: its `$schema` is `null`, since a blob cannot
   hold its own hash, and `schemaOf` gives it its own link. Only what has

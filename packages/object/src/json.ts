@@ -20,7 +20,7 @@ export function isJsonObject(value: Json): value is JsonObject {
  */
 export type JsonLink<T> = { readonly $link: Link<T> };
 
-function isJsonLink(value: Json): value is JsonLink<never> {
+export function isJsonLink(value: Json): value is JsonLink<never> {
   if (!isJsonObject(value)) return false;
   const names = Object.keys(value);
   return names.length === 1 && names[0] === "$link" && isLink(value.$link);

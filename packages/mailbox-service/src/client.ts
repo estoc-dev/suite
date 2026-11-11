@@ -26,6 +26,7 @@ import {
   type Schema,
   schemaOf,
 } from "@estoc/object";
+import type { DataOf } from "@estoc/schema";
 import { Intake, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
@@ -63,10 +64,7 @@ const REQUEST = {
   referrerPolicy: "no-referrer",
 } as const satisfies RequestInit;
 
-type HttpMailboxData = { readonly key: string; readonly url: string };
-
-// The HTTP transport's schema, read as the fields every HTTP mailbox has.
-const httpMailboxSchema = httpTransport.schema as Schema<Json, HttpMailboxData>;
+type HttpMailboxData = DataOf<typeof httpTransport.schema>;
 
 /**
  * What an offer of a service's posts with. Its `origin` is where the offer
@@ -216,7 +214,7 @@ export class MailboxOffer {
       [request.bytes],
       this.#posting,
     );
-    const mailbox = encodeObject(httpMailboxSchema, {
+    const mailbox = encodeObject(httpTransport.schema, {
       key: hex.encode(key),
       url: new URL(`/${data.sendId}`, this.#url.origin).href,
     });

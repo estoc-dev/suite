@@ -2,7 +2,8 @@ import {
   type Actor,
   type Identifier,
   type IdentityKit,
-  type IdentityVersion,
+  type IdentityVersionData,
+  type IdentityVersionOrder,
   noIdentityVersions,
   type People,
   type Signature,
@@ -35,7 +36,7 @@ export class Correspondence {
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
-  readonly #seenPeople: View<IdentityVersion, People>;
+  readonly #seenPeople: View<Json, IdentityVersionData, IdentityVersionOrder, People>;
 
   constructor(
     store: Store,
@@ -53,7 +54,7 @@ export class Correspondence {
     this.#grants = grants;
     this.#signatures = signatures;
     this.#seenPeople = {
-      index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
+      index: indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]),
       read: (rows, reader) => identityVersions.people(rows, reader),
     };
   }

@@ -242,8 +242,9 @@ the same each time it is sent.
 
 The package keeps no index of the records. An application keeps its own,
 an index of `@estoc/store` that reads `inboundSchema` of that package and
-`outboundSchema` of this one. The tests give each record the row
-`[direction, mailbox, at, bundle]`, where the mailbox of an `Inbound` is its
+`outboundSchema` of this one. The tests give each record a row of its
+`direction`, `mailbox`, `at` and `bundle`, in the order of those fields, where
+the mailbox of an `Inbound` is its
 `via`, which is the mailbox's link for what came in at one, and one without
 `via` gives no row. They
 read a conversation from two ranges, what came in at one mailbox and what
@@ -407,7 +408,7 @@ import { MailboxGrants } from "@estoc/mailbox";
 import { indexOverBlobs, view } from "@estoc/store";
 
 const grants = new MailboxGrants({ signatures, signedIdentities });
-const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
+const seen = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 await series.grantFrom(mine, their, people.asTakenIn); // where I take their messages
@@ -418,8 +419,9 @@ await series.grantFrom(their, mine, people.asTakenIn); // where they take mine
 as the index it holds is. Its index reads the signatures over grants among
 the blobs a store holds, by their schema, wherever they sit in the closure of a
 record or of what came in: a signature carries its authority in itself, so it
-reads the same whoever sent it. Each gives a row of the identifier of the
-signer, that of `to`, `at` and the link of the signature; the signature is verified by
+reads the same whoever sent it. Each gives a row, an object of
+`mailboxGrantRowSchema`: the identifier of the signer, that of `to`, `at` and
+the signature, in the order of those fields; the signature is verified by
 the signed identity it carries, as by `noIdentityVersions`. One that does not
 verify, or that is over an object that does not read as a grant, gives no row,
 since anyone can send a bundle to a mailbox. The scan still fails when the store

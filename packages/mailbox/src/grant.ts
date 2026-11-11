@@ -1,6 +1,7 @@
 import {
   type Identifier,
   type IdentityKit,
+  type KeyObject,
   noIdentityVersions,
   type SeenIdentityVersions,
   type Signature,
@@ -8,18 +9,28 @@ import {
   type SignedIdentityObject,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
+import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOverBlobs, type Rows, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
- * A Mailbox Grant as a row: the identifier of whoever signed it, the identifier of the signed
- * identity it is to, its `at`, and the link of the signature.
+ * The schema of a Mailbox Grant as a row of an index: the identifier of whoever signed it, the
+ * identifier of the signed identity it is to, its `at`, and the signature.
  *
  * - The grants of someone to someone else are a series, whose rows are in the order of their `at`.
  * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
  *   identity versions are.
  */
-export type MailboxGrantRow = readonly [from: Identifier, to: Identifier, at: number, signature: Link<Signature>];
+export const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
+  from: link<KeyObject>(),
+  to: link<KeyObject>(),
+  at: integer(),
+  signature: link<Signature>(),
+});
+
+export type MailboxGrantRow = DataOf<typeof mailboxGrantRowSchema>;
+
+type MailboxGrantOrder = readonly ["from", "to", "at", "signature"];
 
 /** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
 export interface MailboxGrant {
@@ -60,15 +71,17 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 export class MailboxGrants {
   readonly schema = mailboxGrantSchema;
   /** The grants of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
-  readonly series: View<MailboxGrantRow, GrantSeries>;
+  readonly series: View<Json, MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
   readonly #identity: SignatureReading;
 
   /** The signatures over grants and the signed identities they name are read with `identity`. */
   constructor(identity: SignatureReading) {
     this.#identity = identity;
     this.series = {
-      index: indexOverBlobs(identity.signatures.selectionOver(this.schema), (grant, reader) =>
-        this.#rowsOf(grant, reader),
+      index: indexOverBlobs(
+        identity.signatures.selectionOver(this.schema),
+        { schema: mailboxGrantRowSchema, by: ["from", "to", "at", "signature"] },
+        (grant, reader) => this.#rowsOf(grant, reader),
       ),
       read: (rows, reader) => this.#seriesOf(rows, reader),
     };
@@ -90,10 +103,15 @@ export class MailboxGrants {
     const { signatures, signedIdentities } = this.#identity;
     const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
     const to = await signedIdentities.read(object.data.to.$link, reader);
-    yield [signedIdentity.identity.identifier, to.identity.identifier, object.data.at, link];
+    yield {
+      from: { $link: signedIdentity.identity.identifier },
+      to: { $link: to.identity.identifier },
+      at: object.data.at,
+      signature: { $link: link },
+    };
   }
 
-  #seriesOf(rows: Rows<MailboxGrantRow>, reader: Reader): GrantSeries {
+  #seriesOf(rows: Rows<Json, MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (
@@ -101,8 +119,8 @@ export class MailboxGrants {
       to: Identifier,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
-      for await (const [, , , link] of rows.range([from, to])) {
-        const signature = await signatures.read(link, reader, noIdentityVersions);
+      for await (const { data } of rows.range([{ $link: from }, { $link: to }])) {
+        const signature = await signatures.read(data.signature.$link, reader, noIdentityVersions);
         if (await seenIdentityVersions.honors(signature)) yield signature;
       }
     };

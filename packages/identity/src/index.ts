@@ -7,7 +7,14 @@ export {
   type IdentityObject,
   identitySchema,
 } from "./identity.ts";
-export type { IdentityVersion, IdentityVersions, StoreReader } from "./identity-versions.ts";
+export {
+  type IdentityVersionData,
+  type IdentityVersionOrder,
+  type IdentityVersionRows,
+  type IdentityVersions,
+  identityVersionSchema,
+  type StoreReader,
+} from "./identity-versions.ts";
 export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";
 export { eip191 } from "./key/eip191.ts";

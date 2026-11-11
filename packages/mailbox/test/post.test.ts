@@ -1,8 +1,8 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
-import { type Index, Intake, inboundSchema, indexOver, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
+import { link, schema, string } from "@estoc/schema";
+import { Intake, inboundSchema, indexOver, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, mailboxKeySchema, outboundSchema, Post, UndeliveredMessage } from "../src/index.ts";
@@ -174,13 +174,16 @@ describe("an inbox", () => {
   it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox } = await openReceiver(network);
-    const byMailbox: Index<[mailbox: Link<unknown>, key: Link<unknown>]> = indexOver(
+    const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
+    const byMailbox = indexOver(
       objectsOf(mailboxKeySchema),
-      ({ link, data }) => [[data.mailbox.$link, link]],
+      { schema: keyOfMailbox, by: ["mailbox"] },
+      ({ link, data }) => [{ mailbox: data.mailbox, key: { $link: link } }],
     );
-    const rows = [];
-    for await (const row of (await scan(privateStore, byMailbox)).range([inbox.mailbox])) rows.push(row);
-    expect(rows).toEqual([[inbox.mailbox, inbox.key]]);
+    const keys = [];
+    for await (const { data } of (await scan(privateStore, byMailbox)).range([{ $link: inbox.mailbox }]))
+      keys.push(data.key.$link);
+    expect(keys).toEqual([inbox.key]);
 
     const again = await (await postAt(network, store, privateStore)).post.inbox(inbox.key);
     await sendTo(network, store, again.mailbox, signatureBlobs);

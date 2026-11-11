@@ -26,10 +26,10 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   type Backend,
+  type FieldNames,
   type Index,
   indexOver,
   indexOverBlobs,
-  type Key,
   MemoryBackend,
   PrivateStore,
   type Rows,
@@ -39,7 +39,7 @@ import {
 
 // Every field these tests write, each optional, so that a note or a tag holds any of them.
 const fields = {
-  keys: optional(array(array(string()))),
+  names: optional(array(string())),
   name: optional(string()),
   n: optional(integer()),
   number: optional(string()),
@@ -53,22 +53,31 @@ const note = schema("Note", fields);
 const tag = schema("Tag", fields);
 type Entry = DataOf<typeof note>;
 const schemas = [note, tag].map(({ bytes }) => bytes);
-const keysOf = ({ data }: { readonly data: Entry }) => data.keys ?? [];
+const named = schema("Named", { name: string() });
+type Named = DataOf<typeof named>;
+const nameOrder = { schema: named, by: ["name"] } as const;
+type NameIndex = Index<Json, Named, readonly ["name"]>;
+const namedOf = ({ data }: { readonly data: Entry }): Named[] => (data.names ?? []).map((name) => ({ name }));
 
-const byKeys: Index<Key> = indexOver(objectsOf(note), keysOf);
+const byName: NameIndex = indexOver(objectsOf(note), nameOrder, namedOf);
+
+const pair = schema("Pair", { key: string(), value: string() });
+const pairOrder = { schema: pair, by: ["key", "value"] } as const;
 
 /** A selection that reads records as `selection` does, without a schema to route them by. */
 const plainSelectionOf = <T>(selection: Selection<T>): Selection<T> => ({
   read: (record, reader) => selection.read(record, reader),
 });
 
-async function all<K extends Key>(range: AsyncIterable<K>): Promise<K[]> {
-  const rows: K[] = [];
-  for await (const row of range) rows.push(row);
+/** The data of each row of `range`. */
+async function all<F>(range: AsyncIterable<{ readonly data: F }>): Promise<F[]> {
+  const rows: F[] = [];
+  for await (const { data } of range) rows.push(data);
   return rows;
 }
 
-const whole = <K extends Key>(rows: Rows<K>) => all(rows.range([]));
+/** The names of all of `rows`, in their order. */
+const whole = async (rows: Rows<Json, Named, readonly ["name"]>) => (await all(rows.range([]))).map(({ name }) => name);
 
 const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backend => ({
   get: (link) => {
@@ -85,63 +94,89 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
 describe("an index scanned from a store", () => {
   it("holds the rows of the store's records, of the schemas it reads", async () => {
     const store = new Store(json, new MemoryBackend());
-    const unlistedNote = encodeObject(note, { keys: [["unlisted"]] });
+    const unlistedNote = encodeObject(note, { names: ["unlisted"] });
     await store.write({
       records: [
-        encodeObject(note, { keys: [["b"], ["a"]] }),
-        encodeObject(tag, { keys: [["tag"]], of: { $link: unlistedNote.link } }),
+        encodeObject(note, { names: ["b", "a"] }),
+        encodeObject(tag, { names: ["tag"], of: { $link: unlistedNote.link } }),
       ],
       blobs: [unlistedNote.bytes, ...schemas],
     });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a", "b"]);
   });
 
   it("holds a row once, however many objects give it", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      records: [encodeObject(note, { keys: [["a"]], n: 1 }), encodeObject(note, { keys: [["a"], ["a"]], n: 2 })],
+      records: [encodeObject(note, { names: ["a"], n: 1 }), encodeObject(note, { names: ["a", "a"], n: 2 })],
       blobs: schemas,
     });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
   });
 
-  it("gives the rows that start with a prefix, a key before longer ones and a number before a string", async () => {
-    const store = new Store(json, new MemoryBackend());
-    const keys: Key[] = [["b", 2], ["a", "x"], ["a", 10], ["a", 9], ["a"], [1], ["ab"]];
-    await store.write({ records: [encodeObject(note, {})], blobs: schemas });
-    const rows = await scan(
-      store,
-      indexOver(objectsOf(note), () => keys),
-    );
-    expect(await whole(rows)).toEqual([[1], ["a"], ["a", 9], ["a", 10], ["a", "x"], ["ab"], ["b", 2]]);
-    expect(await all(rows.range(["a"]))).toEqual([["a"], ["a", 9], ["a", 10], ["a", "x"]]);
-    expect(await all(rows.range(["a", 10]))).toEqual([["a", 10]]);
-    expect(await all(rows.range(["c"]))).toEqual([]);
-  });
+  describe("in the order of some fields of its rows", () => {
+    const entry = schema("Entry", { name: string(), n: optional(integer()), of: optional(link()) });
+    type EntryData = DataOf<typeof entry>;
 
-  it("takes as a prefix any start of its keys, of the types they hold there", async () => {
-    type Path = readonly [namespace: string, ...path: string[]];
-    const paths: Index<Path> = indexOver(objectsOf(note), ({ data }) => (data.keys ?? []) as Path[]);
-    const store = new Store(json, new MemoryBackend());
-    await store.write({
-      records: [encodeObject(note, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })],
-      blobs: schemas,
+    async function rowsOf<const By extends FieldNames<EntryData>>(by: By, entries: readonly EntryData[]) {
+      const store = new Store(json, new MemoryBackend());
+      await store.write({ records: [encodeObject(note, {})], blobs: schemas });
+      return scan(
+        store,
+        indexOver(objectsOf(note), { schema: entry, by }, () => entries),
+      );
+    }
+
+    it("gives the rows that hold a prefix, a field left out before any value and numbers in their order", async () => {
+      const entries = [{ name: "b", n: 2 }, { name: "a", n: 10 }, { name: "a", n: 9 }, { name: "a" }, { name: "ab" }];
+      const rows = await rowsOf(["name", "n"], entries);
+      expect(await all(rows.range([]))).toEqual([
+        { name: "a" },
+        { name: "a", n: 9 },
+        { name: "a", n: 10 },
+        { name: "ab" },
+        { name: "b", n: 2 },
+      ]);
+      expect(await all(rows.range(["a"]))).toEqual([{ name: "a" }, { name: "a", n: 9 }, { name: "a", n: 10 }]);
+      expect(await all(rows.range(["a", 10]))).toEqual([{ name: "a", n: 10 }]);
+      expect(await all(rows.range(["a", undefined]))).toEqual([{ name: "a" }]);
+      expect(await all(rows.range(["c"]))).toEqual([]);
     });
-    const rows = await scan(store, paths);
-    expect(await whole(rows)).toEqual([["notes"], ["notes", "a", "b"], ["tags", "a"]]);
-    expect(await all(rows.range(["notes"]))).toEqual([["notes"], ["notes", "a", "b"]]);
-    expect(await all(rows.range(["notes", "a"]))).toEqual([["notes", "a", "b"]]);
-    // @ts-expect-error: a namespace is a string
-    expect(await all(rows.range([1]))).toEqual([]);
+
+    it("orders links by their bytes, and rows that hold the same in its fields by their own links", async () => {
+      const links = ["x", "y", "z"].map((name) => encodeObject(note, { name }).link).sort();
+      const entries = links.flatMap(($link) => ["b", "a"].map((name) => ({ name, of: { $link } })));
+      const rows = await rowsOf(["of"], entries);
+      const expectedRows = links.flatMap((of) =>
+        entries
+          .filter((each) => each.of.$link === of)
+          .map((each) => encodeObject(entry, each))
+          .sort((a, b) => (a.link < b.link ? -1 : 1))
+          .map(({ data }) => data),
+      );
+      expect(await all(rows.range([]))).toEqual(expectedRows);
+      expect(await all(rows.range([{ $link: links[1] as Link<unknown> }]))).toEqual(expectedRows.slice(2, 4));
+    });
+
+    it("takes as a prefix any start of its fields, of the types they hold", async () => {
+      const rows = await rowsOf(["name", "n"], [{ name: "a", n: 1 }]);
+      expect(await all(rows.range(["a", 1]))).toEqual([{ name: "a", n: 1 }]);
+      // @ts-expect-error: a name is a string
+      expect(await all(rows.range([1]))).toEqual([]);
+      // @ts-expect-error: `of` does not order these rows
+      expect(await all(rows.range(["a", 1, { $link: note.link }]))).toEqual([]);
+    });
   });
 
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
     const { signatures, publish } = loadIdentity([ed25519]);
-    const bySigner: Index<[signer: string, object: string]> = indexOver(
+    const signed = schema("Signed", { signer: link(), object: link() });
+    const bySigner = indexOver(
       objectsOf(signatures.schema),
+      { schema: signed, by: ["signer"] },
       async function* (object, reader) {
         const signature = await signatures.verify(object, reader, noIdentityVersions);
-        yield [signature.signedIdentity.identity.identifier, signature.object];
+        yield { signer: { $link: signature.signedIdentity.identity.identifier }, object: { $link: signature.object } };
       },
     );
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
@@ -161,35 +196,35 @@ describe("an index scanned from a store", () => {
     const expectedRows = helloSignatures
       .map(({ signedIdentity }) => signedIdentity.identity.identifier)
       .sort()
-      .map((link) => [link, hello.link]);
-    expect(await whole(await scan(store, bySigner))).toEqual(expectedRows);
+      .map((signer) => ({ signer: { $link: signer }, object: { $link: hello.link } }));
+    expect(await all((await scan(store, bySigner)).range([]))).toEqual(expectedRows);
   });
 
   it("holds the rows of each index that it is a union of, each row once", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      records: [encodeObject(note, { keys: [["a"], ["b"]] }), encodeObject(tag, { keys: [["b"], ["c"]] })],
+      records: [encodeObject(note, { names: ["a", "b"] }), encodeObject(tag, { names: ["b", "c"] })],
       blobs: schemas,
     });
-    const byNoteOrTag = byKeys.union(indexOver(objectsOf(tag), keysOf));
-    expect(await whole(await scan(store, byNoteOrTag))).toEqual([["a"], ["b"], ["c"]]);
+    const byNoteOrTag = byName.union(indexOver(objectsOf(tag), nameOrder, namedOf));
+    expect(await whole(await scan(store, byNoteOrTag))).toEqual(["a", "b", "c"]);
   });
 
   it("holds no rows of a record that its selection leaves out", async () => {
     const namedNotes = new SelectionBySchema(note, ({ data }) => data.name);
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      records: [encodeObject(note, { name: "a" }), encodeObject(note, { keys: [] })],
+      records: [encodeObject(note, { name: "a" }), encodeObject(note, { names: [] })],
       blobs: schemas,
     });
     expect(
       await whole(
         await scan(
           store,
-          indexOver(namedNotes, (name) => [[name]]),
+          indexOver(namedNotes, nameOrder, (name) => [{ name }]),
         ),
       ),
-    ).toEqual([["a"]]);
+    ).toEqual(["a"]);
   });
 
   it("takes records of several schemas in one selection", async () => {
@@ -200,22 +235,24 @@ describe("an index scanned from a store", () => {
     };
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      records: [encodeObject(note, { keys: [["a"]] }), encodeObject(tag, { keys: [["b"]] })],
+      records: [encodeObject(note, { names: ["a"] }), encodeObject(tag, { names: ["b"] })],
       blobs: schemas,
     });
-    expect(await whole(await scan(store, indexOver(noteOrTag, keysOf)))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, indexOver(noteOrTag, nameOrder, namedOf)))).toEqual(["a", "b"]);
   });
 
   it("hands each of two selections that take one record what that selection reads it as", async () => {
-    const names: Index<Key> = indexOver(new SelectionBySchema(note, ({ data }) => data.name), (name) => [
-      ["name", name],
+    const names = indexOver(new SelectionBySchema(note, ({ data }) => data.name), pairOrder, (name) => [
+      { key: "name", value: name },
     ]);
-    const counts: Index<Key> = indexOver(new SelectionBySchema(note, ({ data }) => data.n), (n) => [["n", n]]);
+    const counts = indexOver(new SelectionBySchema(note, ({ data }) => data.n), pairOrder, (n) => [
+      { key: "n", value: String(n) },
+    ]);
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, { name: "a", n: 1 })], blobs: schemas });
-    expect(await whole(await scan(store, names.union(counts)))).toEqual([
-      ["n", 1],
-      ["name", "a"],
+    expect(await all((await scan(store, names.union(counts))).range([]))).toEqual([
+      { key: "n", value: "1" },
+      { key: "name", value: "a" },
     ]);
   });
 
@@ -230,10 +267,12 @@ describe("an index scanned from a store", () => {
     const rowsOf = (selections: Selection<string>[]) =>
       scan(
         store,
-        selections.map((selection) => indexOver(selection, (name) => [[name]])).reduce((a, b) => a.union(b)),
+        selections
+          .map((selection) => indexOver(selection, nameOrder, (name) => [{ name }]))
+          .reduce((a, b) => a.union(b)),
       );
     const routedRows = await whole(await rowsOf([namedNotes, namedTags]));
-    expect(routedRows).toEqual([["a"], ["b"]]);
+    expect(routedRows).toEqual(["a", "b"]);
     expect(await whole(await rowsOf([plainSelectionOf(namedNotes), plainSelectionOf(namedTags)]))).toEqual(routedRows);
     expect(await whole(await rowsOf([namedNotes, plainSelectionOf(namedTags)]))).toEqual(routedRows);
   });
@@ -255,11 +294,11 @@ describe("an index scanned from a store", () => {
     const lax = noteSchemaNoting("lax");
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, {})], blobs: schemas });
-    const index = indexOver(objectsOf(strict), () => [["a"]]).union(
-      indexOver(objectsOf(strict), () => [["b"]]),
-      indexOver(objectsOf(lax), () => [["c"]]),
+    const index = indexOver(objectsOf(strict), nameOrder, () => [{ name: "a" }]).union(
+      indexOver(objectsOf(strict), nameOrder, () => [{ name: "b" }]),
+      indexOver(objectsOf(lax), nameOrder, () => [{ name: "c" }]),
     );
-    expect(await whole(await scan(store, index))).toEqual([["a"], ["b"], ["c"]]);
+    expect(await whole(await scan(store, index))).toEqual(["a", "b", "c"]);
     expect(validationNames).toEqual(["strict", "lax"]);
   });
 
@@ -276,26 +315,25 @@ describe("an index scanned from a store", () => {
       if (data.card === undefined) return undefined;
       return (await readObject(reader, data.card.$link, tag)).data.name;
     });
-    const nameAs = (key: string, selection: Selection<string>) => indexOver(selection, (name) => [[key, name]]);
+    const nameAs = (key: string, selection: Selection<string>) =>
+      indexOver(selection, pairOrder, (value) => [{ key, value }]);
     const rows = await scan(
       new Store(json, backendNoting(requestedLinks, backend)),
       nameAs("a", cardName).union(nameAs("b", cardName), nameAs("b", plainSelectionOf(cardName))),
     );
-    expect(await whole(rows)).toEqual([
-      ["a", "Alice"],
-      ["b", "Alice"],
+    expect(await all(rows.range([]))).toEqual([
+      { key: "a", value: "Alice" },
+      { key: "b", value: "Alice" },
     ]);
     expect(requestedLinks.filter((link) => link === card.link)).toHaveLength(1);
     expect(requestedLinks.filter((link) => link === record.link)).toHaveLength(1);
   });
 
-  it("is not filled when a row holds a number that is not finite", async () => {
-    const numbers: Index<Key> = indexOver(objectsOf(note), ({ data }) => [[Number(data.number)]]);
-    for (const number of ["-Infinity", "Infinity", "NaN"]) {
-      const store = new Store(json, new MemoryBackend());
-      await store.write({ records: [encodeObject(note, { number })], blobs: schemas });
-      await expect(scan(store, numbers)).rejects.toThrow("a number that is not finite");
-    }
+  it("is not filled when the data of a row does not fit the schema of the index", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [encodeObject(note, { n: 1 })], blobs: schemas });
+    const misfit = indexOver(objectsOf(note), nameOrder, ({ data }) => [{ name: data.n as unknown as string }]);
+    await expect(scan(store, misfit)).rejects.toThrow("#/name: not a string");
   });
 
   it.each([
@@ -304,7 +342,7 @@ describe("an index scanned from a store", () => {
   ])("is not filled from a store that holds another blob under a link it lists, of %s", async (_, schema) => {
     const backend = new MemoryBackend();
     const store = new Store(json, backend);
-    const [listedObject, other] = [encodeObject(note, { keys: [["a"]] }), encodeObject(schema, { keys: [["b"]] })];
+    const [listedObject, other] = [encodeObject(note, { names: ["a"] }), encodeObject(schema, { names: ["b"] })];
     await store.write({ records: [listedObject, other], blobs: schemas });
     const swappedBackend: Backend = {
       get: (link) => backend.get(link === listedObject.link ? other.link : link),
@@ -314,7 +352,7 @@ describe("an index scanned from a store", () => {
       blobs: (start) => backend.blobs(start),
       positionOf: (link) => backend.positionOf(link),
     };
-    await expect(scan(new Store(json, swappedBackend), byKeys)).rejects.toThrow(
+    await expect(scan(new Store(json, swappedBackend), byName)).rejects.toThrow(
       `another blob under ${listedObject.link}`,
     );
   });
@@ -326,24 +364,24 @@ describe("an index scanned from a store", () => {
         throw new Error("the blobs are listed");
       },
     });
-    await store.write({ records: [encodeObject(note, { keys: [["a"]] })], blobs: schemas });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
+    await store.write({ records: [encodeObject(note, { names: ["a"] })], blobs: schemas });
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
   });
 });
 
 describe("an index whose rows give none of what does not read as they expect", () => {
-  const about = encodeObject(note, { keys: [["a"]] });
+  const about = encodeObject(note, { names: ["a"] });
   const record = encodeObject(note, { about: { $link: about.link } });
-  const byAbout: Index<Key> = indexOver(objectsOf(note), async function* ({ data }, reader) {
+  const byAbout: NameIndex = indexOver(objectsOf(note), nameOrder, async function* ({ data }, reader) {
     const { about } = data;
     if (about === undefined) return;
-    let keys: readonly Key[];
+    let aboutNames: readonly Named[];
     try {
-      keys = keysOf(await readObject(reader, about.$link, note));
+      aboutNames = namedOf(await readObject(reader, about.$link, note));
     } catch {
       return;
     }
-    yield* keys;
+    yield* aboutNames;
   });
 
   async function storeGiving(readOverride: { get?: () => Promise<Uint8Array | undefined> }): Promise<Store> {
@@ -364,7 +402,7 @@ describe("an index whose rows give none of what does not read as they expect", (
     readOverride.get = () => Promise.reject(readError);
     await expect(scan(store, byAbout)).rejects.toBe(readError);
     delete readOverride.get;
-    expect(await whole(await scan(store, byAbout))).toEqual([["a"]]);
+    expect(await whole(await scan(store, byAbout))).toEqual(["a"]);
   });
 
   it("is not filled when the store does not hold a blob of a record's closure", async () => {
@@ -376,42 +414,42 @@ describe("an index whose rows give none of what does not read as they expect", (
 });
 
 describe("an index scanned again from a store", () => {
-  const [first, second] = [encodeObject(note, { keys: [["a"]] }), encodeObject(note, { keys: [["b"]] })];
+  const [first, second] = [encodeObject(note, { names: ["a"] }), encodeObject(note, { names: ["b"] })];
 
   it("reads only the records listed since the last scan", async () => {
     const requestedLinks: Link<unknown>[] = [];
     const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
     await store.write({ records: [second] });
     requestedLinks.length = 0;
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).toContain(second.link);
     expect(requestedLinks).not.toContain(first.link);
   });
 
   it("holds the rows of all the records for another index", async () => {
     const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [first, encodeObject(tag, { keys: [["t"]] })], blobs: schemas });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
-    expect(await whole(await scan(store, indexOver(objectsOf(tag), keysOf)))).toEqual([["t"]]);
+    await store.write({ records: [first, encodeObject(tag, { names: ["t"] })], blobs: schemas });
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
+    expect(await whole(await scan(store, indexOver(objectsOf(tag), nameOrder, namedOf)))).toEqual(["t"]);
   });
 
   it("takes in the records that another store on the same backend writes", async () => {
     const backend = new MemoryBackend();
     const [store, other] = [new Store(json, backend), new Store(json, backend)];
     await store.write({ records: [first], blobs: schemas });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
     await other.write({ records: [second] });
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a", "b"]);
   });
 
   it("reads each record once for scans that overlap", async () => {
     const requestedLinks: Link<unknown>[] = [];
     const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
-    const scans = await Promise.all([scan(store, byKeys), scan(store, byKeys)]);
-    for (const rows of scans) expect(await whole(rows)).toEqual([["a"]]);
+    const scans = await Promise.all([scan(store, byName), scan(store, byName)]);
+    for (const rows of scans) expect(await whole(rows)).toEqual(["a"]);
     expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
   });
 
@@ -425,13 +463,13 @@ describe("an index scanned again from a store", () => {
       get: (link) => (isGone ? Promise.reject(diskError) : backend.get(link)),
     });
     await store.write({ records: [first], blobs: schemas });
-    await scan(store, byKeys);
+    await scan(store, byName);
     await store.write({ records: [second] });
     isGone = true;
-    await expect(scan(store, byKeys)).rejects.toBe(diskError);
+    await expect(scan(store, byName)).rejects.toBe(diskError);
     isGone = false;
     requestedLinks.length = 0;
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).not.toContain(first.link);
   });
 
@@ -439,14 +477,14 @@ describe("an index scanned again from a store", () => {
     const requestedLinks: Link<unknown>[] = [];
     const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
     await store.write({ records: [first], blobs: schemas });
-    await scan(store, byKeys);
+    await scan(store, byName);
     requestedLinks.length = 0;
     const stagedStore = await store.stage({ records: [second] });
-    expect(await whole(await scan(stagedStore, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(stagedStore, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).not.toContain(first.link);
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a"]);
     await stagedStore.commit();
-    expect(await whole(await scan(store, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(store, byName))).toEqual(["a", "b"]);
   });
 
   it("reads, on a private store, only the records written to it since the last scan", async () => {
@@ -454,48 +492,48 @@ describe("an index scanned again from a store", () => {
     const store = new Store(json, new MemoryBackend());
     const privateStore = new PrivateStore(store, backendNoting(requestedLinks, new MemoryBackend()));
     await privateStore.write({ records: [first], blobs: schemas });
-    expect(await whole(await scan(privateStore, byKeys))).toEqual([["a"]]);
+    expect(await whole(await scan(privateStore, byName))).toEqual(["a"]);
     await privateStore.write({ records: [second] });
     requestedLinks.length = 0;
-    expect(await whole(await scan(privateStore, byKeys))).toEqual([["a"], ["b"]]);
+    expect(await whole(await scan(privateStore, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).not.toContain(first.link);
   });
 });
 
 describe("an index over blobs", () => {
-  const byTagKeys: Index<Key> = indexOverBlobs(objectsOf(tag), keysOf);
+  const byTagName: NameIndex = indexOverBlobs(objectsOf(tag), nameOrder, namedOf);
   const carrying = (...blobs: readonly Uint8Array[]) =>
     encodeObject(note, { attachments: blobs.map((blob) => ({ $link: linkOf(blob) })) });
 
   it("holds the rows of a blob of its schema that no record is, however deep in a record's closure", async () => {
-    const deep = encodeObject(tag, { keys: [["deep"]] });
-    const near = encodeObject(tag, { keys: [["near"]], of: { $link: deep.link } });
+    const deep = encodeObject(tag, { names: ["deep"] });
+    const near = encodeObject(tag, { names: ["near"], of: { $link: deep.link } });
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [carrying(near.bytes)], blobs: [deep.bytes, near.bytes, ...schemas] });
-    expect(await whole(await scan(store, byTagKeys))).toEqual([["deep"], ["near"]]);
-    expect(await whole(await scan(store, indexOver(objectsOf(tag), keysOf)))).toEqual([]);
+    expect(await whole(await scan(store, byTagName))).toEqual(["deep", "near"]);
+    expect(await whole(await scan(store, indexOver(objectsOf(tag), nameOrder, namedOf)))).toEqual([]);
   });
 
   it("holds the rows of a record of its schema, and of no blob of another schema", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
-      records: [encodeObject(tag, { keys: [["tag"]] }), encodeObject(note, { keys: [["note"]] })],
+      records: [encodeObject(tag, { names: ["tag"] }), encodeObject(note, { names: ["note"] })],
       blobs: schemas,
     });
-    expect(await whole(await scan(store, byTagKeys))).toEqual([["tag"]]);
+    expect(await whole(await scan(store, byTagName))).toEqual(["tag"]);
   });
 
   it("holds no rows of a blob of the batch that the write did not keep", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, {})],
-      blobs: [encodeObject(tag, { keys: [["outside the closure"]] }).bytes, ...schemas],
+      blobs: [encodeObject(tag, { names: ["outside the closure"] }).bytes, ...schemas],
     });
-    expect(await whole(await scan(store, byTagKeys))).toEqual([]);
+    expect(await whole(await scan(store, byTagName))).toEqual([]);
   });
 
   it("holds no rows of what its selection leaves out", async () => {
-    const named = new SelectionBySchema(tag, ({ data }) => data.name);
+    const namedTags = new SelectionBySchema(tag, ({ data }) => data.name);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(tag, { name: "a" }), encodeObject(tag, {})],
@@ -505,100 +543,96 @@ describe("an index over blobs", () => {
       await whole(
         await scan(
           store,
-          indexOverBlobs(named, (name) => [[name]]),
+          indexOverBlobs(namedTags, nameOrder, (name) => [{ name }]),
         ),
       ),
-    ).toEqual([["a"]]);
+    ).toEqual(["a"]);
   });
 
   it.each([
     ["bytes that are not JSON", new Uint8Array([0xff, 0xfe])],
     ["text", new TextEncoder().encode("an image")],
     ["JSON that is not an object", json.encode([1, 2])],
-    ["JSON that names no schema", json.encode({ keys: [["no schema"]] })],
+    ["JSON that names no schema", json.encode({ names: ["no schema"] })],
   ])("passes over %s, and still gives the rows of the other blobs", async (_, blob) => {
-    const other = encodeObject(tag, { keys: [["other"]] });
+    const other = encodeObject(tag, { names: ["other"] });
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [carrying(blob, other.bytes)], blobs: [blob, other.bytes, ...schemas] });
-    expect(await whole(await scan(store, byTagKeys))).toEqual([["other"]]);
+    expect(await whole(await scan(store, byTagName))).toEqual(["other"]);
   });
 
   it("passes over a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
-    const document = { title: "Named", fields: { name: string(), keys: array(array(string())) } };
+    const document = { title: "Named", fields: { name: string(), names: array(string()) } };
     const strict = encodeSchema<Json, SchemaDocument, Entry>(document, schemaValidator);
     const lax = encodeSchema<Json, SchemaDocument, Entry>(document, {
       language: schemaValidator.language,
       compile: () => () => [],
     });
-    const misfit = encodeObject(lax, { keys: [["misfit"]] });
-    const fitting = encodeObject(strict, { name: "a", keys: [["fitting"]] });
+    const misfit = encodeObject(lax, { names: ["misfit"] });
+    const fitting = encodeObject(strict, { name: "a", names: ["fitting"] });
     expect(misfit.schema.link).toBe(strict.link);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [carrying(misfit.bytes, fitting.bytes)],
       blobs: [misfit.bytes, fitting.bytes, strict.bytes, ...schemas],
     });
-    expect(await whole(await scan(store, indexOverBlobs(objectsOf(strict), keysOf)))).toEqual([["fitting"]]);
+    expect(await whole(await scan(store, indexOverBlobs(objectsOf(strict), nameOrder, namedOf)))).toEqual(["fitting"]);
   });
 
   describe("whose selection or rows throw on a blob", () => {
-    const [unreadable, readable] = [
-      encodeObject(tag, { keys: [["unreadable"]] }),
-      encodeObject(tag, { keys: [["a"]] }),
-    ];
-    const readableKeysOf = (object: { readonly data: Entry }) => {
-      const keys = keysOf(object);
-      if (keys[0]?.[0] === "unreadable") throw new Error("does not read");
-      return keys;
+    const [unreadable, readable] = [encodeObject(tag, { names: ["unreadable"] }), encodeObject(tag, { names: ["a"] })];
+    const readableNamedOf = (object: { readonly data: Entry }) => {
+      const rows = namedOf(object);
+      if (rows[0]?.name === "unreadable") throw new Error("does not read");
+      return rows;
     };
 
-    async function rowsOf(index: Index<Key>) {
+    async function rowsOf(index: NameIndex) {
       const store = new Store(json, new MemoryBackend());
       await store.write({ records: [unreadable, readable], blobs: schemas });
       return whole(await scan(store, index));
     }
 
-    it.each<[string, Index<Key>]>([
-      ["selection throws", indexOverBlobs(new SelectionBySchema(tag, readableKeysOf), (keys) => keys)],
-      ["rows throw", indexOverBlobs(objectsOf(tag), readableKeysOf)],
+    it.each<[string, NameIndex]>([
+      ["selection throws", indexOverBlobs(new SelectionBySchema(tag, readableNamedOf), nameOrder, (rows) => rows)],
+      ["rows throw", indexOverBlobs(objectsOf(tag), nameOrder, readableNamedOf)],
     ])("passes over the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
-      expect(await rowsOf(index)).toEqual([["a"]]);
+      expect(await rowsOf(index)).toEqual(["a"]);
     });
 
     it("keeps no row that its rows gave of the blob before they threw", async () => {
-      const index = indexOverBlobs(objectsOf(tag), function* (object): Iterable<Key> {
-        yield* keysOf(object);
-        readableKeysOf(object);
+      const index = indexOverBlobs(objectsOf(tag), nameOrder, function* (object) {
+        yield* namedOf(object);
+        readableNamedOf(object);
       });
-      expect(await rowsOf(index)).toEqual([["a"]]);
+      expect(await rowsOf(index)).toEqual(["a"]);
     });
   });
 
-  it("is not filled when a row holds a number that is not finite", async () => {
+  it("passes over a blob when the data of a row of it does not fit the schema of the index", async () => {
     const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [encodeObject(tag, {})], blobs: schemas });
-    await expect(
-      scan(
-        store,
-        indexOverBlobs(objectsOf(tag), () => [[Number.NaN]]),
-      ),
-    ).rejects.toThrow("a number that is not finite");
+    await store.write({ records: [encodeObject(tag, { names: ["a"] }), encodeObject(tag, { n: 1 })], blobs: schemas });
+    const index = indexOverBlobs(objectsOf(tag), nameOrder, (object) => [
+      ...namedOf(object),
+      ...(object.data.n === undefined ? [] : [{ name: object.data.n as unknown as string }]),
+    ]);
+    expect(await whole(await scan(store, index))).toEqual(["a"]);
   });
 
   it("is not filled from something else with a `get` and `records`, which still fills an index of records", async () => {
     const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [encodeObject(note, { keys: [["a"]] })], blobs: schemas });
+    await store.write({ records: [encodeObject(note, { names: ["a"] })], blobs: schemas });
     const standIn = { get: <T>(link: Link<T>) => store.get(link), records: () => store.records() };
-    expect(await whole(await scan(standIn, byKeys))).toEqual([["a"]]);
-    for (const index of [byTagKeys, byKeys.union(byTagKeys)])
+    expect(await whole(await scan(standIn, byName))).toEqual(["a"]);
+    for (const index of [byTagName, byName.union(byTagName)])
       await expect(scan(standIn, index)).rejects.toThrow("lists the blobs an index over blobs reads");
   });
 
   describe("on a store that fails", () => {
     const attachment = new TextEncoder().encode("an attachment");
-    const other = encodeObject(tag, { keys: [["other"]] });
-    const nested = encodeObject(tag, { keys: [["nested"]] });
-    const reaching = encodeObject(tag, { keys: [["reaching"]], of: { $link: nested.link } });
+    const other = encodeObject(tag, { names: ["other"] });
+    const nested = encodeObject(tag, { names: ["nested"] });
+    const reaching = encodeObject(tag, { names: ["reaching"], of: { $link: nested.link } });
     const record = carrying(attachment, other.bytes, reaching.bytes);
 
     async function storeGiving(failingLink: Link<unknown>, give: () => Promise<Uint8Array | undefined>) {
@@ -626,14 +660,14 @@ describe("an index over blobs", () => {
     ])("is not filled when the store throws for %s, and a later scan reads the blob", async (_, link) => {
       const diskError = new Error("the disk is gone");
       const { store, failing } = await storeGiving(link, () => Promise.reject(diskError));
-      await expect(scan(store, byTagKeys)).rejects.toBe(diskError);
+      await expect(scan(store, byTagName)).rejects.toBe(diskError);
       failing.isOn = false;
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["nested"], ["other"], ["reaching"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["nested", "other", "reaching"]);
     });
 
     const linkedFrom = (data: Entry) => data.of?.$link;
 
-    it.each<[string, Index<Key>]>([
+    it.each<[string, NameIndex]>([
       [
         "its selection reads and catches",
         indexOverBlobs(
@@ -641,19 +675,20 @@ describe("an index over blobs", () => {
             const of = linkedFrom(data);
             if (of === undefined) return undefined;
             try {
-              return keysOf(await readObject(reader, of, tag));
+              return namedOf(await readObject(reader, of, tag));
             } catch {
               return undefined;
             }
           }),
-          (keys) => keys,
+          nameOrder,
+          (rows) => rows,
         ),
       ],
       [
         "its rows read",
-        indexOverBlobs(objectsOf(tag), async function* ({ data }, reader): AsyncIterable<Key> {
+        indexOverBlobs(objectsOf(tag), nameOrder, async function* ({ data }, reader) {
           const of = linkedFrom(data);
-          if (of !== undefined) yield* keysOf(await readObject(reader, of, tag));
+          if (of !== undefined) yield* namedOf(await readObject(reader, of, tag));
         }),
       ],
     ])("is not filled when the store throws for what %s", async (_, index) => {
@@ -671,32 +706,32 @@ describe("an index over blobs", () => {
 
     it("is not filled when the store does not hold a blob that it lists", async () => {
       const { store } = await storeGiving(other.link, async () => undefined);
-      await expect(scan(store, byTagKeys)).rejects.toThrow(
+      await expect(scan(store, byTagName)).rejects.toThrow(
         `the store lists ${other.link} but does not hold ${other.link} of its closure`,
       );
     });
 
     it("is not filled when the store holds another blob under a link", async () => {
       const { store } = await storeGiving(other.link, async () => nested.bytes);
-      await expect(scan(store, byTagKeys)).rejects.toThrow(`another blob under ${other.link}`);
+      await expect(scan(store, byTagName)).rejects.toThrow(`another blob under ${other.link}`);
     });
   });
 
   describe("scanned again", () => {
-    const [firstTag, secondTag] = [encodeObject(tag, { keys: [["x"]] }), encodeObject(tag, { keys: [["y"]] })];
+    const [firstTag, secondTag] = [encodeObject(tag, { names: ["x"] }), encodeObject(tag, { names: ["y"] })];
     const [first, second] = [
-      encodeObject(note, { keys: [["a"]], of: { $link: firstTag.link } }),
-      encodeObject(note, { keys: [["b"]], of: { $link: secondTag.link } }),
+      encodeObject(note, { names: ["a"], of: { $link: firstTag.link } }),
+      encodeObject(note, { names: ["b"], of: { $link: secondTag.link } }),
     ];
 
     it("reads only the blobs put since the last scan", async () => {
       const requestedLinks: Link<unknown>[] = [];
       const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x"]);
       await store.write({ records: [second], blobs: [secondTag.bytes] });
       requestedLinks.length = 0;
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"], ["y"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x", "y"]);
       expect(requestedLinks.sort()).toEqual([second.link, secondTag.link].sort());
     });
 
@@ -710,13 +745,13 @@ describe("an index over blobs", () => {
         get: (link) => (isGone ? Promise.reject(diskError) : backend.get(link)),
       });
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
-      await scan(store, byTagKeys);
+      await scan(store, byTagName);
       await store.write({ records: [second], blobs: [secondTag.bytes] });
       isGone = true;
-      await expect(scan(store, byTagKeys)).rejects.toBe(diskError);
+      await expect(scan(store, byTagName)).rejects.toBe(diskError);
       isGone = false;
       requestedLinks.length = 0;
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"], ["y"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x", "y"]);
       expect(requestedLinks).not.toContain(firstTag.link);
     });
 
@@ -724,20 +759,20 @@ describe("an index over blobs", () => {
       const backend = new MemoryBackend();
       const [store, other] = [new Store(json, backend), new Store(json, backend)];
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x"]);
       await other.write({ records: [second], blobs: [secondTag.bytes] });
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"], ["y"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x", "y"]);
     });
 
     it("goes on with records and with blobs each from where it left off, in a union with an index of records", async () => {
       const requestedLinks: Link<unknown>[] = [];
       const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
-      const union = byKeys.union(byTagKeys);
+      const union = byName.union(byTagName);
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
-      expect(await whole(await scan(store, union))).toEqual([["a"], ["x"]]);
+      expect(await whole(await scan(store, union))).toEqual(["a", "x"]);
       await store.write({ records: [second], blobs: [secondTag.bytes] });
       requestedLinks.length = 0;
-      expect(await whole(await scan(store, union))).toEqual([["a"], ["b"], ["x"], ["y"]]);
+      expect(await whole(await scan(store, union))).toEqual(["a", "b", "x", "y"]);
       expect(requestedLinks).toContain(second.link);
       expect(requestedLinks).toContain(secondTag.link);
       expect(requestedLinks).not.toContain(first.link);
@@ -748,17 +783,17 @@ describe("an index over blobs", () => {
       const requestedLinks: Link<unknown>[] = [];
       const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
-      await scan(store, byTagKeys);
+      await scan(store, byTagName);
       requestedLinks.length = 0;
       const stagedStore = await store.stage({
         records: [second],
-        blobs: [secondTag.bytes, encodeObject(tag, { keys: [["outside the closure"]] }).bytes],
+        blobs: [secondTag.bytes, encodeObject(tag, { names: ["outside the closure"] }).bytes],
       });
-      expect(await whole(await scan(stagedStore, byTagKeys))).toEqual([["x"], ["y"]]);
+      expect(await whole(await scan(stagedStore, byTagName))).toEqual(["x", "y"]);
       expect(requestedLinks).not.toContain(firstTag.link);
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x"]);
       await stagedStore.commit();
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"], ["y"]]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x", "y"]);
     });
 
     it("reads, on a private store, only the blobs kept in it", async () => {
@@ -767,8 +802,8 @@ describe("an index over blobs", () => {
       await store.write({ records: [first], blobs: [firstTag.bytes, ...schemas] });
       const kept = encodeObject(note, { of: { $link: secondTag.link }, shared: { $link: firstTag.link } });
       await privateStore.write({ records: [kept], blobs: [secondTag.bytes] });
-      expect(await whole(await scan(privateStore, byTagKeys))).toEqual([["y"]]);
-      expect(await whole(await scan(store, byTagKeys))).toEqual([["x"]]);
+      expect(await whole(await scan(privateStore, byTagName))).toEqual(["y"]);
+      expect(await whole(await scan(store, byTagName))).toEqual(["x"]);
     });
   });
 });

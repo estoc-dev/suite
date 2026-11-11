@@ -135,7 +135,9 @@ describe("an object slipped into a bundle", () => {
 });
 
 describe("a signed identity that comes in a bundle", () => {
-  const identityVersionsHeld = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
+  const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [
+    identityVersion,
+  ]);
 
   it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
     const aliceIdentityVersion = await publish(alice, { at: 5 });
@@ -163,10 +165,10 @@ describe("a signed identity that comes in a bundle", () => {
     expect(await bobStore.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
 
     const rows = [];
-    for await (const row of (await scan(bobStore, identityVersionsHeld)).range([])) rows.push(row);
+    for await (const { data } of (await scan(bobStore, identityVersionsHeld)).range([])) rows.push(data);
     const expectedRows = [aliceIdentityVersion, signature.signedIdentity]
       .map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity))
-      .sort(([a], [b]) => (a < b ? -1 : 1));
+      .sort((a, b) => (a.identifier.$link < b.identifier.$link ? -1 : 1));
     expect(rows).toEqual(expectedRows);
   });
 
@@ -179,7 +181,7 @@ describe("a signed identity that comes in a bundle", () => {
     validate.mockClear();
     await scan(
       store,
-      indexOverBlobs(identityVersions.selection, (row) => [row]),
+      indexOverBlobs(identityVersions.selection, identityVersions.order, (row) => [row]),
     );
     expect(validate).toHaveBeenCalledTimes(1);
     validate.mockRestore();

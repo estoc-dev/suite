@@ -192,36 +192,51 @@ gives other bytes, as a damaged disk may.
 
 A store has no index of its own. An application makes its own, of the
 records the user writes: an `Index` reads the records that a `Selection`
-takes, and gives rows of what the selection reads each one as. A row is a
-key of strings and finite numbers, compared one by one, a number before a
-string and a key before the longer keys that start with it. The rows of a
-record depend on it and its closure, which the selection and `rows` read
-by link from the `Reader` they are given, and on nothing else. An index is
-the set of the rows its records give, so the order they come in and how
+takes, and gives rows of what the selection reads each one as. A row is an
+object too, written to a schema that the index names, and `rows` gives the
+data of each. The rows of a record depend on it and its closure, which the
+selection and `rows` read by link from the `Reader` they are given, and on
+nothing else. An index is the set of the rows its records give: the same data
+given twice is one object, with one link, so the order they come in and how
 often make no difference. What depends on what else is written, such as
 whether something replaced a record, is worked out from the rows when they
 are read.
 
+With the schema of its rows, an index names the fields `by` which they are
+ordered, the first counting most:
+
+- A field that a row leaves out comes before any value.
+- Numbers are in their order, strings in the order of their code units, and
+  any other value, such as a link, in the order of its bytes in the encoding.
+- Rows that hold the same in all of those fields are in the order of their
+  links.
+
 ```ts
 import { objectsOf } from "@estoc/object";
-import { indexOver, scan, type Index } from "@estoc/store";
+import { integer, link, schema, string } from "@estoc/schema";
+import { indexOver, scan } from "@estoc/store";
 
-type Note = { readonly tags: readonly string[]; readonly at: number };
+// A note under one of its tags.
+const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
 
 // Notes by tag, oldest first: a row for each tag of a note, from a
-// `noteSchema` declared as a `Schema<Json, Note>`.
-const byTag: Index<[tag: string, at: number, note: Link<unknown>]> = indexOver(
+// `noteSchema` whose objects hold `tags` and `at`.
+const byTag = indexOver(
   objectsOf(noteSchema),
-  ({ link, data }) => data.tags.map((tag) => [tag, data.at, link]),
+  { schema: taggedSchema, by: ["tag", "at"] },
+  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
 );
 
 const rows = await scan(store, byTag);
-for await (const [, at, note] of rows.range(["lunch"])) …;
+for await (const { data } of rows.range(["lunch"])) …; // `data.at`, `data.note`
 ```
 
+Rows are kept in memory and are not blobs of the store: its `get` gives none
+of them, and a bundle gathered from it holds none.
+
 An index comes only from `indexOver` and `indexOverBlobs`, of one selection,
-and from `union`, of indexes whose rows are of one type, so what an index reads
-is said by its selections and not worked out in `rows`. Each part of a union
+and from `union`, of indexes whose rows are of one schema and one order, so
+what an index reads is said by its selections and not worked out in `rows`. Each part of a union
 reads its own records and hands what it reads them as to its own rows, so
 the rows of objects of several schemas, or of several selections of one
 schema, need not tell one kind of object from another.
@@ -233,8 +248,9 @@ only a record of that schema: a record is checked against a schema once,
 however many selections by that schema read it. What came from elsewhere
 reaches `indexOver` only by following links from what the user wrote. A blob
 is read from the store once for a record, the record among them, however
-many selections and rows read it. `range(prefix)` gives the rows whose
-keys start with `prefix`, in the order of their keys. What does not fit in
+many selections and rows read it. `range(prefix)` gives the rows that hold
+`prefix` in the first fields of the order, one value for each, in the order
+of the index. What does not fit in
 rows, such as a count, an application keeps in a fold of its own, which
 then has to come to the same whatever the order and however often an
 object comes.
@@ -259,15 +275,18 @@ import { indexOverBlobs } from "@estoc/store";
 
 // The identity versions a store holds, however deep in a closure they came.
 // One whose root did not sign it gives no row.
-const identityVersionsHeld = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
+const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [
+  identityVersion,
+]);
 ```
 
 - A write keeps only the blobs in the closures of its records, so these are
   the blobs reached from what the user wrote, and a write cut short can leave
   some besides, each with its closure.
 - A blob gives no row when it is not an object in the encoding of the schema,
-  when it names the schema and does not fit it, or when `selection` or `rows`
-  throw on it, though a record that does not fit makes a scan of `indexOver`
+  when it names the schema and does not fit it, when `selection` or `rows`
+  throw on it, or when the data of a row does not fit the schema of the index,
+  though a record or a row that does not fit makes a scan of `indexOver`
   throw. Anyone can send such a blob, and a scan that threw on it would fail
   from then on. A mistake in `selection` or `rows` therefore shows only as rows
   that are missing.
@@ -296,21 +315,22 @@ out from the rows of that index, reading what they name from the store,
 which also gives where it took each in.
 The index says which objects are read, and `read` what their rows come to,
 so an application can give the one and a module that knows what the objects
-mean the other. The two meet in the type of a row.
+mean the other. The two meet in the schema of the rows.
 
 ```ts
-import { readObject } from "@estoc/object";
+import { readObject, type Json } from "@estoc/object";
+import type { DataOf } from "@estoc/schema";
 import { view, type View } from "@estoc/store";
 
 // The latest note of a tag, from the rows of `byTag`.
-type Latest = { noteTagged(tag: string): Promise<Note | undefined> };
+type Latest = { noteTagged(tag: string): Promise<DataOf<typeof noteSchema> | undefined> };
 
-const latest: View<[tag: string, at: number, note: Link<unknown>], Latest> = {
+const latest: View<Json, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
       let last: Link<unknown> | undefined;
-      for await (const [, , note] of rows.range([tag])) last = note;
+      for await (const { data } of rows.range([tag])) last = data.note.$link;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
     },
   }),
@@ -360,10 +380,10 @@ What comes in twice is recorded twice, and a reader takes the earliest `at`:
 
 ```ts
 // When each bundle came in: the first row of a root is the earliest.
-const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(
-  objectsOf(inboundSchema),
-  ({ data }) => [[data.bundle.$link, data.at]],
-);
+const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
+const cameIn = indexOver(objectsOf(inboundSchema), { schema: arrivalSchema, by: ["bundle", "at"] }, ({ data }) => [
+  { bundle: data.bundle, at: data.at },
+]);
 ```
 
 What the records promise is little, so that every way in can keep it:

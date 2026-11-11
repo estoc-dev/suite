@@ -1,6 +1,8 @@
 import {
   decodeObject,
   type EncodedObject,
+  type Encoding,
+  encodeObject,
   type Fields,
   type Link,
   type Reader,
@@ -11,70 +13,93 @@ import {
 } from "@estoc/object";
 import type { Backend, Store } from "./store.ts";
 
+/** The names of fields of the data `F`. */
+export type FieldNames<F> = readonly (keyof F & string)[];
+
 /**
- * The key of a row: strings and numbers.
+ * What the rows of an index are: objects of `schema`, in the order of their fields `by`.
  *
- * - Keys are compared one part at a time, a number before a string, and a key before every longer
- *   key that starts with it, so the keys that start with a prefix come together.
- * - Numbers are finite, as in JSON.
+ * - The first field of `by` counts most. Rows that hold the same in all of them are in the order of
+ *   their links.
+ * - A field that a row leaves out comes before any value. Numbers are in their order, strings in
+ *   the order of their code units, and any other value, such as a link, in the order of its bytes in
+ *   the encoding.
  */
-export type Key = readonly (string | number)[];
+export interface RowOrder<D, F extends Fields<D>, By extends FieldNames<F>> {
+  readonly schema: Schema<D, F>;
+  readonly by: By;
+}
+
+/** The key of a row of the data `F`: what it holds in the fields `By`, in that order. */
+export type KeyOf<F, By extends FieldNames<F>> = {
+  readonly [At in keyof By]: By[At] extends keyof F ? F[By[At]] : never;
+};
 
 /**
  * The keys that start a key of `K`, from none of it to all of it. The empty
  * prefix stands outside the condition, so that it fits even a `K` that is
  * still a type parameter.
  */
-export type Prefix<K extends Key> =
+export type Prefix<K extends readonly unknown[]> =
   | readonly []
-  | (K extends readonly [infer First extends Key[number], ...infer Rest extends Key]
-      ? readonly [First, ...Prefix<Rest>]
-      : K);
+  | (K extends readonly [infer First, ...infer Rest] ? readonly [First, ...Prefix<Rest>] : K);
 
-type Part<K extends Key> = (blob: ScannedBlob) => AsyncIterable<K>;
+type Part<D, F extends Fields<D>> = (blob: ScannedBlob, schema: Schema<D, F>) => AsyncIterable<EncodedObject<D, F>>;
 
-interface Parts<K extends Key> {
-  readonly records: readonly Part<K>[];
-  readonly blobs: readonly Part<K>[];
+interface Parts<D, F extends Fields<D>> {
+  readonly records: readonly Part<D, F>[];
+  readonly blobs: readonly Part<D, F>[];
 }
 
-// `scan` reads the parts of an index, which nothing outside this module can.
-let partsOf: <K extends Key>(index: Index<K>) => Parts<K>;
+interface IndexContent<D, F extends Fields<D>, By extends FieldNames<F>> {
+  readonly order: RowOrder<D, F, By>;
+  readonly parts: Parts<D, F>;
+}
+
+// `scan` reads what an index is made of, which nothing outside this module can.
+let contentOf: <D, F extends Fields<D>, By extends FieldNames<F>>(index: Index<D, F, By>) => IndexContent<D, F, By>;
 
 /**
- * What an application keeps of what some selections take from a store, as rows: of the records its
- * user writes, or, for an index over blobs, of the blobs the store holds.
+ * What an application keeps of what some selections take from a store, as rows: objects of one
+ * schema, derived from the records its user writes, or, for an index over blobs, from the blobs the
+ * store holds.
  *
  * - An index is the set of rows that those give, so going through all of them and adding each as it
  *   is written come to the same rows, whatever the order and however often one is added.
+ * - A row is an object written to the schema of the index, with a link as any object has, so the
+ *   same data given twice is one row.
  * - An index comes only from `indexOver`, `indexOverBlobs` and `union`, so what it reads is said by
  *   its selections and not by its rows.
  */
-export class Index<K extends Key> {
-  readonly #parts: Parts<K>;
+export class Index<D, F extends Fields<D>, By extends FieldNames<F>> {
+  readonly #content: IndexContent<D, F, By>;
 
   static {
-    partsOf = (index) => index.#parts;
+    contentOf = (index) => index.#content;
   }
 
-  constructor(parts: Parts<K>) {
-    this.#parts = parts;
+  constructor(content: IndexContent<D, F, By>) {
+    this.#content = content;
   }
 
   /**
-   * The index of what this index and `others` read, with the rows that each of them gives. Each
-   * selection reads its own records or blobs and hands what it reads them as to its own rows, so
-   * two selections that take one record each give the rows of what they read.
+   * The index of what this index and `others` read, with the rows that each of them gives, written
+   * to the schema of this index and in its order. Each selection reads its own records or blobs and
+   * hands what it reads them as to its own rows, so two selections that take one record each give
+   * the rows of what they read.
    */
-  union(...others: readonly Index<K>[]): Index<K> {
-    const parts = [this, ...others].map((index) => index.#parts);
-    return new Index({ records: parts.flatMap(({ records }) => records), blobs: parts.flatMap(({ blobs }) => blobs) });
+  union(...others: readonly Index<D, F, By>[]): Index<D, F, By> {
+    const parts = [this, ...others].map((index) => index.#content.parts);
+    return new Index({
+      order: this.#content.order,
+      parts: { records: parts.flatMap(({ records }) => records), blobs: parts.flatMap(({ blobs }) => blobs) },
+    });
   }
 }
 
 /**
  * The index of the records that `selection` takes, with the rows that `rows` gives of what it
- * reads each one as.
+ * reads each one as: the data of each row, which the index writes to the schema of `order`.
  *
  * - The rows depend on the record and its closure, which `reader` gives by link, and on nothing
  *   else; what depends on what else is written, such as whether something replaced the record, is
@@ -83,55 +108,71 @@ export class Index<K extends Key> {
  *   even where `selection` or `rows` catch it, such as to give no row of something that came from
  *   elsewhere and does not read as they expect.
  */
-export function indexOver<K extends Key, T>(
+export function indexOver<D, F extends Fields<D>, const By extends FieldNames<F>, T>(
   selection: Selection<T>,
-  rows: (item: T, reader: Reader) => Iterable<K> | AsyncIterable<K>,
-): Index<K> {
+  order: RowOrder<D, F, By>,
+  rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
+): Index<D, F, By> {
   return new Index({
-    records: [
-      async function* (record) {
-        const item = await itemOf(selection, record);
-        if (item !== undefined) yield* rows(item, record.reader);
-      },
-    ],
-    blobs: [],
+    order,
+    parts: {
+      records: [
+        async function* (record, schema) {
+          const item = await itemOf(selection, record);
+          if (item === undefined) return;
+          for await (const data of rows(item, record.reader)) yield encodeObject(schema, data);
+        },
+      ],
+      blobs: [],
+    },
   });
 }
 
 /**
  * The index of the blobs a store holds that read as objects of the schema of `selection`, records
- * or not, with the rows that `rows` gives of what it reads each one as.
+ * or not, with the rows that `rows` gives of what it reads each one as, as for `indexOver`.
  *
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
  * - A blob gives no row when it is not an object in the encoding of the schema, when it names the
- *   schema and does not fit it, or when `selection` or `rows` throw on it. Anyone can send one, and
- *   a scan that threw on it would fail from then on. A mistake in `selection` or `rows` therefore
- *   shows only as rows that are missing.
+ *   schema and does not fit it, when `selection` or `rows` throw on it, or when the data of a row
+ *   does not fit the schema of `order`. Anyone can send one, and a scan that threw on it would fail
+ *   from then on. A mistake in `selection` or `rows` therefore shows only as rows that are missing.
  * - `reader` throws as it does for `indexOver`, and a scan of the index still fails with that.
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
-export function indexOverBlobs<K extends Key, D, T, F extends Fields<D> = Fields<D>>(
-  selection: SelectionBySchema<D, T, F>,
-  rows: (item: T, reader: Reader) => Iterable<K> | AsyncIterable<K>,
-): Index<K> {
+export function indexOverBlobs<
+  D,
+  F extends Fields<D>,
+  const By extends FieldNames<F>,
+  T,
+  S extends Fields<D> = Fields<D>,
+>(
+  selection: SelectionBySchema<D, T, S>,
+  order: RowOrder<D, F, By>,
+  rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
+): Index<D, F, By> {
   return new Index({
-    records: [],
-    blobs: [
-      async function* (blob) {
-        const keys: K[] = [];
-        try {
-          const object = await blob.objectOf(selection.schema);
-          const item = object === undefined ? undefined : await selection.itemOf(object, blob.reader);
-          if (item !== undefined) for await (const key of rows(item, blob.reader)) keys.push(key);
-        } catch {
-          // A store that failed still fails the scan, by the blob's `readFailure`.
-          return;
-        }
-        yield* keys;
-      },
-    ],
+    order,
+    parts: {
+      records: [],
+      blobs: [
+        async function* (blob, schema) {
+          const blobRows: EncodedObject<D, F>[] = [];
+          try {
+            const object = await blob.objectOf(selection.schema);
+            const item = object === undefined ? undefined : await selection.itemOf(object, blob.reader);
+            if (item !== undefined)
+              for await (const data of rows(item, blob.reader)) blobRows.push(encodeObject(schema, data));
+          } catch {
+            // A store that failed still fails the scan, by the blob's `readFailure`.
+            return;
+          }
+          yield* blobRows;
+        },
+      ],
+    },
   });
 }
 
@@ -146,9 +187,12 @@ async function itemOf<T>(selection: Selection<T>, record: ScannedBlob): Promise<
 }
 
 /** The rows of an index, each once however many records give it. */
-export interface Rows<K extends Key> {
-  /** The rows whose keys start with `prefix`, in the order of their keys. */
-  range(prefix: Prefix<K>): AsyncIterable<K>;
+export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
+  /**
+   * The rows that hold `prefix` in the first fields of the order, one value for each, in the order of
+   * the index.
+   */
+  range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>>;
 }
 
 /**
@@ -170,18 +214,21 @@ export interface Rows<K extends Key> {
  *   the rows that its store keeps.
  *
  * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
- * @throws where a selection of `indexOver` or its rows throw.
+ * @throws where a selection of `indexOver` or its rows throw, and when the data of a row they give
+ *   does not fit the schema of the index.
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
  *   even where they catch it.
- * @throws when a row holds a number that is not finite.
  * @throws when the index reads blobs and `store` is something else with a `get` and `records`, which
  *   cannot list them.
  */
-export async function scan<K extends Key>(store: Pick<Store, "get" | "records">, index: Index<K>): Promise<Rows<K>> {
+export async function scan<D, F extends Fields<D>, By extends FieldNames<F>>(
+  store: Pick<Store, "get" | "records">,
+  index: Index<D, F, By>,
+): Promise<Rows<D, F, By>> {
   if (rowsOf in store) return (store as RowKeeper)[rowsOf](index);
-  if (partsOf(index).blobs.length > 0)
+  if (contentOf(index).parts.blobs.length > 0)
     throw new Error("only a store, a private store or a staged batch lists the blobs an index over blobs reads");
-  return new SortedRows<K>([]).adding({ records: store.records(), blobs: [] }, store, index);
+  return new SortedRows(index).adding({ records: store.records(), blobs: [] }, store);
 }
 
 /** The key under which `scan` asks a store for the rows it keeps, which nothing outside this package can. */
@@ -189,12 +236,12 @@ export const rowsOf: unique symbol = Symbol("rowsOf");
 
 /** A store that keeps the rows of the indexes it is scanned for. */
 export interface RowKeeper {
-  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>>;
+  [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(index: Index<D, F, By>): Promise<SortedRows<D, F, By>>;
 }
 
 /** The rows kept of an index, with how many records and blobs of a store they are of. */
-interface KeptIndex {
-  readonly rows: SortedRows<Key>;
+interface KeptIndex<D, F extends Fields<D>, By extends FieldNames<F>> {
+  readonly rows: SortedRows<D, F, By>;
   readonly recordCount: number;
   readonly blobCount: number;
 }
@@ -212,7 +259,7 @@ interface KeptIndex {
 export class KeptRows {
   readonly #reader: Reader;
   readonly #backend: Pick<Backend, "records" | "blobs">;
-  readonly #rowsByIndex = new WeakMap<Index<Key>, Promise<KeptIndex>>();
+  readonly #rowsByIndex = new WeakMap<object, Promise<unknown>>();
 
   /** Keeps rows of what `backend` lists, each read from `reader`. */
   constructor(reader: Reader, backend: Pick<Backend, "records" | "blobs">) {
@@ -221,17 +268,19 @@ export class KeptRows {
   }
 
   /** The rows of `index` for all the records and blobs listed now. */
-  rowsOf<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
-    const previous: Promise<KeptIndex> =
-      this.#rowsByIndex.get(index) ?? Promise.resolve({ rows: new SortedRows<Key>([]), recordCount: 0, blobCount: 0 });
+  rowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(index: Index<D, F, By>): Promise<SortedRows<D, F, By>> {
+    // What is kept under an index are rows of it.
+    const kept = this.#rowsByIndex.get(index) as Promise<KeptIndex<D, F, By>> | undefined;
+    const previous = kept ?? Promise.resolve({ rows: new SortedRows(index), recordCount: 0, blobCount: 0 });
     const next = previous.then(async ({ rows, recordCount, blobCount }) => {
       const records: Link<unknown>[] = [];
       for await (const link of this.#backend.records(recordCount)) records.push(link);
       const blobs: Link<unknown>[] = [];
       // A store holds many more blobs than records, and most indexes read none of them.
-      if (partsOf(index).blobs.length > 0) for await (const link of this.#backend.blobs(blobCount)) blobs.push(link);
+      if (contentOf(index).parts.blobs.length > 0)
+        for await (const link of this.#backend.blobs(blobCount)) blobs.push(link);
       return {
-        rows: await rows.adding({ records, blobs }, this.#reader, index),
+        rows: await rows.adding({ records, blobs }, this.#reader),
         recordCount: recordCount + records.length,
         blobCount: blobCount + blobs.length,
       };
@@ -240,8 +289,7 @@ export class KeptRows {
       index,
       next.catch(() => previous),
     );
-    // What is kept under an index are rows of its keys.
-    return next.then(({ rows }) => rows as SortedRows<K>);
+    return next.then(({ rows }) => rows);
   }
 }
 
@@ -306,38 +354,46 @@ function readerOnce(get: (link: Link<unknown>) => Promise<Uint8Array>): {
 
 type Links = Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>;
 
-// biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
-/** Rows in the order of their keys, each once. */
-export class SortedRows<K extends Key> implements Rows<K> {
-  readonly #rows: readonly K[];
+/** What a row holds in a field of the order, as rows are compared by it. */
+type KeyPart = number | string | Uint8Array | undefined;
 
-  constructor(rows: readonly K[]) {
+interface KeyedRow<D, F extends Fields<D>> {
+  readonly key: readonly KeyPart[];
+  readonly row: EncodedObject<D, F>;
+}
+
+// biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
+/** The rows of an index in its order, each once. */
+export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implements Rows<D, F, By> {
+  readonly #index: Index<D, F, By>;
+  readonly #rows: readonly KeyedRow<D, F>[];
+
+  constructor(index: Index<D, F, By>, rows: readonly KeyedRow<D, F>[] = []) {
+    this.#index = index;
     this.#rows = rows;
   }
 
   /**
-   * These rows with those that `index` gives of `records` and `blobs`, each read from `reader`.
+   * These rows with those that the index gives of `records` and `blobs`, each read from `reader`.
    *
    * @throws as `scan` does.
    */
   async adding(
     { records, blobs }: { readonly records: Links; readonly blobs: Links },
     reader: Reader,
-    index: Index<K>,
-  ): Promise<SortedRows<K>> {
-    const newRows: K[] = [];
-    const { records: recordParts, blobs: blobParts } = partsOf(index);
-    for (const [links, parts] of [
-      [records, recordParts],
-      [blobs, blobParts],
+  ): Promise<SortedRows<D, F, By>> {
+    const newRows: KeyedRow<D, F>[] = [];
+    const { order, parts } = contentOf(this.#index);
+    for (const [links, linkParts] of [
+      [records, parts.records],
+      [blobs, parts.blobs],
     ] as const) {
       for await (const link of links) {
         const blob = new ScannedBlob(link, reader);
-        for (const part of parts) {
-          for await (const key of part(blob)) {
-            if (!key.every((part) => typeof part === "string" || Number.isFinite(part)))
-              throw new Error(`a row of ${link} holds a number that is not finite`);
-            newRows.push(Object.freeze([...key]) as K);
+        for (const part of linkParts) {
+          for await (const row of part(blob, order.schema)) {
+            const data: Fields<D> = row.data;
+            newRows.push({ key: order.by.map((name) => keyPartOf(data[name], order.schema.encoding)), row });
           }
         }
         const failure = blob.readFailure;
@@ -345,30 +401,55 @@ export class SortedRows<K extends Key> implements Rows<K> {
       }
     }
     if (newRows.length === 0) return this;
-    const rows = [...this.#rows, ...newRows].sort(compare);
-    return new SortedRows(rows.filter((row, at) => at === 0 || compare(rows[at - 1]!, row) !== 0));
+    const rows = [...this.#rows, ...newRows].sort(
+      (a, b) => compareKeys(a.key, b.key) || compareParts(a.row.link, b.row.link),
+    );
+    return new SortedRows(
+      this.#index,
+      rows.filter(({ row }, at) => at === 0 || rows[at - 1]!.row.link !== row.link),
+    );
   }
 
-  async *range(prefix: Prefix<K>): AsyncIterable<K> {
-    const start: Key = [...prefix];
+  async *range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>> {
+    const { encoding } = contentOf(this.#index).order.schema;
+    const start = prefix.map((value) => keyPartOf(value as D | undefined, encoding));
     const rows = this.#rows;
     let low = 0;
     for (let high = rows.length; low < high; ) {
       const middle = (low + high) >>> 1;
-      if (compare(rows[middle]!, start) < 0) low = middle + 1;
+      if (compareKeys(rows[middle]!.key, start) < 0) low = middle + 1;
       else high = middle;
     }
-    for (let at = low; at < rows.length && start.every((part, i) => rows[at]![i] === part); at++) yield rows[at]!;
+    for (let at = low; at < rows.length && compareKeys(rows[at]!.key.slice(0, start.length), start) === 0; at++)
+      yield rows[at]!.row;
   }
 }
 
-function compare(a: Key, b: Key): number {
+function keyPartOf<D>(value: D | undefined, encoding: Encoding<D>): KeyPart {
+  if (value === undefined) return undefined;
+  if (typeof value === "number" || typeof value === "string") return value;
+  return encoding.encode(value);
+}
+
+/** A key comes before every longer key that starts with it. */
+function compareKeys(a: readonly KeyPart[], b: readonly KeyPart[]): number {
   for (let i = 0; i < a.length && i < b.length; i++) {
-    const [x, y] = [a[i]!, b[i]!];
-    if (x === y) continue;
-    if (typeof x !== typeof y) return typeof x === "number" ? -1 : 1;
-    return x < y ? -1 : 1;
+    const order = compareParts(a[i], b[i]);
+    if (order !== 0) return order;
   }
   return a.length - b.length;
+}
+
+function compareParts(a: KeyPart, b: KeyPart): number {
+  if (a instanceof Uint8Array && b instanceof Uint8Array) {
+    for (let i = 0; i < a.length && i < b.length; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+    return a.length - b.length;
+  }
+  if (typeof a !== typeof b) return rankOf(a) - rankOf(b);
+  return a === b ? 0 : (a as number | string) < (b as number | string) ? -1 : 1;
+}
+
+function rankOf(part: KeyPart): number {
+  return part === undefined ? 0 : typeof part === "number" ? 1 : typeof part === "string" ? 2 : 3;
 }
 // biome-ignore-end lint/style/noNonNullAssertion: each index is below the length it is checked against

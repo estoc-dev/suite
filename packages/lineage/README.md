@@ -92,11 +92,12 @@ version, and one by `head.data.item.$link` only the heads that carry it.
 Indexes and views are the application's, and this package has none:
 
 ```ts
-const bySeries = indexOver(lineages.selection, function* ({ first, head }) {
-  yield [first.link, head.link] as const;
+const headSchema = schema("Head", { series: link(), head: link() });
+const bySeries = indexOver(lineages.selection, { schema: headSchema, by: ["series"] }, function* ({ first, head }) {
+  yield { series: { $link: first.link }, head: { $link: head.link } };
 });
-for await (const [, head] of (await scan(store, bySeries)).range([lineage.first.link])) {
-  // every head of the series written as a record
+for await (const { data } of (await scan(store, bySeries)).range([{ $link: lineage.first.link }])) {
+  // `data.head`: every head of the series written as a record
 }
 ```
 
@@ -167,8 +168,9 @@ selection other than by schema, it reads each record itself. An index of
 import { SelectionBySchemaLineage } from "@estoc/lineage";
 import { indexOver } from "@estoc/store";
 
-const byText = indexOver(notes.selection, function* ({ text }) {
-  yield [text] as const;
+const textSchema = schema("Text", { text: string() });
+const byText = indexOver(notes.selection, { schema: textSchema, by: ["text"] }, function* ({ text }) {
+  yield { text };
 });
 const titles = new SelectionBySchemaLineage(notes, ({ title }) => title); // the notes that have a title
 ```

@@ -7,22 +7,8 @@ import {
   type Signature,
   SoftwareSigner,
 } from "@estoc/identity";
-import {
-  decodeObject,
-  encodeObject,
-  encodeSchema,
-  type Fields,
-  type Json,
-  type JsonLink,
-  type JsonObject,
-  json,
-  type Link,
-  linkSchema,
-  readObject,
-  type Schema,
-  schemaOf,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { decodeObject, encodeObject, json, type Link, readObject, schemaOf } from "@estoc/object";
+import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 
@@ -30,42 +16,17 @@ import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 // root and walks from it by link; the package only checks that the blobs are
 // the ones their names say, and the signatures are verified where they are read.
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const schemaFor = <F extends Fields<Json> = Fields<Json>>(
-  title: string,
-  properties: JsonObject,
-): Promise<Schema<Json, F>> =>
-  encodeSchema(
-    {
-      $schema: DRAFT,
-      title,
-      type: "object",
-      properties,
-      required: Object.keys(properties),
-      additionalProperties: false,
-    },
-    defaultValidator,
-  );
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
 const { keys, identities, signatures, publish } = await loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 
-const card = await schemaFor<{ readonly mailbox: JsonLink<Signature>; readonly name: JsonLink<Signature> }>("Card", {
-  mailbox: linkSchema,
-  name: linkSchema,
-});
-const contact = await schemaFor<{ readonly displayName: JsonLink<Signature>; readonly inbox: JsonLink<Signature> }>(
-  "Contact",
-  {
-    displayName: linkSchema,
-    inbox: linkSchema,
-  },
-);
-const mailbox = await schemaFor<{ readonly url: string }>("Mailbox", { url: { type: "string", format: "uri" } });
-const name = await schemaFor<{ readonly name: string }>("Name", { name: { type: "string" } });
+const card = await schema("Card", { mailbox: link<Signature>(), name: link<Signature>() });
+const contact = await schema("Contact", { displayName: link<Signature>(), inbox: link<Signature>() });
+const mailbox = await schema("Mailbox", { url: string() });
+const name = await schema("Name", { name: string() });
 
 // A card lists the signatures of the one identity it is for: over a mailbox
 // that reaches it, and over the name it goes by. Another application writes
@@ -156,7 +117,7 @@ describe("a card", () => {
   });
 });
 
-const chat = await schemaFor<{ readonly text: string }>("Chat message", { text: { type: "string" } });
+const chat = await schema("Chat message", { text: string() });
 
 async function readMessage(bundle: Bundle) {
   const read = await signatures.read(bundle.link, bundle, noIdentityVersions);

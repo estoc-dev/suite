@@ -1,22 +1,18 @@
 import {
-  DRAFT_2020_12,
   digestOf,
   type EncodedObject,
   encodeObject,
   type Fields,
   type Json,
-  type JsonLink,
-  type JsonSchema,
   type Link,
-  linkSchema,
   objectsOf,
   type Reader,
   readObject,
   type Schema,
   SelectionBySchema,
 } from "@estoc/object";
+import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { hexSchema } from "./hex.ts";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
@@ -33,24 +29,13 @@ import type { Signer } from "./signer.ts";
  * reads. However they are laid out, they stay bytes, so this schema and those
  * who read signatures by it do not change for a scheme added later.
  */
-export const signatureSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Signature",
-  type: "object",
-  properties: {
-    signedIdentity: linkSchema,
-    object: linkSchema,
-    signature: hexSchema,
-  },
-  required: ["signedIdentity", "object", "signature"],
-  additionalProperties: false,
-};
+export const signatureSchema = await schema("Signature", {
+  signedIdentity: link<SignedIdentityObject>(),
+  object: link<never>(),
+  signature: bytes(),
+});
 
-export type SignatureData = {
-  readonly signedIdentity: JsonLink<SignedIdentityObject>;
-  readonly object: JsonLink<never>;
-  readonly signature: string;
-};
+export type SignatureData = DataOf<typeof signatureSchema>;
 
 /**
  * An identity standing behind an object, as an object written to
@@ -122,11 +107,10 @@ export interface Actor {
 
 /** Signatures, verified and made with their schema and the signed identities they name. */
 export class Signatures {
-  readonly schema: Schema<Json, SignatureData>;
+  readonly schema = signatureSchema;
   readonly #signedIdentities: SignedIdentities;
 
-  constructor(schema: Schema<Json, SignatureData>, signedIdentities: SignedIdentities) {
-    this.schema = schema;
+  constructor(signedIdentities: SignedIdentities) {
     this.#signedIdentities = signedIdentities;
   }
 

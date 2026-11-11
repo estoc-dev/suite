@@ -51,6 +51,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0

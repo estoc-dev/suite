@@ -2,19 +2,15 @@ import {
   decodeObject,
   digestOf,
   encodeObject,
-  encodeSchema,
-  type Json,
   type JsonObject,
-  type JsonSchemaValidator,
   json,
   type Link,
   linkOf,
   type Reader,
-  type Schema,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { describe, expect, it, test, vi } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   type CurveScheme,
   ed25519,
@@ -33,7 +29,7 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { identities, signatures, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
+const { identities, signatures, identityVersions, publish } = await loadIdentity(schemes);
 const verifiedBy = async (
   by: Signatures,
   bytes: Uint8Array,
@@ -58,15 +54,7 @@ const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
-const note: Schema<Json, { readonly text: string }> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-  },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello" });
 const goodbye = encodeObject(note, { text: "goodbye" });
 
@@ -151,16 +139,15 @@ describe("a signature", () => {
   });
 
   it("reads as an object written to the signature schema, which does not verify it", async () => {
-    const schema = await encodeSchema(signatureSchema, defaultValidator);
     for (const scheme of schemes) {
       const signature = await sign(hello, signer(scheme));
       // Without its label, as bytes read from a file or the network have none.
       const bytes: Uint8Array = signature.bytes;
-      expect(decodeObject(bytes, schema).link).toBe(signature.link);
+      expect(decodeObject(bytes, signatureSchema).link).toBe(signature.link);
     }
     const signature = await sign(hello, signer(ed25519));
     const unverified = rewritten(signature, { object: { $link: goodbye.link } });
-    expect(decodeObject(unverified, schema).data).toMatchObject({ object: { $link: goodbye.link } });
+    expect(decodeObject(unverified, signatureSchema).data).toMatchObject({ object: { $link: goodbye.link } });
     await expect(verified(unverified, identityOf(signature))).rejects.toThrow(/does not verify/);
   });
 });
@@ -474,13 +461,7 @@ describe("the selection of the signatures over objects of a schema", () => {
   });
 
   it("leaves out a signature over an object of another schema, and what is not a signature", async () => {
-    const card = encodeObject(
-      await encodeSchema(
-        { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", required: ["name"] },
-        defaultValidator,
-      ),
-      { name: "Alice" },
-    );
+    const card = encodeObject(await schema("Card", { name: string() }), { name: "Alice" });
     const signature = await sign(card, signer(ed25519));
     expect(await notes.read(signature.link, holding(signature, card))).toBeUndefined();
     expect(await notes.read(hello.link, holding(hello))).toBeUndefined();
@@ -533,35 +514,6 @@ describe("an identity actor", () => {
       sign: (digest, by) => signer(ed25519).sign(digest, by),
     };
     await expect(signatures.actor(wrong, signedIdentity).sign(hello)).rejects.toThrow(/does not verify/);
-  });
-});
-
-describe("signatures loaded with a validator", () => {
-  // Answers as the default validator does, except that nothing written to a schema titled `title` fits.
-  const refusing = (title: RegExp): JsonSchemaValidator => ({
-    ...defaultValidator,
-    compile: (schema) =>
-      title.test(String(schema.title)) ? Promise.resolve(() => ["it does not fit"]) : defaultValidator.compile(schema),
-  });
-
-  it.each([
-    ["signed identity", /^Signed Identity$/],
-    ["identity", /^Identity$/],
-  ])("refuse a signature whose %s it says does not fit", async (_, title) => {
-    const { signatures: strict } = await loadIdentity(refusing(title), schemes);
-    const signature = await sign(hello, signer(ed25519));
-    await expect(verifiedBy(strict, signature.bytes, identityOf(signature))).rejects.toThrow(/it does not fit/);
-  });
-
-  it("do not ask a signer to publish an identity it says does not fit", async () => {
-    const strict = await loadIdentity(refusing(/^Identity$/), schemes);
-    const sign = vi.fn(async () => new Uint8Array(64));
-    await expect(strict.publish({ key: signer(ed25519).key, sign })).rejects.toThrow(/it does not fit/);
-    expect(sign).not.toHaveBeenCalled();
-  });
-
-  it("are not loaded when it says the objects of the schemes do not fit, which keys are written to", async () => {
-    await expect(loadIdentity(refusing(/^Key Scheme$/), schemes)).rejects.toThrow(/it does not fit/);
   });
 });
 

@@ -1,15 +1,5 @@
-import {
-  DRAFT_2020_12,
-  type EncodedObject,
-  encodeObject,
-  type Json,
-  type JsonLink,
-  type JsonSchema,
-  type Link,
-  linkSchema,
-  type Reader,
-  type Schema,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type JsonLink, type Link, type Reader } from "@estoc/object";
+import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { concatBytes } from "@noble/hashes/utils.js";
 import { blobsOf } from "./blobs.ts";
 import { isSameKey, type Key, type KeyObject, verify } from "./key/interface.ts";
@@ -24,35 +14,23 @@ import type { Signer } from "./signer.ts";
  * - `prior` names the signed identity it follows, and one without it starts a
  *   chain.
  * - `crisis` marks it as a crisis, after which no identity version before it
- *   counts.
+ *   counts. An identity that is no crisis leaves it out, so that it has one
+ *   object.
  * - A signature for it is the index of the key that signs, one byte, followed
  *   by that key's signature. The root is 0 and the agents follow in the order
  *   the root lists them, so it lists at most 255.
  * - It lists each agent once and not its root, or one signature would verify
  *   under two indexes, as two signatures with two links.
  */
-export const identitySchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Identity",
-  type: "object",
-  properties: {
-    prior: linkSchema,
-    root: linkSchema,
-    agents: { type: "array", items: linkSchema, maxItems: 255, uniqueItems: true },
-    crisis: { const: true },
-    at: { type: "integer", minimum: 0 },
-  },
-  required: ["root", "agents", "at"],
-  additionalProperties: false,
-};
+export const identitySchema = await schema("Identity", {
+  prior: optional(link<SignedIdentityObject>()),
+  root: link<KeyObject>(),
+  agents: array(link<KeyObject>()),
+  crisis: optional(boolean()),
+  at: integer(),
+});
 
-export type IdentityData = {
-  readonly prior?: JsonLink<SignedIdentityObject>;
-  readonly root: JsonLink<KeyObject>;
-  readonly agents: readonly JsonLink<KeyObject>[];
-  readonly crisis?: true;
-  readonly at: number;
-};
+export type IdentityData = DataOf<typeof identitySchema>;
 
 /** What names someone across their identity versions: the link of their root. */
 export type Identifier = Link<KeyObject>;
@@ -96,11 +74,10 @@ export type SigningFunction = (object: Uint8Array, signedIdentity: Uint8Array) =
 
 /** Identities, written to `identitySchema` and read with the keys they name and the signed identity they follow. */
 export class Identities {
-  readonly schema: Schema<Json, IdentityData>;
+  readonly schema = identitySchema;
   readonly #keys: Keys;
 
-  constructor(schema: Schema<Json, IdentityData>, keys: Keys) {
-    this.schema = schema;
+  constructor(keys: Keys) {
     this.#keys = keys;
   }
 
@@ -108,8 +85,8 @@ export class Identities {
    * The identity of `root` that `content` says.
    *
    * @throws when `prior` is of another root, or is not earlier.
-   * @throws when the agents list `root`, or do not fit the schema, as one
-   *   listed twice does not.
+   * @throws when the agents list `root` or one of them twice, or are more
+   *   than 255.
    */
   encode(root: Key, { prior, agents = [], isCrisis = false, at = Date.now() }: IdentityContent = {}): IdentityObject {
     const rootKey = this.#keys.encode(root);
@@ -130,7 +107,9 @@ export class Identities {
    *
    * @throws when `prior` is not the signed identity that `object` names as
    *   its prior, is of another root, or is not earlier.
-   * @throws when its agents list its root.
+   * @throws when its agents list its root or one of them twice, or are more
+   *   than 255.
+   * @throws when it writes `crisis` as anything but `true`.
    */
   async read(
     object: EncodedObject<Json, IdentityData>,
@@ -184,6 +163,11 @@ function identityOf(
     throw new Error(`${object.link} is not later than ${prior.link}, which it follows`);
   }
   if (agents.some(({ link }) => link === root.link)) throw new Error(`${object.link} lists its root as an agent`);
+  if (new Set(agents.map((agent) => agent.link)).size < agents.length) {
+    throw new Error(`${object.link} lists an agent twice`);
+  }
+  if (agents.length > 255) throw new Error(`${object.link} lists more than 255 agents`);
+  if (object.data.crisis === false) throw new Error(`${object.link} marks a crisis with true, or not at all`);
   return {
     ...object,
     link: object.link as Link<IdentityObject>,

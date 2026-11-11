@@ -1,16 +1,5 @@
-import {
-  decodeObject,
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonLink,
-  type Link,
-  linkSchema,
-  type Reader,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { decodeObject, type EncodedObject, encodeObject, type Json, type Link, type Reader } from "@estoc/object";
+import { type DataOf, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
   type CurveScheme,
@@ -18,6 +7,7 @@ import {
   eip191,
   type Identifier,
   type IdentityObject,
+  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type Signature,
@@ -31,9 +21,8 @@ import { byLink, schemes } from "./fixtures.ts";
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const { keys, identities, signatures, publish } = await loadIdentity(defaultValidator, schemes);
+const { keys, identities, signatures, publish } = await loadIdentity(schemes);
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
@@ -57,17 +46,7 @@ async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignat
     .map((signature) => signature.signedIdentity.identity);
 }
 
-const login = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Login",
-    type: "object",
-    properties: { audience: { type: "string", format: "uri" }, nonce: { type: "string" } },
-    required: ["audience", "nonce"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const login = await schema("Login", { audience: string(), nonce: string() });
 
 // The server knows its audience and the nonce it handed out, so it builds the
 // object itself and needs back only the signature, with the blobs of the
@@ -119,41 +98,15 @@ describe("a login", () => {
 
 // A sale names its parties by their identifiers, and a signature its signer
 // by a signed identity whose closure holds one.
-type Sale = {
-  readonly buyer: { readonly $link: Identifier };
-  readonly seller: { readonly $link: Identifier };
-  readonly goods: string;
-  readonly price: string;
-};
+const sale = await schema("Sale", {
+  buyer: link<KeyObject>(),
+  seller: link<KeyObject>(),
+  goods: string(),
+  price: string(),
+});
+type Sale = DataOf<typeof sale>;
 
-const sale: Schema<Json, Sale> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Sale",
-    type: "object",
-    properties: {
-      buyer: linkSchema,
-      seller: linkSchema,
-      goods: { type: "string" },
-      price: { type: "string", pattern: "^[0-9]+\\.[0-9]{2} [A-Z]{3}$" },
-    },
-    required: ["buyer", "seller", "goods", "price"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
-
-const delivery: Schema<Json, { readonly sale: JsonLink<EncodedObject<Json, Sale>> }> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Delivery",
-    type: "object",
-    properties: { sale: linkSchema },
-    required: ["sale"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const delivery = await schema("Delivery", { sale: link<EncodedObject<Json, Sale>>() });
 
 // A sale is in force once its buyer and its seller have both signed it.
 async function saleInForce(

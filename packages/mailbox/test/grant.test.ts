@@ -33,7 +33,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 // over out of band, and each reads the latest grant of a series from their own
 // store.
 
-const identity = await loadIdentity(defaultValidator, [ed25519]);
+const identity = await loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = await loadMailboxGrants(defaultValidator, identity);
 const seenPeople: View<IdentityVersion, People> = {

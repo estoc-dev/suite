@@ -2,16 +2,14 @@ import {
   decodeObject,
   digestOf,
   encodeObject,
-  encodeSchema,
   type Json,
   type JsonObject,
   json,
-  jsonSchema,
   type Link,
   linkOf,
   type Schema,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { bytes, link, schema, schemaRoot } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assert, describe, expect, it, vi } from "vitest";
 import {
@@ -19,6 +17,7 @@ import {
   ed25519,
   eip191,
   hasSigner,
+  type IdentityObject,
   identitySchema,
   isSameKey,
   type Key,
@@ -32,7 +31,7 @@ import {
 } from "../src/index.ts";
 import { byLink, closure, rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { keys, identities, signedIdentities, identityVersions, publish } = await loadIdentity(defaultValidator, schemes);
+const { keys, identities, signedIdentities, identityVersions, publish } = await loadIdentity(schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -86,15 +85,13 @@ describe("an identity", () => {
 
   it("carries as its blobs its object, its root's, and the blobs of the schemas they are written to, each once", async () => {
     const identity = identities.encode(key(eip191), { at: 0 });
-    const schema = await encodeSchema(identitySchema, defaultValidator);
-    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
     expect(linksOf(identity.blobs)).toEqual([
       identity.link,
       identity.root.link,
-      schema.link,
-      jsonSchema.link,
+      identitySchema.link,
+      schemaRoot.link,
       identity.root.schema.link,
-      keyScheme.link,
+      schemeSchema.link,
     ]);
   });
 
@@ -115,13 +112,18 @@ describe("an identity", () => {
     ["no root", () => ({ agents: [], at: 0 })],
     ["no agents", (root) => ({ root, at: 0 })],
     ["no at", (root) => ({ root, agents: [] })],
-    ["a negative at", (root) => ({ root, agents: [], at: -1 })],
     ["an at that is not a whole number", (root) => ({ root, agents: [], at: 1.5 })],
-    ["crisis set to false", (root) => ({ root, agents: [], crisis: false, at: 0 })],
+    ["crisis set to a string", (root) => ({ root, agents: [], crisis: "true", at: 0 })],
     ["its prior as a bare string", (root) => ({ prior: root.$link as string, root, agents: [], at: 0 })],
   ])("is refused with %s", async (_, data) => {
     const root = keys.encode(key(ed25519));
     await expect(readFrom(written(data({ $link: root.link })), root.bytes)).rejects.toThrow(/does not fit/);
+  });
+
+  it("is refused with crisis set to false, which leaving it out says", async () => {
+    const root = keys.encode(key(ed25519));
+    const bytes = written({ root: { $link: root.link }, agents: [], crisis: false, at: 0 });
+    await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/marks a crisis with true, or not at all/);
   });
 
   it("is refused when it is written to another schema", async () => {
@@ -155,10 +157,10 @@ describe("a signed identity", () => {
   });
 
   it("is refused by verify when it is written to another schema", async () => {
-    const otherSchema: Schema<Json, SignedIdentityData> = await encodeSchema(
-      { ...signedIdentitySchema, title: "Another" },
-      defaultValidator,
-    );
+    const otherSchema: Schema<Json, SignedIdentityData> = await schema("Another", {
+      identity: link<IdentityObject>(),
+      signature: bytes(),
+    });
     const by = signer(ed25519);
     const object = encodeObject(otherSchema, await signedBy(by));
     await expect(signedIdentities.verify(object, byLink(identities.encode(by.key, { at: 0 }).blobs))).rejects.toThrow(
@@ -177,11 +179,10 @@ describe("a signed identity", () => {
 
   it("carries as its blobs its object, its schema's blobs, and its identity's", async () => {
     const signed = await publish(signer(ed25519));
-    const schema = await encodeSchema(signedIdentitySchema, defaultValidator);
     expect(linksOf(signed.blobs)).toEqual([
       signed.link,
-      schema.link,
-      jsonSchema.link,
+      signedIdentitySchema.link,
+      schemaRoot.link,
       ...linksOf(signed.identity.blobs),
     ]);
   });
@@ -278,8 +279,6 @@ describe("the agents of an identity", () => {
 
   it("are carried with the root and the blobs of the schemas they are written to, each once", async () => {
     const { identity } = await publish(signer(eip191), { agents: [key(ed25519, 2), key(ed25519, 3)] });
-    const schema = await encodeSchema(identitySchema, defaultValidator);
-    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
     const [first, second] = identity.agents;
     assert.exists(first);
     assert.exists(second);
@@ -288,10 +287,10 @@ describe("the agents of an identity", () => {
       identity.root.link,
       first.link,
       second.link,
-      schema.link,
-      jsonSchema.link,
+      identitySchema.link,
+      schemaRoot.link,
       identity.root.schema.link,
-      keyScheme.link,
+      schemeSchema.link,
       first.schema.link,
     ]);
   });
@@ -311,6 +310,14 @@ describe("the agents of an identity", () => {
     await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/lists its root as an agent/);
   });
 
+  it("are refused when they list one of them twice", async () => {
+    const root = keys.encode(key(ed25519));
+    const agent = keys.encode(key(ed25519, 2));
+    const agents = [{ $link: agent.link }, { $link: agent.link }];
+    const bytes = written({ root: { $link: root.link }, agents, at: 0 });
+    await expect(readFrom(bytes, root.bytes, agent.bytes)).rejects.toThrow(/lists an agent twice/);
+  });
+
   it("can be none", async () => {
     const signed = await publish(signer(ed25519), { agents: [] });
     const read = await signedIdentities.read(signed.link, byLink(signed.blobs));
@@ -323,8 +330,8 @@ describe("the agents of an identity", () => {
   });
 
   it.each<[string, Key[], RegExp]>([
-    ["one agent twice", [key(ed25519, 2), key(ed25519, 3), key(ed25519, 2)], /does not fit/],
-    ["256 agents", distinctKeys(256), /does not fit/],
+    ["one agent twice", [key(ed25519, 2), key(ed25519, 3), key(ed25519, 2)], /lists an agent twice/],
+    ["256 agents", distinctKeys(256), /lists more than 255 agents/],
     ["the root among them", [key(ed25519, 2), key(ed25519)], /lists its root as an agent/],
   ])("with %s are refused before the root is asked to sign", async (_, agents, error) => {
     const sign = vi.fn(async () => new Uint8Array(64));
@@ -493,7 +500,7 @@ describe("the selection of identity versions", () => {
   });
 
   it("leaves out a signed identity whose root's scheme the application does not accept", async () => {
-    const { identityVersions: ed25519IdentityVersions } = await loadIdentity(defaultValidator, [ed25519]);
+    const { identityVersions: ed25519IdentityVersions } = await loadIdentity([ed25519]);
     const signedIdentity = await publish(signer(eip191), { at: 1_000 });
     expect(
       await ed25519IdentityVersions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs)),

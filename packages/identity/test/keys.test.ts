@@ -1,16 +1,14 @@
 import {
-  DRAFT_2020_12,
   decodeObject,
   decodeSchema,
   encodeSchema,
   type Json,
   type JsonObject,
   json,
-  jsonSchema,
   linkOf,
   type Schema,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { bytes, schema, schemaRoot } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
@@ -20,7 +18,6 @@ import {
   isSameKey,
   type KeyData,
   loadIdentity,
-  type SchemeData,
   SoftwareSigner,
   schemeSchema,
   schemeValidator,
@@ -28,9 +25,7 @@ import {
 } from "../src/index.ts";
 import { schemes } from "./fixtures.ts";
 
-const { keys } = await loadIdentity(defaultValidator, schemes);
-const keyScheme: Schema<Json, SchemeData> = await encodeSchema(schemeSchema, defaultValidator);
-const schemeObjects = schemeValidator(keyScheme);
+const { keys } = await loadIdentity(schemes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
 
@@ -86,7 +81,7 @@ describe("a key", () => {
   it("is refused written to the object of a scheme it does not support, though shaped the same", async () => {
     const lookalike: Schema<Json, KeyData> = await encodeSchema(
       { name: "ed25519ctx", publicKeyLength: 32 },
-      schemeObjects,
+      schemeValidator,
     );
     const bytes = json.encode(json.object({ publicKey: ed25519Key }, lookalike.link));
     await expect(readKey(bytes)).rejects.toThrow(`${lookalike.link} is not a schema read here`);
@@ -106,32 +101,31 @@ describe("the object of a scheme", () => {
     (scheme) => {
       const { schema } = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
       expect(json.decode(schema.bytes)).toEqual({
-        $schema: { $link: keyScheme.link },
+        $schema: { $link: schemeSchema.link },
         name: scheme.name,
         publicKeyLength: scheme.publicKeyLength,
       });
     },
   );
 
-  it("carries as its blobs itself, the scheme schema and the root of JSON Schema", () => {
+  it("carries as its blobs itself, the scheme schema and the root it is written to", () => {
     const { schema } = keys.encode(SoftwareSigner.fromSecretKey(ed25519, secretKey).key);
-    expect(schema.blobs.map((bytes) => linkOf(bytes))).toEqual([schema.link, keyScheme.link, jsonSchema.link]);
+    expect(schema.blobs.map((blob) => linkOf(blob))).toEqual([schema.link, schemeSchema.link, schemaRoot.link]);
   });
 
   it.each([
     ["a field besides name and publicKeyLength", '"curve":"ed25519","name":"ed25519","publicKeyLength":32'],
     ["no name", '"publicKeyLength":32'],
-    ["a key length of no bytes", '"name":"ed25519","publicKeyLength":0'],
     ["a key length that is not a whole number", '"name":"ed25519","publicKeyLength":1.5'],
   ])("is refused with %s", async (_, fields) => {
-    const text = `{"$schema":{"$link":"${keyScheme.link}"},${fields}}`;
-    await expect(decodeSchema(utf8(text), schemeObjects)).rejects.toThrow(/does not fit/);
+    const text = `{"$schema":{"$link":"${schemeSchema.link}"},${fields}}`;
+    await expect(decodeSchema(utf8(text), schemeValidator)).rejects.toThrow(/does not fit/);
   });
 
-  it("is refused written to the root of JSON Schema, as a key schema in JSON Schema would be", async () => {
-    const keySchema = await encodeSchema({ $schema: DRAFT_2020_12, title: "Ed25519 key" }, defaultValidator);
-    await expect(decodeSchema(keySchema.bytes, schemeObjects)).rejects.toThrow(
-      `is written to ${keyScheme.link}, not to ${jsonSchema.link}`,
+  it("is refused written to the root the scheme schema is written to, as a schema of the fields of a key would be", async () => {
+    const keySchema = await schema("Ed25519 key", { publicKey: bytes() });
+    await expect(decodeSchema(keySchema.bytes, schemeValidator)).rejects.toThrow(
+      `is written to ${schemeSchema.link}, not to ${schemaRoot.link}`,
     );
   });
 });

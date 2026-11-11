@@ -1,16 +1,5 @@
-import {
-  DRAFT_2020_12,
-  type EncodedObject,
-  encodeObject,
-  type Json,
-  type JsonLink,
-  type JsonSchema,
-  type Link,
-  linkSchema,
-  type Reader,
-  readObject,
-  type Schema,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
+import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
@@ -23,16 +12,9 @@ import { type Signer, SoftwareSigner } from "./signer.ts";
  * the device signs with by a secret in memory. With the Wallet Keys there,
  * the private store lists the keys the device signs with.
  */
-export const secretKeySchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Secret Key",
-  type: "object",
-  properties: { key: linkSchema, secret: { type: "string", pattern: "^[0-9a-f]{64}$" } },
-  required: ["key", "secret"],
-  additionalProperties: false,
-};
+export const secretKeySchema = await schema("Secret Key", { key: link<KeyObject>(), secret: bytes() });
 
-export type SecretKeyData = { readonly key: JsonLink<KeyObject>; readonly secret: string };
+export type SecretKeyData = DataOf<typeof secretKeySchema>;
 
 /**
  * A Secret Key read from its object, with its key and `signer`, which signs
@@ -49,11 +31,10 @@ export interface SecretKeyObject extends EncodedObject<Json, SecretKeyData> {
 
 /** Secret Keys, written to `secretKeySchema` and read with the keys they name. */
 export class SecretKeys {
-  readonly schema: Schema<Json, SecretKeyData>;
+  readonly schema = secretKeySchema;
   readonly #keys: Keys;
 
-  constructor(schema: Schema<Json, SecretKeyData>, keys: Keys) {
-    this.schema = schema;
+  constructor(keys: Keys) {
     this.#keys = keys;
   }
 

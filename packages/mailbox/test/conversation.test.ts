@@ -54,7 +54,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // and reads each line from its bundle when it shows it, as a message from
 // whoever signed it where the reader gave them that mailbox.
 
-const identity = await loadIdentity(defaultValidator, [ed25519]);
+const identity = await loadIdentity([ed25519]);
 const { signatures, publish } = identity;
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const line: Schema<Json, { readonly text: string }> = await encodeSchema(

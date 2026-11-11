@@ -515,7 +515,7 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const kit = await loadIdentity(validator, schemes);
+  const kit = await loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
   const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
     encodeSchema(schema, validator);

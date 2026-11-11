@@ -1,21 +1,12 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
-import {
-  encodeObject,
-  encodeSchema,
-  type JsonObject,
-  json,
-  jsonSchema,
-  jsonSchemaRoot,
-  type Link,
-  linkOf,
-} from "@estoc/object";
+import { encodeObject, encodeSchema, type JsonObject, json, jsonSchema, type Link, linkOf } from "@estoc/object";
 import { defaultValidator } from "@estoc/object/default-validator";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
-const { identities, signatures, publish } = await loadIdentity(defaultValidator, [ed25519]);
+const { identities, signatures, publish } = await loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -133,14 +124,14 @@ describe("a store", () => {
 
   it("takes an object of a schema written to another schema only along with that one too", async () => {
     const store = newStore();
-    const keyScheme = await encodeSchema(schemeSchema, defaultValidator);
     const { root: key } = identities.encode(signer.key, { at: 0 });
-    await expect(store.write({ records: [key], blobs: [key.schema.bytes, jsonSchemaRoot.bytes] })).rejects.toThrow(
-      `${key.schema.link} links to ${keyScheme.link}, which neither the batch nor the store holds`,
+    const withoutSchemeSchema = key.schema.blobs.filter((bytes) => linkOf(bytes) !== schemeSchema.link);
+    await expect(store.write({ records: [key], blobs: withoutSchemeSchema })).rejects.toThrow(
+      `${key.schema.link} links to ${schemeSchema.link}, which neither the batch nor the store holds`,
     );
     await store.write({ records: [key], blobs: key.schema.blobs });
     expect([...(await store.closure(key.link)).keys()].sort()).toEqual(
-      [key.link, key.schema.link, keyScheme.link, jsonSchema.link].sort(),
+      [key.link, key.schema.link, ...schemeSchema.blobs.map((bytes) => linkOf(bytes))].sort(),
     );
   });
 

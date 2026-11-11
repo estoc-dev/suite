@@ -1,5 +1,5 @@
-import { encodeObject, encodeSchema, type Json, linkOf, type Schema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, linkOf } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { ed25519 as edwards } from "@noble/curves/ed25519.js";
 import { p256 } from "@noble/curves/nist.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
@@ -117,11 +117,8 @@ describe("a scheme given as a Scheme alone", () => {
   });
 
   it("signs for an identity, with signatures of its own length", async () => {
-    const { signatures, publish } = await loadIdentity(defaultValidator, [ed25519, p256Der]);
-    const note: Schema<Json, { readonly text: string }> = await encodeSchema(
-      { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object" },
-      defaultValidator,
-    );
+    const { signatures, publish } = await loadIdentity([ed25519, p256Der]);
+    const note = await schema("Note", { text: string() });
     const signature = await signatures
       .actor(p256Signer, await publish(p256Signer))
       .sign(encodeObject(note, { text: "hello" }));
@@ -134,8 +131,8 @@ describe("a scheme given as a Scheme alone", () => {
 
 describe("loadIdentity", () => {
   it("reads and writes keys in the schemes it is given alone", async () => {
-    const { keys } = await loadIdentity(defaultValidator, [ed25519]);
-    const { keys: everyKey } = await loadIdentity(defaultValidator, schemes);
+    const { keys } = await loadIdentity([ed25519]);
+    const { keys: everyKey } = await loadIdentity(schemes);
     const key = SoftwareSigner.fromSecretKey(eip191, secretKey).key;
     const object = everyKey.encode(key);
     expect(() => keys.encode(key)).toThrow("the eip191 scheme is not one written here");
@@ -146,6 +143,6 @@ describe("loadIdentity", () => {
 
   it("refuses two schemes with one object", async () => {
     const copy = curveScheme("ed25519", ed25519Curve, ed25519.message);
-    await expect(loadIdentity(defaultValidator, [ed25519, copy])).rejects.toThrow(/is given two implementations/);
+    await expect(loadIdentity([ed25519, copy])).rejects.toThrow(/is given two implementations/);
   });
 });

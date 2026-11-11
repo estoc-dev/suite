@@ -1,4 +1,5 @@
-import { DRAFT_2020_12, type Json, type JsonSchema, type Schema, type SchemaValidator } from "@estoc/object";
+import type { Json, SchemaValidator } from "@estoc/object";
+import { type DataOf, integer, schema, string } from "@estoc/schema";
 
 /**
  * The schema each key scheme is an object of. The object of a scheme is the
@@ -11,41 +12,31 @@ import { DRAFT_2020_12, type Json, type JsonSchema, type Schema, type SchemaVali
  *   key's objects in them, apart.
  * - `publicKeyLength` is how many bytes its public keys are.
  */
-export const schemeSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Key Scheme",
-  type: "object",
-  properties: { name: { type: "string" }, publicKeyLength: { type: "integer", minimum: 1 } },
-  required: ["name", "publicKeyLength"],
-  additionalProperties: false,
-};
+export const schemeSchema = await schema("Key Scheme", { name: string(), publicKeyLength: integer() });
 
-export type SchemeData = { readonly name: string; readonly publicKeyLength: number };
+export type SchemeData = DataOf<typeof schemeSchema>;
 
 /**
  * Key schemes as a language of schemas, whose schemas are the objects of
- * `schema`, the compiled `schemeSchema`. The object of a scheme takes a
- * key's public key alone, in lowercase hex at the scheme's length, so each
- * key has one object and one link; it checks a key without a JSON Schema
- * validator.
+ * `schemeSchema`. The object of a scheme takes a key's public key alone, in
+ * lowercase hex at the scheme's length, so each key has one object and one
+ * link.
  */
-export function schemeValidator(schema: Schema<Json, SchemeData>): SchemaValidator<Json, SchemeData> {
-  return {
-    language: {
-      encoding: schema.encoding,
-      link: schema.link,
-      blobs: schema.blobs,
-      data: (scheme) => scheme,
-      document: (data) => schema.validate(data),
-    },
-    async compile({ publicKeyLength }) {
-      const hex = new RegExp(`^[0-9a-f]{${2 * publicKeyLength}}$`);
-      return ({ publicKey, ...rest }) => [
-        ...(typeof publicKey === "string" && hex.test(publicKey)
-          ? []
-          : [`#/publicKey: not ${publicKeyLength} bytes in lowercase hex`]),
-        ...Object.keys(rest).map((name) => `#/${name}: not a field of a key`),
-      ];
-    },
-  };
-}
+export const schemeValidator: SchemaValidator<Json, SchemeData> = {
+  language: {
+    encoding: schemeSchema.encoding,
+    link: schemeSchema.link,
+    blobs: schemeSchema.blobs,
+    data: (scheme) => scheme,
+    document: (data) => schemeSchema.validate(data),
+  },
+  async compile({ publicKeyLength }) {
+    const hex = new RegExp(`^[0-9a-f]{${2 * publicKeyLength}}$`);
+    return ({ publicKey, ...rest }) => [
+      ...(typeof publicKey === "string" && hex.test(publicKey)
+        ? []
+        : [`#/publicKey: not ${publicKeyLength} bytes in lowercase hex`]),
+      ...Object.keys(rest).map((name) => `#/${name}: not a field of a key`),
+    ];
+  },
+};

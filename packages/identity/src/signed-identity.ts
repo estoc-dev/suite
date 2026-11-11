@@ -1,34 +1,25 @@
 import {
-  DRAFT_2020_12,
   digestOf,
   type EncodedObject,
   encodeObject,
   type Json,
-  type JsonLink,
-  type JsonSchema,
   type Link,
-  linkSchema,
   type Reader,
   readObject,
-  type Schema,
 } from "@estoc/object";
+import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { hexSchema } from "./hex.ts";
 import type { Identities, IdentityObject } from "./identity.ts";
 import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
 /** The schema every signed identity is written to, whatever the scheme of its root. */
-export const signedIdentitySchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Signed Identity",
-  type: "object",
-  properties: { identity: linkSchema, signature: hexSchema },
-  required: ["identity", "signature"],
-  additionalProperties: false,
-};
+export const signedIdentitySchema = await schema("Signed Identity", {
+  identity: link<IdentityObject>(),
+  signature: bytes(),
+});
 
-export type SignedIdentityData = { readonly identity: JsonLink<IdentityObject>; readonly signature: string };
+export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
 
 /**
  * An identity as its root publishes it: an object written to
@@ -51,11 +42,10 @@ export interface SignedIdentityObject extends EncodedObject<Json, SignedIdentity
 
 /** Signed identities, with the identities they sign. */
 export class SignedIdentities {
-  readonly schema: Schema<Json, SignedIdentityData>;
+  readonly schema = signedIdentitySchema;
   readonly #identities: Identities;
 
-  constructor(schema: Schema<Json, SignedIdentityData>, identities: Identities) {
-    this.schema = schema;
+  constructor(identities: Identities) {
     this.#identities = identities;
   }
 

@@ -79,7 +79,7 @@ const finalDraft = encodeObject(note, { text: "final draft" });
 const lineage = lineages.startingWith(firstDraft).appending(secondDraft).appending(finalDraft);
 await store.write({
   records: [lineage.head],
-  blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, ...note.blobs],
+  blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, note.bytes],
 });
 ```
 

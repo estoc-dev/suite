@@ -69,7 +69,7 @@ async function start(settings: Readonly<Record<string, string>>) {
 }
 
 async function secretKeysAt(path: string) {
-  const { secretKeys } = await loadIdentity([ed25519, eip191, solanaOffchain]);
+  const { secretKeys } = loadIdentity([ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
   const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);

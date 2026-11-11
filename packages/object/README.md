@@ -6,14 +6,15 @@ its schema, and who has to sign is up to the application that reads it.
 
 An object rests on an encoding, which writes each value of its data one
 way, and a schema language over that encoding. This package writes objects
-against what those two provide, and has one pair of them: JSON with JCS,
-and JSON Schema. In that pair:
+against what those two provide. It has one encoding, JSON with JCS, and no
+language of its own: the one in use, Estoc Schema, is in `@estoc/schema`.
+In that pair:
 
 ```
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
 Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
-Schema     {"$schema": <the link of the root>, "document": <a JSON Schema document>}
-Root       {"$schema": null, "language": "JSON Schema"}
+Schema     {"$schema": <the link of the root>, "title": <a string>, "fields": <the fields of its objects>}
+Root       {"$schema": null, "language": "Estoc Schema"}
 ```
 
 A schema is an object too, written to its language: here the root, an
@@ -71,9 +72,8 @@ translating old ones.
 A schema is an object like any other, written to its language.
 
 - The schemas of a standard language are written to its root, which stands
-  for it. A JSON Schema schema's data is `document` alone, the schema whole
-  as the language writes it, so that the language's own tools read it as it
-  is.
+  for it. What the data of a schema holds is the language's to say: in
+  Estoc Schema, a title and the fields of its objects.
 - A schema can be a language too, whose objects are schemas in turn. The
   key schemes of `@estoc/identity` are one: the object of each scheme,
   written to the scheme schema, is the schema of the keys in it. Each is
@@ -95,17 +95,16 @@ A schema is an object like any other, written to its language.
   way: no blob says that some bytes are JCS, and `schemaOf` is given the
   encoding by its caller.
 - A schema links to nothing but what it is written to, and one that links
-  to anything else is refused, in writing and in reading. A JSON
-  Schema document writes out the links its objects hold with `linkSchema`,
-  which holds none. So the closure of a schema is itself and the blobs of
-  its language, up to the root, and the schema gives them as `blobs`. They
-  go wherever the schema goes, and so wherever an object of it goes, as
-  into a store or a bundle.
+  to anything else is refused, in writing and in reading. A schema says
+  that a field holds a link without holding one: in Estoc Schema the field
+  is `{"type": "link"}`. So the closure of a schema is itself and the
+  blobs of its language, up to the root, and the schema gives them as
+  `blobs`. They go wherever the schema goes, and so wherever an object of
+  it goes, as into a store or a bundle.
 
 Changing language is changing what schemas are written to: schemas in CDDL
-over CBOR would name `{"$schema": null, "language": "CDDL"}`. A root stands
-for a language rather than one of its dialects; a JSON Schema document
-names its dialect itself.
+over CBOR would name `{"$schema": null, "language": "CDDL"}`. A language
+that changes what its schemas mean is another language, with another root.
 
 A blob that is not an object is bytes: an image, a JSON Schema document on
 its own, or a JSON file such as a `biome.json`, whose `$schema` is a
@@ -124,8 +123,8 @@ followed.
 
 ## JSON
 
-`json` is the encoding of this package, `jsonSchema` the schema language
-over it, and `defaultValidator` a validator of that language.
+`json` is the encoding of this package. The schema language over it is in
+`@estoc/schema`.
 
 - `json` writes a JSON value as its JCS
   ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
@@ -145,7 +144,7 @@ over it, and `defaultValidator` a validator of that language.
   it holds. Any other object with a `$link` member is refused, in writing
   and in reading, whether it holds something other than a link or a member
   beside it, so whatever has the mark of a link is one. That holds for
-  the documents of schemas as well, which are JSON too. The links the
+  schemas as well, which are JSON too. The links the
   encoding finds in an object are the ones these hold, its schema among
   them, and no others; in bytes it finds none. In TypeScript a link in JSON data is a
   `JsonLink<T>`, `{ $link: Link<T> }`.
@@ -154,11 +153,9 @@ over it, and `defaultValidator` a validator of that language.
   describes itself. Only there does `$schema` name a schema: deeper in the
   data it is a field like any other, and data with a `$schema` of its own
   is refused. JSON without a `$schema` that is a link or `null` is bytes.
-- A schema is `{"$schema": {"$link": <root>}, "document": …}`, whose
-  document is a whole JSON Schema, naming its dialect in a `$schema` of its
-  own, so that any JSON Schema tool can validate with it as it is. The two
-  `$schema`s are at different depths and do not meet. The root of JSON
-  Schema, `jsonSchemaRoot`, is `{"$schema":null,"language":"JSON Schema"}`.
+- A schema is an object, `{"$schema": {"$link": <what it is written to>}, …}`,
+  and a root is `{"$schema": null, …}`. Their fields are the language's:
+  those of Estoc Schema are in the README of `@estoc/schema`.
 - A blob does not say what kind of blob it is, or which version of the
   format. A reader knows which kind it expects, and the kinds cannot pass
   for one another: an object names its schema, a schema names its
@@ -178,31 +175,22 @@ application does not mistake another schema's object for one of its own.
 The same value under two schemas is two objects.
 
 ```ts
-import { decodeObject, encodeObject, encodeSchema, type Json, type Schema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { decodeObject, encodeObject } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 
-type Login = { readonly audience: string; readonly nonce: string };
-
-const login: Schema<Json, Login> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    properties: { audience: { type: "string" }, nonce: { type: "string" } },
-    required: ["audience", "nonce"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const login = schema("Login", { audience: string(), nonce: string() });
 const object = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
 decodeObject(object.bytes, login).data.nonce; // "6f1c0a9e"
 ```
 
-A schema carries the type a program reads its data as, `Schema<D, F>`. The
-program declares it where it gets the schema, as `login` is declared above,
-and the data of an object of that schema is an `F`. The declaration is the
-program's claim, and checking the data against the schema is what holds it:
-data that does not fit is refused, not handed out as an `F`. The data of a
-schema declared with no type is fields of the encoding.
+A schema carries the type a program reads its data as, `Schema<D, F>`, and
+the data of an object of that schema is an `F`. `schema` works the type out
+from the fields. A program that gets a schema another way declares the type
+there, as in `const login: Schema<Json, Login> = decodeSchema(bytes,
+schemaValidator)`. Either way the type is the program's claim, and checking
+the data against the schema is what holds it: data that does not fit is
+refused, not handed out as an `F`. The data of a schema declared with no
+type is fields of the encoding.
 
 `readObject` reads the object that a link names from a `Reader`: anything
 with `get(link)` that gives the bytes at once or as a promise, such as a
@@ -215,66 +203,28 @@ takes the bytes as the blob of the link. `readObject` fails when the reader
 gives no blob, and refuses one whose bytes have another link all the same,
 since decoding them gives their link anyway.
 
-A schema holds all that its data is checked against. In JSON Schema a `$ref`
-reaches the document's own parts and nothing elsewhere, so the link of a
-schema fixes what its objects may hold, and no one changes that later by
-changing what a URL names. Where the data holds a link, the document writes
-out what a link looks like: `linkSchema`, to place there, takes an object
-whose one member is `$link`, a string matching `^sha256:[0-9a-f]{64}$`. It
-names the member through `propertyNames` rather than `properties`, since
-`{"properties": {"$link": …}}` would itself be an object with a `$link`
-member that is not a link.
-
 ## Validators
 
-Whether a value fits a schema is the validator's call. A validator compiles a
-schema's document once, when the schema is read, and the schema keeps the result, so
-reading a schema returns a promise and checking an object against it does
-not: `decodeObject` is synchronous, and `readObject` returns a promise only
-because the reader it gets the blob from may answer with one. Every
-validator works offline and keeps to three rules:
+A validator compiles a schema's document into a check once, when the schema
+is read, and the schema keeps the check. None of that waits for anything:
+`encodeSchema`, `decodeSchema` and `decodeObject` are synchronous, so a
+schema can be a constant of a module, and `readObject` returns a promise
+only because the reader it gets the blob from may answer with one.
 
-- A reference to anything outside the document fails compilation, rather
-  than the validation that happens to reach it.
-- The same document and value give the same answer every time.
-- A version of the language it does not support fails compilation.
+What a check may turn on follows from how schemas and languages are built:
 
-For JSON Schema, a reference is a `$ref`, and one in a place the dialect
-ignores, such as under `then` without `if`, has no effect; a version is a
-dialect. Anything else, such as whether `format` is asserted or which
-regular expression dialect `pattern` uses, is the validator's own. A
-signature commits to bytes, so a stricter validator can replace another
-without any blob changing.
-
-`defaultValidator`, from `@estoc/object/default-validator`, wraps
-[`@hyperjump/json-schema`](https://www.npmjs.com/package/@hyperjump/json-schema),
-which interprets schemas instead of generating code and so runs under a
-strict content security policy. It takes draft 2020-12 only, whose URI is
-`DRAFT_2020_12`, in the document and in any schema resource inside it. A
-document without `$id` can reference its own parts by fragment
-(`#/$defs/name`), and a schema resource inside it by its `$id`. Nothing is
-fetched, so a URL resolves only to a part of the document itself, and not to
-the draft's meta-schemas either. It asserts the formats hyperjump's lite
-set supports (dates, times and durations, email, IP addresses, URIs and
-IRIs, UUIDs, URI templates, JSON pointers and regular expressions) and
-passes the rest.
-
-hyperjump keeps one schema registry and one configuration for a JavaScript
-realm. Importing the default validator turns off hyperjump's fetching over
-http, https and file URLs and turns on format assertion for the realm, and
-the default validator compiles one schema at a time so that schemas do not
-see each other in the registry. Code in the same realm that configures
-hyperjump otherwise, or adds formats to it, changes the default validator's
-answers; such an application is better off with a validator of its own.
-
-A `pattern` can backtrack exponentially in the length of the string it
-tests. Pinning a schema keeps out patterns someone else wrote, but not data
-that sets off one of the application's own: under a pinned `^(a+)+$`, about
-thirty characters stall validation for seconds. Validate untrusted objects in
-a worker with a time limit, unless the schema's patterns and the length of
-the strings they test have been reviewed to keep validation cheap. A viewer
-of arbitrary objects, which also runs schemas someone else wrote, needs the
-worker in any case.
+- A schema holds all that its data is checked against. It links to nothing
+  but what it is written to, and compiling it fetches nothing, so the link
+  of a schema fixes what its objects may hold, and no one changes that
+  later by changing what a URL names.
+- What fits a schema is the language's to say. Estoc Schema leaves nothing
+  to a validator, so the same schema and data get the same answer from any
+  of them. Where a language leaves something open, a signature commits to
+  bytes and a validator is one reading of them, so a stricter validator can
+  replace another without any blob changing.
+- A language is what its schemas are written to, and a validator reads the
+  schemas of one language. A schema written to anything else is refused
+  rather than read by other rules.
 
 ## Verifiers
 

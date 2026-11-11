@@ -54,7 +54,7 @@ function close(server: Server): Promise<void> {
 const options = { transports: [http] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const key = hex.encode(bob.publicKey);
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);

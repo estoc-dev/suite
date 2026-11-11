@@ -546,9 +546,9 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
  * in milliseconds since the Unix epoch that the Inbound records are written
  * at, `Date.now` unless given.
  */
-export async function loadServices(
+export function loadServices(
   store: Store,
   { schemes, clock = Date.now }: { readonly schemes: readonly Scheme[]; readonly clock?: () => number },
-): Promise<Services> {
-  return new Services(store, new Intake(store, clock), await loadIdentity(schemes));
+): Services {
+  return new Services(store, new Intake(store, clock), loadIdentity(schemes));
 }

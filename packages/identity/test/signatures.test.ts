@@ -29,7 +29,7 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { identities, signatures, identityVersions, publish } = await loadIdentity(schemes);
+const { identities, signatures, identityVersions, publish } = loadIdentity(schemes);
 const verifiedBy = async (
   by: Signatures,
   bytes: Uint8Array,
@@ -54,7 +54,7 @@ const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello" });
 const goodbye = encodeObject(note, { text: "goodbye" });
 
@@ -461,7 +461,7 @@ describe("the selection of the signatures over objects of a schema", () => {
   });
 
   it("leaves out a signature over an object of another schema, and what is not a signature", async () => {
-    const card = encodeObject(await schema("Card", { name: string() }), { name: "Alice" });
+    const card = encodeObject(schema("Card", { name: string() }), { name: "Alice" });
     const signature = await sign(card, signer(ed25519));
     expect(await notes.read(signature.link, holding(signature, card))).toBeUndefined();
     expect(await notes.read(hello.link, holding(hello))).toBeUndefined();

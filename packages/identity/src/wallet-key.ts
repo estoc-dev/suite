@@ -12,7 +12,7 @@ import type { Keys } from "./key/keys.ts";
  * - Which wallet holds the key, the program finds by the public key the
  *   wallet gives.
  */
-export const walletKeySchema = await schema("Wallet Key", { key: link<KeyObject>() });
+export const walletKeySchema = schema("Wallet Key", { key: link<KeyObject>() });
 
 export type WalletKeyData = DataOf<typeof walletKeySchema>;
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ed25519, eip191, isSameKey, loadIdentity, type Scheme, SoftwareSigner, verify } from "../src/index.ts";
 import { byLink, closure, schemes } from "./fixtures.ts";
 
-const { keys, secretKeys } = await loadIdentity(schemes);
+const { keys, secretKeys } = loadIdentity(schemes);
 const secret = new Uint8Array(32).fill(1);
 const digest = new Uint8Array(32).fill(7);
 const written = (schema: Link<unknown>, data: JsonObject) => json.encode(json.object(data, schema));
@@ -33,7 +33,7 @@ describe("a Secret Key", () => {
 
   it("is refused when its key is in a scheme no curve signs in", async () => {
     const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
-    const kit = await loadIdentity([...schemes, plain]);
+    const kit = loadIdentity([...schemes, plain]);
     const key = kit.keys.encode({ scheme: plain, publicKey: new Uint8Array(32).fill(3) });
     const bytes = written(kit.secretKeys.schema.link, { key: { $link: key.link }, secret: bytesToHex(secret) });
     await expect(kit.secretKeys.read(linkOf(bytes), byLink([bytes, key.bytes]))).rejects.toThrow(
@@ -42,7 +42,7 @@ describe("a Secret Key", () => {
   });
 
   it("is refused when its key is in a scheme the kit does not read, and not written in one", async () => {
-    const kit = await loadIdentity([ed25519]);
+    const kit = loadIdentity([ed25519]);
     const secretKey = secretKeys.encode(eip191, secret);
     await expect(kit.secretKeys.read(secretKey.link, byLink(secretKey.blobs))).rejects.toThrow(
       /not a schema read here/,

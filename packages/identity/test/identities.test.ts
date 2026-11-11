@@ -31,7 +31,7 @@ import {
 } from "../src/index.ts";
 import { byLink, closure, rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { keys, identities, signedIdentities, identityVersions, publish } = await loadIdentity(schemes);
+const { keys, identities, signedIdentities, identityVersions, publish } = loadIdentity(schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -157,7 +157,7 @@ describe("a signed identity", () => {
   });
 
   it("is refused by verify when it is written to another schema", async () => {
-    const otherSchema: Schema<Json, SignedIdentityData> = await schema("Another", {
+    const otherSchema: Schema<Json, SignedIdentityData> = schema("Another", {
       identity: link<IdentityObject>(),
       signature: bytes(),
     });
@@ -500,7 +500,7 @@ describe("the selection of identity versions", () => {
   });
 
   it("leaves out a signed identity whose root's scheme the application does not accept", async () => {
-    const { identityVersions: ed25519IdentityVersions } = await loadIdentity([ed25519]);
+    const { identityVersions: ed25519IdentityVersions } = loadIdentity([ed25519]);
     const signedIdentity = await publish(signer(eip191), { at: 1_000 });
     expect(
       await ed25519IdentityVersions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs)),

@@ -19,7 +19,7 @@ const linksOf = (files: ReadonlyMap<string, Uint8Array>) =>
   new Map([...files].map(([path, bytes]) => [path, linkOf(bytes)]));
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const root = encodeObject(note, { text: "a note" });
 const another = encodeObject(note, { text: "another note" });
 const text = new TextEncoder().encode("a blob");

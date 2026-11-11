@@ -494,7 +494,7 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const kit = await loadIdentity(schemes);
+  const kit = loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
   const identifier: Identifier = keys.encode(signer.key).link;
   const identity = { $link: identifier };

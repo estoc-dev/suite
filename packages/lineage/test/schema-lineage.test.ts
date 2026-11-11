@@ -8,9 +8,9 @@ interface Note {
   readonly text: string;
 }
 
-const noteV1 = await schema("Note", { text: string() });
-const noteV2 = await schema("Note", { title: string(), body: string() });
-const other = await schema("Other", { text: string() });
+const noteV1 = schema("Note", { text: string() });
+const noteV2 = schema("Note", { title: string(), body: string() });
+const other = schema("Other", { text: string() });
 
 const v1: Implementation<Json, Note, DataOf<typeof noteV1>> = {
   schema: noteV1,

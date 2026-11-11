@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   type Encoding,
@@ -10,6 +9,7 @@ import {
   schemaOf,
   selfDescribingObject,
 } from "../src/index.ts";
+import { fieldNames } from "./field-names.ts";
 
 // An encoding with nothing of JSON in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written
@@ -85,17 +85,14 @@ const fieldCount: SchemaValidator<Text, string> = {
       return document;
     },
   },
-  compile: async (count) => (data) => {
+  compile: (count) => (data) => {
     const fields = Object.keys(data).length;
     return fields === Number(count) ? [] : [`${fields} fields, not ${count}`];
   },
 };
 
-const pair = await encodeSchema("2", fieldCount);
-const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
+const pair = encodeSchema("2", fieldCount);
+const note = encodeSchema({ fields: ["text"] }, fieldNames);
 
 describe("an encoding other than JSON", () => {
   it("writes its objects as it writes any value, and reads them back", () => {

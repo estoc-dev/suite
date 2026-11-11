@@ -21,7 +21,7 @@ import { byLink, schemes } from "./fixtures.ts";
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const { keys, identities, signatures, publish } = await loadIdentity(schemes);
+const { keys, identities, signatures, publish } = loadIdentity(schemes);
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -46,7 +46,7 @@ async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignat
     .map((signature) => signature.signedIdentity.identity);
 }
 
-const login = await schema("Login", { audience: string(), nonce: string() });
+const login = schema("Login", { audience: string(), nonce: string() });
 
 // The server knows its audience and the nonce it handed out, so it builds the
 // object itself and needs back only the signature, with the blobs of the
@@ -98,7 +98,7 @@ describe("a login", () => {
 
 // A sale names its parties by their identifiers, and a signature its signer
 // by a signed identity whose closure holds one.
-const sale = await schema("Sale", {
+const sale = schema("Sale", {
   buyer: link<KeyObject>(),
   seller: link<KeyObject>(),
   goods: string(),
@@ -106,7 +106,7 @@ const sale = await schema("Sale", {
 });
 type Sale = DataOf<typeof sale>;
 
-const delivery = await schema("Delivery", { sale: link<EncodedObject<Json, Sale>>() });
+const delivery = schema("Delivery", { sale: link<EncodedObject<Json, Sale>>() });
 
 // A sale is in force once its buyer and its seller have both signed it.
 async function saleInForce(

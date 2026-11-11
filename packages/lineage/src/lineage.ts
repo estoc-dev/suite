@@ -24,7 +24,7 @@ import { SchemaLineage } from "./schema-lineage.ts";
  *   with one item share it, and it names their series.
  * - A node names one node before it, so lineages fork and do not merge.
  */
-export const lineageNodeSchema = await schema("Lineage Node", {
+export const lineageNodeSchema = schema("Lineage Node", {
   previous: optional(link<LineageNodeObject>()),
   item: link(),
 });

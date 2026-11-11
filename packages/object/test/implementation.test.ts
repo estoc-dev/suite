@@ -1,7 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
 import {
-  DRAFT_2020_12,
   encodeObject,
   encodeSchema,
   type Implementation,
@@ -11,9 +9,9 @@ import {
   json,
   type Link,
   linkOf,
-  linkSchema,
   type Schema,
 } from "../src/index.ts";
+import { fieldNames } from "./field-names.ts";
 
 interface Text {
   readonly link: Link<unknown>;
@@ -25,27 +23,9 @@ type QuoteData = { readonly quotes: JsonLink<Text> };
 
 const textAt = ({ link }: { readonly link: Link<unknown> }) => link as Link<Text>;
 
-const plain: Schema<Json, PlainData> = await encodeSchema(
-  {
-    $schema: DRAFT_2020_12,
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
-const quote: Schema<Json, QuoteData> = await encodeSchema(
-  {
-    $schema: DRAFT_2020_12,
-    type: "object",
-    properties: { quotes: linkSchema },
-    required: ["quotes"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
-const other = await encodeSchema({ $schema: DRAFT_2020_12, type: "object" }, defaultValidator);
+const plain: Schema<Json, PlainData> = encodeSchema({ fields: ["text"] }, fieldNames);
+const quote: Schema<Json, QuoteData> = encodeSchema({ fields: ["quotes"] }, fieldNames);
+const other = encodeSchema({}, fieldNames);
 
 const plainText: Implementation<Json, Text, PlainData> = {
   schema: plain,
@@ -88,7 +68,7 @@ describe("implementations", () => {
   });
 
   it("refuse an object whose data does not fit its schema", async () => {
-    const bytes = json.encode(json.object({ text: 1 }, plain.link));
+    const bytes = json.encode(json.object({ body: "hello" }, plain.link));
     await expect(texts.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]))).rejects.toThrow(
       "the data does not fit its schema",
     );

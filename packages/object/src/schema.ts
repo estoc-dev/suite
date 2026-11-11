@@ -5,8 +5,7 @@ import type { Bytes, Link } from "./link.ts";
 export type Check<D> = (data: Fields<D>) => readonly string[];
 
 /**
- * A language of schemas over the data of one encoding, as JSON Schema is
- * over JSON, with documents `S`.
+ * A language of schemas over the data of one encoding, with documents `S`.
  *
  * - A schema is an object written to what the language names by `link`: the root of a standard
  *   language, which describes itself, or a schema whose objects are schemas, as each key scheme is
@@ -35,28 +34,25 @@ export interface SchemaLanguage<D, S> {
 }
 
 /**
- * Compiles the documents of one language into checks. A signature commits
- * to bytes and a validator is one reading of them, so a stricter validator
- * can replace another without any blob changing. Where the validators of a
- * language differ is theirs to decide; every validator works offline and
- * keeps to three rules:
+ * Compiles the documents of one language into checks.
  *
- * - A reference to anything outside the document fails compilation, rather
- *   than the validation that reaches it, so that the link of a schema fixes
- *   all that its data is checked against.
- * - The same document and value give the same answer every time.
- * - A version of the language it does not support fails compilation.
+ * - A check answers from the document and the data alone. A schema links to nothing but what it
+ *   is written to, and compiling and checking wait for nothing, so the link of a schema fixes all
+ *   that its data is checked against.
+ * - What fits a schema is the language's to say. Where a language leaves something to its
+ *   validators, a signature commits to the bytes and a validator is one reading of them, so a
+ *   stricter validator can replace another without any blob changing.
  */
 export interface SchemaValidator<D, S> {
   readonly language: SchemaLanguage<D, S>;
   /** @throws when `document` cannot be compiled. */
-  compile(document: S): Promise<Check<D>>;
+  compile(document: S): Check<D>;
 }
 
 /**
  * A schema as a blob, compiled by the validator it was read with. `F` is the
  * type the program reads the data written to it as. The program declares it
- * where it gets the schema, as in `const note: Schema<Json, Note> = await
+ * where it gets the schema, as in `const note: Schema<Json, Note> =
  * encodeSchema(…)`, and only data that fits the schema is handed out as one.
  */
 export class Schema<D, F extends Fields<D> = Fields<D>> {
@@ -103,10 +99,10 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
  * @throws when the schema links to anything but what it is written to.
  * @throws when the validator cannot compile the document.
  */
-export async function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
+export function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   bytes: Bytes<Schema<D>>,
   validator: SchemaValidator<D, S>,
-): Promise<Schema<D, F>> {
+): Schema<D, F> {
   const { language } = validator;
   const { encoding } = language;
   const { value, bytes: owned, link } = decodeBlob(encoding, bytes);
@@ -115,14 +111,14 @@ export async function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
     throw new Error(`a schema of this language is written to ${language.link}, not to ${schema ?? "itself"}`);
   for (const linked of encoding.links(value))
     if (linked !== language.link) throw new Error(`a schema links only to what it is written to, not to ${linked}`);
-  return new Schema<D, F>(language, { bytes: owned, link }, await validator.compile(language.document(data)));
+  return new Schema<D, F>(language, { bytes: owned, link }, validator.compile(language.document(data)));
 }
 
 /** Writes `document` as a schema, and compiles it as `decodeSchema` does. */
-export async function encodeSchema<D, S, F extends Fields<D> = Fields<D>>(
+export function encodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   document: S,
   validator: SchemaValidator<D, S>,
-): Promise<Schema<D, F>> {
+): Schema<D, F> {
   const { language } = validator;
   const { encoding } = language;
   return decodeSchema<D, S, F>(encoding.encode(encoding.object(language.data(document), language.link)), validator);

@@ -14,7 +14,7 @@ import {
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
-const anything = await schema("Anything", {
+const anything = schema("Anything", {
   text: optional(string()),
   name: optional(string()),
   image: optional(link()),
@@ -76,7 +76,7 @@ describe("an intake", () => {
 
   it("keeps the channel a bundle came in by with its schema, and gives it as via", async () => {
     const store = newStore();
-    const channel = await schema("Channel", { name: string() });
+    const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
     const record = await intakeOf(store).receive(bundleOf(note), mailbox);

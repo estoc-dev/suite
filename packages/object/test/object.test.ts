@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
 import {
   decodeObject,
   decodeSchema,
@@ -8,26 +7,17 @@ import {
   encodeSchema,
   type JsonObject,
   json,
-  jsonSchema,
   readObject,
   schemaOf,
   selfDescribingObject,
 } from "../src/index.ts";
+import { fieldNames } from "./field-names.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
-const login = await encodeSchema(
-  {
-    $schema: DRAFT,
-    type: "object",
-    properties: { audience: { type: "string" }, nonce: { type: "string" } },
-    required: ["audience", "nonce"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const anything = encodeSchema({}, fieldNames);
+const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, string][] = [
   ["without a $schema", '{"v":1}'],
@@ -35,7 +25,7 @@ const malformed: [string, string][] = [
   ["whose $schema is a link as a bare string", `{"$schema":"${anything.link}","v":1}`],
   ["whose $schema has a member besides $link", `{"$schema":{"$link":"${anything.link}","note":"x"},"v":1}`],
   ["whose $schema is a dialect, as a JSON Schema document's is", `{"$schema":"${DRAFT}","v":1}`],
-  ["whose $schema is a document", `{"$schema":{"$schema":"${DRAFT}"},"v":1}`],
+  ["whose $schema is an object without $link", `{"$schema":{"$schema":"${DRAFT}"},"v":1}`],
   ["that is an array", `[1,{"$link":"${anything.link}"}]`],
   ["that is a string", `"${anything.link}"`],
 ];
@@ -127,7 +117,7 @@ describe("the schema an object names", () => {
 });
 
 test("a schema is an object of its root, and not of any schema", () => {
-  expect(schemaOf(login.bytes, json)).toBe(jsonSchema.link);
+  expect(schemaOf(login.bytes, json)).toBe(fieldNames.language.link);
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(login.bytes, anything)).toThrow();
 });
@@ -138,8 +128,8 @@ test("an object that describes itself is not an object of any schema", () => {
   expect(() => decodeObject(itself.bytes, anything)).toThrow(/not to/);
 });
 
-test("an object read with a schema decoded from the same bytes keeps its link", async () => {
+test("an object read with a schema decoded from the same bytes keeps its link", () => {
   const object = encodeObject(login, greeting);
-  const schema = await decodeSchema(login.bytes, defaultValidator);
+  const schema = decodeSchema(login.bytes, fieldNames);
   expect(decodeObject(object.bytes, schema).link).toBe(object.link);
 });

@@ -7,7 +7,7 @@ import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts"
 // An application that keeps notes in series, and writes the head of a
 // lineage as a record each time it appends a version.
 
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const first = encodeObject(note, { text: "first" });
 const second = encodeObject(note, { text: "second" });
 const third = encodeObject(note, { text: "third" });
@@ -74,7 +74,7 @@ interface TitledText {
   readonly text: string;
 }
 
-const titledNote = await schema("Note", { title: string(), body: string() });
+const titledNote = schema("Note", { title: string(), body: string() });
 const v1: Implementation<Json, TitledText, { readonly text: string }> = {
   schema: note,
   read: ({ data }) => ({ text: data.text }),

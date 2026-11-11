@@ -35,7 +35,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const identity = await loadIdentity([ed25519, eip191, solanaOffchain]);
+const identity = loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
 
 const signer = (scheme: CurveScheme, fill: number) =>
@@ -64,7 +64,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat = await schema("Chat", { to: optional(link<KeyObject>()), text: string() });
+const chat = schema("Chat", { to: optional(link<KeyObject>()), text: string() });
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by their identifier, whether that is the reader.
@@ -80,7 +80,7 @@ describe("a chat line", () => {
   const carol = signer(ed25519, 3);
 
   const passOn = async (line: EncodedObject<Json>) => {
-    const network = await MemoryNetwork.create();
+    const network = new MemoryNetwork();
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sentSignature = await sendSigned(
       await mailboxFrom(atBob.mailbox, { transports: [network.transport] }),
@@ -118,7 +118,7 @@ describe("a chat line", () => {
   });
 });
 
-const join = await schema("Join", { invitation: link<never>() });
+const join = schema("Join", { invitation: link<never>() });
 
 // Nobody signs the mailbox of a one-time invitation: it is handed out on its
 // own. Answering it once is the inviter's own record, so the inviter lets in
@@ -128,7 +128,7 @@ describe("a one-time invitation", () => {
   const erin = signer(solanaOffchain, 5);
 
   const invite = async () => {
-    const network = await MemoryNetwork.create();
+    const network = new MemoryNetwork();
     const inviter = await receiver(network, 14);
     const link = linkOf(inviter.mailbox);
     const answer = async (guest: SoftwareSigner) => {
@@ -166,7 +166,7 @@ type Sale = {
   readonly price: string;
 };
 
-const sale = await schema("Sale", {
+const sale = schema("Sale", {
   buyer: link<KeyObject>(),
   seller: link<KeyObject>(),
   goods: string(),
@@ -203,7 +203,7 @@ describe("a sale sent to a registry", () => {
   });
 
   const withRegistry = async (faults: Faults) => {
-    const network = await MemoryNetwork.create(faults);
+    const network = new MemoryNetwork(faults);
     const registry = await receiver(network, 15);
     const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
     return { send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party), take: registry.take };
@@ -239,7 +239,7 @@ describe("two people who meet", () => {
   const lines = signatures.selectionOver(chat);
 
   const twoPeople = async () => {
-    const network = await MemoryNetwork.create();
+    const network = new MemoryNetwork();
     // One clock for both, so that what one does reads as before what the other does next.
     let now = 0;
     const clock = () => ++now;

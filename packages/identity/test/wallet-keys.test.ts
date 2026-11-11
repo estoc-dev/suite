@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { type CurveScheme, ed25519, eip191, isSameKey, loadIdentity, SoftwareSigner } from "../src/index.ts";
 import { byLink, closure, schemes } from "./fixtures.ts";
 
-const { keys, secretKeys, walletKeys } = await loadIdentity(schemes);
+const { keys, secretKeys, walletKeys } = loadIdentity(schemes);
 const key = (scheme: CurveScheme) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(1)).key;
 
 describe("a Wallet Key", () => {
@@ -28,7 +28,7 @@ describe("a Wallet Key", () => {
   });
 
   it("is refused when its key is in a scheme the kit does not read, and not written in one", async () => {
-    const kit = await loadIdentity([ed25519]);
+    const kit = loadIdentity([ed25519]);
     const walletKey = walletKeys.encode(key(eip191));
     await expect(kit.walletKeys.read(walletKey.link, byLink(walletKey.blobs))).rejects.toThrow(
       /not a schema read here/,

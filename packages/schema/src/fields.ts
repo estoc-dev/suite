@@ -39,7 +39,7 @@ type DataOfFields<F extends FieldsOf> = { readonly [N in Exclude<keyof F, Option
  *
  * @throws when a field is named `$schema`.
  */
-export function schema<F extends FieldsOf>(title: string, fields: F): Promise<Schema<Json, DataOfFields<F>>> {
+export function schema<F extends FieldsOf>(title: string, fields: F): Schema<Json, DataOfFields<F>> {
   return encodeSchema({ title, fields }, schemaValidator);
 }
 

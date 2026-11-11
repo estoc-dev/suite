@@ -12,7 +12,7 @@ import { type Signer, SoftwareSigner } from "./signer.ts";
  * the device signs with by a secret in memory. With the Wallet Keys there,
  * the private store lists the keys the device signs with.
  */
-export const secretKeySchema = await schema("Secret Key", { key: link<KeyObject>(), secret: bytes() });
+export const secretKeySchema = schema("Secret Key", { key: link<KeyObject>(), secret: bytes() });
 
 export type SecretKeyData = DataOf<typeof secretKeySchema>;
 

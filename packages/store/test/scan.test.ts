@@ -49,7 +49,8 @@ const fields = {
   about: optional(link()),
   shared: optional(link()),
 };
-const [note, tag] = await Promise.all([schema("Note", fields), schema("Tag", fields)]);
+const note = schema("Note", fields);
+const tag = schema("Tag", fields);
 type Entry = DataOf<typeof note>;
 const schemas = [note, tag].flatMap(({ blobs }) => blobs);
 const keysOf = ({ data }: { readonly data: Entry }) => data.keys ?? [];
@@ -135,7 +136,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
-    const { signatures, publish } = await loadIdentity([ed25519]);
+    const { signatures, publish } = loadIdentity([ed25519]);
     const bySigner: Index<[signer: string, object: string]> = indexOver(
       objectsOf(signatures.schema),
       async function* (object, reader) {
@@ -241,8 +242,8 @@ describe("an index scanned from a store", () => {
     const validationNames: string[] = [];
     const validatorNoting = (name: string): SchemaValidator<Json, SchemaDocument> => ({
       language: schemaValidator.language,
-      async compile(document) {
-        const check = await schemaValidator.compile(document);
+      compile(document) {
+        const check = schemaValidator.compile(document);
         return (data) => {
           validationNames.push(name);
           return check(data);
@@ -250,7 +251,8 @@ describe("an index scanned from a store", () => {
       },
     });
     const noteSchemaNoting = (name: string) => encodeSchema({ title: "Note", fields }, validatorNoting(name));
-    const [strict, lax] = await Promise.all([noteSchemaNoting("strict"), noteSchemaNoting("lax")]);
+    const strict = noteSchemaNoting("strict");
+    const lax = noteSchemaNoting("lax");
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, {})], blobs: schemas });
     const index = indexOver(objectsOf(strict), () => [["a"]]).union(
@@ -523,10 +525,10 @@ describe("an index over blobs", () => {
 
   it("passes over a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
     const document = { title: "Named", fields: { name: string(), keys: array(array(string())) } };
-    const strict = await encodeSchema<Json, SchemaDocument, Entry>(document, schemaValidator);
-    const lax = await encodeSchema<Json, SchemaDocument, Entry>(document, {
+    const strict = encodeSchema<Json, SchemaDocument, Entry>(document, schemaValidator);
+    const lax = encodeSchema<Json, SchemaDocument, Entry>(document, {
       language: schemaValidator.language,
-      compile: async () => () => [],
+      compile: () => () => [],
     });
     const misfit = encodeObject(lax, { keys: [["misfit"]] });
     const fitting = encodeObject(strict, { name: "a", keys: [["fitting"]] });

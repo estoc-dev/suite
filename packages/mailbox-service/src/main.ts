@@ -89,7 +89,7 @@ async function makePrivateStore(path: string): Promise<void> {
   await (await open(path, "wx", 0o600)).close();
   const backend = new SqliteBackend(path);
   try {
-    const { secretKeys } = await loadIdentity(schemes);
+    const { secretKeys } = loadIdentity(schemes);
     const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
     const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);
     await privateStore.write({ records: [secretKey], blobs: secretKey.blobs });
@@ -105,7 +105,7 @@ async function makePrivateStore(path: string): Promise<void> {
  * @throws when `privateStore` holds no Secret Key or more than one.
  */
 async function secretKeyIn(privateStore: PrivateStore, path: string): Promise<SecretKeyObject> {
-  const { secretKeys } = await loadIdentity(schemes);
+  const { secretKeys } = loadIdentity(schemes);
   const selection = objectsOf(secretKeys.schema);
   const links: Link<SecretKeyObject>[] = [];
   for await (const record of privateStore.records()) {

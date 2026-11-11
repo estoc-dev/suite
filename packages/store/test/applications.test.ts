@@ -28,16 +28,16 @@ import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
 // is listed in their store; what comes from the other is kept with a record
 // of receiving it, and read by following links from that record.
 
-const { identities, signatures, signedIdentities, identityVersions, publish } = await loadIdentity([ed25519]);
+const { identities, signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
-const noteSchema = await schema("Note", { text: string() });
-const receivedSchema = await schema("Received", { bundle: link<never>() });
-const contactSchema = await schema("Contact", { name: string() });
-const carriedSchema = await schema("Carried", { identityVersions: array(link<SignedIdentityObject>()) });
+const noteSchema = schema("Note", { text: string() });
+const receivedSchema = schema("Received", { bundle: link<never>() });
+const contactSchema = schema("Contact", { name: string() });
+const carriedSchema = schema("Carried", { identityVersions: array(link<SignedIdentityObject>()) });
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.

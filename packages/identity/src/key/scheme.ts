@@ -12,7 +12,7 @@ import { type DataOf, integer, schema, string } from "@estoc/schema";
  *   key's objects in them, apart.
  * - `publicKeyLength` is how many bytes its public keys are.
  */
-export const schemeSchema = await schema("Key Scheme", { name: string(), publicKeyLength: integer() });
+export const schemeSchema = schema("Key Scheme", { name: string(), publicKeyLength: integer() });
 
 export type SchemeData = DataOf<typeof schemeSchema>;
 
@@ -30,7 +30,7 @@ export const schemeValidator: SchemaValidator<Json, SchemeData> = {
     data: (scheme) => scheme,
     document: (data) => schemeSchema.validate(data),
   },
-  async compile({ publicKeyLength }) {
+  compile({ publicKeyLength }) {
     const hex = new RegExp(`^[0-9a-f]{${2 * publicKeyLength}}$`);
     return ({ publicKey, ...rest }) => [
       ...(typeof publicKey === "string" && hex.test(publicKey)

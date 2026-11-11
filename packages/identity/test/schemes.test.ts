@@ -117,8 +117,8 @@ describe("a scheme given as a Scheme alone", () => {
   });
 
   it("signs for an identity, with signatures of its own length", async () => {
-    const { signatures, publish } = await loadIdentity([ed25519, p256Der]);
-    const note = await schema("Note", { text: string() });
+    const { signatures, publish } = loadIdentity([ed25519, p256Der]);
+    const note = schema("Note", { text: string() });
     const signature = await signatures
       .actor(p256Signer, await publish(p256Signer))
       .sign(encodeObject(note, { text: "hello" }));
@@ -131,8 +131,8 @@ describe("a scheme given as a Scheme alone", () => {
 
 describe("loadIdentity", () => {
   it("reads and writes keys in the schemes it is given alone", async () => {
-    const { keys } = await loadIdentity([ed25519]);
-    const { keys: everyKey } = await loadIdentity(schemes);
+    const { keys } = loadIdentity([ed25519]);
+    const { keys: everyKey } = loadIdentity(schemes);
     const key = SoftwareSigner.fromSecretKey(eip191, secretKey).key;
     const object = everyKey.encode(key);
     expect(() => keys.encode(key)).toThrow("the eip191 scheme is not one written here");
@@ -141,8 +141,8 @@ describe("loadIdentity", () => {
     );
   });
 
-  it("refuses two schemes with one object", async () => {
+  it("refuses two schemes with one object", () => {
     const copy = curveScheme("ed25519", ed25519Curve, ed25519.message);
-    await expect(loadIdentity([ed25519, copy])).rejects.toThrow(/is given two implementations/);
+    expect(() => loadIdentity([ed25519, copy])).toThrow(/is given two implementations/);
   });
 });

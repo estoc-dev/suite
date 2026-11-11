@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, test } from "vitest";
-import { defaultValidator } from "../src/default-validator.ts";
-import { decodeObject, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
+import { decodeObject, decodeSchema, encodeObject, encodeSchema, json, linkOf } from "../src/index.ts";
+import { fieldNames, fieldNamesRoot } from "./field-names.ts";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+const anything = encodeSchema({}, fieldNames);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const objectText = (value: string) => `{"$schema":{"$link":"${anything.link}"},"v":${value}}`;
 const decodeText = (text: string) => decodeObject(utf8(text), anything);
@@ -66,9 +66,9 @@ describe("an object with a $link member", () => {
     }
   });
 
-  it("is refused in a schema too", async () => {
-    const schema = { $schema: DRAFT, properties: { $link: { type: "string" } } };
-    await expect(encodeSchema(schema, defaultValidator)).rejects.toThrow(/\$link/);
+  it("is refused in a schema too", () => {
+    const text = `{"$schema":{"$link":"${fieldNamesRoot.link}"},"fields":[{"$link":"text"}]}`;
+    expect(() => decodeSchema(utf8(text), fieldNames)).toThrow(/\$link/);
   });
 });
 

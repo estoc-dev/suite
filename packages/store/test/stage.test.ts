@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { type Index, indexOver, indexOverBlobs, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
-const anything = await schema("Anything", {
+const anything = schema("Anything", {
   text: optional(string()),
   image: optional(link()),
   held: optional(link()),
@@ -150,7 +150,7 @@ describe("a staged batch", () => {
   });
 });
 
-const noteSchema = await schema("Note", { text: string(), tags: array(string()), at: integer() });
+const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
 const note = (data: Note) => encodeObject(noteSchema, data);
 
@@ -170,7 +170,7 @@ const texts: View<Row, Promise<[tag: string, text: string][]>> = {
   },
 };
 
-const { signatures, identityVersions, publish } = await loadIdentity([ed25519]);
+const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 

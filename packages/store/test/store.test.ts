@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
-const anything = await schema("Anything", {
+const anything = schema("Anything", {
   text: optional(string()),
   hash: optional(string()),
   image: optional(link()),
@@ -13,7 +13,7 @@ const anything = await schema("Anything", {
   received: optional(link()),
   attachments: optional(array(link())),
 });
-const { identities, signatures, publish } = await loadIdentity([ed25519]);
+const { identities, signatures, publish } = loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -120,7 +120,7 @@ describe("a store", () => {
     await expect(store.write({ records: [note], blobs: [carriedObject.bytes, ...anything.blobs] })).rejects.toThrow(
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
-    const unheldSchema = await schema("Unheld", { text: string() });
+    const unheldSchema = schema("Unheld", { text: string() });
     const writtenRecord = encodeObject(unheldSchema, { text: "hello" });
     await expect(store.write({ records: [writtenRecord] })).rejects.toThrow(
       `${writtenRecord.link} links to ${unheldSchema.link}`,

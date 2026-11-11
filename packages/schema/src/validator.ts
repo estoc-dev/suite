@@ -38,7 +38,7 @@ function* problemsIn(value: Json, field: Field | Item, path: string): Generator<
  */
 export const schemaValidator: SchemaValidator<Json, SchemaDocument> = {
   language: schemaLanguage,
-  async compile({ fields }) {
+  compile({ fields }) {
     return (data) => {
       const problems = Object.keys(data)
         .filter((name) => !Object.hasOwn(fields, name))

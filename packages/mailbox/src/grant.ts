@@ -7,17 +7,7 @@ import {
   type SignatureOver,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import {
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonSchemaValidator,
-  type Link,
-  type Reader,
-  readObject,
-  type Schema,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
 import { indexOverBlobs, type Rows, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
@@ -68,16 +58,18 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
  *   again.
  */
 export class MailboxGrants {
-  readonly schema: Schema<Json, MailboxGrantData>;
+  readonly schema = mailboxGrantSchema;
   /** The grants of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
   readonly series: View<MailboxGrantRow, GrantSeries>;
   readonly #identity: SignatureReading;
 
-  constructor(schema: Schema<Json, MailboxGrantData>, identity: SignatureReading) {
-    this.schema = schema;
+  /** The signatures over grants and the signed identities they name are read with `identity`. */
+  constructor(identity: SignatureReading) {
     this.#identity = identity;
     this.series = {
-      index: indexOverBlobs(identity.signatures.selectionOver(schema), (grant, reader) => this.#rowsOf(grant, reader)),
+      index: indexOverBlobs(identity.signatures.selectionOver(this.schema), (grant, reader) =>
+        this.#rowsOf(grant, reader),
+      ),
       read: (rows, reader) => this.#seriesOf(rows, reader),
     };
   }
@@ -130,16 +122,4 @@ export class MailboxGrants {
     const object = await readObject(reader, signature.object, this.schema);
     return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.$link, reader) };
   }
-}
-
-/**
- * Mailbox Grants with their schema compiled by `validator`, whose signatures and signed identities
- * are read with `identity`.
- */
-export async function loadMailboxGrants(
-  validator: JsonSchemaValidator,
-  identity: SignatureReading,
-): Promise<MailboxGrants> {
-  const schema: Schema<Json, MailboxGrantData> = await encodeSchema(mailboxGrantSchema, validator);
-  return new MailboxGrants(schema, identity);
 }

@@ -1,6 +1,6 @@
 import { writeBundle, zipBundle } from "@estoc/bundle";
-import { encodeObject, encodeSchema, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, linkOf } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey } from "../src/index.ts";
 import { publicKeyFrom, seal } from "../src/key.ts";
@@ -8,10 +8,7 @@ import { publicKeyFrom, seal } from "../src/key.ts";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
-const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
 const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);

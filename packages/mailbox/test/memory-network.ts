@@ -1,13 +1,5 @@
-import {
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonObject,
-  type JsonSchemaValidator,
-  type Link,
-  type Schema,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type JsonObject, type Link, type Schema } from "@estoc/object";
+import { string } from "@estoc/schema";
 import { hex } from "@scure/base";
 import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMessage } from "../src/index.ts";
 
@@ -65,9 +57,8 @@ export class MemoryNetwork {
     this.transport = { schema, deliver: async (mailbox, ciphertext) => this.#deliver(mailbox, ciphertext) };
   }
 
-  static async create(validator: JsonSchemaValidator, faults: Faults = {}): Promise<MemoryNetwork> {
-    const schema = mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]);
-    return new MemoryNetwork(await encodeSchema(schema, validator), faults);
+  static async create(faults: Faults = {}): Promise<MemoryNetwork> {
+    return new MemoryNetwork(await mailboxSchema("Memory mailbox", { name: string() }), faults);
   }
 
   queue(): Queue {

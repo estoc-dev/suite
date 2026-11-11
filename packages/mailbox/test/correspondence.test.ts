@@ -7,18 +7,17 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { encodeObject, encodeSchema, json, type Link, readObject } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-import { type Intake, loadIntake, MemoryBackend, PrivateStore, RefusedBatch, Store } from "@estoc/store";
+import { encodeObject, json, type Link, readObject } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
+import { Intake, MemoryBackend, PrivateStore, RefusedBatch, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
   type Inbox,
-  loadMailboxGrants,
-  loadPost,
+  MailboxGrants,
   mailboxSchema,
   type Pickup,
-  type Post,
+  Post,
   type Transport,
   UndeliveredMessage,
 } from "../src/index.ts";
@@ -30,13 +29,9 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const identity = await loadIdentity([ed25519]);
 const { signatures, publish } = identity;
-const grants = await loadMailboxGrants(defaultValidator, identity);
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const note = await encodeSchema(
-  { $schema: DRAFT, title: "Note", type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
-const network = await MemoryNetwork.create(defaultValidator);
+const grants = new MailboxGrants(identity);
+const note = await schema("Note", { text: string() });
+const network = await MemoryNetwork.create();
 
 // The kinds that the mailboxes at some queues turn a message back with.
 const undeliveredKindByQueue = new Map<unknown, UndeliveredMessage["kind"]>();
@@ -66,9 +61,9 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 
 async function personActingAs(actor: Actor, store = new Store(json, new MemoryBackend())): Promise<Person> {
   const privateStore = new PrivateStore(store, new MemoryBackend());
-  const post = await loadPost(store, privateStore, { transports: [transport], validator: defaultValidator, clock });
-  const intake = await loadIntake(store, { validator: defaultValidator, clock });
-  const correspondence = await post.correspondenceAs(actor, identity);
+  const post = new Post(store, privateStore, { transports: [transport], clock });
+  const intake = new Intake(store, clock);
+  const correspondence = post.correspondenceAs(actor, identity);
   return { actor, signedIdentity: actor.signedIdentity, store, post, intake, correspondence };
 }
 
@@ -280,10 +275,7 @@ describe("sending to someone", () => {
   it("sends nothing when the post has no transport for a mailbox of the grant", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { inbox, pickup } = await openInbox(bob);
-    const otherSchema = await encodeSchema(
-      mailboxSchema("Other mailbox", { place: { type: "string" } }, ["place"]),
-      defaultValidator,
-    );
+    const otherSchema = await mailboxSchema("Other mailbox", { place: string() });
     const other = encodeObject(otherSchema, { key: "00".repeat(32), place: "elsewhere" });
     await bob.store.write({ records: [other], blobs: otherSchema.blobs });
     const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);

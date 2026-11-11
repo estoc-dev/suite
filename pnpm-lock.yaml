@@ -107,6 +107,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@estoc/store':
         specifier: workspace:*
         version: link:../store

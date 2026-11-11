@@ -1,30 +1,16 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import {
-  type Bytes,
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Fields,
-  type Json,
-  type JsonSchema,
-  type JsonSchemaValidator,
-  type Link,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { type Intake, loadIntake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
+import { type Bytes, type EncodedObject, encodeObject, type Json, type Link, readObject } from "@estoc/object";
+import { Intake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
-import { loadMailboxGrants } from "./grant.ts";
+import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
-import { type MailboxKeyData, mailboxKeySchema, type OutboundData, outboundSchema } from "./schema.ts";
+import { type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
-  /** The validator that the schemas of the records are compiled with. */
-  readonly validator: JsonSchemaValidator;
   /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
   readonly clock?: () => number;
 }
@@ -43,13 +29,9 @@ export interface Delivery {
 
 type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Json>> };
 
-interface Schemas {
-  readonly outbound: Schema<Json, OutboundData>;
-  readonly key: Schema<Json, MailboxKeyData>;
-}
-
 /**
- * Sending and receiving with a store.
+ * Sending and receiving with a store, through transports, with the keys of
+ * the user's mailboxes kept in a private store beside the store.
  *
  * - What is sent is taken from the store, and what arrives is kept in it.
  * - Each is recorded there as a delivery that the user writes, an object of `outboundSchema` or of
@@ -63,32 +45,19 @@ export class Post {
   readonly #privateStore: PrivateStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
-  readonly #validator: JsonSchemaValidator;
   readonly #intake: Intake;
-  readonly #schemas: Schemas;
 
-  constructor(
-    store: Store,
-    privateStore: PrivateStore,
-    transports: readonly Transport[],
-    clock: () => number,
-    validator: JsonSchemaValidator,
-    intake: Intake,
-    schemas: Schemas,
-  ) {
+  constructor(store: Store, privateStore: PrivateStore, { transports, clock = Date.now }: PostOptions) {
     this.#store = store;
     this.#privateStore = privateStore;
     this.#transports = transports;
     this.#clock = clock;
-    this.#validator = validator;
-    this.#intake = intake;
-    this.#schemas = schemas;
+    this.#intake = new Intake(store, clock);
   }
 
   /** Sending and reading as `actor`, by the Mailbox Grants and the identity versions the store holds. */
-  async correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Promise<Correspondence> {
-    const grants = await loadMailboxGrants(this.#validator, identity);
-    return new Correspondence(this.#store, this, actor, this.#clock, grants, identity);
+  correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Correspondence {
+    return new Correspondence(this.#store, this, actor, this.#clock, new MailboxGrants(identity), identity);
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
@@ -113,9 +82,8 @@ export class Post {
     if (data.key !== hex.encode(key.publicKey))
       throw new Error("the mailbox made names another key than the one given");
     await this.#store.write({ records: [mailbox], blobs: mailbox.schema.blobs });
-    const schema = this.#schemas.key;
-    const object = encodeObject(schema, { mailbox: { $link: mailbox.link }, secret: hex.encode(secret) });
-    await this.#privateStore.write({ records: [object], blobs: schema.blobs });
+    const object = encodeObject(mailboxKeySchema, { mailbox: { $link: mailbox.link }, secret: hex.encode(secret) });
+    await this.#privateStore.write({ records: [object], blobs: mailboxKeySchema.blobs });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -127,7 +95,7 @@ export class Post {
    *   sealed to another mailbox.
    */
   async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
-    const { data } = await readObject(this.#privateStore, key, this.#schemas.key);
+    const { data } = await readObject(this.#privateStore, key, mailboxKeySchema);
     const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.$link), this.#transports);
     const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
     if (mailboxData.key !== hex.encode(opener.publicKey))
@@ -146,10 +114,9 @@ export class Post {
   }
 
   async #recordOutbound(mailbox: Link<EncodedObject<Json>>, bundle: Link<never>): Promise<Delivery> {
-    const schema = this.#schemas.outbound;
     const at = this.#clock();
-    const record = encodeObject(schema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ records: [record], blobs: schema.blobs });
+    const record = encodeObject(outboundSchema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
+    await this.#store.write({ records: [record], blobs: outboundSchema.blobs });
     return { direction: "outbound", bundle, mailbox, at, link: record.link };
   }
 }
@@ -269,24 +236,4 @@ export class Inbox {
     const { link, data } = await this.#intake.receive(bundle, this.#mailbox);
     return { direction: "inbound", bundle: bundle.link, mailbox: this.mailbox, at: data.at, link };
   }
-}
-
-/**
- * Makes a post that sends and receives with `store`, through `transports`,
- * and keeps the keys of the user's mailboxes in `privateStore`, beside
- * `store`.
- */
-export async function loadPost(
-  store: Store,
-  privateStore: PrivateStore,
-  { transports, validator, clock = Date.now }: PostOptions,
-): Promise<Post> {
-  const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
-    encodeSchema(schema, validator);
-  const [intake, outbound, key] = await Promise.all([
-    loadIntake(store, { validator, clock }),
-    compile<OutboundData>(outboundSchema),
-    compile<MailboxKeyData>(mailboxKeySchema),
-  ]);
-  return new Post(store, privateStore, transports, clock, validator, intake, { outbound, key });
 }

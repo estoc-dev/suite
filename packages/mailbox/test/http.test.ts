@@ -1,12 +1,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, encodeSchema, json, type Link } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { hex } from "@scure/base";
-import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
-import { loadHttpTransport } from "../src/http.ts";
-import { loadPost, MailboxKey, mailboxFrom, UndeliveredMessage } from "../src/index.ts";
+import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
+import { httpTransport as http } from "../src/http.ts";
+import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -51,14 +51,10 @@ function close(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
 }
 
-const http = await loadHttpTransport(defaultValidator);
 const options = { transports: [http] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const key = hex.encode(bob.publicKey);
-const note = await encodeSchema(
-  { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
 const take = () => requests.splice(0);
@@ -114,7 +110,7 @@ describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
     const store = new Store(json, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
-    const post = await loadPost(store, privateStore, { ...options, validator: defaultValidator });
+    const post = new Post(store, privateStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, note.bytes] });
     const outbox = await post.outbox(mailbox.link);
@@ -140,25 +136,29 @@ async function listed(store: Store): Promise<Link<unknown>[]> {
 }
 
 describe("an HTTP mailbox's url", () => {
+  const fetched = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
+  afterEach(() => vi.restoreAllMocks());
+
   it.each([
     "https://mail.example/alice",
     "http://localhost:8080/inbox",
     "http://127.0.0.1",
     "http://[::1]:8080?to=bob",
   ])("may be %s", async (url) => {
-    await expect(mailboxAt(url)).resolves.toBeDefined();
+    const fetch = fetched();
+    await (await mailboxAt(url)).send(hello, []);
+    expect(fetch.mock.calls.map(([posted]) => posted)).toEqual([url]);
   });
-
-  // Written elsewhere, since this package does not write a mailbox it would refuse.
-  const written = (url: string) => json.encode(json.object({ key, url }, http.schema.link));
 
   it.each([
     ["plain http to another machine", "http://mail.example/alice"],
     ["of another scheme", "ftp://mail.example/alice"],
     ["to a host whose name only starts as this machine's", "http://localhost.mail.example/inbox"],
     ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
-    ["not a URI", "https://mail example/alice"],
-  ])("is refused when it is %s", async (_, url) => {
-    await expect(mailboxFrom(written(url), options)).rejects.toThrow(/#\/url/);
+    ["not a URL", "https://mail example/alice"],
+  ])("turns a send back as to a mailbox that is gone when it is %s, and posts nothing", async (_, url) => {
+    const fetch = fetched();
+    expect(await rejectedAs((await mailboxAt(url)).send(hello, []))).toBe("gone");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

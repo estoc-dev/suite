@@ -14,18 +14,17 @@ Ciphertext  the HPKE encapsulated key, 32 bytes, followed by HPKE's ciphertext o
 
 ## Mailboxes
 
-Each transport writes its mailboxes to a draft 2020-12 schema of its own,
-made with `mailboxSchema`. Every mailbox has `key`, an x25519 public key as
-32 bytes in lowercase hex. The transport adds its own fields, such as a URL
-or a queue, and no other field is allowed. The title tells apart two
-transports whose fields look the same.
+Each transport writes its mailboxes to a schema of its own, made with
+`mailboxSchema`. Every mailbox has `key`, an x25519 public key as 32 bytes
+in lowercase hex. The transport adds its own fields, such as a URL or a
+queue, and a mailbox holds no other. The title tells apart two transports
+whose fields look the same.
 
 ```ts
-import { encodeSchema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
 import { mailboxSchema } from "@estoc/mailbox";
+import { string } from "@estoc/schema";
 
-const schema = await encodeSchema(mailboxSchema("Memory mailbox", { name: { type: "string" } }, ["name"]), defaultValidator);
+const schema = await mailboxSchema("Memory mailbox", { name: string() });
 ```
 
 A mailbox means: messages sealed to `key` and carried by this transport to
@@ -139,7 +138,7 @@ does no harm, as arriving twice does none.
 
 ## Through a store
 
-`loadPost` binds sending and receiving to a store of `@estoc/store`, and
+A `Post` binds sending and receiving to a store of `@estoc/store`, and
 keeps the keys of the user's mailboxes in a private store beside it. What
 is sent is taken from the store, what arrives is kept there, and each is
 recorded as an object the user writes:
@@ -156,11 +155,11 @@ there. The other two schemas are `outboundSchema` and `mailboxKeySchema`. A
 key's `secret` is 32 bytes in lowercase hex.
 
 ```ts
-import { loadPost } from "@estoc/mailbox";
+import { Post } from "@estoc/mailbox";
 import { MemoryBackend, PrivateStore } from "@estoc/store";
 
 const privateStore = new PrivateStore(store, new MemoryBackend());
-const post = await loadPost(store, privateStore, { transports: [transport], validator: defaultValidator });
+const post = new Post(store, privateStore, { transports: [transport] });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and its closure in the store
@@ -182,9 +181,9 @@ link all the same.
 
 ```ts
 import { readBundle, writeBundle } from "@estoc/bundle";
-import { loadIntake } from "@estoc/store";
+import { Intake } from "@estoc/store";
 
-const intake = await loadIntake(store, { validator: defaultValidator });
+const intake = new Intake(store);
 await intake.receive(readBundle(writeBundle({ bytes: handedOut }, transport.schema.blobs)));
 ```
 
@@ -335,7 +334,7 @@ each call, through indexes it makes once, so a program makes it once for an
 actor.
 
 ```ts
-const correspondence = await post.correspondenceAs(actor, identity);
+const correspondence = post.correspondenceAs(actor, identity);
 
 const inbox = await post.openInbox(makeMailbox);
 const signature = await correspondence.grant(theirs, [inbox.mailbox]);
@@ -404,10 +403,10 @@ as any message can be.
 ### Reading grants
 
 ```ts
-import { loadMailboxGrants } from "@estoc/mailbox";
+import { MailboxGrants } from "@estoc/mailbox";
 import { indexOverBlobs, view } from "@estoc/store";
 
-const grants = await loadMailboxGrants(defaultValidator, { signatures, signedIdentities });
+const grants = new MailboxGrants({ signatures, signedIdentities });
 const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
@@ -481,18 +480,18 @@ tests also run on one in memory, whose queues give a pickup.
 ### HTTP
 
 ```ts
-import { loadHttpTransport } from "@estoc/mailbox/http";
+import { httpTransport } from "@estoc/mailbox/http";
 
-const http = await loadHttpTransport(defaultValidator);
-const mailbox = await mailboxFrom(handedOut, { transports: [http] });
+const mailbox = await mailboxFrom(handedOut, { transports: [httpTransport] });
 ```
 
 ```
 HTTP mailbox  {"key": <x25519 public key>, "url": <URL>}
 ```
 
-The schema is titled `HTTP mailbox`. Its url starts with `https://`, or
-with `http://` to the receiver's own machine: `localhost`, `127.0.0.1` or
+The schema is titled `HTTP mailbox`, and takes any string as the url. The
+transport posts only to a url that starts with `https://`, or with
+`http://` to the receiver's own machine: `localhost`, `127.0.0.1` or
 `[::1]`, with or without a port. A ciphertext cannot be read on the way,
 but over plain http whoever is on the way sees when messages arrive and how
 large they are, and can hold them back unnoticed. On one machine, as in
@@ -502,6 +501,7 @@ development or for a daemon beside the sender, no one is on the way.
 No cookies or other credentials and no referrer go with the request, and
 nothing is sent again.
 
+- A mailbox at any other url rejects as `gone`, and nothing is posted.
 - A 2xx response means it was handed on.
 - 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other
   response as `refused`.

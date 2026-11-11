@@ -1,27 +1,32 @@
-import { encodeSchema, type JsonObject, type JsonSchemaValidator } from "@estoc/object";
+import type { JsonObject } from "@estoc/object";
+import { string } from "@estoc/schema";
 import { type Transport, UndeliveredMessage } from "./mailbox.ts";
 import { mailboxSchema } from "./schema.ts";
 
 // Plain http is for the receiver's own machine alone, as in development or
 // for a daemon beside the sender. Anywhere else, whoever is on the way would
 // see when and how much arrives, and could hold messages back unseen.
-const URL_PATTERN = "^(https://|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?([/?#]|$))";
+const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?([/?#]|$))/;
 
 /**
  * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts the ciphertext to the
  * mailbox's url.
  *
+ * - The url is https, or http to this machine. A mailbox at any other rejects as `gone`, and
+ *   nothing is posted.
  * - A 2xx response means the ciphertext was handed on.
  * - 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other response as `refused`.
  * - No response rejects as `later`, and so does a redirect.
  */
-export async function loadHttpTransport(validator: JsonSchemaValidator): Promise<Transport> {
-  const url = { type: "string", format: "uri", pattern: URL_PATTERN };
-  return { schema: await encodeSchema(mailboxSchema("HTTP mailbox", { url }, ["url"]), validator), deliver };
-}
+export const httpTransport = {
+  schema: await mailboxSchema("HTTP mailbox", { url: string() }),
+  deliver,
+} satisfies Transport;
 
 async function deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void> {
   const { url } = mailbox as { readonly url: string };
+  if (!allowedUrl.test(url) || !URL.canParse(url))
+    throw new UndeliveredMessage("gone", "an HTTP mailbox is at an https url, or an http url of this machine");
   let response: Response;
   try {
     response = await fetch(url, {

@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@estoc/object": "workspace:*"
+    "@estoc/object": "workspace:*",
+    "@estoc/schema": "workspace:*"
   },
   "devDependencies": {
     "@estoc/store": "workspace:*",

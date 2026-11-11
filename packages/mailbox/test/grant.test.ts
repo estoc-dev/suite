@@ -12,19 +12,9 @@ import {
   SoftwareSigner,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-import {
-  type Intake,
-  indexOverBlobs,
-  loadIntake,
-  MemoryBackend,
-  PrivateStore,
-  Store,
-  type View,
-  view,
-} from "@estoc/store";
+import { Intake, indexOverBlobs, MemoryBackend, PrivateStore, Store, type View, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
-import { type Inbox, loadMailboxGrants, loadPost, type Post } from "../src/index.ts";
+import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
@@ -35,12 +25,12 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const identity = await loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
-const grants = await loadMailboxGrants(defaultValidator, identity);
+const grants = new MailboxGrants(identity);
 const seenPeople: View<IdentityVersion, People> = {
   index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
-const network = await MemoryNetwork.create(defaultValidator);
+const network = await MemoryNetwork.create();
 
 interface Person {
   readonly actor: Actor;
@@ -59,8 +49,8 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
   const store = new Store(json, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
-  const post = await loadPost(store, privateStore, { transports: [network.transport], validator: defaultValidator });
-  const intake = await loadIntake(store, { validator: defaultValidator });
+  const post = new Post(store, privateStore, { transports: [network.transport] });
+  const intake = new Intake(store);
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));

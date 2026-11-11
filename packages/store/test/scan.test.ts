@@ -3,7 +3,6 @@ import {
   encodeObject,
   encodeSchema,
   type Json,
-  type JsonSchema,
   json,
   type Link,
   linkOf,
@@ -13,7 +12,17 @@ import {
   type Selection,
   SelectionBySchema,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import {
+  array,
+  type DataOf,
+  integer,
+  link,
+  optional,
+  type SchemaDocument,
+  schema,
+  schemaValidator,
+  string,
+} from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
   type Backend,
@@ -28,11 +37,22 @@ import {
   scan,
 } from "../src/index.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const schemaTitled = (title: string) => encodeSchema({ $schema: DRAFT, title }, defaultValidator);
-const [note, tag] = await Promise.all([schemaTitled("Note"), schemaTitled("Tag")]);
+// Every field these tests write, each optional, so that a note or a tag holds any of them.
+const fields = {
+  keys: optional(array(array(string()))),
+  name: optional(string()),
+  n: optional(integer()),
+  number: optional(string()),
+  of: optional(link()),
+  attachments: optional(array(link())),
+  card: optional(link()),
+  about: optional(link()),
+  shared: optional(link()),
+};
+const [note, tag] = await Promise.all([schema("Note", fields), schema("Tag", fields)]);
+type Entry = DataOf<typeof note>;
 const schemas = [note, tag].flatMap(({ blobs }) => blobs);
-const keysOf = ({ data }: { readonly data: Json }) => (data as { keys: Key[] }).keys;
+const keysOf = ({ data }: { readonly data: Entry }) => data.keys ?? [];
 
 const byKeys: Index<Key> = indexOver(objectsOf(note), keysOf);
 
@@ -86,9 +106,12 @@ describe("an index scanned from a store", () => {
 
   it("gives the rows that start with a prefix, a key before longer ones and a number before a string", async () => {
     const store = new Store(json, new MemoryBackend());
-    const keys = [["b", 2], ["a", "x"], ["a", 10], ["a", 9], ["a"], [1], ["ab"]];
-    await store.write({ records: [encodeObject(note, { keys })], blobs: schemas });
-    const rows = await scan(store, byKeys);
+    const keys: Key[] = [["b", 2], ["a", "x"], ["a", 10], ["a", 9], ["a"], [1], ["ab"]];
+    await store.write({ records: [encodeObject(note, {})], blobs: schemas });
+    const rows = await scan(
+      store,
+      indexOver(objectsOf(note), () => keys),
+    );
     expect(await whole(rows)).toEqual([[1], ["a"], ["a", 9], ["a", 10], ["a", "x"], ["ab"], ["b", 2]]);
     expect(await all(rows.range(["a"]))).toEqual([["a"], ["a", 9], ["a", 10], ["a", "x"]]);
     expect(await all(rows.range(["a", 10]))).toEqual([["a", 10]]);
@@ -97,7 +120,7 @@ describe("an index scanned from a store", () => {
 
   it("takes as a prefix any start of its keys, of the types they hold there", async () => {
     type Path = readonly [namespace: string, ...path: string[]];
-    const paths: Index<Path> = indexOver(objectsOf(note), ({ data }) => (data as { keys: Path[] }).keys);
+    const paths: Index<Path> = indexOver(objectsOf(note), ({ data }) => (data.keys ?? []) as Path[]);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { keys: [["notes", "a", "b"], ["tags", "a"], ["notes"]] })],
@@ -152,9 +175,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("holds no rows of a record that its selection leaves out", async () => {
-    const namedNotes = new SelectionBySchema(note, ({ data }) =>
-      typeof data.name === "string" ? data.name : undefined,
-    );
+    const namedNotes = new SelectionBySchema(note, ({ data }) => data.name);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { name: "a" }), encodeObject(note, { keys: [] })],
@@ -171,7 +192,7 @@ describe("an index scanned from a store", () => {
   });
 
   it("takes records of several schemas in one selection", async () => {
-    const noteOrTag: Selection<{ readonly data: Json }> = {
+    const noteOrTag: Selection<{ readonly data: Entry }> = {
       async read(record, reader) {
         return (await objectsOf(note).read(record, reader)) ?? (await objectsOf(tag).read(record, reader));
       },
@@ -185,9 +206,10 @@ describe("an index scanned from a store", () => {
   });
 
   it("hands each of two selections that take one record what that selection reads it as", async () => {
-    const fieldOf = (field: string) => new SelectionBySchema(note, ({ data }) => data[field]);
-    const names: Index<Key> = indexOver(fieldOf("name"), (name) => [["name", name as string]]);
-    const counts: Index<Key> = indexOver(fieldOf("n"), (n) => [["n", n as number]]);
+    const names: Index<Key> = indexOver(new SelectionBySchema(note, ({ data }) => data.name), (name) => [
+      ["name", name],
+    ]);
+    const counts: Index<Key> = indexOver(new SelectionBySchema(note, ({ data }) => data.n), (n) => [["n", n]]);
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, { name: "a", n: 1 })], blobs: schemas });
     expect(await whole(await scan(store, names.union(counts)))).toEqual([
@@ -197,10 +219,8 @@ describe("an index scanned from a store", () => {
   });
 
   it("gives the rows of a selection by schema that it gives of a selection reading each record as that one does", async () => {
-    const namedNotes = new SelectionBySchema(note, ({ data }) =>
-      typeof data.name === "string" ? data.name : undefined,
-    );
-    const namedTags = new SelectionBySchema(tag, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const namedNotes = new SelectionBySchema(note, ({ data }) => data.name);
+    const namedTags = new SelectionBySchema(tag, ({ data }) => data.name);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(note, { name: "a" }), encodeObject(note, {}), encodeObject(tag, { name: "b" })],
@@ -219,17 +239,17 @@ describe("an index scanned from a store", () => {
 
   it("validates a record once against each schema of the selections by schema that read it", async () => {
     const validationNames: string[] = [];
-    const validatorNoting = (name: string): SchemaValidator<Json, JsonSchema> => ({
-      language: defaultValidator.language,
-      async compile(schema) {
-        const check = await defaultValidator.compile(schema);
+    const validatorNoting = (name: string): SchemaValidator<Json, SchemaDocument> => ({
+      language: schemaValidator.language,
+      async compile(document) {
+        const check = await schemaValidator.compile(document);
         return (data) => {
           validationNames.push(name);
           return check(data);
         };
       },
     });
-    const noteSchemaNoting = (name: string) => encodeSchema({ $schema: DRAFT, title: "Note" }, validatorNoting(name));
+    const noteSchemaNoting = (name: string) => encodeSchema({ title: "Note", fields }, validatorNoting(name));
     const [strict, lax] = await Promise.all([noteSchemaNoting("strict"), noteSchemaNoting("lax")]);
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, {})], blobs: schemas });
@@ -251,8 +271,8 @@ describe("an index scanned from a store", () => {
     });
     const requestedLinks: Link<unknown>[] = [];
     const cardName = new SelectionBySchema(note, async ({ data }, reader) => {
-      const { card } = data as { card: { $link: Link<unknown> } };
-      return (await readObject(reader, card.$link, tag)).data.name as string;
+      if (data.card === undefined) return undefined;
+      return (await readObject(reader, data.card.$link, tag)).data.name;
     });
     const nameAs = (key: string, selection: Selection<string>) => indexOver(selection, (name) => [[key, name]]);
     const rows = await scan(
@@ -313,9 +333,9 @@ describe("an index whose rows give none of what does not read as they expect", (
   const about = encodeObject(note, { keys: [["a"]] });
   const record = encodeObject(note, { about: { $link: about.link } });
   const byAbout: Index<Key> = indexOver(objectsOf(note), async function* ({ data }, reader) {
-    const { about } = data as { about?: { $link: Link<unknown> } };
+    const { about } = data;
     if (about === undefined) return;
-    let keys: Key[];
+    let keys: readonly Key[];
     try {
       keys = keysOf(await readObject(reader, about.$link, note));
     } catch {
@@ -443,7 +463,7 @@ describe("an index scanned again from a store", () => {
 describe("an index over blobs", () => {
   const byTagKeys: Index<Key> = indexOverBlobs(objectsOf(tag), keysOf);
   const carrying = (...blobs: readonly Uint8Array[]) =>
-    encodeObject(note, { of: blobs.map((blob) => ({ $link: linkOf(blob) })) });
+    encodeObject(note, { attachments: blobs.map((blob) => ({ $link: linkOf(blob) })) });
 
   it("holds the rows of a blob of its schema that no record is, however deep in a record's closure", async () => {
     const deep = encodeObject(tag, { keys: [["deep"]] });
@@ -473,7 +493,7 @@ describe("an index over blobs", () => {
   });
 
   it("holds no rows of what its selection leaves out", async () => {
-    const named = new SelectionBySchema(tag, ({ data }) => (typeof data.name === "string" ? data.name : undefined));
+    const named = new SelectionBySchema(tag, ({ data }) => data.name);
     const store = new Store(json, new MemoryBackend());
     await store.write({
       records: [encodeObject(tag, { name: "a" }), encodeObject(tag, {})],
@@ -502,10 +522,10 @@ describe("an index over blobs", () => {
   });
 
   it("passes over a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
-    const document = { $schema: DRAFT, title: "Named", required: ["name"] };
-    const strict = await encodeSchema(document, defaultValidator);
-    const lax = await encodeSchema(document, {
-      language: defaultValidator.language,
+    const document = { title: "Named", fields: { name: string(), keys: array(array(string())) } };
+    const strict = await encodeSchema<Json, SchemaDocument, Entry>(document, schemaValidator);
+    const lax = await encodeSchema<Json, SchemaDocument, Entry>(document, {
+      language: schemaValidator.language,
       compile: async () => () => [],
     });
     const misfit = encodeObject(lax, { keys: [["misfit"]] });
@@ -524,7 +544,7 @@ describe("an index over blobs", () => {
       encodeObject(tag, { keys: [["unreadable"]] }),
       encodeObject(tag, { keys: [["a"]] }),
     ];
-    const readableKeysOf = (object: { readonly data: Json }) => {
+    const readableKeysOf = (object: { readonly data: Entry }) => {
       const keys = keysOf(object);
       if (keys[0]?.[0] === "unreadable") throw new Error("does not read");
       return keys;
@@ -609,7 +629,7 @@ describe("an index over blobs", () => {
       expect(await whole(await scan(store, byTagKeys))).toEqual([["nested"], ["other"], ["reaching"]]);
     });
 
-    const linkedFrom = (data: Json) => (data as { of?: { $link: Link<unknown> } }).of?.$link;
+    const linkedFrom = (data: Entry) => data.of?.$link;
 
     it.each<[string, Index<Key>]>([
       [

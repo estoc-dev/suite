@@ -40,8 +40,7 @@ meaning and no reader an advantage.
   validators; JSON and JSON Schema as the pair in use.
 - `@estoc/schema`: a schema language over JSON in which a schema is a
   title and fields of six types, so that what fits one is the same to
-  every validator. `@estoc/identity` writes its schemas in it, and the
-  other packages below are yet to move to it.
+  every validator. The packages below write their schemas in it.
 - `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
   object as the way in, and packed to travel between programs.
 - `@estoc/store`: the objects a user writes, and the blobs that come with

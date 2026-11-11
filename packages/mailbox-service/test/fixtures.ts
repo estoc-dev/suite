@@ -10,31 +10,10 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
-import { encodeObject, encodeSchema, type Json, json, type Schema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
-import {
-  type AccountOfferData,
-  type AcknowledgementData,
-  accountOfferSchema,
-  acknowledgementSchema,
-  type MailboxAcknowledgementData,
-  type MailboxOfferData,
-  type MailboxRequestData,
-  type MailboxTerms,
-  mailboxAcknowledgementSchema,
-  mailboxOfferSchema,
-  mailboxRequestSchema,
-  type OriginData,
-  originSchema,
-  type PickupAnswerData,
-  type PickupRequestData,
-  pickupAnswerSchema,
-  pickupRequestSchema,
-  type ServiceData,
-  serviceSchema,
-} from "../src/index.ts";
+import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
 import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
@@ -52,34 +31,6 @@ export async function makeTemporaryPath(): Promise<string> {
 export const { keys, identities, signedIdentities, identityVersions, signatures, publish } =
   await loadIdentity(schemes);
 export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, { at: 0 }));
-export const serviceSchemaRead: Schema<Json, ServiceData> = await encodeSchema(serviceSchema, defaultValidator);
-export const offerSchema: Schema<Json, AccountOfferData> = await encodeSchema(accountOfferSchema, defaultValidator);
-export const acknowledgementSchemaRead: Schema<Json, AcknowledgementData> = await encodeSchema(
-  acknowledgementSchema,
-  defaultValidator,
-);
-export const mailboxOfferSchemaRead: Schema<Json, MailboxOfferData> = await encodeSchema(
-  mailboxOfferSchema,
-  defaultValidator,
-);
-export const mailboxRequestSchemaRead: Schema<Json, MailboxRequestData> = await encodeSchema(
-  mailboxRequestSchema,
-  defaultValidator,
-);
-export const mailboxAcknowledgementSchemaRead: Schema<Json, MailboxAcknowledgementData> = await encodeSchema(
-  mailboxAcknowledgementSchema,
-  defaultValidator,
-);
-export const pickupRequestSchemaRead: Schema<Json, PickupRequestData> = await encodeSchema(
-  pickupRequestSchema,
-  defaultValidator,
-);
-export const pickupAnswerSchemaRead: Schema<Json, PickupAnswerData> = await encodeSchema(
-  pickupAnswerSchema,
-  defaultValidator,
-);
-export const originSchemaRead: Schema<Json, OriginData> = await encodeSchema(originSchema, defaultValidator);
-
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 
 export const serviceSigner = signer(ed25519, 9);
@@ -122,7 +73,6 @@ export async function memoryService({
     accounts,
     mailboxes,
     terms: offeredTerms,
-    validator: defaultValidator,
     schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
@@ -138,7 +88,7 @@ export async function signedAtOrigins(service: ServiceData, origins: readonly st
   const actor = await serviceActor(1_000);
   const signedServices = await Promise.all(
     origins.map(async (origin) => {
-      const object = encodeObject(serviceSchemaRead, { ...service, origin });
+      const object = encodeObject(serviceSchema, { ...service, origin });
       return { object, signature: await actor.sign(object) };
     }),
   );

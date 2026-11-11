@@ -1,16 +1,23 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner, schemeSchema } from "@estoc/identity";
-import { encodeObject, encodeSchema, type JsonObject, json, jsonSchema, type Link, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link, linkOf } from "@estoc/object";
+import { array, type DataOf, link, optional, schema, schemaRoot, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+// Every field these tests write, each optional, so that one schema takes all their objects.
+const anything = await schema("Anything", {
+  text: optional(string()),
+  hash: optional(string()),
+  image: optional(link()),
+  inner: optional(link()),
+  received: optional(link()),
+  attachments: optional(array(link())),
+});
 const { identities, signatures, publish } = await loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: JsonObject) => encodeObject(anything, data);
+const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 const newStore = (backend: Backend = new MemoryBackend()) => new Store(json, backend);
 
@@ -113,7 +120,7 @@ describe("a store", () => {
     await expect(store.write({ records: [note], blobs: [carriedObject.bytes, ...anything.blobs] })).rejects.toThrow(
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
-    const unheldSchema = await encodeSchema({ $schema: DRAFT, title: "Unheld" }, defaultValidator);
+    const unheldSchema = await schema("Unheld", { text: string() });
     const writtenRecord = encodeObject(unheldSchema, { text: "hello" });
     await expect(store.write({ records: [writtenRecord] })).rejects.toThrow(
       `${writtenRecord.link} links to ${unheldSchema.link}`,
@@ -172,7 +179,7 @@ describe("a store", () => {
     await store.write({ records: [commitment], blobs: anything.blobs });
     expect(await recordsOf(store)).toEqual([commitment.link]);
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual(
-      [commitment.link, anything.link, jsonSchema.link].sort(),
+      [commitment.link, anything.link, schemaRoot.link].sort(),
     );
   });
 
@@ -193,7 +200,7 @@ describe("a store", () => {
     const inner = object({ image: { $link: linkOf(image) } });
     const outer = object({ inner: { $link: inner.link } });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
-    expect(order).toEqual([jsonSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
+    expect(order).toEqual([schemaRoot.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
 
   it("gives where it took in each blob, after the blobs it links to, and keeps it when the blob is written again", async () => {
@@ -203,7 +210,7 @@ describe("a store", () => {
     const outer = object({ inner: { $link: inner.link } });
     await store.write({ records: [inner], blobs: [image, ...anything.blobs] });
     await store.write({ records: [outer, inner], blobs: [image] });
-    const links = [jsonSchema.link, anything.link, linkOf(image), inner.link, outer.link];
+    const links = [schemaRoot.link, anything.link, linkOf(image), inner.link, outer.link];
     expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
     expect(await store.positionOf(linkOf(utf8("never written")))).toBeUndefined();
   });
@@ -229,7 +236,7 @@ describe("the closure of a blob", () => {
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
-      [outer.link, inner.link, linkOf(image), anything.link, jsonSchema.link].sort(),
+      [outer.link, inner.link, linkOf(image), anything.link, schemaRoot.link].sort(),
     );
     expect(closure.get(inner.link)).toEqual(inner.bytes);
   });
@@ -241,13 +248,13 @@ describe("the closure of a blob", () => {
       utf8(`see ${target.link}`),
       utf8(` ${JSON.stringify([{ $link: target.link }])}`),
       json.encode([{ $link: target.link }]),
-      json.encode({ $schema: DRAFT, properties: { target: { $link: target.link } } }),
+      json.encode({ $schema: "not a link", target: { $link: target.link } }),
     ];
     const outer = object({ attachments: bytes.map((blob) => ({ $link: linkOf(blob) })) });
     await store.write({ records: [outer], blobs: [...bytes, target.bytes, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
-      [outer.link, ...bytes.map((blob) => linkOf(blob)), anything.link, jsonSchema.link].sort(),
+      [outer.link, ...bytes.map((blob) => linkOf(blob)), anything.link, schemaRoot.link].sort(),
     );
     expect(await store.get(target.link)).toBeUndefined();
   });

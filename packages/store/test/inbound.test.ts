@@ -1,34 +1,28 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
-import {
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type JsonObject,
-  json,
-  type Link,
-  linkOf,
-  objectsOf,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, type JsonObject, json, type Link, linkOf, objectsOf } from "@estoc/object";
+import { type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
-  type InboundData,
   type Index,
+  Intake,
   inboundSchema,
   indexOver,
-  loadIntake,
   MemoryBackend,
   RefusedBatch,
   Store,
   scan,
 } from "../src/index.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
-const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
+// Every field these tests write, each optional, so that one schema takes all their objects.
+const anything = await schema("Anything", {
+  text: optional(string()),
+  name: optional(string()),
+  image: optional(link()),
+  icon: optional(link()),
+  to: optional(link()),
+});
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: JsonObject) => encodeObject(anything, data);
+const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 const bundleOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array> = anything.blobs) =>
   readBundle(writeBundle(root, blobs));
 
@@ -37,7 +31,7 @@ const ticking = (start = 1000) => {
   let at = start;
   return () => at++;
 };
-const intakeOf = (store: Store, clock = ticking()) => loadIntake(store, { validator: defaultValidator, clock });
+const intakeOf = (store: Store, clock = ticking()) => new Intake(store, clock);
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -46,25 +40,24 @@ async function recordsOf(store: Store): Promise<Link<unknown>[]> {
 }
 
 describe("inboundSchema", () => {
-  const link = { $link: linkOf(utf8("a blob")) };
+  const blob = { $link: linkOf(utf8("a blob")) };
 
   it.each<[string, JsonObject]>([
-    ["without via", { bundle: link, at: 0 }],
-    ["with via", { bundle: link, at: 0, via: link }],
+    ["without via", { bundle: blob, at: 0 }],
+    ["with via", { bundle: blob, at: 0, via: blob }],
   ])("takes a record %s", (_, data) => {
-    expect(() => inbound.validate(data)).not.toThrow();
+    expect(() => inboundSchema.validate(data)).not.toThrow();
   });
 
   it.each<[string, JsonObject]>([
     ["without a bundle", { at: 0 }],
-    ["without at", { bundle: link }],
+    ["without at", { bundle: blob }],
     ["whose bundle is not a link", { bundle: "a blob", at: 0 }],
-    ["whose via is not a link", { bundle: link, at: 0, via: "a mailbox" }],
-    ["whose at is before the epoch", { bundle: link, at: -1 }],
-    ["whose at is not whole milliseconds", { bundle: link, at: 0.5 }],
-    ["with a field it does not name", { bundle: link, at: 0, mailbox: link }],
+    ["whose via is not a link", { bundle: blob, at: 0, via: "a mailbox" }],
+    ["whose at is not whole milliseconds", { bundle: blob, at: 0.5 }],
+    ["with a field it does not name", { bundle: blob, at: 0, mailbox: blob }],
   ])("refuses a record %s", (_, data) => {
-    expect(() => inbound.validate(data)).toThrow();
+    expect(() => inboundSchema.validate(data)).toThrow();
   });
 });
 
@@ -73,20 +66,20 @@ describe("an intake", () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ image: { $link: linkOf(image) } });
-    const record = await (await intakeOf(store)).receive(bundleOf(note, [image, ...anything.blobs]));
+    const record = await intakeOf(store).receive(bundleOf(note, [image, ...anything.blobs]));
     expect(record.data).toEqual({ bundle: { $link: note.link }, at: 1000 });
     expect(await recordsOf(store)).toEqual([record.link]);
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
-    expect(await store.get(inbound.link)).toEqual(inbound.bytes);
+    expect(await store.get(inboundSchema.link)).toEqual(inboundSchema.bytes);
   });
 
   it("keeps the channel a bundle came in by with its schema, and gives it as via", async () => {
     const store = newStore();
-    const channel = await encodeSchema({ $schema: DRAFT, title: "Channel" }, defaultValidator);
+    const channel = await schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
-    const record = await (await intakeOf(store)).receive(bundleOf(note), mailbox);
+    const record = await intakeOf(store).receive(bundleOf(note), mailbox);
     expect(record.data).toEqual({ bundle: { $link: note.link }, at: 1000, via: { $link: mailbox.link } });
     expect(await recordsOf(store)).toEqual([record.link]);
     expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
@@ -95,7 +88,7 @@ describe("an intake", () => {
 
   it("takes the time from Date.now unless given a clock", async () => {
     const before = Date.now();
-    const intake = await loadIntake(newStore(), { validator: defaultValidator });
+    const intake = new Intake(newStore());
     const { data } = await intake.receive(bundleOf(object({ text: "hello" })));
     expect(data.at).toBeGreaterThanOrEqual(before);
     expect(data.at).toBeLessThanOrEqual(Date.now());
@@ -103,7 +96,7 @@ describe("an intake", () => {
 
   it("records a bundle once for each time it comes in", async () => {
     const store = newStore();
-    const intake = await intakeOf(store);
+    const intake = intakeOf(store);
     const bundle = bundleOf(object({ text: "hello" }));
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
@@ -116,7 +109,7 @@ describe("an intake", () => {
     const heldNote = object({ text: "held" });
     await store.write({ records: [heldNote], blobs: anything.blobs });
     const reply = object({ to: { $link: heldNote.link } });
-    await (await intakeOf(store)).receive(bundleOf(reply, []));
+    await intakeOf(store).receive(bundleOf(reply, []));
     expect(await store.get(reply.link)).toEqual(reply.bytes);
   });
 
@@ -124,7 +117,7 @@ describe("an intake", () => {
     const store = newStore();
     const missing = utf8("not in the bundle");
     const note = object({ image: { $link: linkOf(missing) } });
-    const intake = await intakeOf(store);
+    const intake = intakeOf(store);
     await expect(intake.receive(bundleOf(note))).rejects.toThrow(RefusedBatch);
     expect(await recordsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
@@ -134,7 +127,7 @@ describe("an intake", () => {
     const store = newStore();
     const mailbox = object({ name: "a mailbox", icon: { $link: linkOf(utf8("not in the bundle")) } });
     const note = object({ text: "hello" });
-    const intake = await intakeOf(store);
+    const intake = intakeOf(store);
     await expect(intake.receive(bundleOf(note), mailbox)).rejects.toThrow(RefusedBatch);
     expect(await recordsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
@@ -143,13 +136,13 @@ describe("an intake", () => {
 });
 
 describe("the records of an intake", () => {
-  const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(objectsOf(inbound), ({ data }) => [
+  const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(objectsOf(inboundSchema), ({ data }) => [
     [data.bundle.$link, data.at],
   ]);
 
   it("give an index when each bundle came in, the earliest first", async () => {
     const store = newStore();
-    const intake = await intakeOf(store);
+    const intake = intakeOf(store);
     const bundle = bundleOf(object({ text: "hello" }));
     await intake.receive(bundle);
     await intake.receive(bundle);
@@ -164,8 +157,8 @@ describe("the records of an intake", () => {
   it("are the only Inbound an index reads: one that someone sends stays in the closure of what came in", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const sentRecord = encodeObject(inbound, { bundle: { $link: note.link as Link<never> }, at: 0 });
-    await (await intakeOf(store)).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inbound.blobs]));
+    const sentRecord = encodeObject(inboundSchema, { bundle: { $link: note.link as Link<never> }, at: 0 });
+    await intakeOf(store).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
     const rows: (readonly [Link<never>, number])[] = [];
     for await (const row of (await scan(store, cameIn)).range([])) rows.push(row);
     expect(rows).toEqual([[sentRecord.link as Link<never>, 1000]]);

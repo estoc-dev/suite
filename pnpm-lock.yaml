@@ -79,6 +79,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@estoc/store':
         specifier: workspace:*
@@ -104,6 +107,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@estoc/store':
         specifier: workspace:*
         version: link:../store
@@ -138,6 +144,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@estoc/store':
         specifier: workspace:*
         version: link:../store
@@ -201,6 +210,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@estoc/bundle':
         specifier: workspace:*

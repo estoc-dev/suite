@@ -1,21 +1,18 @@
-import {
-  encodeObject,
-  encodeSchema,
-  type JsonObject,
-  json,
-  type Link,
-  linkOf,
-  objectsOf,
-  readObject,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
+import { bytes, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+// Every field these tests write, each optional, so that one schema takes all their objects.
+const anything = await schema("Anything", {
+  name: optional(string()),
+  card: optional(link()),
+  image: optional(link()),
+  secret: optional(bytes()),
+  leak: optional(link()),
+});
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: JsonObject) => encodeObject(anything, data);
+const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
   const store = new Store(json, sharedBackend);
@@ -120,9 +117,9 @@ describe("a private store", () => {
     await store.write({ records: [card], blobs: anything.blobs });
     await privateStore.write({ records: [object({ card: { $link: card.link } })] });
     const byName: Index<[name: string]> = indexOver(objectsOf(anything), async function* ({ data }, reader) {
-      const { card } = data as { card: { $link: Link<unknown> } };
-      const { name } = (await readObject(reader, card.$link, anything)).data as { name: string };
-      yield [name];
+      if (data.card === undefined) return;
+      const { name } = (await readObject(reader, data.card.$link, anything)).data;
+      if (name !== undefined) yield [name];
     });
     const rows: (readonly [string])[] = [];
     for await (const row of (await scan(privateStore, byName)).range([])) rows.push(row);
@@ -146,7 +143,7 @@ describe("the store beside a private store", () => {
     const { store, privateStore } = sides();
     const secret = object({ secret: "00" });
     await privateStore.write({ records: [secret], blobs: anything.blobs });
-    const leak = object({ secret: { $link: secret.link } });
+    const leak = object({ leak: { $link: secret.link } });
     await expect(store.write({ records: [leak], blobs: anything.blobs })).rejects.toThrow(
       `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,
     );

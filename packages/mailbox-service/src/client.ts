@@ -10,18 +10,15 @@ import {
   type SignedIdentityObject,
 } from "@estoc/identity";
 import type { Arrival, Pickup } from "@estoc/mailbox";
-import { loadHttpTransport } from "@estoc/mailbox/http";
+import { httpTransport } from "@estoc/mailbox/http";
 import {
   type Bytes,
   decodeObject,
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Fields,
   type Json,
   type JsonLink,
-  type JsonSchema,
-  type JsonSchemaValidator,
   json,
   type Link,
   linkOf,
@@ -29,7 +26,8 @@ import {
   type Schema,
   schemaOf,
 } from "@estoc/object";
-import { type Intake, loadIntake, type Store, view } from "@estoc/store";
+import type { DataOf } from "@estoc/schema";
+import { Intake, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { PICKUP, readBody, ZIP } from "./http.ts";
@@ -37,25 +35,18 @@ import { type LocationsView, locationsView } from "./locations.ts";
 import { type PeopleView, peopleView } from "./people.ts";
 import {
   type AccountOfferData,
-  type AcknowledgementData,
   accountOfferSchema,
   acknowledgementSchema,
-  type MailboxAcknowledgementData,
   type MailboxOfferData,
-  type MailboxRequestData,
   type MailboxTerms,
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
-  type OpenedMailboxData,
   type OriginData,
   openedMailboxSchema,
   originSchema,
-  type PickupAnswerData,
-  type PickupRequestData,
   pickupAnswerSchema,
   pickupRequestSchema,
-  type ServiceData,
   serviceSchema,
 } from "./schemas.ts";
 
@@ -73,22 +64,7 @@ const REQUEST = {
   referrerPolicy: "no-referrer",
 } as const satisfies RequestInit;
 
-type HttpMailboxData = { readonly key: string; readonly url: string };
-
-type Schemas = {
-  readonly service: Schema<Json, ServiceData>;
-  readonly offer: Schema<Json, AccountOfferData>;
-  readonly acknowledgement: Schema<Json, AcknowledgementData>;
-  readonly mailboxOffer: Schema<Json, MailboxOfferData>;
-  readonly mailboxRequest: Schema<Json, MailboxRequestData>;
-  readonly mailboxAcknowledgement: Schema<Json, MailboxAcknowledgementData>;
-  readonly openedMailbox: Schema<Json, OpenedMailboxData>;
-  readonly pickupRequest: Schema<Json, PickupRequestData>;
-  readonly pickupAnswer: Schema<Json, PickupAnswerData>;
-  readonly origin: Schema<Json, OriginData>;
-  /** The schema of the HTTP mailboxes of `@estoc/mailbox`, which senders post to. */
-  readonly http: Schema<Json, HttpMailboxData>;
-};
+type HttpMailboxData = DataOf<typeof httpTransport.schema>;
 
 /**
  * What an offer of a service's posts with. Its `origin` is where the offer
@@ -130,25 +106,22 @@ export interface Service {
   readonly mailbox: MailboxOffer | undefined;
 }
 
-/** A service's offer of an account, taken at the id that the Service lists for it. */
+/** A service's offer of an account, taken at its id, which is its link. */
 export class AccountOffer {
   /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
   readonly service: SignedIdentityObject;
   readonly link: Link<EncodedObject<Json, AccountOfferData>>;
   readonly #url: URL;
   readonly #posting: Posting;
-  readonly #acknowledgementSchema: Schema<Json, AcknowledgementData>;
 
   constructor(
     { service, offer, url }: { readonly service: SignedIdentityObject; readonly offer: Link<never>; readonly url: URL },
     posting: Posting,
-    acknowledgement: Schema<Json, AcknowledgementData>,
   ) {
     this.service = service;
     this.link = offer;
     this.#url = url;
     this.#posting = posting;
-    this.#acknowledgementSchema = acknowledgement;
   }
 
   /**
@@ -168,7 +141,7 @@ export class AccountOffer {
     // The service holds the offer and the signature schema, so they are left out.
     const acceptance = await actor.sign({ link: this.link });
     const { signature, data } = await post(
-      { url: this.#url, service: this.service, schema: this.#acknowledgementSchema, field: "acceptance" },
+      { url: this.#url, service: this.service, schema: acknowledgementSchema, field: "acceptance" },
       acceptance,
       [],
       this.#posting,
@@ -184,7 +157,7 @@ export class AccountOffer {
 
 /**
  * A service's offer of mailboxes under an account there, on its terms,
- * taken at the id that the Service lists for it.
+ * taken at its id, which is its link.
  */
 export class MailboxOffer {
   /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
@@ -193,7 +166,6 @@ export class MailboxOffer {
   readonly terms: MailboxTerms;
   readonly #url: URL;
   readonly #posting: Posting;
-  readonly #schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "openedMailbox" | "http">;
 
   constructor(
     {
@@ -206,7 +178,6 @@ export class MailboxOffer {
       readonly url: URL;
     },
     posting: Posting,
-    schemas: Pick<Schemas, "mailboxRequest" | "mailboxAcknowledgement" | "openedMailbox" | "http">,
   ) {
     const { identity: _, ...terms } = offer.data;
     this.service = service;
@@ -214,7 +185,6 @@ export class MailboxOffer {
     this.terms = terms;
     this.#url = url;
     this.#posting = posting;
-    this.#schemas = schemas;
   }
 
   /**
@@ -235,20 +205,20 @@ export class MailboxOffer {
    *   is of another signature. Nothing is written then.
    */
   async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<Json, HttpMailboxData>> {
-    const request = encodeObject(this.#schemas.mailboxRequest, { offer: { $link: this.link }, key: hex.encode(key) });
+    const request = encodeObject(mailboxRequestSchema, { offer: { $link: this.link }, key: hex.encode(key) });
     // The service holds the offer and the schemas, so they are left out.
     const signature = await actor.sign(request);
     const { signature: acknowledgement, data } = await post(
-      { url: this.#url, service: this.service, schema: this.#schemas.mailboxAcknowledgement, field: "request" },
+      { url: this.#url, service: this.service, schema: mailboxAcknowledgementSchema, field: "request" },
       signature,
       [request.bytes],
       this.#posting,
     );
-    const mailbox = encodeObject(this.#schemas.http, {
+    const mailbox = encodeObject(httpTransport.schema, {
       key: hex.encode(key),
       url: new URL(`/${data.sendId}`, this.#url.origin).href,
     });
-    const openedMailbox = encodeObject(this.#schemas.openedMailbox, {
+    const openedMailbox = encodeObject(openedMailboxSchema, {
       mailbox: { $link: mailbox.link },
       acknowledgement: { $link: acknowledgement.link },
     });
@@ -313,7 +283,6 @@ class ServicePickup implements Pickup {
   readonly #url: URL;
   readonly #actor: Actor;
   readonly #limit: number;
-  readonly #schemas: Pick<Schemas, "pickupRequest" | "pickupAnswer">;
 
   constructor(
     target: {
@@ -323,7 +292,6 @@ class ServicePickup implements Pickup {
       readonly size: number;
     },
     actor: Actor,
-    schemas: Pick<Schemas, "pickupRequest" | "pickupAnswer">,
   ) {
     this.mailbox = target.mailbox;
     this.#request = target.request;
@@ -331,7 +299,6 @@ class ServicePickup implements Pickup {
     this.#actor = actor;
     // Room for the Pickup answer at the root, and for the zip around the ciphertexts.
     this.#limit = Math.max(PICKUP.bytes, target.size) + 64 * 1024;
-    this.#schemas = schemas;
   }
 
   /**
@@ -367,7 +334,7 @@ class ServicePickup implements Pickup {
   }
 
   async #pickUp(receipts: readonly Link<Uint8Array>[], signal: AbortSignal | undefined): Promise<Uint8Array[]> {
-    const request = encodeObject(this.#schemas.pickupRequest, {
+    const request = encodeObject(pickupRequestSchema, {
       mailbox: { $link: this.#request },
       receipts: receipts.map(($link) => ({ $link })),
     });
@@ -375,7 +342,7 @@ class ServicePickup implements Pickup {
     const body = await packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
     const init = { ...REQUEST, method: "POST", headers: { "content-type": ZIP }, body, signal: signal ?? null };
     const answer = await bundleIn(await fetch(this.#url, init), [200], this.#limit);
-    const { ciphertexts } = decodeObject(answer.root, this.#schemas.pickupAnswer).data;
+    const { ciphertexts } = decodeObject(answer.root, pickupAnswerSchema).data;
     return ciphertexts.map(({ $link }) => {
       const bytes = answer.get($link);
       if (bytes === undefined) throw new Error(`the service's answer lists ${$link} and does not hold it`);
@@ -399,18 +366,16 @@ export class Services {
   readonly #store: Store;
   readonly #intake: Intake;
   readonly #signatures: Signatures;
-  readonly #schemas: Schemas;
   readonly #locations: LocationsView;
   readonly #mailboxes: OpenedMailboxesView;
   readonly #people: PeopleView;
 
-  constructor(store: Store, intake: Intake, kit: IdentityKit, schemas: Schemas) {
+  constructor(store: Store, intake: Intake, kit: IdentityKit) {
     this.#store = store;
     this.#intake = intake;
     this.#signatures = kit.signatures;
-    this.#schemas = schemas;
-    this.#locations = locationsView(kit.signatures, schemas.service);
-    this.#mailboxes = openedMailboxesView(schemas.openedMailbox);
+    this.#locations = locationsView(kit.signatures);
+    this.#mailboxes = openedMailboxesView();
     this.#people = peopleView(kit.identityVersions);
   }
 
@@ -483,14 +448,14 @@ export class Services {
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
-    const { request, pickupId } = (await readObject(this.#store, object, this.#schemas.mailboxAcknowledgement)).data;
+    const { request, pickupId } = (await readObject(this.#store, object, mailboxAcknowledgementSchema)).data;
     const { object: requestObject } = (await readObject(this.#store, request.$link, this.#signatures.schema)).data;
-    const { offer } = (await readObject(this.#store, requestObject.$link, this.#schemas.mailboxRequest)).data;
-    const { size } = (await readObject(this.#store, offer.$link, this.#schemas.mailboxOffer)).data;
+    const { offer } = (await readObject(this.#store, requestObject.$link, mailboxRequestSchema)).data;
+    const { size } = (await readObject(this.#store, offer.$link, mailboxOfferSchema)).data;
     const service = await this.latestOf(signedIdentity);
     if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.identifier}`);
     const target = { mailbox, request: request.$link, url: new URL(`/${pickupId}`, service.origin), size };
-    return new ServicePickup(target, actor, this.#schemas);
+    return new ServicePickup(target, actor);
   }
 
   /**
@@ -514,7 +479,7 @@ export class Services {
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.personOf(signedIdentity);
     const { identifier } = service;
-    const { origin, at, offers } = (await readObject(reader, object, this.#schemas.service)).data;
+    const { origin, at, offers } = (await readObject(reader, object, serviceSchema)).data;
     checkOrigin(origin);
     const posting = {
       store: this.#store,
@@ -525,36 +490,32 @@ export class Services {
     };
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
-    for (const { offer, acceptId } of offers) {
-      const signature = await this.#signatures.read(offer.$link, reader, people);
+    for (const { $link } of offers) {
+      const signature = await this.#signatures.read($link, reader, people);
       if (!service.hasSigned(signature))
         throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
       const bytes = await reader.get(signature.object);
       if (bytes === undefined) throw new Error(`no blob is given for ${signature.object}`);
       const schema = schemaOf(bytes, json);
-      const url = new URL(`/${acceptId}`, origin);
-      if (account === undefined && schema === this.#schemas.offer.link) {
-        if (decodeObject(bytes, this.#schemas.offer).data.identity.$link !== identifier) {
+      const url = new URL(`/${signature.object}`, origin);
+      if (account === undefined && schema === accountOfferSchema.link) {
+        if (decodeObject(bytes, accountOfferSchema).data.identity.$link !== identifier) {
           throw new Error(`the Service of ${identifier} lists an account offer that names another identifier`);
         }
-        account = new AccountOffer(
-          { service: signedIdentity, offer: signature.object, url },
-          posting,
-          this.#schemas.acknowledgement,
-        );
-      } else if (mailbox === undefined && schema === this.#schemas.mailboxOffer.link) {
-        const decodedOffer = decodeObject(bytes, this.#schemas.mailboxOffer);
+        account = new AccountOffer({ service: signedIdentity, offer: signature.object, url }, posting);
+      } else if (mailbox === undefined && schema === mailboxOfferSchema.link) {
+        const decodedOffer = decodeObject(bytes, mailboxOfferSchema);
         if (decodedOffer.data.identity.$link !== identifier) {
           throw new Error(`the Service of ${identifier} lists a mailbox offer that names another identifier`);
         }
-        mailbox = new MailboxOffer({ service: signedIdentity, offer: decodedOffer, url }, posting, this.#schemas);
+        mailbox = new MailboxOffer({ service: signedIdentity, offer: decodedOffer, url }, posting);
       }
     }
     return { signedIdentity, origin, at, link, account, mailbox };
   }
 
   #originOf(origin: string): EncodedObject<Json, OriginData> {
-    return encodeObject(this.#schemas.origin, { origin });
+    return encodeObject(originSchema, { origin });
   }
 }
 
@@ -587,33 +548,7 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
  */
 export async function loadServices(
   store: Store,
-  {
-    validator,
-    schemes,
-    clock = Date.now,
-  }: {
-    readonly validator: JsonSchemaValidator;
-    readonly schemes: readonly Scheme[];
-    readonly clock?: () => number;
-  },
+  { schemes, clock = Date.now }: { readonly schemes: readonly Scheme[]; readonly clock?: () => number },
 ): Promise<Services> {
-  const kit = await loadIdentity(schemes);
-  const intake = await loadIntake(store, { validator, clock });
-  const compile = <F extends Fields<Json>>(schema: JsonSchema): Promise<Schema<Json, F>> =>
-    encodeSchema(schema, validator);
-  // The HTTP transport's schema is read as the fields every HTTP mailbox has.
-  const http = (await loadHttpTransport(validator)).schema as Schema<Json, HttpMailboxData>;
-  return new Services(store, intake, kit, {
-    service: await compile(serviceSchema),
-    offer: await compile(accountOfferSchema),
-    acknowledgement: await compile(acknowledgementSchema),
-    mailboxOffer: await compile(mailboxOfferSchema),
-    mailboxRequest: await compile(mailboxRequestSchema),
-    mailboxAcknowledgement: await compile(mailboxAcknowledgementSchema),
-    openedMailbox: await compile(openedMailboxSchema),
-    pickupRequest: await compile(pickupRequestSchema),
-    pickupAnswer: await compile(pickupAnswerSchema),
-    origin: await compile(originSchema),
-    http,
-  });
+  return new Services(store, new Intake(store, clock), await loadIdentity(schemes));
 }

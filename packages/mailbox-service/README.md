@@ -31,18 +31,19 @@ follows it, so one that the root itself signed before, or on another branch
 however late, is no longer honored. Services started at once can sign the same `at`, and every reader takes the same one
 of them for the latest, whatever order its store took them in.
 
-What a client posts to, the service gives it: each offer in a Service comes
-with an id, and the address is the origin and the id, `<origin>/<id>`.
-That is the one rule for making a url. An id names one thing for good: once
-what it names ends, the service answers 410 there, and the id names nothing
-else. The id of an offer is the offer's link, so it is the same wherever
-the service is and however often it starts. The ids of a mailbox are made
-up when it opens, 16 random bytes in lowercase hex. A request names the
+What a client posts to, the service gives it: each offer in a Service has
+an id, and the address is the origin and the id, `<origin>/<id>`. That is
+the one rule for making a url. An id names one thing for good: once what it
+names ends, the service answers 410 there, and the id names nothing else.
+The id of an offer is the offer's link, which the signature that the
+Service lists names as its object, so it is the same wherever the service
+is and however often it starts. The ids of a mailbox are made up when it
+opens, 16 random bytes in lowercase hex. A request names the
 object it acts on by link, so where the service moves, neither a request
 nor a signature changes.
 
 ```
-Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [{"offer": <link of the service's signature over the offer>, "acceptId": <link of the offer>}, …]}, signed by the service
+Service                  {"origin": <origin>, "at": <milliseconds>, "offers": [<link of the service's signature over an offer>, …]}, signed by the service
 Account offer            {"identity": <the service's identifier>}, signed by the service
 Acknowledgement          {"acceptance": <link of the signature over the offer>, "at": <milliseconds>}, signed by the service
 Mailbox offer            {"identity": <the service's identifier>, "retention": <milliseconds>, "quota": <bytes>, "size": <bytes>}, signed by the service
@@ -52,8 +53,8 @@ Pickup request           {"mailbox": <link of the signature over the mailbox req
 Pickup answer            {"ciphertexts": [<link of a ciphertext>, …]}, unsigned
 ```
 
-All are objects of `@estoc/object`, written to fixed draft 2020-12 schemas,
-`serviceSchema`, `accountOfferSchema`, `acknowledgementSchema`,
+All are objects of `@estoc/object`, written to fixed schemas of
+`@estoc/schema`, `serviceSchema`, `accountOfferSchema`, `acknowledgementSchema`,
 `mailboxOfferSchema`, `mailboxRequestSchema`,
 `mailboxAcknowledgementSchema`, `pickupRequestSchema` and `pickupAnswerSchema`,
 which the client and the service share. The client is
@@ -67,9 +68,8 @@ it, so it stays one object, with one link, wherever the service is reached.
 ```ts
 import { ed25519, eip191 } from "@estoc/identity";
 import { loadServices } from "@estoc/mailbox-service";
-import { defaultValidator } from "@estoc/object/default-validator";
 
-const services = await loadServices(store, { validator: defaultValidator, schemes: [ed25519, eip191] });
+const services = await loadServices(store, { schemes: [ed25519, eip191] });
 const service = await services.fetch("https://mail.example");
 ```
 
@@ -142,7 +142,7 @@ const account = await service.account.accept(signatures.actor(device, await publ
 ```
 
 The actor signs the offer, and `accept` posts the bundle of that signature
-to `POST /<id>`, at the id that the Service lists with the offer: the
+to `POST /<id>`, at the id of the offer, which is its link: the
 signature as the root, with the blobs of its signed identity. The offer and
 the signature schema are left out, since the service has them.
 
@@ -303,7 +303,7 @@ const inbox = await post.openInbox((publicKey) => service.mailbox.open(actor, pu
 ```
 
 The actor signs the request, and `open` posts the bundle of that signature
-to `POST /<id>`, at the id that the Service lists with the offer: the
+to `POST /<id>`, at the id of the offer, which is its link: the
 signature as the root, with the request and the blobs of its signed
 identity. It keeps the service's signature over the acknowledgement as
 `accept` does, and makes the HTTP mailbox of `@estoc/mailbox` that senders
@@ -422,7 +422,6 @@ const service = await loadMailboxService(serviceKey, {
   accounts: new MemoryAccounts(),
   mailboxes: new MemoryMailboxes(),
   terms: { retention: 30 * 24 * 60 * 60 * 1000, quota: 64 * 1024 * 1024, size: 1024 * 1024 },
-  validator: defaultValidator,
   schemes: [ed25519, eip191],
 });
 export default { fetch: (request: Request) => service.fetch(request) };
@@ -434,7 +433,7 @@ those of whoever signs to it. The origin is set there rather than read from a
 request, whose host is the requester's to choose. Started with an empty
 store, it has the signer sign the service's identity, then the offer of an
 account, the offer of mailboxes on `terms`, and a Service at that origin
-that lists each offer under its link, and writes the signature over the
+that lists its signature over each offer, and writes the signature over the
 Service to `store`, a store of `@estoc/store`, as a record, with its
 closure. Started with a store that holds a Service of its, it signs as its
 current identity version, by the identity versions the store holds, and the signer does not sign the identity again. Once the store holds

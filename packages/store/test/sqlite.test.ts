@@ -2,16 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { encodeObject, encodeSchema, type JsonObject, json, type Link, linkOf } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link, linkOf } from "@estoc/object";
+import { type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { Store } from "../src/index.ts";
 import { SqliteBackend } from "../src/sqlite.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const anything = await encodeSchema({ $schema: DRAFT }, defaultValidator);
+const anything = await schema("Anything", { text: string(), to: optional(link()) });
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const object = (data: JsonObject) => encodeObject(anything, data);
+const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 const blobsOf = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));
 
 async function makeTemporaryPath(): Promise<string> {

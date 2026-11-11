@@ -1,22 +1,16 @@
 import {
-  DRAFT_2020_12,
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Implementation,
   Implementations,
   type Json,
-  type JsonLink,
-  type JsonSchema,
-  type JsonSchemaValidator,
   type Link,
-  linkSchema,
   type Reader,
   readObject,
-  type Schema,
   SelectionBySchema,
   schemaOf,
 } from "@estoc/object";
+import { type DataOf, link, optional, schema } from "@estoc/schema";
 import { SchemaLineage } from "./schema-lineage.ts";
 
 /**
@@ -30,18 +24,14 @@ import { SchemaLineage } from "./schema-lineage.ts";
  *   with one item share it, and it names their series.
  * - A node names one node before it, so lineages fork and do not merge.
  */
-export const lineageNodeSchema: JsonSchema = {
-  $schema: DRAFT_2020_12,
-  title: "Lineage Node",
-  type: "object",
-  properties: { previous: linkSchema, item: linkSchema },
-  required: ["item"],
-  additionalProperties: false,
-};
+export const lineageNodeSchema = await schema("Lineage Node", {
+  previous: optional(link<LineageNodeObject>()),
+  item: link(),
+});
 
-export type LineageNodeData = { readonly previous?: JsonLink<LineageNodeObject>; readonly item: JsonLink<unknown> };
+export type LineageNodeData = DataOf<typeof lineageNodeSchema>;
 
-export type LineageNodeObject = EncodedObject<Json, LineageNodeData>;
+export interface LineageNodeObject extends EncodedObject<Json, LineageNodeData> {}
 
 /**
  * A lineage read or built by `Lineages`, from its first node to its head.
@@ -74,23 +64,21 @@ export interface Lineage {
  *   and so behind the nodes and items before it.
  */
 export class Lineages {
-  readonly schema: Schema<Json, LineageNodeData>;
+  readonly schema = lineageNodeSchema;
   /**
    * The selection of every lineage node, each as the lineage it is the head
    * of, read back to its first node.
    *
    * @throws where `read` does, when it reads a node.
    */
-  readonly selection: SelectionBySchema<Json, Lineage, LineageNodeData>;
-
-  constructor(schema: Schema<Json, LineageNodeData>) {
-    this.schema = schema;
-    this.selection = new SelectionBySchema(schema, (head, reader) => this.#readLineageEndingIn(head, reader));
-  }
+  readonly selection: SelectionBySchema<Json, Lineage, LineageNodeData> = new SelectionBySchema(
+    lineageNodeSchema,
+    (head, reader) => this.#readLineageEndingIn(head, reader),
+  );
 
   /** The lineage of one node, which carries `item`. It writes nothing. */
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
-    return lineageOf(this.schema, [], encodeObject(this.schema, { item: { $link: item.link } }));
+    return lineageOf([], encodeObject(lineageNodeSchema, { item: { $link: item.link } }));
   }
 
   /**
@@ -129,28 +117,22 @@ export class Lineages {
       node = await readObject(reader, node.data.previous.$link, this.schema);
       before.push(node);
     }
-    return lineageOf(this.schema, before.reverse(), head);
+    return lineageOf(before.reverse(), head);
   }
 }
 
-function lineageOf(
-  schema: Schema<Json, LineageNodeData>,
-  before: readonly LineageNodeObject[],
-  head: LineageNodeObject,
-): Lineage {
+function lineageOf(before: readonly LineageNodeObject[], head: LineageNodeObject): Lineage {
   const nodes = [...before, head];
   return {
     first: before[0] ?? head,
     head,
     nodes,
     items: nodes.map((node) => node.data.item.$link),
-    blobs: [...nodes.map((node) => node.bytes), ...schema.blobs],
+    blobs: [...nodes.map((node) => node.bytes), ...lineageNodeSchema.blobs],
     appending: (item) =>
-      lineageOf(schema, nodes, encodeObject(schema, { previous: { $link: head.link }, item: { $link: item.link } })),
+      lineageOf(nodes, encodeObject(lineageNodeSchema, { previous: { $link: head.link }, item: { $link: item.link } })),
   };
 }
 
-/** The lineage node schema compiled by `validator`, as what reads and builds lineages. */
-export async function loadLineage(validator: JsonSchemaValidator): Promise<Lineages> {
-  return new Lineages(await encodeSchema(lineageNodeSchema, validator));
-}
+/** What reads and builds lineages. */
+export const lineages = new Lineages();

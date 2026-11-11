@@ -16,6 +16,7 @@
     "@estoc/identity": "workspace:*",
     "@estoc/mailbox": "workspace:*",
     "@estoc/object": "workspace:*",
+    "@estoc/schema": "workspace:*",
     "@estoc/store": "workspace:*",
     "@scure/base": "^2.4.0"
   },

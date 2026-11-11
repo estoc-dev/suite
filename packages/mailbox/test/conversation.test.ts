@@ -8,25 +8,13 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
+import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
 import {
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  json,
-  type Link,
-  objectsOf,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-import {
-  type InboundData,
   type Index,
-  type Intake,
+  Intake,
   inboundSchema,
   indexOver,
-  loadIntake,
   MemoryBackend,
   PrivateStore,
   type Rows,
@@ -34,15 +22,7 @@ import {
   scan,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import {
-  type Correspondence,
-  type Inbox,
-  loadPost,
-  type OutboundData,
-  outboundSchema,
-  type Pickup,
-  type Post,
-} from "../src/index.ts";
+import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a store and a mailbox for the other,
@@ -56,21 +36,8 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = await loadIdentity([ed25519]);
 const { signatures, publish } = identity;
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const line: Schema<Json, { readonly text: string }> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Line",
-    type: "object",
-    properties: { text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const line = await schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
-const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
-const outbound: Schema<Json, OutboundData> = await encodeSchema(outboundSchema, defaultValidator);
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
@@ -79,10 +46,12 @@ type DeliveryRow = [direction: Direction, mailbox: Mailbox, at: number, bundle: 
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
-const deliveries: Index<DeliveryRow> = indexOver(objectsOf(inbound), ({ data: { via, at, bundle } }): DeliveryRow[] =>
-  via === undefined ? [] : [["inbound", via.$link, at, bundle.$link]],
+const deliveries: Index<DeliveryRow> = indexOver(
+  objectsOf(inboundSchema),
+  ({ data: { via, at, bundle } }): DeliveryRow[] =>
+    via === undefined ? [] : [["inbound", via.$link, at, bundle.$link]],
 ).union(
-  indexOver(objectsOf(outbound), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
+  indexOver(objectsOf(outboundSchema), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
     ["outbound", mailbox.$link, at, bundle.$link],
   ]),
 );
@@ -127,7 +96,7 @@ async function handOver(from: Person, to: Person, root: Link<unknown>) {
 }
 
 async function chat(faults: Faults = {}) {
-  const network = await MemoryNetwork.create(defaultValidator, faults);
+  const network = await MemoryNetwork.create(faults);
   const transports = [network.transport];
   // One clock for both, so that what one does reads as before what the other does next.
   let now = 0;
@@ -137,9 +106,9 @@ async function chat(faults: Faults = {}) {
     const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
     const store = new Store(json, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
-    const post = await loadPost(store, privateStore, { transports, validator: defaultValidator, clock });
-    const intake = await loadIntake(store, { validator: defaultValidator, clock });
-    const correspondence = await post.correspondenceAs(actor, identity);
+    const post = new Post(store, privateStore, { transports, clock });
+    const intake = new Intake(store, clock);
+    const correspondence = post.correspondenceAs(actor, identity);
     return { name, actor, store, post, intake, correspondence };
   };
   const alice = await person("Alice", 1);

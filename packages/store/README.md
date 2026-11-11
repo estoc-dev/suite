@@ -340,9 +340,9 @@ Inbound  {"bundle": <link of the root>, "at": <milliseconds>, "via": <link>}
 ```
 
 ```ts
-import { loadIntake } from "@estoc/store";
+import { Intake } from "@estoc/store";
 
-const intake = await loadIntake(store, { validator });
+const intake = new Intake(store);
 await intake.receive(bundle);          // handed over out of band
 await intake.receive(bundle, mailbox); // at a mailbox
 ```
@@ -361,11 +361,9 @@ bundle's root or of `via` is neither in that write nor held by the store.
 What comes in twice is recorded twice, and a reader takes the earliest `at`:
 
 ```ts
-const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, validator);
-
 // When each bundle came in: the first row of a root is the earliest.
 const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(
-  objectsOf(inbound),
+  objectsOf(inboundSchema),
   ({ data }) => [[data.bundle.$link, data.at]],
 );
 ```

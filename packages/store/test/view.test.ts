@@ -1,34 +1,10 @@
-import {
-  encodeObject,
-  encodeSchema,
-  type Json,
-  json,
-  type Link,
-  objectsOf,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, json, type Link, objectsOf, readObject } from "@estoc/object";
+import { array, type DataOf, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
-type Note = { readonly text: string; readonly tags: readonly string[]; readonly at: number };
-
-const noteSchema: Schema<Json, Note> = await encodeSchema(
-  {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Note",
-    type: "object",
-    properties: {
-      text: { type: "string" },
-      tags: { type: "array", items: { type: "string" } },
-      at: { type: "integer" },
-    },
-    required: ["text", "tags", "at"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const noteSchema = await schema("Note", { text: string(), tags: array(string()), at: integer() });
+type Note = DataOf<typeof noteSchema>;
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];
 

@@ -1,22 +1,17 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, encodeSchema, type JsonObject, json, jsonSchema } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
+import { encodeObject, type Json, type JsonObject, json, type Schema } from "@estoc/object";
+import { bytes, integer, schema, schemaRoot, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 const { identities, signatures, publish } = await loadIdentity([ed25519]);
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-
-const network = await MemoryNetwork.create(defaultValidator);
+const network = await MemoryNetwork.create();
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
-const note = await encodeSchema(
-  { $schema: DRAFT, type: "object", properties: { text: { type: "string" } } },
-  defaultValidator,
-);
+const note = await schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
 
@@ -52,7 +47,7 @@ describe("a mailbox", () => {
   });
 
   it("rejects a send to a queue that its network does not have, as undelivered to a mailbox that is gone", async () => {
-    const elsewhere = await MemoryNetwork.create(defaultValidator);
+    const elsewhere = await MemoryNetwork.create();
     const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
     const sending = mailbox.send(hello, []);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
@@ -60,15 +55,23 @@ describe("a mailbox", () => {
   });
 });
 
+// Mailboxes of transports that wrote their schemas by hand, each with a key that is not one.
+const looseMailboxes: [string, Schema<Json>, JsonObject][] = [
+  ["has no key", await schema("Loose mailbox", { name: string() }), { name: "q" }],
+  ["has a key in uppercase hex", await schema("Loose mailbox", { key: string() }), { key: "AB".repeat(32) }],
+  ["has a key of 31 bytes", await schema("Loose mailbox", { key: bytes() }), { key: "ab".repeat(31) }],
+  ["has a key that is a number", await schema("Loose mailbox", { key: integer() }), { key: 1 }],
+];
+
 describe("a mailbox from bytes", () => {
   it("is refused when the bytes are not an object", async () => {
-    await expect(mailboxFrom(json.encode({ $schema: DRAFT }), options)).rejects.toThrow(/\$schema/);
+    await expect(mailboxFrom(json.encode({ $schema: "not a link" }), options)).rejects.toThrow(/\$schema/);
   });
 
   it("is refused when the bytes are a schema", async () => {
     // @ts-expect-error: refused at compile time too
     await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(
-      `no transport takes mailboxes written to ${jsonSchema.link}`,
+      `no transport takes mailboxes written to ${schemaRoot.link}`,
     );
   });
 
@@ -78,16 +81,12 @@ describe("a mailbox from bytes", () => {
     await expect(mailboxFrom(mailbox, { transports: [] })).rejects.toThrow(/no transport takes/);
   });
 
-  it.each<[string, JsonObject]>([
-    ["has no key", { name: "q" }],
-    ["has a key in uppercase hex", { key: "AB".repeat(32) }],
-    ["has a key of 31 bytes", { key: "ab".repeat(31) }],
-    ["has a key that is a number", { key: 1 }],
-  ])("is refused when it %s, where its transport's schema let it through", async (_, data) => {
-    const loose = await encodeSchema({ $schema: DRAFT, title: "Loose mailbox" }, defaultValidator);
-    const transport: Transport = { schema: loose, deliver: async () => undefined };
-    await expect(mailboxFrom(encodeObject(loose, data).bytes, { transports: [transport] })).rejects.toThrow(
-      /a mailbox/,
-    );
-  });
+  it.each(looseMailboxes)(
+    "is refused when it %s, where its transport's schema let it through",
+    async (_, loose, data) => {
+      const transport: Transport = { schema: loose, deliver: async () => undefined };
+      const mailbox = json.encode(json.object(loose.validate(data), loose.link));
+      await expect(mailboxFrom(mailbox, { transports: [transport] })).rejects.toThrow(/a mailbox/);
+    },
+  );
 });

@@ -5,6 +5,7 @@ import {
   eip191,
   type Identifier,
   type IdentityObject,
+  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type SignedIdentityObject,
@@ -14,21 +15,18 @@ import {
 import {
   type EncodedObject,
   encodeObject,
-  encodeSchema,
   type Fields,
   type Json,
-  type JsonLink,
   json,
   type Link,
   linkOf,
-  linkSchema,
   readObject,
   type Schema,
 } from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-import { loadIntake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { link, optional, schema, string } from "@estoc/schema";
+import { Intake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Delivery, loadPost, type Mailbox, MailboxKey, mailboxFrom } from "../src/index.ts";
+import { type Delivery, type Mailbox, MailboxKey, mailboxFrom, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes, each as a bundle
@@ -40,7 +38,6 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 const identity = await loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Json>, by: SoftwareSigner) => {
@@ -67,17 +64,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat: Schema<Json, { readonly text: string; readonly to?: { readonly $link: Identifier } }> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Chat",
-    type: "object",
-    properties: { to: linkSchema, text: { type: "string" } },
-    required: ["text"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const chat = await schema("Chat", { to: optional(link<KeyObject>()), text: string() });
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by their identifier, whether that is the reader.
@@ -93,7 +80,7 @@ describe("a chat line", () => {
   const carol = signer(ed25519, 3);
 
   const passOn = async (line: EncodedObject<Json>) => {
-    const network = await MemoryNetwork.create(defaultValidator);
+    const network = await MemoryNetwork.create();
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sentSignature = await sendSigned(
       await mailboxFrom(atBob.mailbox, { transports: [network.transport] }),
@@ -131,17 +118,7 @@ describe("a chat line", () => {
   });
 });
 
-const join: Schema<Json, { readonly invitation: JsonLink<never> }> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Join",
-    type: "object",
-    properties: { invitation: linkSchema },
-    required: ["invitation"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const join = await schema("Join", { invitation: link<never>() });
 
 // Nobody signs the mailbox of a one-time invitation: it is handed out on its
 // own. Answering it once is the inviter's own record, so the inviter lets in
@@ -151,7 +128,7 @@ describe("a one-time invitation", () => {
   const erin = signer(solanaOffchain, 5);
 
   const invite = async () => {
-    const network = await MemoryNetwork.create(defaultValidator);
+    const network = await MemoryNetwork.create();
     const inviter = await receiver(network, 14);
     const link = linkOf(inviter.mailbox);
     const answer = async (guest: SoftwareSigner) => {
@@ -189,22 +166,12 @@ type Sale = {
   readonly price: string;
 };
 
-const sale: Schema<Json, Sale> = await encodeSchema(
-  {
-    $schema: DRAFT,
-    title: "Sale",
-    type: "object",
-    properties: {
-      buyer: linkSchema,
-      seller: linkSchema,
-      goods: { type: "string" },
-      price: { type: "string", pattern: "^[0-9]+\\.[0-9]{2} [A-Z]{3}$" },
-    },
-    required: ["buyer", "seller", "goods", "price"],
-    additionalProperties: false,
-  },
-  defaultValidator,
-);
+const sale = await schema("Sale", {
+  buyer: link<KeyObject>(),
+  seller: link<KeyObject>(),
+  goods: string(),
+  price: string(),
+});
 
 // A registry records a sale once its buyer and its seller have both signed
 // it. Each party sends its own signature with the terms to the registry's
@@ -236,7 +203,7 @@ describe("a sale sent to a registry", () => {
   });
 
   const withRegistry = async (faults: Faults) => {
-    const network = await MemoryNetwork.create(defaultValidator, faults);
+    const network = await MemoryNetwork.create(faults);
     const registry = await receiver(network, 15);
     const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
     return { send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party), take: registry.take };
@@ -272,7 +239,7 @@ describe("two people who meet", () => {
   const lines = signatures.selectionOver(chat);
 
   const twoPeople = async () => {
-    const network = await MemoryNetwork.create(defaultValidator);
+    const network = await MemoryNetwork.create();
     // One clock for both, so that what one does reads as before what the other does next.
     let now = 0;
     const clock = () => ++now;
@@ -281,10 +248,10 @@ describe("two people who meet", () => {
       const actor = signatures.actor(by, await publish(by, { at: 0 }));
       const store = new Store(json, new MemoryBackend());
       const privateStore = new PrivateStore(store, new MemoryBackend());
-      const options = { transports: [network.transport], validator: defaultValidator, clock };
-      const post = await loadPost(store, privateStore, options);
-      const intake = await loadIntake(store, options);
-      const correspondence = await post.correspondenceAs(actor, identity);
+      const options = { transports: [network.transport], clock };
+      const post = new Post(store, privateStore, options);
+      const intake = new Intake(store, clock);
+      const correspondence = post.correspondenceAs(actor, identity);
       const openInbox = async () => {
         const queue = network.queue();
         const inbox = await post.openInbox(queue.mailbox);

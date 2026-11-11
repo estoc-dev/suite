@@ -1,40 +1,35 @@
 import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
-import { loadPost, type Pickup } from "@estoc/mailbox";
-import { loadHttpTransport } from "@estoc/mailbox/http";
-import {
-  type EncodedObject,
-  encodeObject,
-  encodeSchema,
-  type Json,
-  type Link,
-  objectsOf,
-  readObject,
-  type Schema,
-} from "@estoc/object";
-import { defaultValidator } from "@estoc/object/default-validator";
-import { type InboundData, inboundSchema, loadIntake, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
+import { type Pickup, Post } from "@estoc/mailbox";
+import { httpTransport as http } from "@estoc/mailbox/http";
+import { type EncodedObject, encodeObject, type Json, type Link, objectsOf, readObject } from "@estoc/object";
+import { link, schema, string } from "@estoc/schema";
+import { Intake, inboundSchema, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { loadServices, type MailboxOffer, type Services } from "../src/index.ts";
+import {
+  accountOfferSchema,
+  acknowledgementSchema,
+  loadServices,
+  type MailboxOffer,
+  mailboxAcknowledgementSchema,
+  mailboxOfferSchema,
+  mailboxRequestSchema,
+  originSchema,
+  type Services,
+  serviceSchema,
+} from "../src/index.ts";
 import { serve } from "../src/node.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
-  acknowledgementSchemaRead,
   actorOf,
   keys,
-  mailboxAcknowledgementSchemaRead,
-  mailboxOfferSchemaRead,
-  mailboxRequestSchemaRead,
   memoryService,
   memoryStore,
-  offerSchema,
-  originSchemaRead,
   publish,
   schemes,
   serviceActor,
   serviceIdentity,
   serviceRoot,
-  serviceSchemaRead,
   serviceSigner,
   signatures,
   signedAtOrigins,
@@ -49,9 +44,7 @@ const laptop = signer(ed25519, 3);
 const phone = signer(solanaOffchain, 4);
 const mallory = signer(ed25519, 6);
 
-const offer = encodeObject(offerSchema, { identity: { $link: serviceRoot.link } });
-const inbound: Schema<Json, InboundData> = await encodeSchema(inboundSchema, defaultValidator);
-const http = await loadHttpTransport(defaultValidator);
+const offer = encodeObject(accountOfferSchema, { identity: { $link: serviceRoot.link } });
 
 const agentOf = async (agent: Signer, root: Signer) =>
   signatures.actor(agent, await publish(root, { agents: [agent.key] }));
@@ -89,18 +82,18 @@ async function startService(
 async function inboundRowsOf(store: Store) {
   const rows: (readonly [Link<never>, string])[] = [];
   for await (const link of store.records()) {
-    const record = await objectsOf(inbound).read(link, store);
+    const record = await objectsOf(inboundSchema).read(link, store);
     if (record === undefined) continue;
     const { bundle, via } = record.data;
     assert.exists(via);
-    rows.push([bundle.$link, (await readObject(store, via.$link, originSchemaRead)).data.origin]);
+    rows.push([bundle.$link, (await readObject(store, via.$link, originSchema)).data.origin]);
   }
   return rows.sort(([a], [b]) => (a < b ? -1 : 1));
 }
 
 async function client() {
   const store = memoryStore();
-  return { store, services: await loadServices(store, { validator: defaultValidator, schemes }) };
+  return { store, services: await loadServices(store, { schemes }) };
 }
 
 async function accountAt(services: Services, origin: string) {
@@ -120,15 +113,12 @@ async function signedService(
   at = 1,
 ) {
   const offerSignatures = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
-  const listedOffers = offerSignatures.map((signature) => ({
-    offer: { $link: signature.link },
-    acceptId: signature.object,
-  }));
-  const service = encodeObject(serviceSchemaRead, { origin, at, offers: listedOffers });
+  const listedOffers = offerSignatures.map((signature) => ({ $link: signature.link }));
+  const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });
   const signature = await by.sign(service);
   const blobs = [
     service.bytes,
-    ...serviceSchemaRead.blobs,
+    ...serviceSchema.blobs,
     ...signature.signedIdentity.blobs,
     ...signatures.schema.blobs,
     ...offerSignatures.map(({ bytes }) => bytes),
@@ -145,7 +135,7 @@ async function receiveAtMailbox(store: Store, bundle: Bundle) {
     key: "07".repeat(32),
     url: `https://elsewhere.example/${"1".repeat(32)}`,
   });
-  await (await loadIntake(store, { validator: defaultValidator })).receive(bundle, mailbox);
+  await new Intake(store).receive(bundle, mailbox);
 }
 
 /**
@@ -164,17 +154,17 @@ async function removeAgent(store: Store) {
 /** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with its closure. */
 async function acknowledgementBy(by: Actor, request: Request) {
   const acceptance = await unpackBundle(new Uint8Array(await request.arrayBuffer()));
-  const acknowledgement = encodeObject(acknowledgementSchemaRead, { acceptance: { $link: acceptance.link }, at: 1 });
+  const acknowledgement = encodeObject(acknowledgementSchema, { acceptance: { $link: acceptance.link }, at: 1 });
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
-    ...acknowledgementSchemaRead.blobs,
+    ...acknowledgementSchema.blobs,
     ...signature.signedIdentity.blobs,
     ...signatures.schema.blobs,
     acceptance.root,
     ...acceptance.blobs(),
     offer.bytes,
-    ...offerSchema.blobs,
+    ...accountOfferSchema.blobs,
     serviceRoot.bytes,
   ];
   return new Response(await packBundle(signature, blobs), { status: 201 });
@@ -282,7 +272,7 @@ describe("a service reached at its origin", () => {
   });
 
   it("passes over an offer of a schema it does not read", async () => {
-    const other = await encodeSchema({ $schema: "https://json-schema.org/draft/2020-12/schema" }, defaultValidator);
+    const other = await schema("Other offer", { identity: link() });
     const unread = encodeObject(other, { identity: { $link: serviceRoot.link } });
     const actor = await actorOf(serviceSigner);
     const { origin } = await startServer(
@@ -334,7 +324,7 @@ describe("a service found by its identifier", () => {
     const { data } = await readObject(
       first.store,
       (await signatures.read(link, first.store, noIdentityVersions)).object,
-      serviceSchemaRead,
+      serviceSchema,
     );
     const origins = ["https://one.example", "https://two.example"];
     const [greater, lesser] = await signedAtOrigins({ ...data, at: 9_000 }, origins);
@@ -411,7 +401,7 @@ describe("an account offer", () => {
     expect(await inboundRowsOf(store)).toEqual([service.link, account.link].sort().map((link) => [link, origin]));
     const acknowledgement = await signatures.read(account.link, store, noIdentityVersions);
     expect(acknowledgement.signedIdentity.identity.link).toBe(serviceIdentity(7_000).link);
-    const { acceptance } = (await readObject(store, acknowledgement.object, acknowledgementSchemaRead)).data;
+    const { acceptance } = (await readObject(store, acknowledgement.object, acknowledgementSchema)).data;
     const acceptanceSignature = await signatures.read(acceptance.$link, store, noIdentityVersions);
     expect(acceptanceSignature.object).toBe(offer.link);
     expect(acceptanceSignature.signedIdentity.link).toBe(account.signedIdentity.link);
@@ -439,7 +429,7 @@ describe("an account offer", () => {
     const acknowledgement = await readObject(
       store,
       (await signatures.read(again.link, store, noIdentityVersions)).object,
-      acknowledgementSchemaRead,
+      acknowledgementSchema,
     );
     const acceptance = await signatures.read(acknowledgement.data.acceptance.$link, store, noIdentityVersions);
     expect(acceptance.key.link).toBe(keys.encode(phone.key).link);
@@ -551,7 +541,7 @@ describe("a service's offer of mailboxes", () => {
     assert.exists(acknowledgement);
     expect(from).toBe(run.origin);
     const signature = await signatures.read(acknowledgement as Link<never>, store, noIdentityVersions);
-    const { sendId } = (await readObject(store, signature.object, mailboxAcknowledgementSchemaRead)).data;
+    const { sendId } = (await readObject(store, signature.object, mailboxAcknowledgementSchema)).data;
     expect(pathname).toBe(`/${sendId}`);
   });
 
@@ -569,24 +559,19 @@ describe("a mailbox that a service opened", () => {
   it("receives what a sender's post sends there, which an inbox collects with a pickup", async () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
-    const options = { transports: [http], validator: defaultValidator };
-    const post = await loadPost(store, new PrivateStore(store, new MemoryBackend()), options);
+    const options = { transports: [http] };
+    const post = new Post(store, new PrivateStore(store, new MemoryBackend()), options);
     const inbox = await post.openInbox((publicKey) => offer.open(actor, publicKey));
     const sender = memoryStore();
     const bytes = await store.get(inbox.mailbox);
     assert.exists(bytes);
-    const noteSchema = await encodeSchema(
-      { $schema: "https://json-schema.org/draft/2020-12/schema" },
-      defaultValidator,
-    );
+    const noteSchema = await schema("Note", { text: string() });
     const note = encodeObject(noteSchema, { text: "hello, Alice" });
     await sender.write({
       records: [{ bytes }, note],
       blobs: [...http.schema.blobs, ...noteSchema.blobs],
     });
-    const outbox = await (await loadPost(sender, new PrivateStore(sender, new MemoryBackend()), options)).outbox(
-      inbox.mailbox,
-    );
+    const outbox = await new Post(sender, new PrivateStore(sender, new MemoryBackend()), options).outbox(inbox.mailbox);
     await outbox.send(note.link);
     const [delivery, ...more] = await inbox.collect(await services.pickup(inbox.mailbox, actor));
     expect(more).toEqual([]);
@@ -802,10 +787,10 @@ describe("a mailbox that a service opened", () => {
  */
 async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string, at = 1) {
   const root = keys.encode(offerer.key);
-  const mailboxOffer = encodeObject(mailboxOfferSchemaRead, { identity: { $link: root.link }, ...terms });
-  const request = encodeObject(mailboxRequestSchemaRead, { offer: { $link: mailboxOffer.link }, key: "07".repeat(32) });
+  const mailboxOffer = encodeObject(mailboxOfferSchema, { identity: { $link: root.link }, ...terms });
+  const request = encodeObject(mailboxRequestSchema, { offer: { $link: mailboxOffer.link }, key: "07".repeat(32) });
   const requestSignature = await requester.sign(request);
-  const acknowledgement = encodeObject(mailboxAcknowledgementSchemaRead, {
+  const acknowledgement = encodeObject(mailboxAcknowledgementSchema, {
     request: { $link: requestSignature.link },
     at,
     sendId,
@@ -814,15 +799,15 @@ async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Si
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
-    ...mailboxAcknowledgementSchemaRead.blobs,
+    ...mailboxAcknowledgementSchema.blobs,
     ...signature.signedIdentity.blobs,
     ...signatures.schema.blobs,
     requestSignature.bytes,
     ...requestSignature.signedIdentity.blobs,
     request.bytes,
-    ...mailboxRequestSchemaRead.blobs,
+    ...mailboxRequestSchema.blobs,
     mailboxOffer.bytes,
-    ...mailboxOfferSchemaRead.blobs,
+    ...mailboxOfferSchema.blobs,
     root.bytes,
   ];
   return unpackBundle(await packBundle(signature, blobs));
@@ -842,7 +827,7 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     await services.fetch(origin);
     const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${sendId}` });
     await store.write({ records: [mailbox], blobs: http.schema.blobs });
-    await (await loadIntake(store, { validator: defaultValidator })).receive(acknowledgement, mailbox);
+    await new Intake(store).receive(acknowledgement, mailbox);
     return { services, mailbox };
   }
 

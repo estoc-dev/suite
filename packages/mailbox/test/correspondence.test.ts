@@ -27,11 +27,11 @@ import { MemoryNetwork } from "./memory-network.ts";
 // other a grant of a mailbox, sends by the grant they were given, and reads
 // what came in by the grants they gave.
 
-const identity = await loadIdentity([ed25519]);
+const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
 const grants = new MailboxGrants(identity);
-const note = await schema("Note", { text: string() });
-const network = await MemoryNetwork.create();
+const note = schema("Note", { text: string() });
+const network = new MemoryNetwork();
 
 // The kinds that the mailboxes at some queues turn a message back with.
 const undeliveredKindByQueue = new Map<unknown, UndeliveredMessage["kind"]>();
@@ -275,7 +275,7 @@ describe("sending to someone", () => {
   it("sends nothing when the post has no transport for a mailbox of the grant", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { inbox, pickup } = await openInbox(bob);
-    const otherSchema = await mailboxSchema("Other mailbox", { place: string() });
+    const otherSchema = mailboxSchema("Other mailbox", { place: string() });
     const other = encodeObject(otherSchema, { key: "00".repeat(32), place: "elsewhere" });
     await bob.store.write({ records: [other], blobs: otherSchema.blobs });
     const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);

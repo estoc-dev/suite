@@ -2,7 +2,7 @@ import type { EncodedObject, Json, JsonLink } from "@estoc/object";
 import { describe, expectTypeOf, it } from "vitest";
 import { array, boolean, bytes, type DataOf, integer, link, optional, schema, string } from "../src/index.ts";
 
-const note = await schema("Note", {
+const note = schema("Note", {
   text: string(),
   at: integer(),
   key: bytes(),
@@ -14,8 +14,8 @@ const note = await schema("Note", {
 // Two schemas whose objects link to each other, each read as the data of its own.
 type Identity = EncodedObject<Json, DataOf<typeof identity>>;
 type SignedIdentity = EncodedObject<Json, DataOf<typeof signedIdentity>>;
-const identity = await schema("Identity", { at: integer(), prior: optional(link<SignedIdentity>()) });
-const signedIdentity = await schema("Signed Identity", { identity: link<Identity>(), signature: bytes() });
+const identity = schema("Identity", { at: integer(), prior: optional(link<SignedIdentity>()) });
+const signedIdentity = schema("Signed Identity", { identity: link<Identity>(), signature: bytes() });
 
 describe("DataOf", () => {
   it("reads each field as its type, and an optional one as a member that may be left out", () => {

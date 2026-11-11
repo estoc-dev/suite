@@ -5,7 +5,7 @@ import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import { readBundle, writeBundle } from "../src/index.ts";
 
-const { identities, signedIdentities, signatures, publish } = await loadIdentity([ed25519, eip191]);
+const { identities, signedIdentities, signatures, publish } = loadIdentity([ed25519, eip191]);
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const hexOf = (bytes: Uint8Array) => linkOf(bytes).slice("sha256:".length);
@@ -16,8 +16,8 @@ const rewritten = (bytes: Uint8Array, change: (data: JsonObject) => JsonObject) 
   return json.encode(json.object(change(data), schema));
 };
 
-const note = await schema("Note", { text: string() });
-const links = await schema("Links", { links: array(link()) });
+const note = schema("Note", { text: string() });
+const links = schema("Links", { links: array(link()) });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
 const asAlice = signatures.actor(alice, await publish(alice, { at: 0 }));

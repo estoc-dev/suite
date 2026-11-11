@@ -20,7 +20,7 @@ const objectText =
   '"root":{"$link":"sha256:adba1ce1a33040f83f16ac2a8feb77eb34bf925101edda4a5b10e567ba4eb9dc"}}';
 const objectLink = "sha256:3b800e25354ec614fafb0809db4c606eb1939ef952e0b49679cefd2de12393a7";
 
-const identity = await schema("Identity", {
+const identity = schema("Identity", {
   root: link(),
   agents: array(link()),
   at: integer(),
@@ -44,8 +44,8 @@ describe("the root, an identity schema and an object written to it", () => {
     expect(object.link).toBe(objectLink);
   });
 
-  it("decode from those bytes", async () => {
-    const read = await decodeSchema(new TextEncoder().encode(schemaText), schemaValidator);
+  it("decode from those bytes", () => {
+    const read = decodeSchema(new TextEncoder().encode(schemaText), schemaValidator);
     expect(read.link).toBe(schemaLink);
     expect(decodeObject(new TextEncoder().encode(objectText), read).link).toBe(objectLink);
   });

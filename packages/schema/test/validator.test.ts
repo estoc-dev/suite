@@ -12,8 +12,8 @@ describe.each([
   ["a string", string(), ["", "text", "00ff"], [0, true, null, ["text"], blob]],
   ["a boolean", boolean(), [true, false], [0, "true", null]],
   ["an array", array(string()), [[], ["a"], ["a", "b"]], ["a", { 0: "a" }, null]],
-] as const)("%s", async (_, type, taken, refused) => {
-  const holder = await schema("Holder", { value: type });
+] as const)("%s", (_, type, taken, refused) => {
+  const holder = schema("Holder", { value: type });
 
   it.each(taken.map(fitting))("takes %s", (_, value) => {
     expect(holder.validate({ value })).toEqual({ value });
@@ -25,15 +25,15 @@ describe.each([
 });
 
 describe("an array", () => {
-  it("says which of its items does not fit", async () => {
-    const holder = await schema("Holder", { rows: array(array(integer())) });
+  it("says which of its items does not fit", () => {
+    const holder = schema("Holder", { rows: array(array(integer())) });
     expect(() => holder.validate({ rows: [[1], [2, "3"]] })).toThrow("#/rows/1/1: not an integer");
     expect(() => holder.validate({ rows: [[1], 2] })).toThrow("#/rows/1: not an array");
   });
 });
 
-describe("the data of an object", async () => {
-  const note = await schema("Note", { text: string(), at: integer(), isDraft: optional(boolean()) });
+describe("the data of an object", () => {
+  const note = schema("Note", { text: string(), at: integer(), isDraft: optional(boolean()) });
 
   it("fits with every field, and with an optional one left out", () => {
     expect(note.validate({ text: "", at: 0, isDraft: true })).toEqual({ text: "", at: 0, isDraft: true });
@@ -59,9 +59,9 @@ describe("the data of an object", async () => {
   });
 });
 
-test("a name every object inherits is a field or a member only where it is written", async () => {
-  const note = await schema("Note", { text: string() });
+test("a name every object inherits is a field or a member only where it is written", () => {
+  const note = schema("Note", { text: string() });
   expect(() => note.validate({ text: "", constructor: "" })).toThrow("#/constructor: not a field");
-  const named = await schema("Named", { constructor: string() });
+  const named = schema("Named", { constructor: string() });
   expect(() => named.validate({})).toThrow("#/constructor: left out");
 });

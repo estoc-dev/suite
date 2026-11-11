@@ -3,16 +3,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./default-validator": "./src/default-validator.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@hyperjump/browser": "1.6.0",
-    "@hyperjump/json-schema": "1.18.0",
     "@noble/hashes": "^2.4.0",
     "canonicalize": "^5.1.0"
   },

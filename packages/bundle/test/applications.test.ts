@@ -19,14 +19,14 @@ import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
-const { keys, identities, signatures, publish } = await loadIdentity([ed25519, eip191]);
+const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 
-const card = await schema("Card", { mailbox: link<Signature>(), name: link<Signature>() });
-const contact = await schema("Contact", { displayName: link<Signature>(), inbox: link<Signature>() });
-const mailbox = await schema("Mailbox", { url: string() });
-const name = await schema("Name", { name: string() });
+const card = schema("Card", { mailbox: link<Signature>(), name: link<Signature>() });
+const contact = schema("Contact", { displayName: link<Signature>(), inbox: link<Signature>() });
+const mailbox = schema("Mailbox", { url: string() });
+const name = schema("Name", { name: string() });
 
 // A card lists the signatures of the one identity it is for: over a mailbox
 // that reaches it, and over the name it goes by. Another application writes
@@ -117,7 +117,7 @@ describe("a card", () => {
   });
 });
 
-const chat = await schema("Chat message", { text: string() });
+const chat = schema("Chat message", { text: string() });
 
 async function readMessage(bundle: Bundle) {
   const read = await signatures.read(bundle.link, bundle, noIdentityVersions);

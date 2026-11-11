@@ -17,9 +17,7 @@ export type Link<T> = `sha256:${string}` & { readonly [target]?: T };
  */
 export type Bytes<T> = Uint8Array & { readonly [target]?: T };
 
-/** What a link looks like, as a pattern that a schema can use as well. */
-export const LINK_PATTERN = "^sha256:[0-9a-f]{64}$";
-const linkText = new RegExp(LINK_PATTERN);
+const linkText = /^sha256:[0-9a-f]{64}$/;
 
 export function isLink(value: unknown): value is Link<never> {
   return typeof value === "string" && linkText.test(value);

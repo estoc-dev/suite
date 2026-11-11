@@ -11,7 +11,7 @@ import {
 } from "../src/index.ts";
 import { rowsOf, schemes, storeOf } from "./fixtures.ts";
 
-const { signatures, identityVersions, publish } = await loadIdentity(schemes);
+const { signatures, identityVersions, publish } = loadIdentity(schemes);
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
@@ -19,7 +19,7 @@ const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
   identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
 const linksOf = (signed: readonly SignedIdentityObject[]) => signed.map(({ link }) => link);
 
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello" });
 
 describe("a person", () => {

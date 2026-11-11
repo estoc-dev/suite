@@ -19,7 +19,7 @@ const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9
  * - No response rejects as `later`, and so does a redirect.
  */
 export const httpTransport = {
-  schema: await mailboxSchema("HTTP mailbox", { url: string() }),
+  schema: mailboxSchema("HTTP mailbox", { url: string() }),
   deliver,
 } satisfies Transport;
 

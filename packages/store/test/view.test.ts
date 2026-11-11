@@ -3,7 +3,7 @@ import { array, type DataOf, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
 
-const noteSchema = await schema("Note", { text: string(), tags: array(string()), at: integer() });
+const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
 
 type Row = readonly [tag: string, at: number, note: Link<unknown>];

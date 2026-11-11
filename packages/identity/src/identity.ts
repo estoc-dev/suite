@@ -22,7 +22,7 @@ import type { Signer } from "./signer.ts";
  * - It lists each agent once and not its root, or one signature would verify
  *   under two indexes, as two signatures with two links.
  */
-export const identitySchema = await schema("Identity", {
+export const identitySchema = schema("Identity", {
   prior: optional(link<SignedIdentityObject>()),
   root: link<KeyObject>(),
   agents: array(link<KeyObject>()),

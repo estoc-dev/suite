@@ -8,7 +8,7 @@ import { publicKeyFrom, seal } from "../src/key.ts";
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
 const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);

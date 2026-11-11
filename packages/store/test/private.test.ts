@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { type Backend, type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
-const anything = await schema("Anything", {
+const anything = schema("Anything", {
   name: optional(string()),
   card: optional(link()),
   image: optional(link()),

@@ -14,7 +14,7 @@ import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
 /** The schema every signed identity is written to, whatever the scheme of its root. */
-export const signedIdentitySchema = await schema("Signed Identity", {
+export const signedIdentitySchema = schema("Signed Identity", {
   identity: link<IdentityObject>(),
   signature: bytes(),
 });

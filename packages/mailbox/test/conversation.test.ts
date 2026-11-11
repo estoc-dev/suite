@@ -34,9 +34,9 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // and reads each line from its bundle when it shows it, as a message from
 // whoever signed it where the reader gave them that mailbox.
 
-const identity = await loadIdentity([ed25519]);
+const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
-const line = await schema("Line", { text: string() });
+const line = schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 
 type Direction = "inbound" | "outbound";
@@ -96,7 +96,7 @@ async function handOver(from: Person, to: Person, root: Link<unknown>) {
 }
 
 async function chat(faults: Faults = {}) {
-  const network = await MemoryNetwork.create(faults);
+  const network = new MemoryNetwork(faults);
   const transports = [network.transport];
   // One clock for both, so that what one does reads as before what the other does next.
   let now = 0;

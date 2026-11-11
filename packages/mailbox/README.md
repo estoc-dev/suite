@@ -24,7 +24,7 @@ whose fields look the same.
 import { mailboxSchema } from "@estoc/mailbox";
 import { string } from "@estoc/schema";
 
-const schema = await mailboxSchema("Memory mailbox", { name: string() });
+const schema = mailboxSchema("Memory mailbox", { name: string() });
 ```
 
 A mailbox means: messages sealed to `key` and carried by this transport to

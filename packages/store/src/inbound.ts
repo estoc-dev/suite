@@ -11,7 +11,7 @@ import type { Store } from "./store.ts";
  * - `via` is the link of the channel it came in by, such as a mailbox, and is left out for what
  *   was handed over out of band. Which channel it is shows in the object it links to.
  */
-export const inboundSchema = await schema("Inbound", {
+export const inboundSchema = schema("Inbound", {
   bundle: link<never>(),
   at: integer(),
   via: optional(link<EncodedObject<Json>>()),

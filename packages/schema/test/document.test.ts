@@ -12,8 +12,8 @@ describe("the root", () => {
 });
 
 describe("a schema", () => {
-  it("is an object of the root holding its title and its fields", async () => {
-    const note = await schema("Note", { text: string(), parents: array(link()), at: optional(integer()) });
+  it("is an object of the root holding its title and its fields", () => {
+    const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()) });
     expect(json.decode(note.bytes)).toEqual({
       $schema: { $link: schemaRoot.link },
       title: "Note",
@@ -26,15 +26,15 @@ describe("a schema", () => {
     expect(note.blobs).toEqual([note.bytes, schemaRoot.bytes]);
   });
 
-  it("is one blob however its fields are ordered", async () => {
-    const one = await schema("Note", { text: string(), at: integer() });
-    const other = await schema("Note", { at: integer(), text: string() });
+  it("is one blob however its fields are ordered", () => {
+    const one = schema("Note", { text: string(), at: integer() });
+    const other = schema("Note", { at: integer(), text: string() });
     expect(other.link).toBe(one.link);
   });
 
-  it("is another blob under another title", async () => {
-    const one = await schema("Note", { text: string() });
-    const other = await schema("Comment", { text: string() });
+  it("is another blob under another title", () => {
+    const one = schema("Note", { text: string() });
+    const other = schema("Comment", { text: string() });
     expect(other.link).not.toBe(one.link);
   });
 
@@ -48,9 +48,9 @@ describe("a schema", () => {
       "an optional array",
       { title: "Note", fields: { tags: { type: "array", items: { type: "string" }, optional: true } } },
     ],
-  ])("is read with %s", async (_, data) => {
+  ])("is read with %s", (_, data) => {
     const bytes = written(data);
-    expect((await decodeSchema(bytes, schemaValidator)).bytes).toEqual(bytes);
+    expect(decodeSchema(bytes, schemaValidator).bytes).toEqual(bytes);
   });
 
   it.each([
@@ -97,13 +97,13 @@ describe("a schema", () => {
       { title: "Note", fields: { tags: { type: "array", items: { type: "string", title: "Tag" } } } },
       /the items of the field tags holds .*, not title/,
     ],
-  ])("is refused %s", async (_, data, reason) => {
-    await expect(decodeSchema(written(data), schemaValidator)).rejects.toThrow(reason);
+  ])("is refused %s", (_, data, reason) => {
+    expect(() => decodeSchema(written(data), schemaValidator)).toThrow(reason);
   });
 });
 
 describe("schema", () => {
-  it("refuses a field named $schema", async () => {
-    await expect(schema("Note", { $schema: string() })).rejects.toThrow(/not named \$schema/);
+  it("refuses a field named $schema", () => {
+    expect(() => schema("Note", { $schema: string() })).toThrow(/not named \$schema/);
   });
 });

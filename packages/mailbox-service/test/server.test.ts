@@ -386,7 +386,7 @@ describe("a mailbox service", () => {
 
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
-    const droppedSchema = await schema("Dropped offer", { identity: link() });
+    const droppedSchema = schema("Dropped offer", { identity: link() });
     const droppedOffer = encodeObject(droppedSchema, { identity: { $link: serviceRoot.link } });
     const asService = await serviceActor(3_000);
     const offerSignature = await asService.sign(droppedOffer);

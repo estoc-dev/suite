@@ -36,11 +36,11 @@ export interface IdentityKit {
  * @throws when the data of one of `schemes` does not fit the scheme schema,
  * or two of them have one object.
  */
-export async function loadIdentity(schemes: readonly Scheme[]): Promise<IdentityKit> {
+export function loadIdentity(schemes: readonly Scheme[]): IdentityKit {
   const keySchemas = new Map<Scheme, Schema<Json, KeyData>>();
   for (const scheme of schemes) {
     const data = { name: scheme.name, publicKeyLength: scheme.publicKeyLength };
-    keySchemas.set(scheme, await encodeSchema<Json, SchemeData, KeyData>(data, schemeValidator));
+    keySchemas.set(scheme, encodeSchema<Json, SchemeData, KeyData>(data, schemeValidator));
   }
   const keys = new Keys(keySchemas);
   const identities = new Identities(keys);

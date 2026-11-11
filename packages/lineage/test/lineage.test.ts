@@ -3,7 +3,7 @@ import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type LineageNodeObject, lineages } from "../src/index.ts";
 
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const first = encodeObject(note, { text: "first" });
 const second = encodeObject(note, { text: "second" });
 const third = encodeObject(note, { text: "third" });

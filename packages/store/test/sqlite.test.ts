@@ -8,7 +8,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { Store } from "../src/index.ts";
 import { SqliteBackend } from "../src/sqlite.ts";
 
-const anything = await schema("Anything", { text: string(), to: optional(link()) });
+const anything = schema("Anything", { text: string(), to: optional(link()) });
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 const blobsOf = (...texts: string[]) => new Map(texts.map((text) => [linkOf(utf8(text)), utf8(text)]));

@@ -69,7 +69,7 @@ it, so it stays one object, with one link, wherever the service is reached.
 import { ed25519, eip191 } from "@estoc/identity";
 import { loadServices } from "@estoc/mailbox-service";
 
-const services = await loadServices(store, { schemes: [ed25519, eip191] });
+const services = loadServices(store, { schemes: [ed25519, eip191] });
 const service = await services.fetch("https://mail.example");
 ```
 

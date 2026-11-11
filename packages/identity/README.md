@@ -461,7 +461,7 @@ signed identity's blobs:
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, linkOf } from "@estoc/object";
 
-const { signatures, publish } = await loadIdentity([ed25519]);
+const { signatures, publish } = loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, secretKey);
 const actor = signatures.actor(signer, await publish(signer));
 const signature = await actor.sign(object);

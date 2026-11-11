@@ -18,7 +18,7 @@ export const ID = /^sha256:[0-9a-f]{64}$/;
  *   The id that takes acceptances of an offer is the link of the offer,
  *   which that signature names as its object.
  */
-export const serviceSchema = await schema("Service", {
+export const serviceSchema = schema("Service", {
   origin: string(),
   at: integer(),
   offers: array(link<Signature>()),
@@ -40,7 +40,7 @@ export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
  * the `via` of the Inbound records that keep what the service answered
  * there. One origin is one object, however often it is reached.
  */
-export const originSchema = await schema("Origin", { origin: string() });
+export const originSchema = schema("Origin", { origin: string() });
 
 export type OriginData = DataOf<typeof originSchema>;
 
@@ -50,7 +50,7 @@ export type OriginData = DataOf<typeof originSchema>;
  * a link of its own, and a signature over it accepts that service's
  * offer alone.
  */
-export const accountOfferSchema = await schema("Account offer", { identity: link<KeyObject>() });
+export const accountOfferSchema = schema("Account offer", { identity: link<KeyObject>() });
 
 export type AccountOfferData = DataOf<typeof accountOfferSchema>;
 
@@ -60,7 +60,7 @@ export type AccountOfferData = DataOf<typeof accountOfferSchema>;
  * `at` when the service received it, in milliseconds since the Unix epoch
  * by the service's clock.
  */
-export const acknowledgementSchema = await schema("Acknowledgement", {
+export const acknowledgementSchema = schema("Acknowledgement", {
   acceptance: link<Signature>(),
   at: integer(),
 });
@@ -84,7 +84,7 @@ export const MAILBOX_ID = /^[0-9a-f]{32}$/;
  * - It names the service by its identifier, as the offer of an account
  *   does, so a request for it asks this service alone.
  */
-export const mailboxOfferSchema = await schema("Mailbox offer", {
+export const mailboxOfferSchema = schema("Mailbox offer", {
   identity: link<KeyObject>(),
   retention: integer(),
   quota: integer(),
@@ -101,7 +101,7 @@ export type MailboxTerms = Omit<MailboxOfferData, "identity">;
  * key that messages to the mailbox are sealed to. Each mailbox has a key of
  * its own, so each request is one of its own too.
  */
-export const mailboxRequestSchema = await schema("Mailbox request", { offer: link<never>(), key: bytes() });
+export const mailboxRequestSchema = schema("Mailbox request", { offer: link<never>(), key: bytes() });
 
 export type MailboxRequestData = DataOf<typeof mailboxRequestSchema>;
 
@@ -112,7 +112,7 @@ export type MailboxRequestData = DataOf<typeof mailboxRequestSchema>;
  * service's clock, `sendId` the id that senders post to, and `pickupId` the
  * id that the account picks up at.
  */
-export const mailboxAcknowledgementSchema = await schema("Mailbox acknowledgement", {
+export const mailboxAcknowledgementSchema = schema("Mailbox acknowledgement", {
   request: link<Signature>(),
   at: integer(),
   sendId: bytes(),
@@ -127,7 +127,7 @@ export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSch
  * post to, and `acknowledgement` the link of the service's signature over
  * the mailbox's acknowledgement, which says where the mailbox is picked up.
  */
-export const openedMailboxSchema = await schema("Opened mailbox", {
+export const openedMailboxSchema = schema("Opened mailbox", {
   mailbox: link<EncodedObject<Json>>(),
   acknowledgement: link<Signature>(),
 });
@@ -144,7 +144,7 @@ export type OpenedMailboxData = DataOf<typeof openedMailboxSchema>;
  * its acknowledgement, which the service signs again once a crisis of its
  * root cuts the signature.
  */
-export const pickupRequestSchema = await schema("Pickup request", {
+export const pickupRequestSchema = schema("Pickup request", {
   mailbox: link<Signature>(),
   receipts: array(link<Uint8Array>()),
 });
@@ -156,6 +156,6 @@ export type PickupRequestData = DataOf<typeof pickupRequestSchema>;
  * ciphertexts that wait at the mailbox, the earliest first, which come with
  * it.
  */
-export const pickupAnswerSchema = await schema("Pickup answer", { ciphertexts: array(link<Uint8Array>()) });
+export const pickupAnswerSchema = schema("Pickup answer", { ciphertexts: array(link<Uint8Array>()) });
 
 export type PickupAnswerData = DataOf<typeof pickupAnswerSchema>;

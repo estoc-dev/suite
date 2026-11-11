@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Json, type JsonObject, type Link, type Schema } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Json, type JsonObject, type Link } from "@estoc/object";
 import { string } from "@estoc/schema";
 import { hex } from "@scure/base";
 import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -37,6 +37,8 @@ export interface Queue {
 
 type QueuedMessage = { readonly ciphertext: Uint8Array };
 
+const schema = mailboxSchema("Memory mailbox", { name: string() });
+
 /**
  * A post office in one process: senders and receivers that share it reach
  * one another through its transport. A queue's name is 128 random bits, so
@@ -45,20 +47,14 @@ type QueuedMessage = { readonly ciphertext: Uint8Array };
  */
 export class MemoryNetwork {
   readonly transport: Transport;
-  readonly #schema: Schema<Json>;
   readonly #faults: Faults;
   readonly #queues = new Map<string, QueuedMessage[]>();
   #deliveries = 0;
   #dones = 0;
 
-  private constructor(schema: Schema<Json>, faults: Faults) {
-    this.#schema = schema;
+  constructor(faults: Faults = {}) {
     this.#faults = faults;
     this.transport = { schema, deliver: async (mailbox, ciphertext) => this.#deliver(mailbox, ciphertext) };
-  }
-
-  static async create(faults: Faults = {}): Promise<MemoryNetwork> {
-    return new MemoryNetwork(await mailboxSchema("Memory mailbox", { name: string() }), faults);
   }
 
   queue(): Queue {
@@ -73,7 +69,7 @@ export class MemoryNetwork {
     return {
       name,
       mailbox: (key) => {
-        const mailbox = encodeObject(this.#schema, { key: hex.encode(key), name });
+        const mailbox = encodeObject(schema, { key: hex.encode(key), name });
         mailboxes.add(mailbox.link);
         return mailbox;
       },

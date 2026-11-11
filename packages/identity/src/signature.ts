@@ -29,7 +29,7 @@ import type { Signer } from "./signer.ts";
  * reads. However they are laid out, they stay bytes, so this schema and those
  * who read signatures by it do not change for a scheme added later.
  */
-export const signatureSchema = await schema("Signature", {
+export const signatureSchema = schema("Signature", {
   signedIdentity: link<SignedIdentityObject>(),
   object: link<never>(),
   signature: bytes(),

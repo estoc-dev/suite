@@ -23,14 +23,14 @@ import { MemoryNetwork } from "./memory-network.ts";
 // over out of band, and each reads the latest grant of a series from their own
 // store.
 
-const identity = await loadIdentity([ed25519]);
+const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
 const seenPeople: View<IdentityVersion, People> = {
   index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
-const network = await MemoryNetwork.create();
+const network = new MemoryNetwork();
 
 interface Person {
   readonly actor: Actor;

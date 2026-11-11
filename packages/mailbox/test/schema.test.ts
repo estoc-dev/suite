@@ -3,7 +3,7 @@ import { string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { mailboxSchema } from "../src/index.ts";
 
-const memory = await mailboxSchema("Memory mailbox", { name: string() });
+const memory = mailboxSchema("Memory mailbox", { name: string() });
 const key = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
 
 describe("a mailbox schema", () => {

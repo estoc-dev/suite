@@ -25,7 +25,7 @@ export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
  * in a private store for each mailbox, so a key used at two transports is
  * two objects.
  */
-export const mailboxKeySchema = await schema("Mailbox Key", {
+export const mailboxKeySchema = schema("Mailbox Key", {
   mailbox: link<EncodedObject<Json>>(),
   secret: bytes(),
 });
@@ -36,7 +36,7 @@ export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
  * The schema of a record that a bundle, named by the link of its root, went out to a mailbox. `at`
  * is when, in milliseconds since the Unix epoch, by the clock of the device that wrote the record.
  */
-export const outboundSchema = await schema("Outbound", {
+export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
   mailbox: link<EncodedObject<Json>>(),
   at: integer(),
@@ -54,7 +54,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  *   their messages.
  * - `at` is when, in milliseconds since the Unix epoch, by the signer's clock.
  */
-export const mailboxGrantSchema = await schema("Mailbox Grant", {
+export const mailboxGrantSchema = schema("Mailbox Grant", {
   to: link<SignedIdentityObject>(),
   mailboxes: array(link<EncodedObject<Json>>()),
   at: integer(),

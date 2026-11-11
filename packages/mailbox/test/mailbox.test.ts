@@ -5,13 +5,13 @@ import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const { identities, signatures, publish } = await loadIdentity([ed25519]);
+const { identities, signatures, publish } = loadIdentity([ed25519]);
 
-const network = await MemoryNetwork.create();
+const network = new MemoryNetwork();
 const options = { transports: [network.transport] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
-const note = await schema("Note", { text: string() });
+const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
 
@@ -47,7 +47,7 @@ describe("a mailbox", () => {
   });
 
   it("rejects a send to a queue that its network does not have, as undelivered to a mailbox that is gone", async () => {
-    const elsewhere = await MemoryNetwork.create();
+    const elsewhere = new MemoryNetwork();
     const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
     const sending = mailbox.send(hello, []);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
@@ -57,10 +57,10 @@ describe("a mailbox", () => {
 
 // Mailboxes of transports that wrote their schemas by hand, each with a key that is not one.
 const looseMailboxes: [string, Schema<Json>, JsonObject][] = [
-  ["has no key", await schema("Loose mailbox", { name: string() }), { name: "q" }],
-  ["has a key in uppercase hex", await schema("Loose mailbox", { key: string() }), { key: "AB".repeat(32) }],
-  ["has a key of 31 bytes", await schema("Loose mailbox", { key: bytes() }), { key: "ab".repeat(31) }],
-  ["has a key that is a number", await schema("Loose mailbox", { key: integer() }), { key: 1 }],
+  ["has no key", schema("Loose mailbox", { name: string() }), { name: "q" }],
+  ["has a key in uppercase hex", schema("Loose mailbox", { key: string() }), { key: "AB".repeat(32) }],
+  ["has a key of 31 bytes", schema("Loose mailbox", { key: bytes() }), { key: "ab".repeat(31) }],
+  ["has a key that is a number", schema("Loose mailbox", { key: integer() }), { key: 1 }],
 ];
 
 describe("a mailbox from bytes", () => {

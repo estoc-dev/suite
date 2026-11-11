@@ -94,7 +94,7 @@ data of its objects as follows from the same fields:
 import { encodeObject } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 
-const identitySchema = await schema("Identity", {
+const identitySchema = schema("Identity", {
   root: link<KeyObject>(),
   agents: array(link<KeyObject>()),
   at: integer(),
@@ -113,7 +113,6 @@ const identity = encodeObject(identitySchema, { root: { $link: rootKey.link }, a
   link, and not what the link names.
 - `bytes` reads as a `string`, `integer` as a `number`, and an optional
   field as a member that may be absent.
-- `schema` returns a promise, as `encodeSchema` does.
 
 A schema someone else wrote is read from its bytes with
 `decodeSchema(bytes, schemaValidator)`. `schemaLanguage` is the language

@@ -25,7 +25,7 @@ import {
 } from "../src/index.ts";
 import { schemes } from "./fixtures.ts";
 
-const { keys } = await loadIdentity(schemes);
+const { keys } = loadIdentity(schemes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
 
@@ -79,10 +79,7 @@ describe("a key", () => {
   });
 
   it("is refused written to the object of a scheme it does not support, though shaped the same", async () => {
-    const lookalike: Schema<Json, KeyData> = await encodeSchema(
-      { name: "ed25519ctx", publicKeyLength: 32 },
-      schemeValidator,
-    );
+    const lookalike: Schema<Json, KeyData> = encodeSchema({ name: "ed25519ctx", publicKeyLength: 32 }, schemeValidator);
     const bytes = json.encode(json.object({ publicKey: ed25519Key }, lookalike.link));
     await expect(readKey(bytes)).rejects.toThrow(`${lookalike.link} is not a schema read here`);
     expect(() => keys.check(decodeObject(bytes, lookalike))).toThrow(`${lookalike.link} is not a schema read here`);
@@ -117,14 +114,14 @@ describe("the object of a scheme", () => {
     ["a field besides name and publicKeyLength", '"curve":"ed25519","name":"ed25519","publicKeyLength":32'],
     ["no name", '"publicKeyLength":32'],
     ["a key length that is not a whole number", '"name":"ed25519","publicKeyLength":1.5'],
-  ])("is refused with %s", async (_, fields) => {
+  ])("is refused with %s", (_, fields) => {
     const text = `{"$schema":{"$link":"${schemeSchema.link}"},${fields}}`;
-    await expect(decodeSchema(utf8(text), schemeValidator)).rejects.toThrow(/does not fit/);
+    expect(() => decodeSchema(utf8(text), schemeValidator)).toThrow(/does not fit/);
   });
 
-  it("is refused written to the root the scheme schema is written to, as a schema of the fields of a key would be", async () => {
-    const keySchema = await schema("Ed25519 key", { publicKey: bytes() });
-    await expect(decodeSchema(keySchema.bytes, schemeValidator)).rejects.toThrow(
+  it("is refused written to the root the scheme schema is written to, as a schema of the fields of a key would be", () => {
+    const keySchema = schema("Ed25519 key", { publicKey: bytes() });
+    expect(() => decodeSchema(keySchema.bytes, schemeValidator)).toThrow(
       `is written to ${schemeSchema.link}, not to ${schemaRoot.link}`,
     );
   });

@@ -28,8 +28,7 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, identityVersions, signatures, publish } =
-  await loadIdentity(schemes);
+export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = loadIdentity(schemes);
 export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, { at: 0 }));
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 

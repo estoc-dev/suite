@@ -49,32 +49,32 @@ function cardOf(root: Uint8Array): Card {
 }
 
 async function readCard(bundle: Bundle) {
-  const listed = cardOf(bundle.root);
-  const reachedAt = await signatures.read(listed.mailbox, bundle, noIdentityVersions);
-  const goesBy = await signatures.read(listed.name, bundle, noIdentityVersions);
-  if (reachedAt.signedIdentity.identity.identifier !== goesBy.signedIdentity.identity.identifier)
+  const cardLinks = cardOf(bundle.root);
+  const mailboxSignature = await signatures.read(cardLinks.mailbox, bundle, noIdentityVersions);
+  const nameSignature = await signatures.read(cardLinks.name, bundle, noIdentityVersions);
+  if (mailboxSignature.signedIdentity.identity.identifier !== nameSignature.signedIdentity.identity.identifier)
     throw new Error("a card is signed by the one identity it is for");
   return {
-    identity: reachedAt.signedIdentity.identity,
-    mailbox: (await readObject(bundle, reachedAt.object, mailbox)).data,
-    name: (await readObject(bundle, goesBy.object, name)).data.name,
+    identity: mailboxSignature.signedIdentity.identity,
+    mailbox: (await readObject(bundle, mailboxSignature.object, mailbox)).data,
+    name: (await readObject(bundle, nameSignature.object, name)).data.name,
   };
 }
 
 describe("a card", () => {
   const alice = signer(ed25519, 1);
   const inbox = encodeObject(mailbox, { url: "https://mail.example/alice" });
-  const called = encodeObject(name, { name: "Alice" });
-  const signed = Promise.all([sign(inbox, alice), sign(called, alice)]);
+  const nameObject = encodeObject(name, { name: "Alice" });
+  const cardSignatures = Promise.all([sign(inbox, alice), sign(nameObject, alice)]);
 
   it("reads as the mailbox and the name that its identity signed", async () => {
-    const [byMailbox, byName] = await signed;
+    const [byMailbox, byName] = await cardSignatures;
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
       byName.bytes,
-      called.bytes,
+      nameObject.bytes,
       ...byName.signedIdentity.blobs,
     ]);
     expect(await readCard(bundle)).toEqual({
@@ -85,13 +85,13 @@ describe("a card", () => {
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
-    const [byMailbox, byName] = await signed;
+    const [byMailbox, byName] = await cardSignatures;
     const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
       byName.bytes,
-      called.bytes,
+      nameObject.bytes,
       ...byName.signedIdentity.blobs,
     ]);
     expect(await readCard(bundle)).toEqual({
@@ -102,14 +102,14 @@ describe("a card", () => {
   });
 
   it("with its name signed by someone else reads as no one's card", async () => {
-    const [byMailbox] = await signed;
-    const byOther = await sign(called, signer(eip191, 2));
+    const [byMailbox] = await cardSignatures;
+    const byOther = await sign(nameObject, signer(eip191, 2));
     const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
       byOther.bytes,
-      called.bytes,
+      nameObject.bytes,
       ...byMailbox.signedIdentity.blobs,
       ...byOther.signedIdentity.blobs,
     ]);
@@ -120,8 +120,8 @@ describe("a card", () => {
 const chat = schema("Chat message", { text: string() });
 
 async function readMessage(bundle: Bundle) {
-  const read = await signatures.read(bundle.link, bundle, noIdentityVersions);
-  return { from: read.signedIdentity.identity, message: (await readObject(bundle, read.object, chat)).data };
+  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  return { from: signature.signedIdentity.identity, message: (await readObject(bundle, signature.object, chat)).data };
 }
 
 describe("a chat message", () => {

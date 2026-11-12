@@ -1,6 +1,7 @@
 import type { Bytes } from "@estoc/object";
 import { configure, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
 import { BLOB, type Bundle, ROOT, readBundle, writeBundle } from "./bundle.ts";
+import { joined } from "./bytes.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 // Stored, and DEFLATE.
@@ -73,7 +74,7 @@ export async function unzipBundle(
   });
   const files = new Map<string, Uint8Array>();
   const paths = new Set<string>();
-  let unzipped = 0;
+  let unzippedBytes = 0;
   for await (const entry of reader.getEntriesGenerator()) {
     const path = entry.filename;
     if (paths.has(path)) throw new Error(`the zip holds ${path} twice`);
@@ -91,8 +92,8 @@ export async function unzipBundle(
           // Counted as they come out, since the sizes a zip gives can be false.
           // The reader is aborted before the error is thrown, so that zip.js
           // keeps the error when it comes at the last chunk.
-          unzipped += chunk.length;
-          if (unzipped > bytes) abort.abort(new Error(`the zip unzips to more than ${bytes} bytes`));
+          unzippedBytes += chunk.length;
+          if (unzippedBytes > bytes) abort.abort(new Error(`the zip unzips to more than ${bytes} bytes`));
           abort.signal.throwIfAborted();
           chunks.push(chunk);
         },
@@ -125,14 +126,4 @@ export function packBundle(
  */
 export async function unpackBundle(zip: Uint8Array): Promise<Bundle> {
   return readBundle(await unzipBundle(zip, { bytes: zip.length }));
-}
-
-function joined(chunks: Uint8Array[]): Uint8Array {
-  const bytes = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.length;
-  }
-  return bytes;
 }

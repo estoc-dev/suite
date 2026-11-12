@@ -7,8 +7,8 @@ export type Check<D> = (data: Fields<D>) => readonly string[];
 /**
  * A language of schemas over the data of one encoding, with documents `S`.
  *
- * - A schema is a value of the encoding that is not an object: bytes, which link to nothing. An
- *   object names it by link, and that alone makes the bytes its schema.
+ * - A schema is a value of the encoding that links to nothing. An object names it by link, and
+ *   that alone makes the blob its schema.
  * - No blob says which language a schema is in, as none says which encoding some bytes are in:
  *   the program that reads a schema names the language.
  */
@@ -84,7 +84,7 @@ export class Schema<D, F extends Fields<D> = Fields<D>> {
 /**
  * Reads the schema that `bytes` hold, and compiles its document with `validator`.
  *
- * @throws when the bytes are an object, which links to its schema, and not bytes.
+ * @throws when the bytes link to another blob, as an object does to its schema.
  * @throws when the bytes do not hold a schema of the validator's language.
  * @throws when the validator cannot compile the document.
  */
@@ -96,7 +96,7 @@ export function decodeSchema<D, S, F extends Fields<D> = Fields<D>>(
   const { encoding } = language;
   const { value, bytes: owned, link } = decodeBlob(encoding, bytes);
   const [linked] = encoding.links(value);
-  if (linked !== undefined) throw new Error(`a schema is bytes and links to nothing, not to ${linked}`);
+  if (linked !== undefined) throw new Error(`a schema links to nothing, not to ${linked}`);
   return new Schema<D, F>(encoding, { bytes: owned, link }, validator.compile(language.document(value)));
 }
 

@@ -67,26 +67,26 @@ function stringOf(value: string): string {
   return value;
 }
 
-function written(value: Est): unknown {
+function cborValueOf(value: Est): unknown {
   if (typeof value === "boolean" || value instanceof Uint8Array) return value;
   if (typeof value === "number" || typeof value === "bigint") return integerOf(value);
   if (typeof value === "string") return stringOf(value);
-  if (Array.isArray(value)) return Array.from(value, written);
+  if (Array.isArray(value)) return Array.from(value, cborValueOf);
   if (value instanceof EstLink) return new Tagged(linkTag, digestOf(value.link));
   if (value instanceof EstObject) throw new Error("an object is a blob as a whole, and data holds none");
-  if (typeof value === "object" && value !== null && isMap(value)) return writtenMap(value);
+  if (typeof value === "object" && value !== null && isMap(value)) return cborMapOf(value);
   throw new Error("not a value of est");
 }
 
-function writtenMap(map: EstMap): Map<string, unknown> {
-  return new Map(Object.entries(map).map(([key, value]) => [stringOf(key), written(value)]));
+function cborMapOf(map: EstMap): Map<string, unknown> {
+  return new Map(Object.entries(map).map(([key, value]) => [stringOf(key), cborValueOf(value)]));
 }
 
-function read(value: unknown): Est {
+function estValueOf(value: unknown): Est {
   if (typeof value === "boolean" || typeof value === "string" || value instanceof Uint8Array) return value;
   if (typeof value === "number" || typeof value === "bigint") return integerOf(value);
-  if (Array.isArray(value)) return value.map(read);
-  if (value instanceof Map) return readMap(value);
+  if (Array.isArray(value)) return value.map(estValueOf);
+  if (value instanceof Map) return estMapOf(value);
   if (value instanceof Tagged && value.tag === linkTag) {
     const digest: unknown = value.value;
     if (!(digest instanceof Uint8Array) || digest.length !== 32) throw new Error("a link is the 32 bytes of a SHA-256");
@@ -96,25 +96,26 @@ function read(value: unknown): Est {
   throw new Error("not a value of est");
 }
 
-function readMap(map: Map<unknown, unknown>): EstMap {
+function estMapOf(map: Map<unknown, unknown>): EstMap {
   return Object.fromEntries(
     Array.from(map, ([key, value]) => {
       if (typeof key !== "string") throw new Error("the keys of a map are strings");
-      return [key, read(value)];
+      return [key, estValueOf(value)];
     }),
   );
 }
 
-function readObject(value: unknown): EstObject {
+function estObjectOf(value: unknown): EstObject {
   if (!(value instanceof Tagged) || value.tag !== objectTag) throw new Error("a blob of est is an object");
   const parts: unknown = value.value;
   if (!Array.isArray(parts) || parts.length !== 2) throw new Error("an object is its schema and its data");
   const [schema, data] = parts;
   if (!(data instanceof Map)) throw new Error("the data of an object is a map of its fields");
-  if (schema === itselfText) return new EstObject(itself, readMap(data));
-  const named = read(schema);
-  if (!(named instanceof EstLink)) throw new Error('an object names its schema by link, or "self" when it is its own');
-  return new EstObject(named.link, readMap(data));
+  if (schema === itselfText) return new EstObject(itself, estMapOf(data));
+  const schemaValue = estValueOf(schema);
+  if (!(schemaValue instanceof EstLink))
+    throw new Error('an object names its schema by link, or "self" when it is its own');
+  return new EstObject(schemaValue.link, estMapOf(data));
 }
 
 function* linksIn(value: Est): Generator<Link<unknown>> {
@@ -148,11 +149,11 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
 export const est: Encoding<Est> = {
   encode(value) {
     if (!(value instanceof EstObject)) throw new Error("a blob of est is an object");
-    const schema = value.schema === itself ? itselfText : written(new EstLink(value.schema));
-    return encode(new Tagged(objectTag, [schema, writtenMap(value.data)]), rfc8949EncodeOptions);
+    const schema = value.schema === itself ? itselfText : cborValueOf(new EstLink(value.schema));
+    return encode(new Tagged(objectTag, [schema, cborMapOf(value.data)]), rfc8949EncodeOptions);
   },
   decode(bytes) {
-    const value = readObject(
+    const value = estObjectOf(
       decode(bytes, {
         strict: true,
         strictUtf8: true,

@@ -34,7 +34,7 @@ const objectHead = "da6573743f82";
 const itselfHex = "6473656c66";
 const linkHex = (link: Link<unknown>) => `d9486c5820${link.slice("sha256:".length)}`;
 const objectHex = (fields: string, schema = linkHex(anything.link)) => `${objectHead}${schema}${fields}`;
-const holding = (value: string) => objectHex(`a16176${value}`);
+const objectHexHolding = (value: string) => objectHex(`a16176${value}`);
 const decodeHex = (hex: string) => decodeObject(hexToBytes(hex), anything);
 
 describe("an object of est", () => {
@@ -73,21 +73,23 @@ describe("an object of est", () => {
     ["a link", new EstLink(a), linkHex(a)],
     ["a hash that is bytes", hexToBytes(a.slice("sha256:".length)), `5820${a.slice("sha256:".length)}`],
   ])("writes %s one way, and reads it back", (_, value, hex) => {
-    expect(bytesToHex(encodeObject(anything, { v: value }).bytes)).toBe(holding(hex));
-    expect(decodeHex(holding(hex)).data).toEqual({ v: value });
+    expect(bytesToHex(encodeObject(anything, { v: value }).bytes)).toBe(objectHexHolding(hex));
+    expect(decodeHex(objectHexHolding(hex)).data).toEqual({ v: value });
   });
 
   it("keeps a member named __proto__ as a member", () => {
-    const data = JSON.parse('{"__proto__":{"__proto__":1}}');
-    const read = decodeObject(encodeObject(anything, data).bytes, anything).data;
-    expect(Object.hasOwn(read, "__proto__")).toBe(true);
-    expect(Object.entries(read)).toEqual([["__proto__", JSON.parse('{"__proto__":1}')]]);
+    const source = JSON.parse('{"__proto__":{"__proto__":1}}');
+    const data = decodeObject(encodeObject(anything, source).bytes, anything).data;
+    expect(Object.hasOwn(data, "__proto__")).toBe(true);
+    expect(Object.entries(data)).toEqual([["__proto__", JSON.parse('{"__proto__":1}')]]);
   });
 
   it("is refused when its data does not fit its schema", () => {
-    const titled = schemaTitled("Titled", (data) => (typeof data.title === "string" ? [] : ["#/title: not a string"]));
-    expect(encodeObject(titled, { title: "hello" }).data).toEqual({ title: "hello" });
-    expect(() => encodeObject(titled, { title: 1 })).toThrow(/does not fit/);
+    const titledSchema = schemaTitled("Titled", (data) =>
+      typeof data.title === "string" ? [] : ["#/title: not a string"],
+    );
+    expect(encodeObject(titledSchema, { title: "hello" }).data).toEqual({ title: "hello" });
+    expect(() => encodeObject(titledSchema, { title: 1 })).toThrow(/does not fit/);
   });
 
   it("is refused when read with a schema other than its own", () => {
@@ -106,38 +108,38 @@ describe("strict decoding", () => {
   const sha512Tag = "d94850";
 
   it.each([
-    ["an integer in a longer head", holding("1801")],
-    ["a length in a longer head", holding("780161")],
+    ["an integer in a longer head", objectHexHolding("1801")],
+    ["a length in a longer head", objectHexHolding("780161")],
     ["the tag of the format in a longer head", `db000000006573743f82${linkHex(anything.link)}a0`],
-    ["the tag of a link in a longer head", holding(`da0000486c5820${a.slice("sha256:".length)}`)],
+    ["the tag of a link in a longer head", objectHexHolding(`da0000486c5820${a.slice("sha256:".length)}`)],
     ["keys out of order", objectHex("a2616201616101")],
     ["a longer key before a shorter one", objectHex("a262616101616201")],
     ["a repeated key", objectHex("a2616101616101")],
-    ["an array of indefinite length", holding("9f01ff")],
-    ["a map of indefinite length", holding("bf616101ff")],
-    ["a string of indefinite length", holding("7f6161ff")],
-    ["bytes of indefinite length", holding("5f4101ff")],
-    ["a float", holding("f93e00")],
-    ["an integer written as a float", holding("f93c00")],
-    ["negative zero", holding("f98000")],
-    ["NaN", holding("f97e00")],
-    ["Infinity", holding("f97c00")],
-    ["null", holding("f6")],
-    ["undefined", holding("f7")],
-    ["a simple value", holding("f0")],
-    ["2^53", holding("1b0020000000000000")],
-    ["-(2^53)", holding("3b001fffffffffffff")],
-    ["a bignum", holding("c249010000000000000000")],
-    ["a tag other than that of a link", holding("d82a4100")],
-    ["a hash under the tag of SHA-512", holding(`${sha512Tag}5840${"00".repeat(64)}`)],
-    ["a link of 31 bytes", holding(`d9486c581f${"00".repeat(31)}`)],
-    ["a link of 33 bytes", holding(`d9486c5821${"00".repeat(33)}`)],
-    ["a link around a string", holding("d9486c6161")],
-    ["an object inside its data", holding(objectHex("a0"))],
+    ["an array of indefinite length", objectHexHolding("9f01ff")],
+    ["a map of indefinite length", objectHexHolding("bf616101ff")],
+    ["a string of indefinite length", objectHexHolding("7f6161ff")],
+    ["bytes of indefinite length", objectHexHolding("5f4101ff")],
+    ["a float", objectHexHolding("f93e00")],
+    ["an integer written as a float", objectHexHolding("f93c00")],
+    ["negative zero", objectHexHolding("f98000")],
+    ["NaN", objectHexHolding("f97e00")],
+    ["Infinity", objectHexHolding("f97c00")],
+    ["null", objectHexHolding("f6")],
+    ["undefined", objectHexHolding("f7")],
+    ["a simple value", objectHexHolding("f0")],
+    ["2^53", objectHexHolding("1b0020000000000000")],
+    ["-(2^53)", objectHexHolding("3b001fffffffffffff")],
+    ["a bignum", objectHexHolding("c249010000000000000000")],
+    ["a tag other than that of a link", objectHexHolding("d82a4100")],
+    ["a hash under the tag of SHA-512", objectHexHolding(`${sha512Tag}5840${"00".repeat(64)}`)],
+    ["a link of 31 bytes", objectHexHolding(`d9486c581f${"00".repeat(31)}`)],
+    ["a link of 33 bytes", objectHexHolding(`d9486c5821${"00".repeat(33)}`)],
+    ["a link around a string", objectHexHolding("d9486c6161")],
+    ["an object inside its data", objectHexHolding(objectHex("a0"))],
     ["a key that is not a string", objectHex("a10101")],
-    ["invalid UTF-8 in a string", holding("61ff")],
+    ["invalid UTF-8 in a string", objectHexHolding("61ff")],
     ["invalid UTF-8 in a key", objectHex("a161ff01")],
-    ["a surrogate written in UTF-8", holding("63eda080")],
+    ["a surrogate written in UTF-8", objectHexHolding("63eda080")],
     ["a byte after the object", `${objectHex("a0")}00`],
     ["a second object after the first", objectHex("a0").repeat(2)],
     ["no bytes", ""],
@@ -155,7 +157,7 @@ describe("strict decoding", () => {
   });
 
   it("reads the same bytes written the one way", () => {
-    expect(decodeHex(holding("01")).data).toEqual({ v: 1 });
+    expect(decodeHex(objectHexHolding("01")).data).toEqual({ v: 1 });
     expect(decodeHex(objectHex("a2616101616201")).data).toEqual({ a: 1, b: 1 });
     expect(decodeHex(objectHex("a0")).data).toEqual({});
   });
@@ -200,9 +202,9 @@ describe("an object written to itself", () => {
   it("reads back with its own link as its schema", () => {
     expect(schemaOf(anything.bytes, est)).toBe(anything.link);
     const bytes: Uint8Array = anything.bytes;
-    const read = decodeObject(bytes, anything);
-    expect(read.schema.link).toBe(read.link);
-    expect(read.data).toEqual({ title: "Anything" });
+    const object = decodeObject(bytes, anything);
+    expect(object.schema.link).toBe(object.link);
+    expect(object.data).toEqual({ title: "Anything" });
   });
 
   it("is refused as an object of another schema", () => {
@@ -213,8 +215,8 @@ describe("an object written to itself", () => {
 
   it("does not link to itself", () => {
     expect([...est.links(est.decode(anything.bytes))]).toEqual([]);
-    const linking = est.encode(est.object({ to: new EstLink(a) }, itself));
-    expect([...est.links(est.decode(linking))]).toEqual([a]);
+    const linkingBytes = est.encode(est.object({ to: new EstLink(a) }, itself));
+    expect([...est.links(est.decode(linkingBytes))]).toEqual([a]);
   });
 
   it("cannot be written in JSON", () => {

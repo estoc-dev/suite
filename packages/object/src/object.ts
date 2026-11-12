@@ -40,8 +40,8 @@ export function decodeObject<D, F extends Fields<D>>(
 ): EncodedObject<D, F> {
   const { value, bytes: owned, link } = decodeBlob(schema.encoding, bytes);
   const fields = schema.encoding.fields(value);
-  const named = fields.schema === itself ? link : fields.schema;
-  if (named !== schema.link) throw new Error(`the object is written to ${named}, not to ${schema.link}`);
+  const schemaLink = fields.schema === itself ? link : fields.schema;
+  if (schemaLink !== schema.link) throw new Error(`the object is written to ${schemaLink}, not to ${schema.link}`);
   return { schema, data: schema.validate(fields.data), bytes: owned, link };
 }
 

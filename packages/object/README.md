@@ -16,8 +16,9 @@ Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
 Schema     {"title": <a string>, "fields": <the fields of its objects>}
 ```
 
-A schema is not an object. It is bytes, as every blob that is not an
-object is, and the objects that name it are what make it a schema.
+In that pair a schema is not an object. It is bytes, as every blob of JSON
+that is not an object is, and the objects that name it are what make it a
+schema.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -72,31 +73,36 @@ translating old ones.
 
 ## Schemas
 
-A schema is bytes: a value of its encoding that is not an object, and so
-names no schema of its own.
+A schema is a blob that links to nothing, and that objects name by link.
 
 - What a schema holds is its language's to say: in Estoc Schema, a title
   and the fields of its objects.
-- An object names its schema by link, and that is what makes the bytes a
-  schema. A schema is reached from its objects, and no schema describes a
-  schema: an object is written to a schema, and a schema to nothing.
+- An object names its schema by link, and that is what makes the blob a
+  schema. A schema is reached from its objects.
 - No blob says which language a schema is in. The program that reads one
   names the language, by the validator it reads with. An encoding is told
   the same way: no blob says that some bytes are JCS, and `schemaOf` is
   given the encoding by its caller.
-- A schema links to nothing, as bytes link to nothing whatever they hold,
-  and an object, which links to its schema, is refused as a schema. A
-  schema says that a field holds a link without holding one: in Estoc
-  Schema the field is `{"type": "link"}`. So the closure of a schema is
-  the schema alone, and its `bytes` go wherever an object of it goes, as
-  into a store or a bundle.
+- `decodeSchema` refuses a blob that links to another. A schema says that
+  a field holds a link without holding one: in Estoc Schema the field is
+  `{"type": "link"}`. So the closure of a schema is the schema alone, and
+  its `bytes` go wherever an object of it goes, as into a store or a
+  bundle.
+- Which blobs link to nothing is the encoding's to say.
+  - In JSON an object links to its schema, so a schema is JSON that is not
+    an object. It is bytes, and no schema describes a schema: an object is
+    written to a schema, and a schema to nothing.
+  - In est every blob is an object, and the one that links to nothing is
+    written to itself. No language is over est yet, and how its schemas
+    are written is not settled: this is only what `decodeSchema` reads
+    there now.
 
 The link of a schema fixes its bytes, and not the language they are read
 in. Programs that share objects share the language, as they share the
 encoding.
 
-A blob that is not an object is bytes: a schema, an image, or a JSON file
-such as a `biome.json`, whose `$schema` is a string, even when it happens
+A blob that is not an object is bytes: an image, a schema in JSON, or a
+JSON file such as a `biome.json`, whose `$schema` is a string, even when it happens
 to be JCS. Only the links in an object are followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a

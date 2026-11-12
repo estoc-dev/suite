@@ -1,7 +1,7 @@
 import type { Fields, Link, Reader } from "@estoc/object";
-import { DerivedObjects, type Listed } from "./derived-objects.ts";
+import { DerivedObjects } from "./derived-objects.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
-import { type Derivation, derivationOf, type FieldNames, type OrderedIndex, orderOf } from "./source.ts";
+import { type Derivation, derivationOf, type FieldNames, type Listing, type OrderedIndex, orderOf } from "./source.ts";
 import type { Backend, Store } from "./store.ts";
 
 /**
@@ -54,8 +54,12 @@ export interface RowKeeper {
   readonly [rowsByIndex]: RowsByIndex;
 }
 
-/** The rows of each index for what one store lists. */
+/** What one store lists, and the rows of each index for that. */
 export interface RowsByIndex {
+  /** The records that the store lists. */
+  listedRecords(): Promise<ListedLinks>;
+  /** The blobs that the store holds. */
+  heldBlobs(): Promise<ListedLinks>;
   /** The rows that the index of `derivation` gives, each once. */
   derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>>;
   /** The rows of `index` in its order. */
@@ -64,37 +68,74 @@ export interface RowsByIndex {
   ): Promise<SortedRows<D, F, By>>;
 }
 
-/** The rows of each index for a store that lists nothing. */
+/** What a store lists of the blobs it holds: its records, or all of them. */
+class ListedLinks implements Listing {
+  readonly links: readonly Link<unknown>[];
+
+  constructor(links: readonly Link<unknown>[] = []) {
+    this.links = links;
+  }
+
+  /** These, then `links`. */
+  async adding(links: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>): Promise<ListedLinks> {
+    const addedLinks: Link<unknown>[] = [];
+    for await (const link of links) addedLinks.push(link);
+    return addedLinks.length === 0 ? this : new ListedLinks([...this.links, ...addedLinks]);
+  }
+
+  bytesOf(): undefined {
+    return undefined;
+  }
+}
+
+/** What a store that lists nothing has. */
 const noRows: RowsByIndex = {
+  listedRecords: async () => new ListedLinks(),
+  heldBlobs: async () => new ListedLinks(),
   derivedObjectsOf: async (derivation) => new DerivedObjects(derivation),
   sortedRowsOf: async (index) => new SortedRows(index),
 };
 
-/** The rows kept of an index, with how many records and blobs of a store they are of. */
-interface KeptObjects<D, F extends Fields<D>> {
-  readonly objects: DerivedObjects<D, F>;
-  readonly recordCount: number;
-  readonly blobCount: number;
+/**
+ * What a store keeps from one scan to the next. Scans take it further one after another, each from
+ * where the last left it, and one that fails leaves it as it was.
+ */
+class Kept<T> {
+  #value: Promise<T>;
+
+  constructor(initial: T) {
+    this.#value = Promise.resolve(initial);
+  }
+
+  /** Keeps what `step` gives of what is kept. */
+  advance(step: (value: T) => Promise<T>): Promise<T> {
+    const previous = this.#value;
+    const next = previous.then(step);
+    this.#value = next.catch(() => previous);
+    return next;
+  }
 }
 
 /**
- * The rows that a store keeps of each index it is scanned for, with how many of its records and
- * blobs they are of, so that a scan reads only those listed since, and those rows in each order
- * they are scanned in.
+ * What a store keeps of what it lists and of each index it is scanned for, so that a scan reads
+ * only what was listed since: the links of its records and of its blobs, the rows of each index,
+ * and those rows in each order they are scanned in.
  *
  * - The rows of a record, a blob or a row of another index depend on it and its closure alone, and
  *   a store only grows, so the rows of those read before still hold.
+ * - The links are kept once for all the indexes that read them, and those of the blobs only once
+ *   an index reads blobs: a store holds many more blobs than records, and most indexes read none.
  * - The rows of an index are kept once, for its orders and for each index that reads it.
  * - The rows are kept for as long as the index is, and their order for as long as the ordered index
  *   is, so a program makes each once and keeps it.
- * - Scans of one index go one after another, each from where the last left off, and one that fails
- *   leaves the rows as they were.
  */
 export class KeptRows implements RowsByIndex {
   readonly #reader: Reader;
   readonly #backend: Pick<Backend, "records" | "blobs">;
-  readonly #objectsByDerivation = new WeakMap<object, Promise<unknown>>();
-  readonly #sortedRowsByIndex = new WeakMap<object, Promise<unknown>>();
+  readonly #records = new Kept(new ListedLinks());
+  readonly #blobs = new Kept(new ListedLinks());
+  readonly #objectsByDerivation = new WeakMap<object, Kept<unknown>>();
+  readonly #sortedRowsByIndex = new WeakMap<object, Kept<unknown>>();
 
   /** Keeps rows of what `backend` lists, each read from `reader`. */
   constructor(reader: Reader, backend: Pick<Backend, "records" | "blobs">) {
@@ -102,60 +143,72 @@ export class KeptRows implements RowsByIndex {
     this.#backend = backend;
   }
 
-  sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
-    const derivedObjects = this.derivedObjectsOf(derivationOf(orderOf(index).index));
-    // What is kept under an ordered index are rows of it.
-    const kept = this.#sortedRowsByIndex.get(index) as Promise<SortedRows<D, F, By>> | undefined;
-    const previous = kept ?? Promise.resolve(new SortedRows(index));
-    const next = Promise.all([previous, derivedObjects]).then(([sortedRows, objects]) => sortedRows.including(objects));
-    this.#sortedRowsByIndex.set(
-      index,
-      next.catch(() => previous),
-    );
-    return next;
+  listedRecords(): Promise<ListedLinks> {
+    return this.#records.advance((listed) => listed.adding(this.#backend.records(listed.links.length)));
+  }
+
+  heldBlobs(): Promise<ListedLinks> {
+    return this.#blobs.advance((listed) => listed.adding(this.#backend.blobs(listed.links.length)));
   }
 
   derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
     // What is kept under what an index is made of are rows of it.
-    const kept = this.#objectsByDerivation.get(derivation) as Promise<KeptObjects<D, F>> | undefined;
-    const previous = kept ?? Promise.resolve({ objects: new DerivedObjects(derivation), recordCount: 0, blobCount: 0 });
-    const next = previous.then(async ({ objects, recordCount, blobCount }) => {
-      const records: Link<unknown>[] = [];
-      if (derivation.parts.has("records"))
-        for await (const link of this.#backend.records(recordCount)) records.push(link);
-      const blobs: Link<unknown>[] = [];
-      // A store holds many more blobs than records, and most indexes read none of them.
-      if (derivation.parts.has("blobs")) for await (const link of this.#backend.blobs(blobCount)) blobs.push(link);
-      return {
-        objects: await objects.adding({ records, blobs }, this.#reader, this),
-        recordCount: recordCount + records.length,
-        blobCount: blobCount + blobs.length,
-      };
-    });
-    this.#objectsByDerivation.set(
-      derivation,
-      next.catch(() => previous),
+    let kept = this.#objectsByDerivation.get(derivation) as Kept<DerivedObjects<D, F>> | undefined;
+    if (kept === undefined) {
+      kept = new Kept(new DerivedObjects(derivation));
+      this.#objectsByDerivation.set(derivation, kept);
+    }
+    return kept.advance((objects) => objects.adding(this.#reader, this));
+  }
+
+  sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
+    index: OrderedIndex<D, F, By>,
+  ): Promise<SortedRows<D, F, By>> {
+    // What is kept under an ordered index are rows of it.
+    let kept = this.#sortedRowsByIndex.get(index) as Kept<SortedRows<D, F, By>> | undefined;
+    if (kept === undefined) {
+      kept = new Kept(new SortedRows(index));
+      this.#sortedRowsByIndex.set(index, kept);
+    }
+    // The rows in their order come first, so that those derived next go on from the ones they are of.
+    return kept.advance(async (sortedRows) =>
+      sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index))),
     );
-    return next.then(({ objects }) => objects);
   }
 }
 
+/** The records and blobs that a staged batch has besides what its store lists. */
+interface AddedLinks {
+  readonly records: readonly Link<unknown>[];
+  readonly blobs: readonly Link<unknown>[];
+}
+
 /**
- * The rows of each index for what a store lists and some records and blobs besides, as for a staged
- * batch: those that `rows` has for the store, then those of `added`, each read from `reader`.
- * Nothing is kept of them.
+ * What a store lists and some records and blobs besides, as for a staged batch, and the rows of
+ * each index for that: what `rows` has for the store, then `added` and the rows of it, each read
+ * from `reader`. Nothing is kept of them.
  */
 export class AddedRows implements RowsByIndex {
   readonly #rows: RowsByIndex;
-  readonly #added: Listed;
+  readonly #added: AddedLinks;
   readonly #reader: Reader;
 
-  constructor(rows: RowsByIndex, added: Listed, reader: Reader) {
+  constructor(rows: RowsByIndex, added: AddedLinks, reader: Reader) {
     this.#rows = rows;
     this.#added = added;
     this.#reader = reader;
+  }
+
+  async listedRecords(): Promise<ListedLinks> {
+    return (await this.#rows.listedRecords()).adding(this.#added.records);
+  }
+
+  async heldBlobs(): Promise<ListedLinks> {
+    return (await this.#rows.heldBlobs()).adding(this.#added.blobs);
+  }
+
+  async derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
+    return (await this.#rows.derivedObjectsOf(derivation)).adding(this.#reader, this);
   }
 
   async sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
@@ -164,9 +217,5 @@ export class AddedRows implements RowsByIndex {
     // The rows in their order come first, so that those derived next go on from the ones they are of.
     const sortedRows = await this.#rows.sortedRowsOf(index);
     return sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index)));
-  }
-
-  async derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
-    return (await this.#rows.derivedObjectsOf(derivation)).adding(this.#added, this.#reader, this);
   }
 }

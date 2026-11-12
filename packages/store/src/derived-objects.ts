@@ -1,71 +1,57 @@
 import { type EncodedObject, encodeObject, type Fields, type Link, type Reader } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
-import type { Derivation, SourceIndex, SourceObjects } from "./source.ts";
-
-type Links = Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>;
-
-/** The records and blobs that a store lists, or those it has listed since some rows were derived. */
-export interface Listed {
-  readonly records: Links;
-  readonly blobs: Links;
-}
+import type { Derivation, Listing, Origin } from "./source.ts";
 
 /**
  * The rows that an index gives of what a store lists, each once, in the order it first gave them.
  * They are kept beside the store, which does not hold them: an index over this one reads them from
  * here, by link as it reads any blob, and whatever else it reads from the store.
  */
-export class DerivedObjects<D, F extends Fields<D>> implements SourceObjects {
+export class DerivedObjects<D, F extends Fields<D>> implements Listing {
   readonly objects: readonly EncodedObject<D, F>[];
+  readonly links: readonly Link<unknown>[];
   readonly #derivation: Derivation<D, F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>>;
-  /** The rows of each index that the index reads, all of which these are of. */
-  readonly #sources: ReadonlyMap<SourceIndex, SourceObjects>;
+  /** What each origin of the index listed, all of which these rows are of. */
+  readonly #listings: ReadonlyMap<Origin, Listing>;
 
   constructor(
     derivation: Derivation<D, F>,
     objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>> = new Map(),
-    sources: ReadonlyMap<SourceIndex, SourceObjects> = new Map(),
+    listings: ReadonlyMap<Origin, Listing> = new Map(),
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
+    this.links = [...objectsByLink.keys()];
     this.#objectsByLink = objectsByLink;
-    this.#sources = sources;
+    this.#listings = listings;
   }
 
   /**
-   * These rows, then those that the index gives of `records` and `blobs`, each read from `store`,
-   * and of the rows that each index it reads has in `rows` beyond those these are of.
+   * These rows, then those that the index gives of what each of its origins lists in `rows` beyond
+   * what these are of, each read from `store`.
    *
    * @throws as `scan` does.
    */
-  async adding({ records, blobs }: Listed, store: Reader, rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
+  async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
     const { schema, parts } = this.#derivation;
     const objectsByLink = new Map(this.#objectsByLink);
-    const sources = new Map<SourceIndex, SourceObjects>();
+    const listings = new Map<Origin, Listing>();
     for (const [origin, originParts] of parts) {
-      let links: Links;
-      let reader = store;
-      if (origin === "records") links = records;
-      else if (origin === "blobs") links = blobs;
-      else {
-        const sourceObjects = await origin.objectsIn(rows);
-        const readCount = this.#sources.get(origin)?.objects.length ?? 0;
-        links = sourceObjects.objects.slice(readCount).map(({ link }) => link);
-        reader = { get: (link) => sourceObjects.bytesOf(link) ?? store.get(link) };
-        sources.set(origin, sourceObjects);
-      }
-      for await (const link of links) {
+      const listing = await origin.listingIn(rows);
+      listings.set(origin, listing);
+      const readCount = this.#listings.get(origin)?.links.length ?? 0;
+      const reader: Reader = { get: (link) => listing.bytesOf(link) ?? store.get(link) };
+      for (const link of listing.links.slice(readCount)) {
         const blob = new ScannedBlob(link, reader);
         for (const part of originParts) {
           const partObjects: EncodedObject<D, F>[] = [];
           try {
             for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
-            // Anyone can send a blob, and a scan that threw on one would fail from then on.
             // A store that failed still fails the scan, by the blob's `readFailure`.
-            if (origin !== "blobs") throw error;
+            if (!origin.listsWhatAnyoneCanSend) throw error;
             continue;
           }
           for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
@@ -76,15 +62,15 @@ export class DerivedObjects<D, F extends Fields<D>> implements SourceObjects {
     }
     const isSame =
       objectsByLink.size === this.#objectsByLink.size &&
-      [...sources].every(([origin, sourceObjects]) => this.#sources.get(origin) === sourceObjects);
-    return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, sources);
+      [...listings].every(([origin, listing]) => this.#listings.get(origin) === listing);
+    return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings);
   }
 
   bytesOf(link: Link<unknown>): Uint8Array | undefined {
     const object = this.#objectsByLink.get(link);
     if (object !== undefined) return object.bytes;
-    for (const source of this.#sources.values()) {
-      const bytes = source.bytesOf(link);
+    for (const listing of this.#listings.values()) {
+      const bytes = listing.bytesOf(link);
       if (bytes !== undefined) return bytes;
     }
     return undefined;

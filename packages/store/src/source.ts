@@ -31,22 +31,36 @@ export type Prefix<K extends readonly unknown[]> =
 type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 
 /** Where what an index reads is listed: the records of a store, the blobs it holds, or the rows of another index. */
-type Origin = "records" | "blobs" | SourceIndex;
-
-/** An index, as an index over it reads its rows. */
-export interface SourceIndex {
-  /** Whether it reads the blobs a store holds, itself or through an index it reads. */
+export interface Origin {
+  /** Whether it lists the blobs a store holds, itself or through an index it reads. */
   readonly readsBlobs: boolean;
-  /** The rows it has in `rows`. */
-  objectsIn(rows: RowsByIndex): Promise<SourceObjects>;
+  /**
+   * Whether anyone can send what it lists. One of those that a part of an index throws on gives no
+   * row of that part: a scan that threw on it would fail from then on.
+   */
+  readonly listsWhatAnyoneCanSend: boolean;
+  /** What it lists in `rows`. */
+  listingIn(rows: RowsByIndex): Promise<Listing>;
 }
 
-/** The rows of an index, as an index over it reads them. */
-export interface SourceObjects {
-  readonly objects: readonly { readonly link: Link<unknown> }[];
-  /** The bytes of one of these rows, or of one of those they were derived from. */
+/** What an origin lists for one store, in the order it listed them. A later one starts with these. */
+export interface Listing {
+  readonly links: readonly Link<unknown>[];
+  /** The bytes of one of them that the store does not hold, or of one that such a one was derived from. */
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
+
+const listedRecords: Origin = {
+  readsBlobs: false,
+  listsWhatAnyoneCanSend: false,
+  listingIn: (rows) => rows.listedRecords(),
+};
+
+const heldBlobs: Origin = {
+  readsBlobs: true,
+  listsWhatAnyoneCanSend: true,
+  listingIn: (rows) => rows.heldBlobs(),
+};
 
 /** What a source is made of: where what it reads is listed, and what it reads each one as. */
 interface Reading<T> {
@@ -56,20 +70,19 @@ interface Reading<T> {
 }
 
 /** What an index is made of: the schema its rows are written to, and what gives them of what each origin lists. */
-export class Derivation<D, F extends Fields<D>> implements SourceIndex {
+export class Derivation<D, F extends Fields<D>> implements Origin {
   readonly schema: Schema<D, F>;
   readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
   readonly readsBlobs: boolean;
+  readonly listsWhatAnyoneCanSend = false;
 
   constructor(schema: Schema<D, F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
     this.schema = schema;
     this.parts = parts;
-    this.readsBlobs = [...parts.keys()].some(
-      (origin) => origin === "blobs" || (origin !== "records" && origin.readsBlobs),
-    );
+    this.readsBlobs = [...parts.keys()].some((origin) => origin.readsBlobs);
   }
 
-  objectsIn(rows: RowsByIndex): Promise<SourceObjects> {
+  listingIn(rows: RowsByIndex): Promise<Listing> {
     return rows.derivedObjectsOf(this);
   }
 }
@@ -113,7 +126,7 @@ export class Source<T> {
  * elsewhere is reached by following links from them.
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: "records", itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({ origin: listedRecords, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
@@ -131,7 +144,7 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
 export function selectedBlobs<D, T, S extends Fields<D>>(selection: SelectionBySchema<D, T, S>): Source<T> {
-  return new Source({ origin: "blobs", itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({ origin: heldBlobs, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**

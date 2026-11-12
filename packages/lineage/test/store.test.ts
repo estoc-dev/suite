@@ -16,10 +16,10 @@ const other = encodeObject(note, { text: "other" });
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
 type HeadIndex = OrderedIndex<Json, DataOf<typeof headSchema>, readonly ["of", "head"]>;
 
-const bySeries: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ first, head }) {
+const bySeries: HeadIndex = indexOver("records", lineages.selection, headSchema, function* ({ first, head }) {
   yield { of: { $link: first.link }, head: { $link: head.link } };
 }).orderedBy("of", "head");
-const byItem: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ items, head }) {
+const byItem: HeadIndex = indexOver("records", lineages.selection, headSchema, function* ({ items, head }) {
   for (const item of items) yield { of: { $link: item }, head: { $link: head.link } };
 }).orderedBy("of", "head");
 
@@ -92,7 +92,7 @@ describe("the selection of a schema lineage over a store", () => {
     const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });
     await store.write({ records: [untitledRecord, titledRecord], blobs: notes.blobs });
     const titled = schema("Titled", { text: string(), title: string() });
-    const byText = indexOver(notes.selection, titled, function* ({ text, title }) {
+    const byText = indexOver("records", notes.selection, titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];

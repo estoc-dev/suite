@@ -13,7 +13,7 @@ import {
   SoftwareSigner,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link, linkOf } from "@estoc/object";
-import { Intake, indexOverBlobs, MemoryBackend, PrivateStore, Store, type View, view } from "@estoc/store";
+import { Intake, indexOver, MemoryBackend, PrivateStore, Store, type View, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -28,7 +28,7 @@ const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
 const seenPeople: View<Json, IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+  index: indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
     identityVersion,
   ]).orderedBy(...identityVersions.order),
   read: (rows, reader) => identityVersions.people(rows, reader),

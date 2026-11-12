@@ -10,7 +10,6 @@ export {
   type FieldNames,
   type Index,
   indexOver,
-  indexOverBlobs,
   type KeyOf,
   type OrderedIndex,
   type Prefix,

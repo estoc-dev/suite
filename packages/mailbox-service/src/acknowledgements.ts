@@ -36,6 +36,7 @@ export type AcknowledgementsView = View<
 export function acknowledgementsView(signatures: Signatures): AcknowledgementsView {
   return {
     index: indexOver(
+      "records",
       signatures.selectionOver(acknowledgementSchema),
       acknowledgementRowSchema,
       ({ signature, object }) => [
@@ -88,7 +89,7 @@ export type OpenedMailboxesView = View<
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(objectsOf(openedMailboxSchema), openedMailboxRowSchema, ({ data }) => [
+    index: indexOver("records", objectsOf(openedMailboxSchema), openedMailboxRowSchema, ({ data }) => [
       { mailbox: data.mailbox, acknowledgement: data.acknowledgement },
     ]).orderedBy("mailbox", "acknowledgement"),
     read: (rows) => ({

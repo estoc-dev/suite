@@ -11,6 +11,7 @@ type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
 const byTag: OrderedIndex<Json, Tagged, TaggedOrder> = indexOver(
+  "records",
   objectsOf(noteSchema),
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),

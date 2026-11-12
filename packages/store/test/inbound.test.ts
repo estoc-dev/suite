@@ -128,7 +128,7 @@ describe("an intake", () => {
 
 describe("the records of an intake", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-  const cameIn = indexOver(objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
+  const cameIn = indexOver("records", objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
   ]).orderedBy("bundle", "at");
 

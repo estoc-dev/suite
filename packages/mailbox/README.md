@@ -405,10 +405,10 @@ as any message can be.
 
 ```ts
 import { MailboxGrants } from "@estoc/mailbox";
-import { indexOverBlobs, view } from "@estoc/store";
+import { indexOver, view } from "@estoc/store";
 
 const grants = new MailboxGrants({ signatures, signedIdentities });
-const seen = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+const seen = indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
   identityVersion,
 ]).orderedBy(...identityVersions.order);
 const series = await view(store, grants.series);

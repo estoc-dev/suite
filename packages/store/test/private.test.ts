@@ -117,7 +117,7 @@ describe("a private store", () => {
     await store.write({ records: [card], blobs: [anything.bytes] });
     await privateStore.write({ records: [object({ card: { $link: card.link } })] });
     const named = schema("Named", { name: string() });
-    const byName = indexOver(objectsOf(anything), named, async function* ({ data }, reader) {
+    const byName = indexOver("records", objectsOf(anything), named, async function* ({ data }, reader) {
       if (data.card === undefined) return;
       const { name } = (await readObject(reader, data.card.$link, anything)).data;
       if (name !== undefined) yield { name };

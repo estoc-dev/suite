@@ -54,12 +54,13 @@ type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
 const deliveries: OrderedIndex<Json, Delivery, DeliveryOrder> = indexOver(
+  "records",
   objectsOf(inboundSchema),
   delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
 )
   .union(
-    indexOver(objectsOf(outboundSchema), delivery, ({ data: { mailbox, at, bundle } }) => [
+    indexOver("records", objectsOf(outboundSchema), delivery, ({ data: { mailbox, at, bundle } }) => [
       { direction: "outbound", mailbox, at, bundle },
     ]),
   )

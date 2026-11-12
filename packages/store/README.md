@@ -58,8 +58,8 @@ An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
 to them. So the store keeps the list itself rather than working it out.
 
-An index can still read the blobs a store holds by schema, through
-`indexOverBlobs`, and that is for objects that carry their authority in a
+An index can still read the blobs a store holds by schema, as one over
+`"blobs"`, and that is for objects that carry their authority in a
 signature. A signed identity reads the same whoever sent it and wherever it
 sits in a closure, and all that a stranger can send is an identity version
 its root signed. An unsigned contact read this way would be the stranger's,
@@ -191,8 +191,8 @@ gives other bytes, as a damaged disk may.
 ## Indexes
 
 A store has no index of its own. An application makes its own, of the
-records the user writes: an `Index` reads the records that a `Selection`
-takes, and gives rows of what the selection reads each one as. A row is an
+records the user writes: an `Index` over `"records"` reads the records that a
+`Selection` takes, and gives rows of what the selection reads each one as. A row is an
 object too, written to a schema that the index names, and `rows` gives the
 data of each. The rows of a record depend on it and its closure, which the
 selection and `rows` read by link from the `Reader` they are given, and on
@@ -224,23 +224,24 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 
 // Notes by tag, oldest first: a row for each tag of a note, from a
 // `noteSchema` whose objects hold `tags` and `at`.
-const byTag = indexOver(
-  objectsOf(noteSchema),
-  taggedSchema,
-  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
-).orderedBy("tag", "at");
+const tagged = indexOver("records", objectsOf(noteSchema), taggedSchema, ({ link, data }) =>
+  data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
+);
+const byTag = tagged.orderedBy("tag", "at");
 
 const rows = await scan(store, byTag);
 for await (const { data } of rows.range(["lunch"])) …; // `data.at`, `data.note`
 ```
 
-Rows are kept in memory and are not blobs of the store: its `get` gives none
-of them, and a bundle gathered from it holds none.
+Rows are kept in memory, beside the store, and are not blobs of it: its `get`
+gives none of them, a bundle gathered from it holds none, and an index over
+its blobs reads none.
 
-An index comes only from `indexOver` and `indexOverBlobs`, of one selection,
-and from `union`, of indexes whose rows are of one schema, so
-what an index reads is said by its selections and not worked out in `rows`. Each part of a union
-reads its own records and hands what it reads them as to its own rows, so
+An index comes only from `indexOver`, of one source and one selection, and
+from `union`, of indexes whose rows are of one schema, so what an index reads
+is said by its source and its selections and not worked out in `rows`. The
+source is `"records"`, `"blobs"`, or another index. Each part of a union reads
+what its own source lists and hands what it reads that as to its own rows, so
 the rows of objects of several schemas, or of several selections of one
 schema, need not tell one kind of object from another.
 
@@ -270,17 +271,17 @@ holds what `orderedBy` gave, so a program makes each once:
 an index made again by `indexOver` is another, and is read from all the records,
 as each index is once a program starts.
 
-`indexOverBlobs` reads the blobs a store holds in place of its records, for
-objects that carry their authority in a signature, as
+An index over `"blobs"` reads the blobs a store holds in place of its
+records, for objects that carry their authority in a signature, as
 [What is listed](#what-is-listed) says. It takes a `SelectionBySchema`, which
 looks only at the objects of its schema:
 
 ```ts
-import { indexOverBlobs } from "@estoc/store";
+import { indexOver } from "@estoc/store";
 
 // The identity versions a store holds, however deep in a closure they came.
 // One whose root did not sign it gives no row.
-const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+const identityVersionsHeld = indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
   identityVersion,
 ]).orderedBy(...identityVersions.order);
 ```
@@ -291,8 +292,8 @@ const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identity
 - A blob gives no row when it is not an object in the encoding of the schema,
   when it names the schema and does not fit it, when `selection` or `rows`
   throw on it, or when the data of a row does not fit the schema of the index,
-  though a record or a row that does not fit makes a scan of `indexOver`
-  throw. Anyone can send such a blob, and a scan that threw on it would fail
+  though a record or a row that does not fit makes a scan of an index over
+  records, or over another index, throw. Anyone can send such a blob, and a scan that threw on it would fail
   from then on. A mistake in `selection` or `rows` therefore shows only as rows
   that are missing.
 - What is out of reach of links is out of reach here too: what is encrypted,
@@ -311,6 +312,36 @@ catch it: the rows of that record would be cut short. A scan that fails
 leaves the rows a store keeps as they were, so the next one reads that
 record again. The same goes for an index over blobs, which catches for them,
 and for a blob that it reads and that turns out to be no object of its schema.
+
+An index over another index reads the rows of that one in place of records,
+so what one index works out, another can go on from:
+
+```ts
+// The tags that notes hold, each once, from the rows of `tagged`.
+const tagSchema = schema("Tag", { tag: string() });
+const tags = indexOver(tagged, objectsOf(taggedSchema), tagSchema, ({ data }) => [{ tag: data.tag }]);
+```
+
+It reads `tagged` and not `byTag`: the rows of an index are the same whatever
+order they are read in.
+
+- It reads the rows that the other index gives and nothing else. Anyone can
+  send an object of the schema of those rows, and the store may hold one, as a
+  record even: it is no row of that index, so it does not reach this one. What
+  a record stands on is that the user wrote it, and what a row stands on is
+  that its index gave it.
+- Its `reader` gives those rows by link, those of the indexes they were
+  derived from, and what the store holds, so a row can name the row or the
+  record it came from.
+- It is an index as any other: its rows depend on the row read and its
+  closure alone, a store keeps them and reads only the rows given since, and
+  another index can read it in turn. A staged batch reads what the other index
+  gives of the batch on top of the rows its store keeps, and a private store
+  keeps its own.
+- The rows of the other index are kept once, for its own orders and for each
+  index over it, so a record is read once for all of them.
+- A row that its selection or its `rows` throw on makes a scan throw, as a
+  record does.
 
 ## Views
 
@@ -386,7 +417,7 @@ What comes in twice is recorded twice, and a reader takes the earliest `at`:
 ```ts
 // When each bundle came in: the first row of a root is the earliest.
 const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-const cameIn = indexOver(objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
+const cameIn = indexOver("records", objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
   { bundle: data.bundle, at: data.at },
 ]).orderedBy("bundle", "at");
 ```

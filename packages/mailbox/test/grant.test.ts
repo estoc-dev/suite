@@ -18,8 +18,8 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
-  type Value,
 } from "@estoc/object";
 import { Intake, indexOver, MemoryBackend, PrivateStore, Store, selectedBlobs, type View, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
@@ -35,7 +35,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
-const seenPeople: View<Value, IdentityVersionData, IdentityVersionOrder, People> = {
+const seenPeople: View<IdentityVersionData, IdentityVersionOrder, People> = {
   index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
     identityVersion,
   ]).orderedBy(...identityVersions.order),
@@ -58,7 +58,7 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 async function person(fill: number, backend = new MemoryBackend()): Promise<Person> {
   const signer = signerOf(fill);
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
-  const store = new Store(objectFormat, backend);
+  const store = new Store(backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, { transports: [network.transport] });
   const intake = new Intake(store);
@@ -75,14 +75,14 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 });
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
-async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<Value>>> {
+async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
   await store.write({ records: [mailbox], blobs: [...network.transport.schema.blobs] });
   return mailbox.link;
 }
 
 // The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`, as a record.
-const blobsOf = (grant: EncodedObject<Value>, signature: Signature, to: Person) => [
+const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
   grant.bytes,
   ...grants.schema.blobs,
   ...signatures.schema.blobs,
@@ -90,7 +90,7 @@ const blobsOf = (grant: EncodedObject<Value>, signature: Signature, to: Person) 
   ...to.actor.signedIdentity.blobs,
 ];
 
-async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<Value>>[], at: number) {
+async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
   const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
   await from.store.write({ records: [signature], blobs: blobsOf(grant, signature, to) });
@@ -238,8 +238,7 @@ describe("the latest grant of one person to another", () => {
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     await send(alice, bob, signature.link);
 
-    const { encoding, link } = grants.schema;
-    const misfit = encoding.encode(encoding.object({ at: 2_000 }, link));
+    const misfit = objectFormat.encode(new ObjectValue(grants.schema.link, { at: 2_000 }));
     const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
     const blobs = [misfit, ...grants.schema.blobs, ...signatures.schema.blobs, ...misfitSignature.signedIdentity.blobs];
     await bob.intake.receive(decodeBundle(encodeBundle({ bytes: misfitSignature.bytes }, blobs)));
@@ -383,7 +382,7 @@ describe("a grant by an agent that a later identity version does not list", () =
     await handOver(former, bob, (await give(former, bob, [], 9_000)).link);
     const latest = await grantFrom(bob, current, bob);
 
-    const again = { ...bob, store: new Store(objectFormat, backend) };
+    const again = { ...bob, store: new Store(backend) };
     expect(latest?.signature.link).toBe(before.link);
     expect((await grantFrom(again, current, bob))?.signature.link).toBe(before.link);
   });

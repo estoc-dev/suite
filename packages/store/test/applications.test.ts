@@ -12,14 +12,12 @@ import {
   decodeObject,
   type EncodedObject,
   encodeObject,
-  type Fields,
   type Link,
   LinkValue,
-  objectFormat,
   readObject,
   type Schema,
   schemaOf,
-  type Value,
+  type ValueMap,
 } from "@estoc/object";
 import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -45,7 +43,7 @@ const carriedSchema = schema("Carried", { identityVersions: array(link<SignedIde
 const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema, carriedSchema].flatMap(
   ({ blobs }) => blobs,
 );
-const newStore = () => new Store(objectFormat, new MemoryBackend());
+const newStore = () => new Store(new MemoryBackend());
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -53,15 +51,12 @@ async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   return links;
 }
 
-async function readListed<F extends Fields<Value>>(
-  store: Store,
-  schema: Schema<Value, F>,
-): Promise<EncodedObject<Value, F>[]> {
-  const objects: EncodedObject<Value, F>[] = [];
+async function readListed<F extends ValueMap>(store: Store, schema: Schema<F>): Promise<EncodedObject<F>[]> {
+  const objects: EncodedObject<F>[] = [];
   for await (const link of store.records()) {
     const bytes = await store.get(link);
     assert.exists(bytes);
-    if (schemaOf(bytes, objectFormat) === schema.link) objects.push(decodeObject(bytes, schema));
+    if (schemaOf(bytes) === schema.link) objects.push(decodeObject(bytes, schema));
   }
   return objects;
 }

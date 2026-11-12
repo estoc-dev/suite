@@ -37,9 +37,8 @@ carries and keeps blobs. It is shared, as a file format is: the Estoc
 Object Format is deterministic CBOR, which any CBOR decoder reads, and it
 gives no meaning and no reader an advantage.
 
-- `@estoc/object`: encodings and schema languages, objects, schemas and
-  validators; the Estoc Object Format, in deterministic CBOR, as the
-  encoding in use.
+- `@estoc/object`: the Estoc Object Format, in deterministic CBOR, and
+  over it objects, schemas, schema languages and validators.
 - `@estoc/schema`: a schema language over the object format in which a
   schema is an object of a title and fields of seven types, so that what
   fits one is the same to every validator. The packages below write their

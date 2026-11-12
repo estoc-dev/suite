@@ -1,4 +1,4 @@
-import { encodeObject, type Link, LinkValue, linkOf, objectFormat, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedRecords } from "../src/index.ts";
@@ -15,7 +15,7 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
-  const store = new Store(objectFormat, sharedBackend);
+  const store = new Store(sharedBackend);
   return { store, privateStore: new PrivateStore(store, privateBackend) };
 }
 
@@ -76,7 +76,7 @@ describe("a private store", () => {
   it("refuses to give a blob when the backend of the store beside it gives other bytes under the link", async () => {
     const backend = new MemoryBackend();
     const [card, other] = [object({ name: "Alice" }), object({ name: "Bob" })];
-    await new Store(objectFormat, backend).write({ records: [card, other], blobs: [...anything.blobs] });
+    await new Store(backend).write({ records: [card, other], blobs: [...anything.blobs] });
     const { privateStore } = sides({
       get: (link) => backend.get(link === card.link ? other.link : link),
       has: (link) => backend.has(link),
@@ -89,7 +89,7 @@ describe("a private store", () => {
   });
 
   it("is refused beside a store not made by `new Store`", () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     const lookalike: Store = {
       get: <T>(link: Link<T>) => store.get(link),
       write: (batch) => store.write(batch),

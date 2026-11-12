@@ -9,7 +9,7 @@ import {
   type Signature,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import type { EncodedObject, Link, Value } from "@estoc/object";
+import type { EncodedObject, Link } from "@estoc/object";
 import { indexOver, type Store, selectedBlobs, type View, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
@@ -36,7 +36,7 @@ export class Correspondence {
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
-  readonly #seenPeople: View<Value, IdentityVersionData, IdentityVersionOrder, People>;
+  readonly #seenPeople: View<IdentityVersionData, IdentityVersionOrder, People>;
 
   constructor(
     store: Store,
@@ -70,7 +70,7 @@ export class Correspondence {
    *
    * @throws {RefusedBatch} when the store does not hold one of `mailboxes`; nothing is written then.
    */
-  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<Value>>[]): Promise<Signature> {
+  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject>[]): Promise<Signature> {
     const current = await (await view(this.#store, this.#seenPeople)).current(to);
     const grant = this.#grants.encode(current, mailboxes, this.#clock());
     const signature = await this.#actor.sign(grant);
@@ -136,7 +136,7 @@ export class Correspondence {
    *
    * @throws when the store fails to give a blob.
    */
-  async messageAt(mailbox: Link<EncodedObject<Value>>, bundle: Link<never>): Promise<Signature | undefined> {
+  async messageAt(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Signature | undefined> {
     const signature = await this.#signatureAtRootOf(bundle);
     if (signature === undefined) return undefined;
     const { asTakenIn } = await view(this.#store, this.#seenPeople);

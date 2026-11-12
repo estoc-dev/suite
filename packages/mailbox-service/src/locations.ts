@@ -6,7 +6,7 @@ import {
   type Signature,
   type Signatures,
 } from "@estoc/identity";
-import { type Link, LinkValue, type Value } from "@estoc/object";
+import { type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
@@ -43,7 +43,7 @@ export interface Locations {
   servicesOf(identifier: Identifier, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Value, DataOf<typeof locationSchema>, LocationOrder, Locations>;
+export type LocationsView = View<DataOf<typeof locationSchema>, LocationOrder, Locations>;
 
 export function locationsView(signatures: Signatures): LocationsView {
   return {

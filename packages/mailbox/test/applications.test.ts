@@ -15,14 +15,12 @@ import {
 import {
   type EncodedObject,
   encodeObject,
-  type Fields,
   type Link,
   LinkValue,
   linkOf,
-  objectFormat,
   readObject,
   type Schema,
-  type Value,
+  type ValueMap,
 } from "@estoc/object";
 import { link, optional, schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
@@ -41,13 +39,13 @@ const { keys, identities, signatures, signedIdentities, publish } = identity;
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Value>, by: SoftwareSigner) => {
+const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
 
-async function readSigned<F extends Fields<Value>>(bundle: Bundle, schema: Schema<Value, F>) {
+async function readSigned<F extends ValueMap>(bundle: Bundle, schema: Schema<F>) {
   const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   return {
     signature,
@@ -80,7 +78,7 @@ describe("a chat line", () => {
   const bob = signer(ed25519, 2);
   const carol = signer(ed25519, 3);
 
-  const passOn = async (line: EncodedObject<Value>) => {
+  const passOn = async (line: EncodedObject) => {
     const network = new MemoryNetwork();
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sentSignature = await sendSigned(
@@ -247,7 +245,7 @@ describe("two people who meet", () => {
     const person = async (fill: number) => {
       const by = signer(ed25519, fill);
       const actor = signatures.actor(by, await publish(by, { at: 0 }));
-      const store = new Store(objectFormat, new MemoryBackend());
+      const store = new Store(new MemoryBackend());
       const privateStore = new PrivateStore(store, new MemoryBackend());
       const options = { transports: [network.transport], clock };
       const post = new Post(store, privateStore, options);
@@ -325,7 +323,7 @@ describe("two people who meet", () => {
 
   it("move a mailbox with nothing lost, and what came in at the old one still reads as a message", async () => {
     const { grace, heidi } = await twoPeople();
-    const give = async (mailboxes: readonly Link<EncodedObject<Value>>[]) =>
+    const give = async (mailboxes: readonly Link<EncodedObject>[]) =>
       grace.correspondence.grant(heidi.signedIdentity, mailboxes);
 
     const oldInbox = await grace.openInbox();

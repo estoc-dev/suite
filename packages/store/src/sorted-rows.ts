@@ -1,4 +1,4 @@
-import type { EncodedObject, Fields, Schema } from "@estoc/object";
+import { type EncodedObject, ObjectValue, objectFormat, type Schema, type Value, type ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import {
   derivationOf,
@@ -11,12 +11,12 @@ import {
 } from "./source.ts";
 
 /** The rows of an ordered index, each once however many records give it. */
-export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
+export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
   /**
    * The rows that hold `prefix` in the first fields of the order, one value for each, in the order of
    * the index.
    */
-  range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>>;
+  range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>>;
   /**
    * What the index, and each index it reads, failed on. These rows are short of whatever those
    * would have given, under any prefix: what failed gave no row to tell where it belongs.
@@ -27,22 +27,22 @@ export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
 /** What a row holds in a field of the order, as rows are compared by it. */
 type KeyPart = number | string | Uint8Array | undefined;
 
-interface KeyedRow<D, F extends Fields<D>> {
+interface KeyedRow<F extends ValueMap> {
   readonly key: readonly KeyPart[];
-  readonly row: EncodedObject<D, F>;
+  readonly row: EncodedObject<F>;
 }
 
 // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
 /** The rows of an ordered index in its order. */
-export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implements Rows<D, F, By> {
-  readonly #index: OrderedIndex<D, F, By>;
-  readonly #derivedObjects: DerivedObjects<D, F>;
-  readonly #rows: readonly KeyedRow<D, F>[];
+export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements Rows<F, By> {
+  readonly #index: OrderedIndex<F, By>;
+  readonly #derivedObjects: DerivedObjects<F>;
+  readonly #rows: readonly KeyedRow<F>[];
 
   constructor(
-    index: OrderedIndex<D, F, By>,
-    derivedObjects: DerivedObjects<D, F> = new DerivedObjects(derivationOf(orderOf(index).index)),
-    rows: readonly KeyedRow<D, F>[] = [],
+    index: OrderedIndex<F, By>,
+    derivedObjects: DerivedObjects<F> = new DerivedObjects(derivationOf(orderOf(index).index)),
+    rows: readonly KeyedRow<F>[] = [],
   ) {
     this.#index = index;
     this.#derivedObjects = derivedObjects;
@@ -54,14 +54,14 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
   }
 
   /** The rows of `derivedObjects` in the order: those these are of, then any the index gave after them. */
-  including(derivedObjects: DerivedObjects<D, F>): SortedRows<D, F, By> {
+  including(derivedObjects: DerivedObjects<F>): SortedRows<F, By> {
     if (derivedObjects === this.#derivedObjects) return this;
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
     if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows);
     const { index, by } = orderOf(this.#index);
     const { schema } = derivationOf(index);
     const keyedRows = newRows.map((row) => {
-      const data: Fields<D> = row.data;
+      const data: ValueMap = row.data;
       // A row that leaves a field out does not hold what every object inherits under its name, such as `constructor`.
       const key = by.map((name) => keyPartOf(name, Object.hasOwn(data, name) ? data[name] : undefined, schema));
       return { key, row };
@@ -73,10 +73,10 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
     );
   }
 
-  async *range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>> {
+  async *range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>> {
     const { index, by } = orderOf(this.#index);
     const { schema } = derivationOf(index);
-    const start = prefix.map((value, at) => keyPartOf(by[at]!, value as D | undefined, schema));
+    const start = prefix.map((value, at) => keyPartOf(by[at]!, value as Value | undefined, schema));
     const rows = this.#rows;
     let low = 0;
     for (let high = rows.length; low < high; ) {
@@ -89,12 +89,12 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
   }
 }
 
-function keyPartOf<D>(name: string, value: D | undefined, { encoding, link }: Schema<D>): KeyPart {
+function keyPartOf(name: string, value: Value | undefined, { link }: Schema): KeyPart {
   if (value === undefined) return undefined;
   if (typeof value === "number" || typeof value === "string") return value;
-  // An encoding writes objects, and need not write a value on its own, so the bytes are those of
-  // the row that would hold the value in that field alone.
-  return encoding.encode(encoding.object({ [name]: value }, link));
+  // The object format writes objects, not a value on its own, so the bytes are those of the row
+  // that would hold the value in that field alone.
+  return objectFormat.encode(new ObjectValue(link, { [name]: value }));
 }
 
 /** A key comes before every longer key that starts with it. */

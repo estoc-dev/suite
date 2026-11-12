@@ -1,14 +1,6 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import {
-  type Bytes,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  readObject,
-  type Value,
-} from "@estoc/object";
+import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { Intake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
@@ -27,14 +19,14 @@ export interface Delivery {
   readonly direction: "inbound" | "outbound";
   /** The link of the bundle's root. */
   readonly bundle: Link<never>;
-  readonly mailbox: Link<EncodedObject<Value>>;
+  readonly mailbox: Link<EncodedObject>;
   /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the record. */
   readonly at: number;
   /** The link of the record. */
-  readonly link: Link<EncodedObject<Value>>;
+  readonly link: Link<EncodedObject>;
 }
 
-type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Value>> };
+type MailboxBytes = { readonly bytes: Bytes<EncodedObject> };
 
 /**
  * Sending and receiving with a store, through transports, with the keys of
@@ -68,7 +60,7 @@ export class Post {
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
-  async outbox(mailbox: Link<EncodedObject<Value>>): Promise<Outbox> {
+  async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, (bundle) => this.#recordOutbound(mailbox, bundle));
   }
@@ -100,7 +92,7 @@ export class Post {
    * @throws when the key's secret is not of the public key the mailbox names: what it opens was
    *   sealed to another mailbox.
    */
-  async inbox(key: Link<EncodedObject<Value, MailboxKeyData>>): Promise<Inbox> {
+  async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#privateStore, key, mailboxKeySchema);
     const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
     const opener = await MailboxKey.fromSecretKey(data.secret);
@@ -108,7 +100,7 @@ export class Post {
     return this.#inbox(mailbox, key, opener);
   }
 
-  #inbox(mailbox: EncodedObject<Value>, key: Link<EncodedObject<Value, MailboxKeyData>>, opener: MailboxKey) {
+  #inbox(mailbox: EncodedObject, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey) {
     return new Inbox(mailbox, key, opener, this.#intake);
   }
 
@@ -118,7 +110,7 @@ export class Post {
     return bytes;
   }
 
-  async #recordOutbound(mailbox: Link<EncodedObject<Value>>, bundle: Link<never>): Promise<Delivery> {
+  async #recordOutbound(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
     const record = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
     await this.#store.write({ records: [record], blobs: [...outboundSchema.blobs] });
@@ -165,17 +157,12 @@ export class Inbox {
    * The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this
    * inbox again.
    */
-  readonly key: Link<EncodedObject<Value, MailboxKeyData>>;
-  readonly #mailbox: EncodedObject<Value>;
+  readonly key: Link<EncodedObject<MailboxKeyData>>;
+  readonly #mailbox: EncodedObject;
   readonly #opener: MailboxKey;
   readonly #intake: Intake;
 
-  constructor(
-    mailbox: EncodedObject<Value>,
-    key: Link<EncodedObject<Value, MailboxKeyData>>,
-    opener: MailboxKey,
-    intake: Intake,
-  ) {
+  constructor(mailbox: EncodedObject, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey, intake: Intake) {
     this.#mailbox = mailbox;
     this.key = key;
     this.#opener = opener;
@@ -183,7 +170,7 @@ export class Inbox {
   }
 
   /** The link of the mailbox, which the store holds. */
-  get mailbox(): Link<EncodedObject<Value>> {
+  get mailbox(): Link<EncodedObject> {
     return this.#mailbox.link;
   }
 

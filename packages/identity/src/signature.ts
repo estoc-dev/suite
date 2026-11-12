@@ -2,7 +2,6 @@ import {
   digestOf,
   type EncodedObject,
   encodeObject,
-  type Fields,
   type Link,
   LinkValue,
   objectsOf,
@@ -10,7 +9,7 @@ import {
   readObject,
   type Schema,
   SelectionBySchema,
-  type Value,
+  type ValueMap,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { signerOf, signingFunction } from "./identity.ts";
@@ -49,7 +48,7 @@ export type SignatureData = DataOf<typeof signatureSchema>;
  * - It travels apart from other signatures over the same object.
  * - It does not say what the object is, so its link reads as any.
  */
-export interface Signature extends EncodedObject<Value, SignatureData> {
+export interface Signature extends EncodedObject<SignatureData> {
   readonly link: Link<Signature>;
   readonly signedIdentity: SignedIdentityObject;
   readonly key: KeyObject;
@@ -85,9 +84,9 @@ export interface SeenIdentityVersions {
 export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
 
 /** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
-export interface SignatureOver<F extends Fields<Value>> {
-  readonly signature: EncodedObject<Value, SignatureData>;
-  readonly object: EncodedObject<Value, F>;
+export interface SignatureOver<F extends ValueMap> {
+  readonly signature: EncodedObject<SignatureData>;
+  readonly object: EncodedObject<F>;
 }
 
 /**
@@ -129,7 +128,7 @@ export class Signatures {
    * @throws when `seenIdentityVersions` do not honor it.
    */
   async verify(
-    signature: EncodedObject<Value, SignatureData>,
+    signature: EncodedObject<SignatureData>,
     reader: Reader,
     seenIdentityVersions: SeenIdentityVersions,
   ): Promise<Signature> {
@@ -161,9 +160,7 @@ export class Signatures {
    * @throws from `read`, when the reader gives no blob for the object, and
    *   where `decodeObject` throws for an object of `schema`.
    */
-  selectionOver<F extends Fields<Value>>(
-    schema: Schema<Value, F>,
-  ): SelectionBySchema<Value, SignatureOver<F>, SignatureData> {
+  selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {
     const objects = objectsOf(schema);
     return new SelectionBySchema(this.schema, async (signature, reader) => {
       const object = await objects.read(signature.data.object.link, reader);
@@ -193,7 +190,7 @@ export class Signatures {
     };
   }
 
-  #signatureOf(signature: EncodedObject<Value, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
+  #signatureOf(signature: EncodedObject<SignatureData>, signedIdentity: SignedIdentityObject): Signature {
     const object = signature.data.object.link;
     const value = signature.data.signature;
     const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));

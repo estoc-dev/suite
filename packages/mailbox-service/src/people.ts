@@ -1,8 +1,7 @@
 import type { IdentityVersionData, IdentityVersionOrder, IdentityVersions, People } from "@estoc/identity";
-import type { Value } from "@estoc/object";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 
-export type PeopleView = View<Value, IdentityVersionData, IdentityVersionOrder, People>;
+export type PeopleView = View<IdentityVersionData, IdentityVersionOrder, People>;
 
 /**
  * The people of a service's store, or of a client's of it, by the signed

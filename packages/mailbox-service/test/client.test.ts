@@ -2,15 +2,7 @@ import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
 import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
-import {
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  objectsOf,
-  readObject,
-  type Value,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Intake, inboundSchema, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -115,12 +107,7 @@ async function accountAt(services: Services, origin: string) {
  * The bundle of `by`'s signature over a Service at `origin` from `at` that
  * lists `offers`, each signed by the actor given with it, with its closure.
  */
-async function signedService(
-  origin: string,
-  offers: readonly (readonly [EncodedObject<Value>, Actor])[],
-  by: Actor,
-  at = 1,
-) {
+async function signedService(origin: string, offers: readonly (readonly [EncodedObject, Actor])[], by: Actor, at = 1) {
   const offerSignatures = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
   const listedOffers = offerSignatures.map((signature) => new LinkValue(signature.link));
   const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });

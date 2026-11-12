@@ -1,20 +1,11 @@
 import { encodeBundle } from "@estoc/bundle";
-import {
-  type Bytes,
-  decodeObject,
-  type EncodedObject,
-  objectFormat,
-  type Schema,
-  schemaOf,
-  type Value,
-  type ValueMap,
-} from "@estoc/object";
+import { type Bytes, decodeObject, type EncodedObject, type Schema, schemaOf, type ValueMap } from "@estoc/object";
 import { publicKeyFrom, seal } from "./key.ts";
 
 /** One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. */
 export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
-  readonly schema: Schema<Value>;
+  readonly schema: Schema;
   /**
    * Hands `ciphertext` on toward a mailbox whose data fits `schema`. Resolving says only that it
    * was handed on: nothing confirms that a message arrived, and none is sent again.
@@ -81,21 +72,21 @@ export class Mailbox {
  * @throws when no transport given takes the mailbox's schema, or its data does not fit that schema
  *   or holds no x25519 public key as `key`.
  */
-export async function mailboxFrom(bytes: Bytes<EncodedObject<Value>>, { transports }: Options): Promise<Mailbox> {
+export async function mailboxFrom(bytes: Bytes<EncodedObject>, { transports }: Options): Promise<Mailbox> {
   const { data, transport } = readMailbox(bytes, transports);
   return new Mailbox(data, await publicKeyFrom(data.key), transport);
 }
 
 /** A mailbox, its data with the key checked, and the transport whose schema it is written to. */
 export function readMailbox(
-  bytes: Bytes<EncodedObject<Value>>,
+  bytes: Bytes<EncodedObject>,
   transports: readonly Transport[],
 ): {
-  readonly mailbox: EncodedObject<Value>;
+  readonly mailbox: EncodedObject;
   readonly data: ValueMap & { readonly key: Uint8Array };
   readonly transport: Transport;
 } {
-  const named = schemaOf(bytes, objectFormat);
+  const named = schemaOf(bytes);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);
   const mailbox = decodeObject(bytes, transport.schema);

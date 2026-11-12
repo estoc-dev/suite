@@ -119,8 +119,7 @@ the same order give the same head, so the two can be compared.
 
 `lineages.schemaLineageOf(versions)` takes the versions in their order,
 each an `Implementation` of `@estoc/object` that reads an object of its
-schema as the same `T`, their schemas of one encoding, and gives a
-`SchemaLineage`:
+schema as the same `T`, and gives a `SchemaLineage`:
 
 - `lineage`, the lineage of the versions' schemas.
 - `read(link, reader)`, which reads an object with the version whose
@@ -140,16 +139,16 @@ the lineage of a program that reads one version more extends that of one
 that reads one less.
 
 ```ts
-import type { Implementation, Value } from "@estoc/object";
+import type { Implementation } from "@estoc/object";
 
 type Note = { readonly title?: string; readonly text: string };
 
 // noteV1 is a schema of { text }, and noteV2 a schema of { title, body }.
-const v1: Implementation<Value, Note, { readonly text: string }> = {
+const v1: Implementation<Note, { readonly text: string }> = {
   schema: noteV1,
   read: ({ data }) => ({ text: data.text }),
 };
-const v2: Implementation<Value, Note, { readonly title: string; readonly body: string }> = {
+const v2: Implementation<Note, { readonly title: string; readonly body: string }> = {
   schema: noteV2,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };

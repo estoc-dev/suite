@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, type Value } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { concatBytes } from "@noble/hashes/utils.js";
 import { blobsOf } from "./blobs.ts";
@@ -51,7 +51,7 @@ export type Identifier = Link<KeyObject>;
  *   object and of the keys it names, the schemas they are written to, and
  *   the blobs of `prior`.
  */
-export interface IdentityObject extends EncodedObject<Value, IdentityData> {
+export interface IdentityObject extends EncodedObject<IdentityData> {
   readonly link: Link<IdentityObject>;
   readonly identifier: Identifier;
   readonly prior: SignedIdentityObject | undefined;
@@ -112,7 +112,7 @@ export class Identities {
    * @throws when it writes `crisis` as anything but `true`.
    */
   async read(
-    object: EncodedObject<Value, IdentityData>,
+    object: EncodedObject<IdentityData>,
     prior: SignedIdentityObject | undefined,
     reader: Reader,
   ): Promise<IdentityObject> {
@@ -151,7 +151,7 @@ function signersOf({ root, agents }: IdentityObject): readonly KeyObject[] {
 }
 
 function identityOf(
-  object: EncodedObject<Value, IdentityData>,
+  object: EncodedObject<IdentityData>,
   prior: SignedIdentityObject | undefined,
   root: KeyObject,
   agents: readonly KeyObject[],

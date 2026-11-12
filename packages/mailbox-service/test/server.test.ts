@@ -7,7 +7,7 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, objectFormat, readObject } from "@estoc/object";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -611,7 +611,7 @@ function sqliteParts(path: string) {
     accounts.close();
     mailboxes.close();
   };
-  return { store: new Store(objectFormat, backend), accounts, mailboxes, close };
+  return { store: new Store(backend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);

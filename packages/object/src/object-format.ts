@@ -1,6 +1,5 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { decode, encode, rfc8949EncodeOptions, Tagged } from "cborg";
-import { type Encoding, type Fields, type Itself, itself } from "./encoding.ts";
 import { digestOf, isLink, type Link } from "./link.ts";
 
 // "eof!" in ASCII, so that the bytes of every object start with the name of the format.
@@ -35,35 +34,38 @@ export type LinkValue<T> = UntypedLinkValue & { readonly link: Link<T> };
 /** @throws when `link` is not a link. */
 export const LinkValue = UntypedLinkValue as new <T>(link: Link<T>) => LinkValue<T>;
 
-/** An object: the fields of its data, and the schema they are written to. */
+/**
+ * What an object written to itself names as its schema. A blob cannot hold
+ * its own hash, so the object format writes `"self"` in place of the link,
+ * and the string is read as the link of the blob it is in.
+ */
+export const itself: unique symbol = Symbol("itself");
+export type Itself = typeof itself;
+
+/**
+ * An object as a blob holds it: the schema its data is written to, and the
+ * fields of its data. It is a blob as a whole, and is not a value in data.
+ */
 export class ObjectValue {
   readonly schema: Link<unknown> | Itself;
-  readonly data: Fields<Value>;
+  readonly data: ValueMap;
 
-  constructor(schema: Link<unknown> | Itself, data: Fields<Value>) {
+  constructor(schema: Link<unknown> | Itself, data: ValueMap) {
     this.schema = schema;
     this.data = data;
   }
 }
 
+/** A map by string keys, such as the data of an object: its fields, each a value by name. */
 export interface ValueMap {
   readonly [key: string]: Value;
 }
 
 /**
- * A value of the object format. In data it is an integer, bytes, a string, a
- * boolean, an array, a map by string keys or a link. An `ObjectValue` is the
- * value that a blob holds as a whole, and is refused inside data.
+ * A value in data: an integer, bytes, a string, a boolean, an array, a map
+ * by string keys or a link.
  */
-export type Value =
-  | boolean
-  | number
-  | string
-  | Uint8Array
-  | readonly Value[]
-  | ValueMap
-  | UntypedLinkValue
-  | ObjectValue;
+export type Value = boolean | number | string | Uint8Array | readonly Value[] | ValueMap | UntypedLinkValue;
 
 function isMap(value: object): value is ValueMap {
   const prototype = Object.getPrototypeOf(value);
@@ -92,7 +94,6 @@ function cborValueOf(value: Value): unknown {
   if (typeof value === "string") return stringOf(value);
   if (Array.isArray(value)) return Array.from(value, cborValueOf);
   if (value instanceof LinkValue) return new Tagged(linkTag, digestOf(value.link));
-  if (value instanceof ObjectValue) throw new Error("an object is a blob as a whole, and data holds none");
   if (typeof value === "object" && value !== null && isMap(value)) return cborMapOf(value);
   throw new Error("not a value of the object format");
 }
@@ -162,19 +163,26 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
  * - A link is tag 18540, the SHA-256 hash value, around the 32 bytes of the hash. A hash that
  *   names no blob to follow is written as bytes.
  * - An object names its schema by link, or by the string `"self"` when it is written to itself.
- * - Bytes that are anything but what `encode` writes for the value they hold are refused, not
+ * - Bytes that are anything but what `encode` writes for the object they hold are refused, not
  *   normalized: heads longer than the shortest, keys out of order or repeated, indefinite
  *   lengths, invalid UTF-8, and bytes after the object.
  */
-export const objectFormat: Encoding<Value> = {
-  encode(value) {
-    if (!(value instanceof ObjectValue)) throw new Error("a blob of the object format is an object");
-    const schema = value.schema === itself ? itselfText : cborValueOf(new LinkValue(value.schema));
-    const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(value.data)]), rfc8949EncodeOptions);
+export const objectFormat = {
+  /** @throws when a value in the data of `object` is not one of the format. */
+  encode(object: ObjectValue): Uint8Array {
+    const schema = object.schema === itself ? itselfText : cborValueOf(new LinkValue(object.schema));
+    const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(object.data)]), rfc8949EncodeOptions);
     // In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.
     return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   },
-  decode(bytes) {
+  /**
+   * Reads the object that `bytes` hold. It needs nothing but the bytes, so the
+   * schema an object names can be read before the schema is.
+   *
+   * @throws when the bytes are not exactly what `encode` writes for an
+   * object, so that an object has one encoding and one link.
+   */
+  decode(bytes: Uint8Array): ObjectValue {
     const value = objectValueOf(
       decode(bytes, {
         strict: true,
@@ -189,14 +197,16 @@ export const objectFormat: Encoding<Value> = {
     if (!isSame(objectFormat.encode(value), bytes)) throw new Error("not in the deterministic encoding of RFC 8949");
     return value;
   },
-  object: (data, schema) => new ObjectValue(schema, data),
-  fields(value) {
-    if (!(value instanceof ObjectValue)) throw new Error("not an object");
-    return { data: value.data, schema: value.schema as Link<never> | Itself };
-  },
-  *links(value) {
-    if (!(value instanceof ObjectValue)) return;
-    if (value.schema !== itself) yield value.schema;
-    for (const field of Object.values(value.data)) yield* linksIn(field);
+  /**
+   * The links in `object`, its schema included, so that a blob's closure can
+   * be gathered without reading it through a schema.
+   *
+   * - An object written to itself names its schema by no link, and does not link to itself.
+   * - It may give more than the readers of the object follow, but leaves none out: a reader checks
+   *   each blob it follows, and a blob left out would be missing when it is followed.
+   */
+  *links(object: ObjectValue): Iterable<Link<unknown>> {
+    if (object.schema !== itself) yield object.schema;
+    for (const field of Object.values(object.data)) yield* linksIn(field);
   },
 };

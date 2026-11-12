@@ -1,4 +1,4 @@
-import type { Implementations, Link, Reader, Selection } from "@estoc/object";
+import { type Implementations, type Link, type Reader, type Selection, schemaOf } from "@estoc/object";
 import type { Lineage } from "./lineage.ts";
 
 /**
@@ -18,25 +18,16 @@ export class SchemaLineage<T> {
   readonly blobs: readonly Uint8Array[];
   /** The selection of every object of a version, each read as `T`. */
   readonly selection: SelectionBySchemaLineage<T, T>;
-  readonly #implementations: Pick<Implementations<unknown, T>, "read">;
-  readonly #schemaOf: (record: Uint8Array) => Link<unknown>;
+  readonly #implementations: Implementations<T>;
 
   /**
-   * `lineage` is that of the schemas of the versions, and `schemaBlobs` the
-   * closures of those schemas. `implementations` reads with the versions and
-   * `schemaOf` gives the schema a record of their encoding names, so the
-   * encoding stays in them and a schema lineage carries `T` alone.
+   * `lineage` is that of the schemas of the versions, `schemaBlobs` the
+   * closures of those schemas, and `implementations` reads with the versions.
    */
-  constructor(
-    lineage: Lineage,
-    schemaBlobs: readonly Uint8Array[],
-    implementations: Pick<Implementations<unknown, T>, "read">,
-    schemaOf: (record: Uint8Array) => Link<unknown>,
-  ) {
+  constructor(lineage: Lineage, schemaBlobs: readonly Uint8Array[], implementations: Implementations<T>) {
     this.lineage = lineage;
     this.blobs = [...lineage.blobs, ...schemaBlobs];
     this.#implementations = implementations;
-    this.#schemaOf = schemaOf;
     this.selection = new SelectionBySchemaLineage(this, (shape) => shape);
   }
 
@@ -52,10 +43,10 @@ export class SchemaLineage<T> {
   /**
    * Whether the object that `bytes` hold names the schema of a version.
    *
-   * @throws when the bytes are not an object in the encoding of the versions.
+   * @throws when the bytes are not an object.
    */
   hasSchemaNamedBy(bytes: Uint8Array): boolean {
-    return this.lineage.items.includes(this.#schemaOf(bytes));
+    return this.lineage.items.includes(schemaOf(bytes));
   }
 }
 

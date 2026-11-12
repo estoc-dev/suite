@@ -5,9 +5,9 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
   type Schema,
-  type Value,
   type ValueMap,
 } from "@estoc/object";
 import { bytes, link, rootSchema, schema } from "@estoc/schema";
@@ -36,8 +36,8 @@ const { keys, identities, signedIdentities, identityVersions, publish } = loadId
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
-const written = (data: ValueMap) => objectFormat.encode(objectFormat.object(data, identities.schema.link));
-const writtenSigned = (data: ValueMap) => objectFormat.encode(objectFormat.object(data, signedIdentities.schema.link));
+const written = (data: ValueMap) => objectFormat.encode(new ObjectValue(identities.schema.link, data));
+const writtenSigned = (data: ValueMap) => objectFormat.encode(new ObjectValue(signedIdentities.schema.link, data));
 // A signed identity's identity is read before its root's signature is
 // verified, so one that names an identity that does not read is refused for
 // the identity, whatever its signature.
@@ -158,7 +158,7 @@ describe("a signed identity", () => {
   });
 
   it("is refused by verify when it is written to another schema", async () => {
-    const otherSchema: Schema<Value, SignedIdentityData> = schema("Another", {
+    const otherSchema: Schema<SignedIdentityData> = schema("Another", {
       identity: link<IdentityObject>(),
       signature: bytes(),
     });

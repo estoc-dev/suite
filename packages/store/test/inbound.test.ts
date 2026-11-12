@@ -1,5 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, type Link, LinkValue, linkOf, objectFormat, objectsOf, type ValueMap } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf, type ValueMap } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -26,7 +26,7 @@ const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 const bundleOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array> = [...anything.blobs]) =>
   decodeBundle(encodeBundle(root, blobs));
 
-const newStore = () => new Store(objectFormat, new MemoryBackend());
+const newStore = () => new Store(new MemoryBackend());
 const ticking = (start = 1000) => {
   let at = start;
   return () => at++;

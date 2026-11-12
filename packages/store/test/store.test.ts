@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { digestOf, encodeObject, type Link, LinkValue, linkOf, objectFormat } from "@estoc/object";
+import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
@@ -21,7 +21,7 @@ const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 // An array in CBOR, under no tag of an object.
 const notAnObject = Uint8Array.of(0x82, 1, 2);
 
-const newStore = (backend: Backend = new MemoryBackend()) => new Store(objectFormat, backend);
+const newStore = (backend: Backend = new MemoryBackend()) => new Store(backend);
 
 const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
   get: (link) => backend.get(link === under ? other : link),
@@ -230,7 +230,7 @@ describe("the closure of a blob", () => {
     expect(closure.get(inner.link)).toEqual(inner.bytes);
   });
 
-  it("follows no link out of a blob that is not an object of the store's encoding", async () => {
+  it("follows no link out of a blob that is not an object", async () => {
     const store = newStore();
     const target = object({ text: "target" });
     const linkUnderItsTag = Uint8Array.of(0xd9, 0x48, 0x6c, 0x58, 0x20, ...digestOf(target.link));

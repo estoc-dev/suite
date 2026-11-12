@@ -1,17 +1,17 @@
-import { decodeBlob, type Encoding, type Fields, itself } from "./encoding.ts";
 import { type Bytes, type Link, linkOf } from "./link.ts";
+import { itself, ObjectValue, objectFormat, type ValueMap } from "./object-format.ts";
 import type { Schema } from "./schema.ts";
 
 /**
- * Data bound to the schema it is written to, as one blob in the encoding of
- * that schema. The same data under another schema is another object, with
+ * Data bound to the schema it is written to, as one blob of the object
+ * format. The same data under another schema is another object, with
  * another link.
  */
-export interface EncodedObject<D, F extends Fields<D> = Fields<D>> {
-  readonly schema: Schema<D, F>;
+export interface EncodedObject<F extends ValueMap = ValueMap> {
+  readonly schema: Schema<F>;
   readonly data: F;
-  readonly bytes: Bytes<EncodedObject<D, F>>;
-  readonly link: Link<EncodedObject<D, F>>;
+  readonly bytes: Bytes<EncodedObject<F>>;
+  readonly link: Link<EncodedObject<F>>;
 }
 
 /**
@@ -31,22 +31,21 @@ export interface Reader {
  * expects, so an object written to any other is refused instead of read as
  * one of these.
  *
- * @throws when the bytes are not an object in the schema's encoding, when the
- * object is written to another schema, or when its data does not fit.
+ * @throws when the bytes are not an object, when the object is written to
+ * another schema, or when its data does not fit.
  */
-export function decodeObject<D, F extends Fields<D>>(
-  bytes: Bytes<EncodedObject<D, F>>,
-  schema: Schema<D, F>,
-): EncodedObject<D, F> {
-  const { value, bytes: owned, link } = decodeBlob(schema.encoding, bytes);
-  const fields = schema.encoding.fields(value);
-  const schemaLink = fields.schema === itself ? link : fields.schema;
+export function decodeObject<F extends ValueMap>(bytes: Bytes<EncodedObject<F>>, schema: Schema<F>): EncodedObject<F> {
+  // A copy, so that what was read is what is kept, whatever happens to the given array afterwards.
+  const owned = new Uint8Array(bytes);
+  const object = objectFormat.decode(owned);
+  const link = linkOf(owned);
+  const schemaLink = object.schema === itself ? link : object.schema;
   if (schemaLink !== schema.link) throw new Error(`the object is written to ${schemaLink}, not to ${schema.link}`);
-  return { schema, data: schema.validate(fields.data), bytes: owned, link };
+  return { schema, data: schema.validate(object.data), bytes: owned, link };
 }
 
-export function encodeObject<D, F extends Fields<D>>(schema: Schema<D, F>, data: F): EncodedObject<D, F> {
-  return decodeObject(schema.encoding.encode(schema.encoding.object(data, schema.link)), schema);
+export function encodeObject<F extends ValueMap>(schema: Schema<F>, data: F): EncodedObject<F> {
+  return decodeObject(objectFormat.encode(new ObjectValue(schema.link, data)), schema);
 }
 
 /**
@@ -55,11 +54,11 @@ export function encodeObject<D, F extends Fields<D>>(schema: Schema<D, F>, data:
  * @throws when the reader gives no blob for `link`, or another blob, and
  * wherever `decodeObject` throws.
  */
-export async function readObject<D, F extends Fields<D>>(
+export async function readObject<F extends ValueMap>(
   reader: Reader,
   link: Link<unknown>,
-  schema: Schema<D, F>,
-): Promise<EncodedObject<D, F>> {
+  schema: Schema<F>,
+): Promise<EncodedObject<F>> {
   return decodeObjectAt(link, await readBlob(reader, link), schema);
 }
 
@@ -74,11 +73,11 @@ export async function readBlob(reader: Reader, link: Link<unknown>): Promise<Uin
  *
  * @throws when the bytes are another blob than the one `link` names.
  */
-export function decodeObjectAt<D, F extends Fields<D>>(
+export function decodeObjectAt<F extends ValueMap>(
   link: Link<unknown>,
-  bytes: Bytes<EncodedObject<D, F>>,
-  schema: Schema<D, F>,
-): EncodedObject<D, F> {
+  bytes: Bytes<EncodedObject<F>>,
+  schema: Schema<F>,
+): EncodedObject<F> {
   const object = decodeObject(bytes, schema);
   if (object.link !== link) throw new Error(`the blob given for ${link} is another blob`);
   return object;
@@ -87,13 +86,12 @@ export function decodeObjectAt<D, F extends Fields<D>>(
 /**
  * The link of the schema an object names, read before the object is: a
  * program that takes objects of several schemas picks by it which schema to
- * read the object with. With no schema yet to say so, the caller names the
- * encoding of the object. For an object written to itself, it is the link of
+ * read the object with. For an object written to itself, it is the link of
  * the bytes.
  *
- * @throws when the bytes are not an object in `encoding`.
+ * @throws when the bytes are not an object.
  */
-export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
-  const { schema } = encoding.fields(encoding.decode(bytes));
-  return schema === itself ? (linkOf(bytes) as Link<Schema<D>>) : schema;
+export function schemaOf(bytes: Bytes<unknown>): Link<Schema> {
+  const { schema } = objectFormat.decode(bytes);
+  return (schema === itself ? linkOf(bytes) : schema) as Link<Schema>;
 }

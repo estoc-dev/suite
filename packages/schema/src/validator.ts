@@ -36,7 +36,7 @@ function* problemsIn(value: Value, field: Field | Item, path: string): Generator
  *   out, and each is a value of its field's type.
  * - Each problem names where in the data it is, as `#/agents/0: not a link`.
  */
-export const schemaValidator: SchemaValidator<Value, SchemaDocument> = {
+export const schemaValidator: SchemaValidator<SchemaDocument> = {
   language: schemaLanguage,
   compile({ fields }) {
     return (data) => {

@@ -1,4 +1,4 @@
-import { type Link, linkOf, objectFormat, type Value } from "@estoc/object";
+import { type Link, linkOf, type ObjectValue, objectFormat } from "@estoc/object";
 import {
   type CurveScheme,
   ed25519,
@@ -27,7 +27,7 @@ export function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, U
   for (const next of reached) {
     const bytes = blobs.get(next);
     if (bytes === undefined) continue;
-    let value: Value;
+    let value: ObjectValue;
     try {
       value = objectFormat.decode(bytes);
     } catch {

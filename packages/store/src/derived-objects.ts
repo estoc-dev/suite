@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Fields, type Link, linkOf, type Reader } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
 import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
@@ -9,23 +9,23 @@ import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
  * here, by link as it reads any blob, with the closure of the schema they are written to, which the
  * store need not hold either, and whatever else it reads from the store.
  */
-export class DerivedObjects<D, F extends Fields<D>> implements Listing {
-  readonly objects: readonly EncodedObject<D, F>[];
+export class DerivedObjects<F extends ValueMap> implements Listing {
+  readonly objects: readonly EncodedObject<F>[];
   readonly links: readonly Link<unknown>[];
   /**
    * What the index failed on, and what the indexes it reads failed on: these rows are short of
    * whatever those would have come to.
    */
   readonly failures: readonly ItemFailure[];
-  readonly #derivation: Derivation<D, F>;
-  readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>>;
+  readonly #derivation: Derivation<F>;
+  readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>>;
   /** What each origin of the index listed, all of which these rows are of. */
   readonly #listings: ReadonlyMap<Origin, Listing>;
   readonly #ownFailures: readonly ItemFailure[];
 
   constructor(
-    derivation: Derivation<D, F>,
-    objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>> = new Map(),
+    derivation: Derivation<F>,
+    objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>> = new Map(),
     listings: ReadonlyMap<Origin, Listing> = new Map(),
     ownFailures: readonly ItemFailure[] = [],
   ) {
@@ -50,7 +50,7 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
    * @throws when `store` throws, or gives no blob, for a link that is read. Nothing is added then,
    *   as it may give the blob later.
    */
-  async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
+  async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
     const objectsByLink = new Map(this.#objectsByLink);
     const ownFailures = [...this.#ownFailures];
@@ -63,7 +63,7 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
       for (const link of listing.links.slice(readCount)) {
         const blob = new ScannedBlob(link, reader, listing.objectOf(link));
         for (const part of originParts) {
-          const partObjects: EncodedObject<D, F>[] = [];
+          const partObjects: EncodedObject<F>[] = [];
           try {
             for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
@@ -81,7 +81,7 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
     return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
   }
 
-  objectOf(link: Link<unknown>): EncodedObject<D, F> | undefined {
+  objectOf(link: Link<unknown>): EncodedObject<F> | undefined {
     return this.#objectsByLink.get(link);
   }
 

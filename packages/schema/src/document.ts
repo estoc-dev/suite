@@ -1,4 +1,4 @@
-import { isValueMap, objectFormat, type SchemaLanguage, type Value, type ValueMap } from "@estoc/object";
+import { isValueMap, type SchemaLanguage, type Value, type ValueMap } from "@estoc/object";
 
 const types = ["array", "link", "bytes", "integer", "string", "boolean", "any"] as const;
 
@@ -34,11 +34,10 @@ export type SchemaDocument = {
  * - What `fields` may hold is more than a schema of the language can say, so it is checked here:
  *   each field is a map of the members the language names, its `type` one of the seven, with
  *   `items` in an array alone, and `optional` either `true` or left out.
- * - A document has one spelling, as the encoding orders the members. So the same title and fields
+ * - A document has one spelling, as the object format orders the members. So the same title and fields
  *   are the same blob.
  */
-export const schemaLanguage: SchemaLanguage<Value, SchemaDocument> = {
-  encoding: objectFormat,
+export const schemaLanguage: SchemaLanguage<SchemaDocument> = {
   root: { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } },
   data: (document) => document,
   document(data) {

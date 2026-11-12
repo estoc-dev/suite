@@ -1,4 +1,4 @@
-import { type Bytes, type Link, linkOf, objectFormat, schemaOf } from "@estoc/object";
+import { type Bytes, type Link, linkOf, schemaOf } from "@estoc/object";
 import { encode, Tokenizer, Type } from "cborg";
 
 /**
@@ -46,14 +46,14 @@ export class Bundle {
 
 function checkRoot(bytes: Uint8Array): void {
   try {
-    schemaOf(bytes, objectFormat);
+    schemaOf(bytes);
   } catch (cause) {
     throw new Error("the root of a bundle is an object", { cause });
   }
 }
 
-// Whether the value is an object is the encoding's to say, once its bytes are
-// set apart from the blobs after it.
+// Whether the value is an object is the object format's to say, once its bytes
+// are set apart from the blobs after it.
 function passValue(tokens: Tokenizer): void {
   const token = tokens.next();
   if (token.type.terminal) return;

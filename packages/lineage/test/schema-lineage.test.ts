@@ -1,4 +1,4 @@
-import { encodeObject, type Implementation, type Link, linkOf, objectFormat, type Value } from "@estoc/object";
+import { encodeObject, type Implementation, type Link, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { type DataOf, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { lineages, SelectionBySchemaLineage } from "../src/index.ts";
@@ -12,11 +12,11 @@ const noteV1 = schema("Note", { text: string() });
 const noteV2 = schema("Note", { title: string(), body: string() });
 const other = schema("Other", { text: string() });
 
-const v1: Implementation<Value, Note, DataOf<typeof noteV1>> = {
+const v1: Implementation<Note, DataOf<typeof noteV1>> = {
   schema: noteV1,
   read: ({ data }) => ({ text: data.text }),
 };
-const v2: Implementation<Value, Note, DataOf<typeof noteV2>> = {
+const v2: Implementation<Note, DataOf<typeof noteV2>> = {
   schema: noteV2,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };
@@ -103,7 +103,7 @@ describe("a selection by schema lineage", () => {
   });
 
   it("refuses a record of a version whose data does not fit its schema", async () => {
-    const bytes = objectFormat.encode(objectFormat.object({ body: "hello" }, noteV1.link));
+    const bytes = objectFormat.encode(new ObjectValue(noteV1.link, { body: "hello" }));
     await expect(titles.read(linkOf(bytes), byLink([bytes]))).rejects.toThrow("the data does not fit its schema");
   });
 

@@ -1,18 +1,18 @@
-import { itself, LinkValue, linkOf, objectFormat, schemaOf } from "@estoc/object";
+import { itself, LinkValue, linkOf, ObjectValue, objectFormat, schemaOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { decodeBundle, encodeBundle } from "../src/index.ts";
 
 const bytesOf = (hex: string) => Uint8Array.from(Buffer.from(hex, "hex"));
 const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 
-// The objects are made with the encoding itself, to a schema that is an object
+// The objects are made with `objectFormat` alone, to a schema that is an object
 // written to itself, so that the bytes written out below turn on the object format alone.
-const anything = objectFormat.encode(objectFormat.object({ title: "Anything" }, itself));
-const hello = objectFormat.encode(objectFormat.object({ text: "hello" }, linkOf(anything)));
+const anything = objectFormat.encode(new ObjectValue(itself, { title: "Anything" }));
+const hello = objectFormat.encode(new ObjectValue(linkOf(anything), { text: "hello" }));
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = {
   bytes: objectFormat.encode(
-    objectFormat.object({ links: [new LinkValue(linkOf(hello)), new LinkValue(linkOf(image))] }, linkOf(anything)),
+    new ObjectValue(linkOf(anything), { links: [new LinkValue(linkOf(hello)), new LinkValue(linkOf(image))] }),
   ),
 };
 const rootLink = linkOf(root.bytes);
@@ -37,7 +37,7 @@ describe("the file of a bundle", () => {
     const bundle = decodeBundle(encodeBundle(root, [hello, image, anything]));
     expect(bundle.root).toEqual(root.bytes);
     expect(bundle.link).toBe(rootLink);
-    expect(schemaOf(bundle.root, objectFormat)).toBe(linkOf(anything));
+    expect(schemaOf(bundle.root)).toBe(linkOf(anything));
     for (const blob of [root.bytes, hello, image, anything]) expect(bundle.get(linkOf(blob))).toEqual(blob);
     expect([...bundle.blobs()]).toEqual([root.bytes, hello, image, anything]);
   });

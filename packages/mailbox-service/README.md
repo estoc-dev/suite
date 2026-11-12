@@ -506,7 +506,7 @@ request posted again opens the account, or a mailbox with other ids.
 import { SqliteAccounts, SqliteMailboxes } from "@estoc/mailbox-service/sqlite";
 import { SqliteBackend } from "@estoc/store/sqlite";
 
-const store = new Store(objectFormat, new SqliteBackend("service.db"));
+const store = new Store(new SqliteBackend("service.db"));
 const accounts = new SqliteAccounts("service.db");
 const mailboxes = new SqliteMailboxes("service.db");
 ```

@@ -1,6 +1,6 @@
-import type { Fields } from "./encoding.ts";
 import type { Link } from "./link.ts";
 import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
+import type { ValueMap } from "./object-format.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -23,14 +23,14 @@ export interface Selection<T> {
  * may read each record with a schema once, and pass over records of other
  * schemas.
  */
-export class SelectionBySchema<D, T, F extends Fields<D> = Fields<D>> implements Selection<T> {
-  readonly schema: Schema<D, F>;
-  readonly #itemOf: (object: EncodedObject<D, F>, reader: Reader) => T | undefined | Promise<T | undefined>;
+export class SelectionBySchema<T, F extends ValueMap = ValueMap> implements Selection<T> {
+  readonly schema: Schema<F>;
+  readonly #itemOf: (object: EncodedObject<F>, reader: Reader) => T | undefined | Promise<T | undefined>;
 
   /** `itemOf` gives what an object read with `schema` reads as, or `undefined` for one the selection leaves out. */
   constructor(
-    schema: Schema<D, F>,
-    itemOf: (object: EncodedObject<D, F>, reader: Reader) => T | undefined | Promise<T | undefined>,
+    schema: Schema<F>,
+    itemOf: (object: EncodedObject<F>, reader: Reader) => T | undefined | Promise<T | undefined>,
   ) {
     this.schema = schema;
     this.#itemOf = itemOf;
@@ -41,7 +41,7 @@ export class SelectionBySchema<D, T, F extends Fields<D> = Fields<D>> implements
    * links to from `reader`. Gives `undefined` for an object the selection
    * leaves out.
    */
-  itemOf(object: EncodedObject<D, F>, reader: Reader): T | undefined | Promise<T | undefined> {
+  itemOf(object: EncodedObject<F>, reader: Reader): T | undefined | Promise<T | undefined> {
     return this.#itemOf(object, reader);
   }
 
@@ -53,12 +53,12 @@ export class SelectionBySchema<D, T, F extends Fields<D> = Fields<D>> implements
    */
   async read(record: Link<unknown>, reader: Reader): Promise<T | undefined> {
     const bytes = await readBlob(reader, record);
-    if (schemaOf(bytes, this.schema.encoding) !== this.schema.link) return undefined;
+    if (schemaOf(bytes) !== this.schema.link) return undefined;
     return this.itemOf(decodeObjectAt(record, bytes, this.schema), reader);
   }
 }
 
 /** The selection of every object of `schema`, each read as itself. */
-export function objectsOf<D, F extends Fields<D>>(schema: Schema<D, F>): SelectionBySchema<D, EncodedObject<D, F>, F> {
+export function objectsOf<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<EncodedObject<F>, F> {
   return new SelectionBySchema(schema, (object) => object);
 }

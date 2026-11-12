@@ -7,6 +7,7 @@ import {
   encodeObject,
   encodeSchema,
   LinkValue,
+  ObjectValue,
   objectFormat,
   readObject,
   schemaOf,
@@ -86,12 +87,12 @@ describe("an object read by its link", () => {
 
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
-    expect(schemaOf(encodeObject(login, greeting).bytes, objectFormat)).toBe(login.link);
-    expect(schemaOf(objectFormat.encode(objectFormat.object({ v: 1 }, login.link)), objectFormat)).toBe(login.link);
+    expect(schemaOf(encodeObject(login, greeting).bytes)).toBe(login.link);
+    expect(schemaOf(objectFormat.encode(new ObjectValue(login.link, { v: 1 })))).toBe(login.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, bytes) => {
-    expect(() => schemaOf(bytes, objectFormat)).toThrow();
+    expect(() => schemaOf(bytes)).toThrow();
   });
 });
 

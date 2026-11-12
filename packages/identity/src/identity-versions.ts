@@ -1,4 +1,4 @@
-import { type Link, LinkValue, type Reader, SelectionBySchema, type Value } from "@estoc/object";
+import { type Link, LinkValue, type Reader, SelectionBySchema } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { hasSigner } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
@@ -63,7 +63,7 @@ export class IdentityVersions {
    * @throws from `read`, when the reader gives no blob for the record, and
    *   where `decodeObject` throws for an object of the signed identity schema.
    */
-  readonly selection: SelectionBySchema<Value, IdentityVersionData, SignedIdentityData>;
+  readonly selection: SelectionBySchema<IdentityVersionData, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {

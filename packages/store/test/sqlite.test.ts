@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { encodeObject, type Link, LinkValue, linkOf, objectFormat } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { Store } from "../src/index.ts";
@@ -96,16 +96,16 @@ describe("a store in a SqliteBackend", () => {
     const path = await makeTemporaryPath();
     const note = object({ text: "hello" });
     const reply = object({ text: "hi", to: new LinkValue(note.link) });
-    const writer = new Store(objectFormat, open(path));
+    const writer = new Store(open(path));
     await writer.write({ records: [note, reply], blobs: [...anything.blobs] });
-    const reader = new Store(objectFormat, open(path));
+    const reader = new Store(open(path));
     expect(await recordsOf(reader)).toEqual(await recordsOf(writer));
     expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
   });
 
   it("refuses to give a blob whose bytes were changed in the file", async () => {
     const path = await makeTemporaryPath();
-    const store = new Store(objectFormat, open(path));
+    const store = new Store(open(path));
     const note = object({ text: "hello" });
     await store.write({ records: [note], blobs: [...anything.blobs] });
     const database = new DatabaseSync(path);

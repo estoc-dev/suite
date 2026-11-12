@@ -1,4 +1,4 @@
-import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
+import { type Bytes, type Link, linkOf, type ObjectValue, objectFormat, schemaOf } from "@estoc/object";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
@@ -82,7 +82,7 @@ export interface Store {
    * Puts in the batch's records and the blobs in their closures, and drops the other blobs. A
    * refused batch writes nothing.
    *
-   * @throws {RefusedBatch} when a record is not an object of the store's encoding.
+   * @throws {RefusedBatch} when a record is not an object.
    * @throws {RefusedBatch} when a blob in a record's closure is neither in the batch nor held by
    *   the store, such as the schema of an object or a blob its data links to.
    * @throws the backend's own error when the backend fails.
@@ -109,8 +109,7 @@ export interface Store {
    * The closure of the blob that `link` names: the blob and every blob it links to, directly or
    * through others.
    *
-   * - An object of the store's encoding links to the blobs whose links it holds, its schema among
-   *   them.
+   * - An object links to the blobs whose links it holds, its schema among them.
    * - Any other blob is bytes and links to nothing, such as an image, whatever links it seems to
    *   hold.
    *
@@ -171,13 +170,11 @@ export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
 }
 
-class StoreOf<D> implements Store, RowKeeper {
-  readonly #encoding: Encoding<D>;
+class StoreOf implements Store, RowKeeper {
   readonly #backend: Backend;
   readonly [rowsByIndex]: RowsByIndex;
 
-  constructor(encoding: Encoding<D>, backend: Backend) {
-    this.#encoding = encoding;
+  constructor(backend: Backend) {
     this.#backend = backend;
     this[rowsByIndex] = new KeptRows(this, backend);
   }
@@ -207,7 +204,7 @@ class StoreOf<D> implements Store, RowKeeper {
       const ownedBytes = new Uint8Array(bytes);
       const link = linkOf(ownedBytes);
       try {
-        schemaOf(ownedBytes, this.#encoding);
+        schemaOf(ownedBytes);
       } catch (cause) {
         throw new RefusedBatch(`${link} is written as a record but is not an object`, { cause });
       }
@@ -227,13 +224,12 @@ class StoreOf<D> implements Store, RowKeeper {
 
   /**
    * A store that writes to `backend` and holds besides all that `store`
-   * holds, of the same encoding. What `store` holds already is not put in
-   * `backend` again.
+   * holds. What `store` holds already is not put in `backend` again.
    */
   static beside(store: Store, backend: Backend): Store & RowKeeper {
     if (!(#backend in store)) throw new TypeError("a private store is kept beside a store made by `new Store`");
     const sharedBackend = store.#backend;
-    return new StoreOf(store.#encoding, {
+    return new StoreOf({
       get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
       has: async (link) => (await backend.has(link)) || sharedBackend.has(link),
       put: async (blobs, records) => {
@@ -309,13 +305,13 @@ class StoreOf<D> implements Store, RowKeeper {
   }
 
   #linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
-    let value: D;
+    let object: ObjectValue;
     try {
-      value = this.#encoding.decode(bytes);
+      object = objectFormat.decode(bytes);
     } catch {
       return [];
     }
-    return this.#encoding.links(value);
+    return objectFormat.links(object);
   }
 }
 
@@ -367,13 +363,8 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   }
 }
 
-/**
- * Makes a store that keeps its blobs and its records in `backend`, and finds the links in a blob by
- * `encoding`. The encoding is the one of the records, and a blob that is not an object in it links
- * to nothing. A backend is to be used with one encoding throughout, since the store takes a blob it
- * holds to come with its closure under that encoding.
- */
-export const Store: new <D>(encoding: Encoding<D>, backend: Backend) => Store = StoreOf;
+/** Makes a store that keeps its blobs and its records in `backend`. */
+export const Store: new (backend: Backend) => Store = StoreOf;
 
 /**
  * What the user keeps to themselves: objects they write and the blobs in their closures, kept
@@ -395,7 +386,7 @@ export class PrivateStore {
   readonly #store: Store & RowKeeper;
 
   /**
-   * Keeps what is written to it in `backend`, beside `store`, whose encoding it finds links by.
+   * Keeps what is written to it in `backend`, beside `store`.
    *
    * @throws {TypeError} for a store not made by `new Store`.
    */

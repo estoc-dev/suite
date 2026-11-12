@@ -1,4 +1,4 @@
-import type { EncodedObject, Encoding, Fields } from "@estoc/object";
+import type { EncodedObject, Fields, Schema } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import {
   derivationOf,
@@ -59,11 +59,11 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
     if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows);
     const { index, by } = orderOf(this.#index);
-    const { encoding } = derivationOf(index).schema;
+    const { schema } = derivationOf(index);
     const keyedRows = newRows.map((row) => {
       const data: Fields<D> = row.data;
       // A row that leaves a field out does not hold what every object inherits under its name, such as `constructor`.
-      const key = by.map((name) => keyPartOf(Object.hasOwn(data, name) ? data[name] : undefined, encoding));
+      const key = by.map((name) => keyPartOf(name, Object.hasOwn(data, name) ? data[name] : undefined, schema));
       return { key, row };
     });
     return new SortedRows(
@@ -74,8 +74,9 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
   }
 
   async *range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>> {
-    const { encoding } = derivationOf(orderOf(this.#index).index).schema;
-    const start = prefix.map((value) => keyPartOf(value as D | undefined, encoding));
+    const { index, by } = orderOf(this.#index);
+    const { schema } = derivationOf(index);
+    const start = prefix.map((value, at) => keyPartOf(by[at]!, value as D | undefined, schema));
     const rows = this.#rows;
     let low = 0;
     for (let high = rows.length; low < high; ) {
@@ -88,10 +89,12 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
   }
 }
 
-function keyPartOf<D>(value: D | undefined, encoding: Encoding<D>): KeyPart {
+function keyPartOf<D>(name: string, value: D | undefined, { encoding, link }: Schema<D>): KeyPart {
   if (value === undefined) return undefined;
   if (typeof value === "number" || typeof value === "string") return value;
-  return encoding.encode(value);
+  // An encoding writes objects, and need not write a value on its own, so the bytes are those of
+  // the row that would hold the value in that field alone.
+  return encoding.encode(encoding.object({ [name]: value }, link));
 }
 
 /** A key comes before every longer key that starts with it. */

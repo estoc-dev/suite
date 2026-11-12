@@ -1,30 +1,26 @@
-import { isJsonObject, type Json, json, type SchemaValidator } from "../src/index.ts";
+import { type Est, est, type SchemaValidator } from "../src/index.ts";
 
-/** The names of the fields an object holds. With no `fields`, an object holds any. */
-export type FieldNames = { readonly fields?: readonly string[] };
+/** The names of the fields an object holds, or `"any"` for an object that holds any. */
+export type FieldNames = { readonly fields: readonly string[] | "any" };
 
 // A language for these tests, so that they turn on no language in use: a
-// schema lists the names of the fields its objects hold, or lists none and
-// takes any fields.
-export const fieldNames: SchemaValidator<Json, FieldNames> = {
+// schema lists the names of the fields its objects hold, or takes any fields.
+// Its root schema says that a schema holds `fields` alone.
+export const fieldNames: SchemaValidator<Est, FieldNames> = {
   language: {
-    encoding: json,
-    value: (document) => document,
-    document(value) {
-      if (!isJsonObject(value)) throw new Error("a schema is a JSON object");
-      const { fields, ...rest } = value;
-      const extra = Object.keys(rest);
-      if (extra.length > 0) throw new Error(`a schema holds fields alone, not ${extra.join(", ")}`);
-      if (fields === undefined) return {};
-      if (!Array.isArray(fields) || !fields.every((name) => typeof name === "string"))
-        throw new Error("the fields of a schema are names");
+    encoding: est,
+    root: { fields: ["fields"] },
+    data: (document) => document,
+    document({ fields }) {
+      if (fields !== "any" && !(Array.isArray(fields) && fields.every((name) => typeof name === "string")))
+        throw new Error("the fields of a schema are names, or any");
       return { fields };
     },
   },
   compile:
     ({ fields }) =>
     (data) =>
-      fields === undefined
+      fields === "any"
         ? []
         : [
             ...Object.keys(data)

@@ -1,6 +1,6 @@
-import { isJsonObject, type Json, json, type SchemaLanguage } from "@estoc/object";
+import { type Est, type EstMap, est, isEstMap, type SchemaLanguage } from "@estoc/object";
 
-const types = ["array", "link", "bytes", "integer", "string", "boolean"] as const;
+const types = ["array", "link", "bytes", "integer", "string", "boolean", "any"] as const;
 
 type Type =
   | { readonly type: Exclude<(typeof types)[number], "array"> }
@@ -26,38 +26,39 @@ export type SchemaDocument = {
 };
 
 /**
- * Estoc Schema, the language of schemas over JSON.
+ * Estoc Schema, the language of schemas over est.
  *
- * - A schema is its document as it is, the JSON object of `title` and `fields`.
- * - A document has one spelling: every member is one the language names, `optional` is `true` or
- *   left out, and the encoding orders the members. So the same title and fields are the same
- *   blob.
- * - A field is not named `$schema`, which an object keeps for the schema it is written to.
+ * - A schema is the object of its document, a `title` and `fields`, written to the root schema.
+ * - The root schema is a schema of the language like any other, written to itself. It says that a
+ *   schema holds a `title`, a string, and `fields`, of any value.
+ * - What `fields` may hold is more than a schema of the language can say, so it is checked here:
+ *   each field is a map of the members the language names, its `type` one of the seven, with
+ *   `items` in an array alone, and `optional` either `true` or left out.
+ * - A document has one spelling, as the encoding orders the members. So the same title and fields
+ *   are the same blob.
  */
-export const schemaLanguage: SchemaLanguage<Json, SchemaDocument> = {
-  encoding: json,
-  value: (document) => document,
-  document(value) {
-    const { title, fields, ...rest } = membersOf(value, "a schema");
+export const schemaLanguage: SchemaLanguage<Est, SchemaDocument> = {
+  encoding: est,
+  root: { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } },
+  data: (document) => document,
+  document(data) {
+    const { title, fields, ...rest } = data;
     refuseMembers(rest, "a schema holds a title and fields alone");
     if (typeof title !== "string") throw new Error("a schema holds a title, a string");
-    if (fields === undefined || !isJsonObject(fields)) throw new Error("a schema holds fields, each by name");
-    for (const [name, field] of Object.entries(fields)) {
-      if (name === "$schema") throw new Error("a field is not named $schema, which names the object's schema");
-      validateField(field, `the field ${name}`);
-    }
-    return value as SchemaDocument;
+    if (fields === undefined || !isEstMap(fields)) throw new Error("a schema holds fields, each by name");
+    for (const [name, field] of Object.entries(fields)) validateField(field, `the field ${name}`);
+    return data as SchemaDocument;
   },
 };
 
-function validateField(field: Json, place: string): void {
+function validateField(field: Est, place: string): void {
   const { optional, ...type } = membersOf(field, place);
   if (optional !== undefined && optional !== true)
     throw new Error(`${place} is marked optional with true, or not marked`);
   validateType(type, place);
 }
 
-function validateType(value: Json, place: string): void {
+function validateType(value: Est, place: string): void {
   const { type, items, ...rest } = membersOf(value, place);
   refuseMembers(rest, `${place} holds a type, and items when it is an array`);
   if (!types.includes(type as (typeof types)[number]))
@@ -70,12 +71,12 @@ function validateType(value: Json, place: string): void {
   }
 }
 
-function membersOf(value: Json, place: string): { readonly [name: string]: Json } {
-  if (!isJsonObject(value)) throw new Error(`${place} is a JSON object`);
+function membersOf(value: Est, place: string): EstMap {
+  if (!isEstMap(value)) throw new Error(`${place} is a map`);
   return value;
 }
 
-function refuseMembers(members: { readonly [name: string]: Json }, rule: string): void {
+function refuseMembers(members: EstMap, rule: string): void {
   const names = Object.keys(members);
   if (names.length > 0) throw new Error(`${rule}, not ${names.join(", ")}`);
 }

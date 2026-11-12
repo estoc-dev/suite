@@ -1,21 +1,20 @@
-import type { JsonObject } from "@estoc/object";
+import type { EstMap } from "@estoc/object";
 import { string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { mailboxSchema } from "../src/index.ts";
 
 const memory = mailboxSchema("Memory mailbox", { name: string() });
-const key = "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209";
+const key = new Uint8Array(32).fill(7);
 
 describe("a mailbox schema", () => {
   it("takes a key and the transport's fields", () => {
     expect(() => memory.validate({ key, name: "q" })).not.toThrow();
   });
 
-  it.each<[string, JsonObject]>([
+  it.each<[string, EstMap]>([
     ["without a key", { name: "q" }],
     ["without a field of its transport", { key }],
-    ["whose key is in uppercase hex", { key: key.toUpperCase(), name: "q" }],
-    ["whose key is not whole bytes", { key: key.slice(1), name: "q" }],
+    ["whose key is in hex", { key: "07".repeat(32), name: "q" }],
     ["with a field its transport does not add", { key, name: "q", owner: "alice" }],
   ])("refuses a mailbox %s", (_, data) => {
     expect(() => memory.validate(data)).toThrow();

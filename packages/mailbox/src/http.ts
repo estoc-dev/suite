@@ -1,4 +1,4 @@
-import type { JsonObject } from "@estoc/object";
+import type { EstMap } from "@estoc/object";
 import { string } from "@estoc/schema";
 import { type Transport, UndeliveredMessage } from "./mailbox.ts";
 import { mailboxSchema } from "./schema.ts";
@@ -23,7 +23,7 @@ export const httpTransport = {
   deliver,
 } satisfies Transport;
 
-async function deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void> {
+async function deliver(mailbox: EstMap, ciphertext: Uint8Array): Promise<void> {
   const { url } = mailbox as { readonly url: string };
   if (!allowedUrl.test(url) || !URL.canParse(url))
     throw new UndeliveredMessage("gone", "an HTTP mailbox is at an https url, or an http url of this machine");

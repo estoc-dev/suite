@@ -1,6 +1,6 @@
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { httpTransport } from "@estoc/mailbox/http";
-import { json } from "@estoc/object";
+import { est } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { loadServices } from "./client.ts";
 
@@ -28,13 +28,13 @@ export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { signatures, publish } = loadIdentity([ed25519]);
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
-  const store = new Store(json, new MemoryBackend());
+  const store = new Store(est, new MemoryBackend());
   const services = loadServices(store, { schemes: [ed25519] });
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);
   await account.accept(actor);
   const mailbox = await offer.open(actor, MAILBOX_KEY);
-  await store.write({ records: [mailbox], blobs: [httpTransport.schema.bytes] });
+  await store.write({ records: [mailbox], blobs: [...httpTransport.schema.blobs] });
   return {
     url: mailbox.data.url,
     async pickUp() {

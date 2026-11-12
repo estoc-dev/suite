@@ -111,8 +111,8 @@ export interface Store {
    *
    * - An object of the store's encoding links to the blobs whose links it holds, its schema among
    *   them.
-   * - Any other blob is bytes and links to nothing, such as an image, or JSON that names no schema
-   *   whatever links it seems to hold.
+   * - Any other blob is bytes and links to nothing, such as an image, whatever links it seems to
+   *   hold.
    *
    * @throws when the store does not hold a blob of the closure, the one `link` names among them.
    * @throws when the backend gives other bytes under a link in the closure.

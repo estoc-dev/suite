@@ -5,8 +5,8 @@ import { decodeBundle, encodeBundle, readBundle, writeBundle } from "../src/inde
 const bytesOf = (hex: string) => Uint8Array.from(Buffer.from(hex, "hex"));
 const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 
-// The schemas of @estoc/schema are in JSON, so the objects here are made with
-// the encoding itself, to a schema that is an object written to itself.
+// The objects are made with the encoding itself, to a schema that is an object
+// written to itself, so that the bytes written out below turn on est alone.
 const anything = est.encode(est.object({ title: "Anything" }, itself));
 const hello = est.encode(est.object({ text: "hello" }, linkOf(anything)));
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

@@ -1,5 +1,5 @@
 import type { KeyObject, Signature } from "@estoc/identity";
-import { type EncodedObject, type Json, json, type Link, linkOf } from "@estoc/object";
+import { type EncodedObject, type Est, est, type Link, linkOf } from "@estoc/object";
 import { array, bytes, type DataOf, integer, link, schema, string } from "@estoc/schema";
 
 /**
@@ -32,7 +32,7 @@ export type ServiceData = DataOf<typeof serviceSchema>;
  * `at`.
  */
 export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
-  return linkOf(json.encode(content));
+  return linkOf(est.encode(est.object(content, serviceSchema.link)));
 }
 
 /**
@@ -68,10 +68,10 @@ export const acknowledgementSchema = schema("Acknowledgement", {
 export type AcknowledgementData = DataOf<typeof acknowledgementSchema>;
 
 /**
- * An id that a service makes up for a mailbox it opens, 16 random bytes in
- * lowercase hex: one that senders post to, and one that the account picks
- * up at. Neither can be worked out from the other, nor from what the
- * mailbox is.
+ * An id that a service makes up for a mailbox it opens, 16 random bytes,
+ * in lowercase hex where an address names it: one that senders post to, and
+ * one that the account picks up at. Neither can be worked out from the
+ * other, nor from what the mailbox is.
  */
 export const MAILBOX_ID = /^[0-9a-f]{32}$/;
 
@@ -101,7 +101,10 @@ export type MailboxTerms = Omit<MailboxOfferData, "identity">;
  * key that messages to the mailbox are sealed to. Each mailbox has a key of
  * its own, so each request is one of its own too.
  */
-export const mailboxRequestSchema = schema("Mailbox request", { offer: link<never>(), key: bytes() });
+export const mailboxRequestSchema = schema("Mailbox request", {
+  offer: link<EncodedObject<Est, MailboxOfferData>>(),
+  key: bytes(),
+});
 
 export type MailboxRequestData = DataOf<typeof mailboxRequestSchema>;
 
@@ -128,7 +131,7 @@ export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSch
  * the mailbox's acknowledgement, which says where the mailbox is picked up.
  */
 export const openedMailboxSchema = schema("Opened mailbox", {
-  mailbox: link<EncodedObject<Json>>(),
+  mailbox: link<EncodedObject<Est>>(),
   acknowledgement: link<Signature>(),
 });
 

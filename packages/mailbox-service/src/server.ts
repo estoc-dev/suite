@@ -1,4 +1,4 @@
-import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
+import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Identifier,
   type IdentityKit,
@@ -14,9 +14,10 @@ import {
 import {
   type Bytes,
   type EncodedObject,
+  type Est,
+  EstLink,
   encodeObject,
-  type Json,
-  json,
+  est,
   type Link,
   linkOf,
   readObject,
@@ -25,7 +26,7 @@ import {
 import { type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
-import { PICKUP, readBody, ZIP } from "./http.ts";
+import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import { type PeopleView, peopleView } from "./people.ts";
@@ -191,9 +192,9 @@ class MailboxService {
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
     // The store's own signatures say which offer each is over, and are read
     // for that alone.
-    for (const { $link } of offers) {
-      const signature = await readObject(this.#store, $link, this.#signatures.schema);
-      if (signature.data.object.$link === id) return true;
+    for (const { link } of offers) {
+      const signature = await readObject(this.#store, link, this.#signatures.schema);
+      if (signature.data.object.link === id) return true;
     }
     return false;
   }
@@ -206,10 +207,10 @@ class MailboxService {
    * @throws when the store does not hold the offer.
    */
   async #acceptOffer(request: Request, id: string): Promise<Response> {
-    const offer = id as Link<EncodedObject<Json>>;
+    const offer = id as Link<EncodedObject<Est>>;
     const bytes = await this.#store.get(offer);
     if (bytes === undefined) throw new Error(`the store does not hold ${offer}`);
-    if (schemaOf(bytes, json) === accountOfferSchema.link) return this.#openAccount(request, offer);
+    if (schemaOf(bytes, est) === accountOfferSchema.link) return this.#openAccount(request, offer);
     return this.#openMailbox(request, await readObject(this.#store, offer, mailboxOfferSchema));
   }
 
@@ -224,15 +225,15 @@ class MailboxService {
    *   send it. So an agent its root removed is refused even when they have an
    *   account, and even for an acceptance that was acknowledged before.
    */
-  async #openAccount(request: Request, offer: Link<EncodedObject<Json>>): Promise<Response> {
-    const zip = await readBody(request.body, REQUEST_LIMIT);
-    if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
+  async #openAccount(request: Request, offer: Link<EncodedObject<Est>>): Promise<Response> {
+    const file = await readBody(request.body, REQUEST_LIMIT);
+    if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const people = await view(this.#store, this.#people);
     let bundle: Bundle;
     let acceptance: Signature;
     try {
-      bundle = await unpackBundle(zip);
+      bundle = decodeBundle(file);
       acceptance = await this.#signatures.read(bundle.link, bundle, people);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
       if (people.personOf(this.#signedIdentity).hasSigned(acceptance))
@@ -246,7 +247,7 @@ class MailboxService {
       heldAcknowledgement === undefined
         ? (
             await this.#acknowledge(
-              encodeObject(acknowledgementSchema, { acceptance: { $link: acceptance.link }, at }),
+              encodeObject(acknowledgementSchema, { acceptance: new EstLink(acceptance.link), at }),
               people,
               bundle,
               acceptance.signedIdentity,
@@ -265,18 +266,18 @@ class MailboxService {
    * - The signature is verified as an acceptance of the offer of an account
    *   is, and refused when they have no account.
    */
-  async #openMailbox(request: Request, offer: EncodedObject<Json, MailboxOfferData>): Promise<Response> {
-    const zip = await readBody(request.body, REQUEST_LIMIT);
-    if (zip === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
+  async #openMailbox(request: Request, offer: EncodedObject<Est, MailboxOfferData>): Promise<Response> {
+    const file = await readBody(request.body, REQUEST_LIMIT);
+    if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
     const people = await view(this.#store, this.#people);
     let bundle: Bundle;
     let signature: Signature;
     try {
-      bundle = await unpackBundle(zip);
+      bundle = decodeBundle(file);
       signature = await this.#signatures.read(bundle.link, bundle, people);
       const { data } = await readObject(bundle, signature.object, mailboxRequestSchema);
-      if (data.offer.$link !== offer.link) throw new Error(`the request asks for ${data.offer.$link}, not the offer`);
+      if (data.offer.link !== offer.link) throw new Error(`the request asks for ${data.offer.link}, not the offer`);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
@@ -287,11 +288,16 @@ class MailboxService {
       return this.#answerWith(await this.#renew(existingMailbox.acknowledgement, people), 200);
     const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = await this.#acknowledge(
-      encodeObject(mailboxAcknowledgementSchema, { request: { $link: signature.link }, at, sendId, pickupId }),
+      encodeObject(mailboxAcknowledgementSchema, {
+        request: new EstLink(signature.link),
+        at,
+        sendId: hex.decode(sendId),
+        pickupId: hex.decode(pickupId),
+      }),
       people,
       bundle,
       signature.signedIdentity,
-      [mailboxRequestSchema.bytes],
+      [...mailboxRequestSchema.blobs],
     );
     const { identity: _, ...terms } = offer.data;
     const mailbox = {
@@ -316,7 +322,7 @@ class MailboxService {
    * signed what it acknowledges.
    */
   async #acknowledge(
-    acknowledgement: EncodedObject<Json>,
+    acknowledgement: EncodedObject<Est>,
     people: People,
     bundle: Bundle,
     signedIdentity: SignedIdentityObject,
@@ -327,7 +333,7 @@ class MailboxService {
     // identity's closure, so the bundle need not hold them, and the store
     // takes a blob in only with its whole closure.
     const { schema } = acknowledgement;
-    const own = [acknowledgement.bytes, schema.bytes, ...signedIdentity.blobs, ...blobs];
+    const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
     await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
     return signature;
   }
@@ -381,18 +387,18 @@ class MailboxService {
    * refused with 403, though it reads.
    */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
-    const zip = await readBody(request.body, PICKUP_LIMIT);
-    if (zip === undefined) return answer(413, `a pickup request holds at most ${PICKUP_LIMIT} bytes`);
+    const file = await readBody(request.body, PICKUP_LIMIT);
+    if (file === undefined) return answer(413, `a pickup request holds at most ${PICKUP_LIMIT} bytes`);
     const people = await view(this.#store, this.#people);
     let signature: Signature;
     let receipts: Link<Uint8Array>[];
     try {
-      const bundle = await unpackBundle(zip);
+      const bundle = decodeBundle(file);
       signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
       const { data } = await readObject(bundle, signature.object, pickupRequestSchema);
-      if (data.mailbox.$link !== mailbox.request)
-        throw new Error(`the request picks up at ${data.mailbox.$link}, not at this mailbox`);
-      receipts = data.receipts.map(({ $link }) => $link);
+      if (data.mailbox.link !== mailbox.request)
+        throw new Error(`the request picks up at ${data.mailbox.link}, not at this mailbox`);
+      receipts = data.receipts.map(({ link }) => link);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
@@ -408,9 +414,9 @@ class MailboxService {
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
     const pickupAnswer = encodeObject(pickupAnswerSchema, {
-      ciphertexts: ciphertexts.map((bytes) => ({ $link: linkOf(bytes) })),
+      ciphertexts: ciphertexts.map((bytes) => new EstLink<Uint8Array>(linkOf(bytes))),
     });
-    return bundleAnswer(200, await packBundle(pickupAnswer, ciphertexts));
+    return bundleAnswer(200, encodeBundle(pickupAnswer, ciphertexts));
   }
 
   /**
@@ -424,7 +430,7 @@ class MailboxService {
     const bytes = closure.get(link);
     if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
     const blobs = [...closure].filter(([linked]) => linked !== link).map(([, blob]) => blob);
-    return bundleAnswer(status, await packBundle({ bytes }, blobs));
+    return bundleAnswer(status, encodeBundle({ bytes }, blobs));
   }
 }
 
@@ -447,7 +453,7 @@ async function batchOf(queue: AsyncIterable<Uint8Array>): Promise<Uint8Array[]> 
 }
 
 function answerTo(request: Request, method: string, handle: () => Promise<Response>): Promise<Response> | Response {
-  // A browser asks before it posts a zip, or a ciphertext, to another origin.
+  // A browser asks before it posts a bundle, or a ciphertext, to another origin.
   if (request.method === "OPTIONS") {
     return answer(204, null, {
       "access-control-allow-methods": method,
@@ -466,8 +472,8 @@ function answer(
   return new Response(reason, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 }
 
-function bundleAnswer(status: number, zip: Uint8Array): Response {
-  return new Response(zip, { status, headers: { "access-control-allow-origin": "*", "content-type": ZIP } });
+function bundleAnswer(status: number, file: Uint8Array): Response {
+  return new Response(file, { status, headers: { "access-control-allow-origin": "*", "content-type": BUNDLE_TYPE } });
 }
 
 /**
@@ -497,7 +503,7 @@ export async function loadMailboxService(
   const kit = loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
   const identifier: Identifier = keys.encode(signer.key).link;
-  const identity = { $link: identifier };
+  const identity = new EstLink(identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
     encodeObject(mailboxOfferSchema, { identity, ...terms }),
@@ -518,7 +524,7 @@ export async function loadMailboxService(
   );
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
-  const signedOffers: (readonly [EncodedObject<Json>, Signature])[] = [];
+  const signedOffers: (readonly [EncodedObject<Est>, Signature])[] = [];
   for (const offer of offers) {
     const signature =
       (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
@@ -527,15 +533,15 @@ export async function loadMailboxService(
   const next: ServiceData = {
     origin,
     at,
-    offers: signedOffers.map(([, signature]) => ({ $link: signature.link })),
+    offers: signedOffers.map(([, signature]) => new EstLink(signature.link)),
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
     const object = encodeObject(serviceSchema, next);
     const blobs = [
       object.bytes,
-      serviceSchema.bytes,
-      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, offer.schema.bytes]),
-      signatures.schema.bytes,
+      ...serviceSchema.blobs,
+      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
+      ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
     await store.write({ records: [await actor.sign(object)], blobs });
@@ -548,15 +554,15 @@ export async function loadMailboxService(
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */
 async function signatureListedIn(
-  services: readonly EncodedObject<Json, ServiceData>[],
+  services: readonly EncodedObject<Est, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,
   store: Store,
   people: People,
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
-    for (const { $link } of data.offers) {
-      const signature = await signatures.read($link, store, people);
+    for (const { link } of data.offers) {
+      const signature = await signatures.read(link, store, people);
       if (signature.object === offer) return signature;
     }
   }

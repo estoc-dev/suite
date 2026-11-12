@@ -1,30 +1,30 @@
-import { isJsonLink, type Json, type SchemaValidator } from "@estoc/object";
+import { type Est, EstLink, rootSchemaOf, type SchemaValidator } from "@estoc/object";
 import { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 
-const hex = /^(?:[0-9a-f]{2})*$/;
-
-const fits: { readonly [T in Item["type"]]: (value: Json) => boolean } = {
+const fits: { readonly [T in Item["type"]]: (value: Est) => boolean } = {
   array: Array.isArray,
-  link: isJsonLink,
-  bytes: (value) => typeof value === "string" && hex.test(value),
+  link: (value) => value instanceof EstLink,
+  bytes: (value) => value instanceof Uint8Array,
   integer: Number.isSafeInteger,
   string: (value) => typeof value === "string",
   boolean: (value) => typeof value === "boolean",
+  any: () => true,
 };
 
 const mismatch: { readonly [T in Item["type"]]: string } = {
   array: "not an array",
   link: "not a link",
-  bytes: "not bytes in lowercase hex",
+  bytes: "not bytes",
   integer: "not an integer of at most 2^53 - 1 either way",
   string: "not a string",
   boolean: "not a boolean",
+  any: "not a value",
 };
 
-function* problemsIn(value: Json, field: Field | Item, path: string): Generator<string> {
+function* problemsIn(value: Est, field: Field | Item, path: string): Generator<string> {
   if (!fits[field.type](value)) yield `${path}: ${mismatch[field.type]}`;
   else if (field.type === "array")
-    for (const [index, item] of (value as readonly Json[]).entries())
+    for (const [index, item] of (value as readonly Est[]).entries())
       yield* problemsIn(item, field.items, `${path}/${index}`);
 }
 
@@ -36,7 +36,7 @@ function* problemsIn(value: Json, field: Field | Item, path: string): Generator<
  *   out, and each is a value of its field's type.
  * - Each problem names where in the data it is, as `#/agents/0: not a link`.
  */
-export const schemaValidator: SchemaValidator<Json, SchemaDocument> = {
+export const schemaValidator: SchemaValidator<Est, SchemaDocument> = {
   language: schemaLanguage,
   compile({ fields }) {
     return (data) => {
@@ -52,3 +52,9 @@ export const schemaValidator: SchemaValidator<Json, SchemaDocument> = {
     };
   },
 };
+
+/**
+ * The root schema of the language, which every schema of it is written to, itself included. It
+ * is in the closure of every object of the language, so it goes where they go.
+ */
+export const rootSchema = rootSchemaOf(schemaValidator);

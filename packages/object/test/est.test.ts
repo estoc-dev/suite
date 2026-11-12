@@ -12,19 +12,12 @@ import {
   json,
   type Link,
   linkOf,
+  rootSchemaOf,
   schemaOf,
 } from "../src/index.ts";
-import { type Check, Schema } from "../src/schema.ts";
 import { fieldNames } from "./field-names.ts";
 
-// No schema language is over est, so these tests make their schemas by hand:
-// an object written to itself, with a check of the test's own.
-function schemaTitled(title: string, check: Check<Est> = () => []): Schema<Est> {
-  const bytes = est.encode(est.object({ title }, itself));
-  return new Schema(est, { bytes, link: linkOf(bytes) }, check);
-}
-
-const anything = schemaTitled("Anything");
+const anything = encodeSchema({ fields: "any" }, fieldNames);
 const a = linkOf(new TextEncoder().encode("a"));
 const b = linkOf(new TextEncoder().encode("b"));
 
@@ -85,21 +78,19 @@ describe("an object of est", () => {
   });
 
   it("is refused when its data does not fit its schema", () => {
-    const titledSchema = schemaTitled("Titled", (data) =>
-      typeof data.title === "string" ? [] : ["#/title: not a string"],
-    );
+    const titledSchema = encodeSchema({ fields: ["title"] }, fieldNames);
     expect(encodeObject(titledSchema, { title: "hello" }).data).toEqual({ title: "hello" });
-    expect(() => encodeObject(titledSchema, { title: 1 })).toThrow(/does not fit/);
+    expect(() => encodeObject(titledSchema, { text: "hello" })).toThrow(/does not fit/);
   });
 
   it("is refused when read with a schema other than its own", () => {
-    const other = schemaTitled("Other");
+    const other = encodeSchema({ fields: ["text"] }, fieldNames);
     expect(() => decodeObject(encodeObject(anything, { text: "hello" }).bytes, other)).toThrow(/is written to/);
   });
 
   it("is not a JSON object, nor a JSON object one of est", () => {
-    const inJson = encodeObject(encodeSchema({}, fieldNames), { text: "hello" });
-    expect(() => est.decode(inJson.bytes)).toThrow();
+    const inJson = json.encode(json.object({ text: "hello" }, anything.link));
+    expect(() => est.decode(inJson)).toThrow();
     expect(() => json.decode(encodeObject(anything, { text: "hello" }).bytes)).toThrow();
   });
 });
@@ -182,6 +173,12 @@ describe("encoding", () => {
     expect(() => encodeObject(anything, { v: [{ nested: value as Est }] })).toThrow();
   });
 
+  it.each([1, 64, 100, 5000])("gives plain bytes, not a Node Buffer, around %i bytes", (length) => {
+    const bytes = est.encode(est.object({ v: new Uint8Array(length) }, anything.link));
+    expect(Buffer.isBuffer(bytes)).toBe(false);
+    expect(est.decode(bytes)).toEqual(est.object({ v: new Uint8Array(length) }, anything.link));
+  });
+
   it("refuses a value that is not an object as a blob", () => {
     expect(() => est.encode({ text: "hello" })).toThrow(/is an object/);
     expect(() => est.encode(new EstLink(a))).toThrow(/is an object/);
@@ -194,17 +191,20 @@ describe("encoding", () => {
 });
 
 describe("an object written to itself", () => {
+  const selfWritten = est.encode(est.object({ title: "Anything" }, itself));
+
   it("names its schema by the string self, in place of a link", () => {
-    expect(bytesToHex(anything.bytes)).toBe(`${objectHead}${itselfHex}a1657469746c6568416e797468696e67`);
-    expect(est.fields(est.decode(anything.bytes)).schema).toBe(itself);
+    expect(bytesToHex(selfWritten)).toBe(`${objectHead}${itselfHex}a1657469746c6568416e797468696e67`);
+    expect(est.fields(est.decode(selfWritten)).schema).toBe(itself);
   });
 
   it("reads back with its own link as its schema", () => {
-    expect(schemaOf(anything.bytes, est)).toBe(anything.link);
-    const bytes: Uint8Array = anything.bytes;
-    const object = decodeObject(bytes, anything);
+    expect(schemaOf(selfWritten, est)).toBe(linkOf(selfWritten));
+    const root = rootSchemaOf(fieldNames);
+    const bytes: Uint8Array = root.bytes;
+    const object = decodeObject(bytes, root);
     expect(object.schema.link).toBe(object.link);
-    expect(object.data).toEqual({ title: "Anything" });
+    expect(object.data).toEqual({ fields: ["fields"] });
   });
 
   it("is refused as an object of another schema", () => {
@@ -214,7 +214,7 @@ describe("an object written to itself", () => {
   });
 
   it("does not link to itself", () => {
-    expect([...est.links(est.decode(anything.bytes))]).toEqual([]);
+    expect([...est.links(est.decode(selfWritten))]).toEqual([]);
     const linkingBytes = est.encode(est.object({ to: new EstLink(a) }, itself));
     expect([...est.links(est.decode(linkingBytes))]).toEqual([a]);
   });

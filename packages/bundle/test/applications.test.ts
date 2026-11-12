@@ -7,18 +7,18 @@ import {
   type Signature,
   SoftwareSigner,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, json, type Link, readObject, schemaOf } from "@estoc/object";
+import { decodeObject, EstLink, encodeObject, est, type Link, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Bundle, readBundle, writeBundle } from "../src/index.ts";
+import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
 
 // Applications that hand each other bundles. Each pins the schema of its
-// root and walks from it by link; the package only checks that the blobs are
-// the ones their names say, and the signatures are verified where they are read.
+// root and walks from it by link; the package only checks that the file is
+// a root and its blobs, and the signatures are verified where they are read.
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => readBundle(writeBundle(root, blobs));
+const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => decodeBundle(encodeBundle(root, blobs));
 const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
@@ -34,14 +34,14 @@ const name = schema("Name", { name: string() });
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
 function cardOf(root: Uint8Array): Card {
-  switch (schemaOf(root, json)) {
+  switch (schemaOf(root, est)) {
     case card.link: {
       const { data } = decodeObject(root, card);
-      return { mailbox: data.mailbox.$link, name: data.name.$link };
+      return { mailbox: data.mailbox.link, name: data.name.link };
     }
     case contact.link: {
       const { data } = decodeObject(root, contact);
-      return { mailbox: data.inbox.$link, name: data.displayName.$link };
+      return { mailbox: data.inbox.link, name: data.displayName.link };
     }
     default:
       throw new Error("the root is not a card");
@@ -69,7 +69,7 @@ describe("a card", () => {
 
   it("reads as the mailbox and the name that its identity signed", async () => {
     const [byMailbox, byName] = await cardSignatures;
-    const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byName.link } });
+    const root = encodeObject(card, { mailbox: new EstLink(byMailbox.link), name: new EstLink(byName.link) });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
@@ -86,7 +86,7 @@ describe("a card", () => {
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await cardSignatures;
-    const root = encodeObject(contact, { displayName: { $link: byName.link }, inbox: { $link: byMailbox.link } });
+    const root = encodeObject(contact, { displayName: new EstLink(byName.link), inbox: new EstLink(byMailbox.link) });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
@@ -104,7 +104,7 @@ describe("a card", () => {
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await cardSignatures;
     const byOther = await sign(nameObject, signer(eip191, 2));
-    const root = encodeObject(card, { mailbox: { $link: byMailbox.link }, name: { $link: byOther.link } });
+    const root = encodeObject(card, { mailbox: new EstLink(byMailbox.link), name: new EstLink(byOther.link) });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,

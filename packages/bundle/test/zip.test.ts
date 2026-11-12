@@ -1,6 +1,5 @@
 import { constants, deflateRawSync } from "node:zlib";
-import { encodeObject, linkOf } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
+import { json, linkOf } from "@estoc/object";
 import {
   configure,
   resetConfiguration,
@@ -19,9 +18,14 @@ const linksOf = (files: ReadonlyMap<string, Uint8Array>) =>
   new Map([...files].map(([path, bytes]) => [path, linkOf(bytes)]));
 const concat = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
 
-const note = schema("Note", { text: string() });
-const root = encodeObject(note, { text: "a note" });
-const another = encodeObject(note, { text: "another note" });
+// The objects of the other packages are of est, so those of a zip are made with the encoding itself.
+const note = linkOf(new TextEncoder().encode("a schema"));
+const objectOf = (text: string) => {
+  const bytes = json.encode(json.object({ text }, note));
+  return { bytes, link: linkOf(bytes) };
+};
+const root = objectOf("a note");
+const another = objectOf("another note");
 const text = new TextEncoder().encode("a blob");
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const files = writeBundle(root, [text, image]);

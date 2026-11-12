@@ -1,4 +1,4 @@
-import { encodeSchema, type Json, type JsonLink, type Schema } from "@estoc/object";
+import { type Est, type EstLink, encodeSchema, type Schema } from "@estoc/object";
 import type { Field, Item } from "./document.ts";
 import { schemaValidator } from "./validator.ts";
 
@@ -13,14 +13,15 @@ export type ItemOf<T> = Item & Read<T>;
 export type OptionalOf<T> = Field & { readonly optional: true } & Read<T>;
 
 /** A link. `T` is what the blob it names is read as, which the schema does not say. */
-export const link = <T = unknown>(): ItemOf<JsonLink<T>> => ({ type: "link" });
-/** Bytes, written in lowercase hex. */
-export const bytes = (): ItemOf<string> => ({ type: "bytes" });
-/** An integer of at most 2^53 - 1 either way, which every reader of JSON takes whole. */
+export const link = <T = unknown>(): ItemOf<EstLink<T>> => ({ type: "link" });
+export const bytes = (): ItemOf<Uint8Array> => ({ type: "bytes" });
+/** An integer of at most 2^53 - 1 either way, which a number holds whole. */
 export const integer = (): ItemOf<number> => ({ type: "integer" });
 export const string = (): ItemOf<string> => ({ type: "string" });
 export const boolean = (): ItemOf<boolean> => ({ type: "boolean" });
 export const array = <T>(items: ItemOf<T>): ItemOf<readonly T[]> => ({ type: "array", items });
+/** Any value of est: one of the six other types, or a map. The schema says no more of it. */
+export const any = (): ItemOf<Est> => ({ type: "any" });
 /** `field` as one an object may leave out. */
 export const optional = <T>(field: ItemOf<T>): OptionalOf<T> => ({ ...field, optional: true });
 
@@ -36,12 +37,10 @@ type DataOfFields<F extends FieldsOf> = { readonly [N in Exclude<keyof F, Option
 /**
  * The schema with `title` and `fields`, as a blob. What a program reads its
  * data as follows from the fields, and `DataOf` gives it.
- *
- * @throws when a field is named `$schema`.
  */
-export function schema<F extends FieldsOf>(title: string, fields: F): Schema<Json, DataOfFields<F>> {
+export function schema<F extends FieldsOf>(title: string, fields: F): Schema<Est, DataOfFields<F>> {
   return encodeSchema({ title, fields }, schemaValidator);
 }
 
 /** What a program reads the data of an object written to `S` as. */
-export type DataOf<S extends Schema<Json>> = S extends Schema<Json, infer F> ? F : never;
+export type DataOf<S extends Schema<Est>> = S extends Schema<Est, infer F> ? F : never;

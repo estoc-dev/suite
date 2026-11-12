@@ -66,8 +66,10 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
  * - An object is the JSON object of the fields of its data and `"$schema": {"$link": <link>}`, the
  *   link of its schema. Only there does `$schema` name a schema: deeper in the data it is a field
  *   like any other.
- * - Any other value is bytes, and links to nothing: a schema is one, and so is a JSON Schema
- *   document, whose `$schema` is a string.
+ * - Any other value is bytes, and links to nothing: a JSON Schema document is one, whose `$schema`
+ *   is a string.
+ * - It has no mark for an object written to itself, and so no root schema: a language of schemas
+ *   is over an encoding that has one, as est does.
  */
 export const json: Encoding<Json> = {
   encode(value) {

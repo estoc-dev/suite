@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Json, type JsonLink, type Link, type Reader } from "@estoc/object";
+import { type EncodedObject, type Est, EstLink, encodeObject, type Link, type Reader } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { concatBytes } from "@noble/hashes/utils.js";
 import { blobsOf } from "./blobs.ts";
@@ -51,7 +51,7 @@ export type Identifier = Link<KeyObject>;
  *   object and of the keys it names, the schemas they are written to, and
  *   the blobs of `prior`.
  */
-export interface IdentityObject extends EncodedObject<Json, IdentityData> {
+export interface IdentityObject extends EncodedObject<Est, IdentityData> {
   readonly link: Link<IdentityObject>;
   readonly identifier: Identifier;
   readonly prior: SignedIdentityObject | undefined;
@@ -92,9 +92,9 @@ export class Identities {
     const rootKey = this.#keys.encode(root);
     const agentKeys = agents.map((agent) => this.#keys.encode(agent));
     const data: IdentityData = {
-      ...(prior === undefined ? {} : { prior: { $link: prior.link } }),
-      root: { $link: rootKey.link },
-      agents: agentKeys.map(({ link }) => ({ $link: link })),
+      ...(prior === undefined ? {} : { prior: new EstLink(prior.link) }),
+      root: new EstLink(rootKey.link),
+      agents: agentKeys.map(({ link }) => new EstLink(link)),
       ...(isCrisis ? { crisis: true } : {}),
       at,
     };
@@ -112,12 +112,12 @@ export class Identities {
    * @throws when it writes `crisis` as anything but `true`.
    */
   async read(
-    object: EncodedObject<Json, IdentityData>,
+    object: EncodedObject<Est, IdentityData>,
     prior: SignedIdentityObject | undefined,
     reader: Reader,
   ): Promise<IdentityObject> {
-    if (object.data.prior?.$link !== prior?.link) throw new Error(`${object.link} does not follow ${prior?.link}`);
-    const read = (key: JsonLink<KeyObject>) => this.#keys.read(key.$link, reader);
+    if (object.data.prior?.link !== prior?.link) throw new Error(`${object.link} does not follow ${prior?.link}`);
+    const read = (key: EstLink<KeyObject>) => this.#keys.read(key.link, reader);
     return identityOf(object, prior, await read(object.data.root), await Promise.all(object.data.agents.map(read)));
   }
 }
@@ -151,7 +151,7 @@ function signersOf({ root, agents }: IdentityObject): readonly KeyObject[] {
 }
 
 function identityOf(
-  object: EncodedObject<Json, IdentityData>,
+  object: EncodedObject<Est, IdentityData>,
   prior: SignedIdentityObject | undefined,
   root: KeyObject,
   agents: readonly KeyObject[],

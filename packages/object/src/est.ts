@@ -11,22 +11,29 @@ const itselfText = "self";
 
 declare const marksLink: unique symbol;
 
-/**
- * A link in est data. CBOR marks a link with a tag, so in memory it is a
- * value of its own, and a string or bytes are what they are whatever they
- * hold.
- */
-export class EstLink<T> {
+class LinkValue {
   // Keeps a map with a `link` member from passing as a link where the types are checked.
   declare readonly [marksLink]: true;
-  readonly link: Link<T>;
+  readonly link: Link<unknown>;
 
-  /** @throws when `link` is not a link. */
-  constructor(link: Link<T>) {
+  constructor(link: Link<unknown>) {
     if (!isLink(link)) throw new Error("a link is sha256: and 64 lowercase hex digits");
     this.link = link;
   }
 }
+
+/**
+ * A link in est data. CBOR marks a link with a tag, so in memory it is a
+ * value of its own, and a string or bytes are what they are whatever they
+ * hold. `T` is what the blob it names is read as, as in a `Link<T>`.
+ */
+// `T` is kept out of the class, which TypeScript would resolve when it checks that data holding
+// the link is data of est: two schemas whose objects link to each other would then refer to
+// themselves.
+export type EstLink<T> = LinkValue & { readonly link: Link<T> };
+
+/** @throws when `link` is not a link. */
+export const EstLink = LinkValue as new <T>(link: Link<T>) => EstLink<T>;
 
 /** An object in est: the fields of its data, and the schema they are written to. */
 export class EstObject {
@@ -48,11 +55,15 @@ export interface EstMap {
  * array, a map by string keys or a link. An `EstObject` is the value that a
  * blob holds as a whole, and is refused inside data.
  */
-export type Est = boolean | number | string | Uint8Array | readonly Est[] | EstMap | EstLink<unknown> | EstObject;
+export type Est = boolean | number | string | Uint8Array | readonly Est[] | EstMap | LinkValue | EstObject;
 
 function isMap(value: object): value is EstMap {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+export function isEstMap(value: Est): value is EstMap {
+  return typeof value === "object" && isMap(value);
 }
 
 function integerOf(value: number | bigint): number {
@@ -150,7 +161,9 @@ export const est: Encoding<Est> = {
   encode(value) {
     if (!(value instanceof EstObject)) throw new Error("a blob of est is an object");
     const schema = value.schema === itself ? itselfText : cborValueOf(new EstLink(value.schema));
-    return encode(new Tagged(objectTag, [schema, cborMapOf(value.data)]), rfc8949EncodeOptions);
+    const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(value.data)]), rfc8949EncodeOptions);
+    // In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.
+    return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   },
   decode(bytes) {
     const value = estObjectOf(

@@ -6,7 +6,7 @@ import {
   type Signature,
   type Signatures,
 } from "@estoc/identity";
-import type { Json, Link } from "@estoc/object";
+import { type Est, EstLink, type Link } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
@@ -43,7 +43,7 @@ export interface Locations {
   servicesOf(identifier: Identifier, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Json, DataOf<typeof locationSchema>, LocationOrder, Locations>;
+export type LocationsView = View<Est, DataOf<typeof locationSchema>, LocationOrder, Locations>;
 
 export function locationsView(signatures: Signatures): LocationsView {
   return {
@@ -56,18 +56,18 @@ export function locationsView(signatures: Signatures): LocationsView {
         // is honored is checked as the rows are read.
         const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
         yield {
-          identifier: { $link: signedIdentity.identity.identifier },
+          identifier: new EstLink(signedIdentity.identity.identifier),
           at: object.data.at,
-          service: { $link: link },
+          service: new EstLink(link),
         };
       },
     ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
         const links: Link<Signature>[] = [];
-        for await (const { data } of rows.range([{ $link: identifier }])) {
-          const signature = await signatures.read(data.service.$link, reader, noIdentityVersions);
-          if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.$link);
+        for await (const { data } of rows.range([new EstLink(identifier)])) {
+          const signature = await signatures.read(data.service.link, reader, noIdentityVersions);
+          if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.link);
         }
         return links;
       },

@@ -1,9 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, json, type Link } from "@estoc/object";
+import { encodeObject, est, type Link } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
-import { hex } from "@scure/base";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
@@ -53,7 +52,7 @@ function close(server: Server): Promise<void> {
 
 const options = { transports: [http] };
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
-const key = hex.encode(bob.publicKey);
+const key = bob.publicKey;
 const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
@@ -108,11 +107,11 @@ describe("an HTTP mailbox", () => {
 
 describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
-    const store = new Store(json, new MemoryBackend());
+    const store = new Store(est, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
-    await store.write({ records: [mailbox, hello], blobs: [http.schema.bytes, note.bytes] });
+    await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
     const before = await listed(store);
 

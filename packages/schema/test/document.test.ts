@@ -1,21 +1,30 @@
-import { decodeSchema, encodeObject, type Json, json, schemaOf } from "@estoc/object";
+import { decodeSchema, type EstMap, encodeObject, est, itself, schemaOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
-import { array, integer, link, optional, schema, schemaValidator, string } from "../src/index.ts";
+import { any, array, integer, link, optional, rootSchema, schema, schemaValidator, string } from "../src/index.ts";
 
-const written = (document: Json) => json.encode(document);
+const written = (data: EstMap) => est.encode(est.object(data, rootSchema.link));
+const dataOf = (bytes: Uint8Array) => est.fields(est.decode(bytes)).data;
 
 describe("a schema", () => {
-  it("is its title and its fields as bytes, which name no schema", () => {
-    const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()) });
-    expect(() => schemaOf(note.bytes, json)).toThrow(/names its schema/);
-    expect(json.decode(note.bytes)).toEqual({
+  it("is the object of its title and its fields, written to the root schema", () => {
+    const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()), more: any() });
+    expect(schemaOf(note.bytes, est)).toBe(rootSchema.link);
+    expect(dataOf(note.bytes)).toEqual({
       title: "Note",
       fields: {
         text: { type: "string" },
         parents: { type: "array", items: { type: "link" } },
         at: { type: "integer", optional: true },
+        more: { type: "any" },
       },
     });
+  });
+
+  it("comes with the root schema, the two of them its closure", () => {
+    const chat = schema("Chat", { text: string() });
+    expect(chat.bytes).toHaveLength(81);
+    expect(chat.blobs).toEqual([chat.bytes, rootSchema.bytes]);
+    expect([...est.links(est.decode(chat.bytes))]).toEqual([rootSchema.link]);
   });
 
   it("is one blob however its fields are ordered", () => {
@@ -30,7 +39,7 @@ describe("a schema", () => {
     expect(other.link).not.toBe(one.link);
   });
 
-  it.each([
+  it.each<[string, EstMap]>([
     ["no fields at all", { title: "Note", fields: {} }],
     [
       "arrays of arrays",
@@ -40,25 +49,27 @@ describe("a schema", () => {
       "an optional array",
       { title: "Note", fields: { tags: { type: "array", items: { type: "string" }, optional: true } } },
     ],
+    ["an array of any values", { title: "Note", fields: { values: { type: "array", items: { type: "any" } } } }],
+    [
+      "a field of any name, as an object keeps none for its schema",
+      { title: "Note", fields: { $schema: { type: "string" }, schema: { type: "link" } } },
+    ],
   ])("is read with %s", (_, data) => {
     const bytes = written(data);
     expect(decodeSchema(bytes, schemaValidator).bytes).toEqual(bytes);
   });
 
-  it.each([
-    ["without a title", { fields: {} }, /holds a title/],
-    ["whose title is not a string", { title: 1, fields: {} }, /holds a title/],
-    ["without fields", { title: "Note" }, /holds fields/],
+  it.each<[string, EstMap, RegExp]>([
+    ["without a title", { fields: {} }, /#\/title: left out/],
+    ["whose title is not a string", { title: 1, fields: {} }, /#\/title: not a string/],
+    ["without fields", { title: "Note" }, /#\/fields: left out/],
     ["whose fields are an array", { title: "Note", fields: [] }, /holds fields/],
-    ["with another member", { title: "Note", fields: {}, description: "A note." }, /alone, not description/],
-    ["with a $schema that is null", { $schema: null, title: "Note", fields: {} }, /alone, not \$schema/],
-    ["when it is an array", [], /a schema is a JSON object/],
-    ["with a field named $schema", { title: "Note", fields: { $schema: { type: "string" } } }, /not named \$schema/],
     [
-      "with a field that is a type by name",
-      { title: "Note", fields: { text: "string" } },
-      /the field text is a JSON object/,
+      "with another member",
+      { title: "Note", fields: {}, description: "A note." },
+      /#\/description: not a field of the schema/,
     ],
+    ["with a field that is a type by name", { title: "Note", fields: { text: "string" } }, /the field text is a map/],
     ["with a field of no type", { title: "Note", fields: { text: {} } }, /the type of the field text is one of/],
     [
       "with a field of a type the language has not",
@@ -95,16 +106,54 @@ describe("a schema", () => {
     expect(() => decodeSchema(written(data), schemaValidator)).toThrow(reason);
   });
 
-  it("is refused as an object written to a schema, though its data is a title and fields", () => {
-    const note = schema("Note", { title: string(), fields: array(string()) });
-    const object = encodeObject(note, { title: "Note", fields: [] });
+  it("is refused when it is written to another schema, though its data is a title and fields", () => {
+    const note = schema("Note", { title: string(), fields: any() });
+    const object = encodeObject(note, { title: "Note", fields: {} });
     // @ts-expect-error: refused at compile time too
-    expect(() => decodeSchema(object.bytes, schemaValidator)).toThrow(/links to nothing/);
+    expect(() => decodeSchema(object.bytes, schemaValidator)).toThrow(/is written to/);
+  });
+
+  it("is refused when it is written to itself, as the root schema alone is", () => {
+    const bytes = est.encode(est.object({ title: "Note", fields: {} }, itself));
+    expect(() => decodeSchema(bytes, schemaValidator)).toThrow(/is written to/);
   });
 });
 
-describe("schema", () => {
-  it("refuses a field named $schema", () => {
-    expect(() => schema("Note", { $schema: string() })).toThrow(/not named \$schema/);
+describe("the root schema", () => {
+  const document = { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } };
+
+  it("is the schema of a title and fields, written to itself", () => {
+    expect(est.fields(est.decode(rootSchema.bytes))).toEqual({ schema: itself, data: document });
+    expect(rootSchema.bytes).toHaveLength(69);
+    expect(schemaOf(rootSchema.bytes, est)).toBe(rootSchema.link);
+  });
+
+  it("has the link of its bytes as they were written out by hand elsewhere", () => {
+    // The CBOR was written by hand in Python and hashed with its hashlib.
+    expect(rootSchema.link).toBe("sha256:f04c343e9b0209f633e0670c03798f9d5408fd69e7835ffb637847875a38e08e");
+  });
+
+  it("holds data that fits it, and reads as a schema of the language", () => {
+    expect(rootSchema.validate(dataOf(rootSchema.bytes))).toEqual(document);
+    expect(decodeSchema(rootSchema.bytes, schemaValidator)).toBe(rootSchema);
+  });
+
+  it("links to nothing, so it is its whole closure", () => {
+    expect([...est.links(est.decode(rootSchema.bytes))]).toEqual([]);
+    expect(rootSchema.blobs).toEqual([rootSchema.bytes]);
+  });
+
+  it("is not the schema built from its title and fields, which is written to it", () => {
+    const built = schema("Schema", { title: string(), fields: any() });
+    expect(dataOf(built.bytes)).toEqual(document);
+    expect(schemaOf(built.bytes, est)).toBe(rootSchema.link);
+    expect(built.link).not.toBe(rootSchema.link);
+    expect(decodeSchema(built.bytes, schemaValidator).link).toBe(built.link);
+  });
+
+  it("takes the data of every schema, and of nothing that lacks a title or fields", () => {
+    const note = schema("Note", { text: string() });
+    expect(() => rootSchema.validate(dataOf(note.bytes))).not.toThrow();
+    expect(() => rootSchema.validate({ text: "hello" })).toThrow(/#\/text: not a field of the schema/);
   });
 });

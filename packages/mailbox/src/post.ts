@@ -1,8 +1,7 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import { type Bytes, type EncodedObject, encodeObject, type Json, type Link, readObject } from "@estoc/object";
+import { type Bytes, type EncodedObject, type Est, EstLink, encodeObject, type Link, readObject } from "@estoc/object";
 import { Intake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
-import { hex } from "@scure/base";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -20,14 +19,14 @@ export interface Delivery {
   readonly direction: "inbound" | "outbound";
   /** The link of the bundle's root. */
   readonly bundle: Link<never>;
-  readonly mailbox: Link<EncodedObject<Json>>;
+  readonly mailbox: Link<EncodedObject<Est>>;
   /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the record. */
   readonly at: number;
   /** The link of the record. */
-  readonly link: Link<EncodedObject<Json>>;
+  readonly link: Link<EncodedObject<Est>>;
 }
 
-type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Json>> };
+type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Est>> };
 
 /**
  * Sending and receiving with a store, through transports, with the keys of
@@ -61,7 +60,7 @@ export class Post {
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
-  async outbox(mailbox: Link<EncodedObject<Json>>): Promise<Outbox> {
+  async outbox(mailbox: Link<EncodedObject<Est>>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, (bundle) => this.#recordOutbound(mailbox, bundle));
   }
@@ -79,11 +78,10 @@ export class Post {
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const key = await MailboxKey.fromSecretKey(secret);
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
-    if (data.key !== hex.encode(key.publicKey))
-      throw new Error("the mailbox made names another key than the one given");
-    await this.#store.write({ records: [mailbox], blobs: [mailbox.schema.bytes] });
-    const object = encodeObject(mailboxKeySchema, { mailbox: { $link: mailbox.link }, secret: hex.encode(secret) });
-    await this.#privateStore.write({ records: [object], blobs: [mailboxKeySchema.bytes] });
+    if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
+    await this.#store.write({ records: [mailbox], blobs: [...mailbox.schema.blobs] });
+    const object = encodeObject(mailboxKeySchema, { mailbox: new EstLink(mailbox.link), secret });
+    await this.#privateStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -94,16 +92,15 @@ export class Post {
    * @throws when the key's secret is not of the public key the mailbox names: what it opens was
    *   sealed to another mailbox.
    */
-  async inbox(key: Link<EncodedObject<Json, MailboxKeyData>>): Promise<Inbox> {
+  async inbox(key: Link<EncodedObject<Est, MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#privateStore, key, mailboxKeySchema);
-    const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.$link), this.#transports);
-    const opener = await MailboxKey.fromSecretKey(hex.decode(data.secret));
-    if (mailboxData.key !== hex.encode(opener.publicKey))
-      throw new Error(`${mailbox.link} names another key than ${key} holds`);
+    const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
+    const opener = await MailboxKey.fromSecretKey(data.secret);
+    if (!opener.hasPublicKey(mailboxData.key)) throw new Error(`${mailbox.link} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
   }
 
-  #inbox(mailbox: EncodedObject<Json>, key: Link<EncodedObject<Json, MailboxKeyData>>, opener: MailboxKey) {
+  #inbox(mailbox: EncodedObject<Est>, key: Link<EncodedObject<Est, MailboxKeyData>>, opener: MailboxKey) {
     return new Inbox(mailbox, key, opener, this.#intake);
   }
 
@@ -113,10 +110,10 @@ export class Post {
     return bytes;
   }
 
-  async #recordOutbound(mailbox: Link<EncodedObject<Json>>, bundle: Link<never>): Promise<Delivery> {
+  async #recordOutbound(mailbox: Link<EncodedObject<Est>>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
-    const record = encodeObject(outboundSchema, { bundle: { $link: bundle }, mailbox: { $link: mailbox }, at });
-    await this.#store.write({ records: [record], blobs: [outboundSchema.bytes] });
+    const record = encodeObject(outboundSchema, { bundle: new EstLink(bundle), mailbox: new EstLink(mailbox), at });
+    await this.#store.write({ records: [record], blobs: [...outboundSchema.blobs] });
     return { direction: "outbound", bundle, mailbox, at, link: record.link };
   }
 }
@@ -160,14 +157,14 @@ export class Inbox {
    * The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this
    * inbox again.
    */
-  readonly key: Link<EncodedObject<Json, MailboxKeyData>>;
-  readonly #mailbox: EncodedObject<Json>;
+  readonly key: Link<EncodedObject<Est, MailboxKeyData>>;
+  readonly #mailbox: EncodedObject<Est>;
   readonly #opener: MailboxKey;
   readonly #intake: Intake;
 
   constructor(
-    mailbox: EncodedObject<Json>,
-    key: Link<EncodedObject<Json, MailboxKeyData>>,
+    mailbox: EncodedObject<Est>,
+    key: Link<EncodedObject<Est, MailboxKeyData>>,
     opener: MailboxKey,
     intake: Intake,
   ) {
@@ -178,7 +175,7 @@ export class Inbox {
   }
 
   /** The link of the mailbox, which the store holds. */
-  get mailbox(): Link<EncodedObject<Json>> {
+  get mailbox(): Link<EncodedObject<Est>> {
     return this.#mailbox.link;
   }
 

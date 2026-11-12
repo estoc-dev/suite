@@ -1,4 +1,5 @@
-export const ZIP = "application/zip";
+/** A bundle in one file has no media type of its own, so it goes as bytes. */
+export const BUNDLE_TYPE = "application/octet-stream";
 
 /** The bytes of a body, or `undefined` when it holds more than `limit`, in which case no chunk is read after the one that goes past `limit`. */
 export async function readBody(

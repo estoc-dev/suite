@@ -38,7 +38,7 @@ names ends, the service answers 410 there, and the id names nothing else.
 The id of an offer is the offer's link, which the signature that the
 Service lists names as its object, so it is the same wherever the service
 is and however often it starts. The ids of a mailbox are made up when it
-opens, 16 random bytes in lowercase hex. A request names the
+opens, 16 random bytes, in lowercase hex in a url. A request names the
 object it acts on by link, so where the service moves, neither a request
 nor a signature changes.
 
@@ -506,7 +506,7 @@ request posted again opens the account, or a mailbox with other ids.
 import { SqliteAccounts, SqliteMailboxes } from "@estoc/mailbox-service/sqlite";
 import { SqliteBackend } from "@estoc/store/sqlite";
 
-const store = new Store(json, new SqliteBackend("service.db"));
+const store = new Store(est, new SqliteBackend("service.db"));
 const accounts = new SqliteAccounts("service.db");
 const mailboxes = new SqliteMailboxes("service.db");
 ```
@@ -516,7 +516,7 @@ It answers `GET /` and `POST /<id>`, 404 at an id it did not give out and
 at any other path, and 410 at the id of an offer that only an earlier
 Service lists. No request carries credentials, so it answers any origin,
 and it answers the CORS preflight that a browser sends before it posts a
-zip or a ciphertext to another origin. It reads a body up to a limit:
+bundle or a ciphertext to another origin. It reads a body up to a limit:
 
 - a request, up to 64 KiB;
 - a pickup request, up to 128 bytes more for each of the 100 messages that
@@ -524,9 +524,10 @@ zip or a ciphertext to another origin. It reads a body up to a limit:
   receiver is done with of the answer before;
 - a ciphertext, up to the size that the offer of its mailbox names.
 
-Bundles travel both ways packed, as `packBundle` of `@estoc/bundle` packs
-them, and are read with `unpackBundle`, so a small body cannot unzip to
-much more than arrived.
+Bundles travel both ways in one file, as `encodeBundle` of `@estoc/bundle`
+writes them, and are read with `decodeBundle`. Nothing in the file is
+compressed, so what is read is no more than arrived. A bundle has no media
+type of its own, and goes as `application/octet-stream`.
 
 A service opens no account for its own identifier: a signature of its own
 over its offer accepts nothing.

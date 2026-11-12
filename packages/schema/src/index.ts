@@ -1,5 +1,6 @@
 export { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 export {
+  any,
   array,
   boolean,
   bytes,
@@ -12,4 +13,4 @@ export {
   schema,
   string,
 } from "./fields.ts";
-export { schemaValidator } from "./validator.ts";
+export { rootSchema, schemaValidator } from "./validator.ts";

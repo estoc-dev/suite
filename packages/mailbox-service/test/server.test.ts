@@ -1,4 +1,4 @@
-import { packBundle, unpackBundle } from "@estoc/bundle";
+import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
@@ -7,10 +7,11 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, json, type Link, linkOf, readObject } from "@estoc/object";
+import { decodeObject, EstLink, encodeObject, est, type Link, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
+import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   accountOfferSchema,
@@ -54,7 +55,7 @@ const request = (path: string, init?: RequestInit) => new Request(new URL(path, 
 const getRoot = (service: MailboxService) => service.fetch(request("/"));
 const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
-const bundleOf = async (response: Response) => unpackBundle(new Uint8Array(await response.arrayBuffer()));
+const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
 const records = async (store: { records(): AsyncIterable<Link<never>> }) => {
   const links: Link<never>[] = [];
   for await (const link of store.records()) links.push(link);
@@ -72,9 +73,9 @@ async function rootOf(service: MailboxService) {
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
   assert.exists(listedMailbox);
-  const offerSignature = await signatures.read(listedAccount.$link, bundle, noIdentityVersions);
+  const offerSignature = await signatures.read(listedAccount.link, bundle, noIdentityVersions);
   const offer = await readObject(bundle, offerSignature.object, accountOfferSchema);
-  const mailboxOfferSignature = await signatures.read(listedMailbox.$link, bundle, noIdentityVersions);
+  const mailboxOfferSignature = await signatures.read(listedMailbox.link, bundle, noIdentityVersions);
   const mailboxOffer = await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchema);
   const mailbox = { offerSignature: mailboxOfferSignature, offer: mailboxOffer, acceptId: mailboxOffer.link };
   return { signature, data, offerSignature, offer, acceptId: offer.link, mailbox };
@@ -86,13 +87,13 @@ const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
 /** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function directAcceptance(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await (await actorOf(by)).sign(offer);
-  return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
+  return { signature, file: encodeBundle(signature, signature.signedIdentity.blobs) };
 }
 
 /** The bundle that accepts `offer` for the wallet by the device, which an identity of the wallet's lists. */
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
-  return { signature, zip: await packBundle(signature, signature.signedIdentity.blobs) };
+  return { signature, file: encodeBundle(signature, signature.signedIdentity.blobs) };
 }
 
 /** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet lists. */
@@ -102,7 +103,7 @@ async function acceptanceBy(
   offer: { readonly link: Link<unknown> },
 ) {
   const signature = await signatures.actor(agent, identityVersion).sign(offer);
-  return packBundle(signature, signature.signedIdentity.blobs);
+  return encodeBundle(signature, signature.signedIdentity.blobs);
 }
 
 /** A signer as `signer` that, while `isHolding`, holds each signature back until it is released, the first asked first. */
@@ -134,29 +135,29 @@ describe("a mailbox service", () => {
     const { service } = await memoryService({ start: 3_000 });
     const response = await getRoot(service);
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("application/zip");
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
     const { signature, data, offerSignature, offer, mailbox } = await rootOf(service);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
-      offers: [{ $link: offerSignature.link }, { $link: mailbox.offerSignature.link }],
+      offers: [new EstLink(offerSignature.link), new EstLink(mailbox.offerSignature.link)],
     });
     for (const { signedIdentity } of [offerSignature, mailbox.offerSignature])
       expect(signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
-    expect(offer.data).toEqual({ identity: { $link: serviceRoot.link } });
-    expect(mailbox.offer.data).toEqual({ identity: { $link: serviceRoot.link }, ...terms });
+    expect(offer.data).toEqual({ identity: new EstLink(serviceRoot.link) });
+    expect(mailbox.offer.data).toEqual({ identity: new EstLink(serviceRoot.link), ...terms });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
     const { service } = await memoryService({ start: 5_000 });
     const { offer, acceptId } = await rootOf(service);
     const acceptance = await directAcceptance(offer);
-    const response = await post(service, acceptId, acceptance.zip);
+    const response = await post(service, acceptId, acceptance.file);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
-    expect(acknowledgement.data).toEqual({ acceptance: { $link: acceptance.signature.link }, at: 5_001 });
+    expect(acknowledgement.data).toEqual({ acceptance: new EstLink(acceptance.signature.link), at: 5_001 });
     const read = await signatures.read(acceptance.signature.link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
@@ -167,15 +168,15 @@ describe("a mailbox service", () => {
     const { signature } = await directAcceptance((await rootOf(service)).offer, wallet);
     const { signedIdentity } = signature;
     const read = [signedIdentity.bytes, ...signedIdentity.identity.blobs];
-    expect((await postAcceptance(service, await packBundle(signature, read))).status).toBe(201);
+    expect((await postAcceptance(service, encodeBundle(signature, read))).status).toBe(201);
   });
 
   it("answers the same acceptance again with 200 and the acknowledgement it signed for it, and signs no other", async () => {
     const { service, store } = await memoryService();
-    const { zip } = await directAcceptance((await rootOf(service)).offer);
-    const first = new Uint8Array(await (await postAcceptance(service, zip)).arrayBuffer());
+    const { file } = await directAcceptance((await rootOf(service)).offer);
+    const first = new Uint8Array(await (await postAcceptance(service, file)).arrayBuffer());
     const recordsBefore = await records(store);
-    const again = await postAcceptance(service, zip);
+    const again = await postAcceptance(service, file);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
     expect(await records(store)).toEqual(recordsBefore);
@@ -185,12 +186,12 @@ describe("a mailbox service", () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
     const acceptance = await delegatedAcceptance(offer);
-    const response = await postAcceptance(service, acceptance.zip);
+    const response = await postAcceptance(service, acceptance.file);
     expect(response.status).toBe(201);
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { acceptance: link } = acknowledgement.data;
-    expect(link.$link).toBe(acceptance.signature.link);
-    const read = await signatures.read(link.$link, bundle, noIdentityVersions);
+    expect(link.link).toBe(acceptance.signature.link);
+    const read = await signatures.read(link.link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
     expect(read.key.link).toBe(keys.encode(device.key).link);
@@ -199,11 +200,11 @@ describe("a mailbox service", () => {
   it("answers someone who accepts again, by another identity, with 200 and an acknowledgement of that acceptance", async () => {
     const { service } = await memoryService();
     const { offer } = await rootOf(service);
-    expect((await postAcceptance(service, (await directAcceptance(offer, wallet)).zip)).status).toBe(201);
+    expect((await postAcceptance(service, (await directAcceptance(offer, wallet)).file)).status).toBe(201);
     const again = await delegatedAcceptance(offer);
-    const response = await postAcceptance(service, again.zip);
+    const response = await postAcceptance(service, again.file);
     expect(response.status).toBe(200);
-    expect((await acknowledgementIn(response)).acknowledgement.data.acceptance.$link).toBe(again.signature.link);
+    expect((await acknowledgementIn(response)).acknowledgement.data.acceptance.link).toBe(again.signature.link);
   });
 
   it("answers 400 to an agent that a later identity version of its root removed, though its identifier has an account", async () => {
@@ -284,12 +285,12 @@ describe("a mailbox service", () => {
     holder.release();
     const racerAnswer = await racer;
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
-    for (const [response, zip] of [
+    for (const [response, file] of [
       [openerAnswer, earlier],
       [racerAnswer, later],
     ] as const) {
       const { acknowledgement } = await acknowledgementIn(response);
-      expect(acknowledgement.data.acceptance.$link).toBe((await unpackBundle(zip)).link);
+      expect(acknowledgement.data.acceptance.link).toBe(decodeBundle(file).link);
     }
     expect((await postAcceptance(service, earlier)).status).toBe(400);
   });
@@ -297,11 +298,11 @@ describe("a mailbox service", () => {
   it("answers one acceptance posted twice at once with 201 and 200, each acknowledging it, and later with the acknowledgement whose signature has the least link", async () => {
     const holder = heldSigner(serviceSigner);
     const { service, store } = await memoryService({ by: holder.signer });
-    const { signature: acceptance, zip } = await directAcceptance((await rootOf(service)).offer);
+    const { signature: acceptance, file } = await directAcceptance((await rootOf(service)).offer);
     holder.isHolding = true;
-    const opener = postAcceptance(service, zip);
+    const opener = postAcceptance(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
-    const racer = postAcceptance(service, zip);
+    const racer = postAcceptance(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
     holder.isHolding = false;
     holder.release();
@@ -310,9 +311,9 @@ describe("a mailbox service", () => {
     const racerAnswer = await racer;
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     const answers = await Promise.all([openerAnswer, racerAnswer].map(acknowledgementIn));
-    for (const { acknowledgement } of answers) expect(acknowledgement.data.acceptance.$link).toBe(acceptance.link);
+    for (const { acknowledgement } of answers) expect(acknowledgement.data.acceptance.link).toBe(acceptance.link);
     const recordsBefore = await records(store);
-    const again = await postAcceptance(service, zip);
+    const again = await postAcceptance(service, file);
     expect(again.status).toBe(200);
     const [least] = answers.map(({ signature }) => signature.link).sort();
     expect((await acknowledgementIn(again)).signature.link).toBe(least);
@@ -320,22 +321,22 @@ describe("a mailbox service", () => {
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
-    ["that is not a zip", async () => new TextEncoder().encode("hello")],
-    ["whose root is not a signature", async (service) => packBundle((await rootOf(service)).offer, [])],
+    ["that is not a bundle", async () => new TextEncoder().encode("hello")],
+    ["whose root is not a signature", async (service) => encodeBundle((await rootOf(service)).offer, [])],
     [
       "whose signature comes without its identity",
-      async (service) => packBundle((await directAcceptance((await rootOf(service)).offer)).signature, []),
+      async (service) => encodeBundle((await directAcceptance((await rootOf(service)).offer)).signature, []),
     ],
     [
       "accepting another service's offer",
       async () => {
         const { service: other } = await memoryService({ by: otherService });
-        return (await directAcceptance((await rootOf(other)).offer)).zip;
+        return (await directAcceptance((await rootOf(other)).offer)).file;
       },
     ],
     [
       "that is the service's own signature over its offer",
-      async (service) => (await directAcceptance((await rootOf(service)).offer, serviceSigner)).zip,
+      async (service) => (await directAcceptance((await rootOf(service)).offer, serviceSigner)).file,
     ],
   ])("answers 400 to a bundle %s, and opens no account", async (_, body) => {
     const { service, store } = await memoryService();
@@ -373,7 +374,7 @@ describe("a mailbox service", () => {
     expect(get.headers.get("allow")).toBe("POST");
   });
 
-  it("answers a browser's preflight for posting a zip from another origin", async () => {
+  it("answers a browser's preflight for posting a bundle from another origin", async () => {
     const { service } = await memoryService();
     const response = await service.fetch(request(`/${(await rootOf(service)).acceptId}`, { method: "OPTIONS" }));
     expect(response.status).toBe(204);
@@ -387,17 +388,17 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const droppedSchema = schema("Dropped offer", { identity: link() });
-    const droppedOffer = encodeObject(droppedSchema, { identity: { $link: serviceRoot.link } });
+    const droppedOffer = encodeObject(droppedSchema, { identity: new EstLink(serviceRoot.link) });
     const asService = await serviceActor(3_000);
     const offerSignature = await asService.sign(droppedOffer);
     const earlier = encodeObject(serviceSchema, {
       origin: "https://mail.example",
       at: 2_000,
-      offers: [{ $link: offerSignature.link }],
+      offers: [new EstLink(offerSignature.link)],
     });
-    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, droppedSchema.bytes];
+    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
     await store.write({ records: [await asService.sign(earlier)], blobs });
-    expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).zip)).status).toBe(410);
+    expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).file)).status).toBe(410);
   });
 
   it("answers with the latest Service that its store holds, which a start elsewhere may have signed since", async () => {
@@ -405,7 +406,7 @@ describe("a mailbox service", () => {
     await memoryService({ store, origin: "https://post.example", start: 9_000 });
     const { data, acceptId, offer } = await rootOf(service);
     expect(data).toMatchObject({ origin: "https://post.example", at: 9_000 });
-    expect((await post(service, acceptId, (await directAcceptance(offer)).zip)).status).toBe(201);
+    expect((await post(service, acceptId, (await directAcceptance(offer)).file)).status).toBe(201);
   });
 
   it("acknowledges as a crisis of its root once another start on its store signed a Service as it, without starting again", async () => {
@@ -418,8 +419,8 @@ describe("a mailbox service", () => {
     await store.write({ records: [crisis], blobs: crisis.blobs });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const actor = await actorOf(alice);
-    const { zip } = await directAcceptance((await rootOf(service)).offer);
-    const acceptanceResponse = await postAcceptance(service, zip);
+    const { file } = await directAcceptance((await rootOf(service)).offer);
+    const acceptanceResponse = await postAcceptance(service, file);
     expect(acceptanceResponse.status).toBe(201);
     const { signature } = await acknowledgementIn(acceptanceResponse);
     const mailbox = await openMailbox(service, actor);
@@ -495,7 +496,7 @@ describe("a mailbox service started again", () => {
     const after = await rootOf(moved);
     expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
     expect(await records(store)).toEqual([before.signature.link, after.signature.link].sort());
-    expect((await post(moved, after.acceptId, (await directAcceptance(after.offer)).zip)).status).toBe(201);
+    expect((await post(moved, after.acceptId, (await directAcceptance(after.offer)).file)).status).toBe(201);
   });
 
   it("signs as the current identity version of its root, which its signer does not sign again", async () => {
@@ -535,18 +536,18 @@ describe("a mailbox service started again", () => {
     const actor = await actorOf(alice);
     const before = await rootOf(service);
     const acceptance = await directAcceptance(before.offer);
-    const firstAccountAcknowledgement = await acknowledgementIn(await postAcceptance(service, acceptance.zip));
-    const { zip } = await mailboxRequest(actor, before.mailbox.offer);
-    const firstMailboxAcknowledgement = await mailboxAcknowledgementIn(await postMailboxRequest(service, zip));
-    const { sendId } = firstMailboxAcknowledgement.acknowledgement.data;
+    const firstAccountAcknowledgement = await acknowledgementIn(await postAcceptance(service, acceptance.file));
+    const { file } = await mailboxRequest(actor, before.mailbox.offer);
+    const firstMailboxAcknowledgement = await mailboxAcknowledgementIn(await postMailboxRequest(service, file));
+    const sendId = hex.encode(firstMailboxAcknowledgement.acknowledgement.data.sendId);
     expect((await post(service, sendId, ciphertextOf(1))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
     await store.write({ records: [crisis], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
-    const repeatedAcceptanceResponse = await postAcceptance(again, acceptance.zip);
+    const repeatedAcceptanceResponse = await postAcceptance(again, acceptance.file);
     expect(repeatedAcceptanceResponse.status).toBe(200);
     const renewedAccountAcknowledgement = await acknowledgementIn(repeatedAcceptanceResponse);
-    const repeatedRequestResponse = await postMailboxRequest(again, zip);
+    const repeatedRequestResponse = await postMailboxRequest(again, file);
     expect(repeatedRequestResponse.status).toBe(200);
     const renewedMailboxAcknowledgement = await mailboxAcknowledgementIn(repeatedRequestResponse);
     const people = await view(store, peopleView(identityVersions));
@@ -558,14 +559,11 @@ describe("a mailbox service started again", () => {
       expect((await signatures.read(renewal.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
     }
     const recordsBefore = await records(store);
-    expect((await acknowledgementIn(await postAcceptance(again, acceptance.zip))).signature.link).toBe(
+    expect((await acknowledgementIn(await postAcceptance(again, acceptance.file))).signature.link).toBe(
       renewedAccountAcknowledgement.signature.link,
     );
     expect(await records(store)).toEqual(recordsBefore);
-    const mailbox = {
-      link: renewedMailboxAcknowledgement.signature.link,
-      ...renewedMailboxAcknowledgement.acknowledgement.data,
-    };
+    const mailbox = openedMailboxOf(renewedMailboxAcknowledgement);
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
@@ -596,8 +594,8 @@ describe("a mailbox service started again", () => {
     onTestFinished(after.close);
     const { service: again } = await memoryService({ ...after, start: 9_000 });
     expect(await acceptAccount(again, actor)).toBe(200);
-    const { zip } = await mailboxRequest(actor, (await rootOf(again)).mailbox.offer);
-    expect((await postMailboxRequest(again, zip)).status).toBe(200);
+    const { file } = await mailboxRequest(actor, (await rootOf(again)).mailbox.offer);
+    expect((await postMailboxRequest(again, file)).status).toBe(200);
     expect((await post(again, mailbox.sendId, ciphertextOf(2))).status).toBe(204);
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1), ciphertextOf(2)]);
   });
@@ -613,17 +611,17 @@ function sqliteParts(path: string) {
     accounts.close();
     mailboxes.close();
   };
-  return { store: new Store(json, backend), accounts, mailboxes, close };
+  return { store: new Store(est, backend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);
-const keyOf = (fill: number) => fill.toString(16).padStart(2, "0").repeat(32);
+const keyOf = (fill: number) => new Uint8Array(32).fill(fill);
 const ciphertextOf = (fill: number, length = 64) => new Uint8Array(length).fill(fill);
 
 /** The status that `service` answers `actor`'s acceptance of its offer of an account with. */
 async function acceptAccount(service: MailboxService, actor: Actor) {
   const signature = await actor.sign((await rootOf(service)).offer);
-  return (await postAcceptance(service, await packBundle(signature, signature.signedIdentity.blobs))).status;
+  return (await postAcceptance(service, encodeBundle(signature, signature.signedIdentity.blobs))).status;
 }
 
 /** Opens the account of whoever `actor` signs for at `service`, by the actor's acceptance of its offer. */
@@ -632,9 +630,9 @@ const openAccount = async (service: MailboxService, actor: Actor) =>
 
 /** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
 async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
-  const request = encodeObject(mailboxRequestSchema, { offer: { $link: offer.link as Link<never> }, key });
+  const request = encodeObject(mailboxRequestSchema, { offer: new EstLink(offer.link as Link<never>), key });
   const signature = await actor.sign(request);
-  return { signature, zip: await packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
+  return { signature, file: encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
 }
 
 const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
@@ -656,21 +654,26 @@ async function mailboxAcknowledgementIn(response: Response) {
  * signature over the acknowledgement, and what the acknowledgement says.
  */
 async function openMailbox(service: MailboxService, actor: Actor, key = keyOf(0x11)) {
-  const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer, key);
-  const response = await postMailboxRequest(service, zip);
+  const { file } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer, key);
+  const response = await postMailboxRequest(service, file);
   expect(response.status).toBe(201);
-  const { signature, acknowledgement } = await mailboxAcknowledgementIn(response);
-  return { link: signature.link, ...acknowledgement.data };
+  return openedMailboxOf(await mailboxAcknowledgementIn(response));
+}
+
+/** What an acknowledgement says of the mailbox it opened, with its ids as an address names them. */
+function openedMailboxOf({ signature, acknowledgement }: Awaited<ReturnType<typeof mailboxAcknowledgementIn>>) {
+  const { sendId, pickupId } = acknowledgement.data;
+  return { link: signature.link, ...acknowledgement.data, sendId: hex.encode(sendId), pickupId: hex.encode(pickupId) };
 }
 
 /** The bundle of `actor`'s request to pick up at the mailbox `mailbox` opened, with `receipts` for what it is done with. */
 async function pickupRequest(actor: Actor, mailbox: OpenedMailbox, receipts: readonly Uint8Array[] = []) {
   const request = encodeObject(pickupRequestSchema, {
     mailbox: mailbox.request,
-    receipts: receipts.map((ciphertext) => ({ $link: linkOf(ciphertext) })),
+    receipts: receipts.map((ciphertext) => new EstLink<Uint8Array>(linkOf(ciphertext))),
   });
   const signature = await actor.sign(request);
-  return packBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
+  return encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
 }
 
 type OpenedMailbox = Awaited<ReturnType<typeof openMailbox>>;
@@ -685,8 +688,8 @@ async function queueAt(
   const response = await post(service, mailbox.pickupId, await pickupRequest(actor, mailbox, receipts));
   expect(response.status).toBe(200);
   const bundle = await bundleOf(response);
-  return decodeObject(bundle.root, pickupAnswerSchema).data.ciphertexts.map(({ $link }) => {
-    const ciphertext = bundle.get($link);
+  return decodeObject(bundle.root, pickupAnswerSchema).data.ciphertexts.map(({ link }) => {
+    const ciphertext = bundle.get(link);
     assert.exists(ciphertext);
     return ciphertext;
   });
@@ -698,28 +701,28 @@ describe("a mailbox service's offer of mailboxes", () => {
     const actor = await actorOf(alice);
     await openAccount(service, actor);
     const { mailbox } = await rootOf(service);
-    const { signature, zip } = await mailboxRequest(actor, mailbox.offer);
-    const response = await postMailboxRequest(service, zip);
+    const { signature, file } = await mailboxRequest(actor, mailbox.offer);
+    const response = await postMailboxRequest(service, file);
     expect(response.status).toBe(201);
     const { bundle, signature: acknowledgementSignature, acknowledgement } = await mailboxAcknowledgementIn(response);
     expect(acknowledgementSignature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     const { sendId, pickupId } = acknowledgement.data;
-    expect(acknowledgement.data).toEqual({ request: { $link: signature.link }, at: 5_002, sendId, pickupId });
-    expect(sendId).toMatch(/^[0-9a-f]{32}$/);
-    expect(pickupId).toMatch(/^[0-9a-f]{32}$/);
-    expect(sendId).not.toBe(pickupId);
+    expect(acknowledgement.data).toEqual({ request: new EstLink(signature.link), at: 5_002, sendId, pickupId });
+    expect(sendId).toHaveLength(16);
+    expect(pickupId).toHaveLength(16);
+    expect(sendId).not.toEqual(pickupId);
     const read = await signatures.read(signature.link, bundle, noIdentityVersions);
     const request = await readObject(bundle, read.object, mailboxRequestSchema);
-    expect(request.data).toEqual({ offer: { $link: mailbox.offer.link }, key: keyOf(0x11) });
-    expect((await readObject(bundle, request.data.offer.$link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);
+    expect(request.data).toEqual({ offer: new EstLink(mailbox.offer.link), key: keyOf(0x11) });
+    expect((await readObject(bundle, request.data.offer.link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);
   });
 
   it("opens a mailbox for an agent that an identity of the root lists, under the account its wallet opened", async () => {
     const { service } = await memoryService();
     await openAccount(service, await actorOf(wallet));
     const agent = signatures.actor(device, await publish(wallet, { agents: [device.key] }));
-    const { zip } = await mailboxRequest(agent, (await rootOf(service)).mailbox.offer);
-    expect((await postMailboxRequest(service, zip)).status).toBe(201);
+    const { file } = await mailboxRequest(agent, (await rootOf(service)).mailbox.offer);
+    expect((await postMailboxRequest(service, file)).status).toBe(201);
   });
 
   it("opens a mailbox of its own for each key that one account asks for one", async () => {
@@ -734,10 +737,10 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, store } = await memoryService();
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
-    const first = new Uint8Array(await (await postMailboxRequest(service, zip)).arrayBuffer());
+    const { file } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
+    const first = new Uint8Array(await (await postMailboxRequest(service, file)).arrayBuffer());
     const recordsBefore = await records(store);
-    const again = await postMailboxRequest(service, zip);
+    const again = await postMailboxRequest(service, file);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
     expect(await records(store)).toEqual(recordsBefore);
@@ -748,11 +751,11 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service } = await memoryService({ by: holder.signer });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
+    const { file } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
     holder.isHolding = true;
-    const opener = postMailboxRequest(service, zip);
+    const opener = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
-    const racer = postMailboxRequest(service, zip);
+    const racer = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
     holder.isHolding = false;
     holder.release();
@@ -762,7 +765,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     const [first, second] = await Promise.all([openerAnswer, racerAnswer].map(mailboxAcknowledgementIn));
     expect(second?.signature.link).toBe(first?.signature.link);
-    expect((await mailboxAcknowledgementIn(await postMailboxRequest(service, zip))).signature.link).toBe(
+    expect((await mailboxAcknowledgementIn(await postMailboxRequest(service, file))).signature.link).toBe(
       first?.signature.link,
     );
   });
@@ -773,14 +776,14 @@ describe("a mailbox service's offer of mailboxes", () => {
     const actor = await actorOf(alice);
     await openAccount(service, actor);
     const before = await rootOf(service);
-    const { zip } = await mailboxRequest(actor, before.mailbox.offer);
+    const { file } = await mailboxRequest(actor, before.mailbox.offer);
     holder.isHolding = true;
-    const opener = postMailboxRequest(service, zip);
+    const opener = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
     await store.write({ records: [crisis], blobs: crisis.blobs });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
-    const racer = postMailboxRequest(service, zip);
+    const racer = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
     holder.isHolding = false;
     holder.release();
@@ -797,8 +800,8 @@ describe("a mailbox service's offer of mailboxes", () => {
 
   it("answers 403 to a request by someone who has no account, and opens no mailbox", async () => {
     const { service, store } = await memoryService();
-    const { zip } = await mailboxRequest(await actorOf(alice), (await rootOf(service)).mailbox.offer);
-    const response = await postMailboxRequest(service, zip);
+    const { file } = await mailboxRequest(await actorOf(alice), (await rootOf(service)).mailbox.offer);
+    const response = await postMailboxRequest(service, file);
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/has no account here/);
     expect(await records(store)).toEqual([(await rootOf(service)).signature.link]);
@@ -818,7 +821,7 @@ describe("a mailbox service's offer of mailboxes", () => {
         ),
       ),
     ).toBe(200);
-    const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).zip);
+    const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).file);
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/is not honored/);
   });
@@ -826,20 +829,20 @@ describe("a mailbox service's offer of mailboxes", () => {
   it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
     [
       "for the offer of an account",
-      async (service, actor) => (await mailboxRequest(actor, (await rootOf(service)).offer)).zip,
+      async (service, actor) => (await mailboxRequest(actor, (await rootOf(service)).offer)).file,
     ],
     [
       "for another service's offer of mailboxes",
       async (_, actor) => {
         const { service: other } = await memoryService({ by: otherService });
-        return (await mailboxRequest(actor, (await rootOf(other)).mailbox.offer)).zip;
+        return (await mailboxRequest(actor, (await rootOf(other)).mailbox.offer)).file;
       },
     ],
     [
       "that is an acceptance of the offer of mailboxes",
       async (service, actor) => {
         const signature = await actor.sign((await rootOf(service)).mailbox.offer);
-        return packBundle(signature, signature.signedIdentity.blobs);
+        return encodeBundle(signature, signature.signedIdentity.blobs);
       },
     ],
   ])("answers 400 to a request %s, and opens no mailbox", async (_, body) => {
@@ -866,7 +869,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(after.offerSignature.link).toBe(before.offerSignature.link);
     expect((await post(again, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
     expect(
-      (await post(again, before.mailbox.acceptId, (await mailboxRequest(actor, before.mailbox.offer)).zip)).status,
+      (await post(again, before.mailbox.acceptId, (await mailboxRequest(actor, before.mailbox.offer)).file)).status,
     ).toBe(410);
   });
 
@@ -885,17 +888,17 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, ...shared } = await memoryService({ start: 5_000 });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const { zip } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
-    const first = new Uint8Array(await (await postMailboxRequest(service, zip)).arrayBuffer());
+    const { file } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
+    const first = new Uint8Array(await (await postMailboxRequest(service, file)).arrayBuffer());
     const offeredTerms = { ...terms, size: 100 };
     const { service: behind } = await memoryService({ ...shared, offeredTerms, start: 1_000 });
-    const again = await postMailboxRequest(behind, zip);
+    const again = await postMailboxRequest(behind, file);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
     const mailbox = await openMailbox(behind, actor, keyOf(0x22));
     expect((await post(behind, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
-    const own = encodeObject(mailboxOfferSchema, { identity: { $link: serviceRoot.link }, ...offeredTerms });
-    expect((await post(behind, own.link, (await mailboxRequest(actor, own)).zip)).status).toBe(410);
+    const own = encodeObject(mailboxOfferSchema, { identity: new EstLink(serviceRoot.link), ...offeredTerms });
+    expect((await post(behind, own.link, (await mailboxRequest(actor, own)).file)).status).toBe(410);
   });
 });
 
@@ -1040,16 +1043,16 @@ describe("a mailbox that a service opened", () => {
     ["that names another mailbox", (actor, _, other) => pickupRequest(actor, other)],
     [
       "that names the mailbox by its acknowledgement",
-      (actor, mailbox) => pickupRequest(actor, { ...mailbox, request: { $link: mailbox.link } }),
+      (actor, mailbox) => pickupRequest(actor, { ...mailbox, request: new EstLink(mailbox.link) }),
     ],
     [
       "that is not a pickup request",
       async (actor, mailbox) => {
         const signature = await actor.sign({ link: mailbox.link });
-        return packBundle(signature, signature.signedIdentity.blobs);
+        return encodeBundle(signature, signature.signedIdentity.blobs);
       },
     ],
-    ["that is not a zip", async () => new TextEncoder().encode("hello")],
+    ["that is not a bundle", async () => new TextEncoder().encode("hello")],
   ])("answers 400 to a body %s, and is done with nothing", async (_, body) => {
     const { service, actor, mailbox } = await serviceWithMailbox();
     const other = await openMailbox(service, actor, keyOf(0x22));

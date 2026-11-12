@@ -8,15 +8,15 @@ deal with keys, encryption or transports.
 
 ```
 Mailbox     {"key": <x25519 public key>, <the transport's fields>…}
-Message     a bundle of @estoc/bundle, packed
+Message     a bundle of @estoc/bundle, in one file
 Ciphertext  the HPKE encapsulated key, 32 bytes, followed by HPKE's ciphertext of a Message
 ```
 
 ## Mailboxes
 
 Each transport writes its mailboxes to a schema of its own, made with
-`mailboxSchema`. Every mailbox has `key`, an x25519 public key as 32 bytes
-in lowercase hex. The transport adds its own fields, such as a URL or a
+`mailboxSchema`. Every mailbox has `key`, an x25519 public key, 32
+bytes. The transport adds its own fields, such as a URL or a
 queue, and a mailbox holds no other. The title tells apart two transports
 whose fields look the same.
 
@@ -53,10 +53,9 @@ whoever stands behind the mailbox.
 ```ts
 import { encodeObject } from "@estoc/object";
 import { MailboxKey } from "@estoc/mailbox";
-import { hex } from "@scure/base";
 
 const key = await MailboxKey.fromSecretKey(secretKey);
-const mailbox = encodeObject(schema, { key: hex.encode(key.publicKey), name: queueName });
+const mailbox = encodeObject(schema, { key: key.publicKey, name: queueName });
 ```
 
 What is sent to a mailbox waits with its transport until the receiver is
@@ -67,7 +66,7 @@ sending half alone.
 
 ```ts
 interface Pickup {
-  readonly mailbox: Link<EncodedObject<Json>>;
+  readonly mailbox: Link<EncodedObject<Est>>;
   arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
 }
 
@@ -86,7 +85,7 @@ once, and one given again reads as one that arrived twice.
 
 `open` takes a ciphertext that a transport received and gives back the
 bundle inside. It refuses a ciphertext that does not open with its key, and what
-opens but does not unpack to a bundle. It does not read who stands behind
+opens but is not a bundle in one file. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.read` and the bundle as the reader. A receiver that keeps the
 identity versions it has seen passes its `SeenIdentityVersions` in place of
@@ -114,9 +113,9 @@ transport it was not given. It checks `key` itself rather than trusting a
 transport's schema to, and binds the key and the transport once. The
 `Mailbox` it returns shows neither, only `send`.
 
-`send` takes a root and blobs as `writeBundle` does, and refuses a root
-that is not an object. It packs the bundle with `packBundle`, seals the
-zip to the key and hands the ciphertext to the transport. It resolves
+`send` takes a root and blobs as `encodeBundle` does, and refuses a root
+that is not an object of est. It writes the bundle as one file, seals the
+file to the key and hands the ciphertext to the transport. It resolves
 once it is handed on. Nothing confirms that a message arrived and
 nothing is sent again: a message can be lost, arrive twice, or arrive out
 of order. That is harmless to a reader, since blobs are named by their
@@ -152,7 +151,7 @@ Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, 
 `Inbound` is the record of `@estoc/store` for whatever comes from outside a
 store, with the mailbox as its channel, and `inboundSchema` is exported from
 there. The other two schemas are `outboundSchema` and `mailboxKeySchema`. A
-key's `secret` is 32 bytes in lowercase hex.
+key's `secret` is 32 bytes.
 
 ```ts
 import { Post } from "@estoc/mailbox";
@@ -164,9 +163,7 @@ const post = new Post(store, privateStore, { transports: [transport] });
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and its closure in the store
 
-const inbox = await post.openInbox((publicKey) =>
-  encodeObject(schema, { key: hex.encode(publicKey), name: queueName }),
-);
+const inbox = await post.openInbox((publicKey) => encodeObject(schema, { key: publicKey, name: queueName }));
 await inbox.collect(pickup); // each bundle that waits, kept with an Inbound record
 
 const again = await post.inbox(inbox.key); // after a restart
@@ -180,11 +177,11 @@ such as the signature of whoever stands behind it. `post.outbox` takes its
 link all the same.
 
 ```ts
-import { readBundle, writeBundle } from "@estoc/bundle";
+import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { Intake } from "@estoc/store";
 
 const intake = new Intake(store);
-await intake.receive(readBundle(writeBundle({ bytes: handedOut }, [transport.schema.bytes])));
+await intake.receive(decodeBundle(encodeBundle({ bytes: handedOut }, transport.schema.blobs)));
 ```
 
 `openInbox` makes a new key and gives its public key to `makeMailbox`,
@@ -208,7 +205,7 @@ what came in is sending its root. It bundles the closure of the root,
 schemas included, and writes `Outbound` once the transport takes the
 bundle. When the transport cannot hand it on, `send` rejects with its
 `UndeliveredMessage` and nothing is written, and the root is still there to
-send again. Neither the zip nor the ciphertext is kept: sending again
+send again. Neither the file nor the ciphertext is kept: sending again
 seals the same bundle afresh.
 
 `receive` hands the bundle to the store's `Intake`, which keeps it and its
@@ -256,16 +253,14 @@ says and who signed it are read from its root when it is shown.
 A message is a bundle of `@estoc/bundle`: an object as the root, and the
 blobs in its closure, which `readObject` and verifiers such as
 `signatures.read` in `@estoc/identity` take their blobs from. Nothing in it
-names the sender. It travels packed, as a bundle travels between programs:
-`send` packs it with `packBundle`, and `open` reads it with `unpackBundle`.
-A packed bundle holds the same files as a bundle handed over as a file, so
-a message can be kept as one and a bundle sent as a message.
+names the sender. It travels as one file: `send` writes it with
+`encodeBundle`, and `open` reads it with `decodeBundle`. That is the file a
+bundle is kept as, so a message can be kept as one and a bundle sent as a
+message.
 
-A packed bundle is not compressed, so the length of the ciphertext
-depends on the sizes of its files alone, and anyone who seals to a
-mailbox's key cannot make `open` unzip far more than arrived. `open` also
-refuses a zip of more than 10,000 entries, though `send` sends it: what a
-receiver takes is its own to limit, and a sender does not know it.
+Nothing in the file is compressed, so the length of the ciphertext depends
+on the sizes of its blobs alone, and what `open` reads is no more than
+arrived.
 
 ## Sealing
 
@@ -273,7 +268,7 @@ Messages are sealed with HPKE ([RFC 9180](https://www.rfc-editor.org/rfc/rfc9180
 in base mode, with DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and AES-128-GCM.
 The `info` is the UTF-8 of `Estoc Message` and the additional data is
 empty. A ciphertext is the 32-byte encapsulated key followed by HPKE's
-ciphertext of the zip. `@hpke/core` does the work, on Web Crypto.
+ciphertext of the file. `@hpke/core` does the work, on Web Crypto.
 
 Every transport carries ciphertexts, even one that encrypts on its own:
 a message is stored, passed on and can arrive late, so the layer from end
@@ -468,8 +463,8 @@ A transport is a plugin:
 
 ```ts
 interface Transport {
-  readonly schema: Schema<Json>;
-  deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
+  readonly schema: Schema<Est>;
+  deliver(mailbox: EstMap, ciphertext: Uint8Array): Promise<void>;
 }
 ```
 

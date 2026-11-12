@@ -1,15 +1,16 @@
 import {
   decodeObject,
   digestOf,
+  type Est,
+  EstLink,
+  type EstMap,
   encodeObject,
-  type Json,
-  type JsonObject,
-  json,
+  est,
   type Link,
   linkOf,
   type Schema,
 } from "@estoc/object";
-import { bytes, link, schema } from "@estoc/schema";
+import { bytes, link, rootSchema, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assert, describe, expect, it, vi } from "vitest";
 import {
@@ -21,6 +22,7 @@ import {
   identitySchema,
   isSameKey,
   type Key,
+  type KeyObject,
   loadIdentity,
   type SignedIdentityData,
   type SignedIdentityObject,
@@ -34,22 +36,23 @@ const { keys, identities, signedIdentities, identityVersions, publish } = loadId
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
-const written = (data: JsonObject) => json.encode(json.object(data, identities.schema.link));
-const writtenSigned = (data: JsonObject) => json.encode(json.object(data, signedIdentities.schema.link));
+const written = (data: EstMap) => est.encode(est.object(data, identities.schema.link));
+const writtenSigned = (data: EstMap) => est.encode(est.object(data, signedIdentities.schema.link));
 // A signed identity's identity is read before its root's signature is
 // verified, so one that names an identity that does not read is refused for
 // the identity, whatever its signature.
-const unsignedOf = (identity: Link<unknown>) => writtenSigned({ identity: { $link: identity }, signature: "" });
+const unsignedOf = (identity: Link<unknown>) =>
+  writtenSigned({ identity: new EstLink(identity), signature: new Uint8Array() });
 const readFrom = (bytes: Uint8Array, ...blobs: Uint8Array[]) => {
   const signed = unsignedOf(linkOf(bytes));
   return signedIdentities.read(linkOf(signed), byLink([signed, bytes, ...blobs]));
 };
 // The link and the bytes of a signed identity of `data`, written as an identity and signed by `root`.
-const signedFrom = async (root: SoftwareSigner, data: JsonObject) => {
+const signedFrom = async (root: SoftwareSigner, data: EstMap) => {
   const bytes = written(data);
   const signed = writtenSigned({
-    identity: { $link: linkOf(bytes) },
-    signature: bytesToHex(await root.sign(digestOf(linkOf(bytes)))),
+    identity: new EstLink(linkOf(bytes)),
+    signature: await root.sign(digestOf(linkOf(bytes))),
   });
   return { link: linkOf(signed), blobs: [signed, bytes] };
 };
@@ -58,7 +61,7 @@ const linksOf = (blobs: readonly Uint8Array[]) => blobs.map((bytes) => linkOf(by
 describe("an identity", () => {
   it("names its root by the link of the root's object, and holds its agents and its at", () => {
     const identity = identities.encode(key(ed25519), { at: 1_000 });
-    expect(identity.data).toEqual({ root: { $link: keys.encode(key(ed25519)).link }, agents: [], at: 1_000 });
+    expect(identity.data).toEqual({ root: new EstLink(keys.encode(key(ed25519)).link), agents: [], at: 1_000 });
   });
 
   it("has the link of its root as its identifier", () => {
@@ -82,12 +85,13 @@ describe("an identity", () => {
     expect(hasSigner(identity, keys.encode(key(ed25519, 3)))).toBe(false);
   });
 
-  it("carries as its blobs its object, its root's, and the schemas they are written to, each once", async () => {
+  it("carries as its blobs its object, its root's, and the closures of their schemas, each once", async () => {
     const identity = identities.encode(key(eip191), { at: 0 });
     expect(linksOf(identity.blobs)).toEqual([
       identity.link,
       identity.root.link,
       identitySchema.link,
+      rootSchema.link,
       identity.root.schema.link,
     ]);
   });
@@ -98,28 +102,28 @@ describe("an identity", () => {
 
   it("is refused when its root is not a key", async () => {
     const other = identities.encode(key(ed25519), { at: 0 });
-    await expect(readFrom(written({ root: { $link: other.link }, agents: [], at: 0 }), other.bytes)).rejects.toThrow(
+    await expect(readFrom(written({ root: new EstLink(other.link), agents: [], at: 0 }), other.bytes)).rejects.toThrow(
       `${other.schema.link} is not a schema read here`,
     );
   });
 
-  it.each<[string, (root: JsonObject) => JsonObject]>([
+  it.each<[string, (root: EstLink<KeyObject>) => EstMap]>([
     ["a field besides prior, root, agents, crisis and at", (root) => ({ root, agents: [], at: 0, name: "alice" })],
-    ["its root as a bare string", (root) => ({ root: root.$link as string, agents: [], at: 0 })],
+    ["its root as a bare string", (root) => ({ root: root.link as string, agents: [], at: 0 })],
     ["no root", () => ({ agents: [], at: 0 })],
     ["no agents", (root) => ({ root, at: 0 })],
     ["no at", (root) => ({ root, agents: [] })],
-    ["an at that is not a whole number", (root) => ({ root, agents: [], at: 1.5 })],
+    ["an at that is a string", (root) => ({ root, agents: [], at: "0" })],
     ["crisis set to a string", (root) => ({ root, agents: [], crisis: "true", at: 0 })],
-    ["its prior as a bare string", (root) => ({ prior: root.$link as string, root, agents: [], at: 0 })],
+    ["its prior as a bare string", (root) => ({ prior: root.link as string, root, agents: [], at: 0 })],
   ])("is refused with %s", async (_, data) => {
     const root = keys.encode(key(ed25519));
-    await expect(readFrom(written(data({ $link: root.link })), root.bytes)).rejects.toThrow(/does not fit/);
+    await expect(readFrom(written(data(new EstLink(root.link))), root.bytes)).rejects.toThrow(/does not fit/);
   });
 
   it("is refused with crisis set to false, which leaving it out says", async () => {
     const root = keys.encode(key(ed25519));
-    const bytes = written({ root: { $link: root.link }, agents: [], crisis: false, at: 0 });
+    const bytes = written({ root: new EstLink(root.link), agents: [], crisis: false, at: 0 });
     await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/marks a crisis with true, or not at all/);
   });
 
@@ -149,12 +153,12 @@ describe("a signed identity", () => {
   const readSignedFrom = (bytes: Uint8Array, ...blobs: readonly Uint8Array[]) =>
     signedIdentities.read(linkOf(bytes), byLink([bytes, ...blobs]));
   const signedBy = async (by: SoftwareSigner, identity = identities.encode(by.key, { at: 0 })) => ({
-    identity: { $link: identity.link },
-    signature: bytesToHex(await by.sign(digestOf(identity.link))),
+    identity: new EstLink(identity.link),
+    signature: await by.sign(digestOf(identity.link)),
   });
 
   it("is refused by verify when it is written to another schema", async () => {
-    const otherSchema: Schema<Json, SignedIdentityData> = schema("Another", {
+    const otherSchema: Schema<Est, SignedIdentityData> = schema("Another", {
       identity: link<IdentityObject>(),
       signature: bytes(),
     });
@@ -174,9 +178,14 @@ describe("a signed identity", () => {
     expect(read.signature).toEqual(signed.signature);
   });
 
-  it("carries as its blobs its object, its schema, and its identity's", async () => {
+  it("carries as its blobs its object, the closure of its schema, and its identity's, each once", async () => {
     const signed = await publish(signer(ed25519));
-    expect(linksOf(signed.blobs)).toEqual([signed.link, signedIdentitySchema.link, ...linksOf(signed.identity.blobs)]);
+    expect(linksOf(signed.blobs)).toEqual([
+      signed.link,
+      signedIdentitySchema.link,
+      rootSchema.link,
+      ...linksOf(signed.identity.blobs).filter((link) => link !== rootSchema.link),
+    ]);
   });
 
   it.each(schemes)("published by a $name root carries its closure as its blobs, and nothing else", async (scheme) => {
@@ -193,7 +202,7 @@ describe("a signed identity", () => {
 
   it("is refused when it names another identity than its root signed", async () => {
     const other = identities.encode(key(ed25519, 2), { at: 0 });
-    const data = { ...(await signedBy(signer(ed25519))), identity: { $link: other.link } };
+    const data = { ...(await signedBy(signer(ed25519))), identity: new EstLink(other.link) };
     await expect(readSignedFrom(writtenSigned(data), ...other.blobs)).rejects.toThrow(/did not sign/);
   });
 
@@ -201,9 +210,12 @@ describe("a signed identity", () => {
     await expect(readSignedFrom(writtenSigned(await signedBy(signer(ed25519))))).rejects.toThrow(/no blob is given/);
   });
 
-  it.each<[string, (signed: JsonObject) => JsonObject]>([
+  it.each<[string, (signed: EstMap) => EstMap]>([
     ["a field besides identity and signature", (signed) => ({ ...signed, at: 0 })],
-    ["its signature in uppercase hex", (signed) => ({ ...signed, signature: String(signed.signature).toUpperCase() })],
+    [
+      "its signature in hex, which is a string",
+      (signed) => ({ ...signed, signature: bytesToHex(signed.signature as Uint8Array) }),
+    ],
     ["no signature", ({ signature: _, ...signed }) => signed],
   ])("is refused with %s", async (_, change) => {
     const identity = identities.encode(key(ed25519), { at: 0 });
@@ -247,8 +259,8 @@ describe("the agents of an identity", () => {
   it("are named by the links of their objects", async () => {
     const { identity } = await publish(signer(ed25519), { agents: [key(ed25519, 2)], at: 1_000 });
     expect(identity.data).toEqual({
-      root: { $link: keys.encode(key(ed25519)).link },
-      agents: [{ $link: keys.encode(key(ed25519, 2)).link }],
+      root: new EstLink(keys.encode(key(ed25519)).link),
+      agents: [new EstLink(keys.encode(key(ed25519, 2)).link)],
       at: 1_000,
     });
   });
@@ -269,7 +281,7 @@ describe("the agents of an identity", () => {
     expect(closure(signed.link, blobs)).toEqual(new Set(blobs.keys()));
   });
 
-  it("are carried with the root and the schemas they are written to, each once", async () => {
+  it("are carried with the root and the closures of their schemas, each once", async () => {
     const { identity } = await publish(signer(eip191), { agents: [key(ed25519, 2), key(ed25519, 3)] });
     const [first, second] = identity.agents;
     assert.exists(first);
@@ -280,6 +292,7 @@ describe("the agents of an identity", () => {
       first.link,
       second.link,
       identitySchema.link,
+      rootSchema.link,
       identity.root.schema.link,
       first.schema.link,
     ]);
@@ -288,7 +301,7 @@ describe("the agents of an identity", () => {
   it("are refused when one is not a key", async () => {
     const root = keys.encode(key(ed25519));
     const other = identities.encode(key(ed25519, 2), { at: 0 });
-    const bytes = written({ root: { $link: root.link }, agents: [{ $link: other.link }], at: 0 });
+    const bytes = written({ root: new EstLink(root.link), agents: [new EstLink(other.link)], at: 0 });
     await expect(readFrom(bytes, root.bytes, other.bytes)).rejects.toThrow(
       `${other.schema.link} is not a schema read here`,
     );
@@ -296,15 +309,15 @@ describe("the agents of an identity", () => {
 
   it("are refused when they list the root", async () => {
     const root = keys.encode(key(ed25519));
-    const bytes = written({ root: { $link: root.link }, agents: [{ $link: root.link }], at: 0 });
+    const bytes = written({ root: new EstLink(root.link), agents: [new EstLink(root.link)], at: 0 });
     await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/lists its root as an agent/);
   });
 
   it("are refused when they list one of them twice", async () => {
     const root = keys.encode(key(ed25519));
     const agent = keys.encode(key(ed25519, 2));
-    const agents = [{ $link: agent.link }, { $link: agent.link }];
-    const bytes = written({ root: { $link: root.link }, agents, at: 0 });
+    const agents = [new EstLink(agent.link), new EstLink(agent.link)];
+    const bytes = written({ root: new EstLink(root.link), agents, at: 0 });
     await expect(readFrom(bytes, root.bytes, agent.bytes)).rejects.toThrow(/lists an agent twice/);
   });
 
@@ -336,7 +349,7 @@ describe("an identity that follows another", () => {
   it("names the signed identity it follows, and reads back from its blobs with it", async () => {
     const first = await publish(root, { at: 1_000 });
     const second = await publish(root, { prior: first, agents: [key(ed25519, 2)], at: 2_000 });
-    expect(second.identity.data.prior).toEqual({ $link: first.link });
+    expect(second.identity.data.prior).toEqual(new EstLink(first.link));
     const read = await signedIdentities.read(second.link, byLink(second.blobs));
     expect(read.identity.prior?.link).toBe(first.link);
     expect(read.identity.prior?.identity).toEqual(first.identity);
@@ -370,12 +383,12 @@ describe("an identity that follows another", () => {
     const prior = await publish(root, { at: 1_000 });
     const rootKey = keys.encode(by.key);
     const signed = await signedFrom(by, {
-      prior: { $link: prior.link },
-      root: { $link: rootKey.link },
+      prior: new EstLink(prior.link),
+      root: new EstLink(rootKey.link),
       agents: [],
       at,
     });
-    const reader = byLink([...signed.blobs, rootKey.bytes, rootKey.schema.bytes, ...prior.blobs]);
+    const reader = byLink([...signed.blobs, rootKey.bytes, ...rootKey.schema.blobs, ...prior.blobs]);
     await expect(signedIdentities.read(signed.link, reader)).rejects.toThrow(error);
   });
 
@@ -389,13 +402,13 @@ describe("an identity that follows another", () => {
   it("is refused when its root did not sign the identity version it follows", async () => {
     const first = await publish(root, { at: 1_000 });
     const forged = writtenSigned({
-      identity: { $link: first.identity.link },
-      signature: bytesToHex(await signer(eip191, 9).sign(digestOf(first.identity.link))),
+      identity: new EstLink(first.identity.link),
+      signature: await signer(eip191, 9).sign(digestOf(first.identity.link)),
     });
     const rootKey = keys.encode(root.key);
     const second = await signedFrom(root, {
-      prior: { $link: linkOf(forged) },
-      root: { $link: rootKey.link },
+      prior: new EstLink(linkOf(forged)),
+      root: new EstLink(rootKey.link),
       agents: [],
       at: 2_000,
     });
@@ -414,19 +427,19 @@ describe("the identity version of a signed identity", () => {
   ])("is the identifier, the at and the link of an identity %s", async (_, signed) => {
     const signedIdentity = await signed();
     expect(identityVersions.identityVersionOf(signedIdentity)).toEqual({
-      identifier: { $link: signedIdentity.identity.identifier },
+      identifier: new EstLink(signedIdentity.identity.identifier),
       at: 1_000,
-      signedIdentity: { $link: signedIdentity.link },
+      signedIdentity: new EstLink(signedIdentity.link),
     });
   });
 
   it("names itself as its last crisis when it is a crisis", async () => {
     const crisis = await publish(root, { prior: await publish(root, { at: 1_000 }), isCrisis: true, at: 2_000 });
     expect(identityVersions.identityVersionOf(crisis)).toEqual({
-      identifier: { $link: crisis.identity.identifier },
+      identifier: new EstLink(crisis.identity.identifier),
       at: 2_000,
-      signedIdentity: { $link: crisis.link },
-      lastCrisis: { $link: crisis.link },
+      signedIdentity: new EstLink(crisis.link),
+      lastCrisis: new EstLink(crisis.link),
     });
   });
 
@@ -435,10 +448,10 @@ describe("the identity version of a signed identity", () => {
     const crisis = await publish(root, { prior: first, isCrisis: true, at: 2_000 });
     const after = await publish(root, { prior: await publish(root, { prior: crisis, at: 3_000 }), at: 4_000 });
     expect(identityVersions.identityVersionOf(after)).toEqual({
-      identifier: { $link: after.identity.identifier },
+      identifier: new EstLink(after.identity.identifier),
       at: 4_000,
-      signedIdentity: { $link: after.link },
-      lastCrisis: { $link: crisis.link },
+      signedIdentity: new EstLink(after.link),
+      lastCrisis: new EstLink(crisis.link),
     });
   });
 });
@@ -468,8 +481,8 @@ describe("the selection of identity versions", () => {
   it("leaves out a signed identity that another key signed", async () => {
     const { identity, blobs } = await publish(root, { at: 1_000 });
     const forgedBytes = writtenSigned({
-      identity: { $link: identity.link },
-      signature: bytesToHex(await signer(ed25519, 9).sign(digestOf(identity.link))),
+      identity: new EstLink(identity.link),
+      signature: await signer(ed25519, 9).sign(digestOf(identity.link)),
     });
     const reader = byLink([forgedBytes, ...blobs]);
     expect(await selection.read(linkOf(forgedBytes), reader)).toBeUndefined();
@@ -485,7 +498,7 @@ describe("the selection of identity versions", () => {
 
   it("throws on reading a record that names the signed identity schema and does not fit it", async () => {
     const { identity } = await publish(root, { at: 1_000 });
-    const unfitBytes = writtenSigned({ identity: { $link: identity.link } });
+    const unfitBytes = writtenSigned({ identity: new EstLink(identity.link) });
     await expect(selection.read(linkOf(unfitBytes), byLink([unfitBytes]))).rejects.toThrow(/does not fit/);
   });
 

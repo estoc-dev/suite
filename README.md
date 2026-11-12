@@ -37,12 +37,13 @@ carries and keeps blobs. Like JSON or zip, it is shared, and it gives no
 meaning and no reader an advantage.
 
 - `@estoc/object`: encodings and schema languages, objects, schemas and
-  validators; JSON as the encoding in use.
-- `@estoc/schema`: a schema language over JSON in which a schema is a
-  title and fields of six types, so that what fits one is the same to
-  every validator. The packages below write their schemas in it.
-- `@estoc/bundle`: blobs carried together, as a folder or a zip, with one
-  object as the way in, and packed to travel between programs.
+  validators; est, in deterministic CBOR, as the encoding in use.
+- `@estoc/schema`: a schema language over est in which a schema is an
+  object of a title and fields of seven types, so that what fits one is
+  the same to every validator. The packages below write their schemas in
+  it.
+- `@estoc/bundle`: blobs carried together in one file, with one object as
+  the way in, as they travel between programs.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
   them, kept on their device; and the indexes an application fills from
   the user's records.

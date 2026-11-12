@@ -1,4 +1,4 @@
-import { type Json, json, type Link, linkOf } from "@estoc/object";
+import { type Est, est, type Link, linkOf } from "@estoc/object";
 import {
   type CurveScheme,
   ed25519,
@@ -21,19 +21,19 @@ export function storeOf(blobs: readonly Uint8Array[]): StoreReader {
 }
 
 // The closure a store gathers from a blob: the blob and every blob reached by
-// the links JSON finds in it, past which a blob that is not an object links to nothing.
+// the links est finds in it, past which a blob that is not an object links to nothing.
 export function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
   const reached = new Set([link]);
   for (const next of reached) {
     const bytes = blobs.get(next);
     if (bytes === undefined) continue;
-    let value: Json;
+    let value: Est;
     try {
-      value = json.decode(bytes);
+      value = est.decode(bytes);
     } catch {
       continue;
     }
-    for (const linked of json.links(value)) reached.add(linked);
+    for (const linked of est.links(value)) reached.add(linked);
   }
   return reached;
 }
@@ -54,13 +54,13 @@ export function rowsOf(
     }
   }
   const rows = [...held.values()].map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity));
-  const versionLinkOf = ({ signedIdentity }: (typeof rows)[number]) => signedIdentity.$link;
+  const versionLinkOf = ({ signedIdentity }: (typeof rows)[number]) => signedIdentity.link;
   rows.sort(
     (a, b) => a.at - b.at || (versionLinkOf(a) < versionLinkOf(b) ? -1 : versionLinkOf(a) > versionLinkOf(b) ? 1 : 0),
   );
   return {
     async *range([root]) {
-      yield* rows.filter(({ identifier }) => identifier.$link === root.$link).map((data) => ({ data }));
+      yield* rows.filter(({ identifier }) => identifier.link === root.link).map((data) => ({ data }));
     },
   };
 }

@@ -1,4 +1,4 @@
-import { writeBundle, zipBundle } from "@estoc/bundle";
+import { encodeBundle } from "@estoc/bundle";
 import { encodeObject, linkOf } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -12,7 +12,7 @@ const note = schema("Note", { text: string() });
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
 const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);
-const ciphertext = await sealTo(bob, await zipBundle(writeBundle(root, [blob]), { compress: false }));
+const ciphertext = await sealTo(bob, encodeBundle(root, [blob]));
 
 describe("a mailbox key", () => {
   it("opens what was sealed to it to the bundle inside, as many times as it arrives", async () => {
@@ -40,17 +40,18 @@ describe("a mailbox key", () => {
     await expect(bob.open(ciphertext.subarray(0, length))).rejects.toThrow(/does not open with this key/);
   });
 
-  it("refuses what opens but is not the zip of a bundle", async () => {
-    await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow();
-    const withoutRoot = new Map([...writeBundle(root, [blob])].filter(([path]) => path !== "index.json"));
-    await expect(bob.open(await sealTo(bob, await zipBundle(withoutRoot, { compress: false })))).rejects.toThrow(
-      /index.json/,
-    );
+  it("refuses what opens but is not a bundle in one file", async () => {
+    await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow(/an object of est/);
+    const withoutRoot = encodeBundle(root, [blob]).subarray(root.bytes.length);
+    await expect(bob.open(await sealTo(bob, withoutRoot))).rejects.toThrow(/an object of est/);
+    const cut = encodeBundle(root, [blob]).subarray(0, -1);
+    await expect(bob.open(await sealTo(bob, cut))).rejects.toThrow();
   });
 
-  it("refuses a zip whose files come to more bytes than the zip, as only a compressed one can", async () => {
-    const compressed = await zipBundle(writeBundle(root, [new Uint8Array(2 ** 16)]));
-    await expect(bob.open(await sealTo(bob, compressed))).rejects.toThrow(/more than/);
+  it("tells whether a public key is its own", () => {
+    expect(bob.hasPublicKey(bob.publicKey)).toBe(true);
+    expect(bob.hasPublicKey(carol.publicKey)).toBe(false);
+    expect(bob.hasPublicKey(bob.publicKey.subarray(0, 31))).toBe(false);
   });
 
   it("is not made from a secret key of 31 bytes", async () => {

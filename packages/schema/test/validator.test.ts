@@ -1,25 +1,28 @@
-import type { Json } from "@estoc/object";
+import { inspect } from "node:util";
+import { type Est, EstLink } from "@estoc/object";
 import { describe, expect, it, test } from "vitest";
-import { array, boolean, bytes, integer, link, optional, schema, string } from "../src/index.ts";
+import { any, array, boolean, bytes, integer, link, optional, schema, string } from "../src/index.ts";
 
-const blob = { $link: `sha256:${"0f".repeat(32)}` };
-const fitting = (value: Json) => [JSON.stringify(value), value] as const;
+const blob = new EstLink(`sha256:${"0f".repeat(32)}` as const);
+const digest = new Uint8Array(32).fill(0x0f);
+const named = (value: Est) => [inspect(value, { breakLength: Number.POSITIVE_INFINITY }), value] as const;
 
-describe.each([
-  ["an integer", integer(), [0, -1, 2 ** 53 - 1, -(2 ** 53 - 1)], [2 ** 53, -(2 ** 53), 1e21, 1.5, "1", true, null]],
-  ["bytes", bytes(), ["", "00ff", "0123456789abcdef"], ["0", "0F", "0g", "0x00", " 00", 0, null]],
-  ["a link", link(), [blob], [blob.$link, { $link: "sha256:0f" }, { ...blob, more: 1 }, {}, null]],
-  ["a string", string(), ["", "text", "00ff"], [0, true, null, ["text"], blob]],
-  ["a boolean", boolean(), [true, false], [0, "true", null]],
-  ["an array", array(string()), [[], ["a"], ["a", "b"]], ["a", { 0: "a" }, null]],
-] as const)("%s", (_, type, taken, refused) => {
+describe.each<[string, ReturnType<typeof any>, readonly Est[], readonly Est[]]>([
+  ["an integer", integer(), [0, -1, 2 ** 53 - 1, -(2 ** 53 - 1)], [2 ** 53, -(2 ** 53), 1e21, 1.5, "1", true]],
+  ["bytes", bytes(), [new Uint8Array(), Uint8Array.of(0, 255), digest], ["00ff", 0, [0, 255], blob]],
+  ["a link", link(), [blob], [blob.link, digest, { link: blob.link }, {}]],
+  ["a string", string(), ["", "text", "00ff"], [0, true, ["text"], blob, digest]],
+  ["a boolean", boolean(), [true, false], [0, "true"]],
+  ["an array", array(string()), [[], ["a"], ["a", "b"]], ["a", { 0: "a" }, Uint8Array.of(1)]],
+  ["any value", any(), [0, "text", true, digest, blob, [1, "a"], {}, { a: { b: [blob] } }], []],
+])("%s", (_, type, taken, refused) => {
   const holder = schema("Holder", { value: type });
 
-  it.each(taken.map(fitting))("takes %s", (_, value) => {
+  it.each(taken.map(named))("takes %s", (_, value) => {
     expect(holder.validate({ value })).toEqual({ value });
   });
 
-  it.each((refused as readonly Json[]).map(fitting))("does not take %s", (_, value) => {
+  it.runIf(refused.length > 0).each(refused.map(named))("does not take %s", (_, value) => {
     expect(() => holder.validate({ value })).toThrow(/#\/value: not /);
   });
 });
@@ -48,8 +51,8 @@ describe("the data of an object", () => {
     expect(() => note.validate({ text: "", at: 0, more: 1 })).toThrow("#/more: not a field of the schema");
   });
 
-  it("does not fit with an optional field that holds another type, null included", () => {
-    expect(() => note.validate({ text: "", at: 0, isDraft: null })).toThrow("#/isDraft: not a boolean");
+  it("does not fit with an optional field that holds another type", () => {
+    expect(() => note.validate({ text: "", at: 0, isDraft: 0 })).toThrow("#/isDraft: not a boolean");
   });
 
   it("is told everything that does not fit, the fields in the order the schema's bytes hold them", () => {

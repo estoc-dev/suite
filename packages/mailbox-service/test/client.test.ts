@@ -1,10 +1,11 @@
-import { type Bundle, packBundle, unpackBundle } from "@estoc/bundle";
+import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
 import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
-import { type EncodedObject, encodeObject, type Json, type Link, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, type Est, EstLink, encodeObject, type Link, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Intake, inboundSchema, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
+import { hex } from "@scure/base";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
   accountOfferSchema,
@@ -44,7 +45,7 @@ const laptop = signer(ed25519, 3);
 const phone = signer(solanaOffchain, 4);
 const mallory = signer(ed25519, 6);
 
-const offer = encodeObject(accountOfferSchema, { identity: { $link: serviceRoot.link } });
+const offer = encodeObject(accountOfferSchema, { identity: new EstLink(serviceRoot.link) });
 
 const agentOf = async (agent: Signer, root: Signer) =>
   signatures.actor(agent, await publish(root, { agents: [agent.key] }));
@@ -86,7 +87,7 @@ async function inboundRowsOf(store: Store) {
     if (record === undefined) continue;
     const { bundle, via } = record.data;
     assert.exists(via);
-    rows.push([bundle.$link, (await readObject(store, via.$link, originSchema)).data.origin]);
+    rows.push([bundle.link, (await readObject(store, via.link, originSchema)).data.origin]);
   }
   return rows.sort(([a], [b]) => (a < b ? -1 : 1));
 }
@@ -108,31 +109,31 @@ async function accountAt(services: Services, origin: string) {
  */
 async function signedService(
   origin: string,
-  offers: readonly (readonly [EncodedObject<Json>, Actor])[],
+  offers: readonly (readonly [EncodedObject<Est>, Actor])[],
   by: Actor,
   at = 1,
 ) {
   const offerSignatures = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
-  const listedOffers = offerSignatures.map((signature) => ({ $link: signature.link }));
+  const listedOffers = offerSignatures.map((signature) => new EstLink(signature.link));
   const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });
   const signature = await by.sign(service);
   const blobs = [
     service.bytes,
-    serviceSchema.bytes,
+    ...serviceSchema.blobs,
     ...signature.signedIdentity.blobs,
-    signatures.schema.bytes,
+    ...signatures.schema.blobs,
     ...offerSignatures.map(({ bytes }) => bytes),
     ...offerSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
-    ...offers.flatMap(([object]) => [object.bytes, object.schema.bytes]),
+    ...offers.flatMap(([object]) => [object.bytes, ...object.schema.blobs]),
     serviceRoot.bytes,
   ];
-  return packBundle(signature, blobs);
+  return encodeBundle(signature, blobs);
 }
 
 /** Keeps `bundle` in `store` as come in at a mailbox elsewhere. */
 async function receiveAtMailbox(store: Store, bundle: Bundle) {
   const mailbox = encodeObject(http.schema, {
-    key: "07".repeat(32),
+    key: keyOf(7),
     url: `https://elsewhere.example/${"1".repeat(32)}`,
   });
   await new Intake(store).receive(bundle, mailbox);
@@ -153,21 +154,21 @@ async function removeAgent(store: Store) {
 
 /** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with its closure. */
 async function acknowledgementBy(by: Actor, request: Request) {
-  const acceptance = await unpackBundle(new Uint8Array(await request.arrayBuffer()));
-  const acknowledgement = encodeObject(acknowledgementSchema, { acceptance: { $link: acceptance.link }, at: 1 });
+  const acceptance = decodeBundle(new Uint8Array(await request.arrayBuffer()));
+  const acknowledgement = encodeObject(acknowledgementSchema, { acceptance: new EstLink(acceptance.link), at: 1 });
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
-    acknowledgementSchema.bytes,
+    ...acknowledgementSchema.blobs,
     ...signature.signedIdentity.blobs,
-    signatures.schema.bytes,
+    ...signatures.schema.blobs,
     acceptance.root,
     ...acceptance.blobs(),
     offer.bytes,
-    accountOfferSchema.bytes,
+    ...accountOfferSchema.blobs,
     serviceRoot.bytes,
   ];
-  return new Response(await packBundle(signature, blobs), { status: 201 });
+  return new Response(encodeBundle(signature, blobs), { status: 201 });
 }
 
 describe("a service reached at its origin", () => {
@@ -262,18 +263,18 @@ describe("a service reached at its origin", () => {
   });
 
   it("refuses an account offer that names another identifier than that of the identity that signed it", async () => {
-    const zip = async (origin: string) => {
+    const file = async (origin: string) => {
       const actor = await actorOf(mallory);
       return signedService(origin, [[offer, actor]], actor);
     };
-    const { origin } = await startServer(async (_, origin) => new Response(await zip(origin)));
+    const { origin } = await startServer(async (_, origin) => new Response(await file(origin)));
     const { services } = client();
     await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another identifier/);
   });
 
   it("passes over an offer of a schema it does not read", async () => {
     const other = schema("Other offer", { identity: link() });
-    const unread = encodeObject(other, { identity: { $link: serviceRoot.link } });
+    const unread = encodeObject(other, { identity: new EstLink(serviceRoot.link) });
     const actor = await actorOf(serviceSigner);
     const { origin } = await startServer(
       async (_, origin) =>
@@ -344,7 +345,7 @@ describe("a service found by its identifier", () => {
 
   it("is read from a Service that came in at a mailbox as from one fetched", async () => {
     const actor = await serviceActor(1_000);
-    const bundle = await unpackBundle(await signedService("https://mail.example", [[offer, actor]], actor));
+    const bundle = decodeBundle(await signedService("https://mail.example", [[offer, actor]], actor));
     const { store, services } = client();
     await receiveAtMailbox(store, bundle);
     const service = await services.latestOf(actor.signedIdentity);
@@ -357,7 +358,7 @@ describe("a service found by its identifier", () => {
     const { store, services } = client();
     const { link, signedIdentity } = await services.fetch(origin);
     const removedActor = await removeAgent(store);
-    await receiveAtMailbox(store, await unpackBundle(await signedService(origin, [], removedActor, 9_000)));
+    await receiveAtMailbox(store, decodeBundle(await signedService(origin, [], removedActor, 9_000)));
     expect((await services.latestOf(signedIdentity))?.link).toBe(link);
   });
 
@@ -402,7 +403,7 @@ describe("an account offer", () => {
     const acknowledgement = await signatures.read(account.link, store, noIdentityVersions);
     expect(acknowledgement.signedIdentity.identity.link).toBe(serviceIdentity(7_000).link);
     const { acceptance } = (await readObject(store, acknowledgement.object, acknowledgementSchema)).data;
-    const acceptanceSignature = await signatures.read(acceptance.$link, store, noIdentityVersions);
+    const acceptanceSignature = await signatures.read(acceptance.link, store, noIdentityVersions);
     expect(acceptanceSignature.object).toBe(offer.link);
     expect(acceptanceSignature.signedIdentity.link).toBe(account.signedIdentity.link);
   });
@@ -429,7 +430,7 @@ describe("an account offer", () => {
       (await signatures.read(again.link, store, noIdentityVersions)).object,
       acknowledgementSchema,
     );
-    const acceptance = await signatures.read(acknowledgement.data.acceptance.$link, store, noIdentityVersions);
+    const acceptance = await signatures.read(acknowledgement.data.acceptance.link, store, noIdentityVersions);
     expect(acceptance.key.link).toBe(keys.encode(phone.key).link);
   });
 
@@ -477,9 +478,7 @@ describe("accepting an account offer", () => {
   it("refuses the service's acknowledgement of another acceptance than the one it sent, and writes nothing", async () => {
     const bobs = await (await actorOf(bob)).sign(offer);
     const { origin } = await startService({}, async (service, request) =>
-      service.fetch(
-        new Request(request.url, { method: "POST", body: await packBundle(bobs, bobs.signedIdentity.blobs) }),
-      ),
+      service.fetch(new Request(request.url, { method: "POST", body: encodeBundle(bobs, bobs.signedIdentity.blobs) })),
     );
     const { store, services } = client();
     const account = await accountAt(services, origin);
@@ -508,7 +507,7 @@ async function withAccount(actor: Actor, options: Parameters<typeof startService
 /** A mailbox sealed to `key` that `actor` opens by `offer`, which `store` then holds. */
 async function openMailbox(store: Store, offer: MailboxOffer, actor: Actor, key = keyOf(7)) {
   const mailbox = await offer.open(actor, key);
-  await store.write({ records: [mailbox], blobs: [http.schema.bytes] });
+  await store.write({ records: [mailbox], blobs: [...http.schema.blobs] });
   return mailbox;
 }
 
@@ -530,7 +529,7 @@ describe("a service's offer of mailboxes", () => {
     const before = await inboundRowsOf(store);
     const mailbox = await offer.open(actor, keyOf(7));
     expect(mailbox.schema.link).toBe(http.schema.link);
-    expect(mailbox.data.key).toBe("07".repeat(32));
+    expect(mailbox.data.key).toEqual(keyOf(7));
     const { pathname, origin } = new URL(mailbox.data.url);
     expect(origin).toBe(run.origin);
     const newRows = (await inboundRowsOf(store)).filter(([link]) => !before.some(([held]) => held === link));
@@ -540,7 +539,7 @@ describe("a service's offer of mailboxes", () => {
     expect(from).toBe(run.origin);
     const signature = await signatures.read(acknowledgement as Link<never>, store, noIdentityVersions);
     const { sendId } = (await readObject(store, signature.object, mailboxAcknowledgementSchema)).data;
-    expect(pathname).toBe(`/${sendId}`);
+    expect(pathname).toBe(`/${hex.encode(sendId)}`);
   });
 
   it("opened by an identity whose identifier has no account there throws what the service said, and writes nothing", async () => {
@@ -567,7 +566,7 @@ describe("a mailbox that a service opened", () => {
     const note = encodeObject(noteSchema, { text: "hello, Alice" });
     await sender.write({
       records: [{ bytes }, note],
-      blobs: [http.schema.bytes, noteSchema.bytes],
+      blobs: [...http.schema.blobs, ...noteSchema.blobs],
     });
     const outbox = await new Post(sender, new PrivateStore(sender, new MemoryBackend()), options).outbox(inbox.mailbox);
     await outbox.send(note.link);
@@ -641,7 +640,7 @@ describe("a mailbox that a service opened", () => {
     expect((await postTo(mailbox.data.url, new Uint8Array([1]))).status).toBe(204);
     const removedActor = await removeAgent(store);
     const lateServiceBundle = await signedService("https://elsewhere.example", [], removedActor, 9_000);
-    await receiveAtMailbox(store, await unpackBundle(lateServiceBundle));
+    await receiveAtMailbox(store, decodeBundle(lateServiceBundle));
     expect(await pickUpAll(await services.pickup(mailbox.link, actor))).toEqual([new Uint8Array([1])]);
   });
 
@@ -772,8 +771,8 @@ describe("a mailbox that a service opened", () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${"0".repeat(32)}` });
-    await store.write({ records: [mailbox], blobs: [http.schema.bytes] });
+    const mailbox = encodeObject(http.schema, { key: keyOf(7), url: `${origin}/${"0".repeat(32)}` });
+    await store.write({ records: [mailbox], blobs: [...http.schema.blobs] });
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/holds no record of opening/);
   });
 });
@@ -785,30 +784,30 @@ describe("a mailbox that a service opened", () => {
  */
 async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string, at = 1) {
   const root = keys.encode(offerer.key);
-  const mailboxOffer = encodeObject(mailboxOfferSchema, { identity: { $link: root.link }, ...terms });
-  const request = encodeObject(mailboxRequestSchema, { offer: { $link: mailboxOffer.link }, key: "07".repeat(32) });
+  const mailboxOffer = encodeObject(mailboxOfferSchema, { identity: new EstLink(root.link), ...terms });
+  const request = encodeObject(mailboxRequestSchema, { offer: new EstLink(mailboxOffer.link), key: keyOf(7) });
   const requestSignature = await requester.sign(request);
   const acknowledgement = encodeObject(mailboxAcknowledgementSchema, {
-    request: { $link: requestSignature.link },
+    request: new EstLink(requestSignature.link),
     at,
-    sendId,
-    pickupId: "2".repeat(32),
+    sendId: hex.decode(sendId),
+    pickupId: hex.decode("2".repeat(32)),
   });
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
-    mailboxAcknowledgementSchema.bytes,
+    ...mailboxAcknowledgementSchema.blobs,
     ...signature.signedIdentity.blobs,
-    signatures.schema.bytes,
+    ...signatures.schema.blobs,
     requestSignature.bytes,
     ...requestSignature.signedIdentity.blobs,
     request.bytes,
-    mailboxRequestSchema.bytes,
+    ...mailboxRequestSchema.blobs,
     mailboxOffer.bytes,
-    mailboxOfferSchema.bytes,
+    ...mailboxOfferSchema.blobs,
     root.bytes,
   ];
-  return unpackBundle(await packBundle(signature, blobs));
+  return decodeBundle(encodeBundle(signature, blobs));
 }
 
 describe("a mailbox acknowledgement that came in at a mailbox", () => {
@@ -823,8 +822,8 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const mailbox = encodeObject(http.schema, { key: "07".repeat(32), url: `${origin}/${sendId}` });
-    await store.write({ records: [mailbox], blobs: [http.schema.bytes] });
+    const mailbox = encodeObject(http.schema, { key: keyOf(7), url: `${origin}/${sendId}` });
+    await store.write({ records: [mailbox], blobs: [...http.schema.blobs] });
     await new Intake(store).receive(acknowledgement, mailbox);
     return { services, mailbox };
   }

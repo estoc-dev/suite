@@ -1,4 +1,4 @@
-import type { Fields, Link, Reader } from "@estoc/object";
+import type { Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
 import {
@@ -49,11 +49,11 @@ import type { Backend, Store } from "./store.ts";
  * @throws when the index reads blobs, itself or through an index it reads, and `store` is something
  *   else with a `get` and `records`, which cannot list them.
  */
-export async function scan<D, F extends Fields<D>, By extends FieldNames<F>>(
+export async function scan<F extends ValueMap, By extends FieldNames<F>>(
   store: Pick<Store, "get" | "records">,
-  index: OrderedIndex<D, F, By>,
+  index: OrderedIndex<F, By>,
   { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
-): Promise<Rows<D, F, By>> {
+): Promise<Rows<F, By>> {
   const { readsBlobs } = derivationOf(orderOf(index).index);
   const rows = await (await rowsByIndexOf(store, readsBlobs)).sortedRowsOf(index);
   const [failure] = rows.failures;
@@ -82,10 +82,8 @@ export interface RowKeeper {
 export interface RowsByIndex {
   listedRecords(): Promise<ListedLinks>;
   heldBlobs(): Promise<ListedLinks>;
-  derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>>;
-  sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>>;
+  derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
+  sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>>;
 }
 
 /** What a store lists of the blobs it holds, each once: its records, or all of them. */
@@ -177,9 +175,9 @@ export class KeptRows implements RowsByIndex {
     return this.#blobs.advance((listed) => listed.adding(this.#backend.blobs(listed.links.length)));
   }
 
-  derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
+  derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
     // What is kept under what an index is made of are rows of it.
-    let kept = this.#objectsByDerivation.get(derivation) as KeptValue<DerivedObjects<D, F>> | undefined;
+    let kept = this.#objectsByDerivation.get(derivation) as KeptValue<DerivedObjects<F>> | undefined;
     if (kept === undefined) {
       kept = new KeptValue(new DerivedObjects(derivation));
       this.#objectsByDerivation.set(derivation, kept);
@@ -187,11 +185,9 @@ export class KeptRows implements RowsByIndex {
     return kept.advance((objects) => objects.adding(this.#reader, this));
   }
 
-  sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
+  sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>> {
     // What is kept under an ordered index are rows of it.
-    let kept = this.#sortedRowsByIndex.get(index) as KeptValue<SortedRows<D, F, By>> | undefined;
+    let kept = this.#sortedRowsByIndex.get(index) as KeptValue<SortedRows<F, By>> | undefined;
     if (kept === undefined) {
       kept = new KeptValue(new SortedRows(index));
       this.#sortedRowsByIndex.set(index, kept);
@@ -241,9 +237,9 @@ export class AddedRows implements RowsByIndex {
     return (await this.#rows.heldBlobs()).adding(this.#added.blobs);
   }
 
-  derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
+  derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
     // What is worked out under what an index is made of are rows of it.
-    let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<D, F>> | undefined;
+    let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<F>> | undefined;
     if (objects === undefined) {
       objects = this.#rows.derivedObjectsOf(derivation).then((kept) => kept.adding(this.#reader, this));
       this.#objectsByDerivation.set(derivation, objects);
@@ -251,9 +247,9 @@ export class AddedRows implements RowsByIndex {
     return objects;
   }
 
-  async sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
+  async sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+  ): Promise<SortedRows<F, By>> {
     // The rows in their order come first, so that those derived next go on from the ones they are of.
     const sortedRows = await this.#rows.sortedRowsOf(index);
     return sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index)));

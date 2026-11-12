@@ -1,4 +1,4 @@
-import { decodeObject, linkOf, objectFormat, type ValueMap } from "@estoc/object";
+import { decodeObject, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ const ed25519Key = publicKeyOf(ed25519);
 const eip191Key = publicKeyOf(eip191);
 const written = (scheme: CurveScheme, data: ValueMap) =>
   objectFormat.encode(
-    objectFormat.object(data, keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link),
+    new ObjectValue(keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link, data),
   );
 
 describe("a key", () => {
@@ -71,7 +71,7 @@ describe("a key", () => {
 
   it("is refused written to the schema of a scheme it does not support, though shaped the same", async () => {
     const lookalike = schema("ed25519ctx", { publicKey: bytes() });
-    const written = objectFormat.encode(objectFormat.object({ publicKey: ed25519Key }, lookalike.link));
+    const written = objectFormat.encode(new ObjectValue(lookalike.link, { publicKey: ed25519Key }));
     await expect(readKey(written)).rejects.toThrow(`${lookalike.link} is not a schema read here`);
     expect(() => keys.verify(decodeObject(written, lookalike))).toThrow(`${lookalike.link} is not a schema read here`);
   });
@@ -86,7 +86,7 @@ describe("a key", () => {
 describe("the schema of a scheme", () => {
   it.each(schemes)("of $name has the scheme's name as its title, and takes a public key alone", (scheme) => {
     const { schema } = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
-    expect(objectFormat.fields(objectFormat.decode(schema.bytes)).data).toEqual({
+    expect(objectFormat.decode(schema.bytes).data).toEqual({
       title: scheme.name,
       fields: { publicKey: { type: "bytes" } },
     });

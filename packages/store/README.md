@@ -17,8 +17,8 @@ A store holds two things.
 - **Records**: the links of the objects the user wrote. They are the one
   thing in a store that is not a blob.
 
-An object of the store's encoding links to the blobs whose links it holds,
-its schema among them, and a schema to its root schema. Any other blob is
+An object links to the blobs whose links it holds, its schema among them,
+and a schema to its root schema. Any other blob is
 bytes and links to nothing: an image, or a JSON file, whatever links it
 seems to hold, so an attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
@@ -26,10 +26,10 @@ store holds comes with its closure, and a write adds only the blobs in the
 closures of its records.
 
 ```ts
-import { encodeObject, objectFormat } from "@estoc/object";
+import { encodeObject } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 
-const store = new Store(objectFormat, new MemoryBackend());
+const store = new Store(new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
 // `schemas` are the `blobs` of each schema the program writes to; the store keeps those named here.
@@ -81,7 +81,7 @@ either leaving anything behind.
 
 The whole batch is refused when:
 
-- a record is not an object of the store's encoding, or
+- a record is not an object, or
 - a blob in a record's closure is neither in the batch nor held by the
   store: the schema of an object, or a blob its data links to.
 
@@ -208,7 +208,8 @@ index in that order, which `scan` reads.
 
 - A field that a row leaves out comes before any value.
 - Numbers are in their order, strings in the order of their code units, and
-  any other value, such as a link, in the order of its bytes in the encoding.
+  any other value, such as a link, in the order of its bytes in the object
+  format.
 - Rows that hold the same in all of those fields are in the order of their
   links.
 - One index can be given several orders. They share its rows, so a store
@@ -311,8 +312,8 @@ const identityVersionsHeld = indexOver(
 - A write keeps only the blobs in the closures of its records, so these are
   the blobs reached from what the user wrote, and a write cut short can leave
   some besides, each with its closure.
-- A blob that is not an object in the encoding of the schema, such as an
-  attachment, is not one of these, as an object of another schema is not.
+- A blob that is not an object, such as an attachment, is not one of these,
+  as an object of another schema is not.
 - Anyone can send a blob that names the schema and does not fit it, or that
   `selection` or `rows` throw on. The index fails on it as on a record, and a
   scan gives the rows without those of such a blob, with it among their
@@ -378,14 +379,14 @@ so an application can give the one and a module that knows what the objects
 mean the other. The two meet in the schema of the rows.
 
 ```ts
-import { readObject, type Value } from "@estoc/object";
+import { readObject } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
 import { view, type View } from "@estoc/store";
 
 // The latest note of a tag, from the rows of `byTag`.
 type Latest = { noteTagged(tag: string): Promise<DataOf<typeof noteSchema> | undefined> };
 
-const latest: View<Value, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
+const latest: View<DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
@@ -484,7 +485,7 @@ schema can be kept on either side.
 ```ts
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
-const store = new Store(objectFormat, new MemoryBackend());
+const store = new Store(new MemoryBackend());
 const privateStore = new PrivateStore(store, new MemoryBackend());
 await privateStore.write({ records: [key], blobs: keySchema.blobs });
 
@@ -537,7 +538,7 @@ store goes where only its user can read it.
 import { SqliteBackend } from "@estoc/store/sqlite";
 
 const backend = new SqliteBackend("store.db");
-const store = new Store(objectFormat, backend);
+const store = new Store(backend);
 // …
 backend.close();
 ```

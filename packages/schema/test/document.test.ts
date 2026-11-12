@@ -1,14 +1,14 @@
-import { decodeSchema, encodeObject, itself, objectFormat, schemaOf, type ValueMap } from "@estoc/object";
+import { decodeSchema, encodeObject, itself, ObjectValue, objectFormat, schemaOf, type ValueMap } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { any, array, integer, link, optional, rootSchema, schema, schemaValidator, string } from "../src/index.ts";
 
-const written = (data: ValueMap) => objectFormat.encode(objectFormat.object(data, rootSchema.link));
-const dataOf = (bytes: Uint8Array) => objectFormat.fields(objectFormat.decode(bytes)).data;
+const written = (data: ValueMap) => objectFormat.encode(new ObjectValue(rootSchema.link, data));
+const dataOf = (bytes: Uint8Array) => objectFormat.decode(bytes).data;
 
 describe("a schema", () => {
   it("is the object of its title and its fields, written to the root schema", () => {
     const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()), more: any() });
-    expect(schemaOf(note.bytes, objectFormat)).toBe(rootSchema.link);
+    expect(schemaOf(note.bytes)).toBe(rootSchema.link);
     expect(dataOf(note.bytes)).toEqual({
       title: "Note",
       fields: {
@@ -114,7 +114,7 @@ describe("a schema", () => {
   });
 
   it("is refused when it is written to itself, as the root schema alone is", () => {
-    const bytes = objectFormat.encode(objectFormat.object({ title: "Note", fields: {} }, itself));
+    const bytes = objectFormat.encode(new ObjectValue(itself, { title: "Note", fields: {} }));
     expect(() => decodeSchema(bytes, schemaValidator)).toThrow(/is written to/);
   });
 });
@@ -123,9 +123,9 @@ describe("the root schema", () => {
   const document = { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } };
 
   it("is the schema of a title and fields, written to itself", () => {
-    expect(objectFormat.fields(objectFormat.decode(rootSchema.bytes))).toEqual({ schema: itself, data: document });
+    expect(objectFormat.decode(rootSchema.bytes)).toEqual({ schema: itself, data: document });
     expect(rootSchema.bytes).toHaveLength(69);
-    expect(schemaOf(rootSchema.bytes, objectFormat)).toBe(rootSchema.link);
+    expect(schemaOf(rootSchema.bytes)).toBe(rootSchema.link);
   });
 
   it("has the link of its bytes as they were written out by hand elsewhere", () => {
@@ -146,7 +146,7 @@ describe("the root schema", () => {
   it("is not the schema built from its title and fields, which is written to it", () => {
     const built = schema("Schema", { title: string(), fields: any() });
     expect(dataOf(built.bytes)).toEqual(document);
-    expect(schemaOf(built.bytes, objectFormat)).toBe(rootSchema.link);
+    expect(schemaOf(built.bytes)).toBe(rootSchema.link);
     expect(built.link).not.toBe(rootSchema.link);
     expect(decodeSchema(built.bytes, schemaValidator).link).toBe(built.link);
   });

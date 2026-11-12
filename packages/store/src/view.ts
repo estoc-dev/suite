@@ -1,4 +1,4 @@
-import type { Fields } from "@estoc/object";
+import type { ValueMap } from "@estoc/object";
 import { scan } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
@@ -11,14 +11,14 @@ import type { Store } from "./store.ts";
  * what their rows come to, so an application can give the one and a module
  * that knows what the objects mean the other.
  */
-export interface View<D, F extends Fields<D>, By extends FieldNames<F>, V> {
-  readonly index: OrderedIndex<D, F, By>;
+export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
+  readonly index: OrderedIndex<F, By>;
   /**
    * The value of `rows`, with `store` giving by link the objects they name,
    * and where it took each in. It may be a promise, as when the value is
    * worked out from all the rows at once.
    */
-  read(rows: Rows<D, F, By>, store: Pick<Store, "get" | "positionOf">): V;
+  read(rows: Rows<F, By>, store: Pick<Store, "get" | "positionOf">): V;
 }
 
 /**
@@ -33,9 +33,9 @@ export interface View<D, F extends Fields<D>, By extends FieldNames<F>, V> {
  *
  * @throws as `scan` does.
  */
-export async function view<D, F extends Fields<D>, By extends FieldNames<F>, V>(
+export async function view<F extends ValueMap, By extends FieldNames<F>, V>(
   store: Pick<Store, "get" | "records" | "positionOf">,
-  view: View<D, F, By, V>,
+  view: View<F, By, V>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);
 }

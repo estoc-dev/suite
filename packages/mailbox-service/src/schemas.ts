@@ -1,5 +1,5 @@
 import type { KeyObject, Signature } from "@estoc/identity";
-import { type EncodedObject, type Link, linkOf, objectFormat, type Value } from "@estoc/object";
+import { type EncodedObject, type Link, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { array, bytes, type DataOf, integer, link, schema, string } from "@estoc/schema";
 
 /**
@@ -32,7 +32,7 @@ export type ServiceData = DataOf<typeof serviceSchema>;
  * `at`.
  */
 export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
-  return linkOf(objectFormat.encode(objectFormat.object(content, serviceSchema.link)));
+  return linkOf(objectFormat.encode(new ObjectValue(serviceSchema.link, content)));
 }
 
 /**
@@ -102,7 +102,7 @@ export type MailboxTerms = Omit<MailboxOfferData, "identity">;
  * its own, so each request is one of its own too.
  */
 export const mailboxRequestSchema = schema("Mailbox request", {
-  offer: link<EncodedObject<Value, MailboxOfferData>>(),
+  offer: link<EncodedObject<MailboxOfferData>>(),
   key: bytes(),
 });
 
@@ -131,7 +131,7 @@ export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSch
  * the mailbox's acknowledgement, which says where the mailbox is picked up.
  */
 export const openedMailboxSchema = schema("Opened mailbox", {
-  mailbox: link<EncodedObject<Value>>(),
+  mailbox: link<EncodedObject>(),
   acknowledgement: link<Signature>(),
 });
 

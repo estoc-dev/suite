@@ -7,16 +7,7 @@ import {
   type People,
   SoftwareSigner,
 } from "@estoc/identity";
-import {
-  encodeObject,
-  type Link,
-  LinkValue,
-  linkOf,
-  objectFormat,
-  objectsOf,
-  readObject,
-  type Value,
-} from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -39,7 +30,7 @@ const anything = schema("Anything", {
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
-const newStore = () => new Store(objectFormat, new MemoryBackend());
+const newStore = () => new Store(new MemoryBackend());
 
 async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -177,13 +168,13 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: OrderedIndex<Value, Tagged, TaggedOrder> = indexOver(
+const byTag: OrderedIndex<Tagged, TaggedOrder> = indexOver(
   selectedRecords(objectsOf(noteSchema)),
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 ).orderedBy("tag", "at");
 
-const texts: View<Value, Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
+const texts: View<Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
   index: byTag,
   async read(rows, reader) {
     const texts: [tag: string, text: string][] = [];
@@ -197,7 +188,7 @@ const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-const people: View<Value, IdentityVersionData, IdentityVersionOrder, People> = {
+const people: View<IdentityVersionData, IdentityVersionOrder, People> = {
   index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
     identityVersion,
   ]).orderedBy(...identityVersions.order),

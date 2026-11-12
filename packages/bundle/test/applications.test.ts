@@ -7,7 +7,7 @@ import {
   type Signature,
   SoftwareSigner,
 } from "@estoc/identity";
-import { decodeObject, encodeObject, type Link, LinkValue, objectFormat, readObject, schemaOf } from "@estoc/object";
+import { decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
@@ -34,7 +34,7 @@ const name = schema("Name", { name: string() });
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
 function cardOf(root: Uint8Array): Card {
-  switch (schemaOf(root, objectFormat)) {
+  switch (schemaOf(root)) {
     case card.link: {
       const { data } = decodeObject(root, card);
       return { mailbox: data.mailbox.link, name: data.name.link };

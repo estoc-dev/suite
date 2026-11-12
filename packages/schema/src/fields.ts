@@ -38,9 +38,9 @@ type DataOfFields<F extends FieldsOf> = { readonly [N in Exclude<keyof F, Option
  * The schema with `title` and `fields`, as a blob. What a program reads its
  * data as follows from the fields, and `DataOf` gives it.
  */
-export function schema<F extends FieldsOf>(title: string, fields: F): Schema<Value, DataOfFields<F>> {
+export function schema<F extends FieldsOf>(title: string, fields: F): Schema<DataOfFields<F>> {
   return encodeSchema({ title, fields }, schemaValidator);
 }
 
 /** What a program reads the data of an object written to `S` as. */
-export type DataOf<S extends Schema<Value>> = S extends Schema<Value, infer F> ? F : never;
+export type DataOf<S extends Schema> = S extends Schema<infer F> ? F : never;

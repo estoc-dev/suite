@@ -1,4 +1,3 @@
-export { type Encoding, type Fields, type Itself, itself } from "./encoding.ts";
 export { type Implementation, Implementations } from "./implementation.ts";
 export { type Bytes, digestOf, type Link, linkOf } from "./link.ts";
 export {
@@ -9,7 +8,16 @@ export {
   readObject,
   schemaOf,
 } from "./object.ts";
-export { isValueMap, LinkValue, type ObjectValue, objectFormat, type Value, type ValueMap } from "./object-format.ts";
+export {
+  type Itself,
+  isValueMap,
+  itself,
+  LinkValue,
+  ObjectValue,
+  objectFormat,
+  type Value,
+  type ValueMap,
+} from "./object-format.ts";
 export {
   type Check,
   decodeSchema,

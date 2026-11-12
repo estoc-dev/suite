@@ -1,4 +1,4 @@
-import { linkOf, objectFormat, schemaOf } from "@estoc/object";
+import { linkOf, schemaOf } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { hex } from "@scure/base";
 import { expect, test } from "vitest";
@@ -30,6 +30,6 @@ test("a ciphertext made elsewhere opens with that key to a bundle of a root and 
 
 test("the root of that bundle is written to the schema of a note as this suite writes it", async () => {
   const bundle = await key.open(hex.decode(ciphertext));
-  expect(schemaOf(bundle.root, objectFormat)).toBe(noteLink);
+  expect(schemaOf(bundle.root)).toBe(noteLink);
   expect(schema("Note", { text: string() }).link).toBe(noteLink);
 });

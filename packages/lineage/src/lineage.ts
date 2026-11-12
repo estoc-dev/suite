@@ -8,8 +8,6 @@ import {
   type Reader,
   readObject,
   SelectionBySchema,
-  schemaOf,
-  type Value,
 } from "@estoc/object";
 import { type DataOf, link, optional, schema } from "@estoc/schema";
 import { SchemaLineage } from "./schema-lineage.ts";
@@ -32,7 +30,7 @@ export const lineageNodeSchema = schema("Lineage Node", {
 
 export type LineageNodeData = DataOf<typeof lineageNodeSchema>;
 
-export interface LineageNodeObject extends EncodedObject<Value, LineageNodeData> {}
+export interface LineageNodeObject extends EncodedObject<LineageNodeData> {}
 
 /**
  * A lineage read or built by `Lineages`, from its first node to its head.
@@ -72,7 +70,7 @@ export class Lineages {
    *
    * @throws where `read` does, when it reads a node.
    */
-  readonly selection: SelectionBySchema<Value, Lineage, LineageNodeData> = new SelectionBySchema(
+  readonly selection: SelectionBySchema<Lineage, LineageNodeData> = new SelectionBySchema(
     lineageNodeSchema,
     (head, reader) => this.#readLineageEndingIn(head, reader),
   );
@@ -84,19 +82,16 @@ export class Lineages {
 
   /**
    * The schema lineage of `versions`, in their order: the lineage of their
-   * schemas, with each version read by its implementation. Their schemas are
-   * of one encoding, in which an object names its schema. It writes nothing.
+   * schemas, with each version read by its implementation. It writes nothing.
    *
    * @throws when two versions are of one schema.
    */
-  schemaLineageOf<D, T>(versions: readonly [Implementation<D, T>, ...Implementation<D, T>[]]): SchemaLineage<T> {
+  schemaLineageOf<T>(versions: readonly [Implementation<T>, ...Implementation<T>[]]): SchemaLineage<T> {
     const [first, ...later] = versions;
-    const { encoding } = first.schema;
     return new SchemaLineage(
       later.reduce((earlier, { schema }) => earlier.appending(schema), this.startingWith(first.schema)),
       versions.flatMap(({ schema }) => schema.blobs),
-      new Implementations(encoding, versions),
-      (record) => schemaOf(record, encoding),
+      new Implementations(versions),
     );
   }
 

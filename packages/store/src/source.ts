@@ -1,11 +1,11 @@
 import {
   type EncodedObject,
-  type Fields,
   type Link,
   type Reader,
   type Schema,
   type Selection,
   SelectionBySchema,
+  type ValueMap,
 } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import type { ScannedBlob } from "./scanned-blob.ts";
@@ -79,12 +79,12 @@ interface Reading<T> {
 }
 
 /** What an index is made of: the schema its rows are written to, and what gives them of what each origin lists. */
-export class Derivation<D, F extends Fields<D>> implements Origin {
-  readonly schema: Schema<D, F>;
+export class Derivation<F extends ValueMap> implements Origin {
+  readonly schema: Schema<F>;
   readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
   readonly readsBlobs: boolean;
 
-  constructor(schema: Schema<D, F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
+  constructor(schema: Schema<F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
     this.schema = schema;
     this.parts = parts;
     this.readsBlobs = [...parts.keys()].some((origin) => origin.readsBlobs);
@@ -95,18 +95,16 @@ export class Derivation<D, F extends Fields<D>> implements Origin {
   }
 }
 
-interface Order<D, F extends Fields<D>, By extends FieldNames<F>> {
-  readonly index: Index<D, F>;
+interface Order<F extends ValueMap, By extends FieldNames<F>> {
+  readonly index: Index<F>;
   readonly by: By;
 }
 
 // `indexOver` and `scan` read what a source, an index and an ordered index are made of, which nothing
 // outside this package can.
 let readingOf: <T>(source: Source<T>) => Reading<T>;
-export let derivationOf: <D, F extends Fields<D>>(index: Index<D, F>) => Derivation<D, F>;
-export let orderOf: <D, F extends Fields<D>, By extends FieldNames<F>>(
-  index: OrderedIndex<D, F, By>,
-) => Order<D, F, By>;
+export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
+export let orderOf: <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => Order<F, By>;
 
 /**
  * What an index reads, each read as a `T`: the records or the blobs of a store that a selection
@@ -144,14 +142,14 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A blob that is not an object in the encoding of the schema, such as an attachment, is not one
- *   of these, as an object of another schema is not.
+ * - A blob that is not an object, such as an attachment, is not one of these, as an object of
+ *   another schema is not.
  * - Anyone can send a blob that names the schema and does not fit it, or that `selection` or the
  *   `rows` of an index throw on. A scan of an index that reads these, itself or through an index it
  *   reads, therefore gives the rows without those of such a blob, and lists it in their `failures`.
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
-export function selectedBlobs<D, T, S extends Fields<D>>(selection: SelectionBySchema<D, T, S>): Source<T> {
+export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
   return new Source({ origin: heldBlobs, itemOf: (blob) => itemOf(selection, blob) });
 }
 
@@ -171,14 +169,14 @@ export function selectedBlobs<D, T, S extends Fields<D>>(selection: SelectionByS
  * - As a source, an index gives its rows, each as the object it is, in whatever order it is read,
  *   and nothing else: an object of its schema that the store holds is not one of them.
  */
-export class Index<D, F extends Fields<D>> extends Source<EncodedObject<D, F>> {
-  readonly #derivation: Derivation<D, F>;
+export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
+  readonly #derivation: Derivation<F>;
 
   static {
     derivationOf = (index) => index.#derivation;
   }
 
-  constructor(derivation: Derivation<D, F>) {
+  constructor(derivation: Derivation<F>) {
     super({ origin: derivation, itemOf: (blob) => blob.objectOf(derivation.schema) });
     this.#derivation = derivation;
   }
@@ -188,7 +186,7 @@ export class Index<D, F extends Fields<D>> extends Source<EncodedObject<D, F>> {
    * to the schema of this index. Each reads what its own source lists and hands what it reads that
    * as to its own rows, so two that take one record each give the rows of what they read.
    */
-  union(...others: readonly Index<D, F>[]): Index<D, F> {
+  union(...others: readonly Index<F>[]): Index<F> {
     const parts = new Map<Origin, readonly Part<F>[]>();
     for (const index of [this, ...others])
       for (const [origin, originParts] of index.#derivation.parts)
@@ -203,24 +201,24 @@ export class Index<D, F extends Fields<D>> extends Source<EncodedObject<D, F>> {
    *   links.
    * - A field that a row leaves out comes before any value. Numbers are in their order, strings in
    *   the order of their code units, and any other value, such as a link, in the order of its bytes
-   *   in the encoding.
+   *   in the object format.
    * - The orders of one index share its rows, so a store that keeps them reads each record once
    *   however many orders it is scanned in.
    */
-  orderedBy<const By extends FieldNames<F>>(...by: By): OrderedIndex<D, F, By> {
+  orderedBy<const By extends FieldNames<F>>(...by: By): OrderedIndex<F, By> {
     return new OrderedIndex({ index: this, by });
   }
 }
 
 /** An index with its rows in the order of some of their fields, from `orderedBy`. */
-export class OrderedIndex<D, F extends Fields<D>, By extends FieldNames<F>> {
-  readonly #order: Order<D, F, By>;
+export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
+  readonly #order: Order<F, By>;
 
   static {
     orderOf = (index) => index.#order;
   }
 
-  constructor(order: Order<D, F, By>) {
+  constructor(order: Order<F, By>) {
     this.#order = order;
   }
 }
@@ -238,11 +236,11 @@ export class OrderedIndex<D, F extends Fields<D>, By extends FieldNames<F>> {
  *   even where the source or `rows` catch it, such as to give no row of something that came from
  *   elsewhere and does not read as they expect.
  */
-export function indexOver<D, F extends Fields<D>, T>(
+export function indexOver<F extends ValueMap, T>(
   source: Source<T>,
-  schema: Schema<D, F>,
+  schema: Schema<F>,
   rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
-): Index<D, F> {
+): Index<F> {
   const reading = readingOf(source);
   const part: Part<F> = async function* (blob) {
     const item = await reading.itemOf(blob);

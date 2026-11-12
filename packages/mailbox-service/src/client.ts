@@ -16,15 +16,13 @@ import {
   decodeObject,
   type EncodedObject,
   encodeObject,
-  type Fields,
   type Link,
   LinkValue,
   linkOf,
-  objectFormat,
   readObject,
   type Schema,
   schemaOf,
-  type Value,
+  type ValueMap,
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
 import { Intake, type Store, view } from "@estoc/store";
@@ -74,7 +72,7 @@ type HttpMailboxData = DataOf<typeof httpTransport.schema>;
 type Posting = {
   readonly store: Store;
   readonly intake: Intake;
-  readonly origin: EncodedObject<Value, OriginData>;
+  readonly origin: EncodedObject<OriginData>;
   readonly signatures: Signatures;
   readonly people: PeopleView;
 };
@@ -110,7 +108,7 @@ export interface Service {
 export class AccountOffer {
   /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
   readonly service: SignedIdentityObject;
-  readonly link: Link<EncodedObject<Value, AccountOfferData>>;
+  readonly link: Link<EncodedObject<AccountOfferData>>;
   readonly #url: URL;
   readonly #posting: Posting;
 
@@ -162,7 +160,7 @@ export class AccountOffer {
 export class MailboxOffer {
   /** The service's signed identity that signed the Service listing the offer, whose identifier the offer names. */
   readonly service: SignedIdentityObject;
-  readonly link: Link<EncodedObject<Value, MailboxOfferData>>;
+  readonly link: Link<EncodedObject<MailboxOfferData>>;
   readonly terms: MailboxTerms;
   readonly #url: URL;
   readonly #posting: Posting;
@@ -174,7 +172,7 @@ export class MailboxOffer {
       url,
     }: {
       readonly service: SignedIdentityObject;
-      readonly offer: EncodedObject<Value, MailboxOfferData>;
+      readonly offer: EncodedObject<MailboxOfferData>;
       readonly url: URL;
     },
     posting: Posting,
@@ -204,7 +202,7 @@ export class MailboxOffer {
    *   acknowledgement is signed for another identifier than the service's or
    *   is of another signature. Nothing is written then.
    */
-  async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<Value, HttpMailboxData>> {
+  async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<HttpMailboxData>> {
     const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(this.link), key });
     // The service holds the offer and the schemas, so they are left out.
     const signature = await actor.sign(request);
@@ -242,11 +240,11 @@ export class MailboxOffer {
  *   the acknowledgement is signed for another identifier than the service's
  *   or is of another signature. Nothing is written then.
  */
-async function post<K extends string, F extends Readonly<Record<K, LinkValue<Signature>>> & Fields<Value>>(
+async function post<K extends string, F extends Readonly<Record<K, LinkValue<Signature>>> & ValueMap>(
   to: {
     readonly url: URL;
     readonly service: SignedIdentityObject;
-    readonly schema: Schema<Value, F>;
+    readonly schema: Schema<F>;
     readonly field: K;
   },
   signature: Signature,
@@ -278,7 +276,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<Sig
  * the one before, which the service drops before it answers with what waits.
  */
 class ServicePickup implements Pickup {
-  readonly mailbox: Link<EncodedObject<Value>>;
+  readonly mailbox: Link<EncodedObject>;
   readonly #request: Link<Signature>;
   readonly #url: URL;
   readonly #actor: Actor;
@@ -286,7 +284,7 @@ class ServicePickup implements Pickup {
 
   constructor(
     target: {
-      readonly mailbox: Link<EncodedObject<Value>>;
+      readonly mailbox: Link<EncodedObject>;
       readonly request: Link<Signature>;
       readonly url: URL;
       readonly size: number;
@@ -442,7 +440,7 @@ export class Services {
    * @throws when the store holds no Opened mailbox record of `mailbox`, or
    *   no Service of the service that signed its acknowledgement.
    */
-  async pickup(mailbox: Link<EncodedObject<Value>>, actor: Actor): Promise<Pickup> {
+  async pickup(mailbox: Link<EncodedObject>, actor: Actor): Promise<Pickup> {
     const link = await (await view(this.#store, this.#mailboxes)).acknowledgementOf(mailbox);
     if (link === undefined) throw new Error(`the store holds no record of opening ${mailbox}`);
     // It says only where to pick up, which a later identity version of the
@@ -496,7 +494,7 @@ export class Services {
         throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
       const bytes = await reader.get(signature.object);
       if (bytes === undefined) throw new Error(`no blob is given for ${signature.object}`);
-      const schema = schemaOf(bytes, objectFormat);
+      const schema = schemaOf(bytes);
       const url = new URL(`/${signature.object}`, origin);
       if (account === undefined && schema === accountOfferSchema.link) {
         if (decodeObject(bytes, accountOfferSchema).data.identity.link !== identifier) {
@@ -514,7 +512,7 @@ export class Services {
     return { signedIdentity, origin, at, link, account, mailbox };
   }
 
-  #originOf(origin: string): EncodedObject<Value, OriginData> {
+  #originOf(origin: string): EncodedObject<OriginData> {
     return encodeObject(originSchema, { origin });
   }
 }

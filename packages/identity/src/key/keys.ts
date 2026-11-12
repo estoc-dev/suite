@@ -4,16 +4,14 @@ import {
   type Implementation,
   Implementations,
   type Link,
-  objectFormat,
   type Reader,
-  type Value,
 } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
 import type { Key, KeyData, KeyObject, Scheme } from "./interface.ts";
 
-interface KeyImplementation extends Implementation<Value, KeyObject, KeyData> {
+interface KeyImplementation extends Implementation<KeyObject, KeyData> {
   readonly scheme: Scheme;
-  read(object: EncodedObject<Value, KeyData>): KeyObject;
+  read(object: EncodedObject<KeyData>): KeyObject;
 }
 
 /**
@@ -28,7 +26,7 @@ interface KeyImplementation extends Implementation<Value, KeyObject, KeyData> {
  *   scheme's is refused here.
  */
 export class Keys {
-  readonly #implementations: Implementations<Value, KeyObject, KeyImplementation>;
+  readonly #implementations: Implementations<KeyObject, KeyImplementation>;
   readonly #byScheme: ReadonlyMap<Scheme, KeyImplementation>;
 
   /** @throws when two of `schemes` have one name. */
@@ -47,11 +45,11 @@ export class Keys {
         },
       }),
     );
-    this.#implementations = new Implementations(objectFormat, implementations);
+    this.#implementations = new Implementations(implementations);
     this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
   }
 
-  verify(object: EncodedObject<Value, KeyData>): KeyObject {
+  verify(object: EncodedObject<KeyData>): KeyObject {
     return this.#implementations.implementationOf(object.schema.link).read(object);
   }
 

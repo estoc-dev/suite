@@ -10,7 +10,7 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
-import { encodeObject, objectFormat } from "@estoc/object";
+import { encodeObject } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
@@ -19,7 +19,7 @@ import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, Memo
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-export const memoryStore = () => new Store(objectFormat, new MemoryBackend());
+export const memoryStore = () => new Store(new MemoryBackend());
 
 /** A path to a file in a folder of its own, which is removed once the test finishes. */
 export async function makeTemporaryPath(): Promise<string> {

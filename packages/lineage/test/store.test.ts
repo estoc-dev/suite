@@ -1,4 +1,4 @@
-import { encodeObject, type Implementation, type Link, LinkValue, objectFormat, type Value } from "@estoc/object";
+import { encodeObject, type Implementation, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import { indexOver, MemoryBackend, type OrderedIndex, Store, scan, selectedRecords } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -14,7 +14,7 @@ const third = encodeObject(note, { text: "third" });
 const other = encodeObject(note, { text: "other" });
 
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
-type HeadIndex = OrderedIndex<Value, DataOf<typeof headSchema>, readonly ["of", "head"]>;
+type HeadIndex = OrderedIndex<DataOf<typeof headSchema>, readonly ["of", "head"]>;
 
 const bySeries: HeadIndex = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
   yield { of: new LinkValue(first.link), head: new LinkValue(head.link) };
@@ -39,7 +39,7 @@ async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Pr
 
 describe("a lineage written to a store", () => {
   it("is read by the selection from its head, back to its first node", async () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     const lineage = lineages.startingWith(first).appending(second);
     await writeHeads(store, lineage);
     const loadedLineage = await lineages.selection.read(lineage.head.link, store);
@@ -48,7 +48,7 @@ describe("a lineage written to a store", () => {
   });
 
   it("goes into an index by series with every head of the series written as a record", async () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     const trunk = lineages.startingWith(first);
     const branch = trunk.appending(second);
     const otherBranch = trunk.appending(third);
@@ -59,7 +59,7 @@ describe("a lineage written to a store", () => {
   });
 
   it("goes into an index by item under each version it holds, those before its head among them", async () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     const lineage = lineages.startingWith(first).appending(second).appending(first);
     await writeHeads(store, lineage, lineages.startingWith(other));
     expect(await readHeads(store, byItem, second.link)).toEqual([lineage.head.link]);
@@ -74,11 +74,11 @@ interface TitledText {
 }
 
 const titledNote = schema("Note", { title: string(), body: string() });
-const v1: Implementation<Value, TitledText, { readonly text: string }> = {
+const v1: Implementation<TitledText, { readonly text: string }> = {
   schema: note,
   read: ({ data }) => ({ text: data.text }),
 };
-const v2: Implementation<Value, TitledText, { readonly title: string; readonly body: string }> = {
+const v2: Implementation<TitledText, { readonly title: string; readonly body: string }> = {
   schema: titledNote,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };
@@ -86,7 +86,7 @@ const notes = lineages.schemaLineageOf([v1, v2]);
 
 describe("the selection of a schema lineage over a store", () => {
   it("gives the rows of the records of every version, and none of another schema", async () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     await writeHeads(store, lineages.startingWith(first));
     const untitledRecord = encodeObject(note, { text: "untitled" });
     const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });

@@ -6,6 +6,7 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
   type Reader,
   type ValueMap,
@@ -43,10 +44,10 @@ const verified = (bytes: Uint8Array, blobs?: Reader, seenIdentityVersions?: Seen
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
-const fieldsOf = (object: { readonly bytes: Uint8Array }) => objectFormat.fields(objectFormat.decode(object.bytes));
+const fieldsOf = (object: { readonly bytes: Uint8Array }) => objectFormat.decode(object.bytes);
 const dataOf = (object: { readonly bytes: Uint8Array }) => fieldsOf(object).data;
 const written = (signature: Signature, data: ValueMap) =>
-  objectFormat.encode(objectFormat.object(data, fieldsOf(signature).schema));
+  objectFormat.encode(new ObjectValue(fieldsOf(signature).schema, data));
 const rewritten = (signature: Signature, change: ValueMap) => written(signature, { ...dataOf(signature), ...change });
 const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
@@ -122,11 +123,8 @@ describe("a signature", () => {
   });
 
   it.each<[string, (signature: Signature) => Uint8Array]>([
-    [
-      "written to another schema",
-      (signature) => objectFormat.encode(objectFormat.object(dataOf(signature), note.link)),
-    ],
-    ["written to itself", (signature) => objectFormat.encode(objectFormat.object(dataOf(signature), itself))],
+    ["written to another schema", (signature) => objectFormat.encode(new ObjectValue(note.link, dataOf(signature)))],
+    ["written to itself", (signature) => objectFormat.encode(new ObjectValue(itself, dataOf(signature)))],
   ])("is refused as an object %s", async (_, change) => {
     const signature = await sign(hello, signer(ed25519));
     await expect(verified(change(signature), identityOf(signature))).rejects.toThrow();
@@ -477,7 +475,7 @@ describe("the selection of the signatures over objects of a schema", () => {
   it("refuses a signature whose object the reader does not give, or which does not fit the schema", async () => {
     const signature = await sign(hello, signer(ed25519));
     await expect(notes.read(signature.link, holding(signature))).rejects.toThrow(/no blob is given/);
-    const bytes = objectFormat.encode(objectFormat.object({ title: "hello" }, note.link));
+    const bytes = objectFormat.encode(new ObjectValue(note.link, { title: "hello" }));
     const unfit = await sign({ link: linkOf(bytes) }, signer(ed25519));
     await expect(notes.read(unfit.link, holding(unfit, { link: linkOf(bytes), bytes }))).rejects.toThrow(
       /does not fit its schema/,

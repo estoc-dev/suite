@@ -8,15 +8,7 @@ import {
   type SignatureOver,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import {
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  type Reader,
-  readObject,
-  type Value,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
@@ -42,7 +34,7 @@ type MailboxGrantOrder = readonly ["from", "to", "at", "signature"];
 
 /** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
 export interface MailboxGrant {
-  readonly object: EncodedObject<Value, MailboxGrantData>;
+  readonly object: EncodedObject<MailboxGrantData>;
   readonly signature: Signature;
   readonly to: SignedIdentityObject;
 }
@@ -79,7 +71,7 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 export class MailboxGrants {
   readonly schema = mailboxGrantSchema;
   /** The grants of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
-  readonly series: View<Value, MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
+  readonly series: View<MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
   readonly #identity: SignatureReading;
 
   /** The signatures over grants and the signed identities they name are read with `identity`. */
@@ -98,9 +90,9 @@ export class MailboxGrants {
   /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */
   encode(
     to: SignedIdentityObject,
-    mailboxes: readonly Link<EncodedObject<Value>>[],
+    mailboxes: readonly Link<EncodedObject>[],
     at: number,
-  ): EncodedObject<Value, MailboxGrantData> {
+  ): EncodedObject<MailboxGrantData> {
     return encodeObject(this.schema, {
       to: new LinkValue(to.link),
       mailboxes: mailboxes.map((mailbox) => new LinkValue(mailbox)),
@@ -123,7 +115,7 @@ export class MailboxGrants {
     };
   }
 
-  #seriesOf(rows: Rows<Value, MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
+  #seriesOf(rows: Rows<MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (

@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Link, type Value, type ValueMap } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, type ValueMap } from "@estoc/object";
 import { string } from "@estoc/schema";
 import { hex } from "@scure/base";
 import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -23,12 +23,12 @@ export interface Faults {
 export interface Queue {
   readonly name: string;
   /** A mailbox at this queue, sealed to `key`. */
-  mailbox(key: Uint8Array): EncodedObject<Value>;
+  mailbox(key: Uint8Array): EncodedObject;
   /**
    * What waits at this queue, for a mailbox of it, until a receiver is done
    * with it. Refuses a mailbox that is not at this queue.
    */
-  pickup(mailbox: Link<EncodedObject<Value>>): Pickup;
+  pickup(mailbox: Link<EncodedObject>): Pickup;
   /** The ciphertexts that wait, which leave the queue. */
   take(): Uint8Array[];
   /** The one ciphertext that waits, which leaves the queue; throws unless exactly one does. */
@@ -60,7 +60,7 @@ export class MemoryNetwork {
   queue(): Queue {
     const name = hex.encode(crypto.getRandomValues(new Uint8Array(16)));
     const waiting: QueuedMessage[] = [];
-    const mailboxes = new Set<Link<EncodedObject<Value>>>();
+    const mailboxes = new Set<Link<EncodedObject>>();
     this.#queues.set(name, waiting);
     const take = () => {
       const takenCiphertexts = waiting.splice(0).map(({ ciphertext }) => ciphertext);

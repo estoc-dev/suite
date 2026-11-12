@@ -7,6 +7,7 @@ import {
   encodeSchema,
   itself,
   LinkValue,
+  ObjectValue,
   objectFormat,
   rootSchemaOf,
   type SchemaValidator,
@@ -15,11 +16,11 @@ import {
 } from "../src/index.ts";
 import { type FieldNames, fieldNames } from "./field-names.ts";
 
-const lenient: SchemaValidator<Value, FieldNames> = { language: fieldNames.language, compile: () => () => [] };
+const lenient: SchemaValidator<FieldNames> = { language: fieldNames.language, compile: () => () => [] };
 const root = rootSchemaOf(fieldNames);
 const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
 const anything = encodeSchema({ fields: "any" }, fieldNames);
-const dataOf = (bytes: Uint8Array) => objectFormat.fields(objectFormat.decode(bytes)).data;
+const dataOf = (bytes: Uint8Array) => objectFormat.decode(bytes).data;
 
 describe("decodeSchema", () => {
   it("reads back what encodeSchema wrote, an object of its document written to the root schema", () => {
@@ -27,11 +28,11 @@ describe("decodeSchema", () => {
     expect(read.bytes).toEqual(login.bytes);
     expect(read.link).toBe(login.link);
     expect(dataOf(read.bytes)).toEqual({ fields: ["audience", "nonce"] });
-    expect(schemaOf(read.bytes, objectFormat)).toBe(root.link);
+    expect(schemaOf(read.bytes)).toBe(root.link);
   });
 
   it("reads a schema written out by hand", () => {
-    const bytes = objectFormat.encode(objectFormat.object({ fields: ["audience", "nonce"] }, root.link));
+    const bytes = objectFormat.encode(new ObjectValue(root.link, { fields: ["audience", "nonce"] }));
     expect(decodeSchema(bytes, lenient).link).toBe(login.link);
   });
 
@@ -40,12 +41,12 @@ describe("decodeSchema", () => {
     ["an object written to another schema", encodeObject(anything, { fields: [] }).bytes, /is written to/],
     [
       "an object written to itself that is not the root schema",
-      objectFormat.encode(objectFormat.object({ fields: [] }, itself)),
+      objectFormat.encode(new ObjectValue(itself, { fields: [] })),
       /is written to/,
     ],
     [
       "a document holding more than the root schema takes",
-      objectFormat.encode(objectFormat.object({ fields: [], title: "Name" }, root.link)),
+      objectFormat.encode(new ObjectValue(root.link, { fields: [], title: "Name" })),
       /#\/title: not a field of the schema/,
     ],
   ])("refuses %s", (_, bytes, reason) => {
@@ -53,13 +54,13 @@ describe("decodeSchema", () => {
   });
 
   it("refuses data that is not a document of the language, whatever the validator", () => {
-    const schemaHolding = (fields: Value) => objectFormat.encode(objectFormat.object({ fields }, root.link));
+    const schemaHolding = (fields: Value) => objectFormat.encode(new ObjectValue(root.link, { fields }));
     expect(() => decodeSchema(schemaHolding("audience"), lenient)).toThrow(/are names/);
     expect(() => decodeSchema(schemaHolding(["audience", 1]), lenient)).toThrow(/are names/);
   });
 
   it("refuses a schema that links to another blob than its root schema", () => {
-    const bytes = objectFormat.encode(objectFormat.object({ fields: [new LinkValue(anything.link)] }, root.link));
+    const bytes = objectFormat.encode(new ObjectValue(root.link, { fields: [new LinkValue(anything.link)] }));
     expect(() => decodeSchema(bytes, lenient)).toThrow(`links to its root schema alone, not to ${anything.link}`);
   });
 });
@@ -79,8 +80,8 @@ describe("a schema", () => {
 
 describe("the root schema", () => {
   it("is written to itself, and its bytes start as those of every object do", () => {
-    expect(objectFormat.fields(objectFormat.decode(root.bytes)).schema).toBe(itself);
-    expect(schemaOf(root.bytes, objectFormat)).toBe(root.link);
+    expect(objectFormat.decode(root.bytes).schema).toBe(itself);
+    expect(schemaOf(root.bytes)).toBe(root.link);
     const fieldsText = "666669656c6473";
     expect(bytesToHex(root.bytes)).toBe(`da656f6621826473656c66a1${fieldsText}81${fieldsText}`);
   });
@@ -101,7 +102,7 @@ describe("the root schema", () => {
   });
 
   it("is refused when its own data does not fit it", () => {
-    const misfit: SchemaValidator<Value, FieldNames> = {
+    const misfit: SchemaValidator<FieldNames> = {
       ...fieldNames,
       language: { ...fieldNames.language, root: { fields: ["title"] } },
     };
@@ -110,7 +111,7 @@ describe("the root schema", () => {
   });
 });
 
-const evenOnly: SchemaValidator<Value, FieldNames> = {
+const evenOnly: SchemaValidator<FieldNames> = {
   language: fieldNames.language,
   compile:
     () =>
@@ -129,7 +130,7 @@ describe("a validator", () => {
   });
 
   it("refusing to compile a schema leaves no schema", () => {
-    const refusing: SchemaValidator<Value, FieldNames> = {
+    const refusing: SchemaValidator<FieldNames> = {
       language: fieldNames.language,
       compile() {
         throw new Error("unsupported");

@@ -1,4 +1,4 @@
-import type { EncodedObject, Link, Value } from "@estoc/object";
+import type { EncodedObject, Link } from "@estoc/object";
 
 /**
  * What waits at one mailbox, as its transport hands it to the receiver. The
@@ -7,7 +7,7 @@ import type { EncodedObject, Link, Value } from "@estoc/object";
  */
 export interface Pickup {
   /** The link of the mailbox that what waits was sent to. */
-  readonly mailbox: Link<EncodedObject<Value>>;
+  readonly mailbox: Link<EncodedObject>;
   /**
    * What waits, each until it is done. Ends once `signal` aborts, and,
    * unless the transport waits for more to come, once nothing more waits.

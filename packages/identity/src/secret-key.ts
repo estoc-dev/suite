@@ -1,12 +1,4 @@
-import {
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  type Reader,
-  readObject,
-  type Value,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
@@ -29,7 +21,7 @@ export type SecretKeyData = DataOf<typeof secretKeySchema>;
  * its key, and the schemas they are written to, so one write puts it in an
  * empty store.
  */
-export interface SecretKeyObject extends EncodedObject<Value, SecretKeyData> {
+export interface SecretKeyObject extends EncodedObject<SecretKeyData> {
   readonly link: Link<SecretKeyObject>;
   readonly key: KeyObject;
   readonly signer: Signer;
@@ -71,6 +63,6 @@ export class SecretKeys {
   }
 }
 
-function secretKeyOf(object: EncodedObject<Value, SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
+function secretKeyOf(object: EncodedObject<SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
   return { ...object, link: object.link as Link<SecretKeyObject>, key, signer, blobs: blobsOf([object, key]) };
 }

@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, type Link, objectFormat } from "@estoc/object";
+import { encodeObject, type Link } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
@@ -107,7 +107,7 @@ describe("an HTTP mailbox", () => {
 
 describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
-    const store = new Store(objectFormat, new MemoryBackend());
+    const store = new Store(new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });

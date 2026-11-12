@@ -1,12 +1,4 @@
-import {
-  decodeObject,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  type Reader,
-  type Value,
-} from "@estoc/object";
+import { decodeObject, type EncodedObject, encodeObject, type Link, LinkValue, type Reader } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -113,11 +105,11 @@ const sale = schema("Sale", {
 });
 type Sale = DataOf<typeof sale>;
 
-const delivery = schema("Delivery", { sale: link<EncodedObject<Value, Sale>>() });
+const delivery = schema("Delivery", { sale: link<EncodedObject<Sale>>() });
 
 // A sale is in force once its buyer and its seller have both signed it.
 async function saleInForce(
-  link: Link<EncodedObject<Value, Sale>>,
+  link: Link<EncodedObject<Sale>>,
   receivedSignatures: ReceivedSignatures,
 ): Promise<Sale | undefined> {
   const bytes = await receivedSignatures.blobs.get(link);

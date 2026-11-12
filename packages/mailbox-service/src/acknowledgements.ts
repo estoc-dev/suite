@@ -1,5 +1,5 @@
 import type { Signature, Signatures } from "@estoc/identity";
-import { type EncodedObject, type Link, LinkValue, objectsOf, type Value } from "@estoc/object";
+import { type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, selectedRecords, type View } from "@estoc/store";
 import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
@@ -27,7 +27,6 @@ export interface Acknowledgements {
 }
 
 export type AcknowledgementsView = View<
-  Value,
   DataOf<typeof acknowledgementRowSchema>,
   AcknowledgementOrder,
   Acknowledgements
@@ -56,7 +55,7 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
  * service's signature over its acknowledgement.
  */
 const openedMailboxRowSchema = schema("Opened mailbox row", {
-  mailbox: link<EncodedObject<Value>>(),
+  mailbox: link<EncodedObject>(),
   acknowledgement: link<Signature>(),
 });
 
@@ -76,15 +75,10 @@ export interface OpenedMailboxes {
    * The link of the service's signature over the acknowledgement of
    * `mailbox`, or `undefined` when the store holds no record of opening it.
    */
-  acknowledgementOf(mailbox: Link<EncodedObject<Value>>): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(mailbox: Link<EncodedObject>): Promise<Link<Signature> | undefined>;
 }
 
-export type OpenedMailboxesView = View<
-  Value,
-  DataOf<typeof openedMailboxRowSchema>,
-  OpenedMailboxOrder,
-  OpenedMailboxes
->;
+export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, OpenedMailboxOrder, OpenedMailboxes>;
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {

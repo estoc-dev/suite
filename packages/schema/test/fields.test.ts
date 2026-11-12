@@ -13,8 +13,8 @@ const note = schema("Note", {
 });
 
 // Two schemas whose objects link to each other, each read as the data of its own.
-interface Identity extends EncodedObject<Value, DataOf<typeof identity>> {}
-interface SignedIdentity extends EncodedObject<Value, DataOf<typeof signedIdentity>> {}
+interface Identity extends EncodedObject<DataOf<typeof identity>> {}
+interface SignedIdentity extends EncodedObject<DataOf<typeof signedIdentity>> {}
 const identity = schema("Identity", { at: integer(), prior: optional(link<SignedIdentity>()) });
 const signedIdentity = schema("Signed Identity", { identity: link<Identity>(), signature: bytes() });
 

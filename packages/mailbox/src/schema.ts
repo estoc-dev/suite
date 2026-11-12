@@ -1,5 +1,5 @@
 import type { SignedIdentityObject } from "@estoc/identity";
-import type { EncodedObject, Value } from "@estoc/object";
+import type { EncodedObject } from "@estoc/object";
 import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@estoc/schema";
 
 /**
@@ -26,7 +26,7 @@ export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
  * two objects.
  */
 export const mailboxKeySchema = schema("Mailbox Key", {
-  mailbox: link<EncodedObject<Value>>(),
+  mailbox: link<EncodedObject>(),
   secret: bytes(),
 });
 
@@ -38,7 +38,7 @@ export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
  */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
-  mailbox: link<EncodedObject<Value>>(),
+  mailbox: link<EncodedObject>(),
   at: integer(),
 });
 
@@ -56,7 +56,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  */
 export const mailboxGrantSchema = schema("Mailbox Grant", {
   to: link<SignedIdentityObject>(),
-  mailboxes: array(link<EncodedObject<Value>>()),
+  mailboxes: array(link<EncodedObject>()),
   at: integer(),
 });
 

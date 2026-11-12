@@ -9,6 +9,7 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
   rootSchemaOf,
   schemaOf,
@@ -160,39 +161,34 @@ describe("encoding", () => {
     ["a hole in an array", new Array(2)],
     ["a Date", new Date(0)],
     ["a Map", new Map([["a", 1]])],
-    ["an object inside data", objectFormat.object({}, anything.link)],
+    ["an object inside data", new ObjectValue(anything.link, {})],
   ])("refuses %s", (_, value) => {
     expect(() => encodeObject(anything, { v: value as Value })).toThrow();
     expect(() => encodeObject(anything, { v: [{ nested: value as Value }] })).toThrow();
   });
 
   it.each([1, 64, 100, 5000])("gives plain bytes, not a Node Buffer, around %i bytes", (length) => {
-    const bytes = objectFormat.encode(objectFormat.object({ v: new Uint8Array(length) }, anything.link));
+    const bytes = objectFormat.encode(new ObjectValue(anything.link, { v: new Uint8Array(length) }));
     expect(Buffer.isBuffer(bytes)).toBe(false);
-    expect(objectFormat.decode(bytes)).toEqual(objectFormat.object({ v: new Uint8Array(length) }, anything.link));
-  });
-
-  it("refuses a value that is not an object as a blob", () => {
-    expect(() => objectFormat.encode({ text: "hello" })).toThrow(/is an object/);
-    expect(() => objectFormat.encode(new LinkValue(a))).toThrow(/is an object/);
+    expect(objectFormat.decode(bytes)).toEqual(new ObjectValue(anything.link, { v: new Uint8Array(length) }));
   });
 
   it("refuses a link that is not one", () => {
     expect(() => new LinkValue("sha256:ABC" as Link<never>)).toThrow();
-    expect(() => objectFormat.encode(objectFormat.object({}, "note" as Link<never>))).toThrow();
+    expect(() => objectFormat.encode(new ObjectValue("note" as Link<never>, {}))).toThrow();
   });
 });
 
 describe("an object written to itself", () => {
-  const selfWritten = objectFormat.encode(objectFormat.object({ title: "Anything" }, itself));
+  const selfWritten = objectFormat.encode(new ObjectValue(itself, { title: "Anything" }));
 
   it("names its schema by the string self, in place of a link", () => {
     expect(bytesToHex(selfWritten)).toBe(`${objectHead}${itselfHex}a1657469746c6568416e797468696e67`);
-    expect(objectFormat.fields(objectFormat.decode(selfWritten)).schema).toBe(itself);
+    expect(objectFormat.decode(selfWritten).schema).toBe(itself);
   });
 
   it("reads back with its own link as its schema", () => {
-    expect(schemaOf(selfWritten, objectFormat)).toBe(linkOf(selfWritten));
+    expect(schemaOf(selfWritten)).toBe(linkOf(selfWritten));
     const root = rootSchemaOf(fieldNames);
     const bytes: Uint8Array = root.bytes;
     const object = decodeObject(bytes, root);
@@ -201,14 +197,14 @@ describe("an object written to itself", () => {
   });
 
   it("is refused as an object of another schema", () => {
-    const bytes = objectFormat.encode(objectFormat.object({ text: "hello" }, itself));
-    expect(schemaOf(bytes, objectFormat)).toBe(linkOf(bytes));
+    const bytes = objectFormat.encode(new ObjectValue(itself, { text: "hello" }));
+    expect(schemaOf(bytes)).toBe(linkOf(bytes));
     expect(() => decodeObject(bytes, anything)).toThrow(/is written to/);
   });
 
   it("does not link to itself", () => {
     expect([...objectFormat.links(objectFormat.decode(selfWritten))]).toEqual([]);
-    const linkingBytes = objectFormat.encode(objectFormat.object({ to: new LinkValue(a) }, itself));
+    const linkingBytes = objectFormat.encode(new ObjectValue(itself, { to: new LinkValue(a) }));
     expect([...objectFormat.links(objectFormat.decode(linkingBytes))]).toEqual([a]);
   });
 });
@@ -223,15 +219,11 @@ describe("the links in an object", () => {
   });
 
   it("leave out a hash that is bytes, and a string that reads as a link, as a member or as a key", () => {
-    const value = objectFormat.object(
-      { hash: hexToBytes(a.slice("sha256:".length)), text: a, map: { [a]: 1 } },
-      anything.link,
-    );
+    const value = new ObjectValue(anything.link, {
+      hash: hexToBytes(a.slice("sha256:".length)),
+      text: a,
+      map: { [a]: 1 },
+    });
     expect([...objectFormat.links(value)]).toEqual([anything.link]);
-  });
-
-  it("are none in a value that is not an object", () => {
-    expect([...objectFormat.links({ list: [new LinkValue(a)] })]).toEqual([]);
-    expect([...objectFormat.links(new LinkValue(a))]).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import {
   itself,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
   readObject,
   type ValueMap,
@@ -16,8 +17,8 @@ import { decodeBundle, encodeBundle } from "../src/index.ts";
 const { identities, signedIdentities, signatures, publish } = loadIdentity([ed25519, eip191]);
 
 const rewritten = (bytes: Uint8Array, change: (data: ValueMap) => ValueMap) => {
-  const { data, schema } = objectFormat.fields(objectFormat.decode(bytes));
-  return objectFormat.encode(objectFormat.object(change(data), schema));
+  const { data, schema } = objectFormat.decode(bytes);
+  return objectFormat.encode(new ObjectValue(schema, change(data)));
 };
 
 const note = schema("Note", { text: string() });
@@ -71,9 +72,9 @@ describe("a bundle", () => {
       const bytes = fields.signature as Uint8Array;
       return { ...fields, signature: bytes.map((byte, at) => (at === bytes.length - 1 ? byte ^ 1 : byte)) };
     });
-    const { data } = objectFormat.fields(objectFormat.decode(signature.signedIdentity.bytes));
-    const laterSchema = linkOf(objectFormat.encode(objectFormat.object({ title: "A later signed identity" }, itself)));
-    const later = objectFormat.encode(objectFormat.object(data, laterSchema));
+    const { data } = objectFormat.decode(signature.signedIdentity.bytes);
+    const laterSchema = linkOf(objectFormat.encode(new ObjectValue(itself, { title: "A later signed identity" })));
+    const later = objectFormat.encode(new ObjectValue(laterSchema, data));
     const unknown = rewritten(signature.bytes, (fields) => ({
       ...fields,
       signedIdentity: new LinkValue(linkOf(later)),

@@ -71,6 +71,7 @@ closures of its items:
 ```ts
 import { lineages } from "@estoc/lineage";
 import { encodeObject } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import { indexOver, scan } from "@estoc/store";
 
 const firstDraft = encodeObject(note, { text: "first draft" });
@@ -166,6 +167,7 @@ selection other than by schema, it reads each record itself. An index of
 
 ```ts
 import { SelectionBySchemaLineage } from "@estoc/lineage";
+import { schema, string } from "@estoc/schema";
 import { indexOver } from "@estoc/store";
 
 const textSchema = schema("Text", { text: string() });

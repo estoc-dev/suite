@@ -484,7 +484,9 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
     const { encoding } = contentOf(index).schema;
     const keyedRows = newRows.map((row) => {
       const data: Fields<D> = row.data;
-      return { key: by.map((name) => keyPartOf(data[name], encoding)), row };
+      // A row that leaves a field out does not hold what every object inherits under its name, such as `constructor`.
+      const key = by.map((name) => keyPartOf(Object.hasOwn(data, name) ? data[name] : undefined, encoding));
+      return { key, row };
     });
     return new SortedRows(
       this.#index,

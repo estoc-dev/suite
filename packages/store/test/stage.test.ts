@@ -10,7 +10,7 @@ import {
 import { encodeObject, type Json, json, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Index, indexOver, indexOverBlobs, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { indexOver, indexOverBlobs, MemoryBackend, type OrderedIndex, Store, type View, view } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -159,11 +159,11 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: Index<Json, Tagged, TaggedOrder> = indexOver(
+const byTag: OrderedIndex<Json, Tagged, TaggedOrder> = indexOver(
   objectsOf(noteSchema),
-  { schema: taggedSchema, by: ["tag", "at"] },
+  taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
-);
+).orderedBy("tag", "at");
 
 const texts: View<Json, Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
   index: byTag,
@@ -180,7 +180,9 @@ const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
 const people: View<Json, IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]),
+  index: indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+    identityVersion,
+  ]).orderedBy(...identityVersions.order),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 

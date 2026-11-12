@@ -1,5 +1,5 @@
 import type { Fields } from "@estoc/object";
-import { type FieldNames, type Index, type Rows, scan } from "./scan.ts";
+import { type FieldNames, type OrderedIndex, type Rows, scan } from "./scan.ts";
 import type { Store } from "./store.ts";
 
 /**
@@ -10,7 +10,7 @@ import type { Store } from "./store.ts";
  * that knows what the objects mean the other.
  */
 export interface View<D, F extends Fields<D>, By extends FieldNames<F>, V> {
-  readonly index: Index<D, F, By>;
+  readonly index: OrderedIndex<D, F, By>;
   /**
    * The value of `rows`, with `store` giving by link the objects they name,
    * and where it took each in. It may be a promise, as when the value is

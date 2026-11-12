@@ -135,9 +135,11 @@ describe("an object slipped into a bundle", () => {
 });
 
 describe("a signed identity that comes in a bundle", () => {
-  const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [
-    identityVersion,
-  ]);
+  const identityVersionsHeld = indexOverBlobs(
+    identityVersions.selection,
+    identityVersions.schema,
+    (identityVersion) => [identityVersion],
+  ).orderedBy(...identityVersions.order);
 
   it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
     const aliceIdentityVersion = await publish(alice, { at: 5 });
@@ -181,7 +183,9 @@ describe("a signed identity that comes in a bundle", () => {
     validate.mockClear();
     await scan(
       store,
-      indexOverBlobs(identityVersions.selection, identityVersions.order, (row) => [row]),
+      indexOverBlobs(identityVersions.selection, identityVersions.schema, (row) => [row]).orderedBy(
+        ...identityVersions.order,
+      ),
     );
     expect(validate).toHaveBeenCalledTimes(1);
     validate.mockRestore();

@@ -202,14 +202,17 @@ often make no difference. What depends on what else is written, such as
 whether something replaced a record, is worked out from the rows when they
 are read.
 
-With the schema of its rows, an index names the fields `by` which they are
-ordered, the first counting most:
+An index says which rows there are, and `orderedBy` in what order to read
+them: it names fields of the rows, the first counting most, and gives the
+index in that order, which `scan` reads.
 
 - A field that a row leaves out comes before any value.
 - Numbers are in their order, strings in the order of their code units, and
   any other value, such as a link, in the order of its bytes in the encoding.
 - Rows that hold the same in all of those fields are in the order of their
   links.
+- One index can be given several orders. They share its rows, so a store
+  reads each record once however many of them it is scanned in.
 
 ```ts
 import { objectsOf } from "@estoc/object";
@@ -223,9 +226,9 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 // `noteSchema` whose objects hold `tags` and `at`.
 const byTag = indexOver(
   objectsOf(noteSchema),
-  { schema: taggedSchema, by: ["tag", "at"] },
+  taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
-);
+).orderedBy("tag", "at");
 
 const rows = await scan(store, byTag);
 for await (const { data } of rows.range(["lunch"])) …; // `data.at`, `data.note`
@@ -235,7 +238,7 @@ Rows are kept in memory and are not blobs of the store: its `get` gives none
 of them, and a bundle gathered from it holds none.
 
 An index comes only from `indexOver` and `indexOverBlobs`, of one selection,
-and from `union`, of indexes whose rows are of one schema and one order, so
+and from `union`, of indexes whose rows are of one schema, so
 what an index reads is said by its selections and not worked out in `rows`. Each part of a union
 reads its own records and hands what it reads them as to its own rows, so
 the rows of objects of several schemas, or of several selections of one
@@ -255,14 +258,16 @@ rows, such as a count, an application keeps in a fold of its own, which
 then has to come to the same whatever the order and however often an
 object comes.
 
-A store keeps in memory the rows of each index it is scanned for, and a
+A store keeps in memory the rows of each index it is scanned for, and those
+rows in each order it is scanned in, and a
 later scan reads only the records listed since, those that another store on
 the same backend wrote among them. The rows of a record depend on it and
 its closure alone, and a store only grows, so the rows of the records read
 before still hold. A private store keeps its own, and a staged batch reads
 its records on top of those its store keeps. The rows are kept for an
-index as long as the program holds it, so a program makes each index once:
-one made again by `indexOver` is another, and is read from all the records,
+index as long as the program holds it, and their order for as long as it
+holds what `orderedBy` gave, so a program makes each once:
+an index made again by `indexOver` is another, and is read from all the records,
 as each index is once a program starts.
 
 `indexOverBlobs` reads the blobs a store holds in place of its records, for
@@ -275,9 +280,9 @@ import { indexOverBlobs } from "@estoc/store";
 
 // The identity versions a store holds, however deep in a closure they came.
 // One whose root did not sign it gives no row.
-const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [
+const identityVersionsHeld = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
   identityVersion,
-]);
+]).orderedBy(...identityVersions.order);
 ```
 
 - A write keeps only the blobs in the closures of its records, so these are
@@ -381,9 +386,9 @@ What comes in twice is recorded twice, and a reader takes the earliest `at`:
 ```ts
 // When each bundle came in: the first row of a root is the earliest.
 const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-const cameIn = indexOver(objectsOf(inboundSchema), { schema: arrivalSchema, by: ["bundle", "at"] }, ({ data }) => [
+const cameIn = indexOver(objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
   { bundle: data.bundle, at: data.at },
-]);
+]).orderedBy("bundle", "at");
 ```
 
 What the records promise is little, so that every way in can keep it:

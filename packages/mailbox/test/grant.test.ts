@@ -28,7 +28,9 @@ const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
 const seenPeople: View<Json, IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]),
+  index: indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+    identityVersion,
+  ]).orderedBy(...identityVersions.order),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 const network = new MemoryNetwork();

@@ -12,8 +12,8 @@ export {
   indexOver,
   indexOverBlobs,
   type KeyOf,
+  type OrderedIndex,
   type Prefix,
-  type RowOrder,
   type Rows,
   scan,
 } from "./scan.ts";

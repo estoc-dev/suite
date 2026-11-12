@@ -128,9 +128,9 @@ describe("an intake", () => {
 
 describe("the records of an intake", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-  const cameIn = indexOver(objectsOf(inboundSchema), { schema: arrivalSchema, by: ["bundle", "at"] }, ({ data }) => [
+  const cameIn = indexOver(objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
-  ]);
+  ]).orderedBy("bundle", "at");
 
   it("give an index when each bundle came in, the earliest first", async () => {
     const store = newStore();

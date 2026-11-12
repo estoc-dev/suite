@@ -93,9 +93,9 @@ Indexes and views are the application's, and this package has none:
 
 ```ts
 const headSchema = schema("Head", { series: link(), head: link() });
-const bySeries = indexOver(lineages.selection, { schema: headSchema, by: ["series"] }, function* ({ first, head }) {
+const bySeries = indexOver(lineages.selection, headSchema, function* ({ first, head }) {
   yield { series: { $link: first.link }, head: { $link: head.link } };
-});
+}).orderedBy("series");
 for await (const { data } of (await scan(store, bySeries)).range([{ $link: lineage.first.link }])) {
   // `data.head`: every head of the series written as a record
 }
@@ -169,8 +169,8 @@ import { SelectionBySchemaLineage } from "@estoc/lineage";
 import { indexOver } from "@estoc/store";
 
 const textSchema = schema("Text", { text: string() });
-const byText = indexOver(notes.selection, { schema: textSchema, by: ["text"] }, function* ({ text }) {
+const byText = indexOver(notes.selection, textSchema, function* ({ text }) {
   yield { text };
-});
+}).orderedBy("text");
 const titles = new SelectionBySchemaLineage(notes, ({ title }) => title); // the notes that have a title
 ```

@@ -408,7 +408,9 @@ import { MailboxGrants } from "@estoc/mailbox";
 import { indexOverBlobs, view } from "@estoc/store";
 
 const grants = new MailboxGrants({ signatures, signedIdentities });
-const seen = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]);
+const seen = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+  identityVersion,
+]).orderedBy(...identityVersions.order);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 await series.grantFrom(mine, their, people.asTakenIn); // where I take their messages

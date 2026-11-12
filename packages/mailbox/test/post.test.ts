@@ -175,11 +175,9 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox } = await openReceiver(network);
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
-    const byMailbox = indexOver(
-      objectsOf(mailboxKeySchema),
-      { schema: keyOfMailbox, by: ["mailbox"] },
-      ({ link, data }) => [{ mailbox: data.mailbox, key: { $link: link } }],
-    );
+    const byMailbox = indexOver(objectsOf(mailboxKeySchema), keyOfMailbox, ({ link, data }) => [
+      { mailbox: data.mailbox, key: { $link: link } },
+    ]).orderedBy("mailbox");
     const keys = [];
     for await (const { data } of (await scan(privateStore, byMailbox)).range([{ $link: inbox.mailbox }]))
       keys.push(data.key.$link);

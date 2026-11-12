@@ -1,6 +1,6 @@
 import { encodeObject, type Implementation, type Json, json, type Link } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
-import { type Index, indexOver, MemoryBackend, Store, scan } from "@estoc/store";
+import { indexOver, MemoryBackend, type OrderedIndex, Store, scan } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
@@ -14,15 +14,14 @@ const third = encodeObject(note, { text: "third" });
 const other = encodeObject(note, { text: "other" });
 
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
-const headOrder = { schema: headSchema, by: ["of", "head"] } as const;
-type HeadIndex = Index<Json, DataOf<typeof headSchema>, readonly ["of", "head"]>;
+type HeadIndex = OrderedIndex<Json, DataOf<typeof headSchema>, readonly ["of", "head"]>;
 
-const bySeries: HeadIndex = indexOver(lineages.selection, headOrder, function* ({ first, head }) {
+const bySeries: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ first, head }) {
   yield { of: { $link: first.link }, head: { $link: head.link } };
-});
-const byItem: HeadIndex = indexOver(lineages.selection, headOrder, function* ({ items, head }) {
+}).orderedBy("of", "head");
+const byItem: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ items, head }) {
   for (const item of items) yield { of: { $link: item }, head: { $link: head.link } };
-});
+}).orderedBy("of", "head");
 
 async function writeHeads(store: Store, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
@@ -93,9 +92,9 @@ describe("the selection of a schema lineage over a store", () => {
     const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });
     await store.write({ records: [untitledRecord, titledRecord], blobs: notes.blobs });
     const titled = schema("Titled", { text: string(), title: string() });
-    const byText = indexOver(notes.selection, { schema: titled, by: ["text"] }, function* ({ text, title }) {
+    const byText = indexOver(notes.selection, titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
-    });
+    }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];
     for await (const { data } of (await scan(store, byText)).range([])) rows.push(data);
     expect(rows).toEqual([

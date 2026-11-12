@@ -46,11 +46,10 @@ export interface StoreReader extends Reader {
 
 /** Identity versions: the row each is, their selection, and the people of those a reader has seen. */
 export class IdentityVersions {
-  /** What the rows of an index of identity versions are, for whoever makes the index. */
-  readonly order: { readonly schema: typeof identityVersionSchema; readonly by: IdentityVersionOrder } = {
-    schema: identityVersionSchema,
-    by: ["identifier", "at", "signedIdentity"],
-  };
+  /** The schema of the rows of an index of identity versions, for whoever makes the index. */
+  readonly schema = identityVersionSchema;
+  /** The fields to order that index by, for `people` to read its rows. */
+  readonly order: IdentityVersionOrder = ["identifier", "at", "signedIdentity"];
   /**
    * The selection of signed identities, each read as the data of the row
    * `identityVersionOf` gives.

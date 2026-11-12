@@ -49,7 +49,7 @@ export function locationsView(signatures: Signatures): LocationsView {
   return {
     index: indexOverBlobs(
       signatures.selectionOver(serviceSchema),
-      { schema: locationSchema, by: ["identifier", "at", "service"] },
+      locationSchema,
       async function* ({ signature, object }, reader) {
         // A row depends on the signature and its closure alone, so it is
         // verified by the identity version it carries; whether the signature
@@ -61,7 +61,7 @@ export function locationsView(signatures: Signatures): LocationsView {
           service: { $link: link },
         };
       },
-    ),
+    ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
         const links: Link<Signature>[] = [];

@@ -37,11 +37,11 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
   return {
     index: indexOver(
       signatures.selectionOver(acknowledgementSchema),
-      { schema: acknowledgementRowSchema, by: ["acceptance", "acknowledgement"] },
+      acknowledgementRowSchema,
       ({ signature, object }) => [
         { acceptance: object.data.acceptance, acknowledgement: { $link: signature.link as Link<Signature> } },
       ],
-    ),
+    ).orderedBy("acceptance", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(acceptance) {
         for await (const { data } of rows.range([{ $link: acceptance }])) return data.acknowledgement.$link;
@@ -88,11 +88,9 @@ export type OpenedMailboxesView = View<
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(
-      objectsOf(openedMailboxSchema),
-      { schema: openedMailboxRowSchema, by: ["mailbox", "acknowledgement"] },
-      ({ data }) => [{ mailbox: data.mailbox, acknowledgement: data.acknowledgement }],
-    ),
+    index: indexOver(objectsOf(openedMailboxSchema), openedMailboxRowSchema, ({ data }) => [
+      { mailbox: data.mailbox, acknowledgement: data.acknowledgement },
+    ]).orderedBy("mailbox", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(mailbox) {
         for await (const { data } of rows.range([{ $link: mailbox }])) return data.acknowledgement.$link;

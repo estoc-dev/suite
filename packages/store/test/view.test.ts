@@ -1,7 +1,7 @@
 import { encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { indexOver, MemoryBackend, type OrderedIndex, Store, type View, view } from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
@@ -10,11 +10,11 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: Index<Json, Tagged, TaggedOrder> = indexOver(
+const byTag: OrderedIndex<Json, Tagged, TaggedOrder> = indexOver(
   objectsOf(noteSchema),
-  { schema: taggedSchema, by: ["tag", "at"] },
+  taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
-);
+).orderedBy("tag", "at");
 
 interface Latest {
   noteTagged(tag: string): Promise<Note | undefined>;

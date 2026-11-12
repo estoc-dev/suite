@@ -286,9 +286,9 @@ its `at`, its link and, where there is one, its last crisis, the latest crisis
 among it and those it follows. Each
 identity version is later than the one it follows, so no crisis follows the
 latest crisis, and those that count are the ones whose last crisis it is.
-`identityVersions.order` names that schema and the fields that order the rows
-of an index: the identifier, `at` and then the link, so the rows of one
-identifier come together, in the order of their `at`.
+`identityVersions.schema` is that schema, and `identityVersions.order` the
+fields to order an index of those rows by: the identifier, `at` and then the
+link, so the rows of one identifier come together, in the order of their `at`.
 
 `identityVersions.selection` is the `SelectionBySchema` of signed identities,
 each read as the data of its row. A signed identity carries its authority in its root's
@@ -386,7 +386,9 @@ takes one already read. With `@estoc/store`, an application gives the index
 and `identityVersions.people` reads its rows:
 
 ```ts
-const seen = indexOverBlobs(identityVersions.selection, identityVersions.order, (identityVersion) => [identityVersion]);
+const seen = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+  identityVersion,
+]).orderedBy(...identityVersions.order);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(link, store, people.asTakenIn);
 const author = people.personOf(signature.signedIdentity);
@@ -487,12 +489,12 @@ their identifier:
 const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
 const signedNotes = indexOver(
   signatures.selectionOver(noteSchema),
-  { schema: signedNoteSchema, by: ["signer"] },
+  signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
     yield { signer: { $link: signedIdentity.identity.identifier }, note: { $link: object.link } };
   },
-);
+).orderedBy("signer");
 ```
 
 Finding the signatures over an object takes an index by the link they

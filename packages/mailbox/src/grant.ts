@@ -78,11 +78,9 @@ export class MailboxGrants {
   constructor(identity: SignatureReading) {
     this.#identity = identity;
     this.series = {
-      index: indexOverBlobs(
-        identity.signatures.selectionOver(this.schema),
-        { schema: mailboxGrantRowSchema, by: ["from", "to", "at", "signature"] },
-        (grant, reader) => this.#rowsOf(grant, reader),
-      ),
+      index: indexOverBlobs(identity.signatures.selectionOver(this.schema), mailboxGrantRowSchema, (grant, reader) =>
+        this.#rowsOf(grant, reader),
+      ).orderedBy("from", "to", "at", "signature"),
       read: (rows, reader) => this.#seriesOf(rows, reader),
     };
   }

@@ -11,11 +11,11 @@ import {
 import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
-  type Index,
   Intake,
   inboundSchema,
   indexOver,
   MemoryBackend,
+  type OrderedIndex,
   PrivateStore,
   type Rows,
   Store,
@@ -49,20 +49,21 @@ const delivery = schema("Delivery", {
 });
 type Delivery = DataOf<typeof delivery>;
 type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
-const deliveryOrder = { schema: delivery, by: ["direction", "mailbox", "at", "bundle"] } as const;
 
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
-const deliveries: Index<Json, Delivery, DeliveryOrder> = indexOver(
+const deliveries: OrderedIndex<Json, Delivery, DeliveryOrder> = indexOver(
   objectsOf(inboundSchema),
-  deliveryOrder,
+  delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
-).union(
-  indexOver(objectsOf(outboundSchema), deliveryOrder, ({ data: { mailbox, at, bundle } }) => [
-    { direction: "outbound", mailbox, at, bundle },
-  ]),
-);
+)
+  .union(
+    indexOver(objectsOf(outboundSchema), delivery, ({ data: { mailbox, at, bundle } }) => [
+      { direction: "outbound", mailbox, at, bundle },
+    ]),
+  )
+  .orderedBy("direction", "mailbox", "at", "bundle");
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];

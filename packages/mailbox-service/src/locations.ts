@@ -1,20 +1,32 @@
 import {
   type Identifier,
+  type KeyObject,
   noIdentityVersions,
   type SeenIdentityVersions,
   type Signature,
   type Signatures,
 } from "@estoc/identity";
-import type { Link } from "@estoc/object";
+import type { Json, Link } from "@estoc/object";
+import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOverBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
 
 /**
- * The signature's link comes after `at`, so that of two Services at the same
- * `at`, as services started at once on one store can sign, every store takes
- * the same one for the latest, whatever order it took them in.
+ * The schema of a signed Service as a row of an index: the identifier of the
+ * identity that signed it, its `at`, and the signature.
  */
-type Location = readonly [identifier: Identifier, at: number, service: Link<Signature>];
+const locationSchema = schema("Location", {
+  identifier: link<KeyObject>(),
+  at: integer(),
+  service: link<Signature>(),
+});
+
+/**
+ * The signature comes after `at`, so that of two Services at the same `at`,
+ * as services started at once on one store can sign, every store takes the
+ * same one for the latest, whatever order it took them in.
+ */
+type LocationOrder = readonly ["identifier", "at", "service"];
 
 /**
  * The Services that the signatures a store holds sign, records or not, by
@@ -31,23 +43,31 @@ export interface Locations {
   servicesOf(identifier: Identifier, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Location, Locations>;
+export type LocationsView = View<Json, DataOf<typeof locationSchema>, LocationOrder, Locations>;
 
 export function locationsView(signatures: Signatures): LocationsView {
   return {
-    index: indexOverBlobs(signatures.selectionOver(serviceSchema), async function* ({ signature, object }, reader) {
-      // A row depends on the signature and its closure alone, so it is
-      // verified by the identity version it carries; whether the signature
-      // is honored is checked as the rows are read.
-      const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
-      yield [signedIdentity.identity.identifier, object.data.at, link];
-    }),
+    index: indexOverBlobs(
+      signatures.selectionOver(serviceSchema),
+      locationSchema,
+      async function* ({ signature, object }, reader) {
+        // A row depends on the signature and its closure alone, so it is
+        // verified by the identity version it carries; whether the signature
+        // is honored is checked as the rows are read.
+        const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
+        yield {
+          identifier: { $link: signedIdentity.identity.identifier },
+          at: object.data.at,
+          service: { $link: link },
+        };
+      },
+    ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
         const links: Link<Signature>[] = [];
-        for await (const [, , link] of rows.range([identifier])) {
-          const signature = await signatures.read(link, reader, noIdentityVersions);
-          if (await seenIdentityVersions.honors(signature)) links.unshift(link);
+        for await (const { data } of rows.range([{ $link: identifier }])) {
+          const signature = await signatures.read(data.service.$link, reader, noIdentityVersions);
+          if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.$link);
         }
         return links;
       },

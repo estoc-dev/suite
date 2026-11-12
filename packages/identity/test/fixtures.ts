@@ -3,9 +3,8 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
-  type IdentityVersion,
+  type IdentityVersionRows,
   type IdentityVersions,
-  type KeyObject,
   type SignedIdentityObject,
   type StoreReader,
   solanaOffchain,
@@ -41,10 +40,13 @@ export function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, U
 
 /**
  * The rows of the identity versions `signedIdentities` are, and those they
- * follow, in the order of their keys, as an index of a store that holds them
+ * follow, in the order of an index of them, as an index of a store that holds them
  * gives them.
  */
-export function rowsOf(identityVersions: IdentityVersions, ...signedIdentities: readonly SignedIdentityObject[]) {
+export function rowsOf(
+  identityVersions: IdentityVersions,
+  ...signedIdentities: readonly SignedIdentityObject[]
+): IdentityVersionRows {
   const held = new Map<Link<SignedIdentityObject>, SignedIdentityObject>();
   for (const signedIdentity of signedIdentities) {
     for (let each: SignedIdentityObject | undefined = signedIdentity; each !== undefined; each = each.identity.prior) {
@@ -52,12 +54,13 @@ export function rowsOf(identityVersions: IdentityVersions, ...signedIdentities: 
     }
   }
   const rows = [...held.values()].map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity));
+  const versionLinkOf = ({ signedIdentity }: (typeof rows)[number]) => signedIdentity.$link;
   rows.sort(
-    ([, at, link], [, otherAt, otherLink]) => at - otherAt || (link < otherLink ? -1 : link > otherLink ? 1 : 0),
+    (a, b) => a.at - b.at || (versionLinkOf(a) < versionLinkOf(b) ? -1 : versionLinkOf(a) > versionLinkOf(b) ? 1 : 0),
   );
   return {
-    async *range([root]: readonly [Link<KeyObject>]): AsyncIterable<IdentityVersion> {
-      yield* rows.filter(([of]) => of === root);
+    async *range([root]) {
+      yield* rows.filter(({ identifier }) => identifier.$link === root.$link).map((data) => ({ data }));
     },
   };
 }

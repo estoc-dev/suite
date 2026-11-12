@@ -1,7 +1,7 @@
 import { encodeObject, json, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Backend, type Index, indexOver, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
+import { type Backend, indexOver, MemoryBackend, PrivateStore, Store, scan } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -116,14 +116,15 @@ describe("a private store", () => {
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [anything.bytes] });
     await privateStore.write({ records: [object({ card: { $link: card.link } })] });
-    const byName: Index<[name: string]> = indexOver(objectsOf(anything), async function* ({ data }, reader) {
+    const named = schema("Named", { name: string() });
+    const byName = indexOver(objectsOf(anything), named, async function* ({ data }, reader) {
       if (data.card === undefined) return;
       const { name } = (await readObject(reader, data.card.$link, anything)).data;
-      if (name !== undefined) yield [name];
-    });
-    const rows: (readonly [string])[] = [];
-    for await (const row of (await scan(privateStore, byName)).range([])) rows.push(row);
-    expect(rows).toEqual([["Alice"]]);
+      if (name !== undefined) yield { name };
+    }).orderedBy("name");
+    const names: string[] = [];
+    for await (const { data } of (await scan(privateStore, byName)).range([])) names.push(data.name);
+    expect(names).toEqual(["Alice"]);
   });
 });
 

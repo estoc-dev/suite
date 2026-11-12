@@ -1,9 +1,19 @@
 import type { Signature, Signatures } from "@estoc/identity";
 import { type EncodedObject, type Json, type Link, objectsOf } from "@estoc/object";
+import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type View } from "@estoc/store";
 import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
 
-type AcknowledgementRow = readonly [acceptance: Link<Signature>, acknowledgement: Link<Signature>];
+/**
+ * The schema of a signed acknowledgement as a row of an index: the acceptance
+ * it acknowledges, and the signature over it.
+ */
+const acknowledgementRowSchema = schema("Acknowledgement row", {
+  acceptance: link<Signature>(),
+  acknowledgement: link<Signature>(),
+});
+
+type AcknowledgementOrder = readonly ["acceptance", "acknowledgement"];
 
 /** The acknowledgements that recorded signatures sign, by the acceptance each acknowledges. */
 export interface Acknowledgements {
@@ -16,23 +26,41 @@ export interface Acknowledgements {
   acknowledgementOf(acceptance: Link<Signature>): Promise<Link<Signature> | undefined>;
 }
 
-export type AcknowledgementsView = View<AcknowledgementRow, Acknowledgements>;
+export type AcknowledgementsView = View<
+  Json,
+  DataOf<typeof acknowledgementRowSchema>,
+  AcknowledgementOrder,
+  Acknowledgements
+>;
 
 export function acknowledgementsView(signatures: Signatures): AcknowledgementsView {
   return {
-    index: indexOver(signatures.selectionOver(acknowledgementSchema), ({ signature, object }) => [
-      [object.data.acceptance.$link, signature.link as Link<Signature>],
-    ]),
+    index: indexOver(
+      signatures.selectionOver(acknowledgementSchema),
+      acknowledgementRowSchema,
+      ({ signature, object }) => [
+        { acceptance: object.data.acceptance, acknowledgement: { $link: signature.link as Link<Signature> } },
+      ],
+    ).orderedBy("acceptance", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(acceptance) {
-        for await (const [, link] of rows.range([acceptance])) return link;
+        for await (const { data } of rows.range([{ $link: acceptance }])) return data.acknowledgement.$link;
         return undefined;
       },
     }),
   };
 }
 
-type OpenedMailboxRow = readonly [mailbox: Link<EncodedObject<Json>>, acknowledgement: Link<Signature>];
+/**
+ * The schema of an opened mailbox as a row of an index: the mailbox, and the
+ * service's signature over its acknowledgement.
+ */
+const openedMailboxRowSchema = schema("Opened mailbox row", {
+  mailbox: link<EncodedObject<Json>>(),
+  acknowledgement: link<Signature>(),
+});
+
+type OpenedMailboxOrder = readonly ["mailbox", "acknowledgement"];
 
 /**
  * The mailboxes that the user's client opened, by the records that it
@@ -51,14 +79,21 @@ export interface OpenedMailboxes {
   acknowledgementOf(mailbox: Link<EncodedObject<Json>>): Promise<Link<Signature> | undefined>;
 }
 
-export type OpenedMailboxesView = View<OpenedMailboxRow, OpenedMailboxes>;
+export type OpenedMailboxesView = View<
+  Json,
+  DataOf<typeof openedMailboxRowSchema>,
+  OpenedMailboxOrder,
+  OpenedMailboxes
+>;
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(objectsOf(openedMailboxSchema), ({ data }) => [[data.mailbox.$link, data.acknowledgement.$link]]),
+    index: indexOver(objectsOf(openedMailboxSchema), openedMailboxRowSchema, ({ data }) => [
+      { mailbox: data.mailbox, acknowledgement: data.acknowledgement },
+    ]).orderedBy("mailbox", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(mailbox) {
-        for await (const [, link] of rows.range([mailbox])) return link;
+        for await (const { data } of rows.range([{ $link: mailbox }])) return data.acknowledgement.$link;
         return undefined;
       },
     }),

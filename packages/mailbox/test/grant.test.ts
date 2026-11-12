@@ -3,7 +3,8 @@ import {
   type Actor,
   ed25519,
   type Identifier,
-  type IdentityVersion,
+  type IdentityVersionData,
+  type IdentityVersionOrder,
   loadIdentity,
   type People,
   type Signature,
@@ -26,8 +27,10 @@ import { MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
-const seenPeople: View<IdentityVersion, People> = {
-  index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
+const seenPeople: View<Json, IdentityVersionData, IdentityVersionOrder, People> = {
+  index: indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+    identityVersion,
+  ]).orderedBy(...identityVersions.order),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 const network = new MemoryNetwork();

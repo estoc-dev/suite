@@ -1,30 +1,39 @@
-import { type Json, type Link, type Reader, SelectionBySchema } from "@estoc/object";
-import { hasSigner, type Identifier } from "./identity.ts";
+import { type Json, type JsonLink, type Link, type Reader, SelectionBySchema } from "@estoc/object";
+import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
+import { hasSigner } from "./identity.ts";
+import type { KeyObject } from "./key/interface.ts";
 import type { People, Person } from "./person.ts";
 import type { Signature } from "./signature.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
- * An identity version as a row: its identifier, its `at`, its signed
- * identity, and the last crisis of its chain.
+ * The schema of an identity version as a row of an index: its identifier,
+ * its `at`, its signed identity, and the last crisis of its chain.
  *
  * - A root that signs one identity twice with a signer that signs with
  *   randomness makes two identity versions at one `at`, told apart by the
  *   links of their signed identities.
- * - The rows of someone's identity versions are in the order of their keys,
- *   `at` and then the link of the signed identity.
  * - `lastCrisis` is the signed identity of the latest crisis among it and
  *   those it follows, itself when it is one. A row has none when none of them
  *   is a crisis.
  */
-export type IdentityVersion =
-  | readonly [identifier: Identifier, at: number, signedIdentity: Link<SignedIdentityObject>]
-  | readonly [
-      identifier: Identifier,
-      at: number,
-      signedIdentity: Link<SignedIdentityObject>,
-      lastCrisis: Link<SignedIdentityObject>,
-    ];
+export const identityVersionSchema = schema("Identity Version", {
+  identifier: link<KeyObject>(),
+  at: integer(),
+  signedIdentity: link<SignedIdentityObject>(),
+  lastCrisis: optional(link<SignedIdentityObject>()),
+});
+
+export type IdentityVersionData = DataOf<typeof identityVersionSchema>;
+
+/** The fields that order the rows of identity versions: those of someone come together, in the order of their `at`. */
+export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity"];
+
+/** The rows of an index of identity versions, as `people` reads them. */
+export interface IdentityVersionRows {
+  /** The rows of the identity versions of `identifier`. */
+  range(prefix: readonly [identifier: JsonLink<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
+}
 
 /**
  * A reader of the blobs a store holds that also says in what order the store
@@ -37,8 +46,12 @@ export interface StoreReader extends Reader {
 
 /** Identity versions: the row each is, their selection, and the people of those a reader has seen. */
 export class IdentityVersions {
+  /** The schema of the rows of an index of identity versions, for whoever makes the index. */
+  readonly schema = identityVersionSchema;
+  /** The fields to order that index by, for `people` to read its rows. */
+  readonly order: IdentityVersionOrder = ["identifier", "at", "signedIdentity"];
   /**
-   * The selection of signed identities, each read as the row
+   * The selection of signed identities, each read as the data of the row
    * `identityVersionOf` gives.
    *
    * - Anyone can send a signed identity, so one whose identity does not read,
@@ -50,7 +63,7 @@ export class IdentityVersions {
    * @throws from `read`, when the reader gives no blob for the record, and
    *   where `decodeObject` throws for an object of the signed identity schema.
    */
-  readonly selection: SelectionBySchema<Json, IdentityVersion, SignedIdentityData>;
+  readonly selection: SelectionBySchema<Json, IdentityVersionData, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
@@ -64,11 +77,15 @@ export class IdentityVersions {
     });
   }
 
-  identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersion {
+  identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {
     const { identity, link } = signedIdentity;
     const lastCrisis = lastCrisisOf(signedIdentity);
-    const row = [identity.identifier, identity.data.at, link] as const;
-    return lastCrisis === undefined ? row : [...row, lastCrisis];
+    return {
+      identifier: { $link: identity.identifier },
+      at: identity.data.at,
+      signedIdentity: { $link: link },
+      ...(lastCrisis === undefined ? {} : { lastCrisis: { $link: lastCrisis } }),
+    };
   }
 
   /**
@@ -81,12 +98,13 @@ export class IdentityVersions {
    * the blobs of a store does: the store holds the closure of each, and a
    * signed identity whose closure it lacks does not read.
    */
-  people(rows: { range(prefix: readonly [Identifier]): AsyncIterable<IdentityVersion> }, store: StoreReader): People {
+  people(rows: IdentityVersionRows, store: StoreReader): People {
     const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, store);
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
-      for await (const row of rows.range([signedIdentity.identity.identifier])) seen.set(row[2], row);
+      for await (const { data } of rows.range([{ $link: signedIdentity.identity.identifier }]))
+        seen.set(data.signedIdentity.$link, data);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
       return {
         inHand,
@@ -119,9 +137,9 @@ export class IdentityVersions {
       const countingVersions = countingVersionsAmong(seen);
       let countingVersionsThen = countingVersions;
       if (position !== undefined) {
-        const heldThen: IdentityVersion[] = [];
+        const heldThen: IdentityVersionData[] = [];
         for (const row of seen) {
-          const [, , link] = row;
+          const link = row.signedIdentity.$link;
           const heldAt = await store.positionOf(link);
           if (inHand.has(link) || (heldAt !== undefined && heldAt < position)) heldThen.push(row);
         }
@@ -160,16 +178,18 @@ function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentity
  * all of them when none is a crisis. Those that follow a crisis come after
  * it, so each crisis met starts them over.
  */
-function countingVersionsAmong(ordered: readonly IdentityVersion[]): Link<SignedIdentityObject>[] {
+function countingVersionsAmong(ordered: readonly IdentityVersionData[]): Link<SignedIdentityObject>[] {
   let countingVersions: Link<SignedIdentityObject>[] = [];
   let cut: Link<SignedIdentityObject> | undefined;
-  for (const [, , link, lastCrisis] of ordered) {
-    if (link === lastCrisis) [cut, countingVersions] = [link, [link]];
-    else if (lastCrisis === cut) countingVersions.push(link);
+  for (const { signedIdentity, lastCrisis } of ordered) {
+    const link = signedIdentity.$link;
+    if (link === lastCrisis?.$link) [cut, countingVersions] = [link, [link]];
+    else if (lastCrisis?.$link === cut) countingVersions.push(link);
   }
   return countingVersions;
 }
 
-function compareIdentityVersions([, at, link]: IdentityVersion, [, otherAt, otherLink]: IdentityVersion): number {
-  return at !== otherAt ? at - otherAt : link < otherLink ? -1 : link > otherLink ? 1 : 0;
+function compareIdentityVersions(a: IdentityVersionData, b: IdentityVersionData): number {
+  const [link, otherLink] = [a.signedIdentity.$link, b.signedIdentity.$link];
+  return a.at !== b.at ? a.at - b.at : link < otherLink ? -1 : link > otherLink ? 1 : 0;
 }

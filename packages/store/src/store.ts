@@ -1,5 +1,5 @@
-import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
-import { type Index, KeptRows, type Key, type RowKeeper, rowsOf, type SortedRows } from "./scan.ts";
+import { type Bytes, type Encoding, type Fields, type Link, linkOf, schemaOf } from "@estoc/object";
+import { type FieldNames, KeptRows, type OrderedIndex, type RowKeeper, rowsOf, type SortedRows } from "./scan.ts";
 
 /**
  * Where a store keeps its blobs and its records: memory, a file, or storage in a browser. It
@@ -225,7 +225,9 @@ class StoreOf<D> implements Store, RowKeeper {
     return this.#backend.positionOf(link);
   }
 
-  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+  [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
+    index: OrderedIndex<D, F, By>,
+  ): Promise<SortedRows<D, F, By>> {
     return this.#keptRows.rowsOf(index);
   }
 
@@ -361,12 +363,10 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     return this.#store.positionOf(link);
   }
 
-  async [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
-    return (await this.#store[rowsOf](index)).adding(
-      { records: this.#records, blobs: this.#blobs.keys() },
-      this,
-      index,
-    );
+  async [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
+    index: OrderedIndex<D, F, By>,
+  ): Promise<SortedRows<D, F, By>> {
+    return (await this.#store[rowsOf](index)).adding({ records: this.#records, blobs: this.#blobs.keys() }, this);
   }
 
   commit(): Promise<void> {
@@ -442,7 +442,9 @@ export class PrivateStore {
     return this.#store.positionOf(link);
   }
 
-  [rowsOf]<K extends Key>(index: Index<K>): Promise<SortedRows<K>> {
+  [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
+    index: OrderedIndex<D, F, By>,
+  ): Promise<SortedRows<D, F, By>> {
     return this.#store[rowsOf](index);
   }
 }

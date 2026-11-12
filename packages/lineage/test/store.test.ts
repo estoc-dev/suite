@@ -1,6 +1,6 @@
 import { encodeObject, type Implementation, type Json, json, type Link } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
-import { type Index, indexOver, MemoryBackend, Store, scan } from "@estoc/store";
+import { type DataOf, link, schema, string } from "@estoc/schema";
+import { indexOver, MemoryBackend, type OrderedIndex, Store, scan } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
@@ -13,12 +13,15 @@ const second = encodeObject(note, { text: "second" });
 const third = encodeObject(note, { text: "third" });
 const other = encodeObject(note, { text: "other" });
 
-const bySeries = indexOver(lineages.selection, function* ({ first, head }) {
-  yield [first.link, head.link] as const;
-});
-const byItem = indexOver(lineages.selection, function* ({ items, head }) {
-  for (const item of items) yield [item, head.link] as const;
-});
+const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
+type HeadIndex = OrderedIndex<Json, DataOf<typeof headSchema>, readonly ["of", "head"]>;
+
+const bySeries: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ first, head }) {
+  yield { of: { $link: first.link }, head: { $link: head.link } };
+}).orderedBy("of", "head");
+const byItem: HeadIndex = indexOver(lineages.selection, headSchema, function* ({ items, head }) {
+  for (const item of items) yield { of: { $link: item }, head: { $link: head.link } };
+}).orderedBy("of", "head");
 
 async function writeHeads(store: Store, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
@@ -28,13 +31,9 @@ async function writeHeads(store: Store, ...chains: readonly Lineage[]) {
   });
 }
 
-async function readHeads(
-  store: Store,
-  index: Index<readonly [Link<unknown>, Link<LineageNodeObject>]>,
-  key: Link<unknown>,
-): Promise<Link<LineageNodeObject>[]> {
+async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
   const heads: Link<LineageNodeObject>[] = [];
-  for await (const [, head] of (await scan(store, index)).range([key])) heads.push(head);
+  for await (const { data } of (await scan(store, index)).range([{ $link: key }])) heads.push(data.head.$link);
   return heads;
 }
 
@@ -92,14 +91,15 @@ describe("the selection of a schema lineage over a store", () => {
     const untitledRecord = encodeObject(note, { text: "untitled" });
     const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });
     await store.write({ records: [untitledRecord, titledRecord], blobs: notes.blobs });
-    const byText = indexOver(notes.selection, function* ({ text, title }) {
-      yield [text, title ?? ""] as const;
-    });
-    const rows: (readonly [string, string])[] = [];
-    for await (const row of (await scan(store, byText)).range([])) rows.push(row);
+    const titled = schema("Titled", { text: string(), title: string() });
+    const byText = indexOver(notes.selection, titled, function* ({ text, title }) {
+      yield { text, title: title ?? "" };
+    }).orderedBy("text");
+    const rows: DataOf<typeof titled>[] = [];
+    for await (const { data } of (await scan(store, byText)).range([])) rows.push(data);
     expect(rows).toEqual([
-      ["titled", "Greeting"],
-      ["untitled", ""],
+      { text: "titled", title: "Greeting" },
+      { text: "untitled", title: "" },
     ]);
   });
 });

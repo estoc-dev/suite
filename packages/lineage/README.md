@@ -71,6 +71,7 @@ closures of its items:
 ```ts
 import { lineages } from "@estoc/lineage";
 import { encodeObject } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import { indexOver, scan } from "@estoc/store";
 
 const firstDraft = encodeObject(note, { text: "first draft" });
@@ -92,11 +93,12 @@ version, and one by `head.data.item.$link` only the heads that carry it.
 Indexes and views are the application's, and this package has none:
 
 ```ts
-const bySeries = indexOver(lineages.selection, function* ({ first, head }) {
-  yield [first.link, head.link] as const;
-});
-for await (const [, head] of (await scan(store, bySeries)).range([lineage.first.link])) {
-  // every head of the series written as a record
+const headSchema = schema("Head", { series: link(), head: link() });
+const bySeries = indexOver(lineages.selection, headSchema, function* ({ first, head }) {
+  yield { series: { $link: first.link }, head: { $link: head.link } };
+}).orderedBy("series");
+for await (const { data } of (await scan(store, bySeries)).range([{ $link: lineage.first.link }])) {
+  // `data.head`: every head of the series written as a record
 }
 ```
 
@@ -165,10 +167,12 @@ selection other than by schema, it reads each record itself. An index of
 
 ```ts
 import { SelectionBySchemaLineage } from "@estoc/lineage";
+import { schema, string } from "@estoc/schema";
 import { indexOver } from "@estoc/store";
 
-const byText = indexOver(notes.selection, function* ({ text }) {
-  yield [text] as const;
-});
+const textSchema = schema("Text", { text: string() });
+const byText = indexOver(notes.selection, textSchema, function* ({ text }) {
+  yield { text };
+}).orderedBy("text");
 const titles = new SelectionBySchemaLineage(notes, ({ title }) => title); // the notes that have a title
 ```

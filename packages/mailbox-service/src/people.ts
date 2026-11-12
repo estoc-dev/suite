@@ -1,7 +1,8 @@
-import type { IdentityVersion, IdentityVersions, People } from "@estoc/identity";
+import type { IdentityVersionData, IdentityVersionOrder, IdentityVersions, People } from "@estoc/identity";
+import type { Json } from "@estoc/object";
 import { indexOverBlobs, type View } from "@estoc/store";
 
-export type PeopleView = View<IdentityVersion, People>;
+export type PeopleView = View<Json, IdentityVersionData, IdentityVersionOrder, People>;
 
 /**
  * The people of a service's store, or of a client's of it, by the signed
@@ -14,7 +15,9 @@ export type PeopleView = View<IdentityVersion, People>;
  */
 export function peopleView(identityVersions: IdentityVersions): PeopleView {
   return {
-    index: indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]),
+    index: indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+      identityVersion,
+    ]).orderedBy(...identityVersions.order),
     read: (rows, reader) => identityVersions.people(rows, reader),
   };
 }

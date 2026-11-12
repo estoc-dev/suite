@@ -1,17 +1,8 @@
 import { readBundle, writeBundle } from "@estoc/bundle";
 import { encodeObject, type JsonObject, json, type Link, linkOf, objectsOf } from "@estoc/object";
-import { type DataOf, link, optional, schema, string } from "@estoc/schema";
+import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import {
-  type Index,
-  Intake,
-  inboundSchema,
-  indexOver,
-  MemoryBackend,
-  RefusedBatch,
-  Store,
-  scan,
-} from "../src/index.ts";
+import { Intake, inboundSchema, indexOver, MemoryBackend, RefusedBatch, Store, scan } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -136,9 +127,10 @@ describe("an intake", () => {
 });
 
 describe("the records of an intake", () => {
-  const cameIn: Index<readonly [bundle: Link<never>, at: number]> = indexOver(objectsOf(inboundSchema), ({ data }) => [
-    [data.bundle.$link, data.at],
-  ]);
+  const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
+  const cameIn = indexOver(objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
+    { bundle: data.bundle, at: data.at },
+  ]).orderedBy("bundle", "at");
 
   it("give an index when each bundle came in, the earliest first", async () => {
     const store = newStore();
@@ -146,12 +138,9 @@ describe("the records of an intake", () => {
     const bundle = bundleOf(object({ text: "hello" }));
     await intake.receive(bundle);
     await intake.receive(bundle);
-    const rows: (readonly [Link<never>, number])[] = [];
-    for await (const row of (await scan(store, cameIn)).range([bundle.link])) rows.push(row);
-    expect(rows).toEqual([
-      [bundle.link, 1000],
-      [bundle.link, 1001],
-    ]);
+    const times: number[] = [];
+    for await (const { data } of (await scan(store, cameIn)).range([{ $link: bundle.link }])) times.push(data.at);
+    expect(times).toEqual([1000, 1001]);
   });
 
   it("are the only Inbound an index reads: one that someone sends stays in the closure of what came in", async () => {
@@ -159,8 +148,8 @@ describe("the records of an intake", () => {
     const note = object({ text: "hello" });
     const sentRecord = encodeObject(inboundSchema, { bundle: { $link: note.link as Link<never> }, at: 0 });
     await intakeOf(store).receive(bundleOf(sentRecord, [note.bytes, anything.bytes, inboundSchema.bytes]));
-    const rows: (readonly [Link<never>, number])[] = [];
-    for await (const row of (await scan(store, cameIn)).range([])) rows.push(row);
-    expect(rows).toEqual([[sentRecord.link as Link<never>, 1000]]);
+    const rows: DataOf<typeof arrivalSchema>[] = [];
+    for await (const { data } of (await scan(store, cameIn)).range([])) rows.push(data);
+    expect(rows).toEqual([{ bundle: { $link: sentRecord.link }, at: 1000 }]);
   });
 });

@@ -413,33 +413,33 @@ describe("the identity version of a signed identity", () => {
     ["with agents", () => publish(root, { agents: [key(ed25519, 2)], at: 1_000 })],
   ])("is the identifier, the at and the link of an identity %s", async (_, signed) => {
     const signedIdentity = await signed();
-    expect(identityVersions.identityVersionOf(signedIdentity)).toEqual([
-      signedIdentity.identity.identifier,
-      1_000,
-      signedIdentity.link,
-    ]);
+    expect(identityVersions.identityVersionOf(signedIdentity)).toEqual({
+      identifier: { $link: signedIdentity.identity.identifier },
+      at: 1_000,
+      signedIdentity: { $link: signedIdentity.link },
+    });
   });
 
   it("names itself as its last crisis when it is a crisis", async () => {
     const crisis = await publish(root, { prior: await publish(root, { at: 1_000 }), isCrisis: true, at: 2_000 });
-    expect(identityVersions.identityVersionOf(crisis)).toEqual([
-      crisis.identity.identifier,
-      2_000,
-      crisis.link,
-      crisis.link,
-    ]);
+    expect(identityVersions.identityVersionOf(crisis)).toEqual({
+      identifier: { $link: crisis.identity.identifier },
+      at: 2_000,
+      signedIdentity: { $link: crisis.link },
+      lastCrisis: { $link: crisis.link },
+    });
   });
 
   it("names as its last crisis the latest crisis it follows", async () => {
     const first = await publish(root, { isCrisis: true, at: 1_000 });
     const crisis = await publish(root, { prior: first, isCrisis: true, at: 2_000 });
     const after = await publish(root, { prior: await publish(root, { prior: crisis, at: 3_000 }), at: 4_000 });
-    expect(identityVersions.identityVersionOf(after)).toEqual([
-      after.identity.identifier,
-      4_000,
-      after.link,
-      crisis.link,
-    ]);
+    expect(identityVersions.identityVersionOf(after)).toEqual({
+      identifier: { $link: after.identity.identifier },
+      at: 4_000,
+      signedIdentity: { $link: after.link },
+      lastCrisis: { $link: crisis.link },
+    });
   });
 });
 

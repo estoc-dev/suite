@@ -281,15 +281,17 @@ follows it, so a reader that has seen only a later one has seen the crisis
 too.
 
 `identityVersions.identityVersionOf` gives the identity version a signed
-identity is, as a row: its identifier, its `at`, its link and, where there
-is one, its last crisis, the latest crisis among it and those it follows. Each
+identity is, as the data of a row of `identityVersionSchema`: its identifier,
+its `at`, its link and, where there is one, its last crisis, the latest crisis
+among it and those it follows. Each
 identity version is later than the one it follows, so no crisis follows the
 latest crisis, and those that count are the ones whose last crisis it is.
-The rows of one identifier are in the order of their keys, `at` and then
-the link.
+`identityVersions.schema` is that schema, and `identityVersions.order` the
+fields to order an index of those rows by: the identifier, `at` and then the
+link, so the rows of one identifier come together, in the order of their `at`.
 
 `identityVersions.selection` is the `SelectionBySchema` of signed identities,
-each read as its row. A signed identity carries its authority in its root's
+each read as the data of its row. A signed identity carries its authority in its root's
 signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
 `indexOverBlobs` of `@estoc/store`. A stranger can add no identity version of
@@ -384,7 +386,9 @@ takes one already read. With `@estoc/store`, an application gives the index
 and `identityVersions.people` reads its rows:
 
 ```ts
-const seen = indexOverBlobs(identityVersions.selection, (identityVersion) => [identityVersion]);
+const seen = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
+  identityVersion,
+]).orderedBy(...identityVersions.order);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(link, store, people.asTakenIn);
 const author = people.personOf(signature.signedIdentity);
@@ -482,10 +486,15 @@ reader's `SeenIdentityVersions`. Here the notes each person has signed, by
 their identifier:
 
 ```ts
-const signedNotes = indexOver(signatures.selectionOver(noteSchema), async function* ({ signature, object }, reader) {
-  const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-  yield [signedIdentity.identity.identifier, object.link];
-});
+const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
+const signedNotes = indexOver(
+  signatures.selectionOver(noteSchema),
+  signedNoteSchema,
+  async function* ({ signature, object }, reader) {
+    const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
+    yield { signer: { $link: signedIdentity.identity.identifier }, note: { $link: object.link } };
+  },
+).orderedBy("signer");
 ```
 
 Finding the signatures over an object takes an index by the link they

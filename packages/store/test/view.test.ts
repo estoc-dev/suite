@@ -1,27 +1,31 @@
-import { encodeObject, json, type Link, objectsOf, readObject } from "@estoc/object";
-import { array, type DataOf, integer, schema, string } from "@estoc/schema";
+import { encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
+import { array, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Index, indexOver, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { indexOver, MemoryBackend, type OrderedIndex, Store, type View, view } from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
 
-type Row = readonly [tag: string, at: number, note: Link<unknown>];
+const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
+type Tagged = DataOf<typeof taggedSchema>;
+type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: Index<Row> = indexOver(objectsOf(noteSchema), ({ link, data }) =>
-  data.tags.map((tag) => [tag, data.at, link] as const),
-);
+const byTag: OrderedIndex<Json, Tagged, TaggedOrder> = indexOver(
+  objectsOf(noteSchema),
+  taggedSchema,
+  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
+).orderedBy("tag", "at");
 
 interface Latest {
   noteTagged(tag: string): Promise<Note | undefined>;
 }
 
-const latest: View<Row, Latest> = {
+const latest: View<Json, Tagged, TaggedOrder, Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
       let last: Link<unknown> | undefined;
-      for await (const [, , note] of rows.range([tag])) last = note;
+      for await (const { data } of rows.range([tag])) last = data.note.$link;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
     },
   }),
@@ -58,11 +62,11 @@ describe("the value of a view", () => {
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
-    const tags: View<Row, Promise<Set<string>>> = {
+    const tags: View<Json, Tagged, TaggedOrder, Promise<Set<string>>> = {
       index: byTag,
       async read(rows) {
         const tags = new Set<string>();
-        for await (const [tag] of rows.range([])) tags.add(tag);
+        for await (const { data } of rows.range([])) tags.add(data.tag);
         return tags;
       },
     };

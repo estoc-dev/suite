@@ -9,13 +9,13 @@ import {
   SoftwareSigner,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
+import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
-  type Index,
   Intake,
   inboundSchema,
   indexOver,
   MemoryBackend,
+  type OrderedIndex,
   PrivateStore,
   type Rows,
   Store,
@@ -41,20 +41,29 @@ const schemas = [line, signatures.schema].map(({ bytes }) => bytes);
 
 type Direction = "inbound" | "outbound";
 type Mailbox = Link<EncodedObject<Json>>;
-type DeliveryRow = [direction: Direction, mailbox: Mailbox, at: number, bundle: Link<never>];
+const delivery = schema("Delivery", {
+  direction: string(),
+  mailbox: link<EncodedObject<Json>>(),
+  at: integer(),
+  bundle: link<never>(),
+});
+type Delivery = DataOf<typeof delivery>;
+type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
-const deliveries: Index<DeliveryRow> = indexOver(
+const deliveries: OrderedIndex<Json, Delivery, DeliveryOrder> = indexOver(
   objectsOf(inboundSchema),
-  ({ data: { via, at, bundle } }): DeliveryRow[] =>
-    via === undefined ? [] : [["inbound", via.$link, at, bundle.$link]],
-).union(
-  indexOver(objectsOf(outboundSchema), ({ data: { mailbox, at, bundle } }): DeliveryRow[] => [
-    ["outbound", mailbox.$link, at, bundle.$link],
-  ]),
-);
+  delivery,
+  ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
+)
+  .union(
+    indexOver(objectsOf(outboundSchema), delivery, ({ data: { mailbox, at, bundle } }) => [
+      { direction: "outbound", mailbox, at, bundle },
+    ]),
+  )
+  .orderedBy("direction", "mailbox", "at", "bundle");
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -65,17 +74,26 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // What came in at `mine` and went out to `theirs`, in the order of when. A
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
-async function conversation(rows: Rows<DeliveryRow>, mine: Mailbox, theirs: Mailbox): Promise<DeliveryRow[]> {
-  const first = async (range: AsyncIterable<DeliveryRow>) => {
+async function conversation(
+  rows: Rows<Json, Delivery, DeliveryOrder>,
+  mine: Mailbox,
+  theirs: Mailbox,
+): Promise<Delivery[]> {
+  const first = async (range: AsyncIterable<{ readonly data: Delivery }>) => {
     const seenBundles = new Set<Link<never>>();
-    return (await all(range)).filter(([, , , bundle]) => {
-      const isFirst = !seenBundles.has(bundle);
-      seenBundles.add(bundle);
-      return isFirst;
-    });
+    return (await all(range))
+      .map(({ data }) => data)
+      .filter(({ bundle }) => {
+        const isFirst = !seenBundles.has(bundle.$link);
+        seenBundles.add(bundle.$link);
+        return isFirst;
+      });
   };
-  const ways = await Promise.all([first(rows.range(["inbound", mine])), first(rows.range(["outbound", theirs]))]);
-  return ways.flat().sort((a, b) => a[2] - b[2]);
+  const ways = await Promise.all([
+    first(rows.range(["inbound", { $link: mine }])),
+    first(rows.range(["outbound", { $link: theirs }])),
+  ]);
+  return ways.flat().sort((a, b) => a.at - b.at);
 }
 
 interface Person {
@@ -150,11 +168,11 @@ async function chat(faults: Faults = {}) {
   const show = async (person: Person, mine: Mailbox, theirs: Mailbox) => {
     const rows = await conversation(await scan(person.store, deliveries), mine, theirs);
     const lines = await Promise.all(
-      rows.map(async ([direction, mailbox, , bundle]) => {
+      rows.map(async ({ direction, mailbox, bundle }) => {
         const signature: Signature | undefined =
           direction === "inbound"
-            ? await person.correspondence.messageAt(mailbox, bundle)
-            : await signatures.read(bundle, person.store, noIdentityVersions);
+            ? await person.correspondence.messageAt(mailbox.$link, bundle.$link)
+            : await signatures.read(bundle.$link, person.store, noIdentityVersions);
         if (signature === undefined) return undefined;
         const { data } = await readObject(person.store, signature.object, line);
         return [direction, names.get(signature.signedIdentity.identity.identifier), data.text];

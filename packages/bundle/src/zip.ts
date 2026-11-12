@@ -1,6 +1,7 @@
 import type { Bytes } from "@estoc/object";
 import { configure, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
 import { BLOB, type Bundle, ROOT, readBundle, writeBundle } from "./bundle.ts";
+import { joined } from "./bytes.ts";
 
 const LIMITS = { bytes: 64 * 2 ** 20, entries: 10_000 };
 // Stored, and DEFLATE.
@@ -125,14 +126,4 @@ export function packBundle(
  */
 export async function unpackBundle(zip: Uint8Array): Promise<Bundle> {
   return readBundle(await unzipBundle(zip, { bytes: zip.length }));
-}
-
-function joined(chunks: Uint8Array[]): Uint8Array {
-  const bytes = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.length;
-  }
-  return bytes;
 }

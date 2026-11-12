@@ -29,6 +29,9 @@ importers:
       '@zip.js/zip.js':
         specifier: ^2.24.0
         version: 2.24.0
+      cborg:
+        specifier: ^6.2.1
+        version: 6.2.1
     devDependencies:
       '@estoc/identity':
         specifier: workspace:*

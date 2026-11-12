@@ -23,6 +23,9 @@ bundle.get(message.link); // message.bytes
 [...bundle.blobs()];      // signature.bytes, message.bytes, ...signature.signedIdentity.blobs
 ```
 
+A bundle whose root is an object of est is not a folder but
+[one file](#one-file), read into the same `Bundle`.
+
 ## The root
 
 A bundle has a root, and the root is an object, so a reader knows what a
@@ -194,3 +197,50 @@ A packed bundle is a zip like any other, so it can be kept as a file, and
   ciphertext could tell them whether their part repeats something secret
   elsewhere in it. Without compression the length depends on the sizes of
   the files alone.
+
+## One file
+
+A bundle whose root is an object of est is one file: the bytes of the root,
+then each blob it carries as a CBOR byte string.
+
+```
+da 65 73 74 3f 82 ...   the root: an object of est, as @estoc/object writes it
+58 37 <55 bytes>        a blob: a byte string, its head giving its length
+48 <8 bytes>            another
+```
+
+`encodeBundle` writes the file and `decodeBundle` reads it, into the same
+`Bundle` that `readBundle` gives.
+
+```ts
+import { decodeBundle, encodeBundle } from "@estoc/bundle";
+
+const file = encodeBundle(root, [hello.bytes, image]);
+const bundle = decodeBundle(file);
+bundle.link;            // root.link
+bundle.get(hello.link); // hello.bytes
+[...bundle.blobs()];    // root.bytes, hello.bytes, image
+```
+
+- A file that carries no blob is the bytes of its root. So an object of est
+  is a bundle as it is, and the hash of the file is its link.
+- A blob has no name. Its link is the hash of what the byte string holds, so
+  no blob can be filed under a link that is not its own.
+- A blob is any bytes and is not read. An object carried in the file is a
+  byte string as an image is, and only the root is written bare.
+- The blobs are in any order. `encodeBundle` writes them in the order given,
+  each once, and leaves out the root when it is given among them.
+- Nothing is compressed, so the blobs come to less than the length of the
+  file, and reading has no other limit.
+
+The whole file is refused when:
+
+- it does not start with an object of est. An object of JSON is not one.
+- what follows the root is anything but byte strings, each of a definite
+  length under the shortest head, or the last one runs past the end of the
+  file.
+- it holds a blob twice, the root included.
+
+The schemas of `@estoc/schema`, and so the objects of the packages over it,
+are in JSON. Until they are in est, the objects of such a file are made with
+`est` of `@estoc/object` itself.

@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@estoc/object": "workspace:*",
-    "@zip.js/zip.js": "^2.24.0"
+    "@zip.js/zip.js": "^2.24.0",
+    "cborg": "^6.2.1"
   },
   "devDependencies": {
     "@estoc/identity": "workspace:*",

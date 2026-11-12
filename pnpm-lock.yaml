@@ -172,6 +172,9 @@ importers:
       canonicalize:
         specifier: ^5.1.0
         version: 5.1.0
+      cborg:
+        specifier: ^6.2.1
+        version: 6.2.1
     devDependencies:
       '@types/node':
         specifier: ^26.6.2
@@ -656,6 +659,10 @@ packages:
   canonicalize@5.1.0:
     resolution: {integrity: sha512-bab9+WefZljqQ8jT0qRwVmTyzAUU63K97QIQD3agynIBrb6sa5M2eAy8Hv8K3p4V9+ONVYZKtGYl4Dg+/5Gumw==}
     engines: {node: '>=22'}
+    hasBin: true
+
+  cborg@6.2.1:
+    resolution: {integrity: sha512-DwiF3Jd5RW6kJuTQMzQb/sdZD03utp15EcQNOMTvE/ZYCdDPzETsGOY5lj8imKxbsEuYvOzcMSiKLiT4C2/2Lw==}
     hasBin: true
 
   chai@5.3.3:
@@ -1154,6 +1161,8 @@ snapshots:
   cac@6.7.14: {}
 
   canonicalize@5.1.0: {}
+
+  cborg@6.2.1: {}
 
   chai@5.3.3:
     dependencies:

@@ -1,6 +1,6 @@
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import canonicalize from "canonicalize";
-import type { Encoding } from "./encoding.ts";
+import { type Encoding, itself } from "./encoding.ts";
 import { isLink, type Link } from "./link.ts";
 
 export type Json = null | boolean | number | string | readonly Json[] | JsonObject;
@@ -84,6 +84,7 @@ export const json: Encoding<Json> = {
     return value;
   },
   object(data, schema) {
+    if (schema === itself) throw new Error("JSON has no mark for an object written to itself");
     if (Object.hasOwn(data, "$schema"))
       throw new Error("the data of an object holds no $schema, which names the object's schema");
     return { ...data, $schema: { $link: schema } };

@@ -33,8 +33,9 @@ what makes it fresh, such as a nonce.
 ## Packages
 
 The substrate turns bytes into values with a link and a schema, and
-carries and keeps blobs. Like JSON or zip, it is shared, and it gives no
-meaning and no reader an advantage.
+carries and keeps blobs. It is shared, as a file format is: est is
+deterministic CBOR, which any CBOR decoder reads, and it gives no meaning
+and no reader an advantage.
 
 - `@estoc/object`: encodings and schema languages, objects, schemas and
   validators; est, in deterministic CBOR, as the encoding in use.

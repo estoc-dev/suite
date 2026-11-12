@@ -6,9 +6,9 @@ its schema, and who has to sign is up to the application that reads it.
 
 An object rests on an encoding, which writes each value of its data one
 way, and a schema language over that encoding. This package writes objects
-against what those two provide. It has two encodings, est and JSON with
-JCS, and no language of its own: the one in use, Estoc Schema, is in
-`@estoc/schema` and is over est. In that pair:
+against what those two provide. It has one encoding, est, and no language
+of its own: the one in use, Estoc Schema, is in `@estoc/schema` and is over
+est. In that pair:
 
 ```
 Link       LINK(h'<the SHA-256>'), wherever a value names a blob
@@ -38,12 +38,11 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     and the link of its schema, and refuses any other value as an object.
     Any other value is bytes.
   - A blob cannot hold its own hash, so an encoding may have a mark for an
-    object written to itself, in place of the link of its schema: est has
-    one, and JSON has none. The encoding gives the mark as `itself`, and
-    `decodeObject` and `schemaOf` read it as the link of the blob, so every
-    object they read names its schema by link. A root schema is such an
-    object, so a language of schemas is over an encoding that has the
-    mark.
+    object written to itself, in place of the link of its schema, as est
+    has. The encoding gives the mark as `itself`, and `decodeObject` and
+    `schemaOf` read it as the link of the blob, so every object they read
+    names its schema by link. A root schema is such an object, so a
+    language of schemas is over an encoding that has the mark.
   - The encoding finds the links in an object, so that the blobs in a
     blob's closure can be gathered without a schema to read it by, as a
     store gathers the closure it carries along with an object. Bytes link
@@ -175,41 +174,6 @@ da 65 73 74 3f            the tag of the format, "est?" in ASCII
   its schema follows them, at byte 11.
 - A blob does not say which version of the format it is in. Another
   encoding would be written under another tag.
-
-## JSON
-
-`json` is the other encoding of this package. No schema language is over
-it, since it has no mark for an object written to itself, and no package
-writes its objects in it.
-
-- `json` writes a JSON value as its JCS
-  ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
-- Decoding is strict: the bytes must be exactly the JCS encoding of the value
-  they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
-  or repeated, needless escapes, and numbers not written the shortest way
-  (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
-  refuses lone surrogates, NaN and Infinity. Apart from the rule on `$link`
-  below, there are no further rules on the JSON.
-- Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
-  `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
-  magnitude are exact in every language; write larger integers and decimal
-  amounts as strings when they have to be exact.
-- A link is the JSON object `{"$link": "sha256:<hex>"}`, with no other
-  member. JSON has no type for a link, so this marks one wherever a value
-  names a blob, and a string is a string whatever it holds. Any other
-  object with a `$link` member is refused, in writing and in reading,
-  whether it holds something other than a link or a member beside it, so
-  whatever has the mark of a link is one. The links the encoding finds in
-  an object are the ones these hold, its schema among them, and no others;
-  in bytes it finds none. In TypeScript a link in JSON data is a
-  `JsonLink<T>`, `{ $link: Link<T> }`.
-- An object is the JSON object of the fields of its data and `$schema`,
-  which holds the link of its schema. Only there does `$schema` name a
-  schema: deeper in the data it is a field like any other, and data with a
-  `$schema` of its own is refused. JSON without a `$schema` that is a link
-  is bytes, and links to nothing.
-- `json.encode` and `json.decode` are this encoding on its own, for formats
-  built on it that are not objects.
 
 ## Objects
 

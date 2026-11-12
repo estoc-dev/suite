@@ -14,9 +14,9 @@ export type Itself = typeof itself;
 
 /**
  * A model of data and the one way each of its values is written as bytes,
- * of which objects are made. JSON with JCS is one, and est, in deterministic
- * CBOR, is another. Two encodings of the same content are two blobs with two
- * links, and neither reads as the other.
+ * of which objects are made. est, in deterministic CBOR, is one. Two encodings
+ * of the same content are two blobs with two links, and neither reads as the
+ * other.
  */
 export interface Encoding<D> {
   /** @throws when the encoding cannot write `value`. */

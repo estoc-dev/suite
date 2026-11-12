@@ -135,7 +135,7 @@ async function listed(store: Store): Promise<Link<unknown>[]> {
 }
 
 describe("an HTTP mailbox's url", () => {
-  const fetched = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
+  const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
@@ -144,7 +144,7 @@ describe("an HTTP mailbox's url", () => {
     "http://127.0.0.1",
     "http://[::1]:8080?to=bob",
   ])("may be %s", async (url) => {
-    const fetch = fetched();
+    const fetch = mockFetch();
     await (await mailboxAt(url)).send(hello, []);
     expect(fetch.mock.calls.map(([posted]) => posted)).toEqual([url]);
   });
@@ -156,7 +156,7 @@ describe("an HTTP mailbox's url", () => {
     ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
     ["not a URL", "https://mail example/alice"],
   ])("turns a send back as to a mailbox that is gone when it is %s, and posts nothing", async (_, url) => {
-    const fetch = fetched();
+    const fetch = mockFetch();
     expect(await rejectedAs((await mailboxAt(url)).send(hello, []))).toBe("gone");
     expect(fetch).not.toHaveBeenCalled();
   });

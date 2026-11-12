@@ -1,6 +1,6 @@
-import { EstLink, est, itself, json, linkOf, schemaOf } from "@estoc/object";
+import { EstLink, est, itself, linkOf, schemaOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
-import { decodeBundle, encodeBundle, readBundle, writeBundle } from "../src/index.ts";
+import { decodeBundle, encodeBundle } from "../src/index.ts";
 
 const bytesOf = (hex: string) => Uint8Array.from(Buffer.from(hex, "hex"));
 const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
@@ -14,7 +14,7 @@ const root = {
   bytes: est.encode(est.object({ links: [new EstLink(linkOf(hello)), new EstLink(linkOf(image))] }, linkOf(anything))),
 };
 const rootLink = linkOf(root.bytes);
-const inJson = json.encode(json.object({ text: "hello" }, linkOf(anything)));
+const text = new TextEncoder().encode('{"text":"hello"}');
 
 // The files of the tests are written out by hand, in hex, so that they do not
 // turn on the writer they test.
@@ -24,7 +24,7 @@ const imageHex = `48${hexOf(image)}`;
 const rootAsBlobHex = `587d${rootHex}`;
 const decodeHex = (hex: string) => decodeBundle(bytesOf(hex));
 
-describe("a bundle in one file", () => {
+describe("the file of a bundle", () => {
   it("is the bytes of its root, then each blob as a byte string", () => {
     expect(hello).toHaveLength(0x37);
     expect(root.bytes).toHaveLength(0x7d);
@@ -83,14 +83,14 @@ describe("a bundle in one file", () => {
 
   it("does not read the blobs it carries, so one that is no object of est is bytes as an image is", () => {
     const cut = hello.slice(0, -1);
-    const bundle = decodeBundle(encodeBundle(root, [inJson, cut]));
-    expect(bundle.get(linkOf(inJson))).toEqual(inJson);
+    const bundle = decodeBundle(encodeBundle(root, [text, cut]));
+    expect(bundle.get(linkOf(text))).toEqual(text);
     expect(bundle.get(linkOf(cut))).toEqual(cut);
   });
 
   it.each<[string, string, string | RegExp]>([
     ["no bytes", "", /is an object of est/],
-    ["a root that is an object of JSON", hexOf(inJson), /is an object of est/],
+    ["a root that is text", hexOf(text), /is an object of est/],
     ["a root that is a map under no tag", "a0", /is an object of est/],
     ["a root that is a byte string, as a blob is", helloHex, /is an object of est/],
     ["a root cut short", rootHex.slice(0, -2), /is an object of est/],
@@ -112,15 +112,10 @@ describe("a bundle in one file", () => {
 
   it.each<[string, Uint8Array]>([
     ["bytes that are no object", image],
-    ["an object of JSON", inJson],
+    ["text", text],
     ["a file that carries a blob", bytesOf(`${rootHex}${imageHex}`)],
   ])("is not written with %s as its root", (_, bytes) => {
     expect(() => encodeBundle({ bytes }, [hello])).toThrow(/is an object of est/);
-  });
-
-  it("is not written or read as a folder, whose root is an object of JSON", () => {
-    expect(() => writeBundle(root, [hello])).toThrow(/not an object/);
-    expect(() => readBundle(new Map([["index.json", root.bytes]]))).toThrow(/not an object/);
   });
 
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([

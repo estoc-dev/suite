@@ -1,15 +1,15 @@
 import {
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
   type Implementation,
   Implementations,
   type Link,
+  LinkValue,
   type Reader,
   readObject,
   SelectionBySchema,
   schemaOf,
+  type Value,
 } from "@estoc/object";
 import { type DataOf, link, optional, schema } from "@estoc/schema";
 import { SchemaLineage } from "./schema-lineage.ts";
@@ -32,7 +32,7 @@ export const lineageNodeSchema = schema("Lineage Node", {
 
 export type LineageNodeData = DataOf<typeof lineageNodeSchema>;
 
-export interface LineageNodeObject extends EncodedObject<Est, LineageNodeData> {}
+export interface LineageNodeObject extends EncodedObject<Value, LineageNodeData> {}
 
 /**
  * A lineage read or built by `Lineages`, from its first node to its head.
@@ -72,14 +72,14 @@ export class Lineages {
    *
    * @throws where `read` does, when it reads a node.
    */
-  readonly selection: SelectionBySchema<Est, Lineage, LineageNodeData> = new SelectionBySchema(
+  readonly selection: SelectionBySchema<Value, Lineage, LineageNodeData> = new SelectionBySchema(
     lineageNodeSchema,
     (head, reader) => this.#readLineageEndingIn(head, reader),
   );
 
   /** The lineage of one node, which carries `item`. It writes nothing. */
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
-    return lineageOf([], encodeObject(lineageNodeSchema, { item: new EstLink(item.link) }));
+    return lineageOf([], encodeObject(lineageNodeSchema, { item: new LinkValue(item.link) }));
   }
 
   /**
@@ -133,7 +133,7 @@ function lineageOf(before: readonly LineageNodeObject[], head: LineageNodeObject
     appending: (item) =>
       lineageOf(
         nodes,
-        encodeObject(lineageNodeSchema, { previous: new EstLink(head.link), item: new EstLink(item.link) }),
+        encodeObject(lineageNodeSchema, { previous: new LinkValue(head.link), item: new LinkValue(item.link) }),
       ),
   };
 }

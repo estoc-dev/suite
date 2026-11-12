@@ -1,11 +1,11 @@
 import {
   decodeObject,
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
   type Link,
+  LinkValue,
   type Reader,
+  type Value,
 } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -113,18 +113,18 @@ const sale = schema("Sale", {
 });
 type Sale = DataOf<typeof sale>;
 
-const delivery = schema("Delivery", { sale: link<EncodedObject<Est, Sale>>() });
+const delivery = schema("Delivery", { sale: link<EncodedObject<Value, Sale>>() });
 
 // A sale is in force once its buyer and its seller have both signed it.
 async function saleInForce(
-  link: Link<EncodedObject<Est, Sale>>,
+  link: Link<EncodedObject<Value, Sale>>,
   receivedSignatures: ReceivedSignatures,
 ): Promise<Sale | undefined> {
   const bytes = await receivedSignatures.blobs.get(link);
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, receivedSignatures);
-  const signed = (party: EstLink<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
+  const signed = (party: LinkValue<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
   return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
 }
 
@@ -143,12 +143,12 @@ const buyer = signer(eip191, 1);
 const seller = signer(ed25519, 2);
 const witness = signer(solanaOffchain, 3);
 const terms = encodeObject(sale, {
-  buyer: new EstLink(keys.encode(buyer.key).link),
-  seller: new EstLink(keys.encode(seller.key).link),
+  buyer: new LinkValue(keys.encode(buyer.key).link),
+  seller: new LinkValue(keys.encode(seller.key).link),
   goods: "one bicycle",
   price: "120.00 CAD",
 });
-const confirmation = encodeObject(delivery, { sale: new EstLink(terms.link) });
+const confirmation = encodeObject(delivery, { sale: new LinkValue(terms.link) });
 const receive = (signed: readonly Signature[]): ReceivedSignatures => ({
   blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs)]),
   signatures: signed.map(({ bytes }) => bytes),

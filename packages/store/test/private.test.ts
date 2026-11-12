@@ -1,4 +1,4 @@
-import { EstLink, encodeObject, est, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectFormat, objectsOf, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedRecords } from "../src/index.ts";
@@ -15,7 +15,7 @@ const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
-  const store = new Store(est, sharedBackend);
+  const store = new Store(objectFormat, sharedBackend);
   return { store, privateStore: new PrivateStore(store, privateBackend) };
 }
 
@@ -30,7 +30,7 @@ describe("a private store", () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    const secret = object({ card: new EstLink(card.link), secret: Uint8Array.of(0) });
+    const secret = object({ card: new LinkValue(card.link), secret: Uint8Array.of(0) });
     await privateStore.write({ records: [secret] });
     expect(await privateStore.get(secret.link)).toEqual(secret.bytes);
     expect(await privateStore.get(card.link)).toEqual(card.bytes);
@@ -42,7 +42,7 @@ describe("a private store", () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    const secret = object({ card: new EstLink(card.link), secret: Uint8Array.of(0) });
+    const secret = object({ card: new LinkValue(card.link), secret: Uint8Array.of(0) });
     await privateStore.write({ records: [secret] });
     expect(await privateStore.positionOf(secret.link)).toBe(0);
     expect(await privateStore.positionOf(card.link)).toBeUndefined();
@@ -55,7 +55,7 @@ describe("a private store", () => {
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const image = utf8("an image");
-    const secret = object({ card: new EstLink(card.link), image: new EstLink(linkOf(image)) });
+    const secret = object({ card: new LinkValue(card.link), image: new LinkValue(linkOf(image)) });
     await privateStore.write({ records: [secret], blobs: [card.bytes, image, ...anything.blobs] });
     expect(await backend.has(secret.link)).toBe(true);
     expect(await backend.has(linkOf(image))).toBe(true);
@@ -66,7 +66,7 @@ describe("a private store", () => {
   it("refuses a batch with a blob in a record's closure that neither the batch, it nor the store beside it holds", async () => {
     const { privateStore } = sides();
     const absent = object({ name: "absent" });
-    const secret = object({ card: new EstLink(absent.link) });
+    const secret = object({ card: new LinkValue(absent.link) });
     await expect(privateStore.write({ records: [secret], blobs: [...anything.blobs] })).rejects.toThrow(
       `${secret.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
@@ -76,7 +76,7 @@ describe("a private store", () => {
   it("refuses to give a blob when the backend of the store beside it gives other bytes under the link", async () => {
     const backend = new MemoryBackend();
     const [card, other] = [object({ name: "Alice" }), object({ name: "Bob" })];
-    await new Store(est, backend).write({ records: [card, other], blobs: [...anything.blobs] });
+    await new Store(objectFormat, backend).write({ records: [card, other], blobs: [...anything.blobs] });
     const { privateStore } = sides({
       get: (link) => backend.get(link === card.link ? other.link : link),
       has: (link) => backend.has(link),
@@ -89,7 +89,7 @@ describe("a private store", () => {
   });
 
   it("is refused beside a store not made by `new Store`", () => {
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     const lookalike: Store = {
       get: <T>(link: Link<T>) => store.get(link),
       write: (batch) => store.write(batch),
@@ -115,7 +115,7 @@ describe("a private store", () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    await privateStore.write({ records: [object({ card: new EstLink(card.link) })] });
+    await privateStore.write({ records: [object({ card: new LinkValue(card.link) })] });
     const named = schema("Named", { name: string() });
     const byName = indexOver(selectedRecords(objectsOf(anything)), named, async function* ({ data }, reader) {
       if (data.card === undefined) return;
@@ -133,7 +133,7 @@ describe("the store beside a private store", () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    const secret = object({ card: new EstLink(card.link) });
+    const secret = object({ card: new LinkValue(card.link) });
     await privateStore.write({ records: [secret] });
     expect(await store.get(secret.link)).toBeUndefined();
     await expect(store.closure(secret.link)).rejects.toThrow(`the store does not hold ${secret.link}`);
@@ -144,7 +144,7 @@ describe("the store beside a private store", () => {
     const { store, privateStore } = sides();
     const secret = object({ secret: Uint8Array.of(0) });
     await privateStore.write({ records: [secret], blobs: [...anything.blobs] });
-    const leak = object({ leak: new EstLink(secret.link) });
+    const leak = object({ leak: new LinkValue(secret.link) });
     await expect(store.write({ records: [leak], blobs: [...anything.blobs] })).rejects.toThrow(
       `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,
     );

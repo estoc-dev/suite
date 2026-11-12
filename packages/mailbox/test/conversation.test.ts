@@ -10,13 +10,13 @@ import {
 } from "@estoc/identity";
 import {
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
-  est,
   type Link,
+  LinkValue,
+  objectFormat,
   objectsOf,
   readObject,
+  type Value,
 } from "@estoc/object";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
@@ -50,10 +50,10 @@ const line = schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 
 type Direction = "inbound" | "outbound";
-type Mailbox = Link<EncodedObject<Est>>;
+type Mailbox = Link<EncodedObject<Value>>;
 const delivery = schema("Delivery", {
   direction: string(),
-  mailbox: link<EncodedObject<Est>>(),
+  mailbox: link<EncodedObject<Value>>(),
   at: integer(),
   bundle: link<never>(),
 });
@@ -63,7 +63,7 @@ type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
-const deliveries: OrderedIndex<Est, Delivery, DeliveryOrder> = indexOver(
+const deliveries: OrderedIndex<Value, Delivery, DeliveryOrder> = indexOver(
   selectedRecords(objectsOf(inboundSchema)),
   delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
@@ -85,7 +85,7 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
 async function conversation(
-  rows: Rows<Est, Delivery, DeliveryOrder>,
+  rows: Rows<Value, Delivery, DeliveryOrder>,
   mine: Mailbox,
   theirs: Mailbox,
 ): Promise<Delivery[]> {
@@ -100,8 +100,8 @@ async function conversation(
       });
   };
   const ways = await Promise.all([
-    first(rows.range(["inbound", new EstLink(mine)])),
-    first(rows.range(["outbound", new EstLink(theirs)])),
+    first(rows.range(["inbound", new LinkValue(mine)])),
+    first(rows.range(["outbound", new LinkValue(theirs)])),
   ]);
   return ways.flat().sort((a, b) => a.at - b.at);
 }
@@ -132,7 +132,7 @@ async function chat(faults: Faults = {}) {
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, { transports, clock });
     const intake = new Intake(store, clock);
@@ -306,7 +306,7 @@ describe("a conversation", () => {
     await alice.collect();
 
     // What Alice wrote, written again to another store, last first and twice.
-    const copy = new Store(est, new MemoryBackend());
+    const copy = new Store(objectFormat, new MemoryBackend());
     const recordLinks = await all(alice.store.records());
     for (const link of [...recordLinks, ...recordLinks].reverse()) {
       const closure = await alice.store.closure(link);

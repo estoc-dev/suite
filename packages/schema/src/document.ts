@@ -1,4 +1,4 @@
-import { type Est, type EstMap, est, isEstMap, type SchemaLanguage } from "@estoc/object";
+import { isValueMap, objectFormat, type SchemaLanguage, type Value, type ValueMap } from "@estoc/object";
 
 const types = ["array", "link", "bytes", "integer", "string", "boolean", "any"] as const;
 
@@ -26,7 +26,7 @@ export type SchemaDocument = {
 };
 
 /**
- * Estoc Schema, the language of schemas over est.
+ * Estoc Schema, the language of schemas over the object format.
  *
  * - A schema is the object of its document, a `title` and `fields`, written to the root schema.
  * - The root schema is a schema of the language like any other, written to itself. It says that a
@@ -37,28 +37,28 @@ export type SchemaDocument = {
  * - A document has one spelling, as the encoding orders the members. So the same title and fields
  *   are the same blob.
  */
-export const schemaLanguage: SchemaLanguage<Est, SchemaDocument> = {
-  encoding: est,
+export const schemaLanguage: SchemaLanguage<Value, SchemaDocument> = {
+  encoding: objectFormat,
   root: { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } },
   data: (document) => document,
   document(data) {
     const { title, fields, ...rest } = data;
     refuseMembers(rest, "a schema holds a title and fields alone");
     if (typeof title !== "string") throw new Error("a schema holds a title, a string");
-    if (fields === undefined || !isEstMap(fields)) throw new Error("a schema holds fields, each by name");
+    if (fields === undefined || !isValueMap(fields)) throw new Error("a schema holds fields, each by name");
     for (const [name, field] of Object.entries(fields)) validateField(field, `the field ${name}`);
     return data as SchemaDocument;
   },
 };
 
-function validateField(field: Est, place: string): void {
+function validateField(field: Value, place: string): void {
   const { optional, ...type } = membersOf(field, place);
   if (optional !== undefined && optional !== true)
     throw new Error(`${place} is marked optional with true, or not marked`);
   validateType(type, place);
 }
 
-function validateType(value: Est, place: string): void {
+function validateType(value: Value, place: string): void {
   const { type, items, ...rest } = membersOf(value, place);
   refuseMembers(rest, `${place} holds a type, and items when it is an array`);
   if (!types.includes(type as (typeof types)[number]))
@@ -71,12 +71,12 @@ function validateType(value: Est, place: string): void {
   }
 }
 
-function membersOf(value: Est, place: string): EstMap {
-  if (!isEstMap(value)) throw new Error(`${place} is a map`);
+function membersOf(value: Value, place: string): ValueMap {
+  if (!isValueMap(value)) throw new Error(`${place} is a map`);
   return value;
 }
 
-function refuseMembers(members: EstMap, rule: string): void {
+function refuseMembers(members: ValueMap, rule: string): void {
   const names = Object.keys(members);
   if (names.length > 0) throw new Error(`${rule}, not ${names.join(", ")}`);
 }

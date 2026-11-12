@@ -163,7 +163,7 @@ Verifying is code, which no object holds, so a program refuses a scheme it
 has no verifier for whatever its schema says.
 
 `keys` reads keys through an `Implementations` of `@estoc/object`, with
-one implementation for each scheme. `keys.check` is the verifier of a key:
+one implementation for each scheme. `keys.verify` is the verifier of a key:
 it takes a key's object and gives the key, in the scheme of the schema the
 object is written to. `keys.read` does the same from the
 link of the object and a `Reader`, and picks the schema to read the object
@@ -496,7 +496,7 @@ const signedNotes = indexOver(
   signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-    yield { signer: new EstLink(signedIdentity.identity.identifier), note: new EstLink(object.link) };
+    yield { signer: new LinkValue(signedIdentity.identity.identifier), note: new LinkValue(object.link) };
   },
 ).orderedBy("signer");
 ```

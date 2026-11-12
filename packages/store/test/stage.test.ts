@@ -7,7 +7,16 @@ import {
   type People,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type Est, EstLink, encodeObject, est, type Link, linkOf, objectsOf, readObject } from "@estoc/object";
+import {
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectFormat,
+  objectsOf,
+  readObject,
+  type Value,
+} from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -30,7 +39,7 @@ const anything = schema("Anything", {
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
-const newStore = () => new Store(est, new MemoryBackend());
+const newStore = () => new Store(objectFormat, new MemoryBackend());
 
 async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -44,7 +53,7 @@ describe("a staged batch", () => {
     const heldObject = object({ text: "held" });
     await store.write({ records: [heldObject], blobs: [...anything.blobs] });
     const image = utf8("an image");
-    const note = object({ image: new EstLink(linkOf(image)), held: new EstLink(heldObject.link) });
+    const note = object({ image: new LinkValue(linkOf(image)), held: new LinkValue(heldObject.link) });
     const stagedStore = await store.stage({ records: [note], blobs: [image] });
     expect(await stagedStore.get(note.link)).toEqual(note.bytes);
     expect(await stagedStore.get(linkOf(image))).toEqual(image);
@@ -68,7 +77,7 @@ describe("a staged batch", () => {
     const store = newStore();
     const held = object({ text: "held" });
     await store.write({ records: [held], blobs: [...anything.blobs] });
-    const note = object({ held: new EstLink(held.link) });
+    const note = object({ held: new LinkValue(held.link) });
     const stagedStore = await store.stage({ records: [note, held] });
     expect(await stagedStore.positionOf(held.link)).toBe(2);
     expect(await stagedStore.positionOf(note.link)).toBeUndefined();
@@ -94,7 +103,7 @@ describe("a staged batch", () => {
       }),
     ).rejects.toThrow(/is not an object/);
     const image = utf8("an image");
-    const note = object({ image: new EstLink(linkOf(image)) });
+    const note = object({ image: new LinkValue(linkOf(image)) });
     await expect(store.stage({ records: [note], blobs: [carriedObject.bytes, ...anything.blobs] })).rejects.toThrow(
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
@@ -115,7 +124,7 @@ describe("a staged batch", () => {
   it("writes, once committed, what a write of the batch writes", async () => {
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
-    const note = object({ text: "hello", image: new EstLink(linkOf(image)) });
+    const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     const batch = { records: [note], blobs: [image, stray, ...anything.blobs] };
     const [writtenStore, committedStore] = [newStore(), newStore()];
     await writtenStore.write(batch);
@@ -131,7 +140,7 @@ describe("a staged batch", () => {
     const store = newStore();
     const heldObject = object({ text: "held" });
     await store.write({ records: [heldObject], blobs: [...anything.blobs] });
-    const note = object({ held: new EstLink(heldObject.link) });
+    const note = object({ held: new LinkValue(heldObject.link) });
     const stagedStore = await store.stage({ records: [note] });
     const other = object({ text: "other" });
     await store.write({ records: [other, note] });
@@ -143,7 +152,7 @@ describe("a staged batch", () => {
   it("keeps what it will write, whatever happens to the arrays it was given or gave out", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const note = object({ image: new EstLink(linkOf(image)) });
+    const note = object({ image: new LinkValue(linkOf(image)) });
     const [givenNote, givenImage] = [new Uint8Array(note.bytes), new Uint8Array(image)];
     const stagedStore = await store.stage({
       records: [{ bytes: givenNote }],
@@ -168,13 +177,13 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: OrderedIndex<Est, Tagged, TaggedOrder> = indexOver(
+const byTag: OrderedIndex<Value, Tagged, TaggedOrder> = indexOver(
   selectedRecords(objectsOf(noteSchema)),
   taggedSchema,
-  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new EstLink(link) })),
+  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 ).orderedBy("tag", "at");
 
-const texts: View<Est, Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
+const texts: View<Value, Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
   index: byTag,
   async read(rows, reader) {
     const texts: [tag: string, text: string][] = [];
@@ -188,7 +197,7 @@ const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-const people: View<Est, IdentityVersionData, IdentityVersionOrder, People> = {
+const people: View<Value, IdentityVersionData, IdentityVersionOrder, People> = {
   index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
     identityVersion,
   ]).orderedBy(...identityVersions.order),

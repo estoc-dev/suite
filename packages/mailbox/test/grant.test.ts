@@ -12,7 +12,15 @@ import {
   type Signer,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, type Est, EstLink, encodeObject, est, type Link, linkOf } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectFormat,
+  type Value,
+} from "@estoc/object";
 import { Intake, indexOver, MemoryBackend, PrivateStore, Store, selectedBlobs, type View, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
@@ -27,7 +35,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
-const seenPeople: View<Est, IdentityVersionData, IdentityVersionOrder, People> = {
+const seenPeople: View<Value, IdentityVersionData, IdentityVersionOrder, People> = {
   index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
     identityVersion,
   ]).orderedBy(...identityVersions.order),
@@ -50,7 +58,7 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 async function person(fill: number, backend = new MemoryBackend()): Promise<Person> {
   const signer = signerOf(fill);
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
-  const store = new Store(est, backend);
+  const store = new Store(objectFormat, backend);
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, { transports: [network.transport] });
   const intake = new Intake(store);
@@ -67,14 +75,14 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 });
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
-async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<Est>>> {
+async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<Value>>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
   await store.write({ records: [mailbox], blobs: [...network.transport.schema.blobs] });
   return mailbox.link;
 }
 
 // The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`, as a record.
-const blobsOf = (grant: EncodedObject<Est>, signature: Signature, to: Person) => [
+const blobsOf = (grant: EncodedObject<Value>, signature: Signature, to: Person) => [
   grant.bytes,
   ...grants.schema.blobs,
   ...signatures.schema.blobs,
@@ -82,7 +90,7 @@ const blobsOf = (grant: EncodedObject<Est>, signature: Signature, to: Person) =>
   ...to.actor.signedIdentity.blobs,
 ];
 
-async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<Est>>[], at: number) {
+async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<Value>>[], at: number) {
   const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
   await from.store.write({ records: [signature], blobs: blobsOf(grant, signature, to) });
@@ -129,7 +137,7 @@ describe("the latest grant of one person to another", () => {
     const grant = await grantFrom(alice, alice, bob);
     assert.exists(grant);
     expect(grant.signature.link).toBe(latest.link);
-    expect(grant.object.data.mailboxes).toEqual([new EstLink(second), new EstLink(third)]);
+    expect(grant.object.data.mailboxes).toEqual([new LinkValue(second), new LinkValue(third)]);
     expect(grant.to.link).toBe(bob.actor.signedIdentity.link);
   });
 
@@ -160,7 +168,7 @@ describe("the latest grant of one person to another", () => {
     assert.exists(receivedGrant);
     expect(receivedGrant.signature.link).toBe(signature.link);
     expect(receivedGrant.object.link).toBe(givenGrant?.object.link);
-    expect(receivedGrant.object.data.mailboxes).toEqual([new EstLink(alice.inbox.mailbox)]);
+    expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
   it("reads the same from what was handed over out of band as from the record its signer wrote", async () => {
@@ -172,7 +180,7 @@ describe("the latest grant of one person to another", () => {
     assert.exists(receivedGrant);
     expect(receivedGrant.signature.link).toBe(signature.link);
     expect(receivedGrant.object.link).toBe(givenGrant?.object.link);
-    expect(receivedGrant.object.data.mailboxes).toEqual([new EstLink(alice.inbox.mailbox)]);
+    expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
   it("reads the same from below the root of what came in as from the record its signer wrote", async () => {
@@ -218,7 +226,7 @@ describe("the latest grant of one person to another", () => {
     // Mallory has seen Alice's signed identity and a signature of hers, and
     // puts them over a later grant of a mailbox Mallory receives at.
     const grant = grants.encode(bob.actor.signedIdentity, [mallory.inbox.mailbox], 2_000);
-    const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: new EstLink(grant.link) });
+    const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(grant.link) });
     await mallory.store.write({ records: [forgedSignature], blobs: blobsOf(grant, signature, bob) });
     await send(mallory, bob, forgedSignature.link);
 
@@ -294,7 +302,7 @@ describe("a grant by an agent that a later identity version does not list", () =
   it("is honored when that identity version came in before it without the signature of its root", async () => {
     const { former, bob } = await twoPeople();
     const forgedIdentityVersion = encodeObject(signedIdentities.schema, {
-      identity: new EstLink(removalIdentityVersion.identity.link),
+      identity: new LinkValue(removalIdentityVersion.identity.link),
       signature: new Uint8Array(64),
     });
     const blobs = removalIdentityVersion.blobs.filter((blob) => blob !== removalIdentityVersion.bytes);
@@ -375,7 +383,7 @@ describe("a grant by an agent that a later identity version does not list", () =
     await handOver(former, bob, (await give(former, bob, [], 9_000)).link);
     const latest = await grantFrom(bob, current, bob);
 
-    const again = { ...bob, store: new Store(est, backend) };
+    const again = { ...bob, store: new Store(objectFormat, backend) };
     expect(latest?.signature.link).toBe(before.link);
     expect((await grantFrom(again, current, bob))?.signature.link).toBe(before.link);
   });

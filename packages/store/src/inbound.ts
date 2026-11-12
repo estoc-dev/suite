@@ -1,4 +1,4 @@
-import { type Bytes, type EncodedObject, type Est, EstLink, encodeObject, type Link } from "@estoc/object";
+import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue, type Value } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { Store } from "./store.ts";
 
@@ -14,12 +14,12 @@ import type { Store } from "./store.ts";
 export const inboundSchema = schema("Inbound", {
   bundle: link<never>(),
   at: integer(),
-  via: optional(link<EncodedObject<Est>>()),
+  via: optional(link<EncodedObject<Value>>()),
 });
 
 export type InboundData = DataOf<typeof inboundSchema>;
 
-export type InboundObject = EncodedObject<Est, InboundData>;
+export type InboundObject = EncodedObject<Value, InboundData>;
 
 /** What `Intake` keeps: the link of a root and the blobs that come with it. A `Bundle` of `@estoc/bundle` is one. */
 export interface ReceivedBundle {
@@ -54,9 +54,9 @@ export class Intake {
    * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
    *   that write nor held by the store; nothing is kept then.
    */
-  async receive(bundle: ReceivedBundle, via?: EncodedObject<Est>): Promise<InboundObject> {
-    const data: InboundData = { bundle: new EstLink(bundle.link), at: this.#clock() };
-    const record = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new EstLink(via.link) });
+  async receive(bundle: ReceivedBundle, via?: EncodedObject<Value>): Promise<InboundObject> {
+    const data: InboundData = { bundle: new LinkValue(bundle.link), at: this.#clock() };
+    const record = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new LinkValue(via.link) });
     const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
     await this.#store.write({ records: [record], blobs: [...inboundSchema.blobs, ...viaBlobs, ...bundle.blobs()] });
     return record;

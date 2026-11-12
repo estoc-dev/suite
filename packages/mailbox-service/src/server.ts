@@ -14,14 +14,14 @@ import {
 import {
   type Bytes,
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
-  est,
   type Link,
+  LinkValue,
   linkOf,
+  objectFormat,
   readObject,
   schemaOf,
+  type Value,
 } from "@estoc/object";
 import { type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -207,10 +207,10 @@ class MailboxService {
    * @throws when the store does not hold the offer.
    */
   async #acceptOffer(request: Request, id: string): Promise<Response> {
-    const offer = id as Link<EncodedObject<Est>>;
+    const offer = id as Link<EncodedObject<Value>>;
     const bytes = await this.#store.get(offer);
     if (bytes === undefined) throw new Error(`the store does not hold ${offer}`);
-    if (schemaOf(bytes, est) === accountOfferSchema.link) return this.#openAccount(request, offer);
+    if (schemaOf(bytes, objectFormat) === accountOfferSchema.link) return this.#openAccount(request, offer);
     return this.#openMailbox(request, await readObject(this.#store, offer, mailboxOfferSchema));
   }
 
@@ -225,7 +225,7 @@ class MailboxService {
    *   send it. So an agent its root removed is refused even when they have an
    *   account, and even for an acceptance that was acknowledged before.
    */
-  async #openAccount(request: Request, offer: Link<EncodedObject<Est>>): Promise<Response> {
+  async #openAccount(request: Request, offer: Link<EncodedObject<Value>>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
     if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
@@ -247,7 +247,7 @@ class MailboxService {
       heldAcknowledgement === undefined
         ? (
             await this.#acknowledge(
-              encodeObject(acknowledgementSchema, { acceptance: new EstLink(acceptance.link), at }),
+              encodeObject(acknowledgementSchema, { acceptance: new LinkValue(acceptance.link), at }),
               people,
               bundle,
               acceptance.signedIdentity,
@@ -266,7 +266,7 @@ class MailboxService {
    * - The signature is verified as an acceptance of the offer of an account
    *   is, and refused when they have no account.
    */
-  async #openMailbox(request: Request, offer: EncodedObject<Est, MailboxOfferData>): Promise<Response> {
+  async #openMailbox(request: Request, offer: EncodedObject<Value, MailboxOfferData>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
     if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
     const at = this.#clock();
@@ -289,7 +289,7 @@ class MailboxService {
     const [sendId, pickupId] = [newId(), newId()];
     const acknowledgement = await this.#acknowledge(
       encodeObject(mailboxAcknowledgementSchema, {
-        request: new EstLink(signature.link),
+        request: new LinkValue(signature.link),
         at,
         sendId: hex.decode(sendId),
         pickupId: hex.decode(pickupId),
@@ -322,7 +322,7 @@ class MailboxService {
    * signed what it acknowledges.
    */
   async #acknowledge(
-    acknowledgement: EncodedObject<Est>,
+    acknowledgement: EncodedObject<Value>,
     people: People,
     bundle: Bundle,
     signedIdentity: SignedIdentityObject,
@@ -414,7 +414,7 @@ class MailboxService {
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));
     const pickupAnswer = encodeObject(pickupAnswerSchema, {
-      ciphertexts: ciphertexts.map((bytes) => new EstLink<Uint8Array>(linkOf(bytes))),
+      ciphertexts: ciphertexts.map((bytes) => new LinkValue<Uint8Array>(linkOf(bytes))),
     });
     return bundleAnswer(200, encodeBundle(pickupAnswer, ciphertexts));
   }
@@ -503,7 +503,7 @@ export async function loadMailboxService(
   const kit = loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
   const identifier: Identifier = keys.encode(signer.key).link;
-  const identity = new EstLink(identifier);
+  const identity = new LinkValue(identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
     encodeObject(mailboxOfferSchema, { identity, ...terms }),
@@ -524,7 +524,7 @@ export async function loadMailboxService(
   );
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
-  const signedOffers: (readonly [EncodedObject<Est>, Signature])[] = [];
+  const signedOffers: (readonly [EncodedObject<Value>, Signature])[] = [];
   for (const offer of offers) {
     const signature =
       (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
@@ -533,7 +533,7 @@ export async function loadMailboxService(
   const next: ServiceData = {
     origin,
     at,
-    offers: signedOffers.map(([, signature]) => new EstLink(signature.link)),
+    offers: signedOffers.map(([, signature]) => new LinkValue(signature.link)),
   };
   if (previous === undefined || formOf(previous.data) !== formOf(next)) {
     const object = encodeObject(serviceSchema, next);
@@ -554,7 +554,7 @@ export async function loadMailboxService(
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */
 async function signatureListedIn(
-  services: readonly EncodedObject<Est, ServiceData>[],
+  services: readonly EncodedObject<Value, ServiceData>[],
   offer: Link<unknown>,
   signatures: Signatures,
   store: Store,

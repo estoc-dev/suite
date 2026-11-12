@@ -6,7 +6,7 @@ import {
   type Signature,
   type Signatures,
 } from "@estoc/identity";
-import { type Est, EstLink, type Link } from "@estoc/object";
+import { type Link, LinkValue, type Value } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
@@ -43,7 +43,7 @@ export interface Locations {
   servicesOf(identifier: Identifier, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
 }
 
-export type LocationsView = View<Est, DataOf<typeof locationSchema>, LocationOrder, Locations>;
+export type LocationsView = View<Value, DataOf<typeof locationSchema>, LocationOrder, Locations>;
 
 export function locationsView(signatures: Signatures): LocationsView {
   return {
@@ -56,16 +56,16 @@ export function locationsView(signatures: Signatures): LocationsView {
         // is honored is checked as the rows are read.
         const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
         yield {
-          identifier: new EstLink(signedIdentity.identity.identifier),
+          identifier: new LinkValue(signedIdentity.identity.identifier),
           at: object.data.at,
-          service: new EstLink(link),
+          service: new LinkValue(link),
         };
       },
     ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
         const links: Link<Signature>[] = [];
-        for await (const { data } of rows.range([new EstLink(identifier)])) {
+        for await (const { data } of rows.range([new LinkValue(identifier)])) {
           const signature = await signatures.read(data.service.link, reader, noIdentityVersions);
           if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.link);
         }

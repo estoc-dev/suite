@@ -3,16 +3,16 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
   decodeObject,
-  type Est,
-  EstLink,
   encodeObject,
   encodeSchema,
-  est,
   itself,
   type Link,
+  LinkValue,
   linkOf,
+  objectFormat,
   rootSchemaOf,
   schemaOf,
+  type Value,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
@@ -22,24 +22,24 @@ const b = linkOf(new TextEncoder().encode("b"));
 
 // The bytes of the tests are written out by hand, in hex, so that they do not
 // turn on the encoder they test.
-const objectHead = "da6573743f82";
+const objectHead = "da656f662182";
 const itselfHex = "6473656c66";
 const linkHex = (link: Link<unknown>) => `d9486c5820${link.slice("sha256:".length)}`;
 const objectHex = (fields: string, schema = linkHex(anything.link)) => `${objectHead}${schema}${fields}`;
 const objectHexHolding = (value: string) => objectHex(`a16176${value}`);
 const decodeHex = (hex: string) => decodeObject(hexToBytes(hex), anything);
 
-describe("an object of est", () => {
+describe("an object", () => {
   it("is the tag of the format, around its schema and the map of its fields", () => {
     const object = encodeObject(anything, { text: "hello" });
     expect(bytesToHex(object.bytes)).toBe(
-      `da6573743f82d9486c5820${anything.link.slice("sha256:".length)}a164746578746568656c6c6f`,
+      `da656f662182d9486c5820${anything.link.slice("sha256:".length)}a164746578746568656c6c6f`,
     );
     expect(object.bytes).toHaveLength(55);
     expect(object.link).toBe(`sha256:${createHash("sha256").update(object.bytes).digest("hex")}`);
   });
 
-  it.each<[string, Est, string]>([
+  it.each<[string, Value, string]>([
     ["zero", 0, "00"],
     ["23", 23, "17"],
     ["24", 24, "1818"],
@@ -62,7 +62,7 @@ describe("an object of est", () => {
     ["false", false, "f4"],
     ["an array", [1, "a", [true]], "8301616181f5"],
     ["a map, its keys in the order of their bytes", { b: 1, aa: 3, a: 2 }, "a361610261620162616103"],
-    ["a link", new EstLink(a), linkHex(a)],
+    ["a link", new LinkValue(a), linkHex(a)],
     ["a hash that is bytes", hexToBytes(a.slice("sha256:".length)), `5820${a.slice("sha256:".length)}`],
   ])("writes %s one way, and reads it back", (_, value, hex) => {
     expect(bytesToHex(encodeObject(anything, { v: value }).bytes)).toBe(objectHexHolding(hex));
@@ -94,7 +94,7 @@ describe("strict decoding", () => {
   it.each([
     ["an integer in a longer head", objectHexHolding("1801")],
     ["a length in a longer head", objectHexHolding("780161")],
-    ["the tag of the format in a longer head", `db000000006573743f82${linkHex(anything.link)}a0`],
+    ["the tag of the format in a longer head", `db00000000656f662182${linkHex(anything.link)}a0`],
     ["the tag of a link in a longer head", objectHexHolding(`da0000486c5820${a.slice("sha256:".length)}`)],
     ["keys out of order", objectHex("a2616201616101")],
     ["a longer key before a shorter one", objectHex("a262616101616201")],
@@ -130,14 +130,14 @@ describe("strict decoding", () => {
     ["a map under no tag", "a0"],
     ["a schema and data under no tag", `82${linkHex(anything.link)}a0`],
     ["a link under no tag of the format", linkHex(anything.link)],
-    ["a schema without data", `da6573743f81${linkHex(anything.link)}`],
-    ["a third item after its data", `da6573743f83${linkHex(anything.link)}a0a0`],
+    ["a schema without data", `da656f662181${linkHex(anything.link)}`],
+    ["a third item after its data", `da656f662183${linkHex(anything.link)}a0a0`],
     ["data that is not a map", `${objectHead}${linkHex(anything.link)}80`],
     ["a schema named by a string other than self", objectHex("a0", "64726f6f74")],
     ["a schema named by Self", objectHex("a0", "6453656c66")],
     ["a schema named by a hash that is bytes", objectHex("a0", `5820${a.slice("sha256:".length)}`)],
   ])("refuses %s", (_, hex) => {
-    expect(() => est.decode(hexToBytes(hex))).toThrow();
+    expect(() => objectFormat.decode(hexToBytes(hex))).toThrow();
   });
 
   it("reads the same bytes written the one way", () => {
@@ -160,39 +160,39 @@ describe("encoding", () => {
     ["a hole in an array", new Array(2)],
     ["a Date", new Date(0)],
     ["a Map", new Map([["a", 1]])],
-    ["an object inside data", est.object({}, anything.link)],
+    ["an object inside data", objectFormat.object({}, anything.link)],
   ])("refuses %s", (_, value) => {
-    expect(() => encodeObject(anything, { v: value as Est })).toThrow();
-    expect(() => encodeObject(anything, { v: [{ nested: value as Est }] })).toThrow();
+    expect(() => encodeObject(anything, { v: value as Value })).toThrow();
+    expect(() => encodeObject(anything, { v: [{ nested: value as Value }] })).toThrow();
   });
 
   it.each([1, 64, 100, 5000])("gives plain bytes, not a Node Buffer, around %i bytes", (length) => {
-    const bytes = est.encode(est.object({ v: new Uint8Array(length) }, anything.link));
+    const bytes = objectFormat.encode(objectFormat.object({ v: new Uint8Array(length) }, anything.link));
     expect(Buffer.isBuffer(bytes)).toBe(false);
-    expect(est.decode(bytes)).toEqual(est.object({ v: new Uint8Array(length) }, anything.link));
+    expect(objectFormat.decode(bytes)).toEqual(objectFormat.object({ v: new Uint8Array(length) }, anything.link));
   });
 
   it("refuses a value that is not an object as a blob", () => {
-    expect(() => est.encode({ text: "hello" })).toThrow(/is an object/);
-    expect(() => est.encode(new EstLink(a))).toThrow(/is an object/);
+    expect(() => objectFormat.encode({ text: "hello" })).toThrow(/is an object/);
+    expect(() => objectFormat.encode(new LinkValue(a))).toThrow(/is an object/);
   });
 
   it("refuses a link that is not one", () => {
-    expect(() => new EstLink("sha256:ABC" as Link<never>)).toThrow();
-    expect(() => est.encode(est.object({}, "note" as Link<never>))).toThrow();
+    expect(() => new LinkValue("sha256:ABC" as Link<never>)).toThrow();
+    expect(() => objectFormat.encode(objectFormat.object({}, "note" as Link<never>))).toThrow();
   });
 });
 
 describe("an object written to itself", () => {
-  const selfWritten = est.encode(est.object({ title: "Anything" }, itself));
+  const selfWritten = objectFormat.encode(objectFormat.object({ title: "Anything" }, itself));
 
   it("names its schema by the string self, in place of a link", () => {
     expect(bytesToHex(selfWritten)).toBe(`${objectHead}${itselfHex}a1657469746c6568416e797468696e67`);
-    expect(est.fields(est.decode(selfWritten)).schema).toBe(itself);
+    expect(objectFormat.fields(objectFormat.decode(selfWritten)).schema).toBe(itself);
   });
 
   it("reads back with its own link as its schema", () => {
-    expect(schemaOf(selfWritten, est)).toBe(linkOf(selfWritten));
+    expect(schemaOf(selfWritten, objectFormat)).toBe(linkOf(selfWritten));
     const root = rootSchemaOf(fieldNames);
     const bytes: Uint8Array = root.bytes;
     const object = decodeObject(bytes, root);
@@ -201,34 +201,37 @@ describe("an object written to itself", () => {
   });
 
   it("is refused as an object of another schema", () => {
-    const bytes = est.encode(est.object({ text: "hello" }, itself));
-    expect(schemaOf(bytes, est)).toBe(linkOf(bytes));
+    const bytes = objectFormat.encode(objectFormat.object({ text: "hello" }, itself));
+    expect(schemaOf(bytes, objectFormat)).toBe(linkOf(bytes));
     expect(() => decodeObject(bytes, anything)).toThrow(/is written to/);
   });
 
   it("does not link to itself", () => {
-    expect([...est.links(est.decode(selfWritten))]).toEqual([]);
-    const linkingBytes = est.encode(est.object({ to: new EstLink(a) }, itself));
-    expect([...est.links(est.decode(linkingBytes))]).toEqual([a]);
+    expect([...objectFormat.links(objectFormat.decode(selfWritten))]).toEqual([]);
+    const linkingBytes = objectFormat.encode(objectFormat.object({ to: new LinkValue(a) }, itself));
+    expect([...objectFormat.links(objectFormat.decode(linkingBytes))]).toEqual([a]);
   });
 });
 
-describe("the links in an object of est", () => {
+describe("the links in an object", () => {
   it("are the ones under the tag of a link, at any depth, its schema among them", () => {
     const object = encodeObject(anything, {
-      list: [new EstLink(a), { nested: [new EstLink(b)] }],
-      again: new EstLink(b),
+      list: [new LinkValue(a), { nested: [new LinkValue(b)] }],
+      again: new LinkValue(b),
     });
-    expect([...est.links(est.decode(object.bytes))].sort()).toEqual([anything.link, a, b, b].sort());
+    expect([...objectFormat.links(objectFormat.decode(object.bytes))].sort()).toEqual([anything.link, a, b, b].sort());
   });
 
   it("leave out a hash that is bytes, and a string that reads as a link, as a member or as a key", () => {
-    const value = est.object({ hash: hexToBytes(a.slice("sha256:".length)), text: a, map: { [a]: 1 } }, anything.link);
-    expect([...est.links(value)]).toEqual([anything.link]);
+    const value = objectFormat.object(
+      { hash: hexToBytes(a.slice("sha256:".length)), text: a, map: { [a]: 1 } },
+      anything.link,
+    );
+    expect([...objectFormat.links(value)]).toEqual([anything.link]);
   });
 
   it("are none in a value that is not an object", () => {
-    expect([...est.links({ list: [new EstLink(a)] })]).toEqual([]);
-    expect([...est.links(new EstLink(a))]).toEqual([]);
+    expect([...objectFormat.links({ list: [new LinkValue(a)] })]).toEqual([]);
+    expect([...objectFormat.links(new LinkValue(a))]).toEqual([]);
   });
 });

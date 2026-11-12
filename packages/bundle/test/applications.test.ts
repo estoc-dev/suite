@@ -7,7 +7,7 @@ import {
   type Signature,
   SoftwareSigner,
 } from "@estoc/identity";
-import { decodeObject, EstLink, encodeObject, est, type Link, readObject, schemaOf } from "@estoc/object";
+import { decodeObject, encodeObject, type Link, LinkValue, objectFormat, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
@@ -34,7 +34,7 @@ const name = schema("Name", { name: string() });
 type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
 
 function cardOf(root: Uint8Array): Card {
-  switch (schemaOf(root, est)) {
+  switch (schemaOf(root, objectFormat)) {
     case card.link: {
       const { data } = decodeObject(root, card);
       return { mailbox: data.mailbox.link, name: data.name.link };
@@ -69,7 +69,7 @@ describe("a card", () => {
 
   it("reads as the mailbox and the name that its identity signed", async () => {
     const [byMailbox, byName] = await cardSignatures;
-    const root = encodeObject(card, { mailbox: new EstLink(byMailbox.link), name: new EstLink(byName.link) });
+    const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byName.link) });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
@@ -86,7 +86,10 @@ describe("a card", () => {
 
   it("written by another application to its own schema reads as the same card", async () => {
     const [byMailbox, byName] = await cardSignatures;
-    const root = encodeObject(contact, { displayName: new EstLink(byName.link), inbox: new EstLink(byMailbox.link) });
+    const root = encodeObject(contact, {
+      displayName: new LinkValue(byName.link),
+      inbox: new LinkValue(byMailbox.link),
+    });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,
@@ -104,7 +107,7 @@ describe("a card", () => {
   it("with its name signed by someone else reads as no one's card", async () => {
     const [byMailbox] = await cardSignatures;
     const byOther = await sign(nameObject, signer(eip191, 2));
-    const root = encodeObject(card, { mailbox: new EstLink(byMailbox.link), name: new EstLink(byOther.link) });
+    const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byOther.link) });
     const bundle = handOver(root, [
       byMailbox.bytes,
       inbox.bytes,

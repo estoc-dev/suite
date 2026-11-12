@@ -14,15 +14,15 @@ import {
 } from "@estoc/identity";
 import {
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
-  est,
   type Fields,
   type Link,
+  LinkValue,
   linkOf,
+  objectFormat,
   readObject,
   type Schema,
+  type Value,
 } from "@estoc/object";
 import { link, optional, schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
@@ -41,13 +41,13 @@ const { keys, identities, signatures, signedIdentities, publish } = identity;
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Est>, by: SoftwareSigner) => {
+const sendSigned = async (mailbox: Mailbox, object: EncodedObject<Value>, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
   await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
 
-async function readSigned<F extends Fields<Est>>(bundle: Bundle, schema: Schema<Est, F>) {
+async function readSigned<F extends Fields<Value>>(bundle: Bundle, schema: Schema<Value, F>) {
   const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
   return {
     signature,
@@ -80,7 +80,7 @@ describe("a chat line", () => {
   const bob = signer(ed25519, 2);
   const carol = signer(ed25519, 3);
 
-  const passOn = async (line: EncodedObject<Est>) => {
+  const passOn = async (line: EncodedObject<Value>) => {
     const network = new MemoryNetwork();
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sentSignature = await sendSigned(
@@ -112,7 +112,7 @@ describe("a chat line", () => {
   });
 
   it("written to Bob shows at Carol's that it is not for her", async () => {
-    const line = encodeObject(chat, { to: new EstLink(keys.encode(bob.key).link), text: "lunch at noon?" });
+    const line = encodeObject(chat, { to: new LinkValue(keys.encode(bob.key).link), text: "lunch at noon?" });
     const { receivedBundle, passedBundle } = await passOn(line);
     expect((await readChat(receivedBundle, identities.encode(bob.key, { at: 0 }))).forReader).toBe(true);
     expect((await readChat(passedBundle, identities.encode(carol.key, { at: 0 }))).forReader).toBe(false);
@@ -134,7 +134,7 @@ describe("a one-time invitation", () => {
     const link = linkOf(inviter.mailbox);
     const answer = async (guest: SoftwareSigner) => {
       const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport] });
-      await sendSigned(mailbox, encodeObject(join, { invitation: new EstLink(link) }), guest);
+      await sendSigned(mailbox, encodeObject(join, { invitation: new LinkValue(link) }), guest);
     };
     let isUsed = false;
     const letIn = async () => {
@@ -161,8 +161,8 @@ describe("a one-time invitation", () => {
 });
 
 type Sale = {
-  readonly buyer: EstLink<KeyObject>;
-  readonly seller: EstLink<KeyObject>;
+  readonly buyer: LinkValue<KeyObject>;
+  readonly seller: LinkValue<KeyObject>;
   readonly goods: string;
   readonly price: string;
 };
@@ -186,7 +186,7 @@ async function salesInForce(receivedBundles: readonly Bundle[]): Promise<Sale[]>
     record.identities.push(identity);
     signers.set(object.link, record);
   }
-  const signedBy = (identities: IdentityObject[]) => (party: EstLink<KeyObject>) =>
+  const signedBy = (identities: IdentityObject[]) => (party: LinkValue<KeyObject>) =>
     identities.some((identity) => identity.identifier === party.link);
   return [...signers.values()]
     .filter(({ terms, identities }) => [terms.buyer, terms.seller].every(signedBy(identities)))
@@ -197,8 +197,8 @@ describe("a sale sent to a registry", () => {
   const buyer = signer(eip191, 6);
   const seller = signer(solanaOffchain, 7);
   const terms = encodeObject(sale, {
-    buyer: new EstLink(keys.encode(buyer.key).link),
-    seller: new EstLink(keys.encode(seller.key).link),
+    buyer: new LinkValue(keys.encode(buyer.key).link),
+    seller: new LinkValue(keys.encode(seller.key).link),
     goods: "one bicycle",
     price: "120.00 CAD",
   });
@@ -247,7 +247,7 @@ describe("two people who meet", () => {
     const person = async (fill: number) => {
       const by = signer(ed25519, fill);
       const actor = signatures.actor(by, await publish(by, { at: 0 }));
-      const store = new Store(est, new MemoryBackend());
+      const store = new Store(objectFormat, new MemoryBackend());
       const privateStore = new PrivateStore(store, new MemoryBackend());
       const options = { transports: [network.transport], clock };
       const post = new Post(store, privateStore, options);
@@ -325,7 +325,7 @@ describe("two people who meet", () => {
 
   it("move a mailbox with nothing lost, and what came in at the old one still reads as a message", async () => {
     const { grace, heidi } = await twoPeople();
-    const give = async (mailboxes: readonly Link<EncodedObject<Est>>[]) =>
+    const give = async (mailboxes: readonly Link<EncodedObject<Value>>[]) =>
       grace.correspondence.grant(heidi.signedIdentity, mailboxes);
 
     const oldInbox = await grace.openInbox();

@@ -70,7 +70,7 @@ closures of its items:
 
 ```ts
 import { lineages } from "@estoc/lineage";
-import { EstLink, encodeObject } from "@estoc/object";
+import { LinkValue, encodeObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { indexOver, scan, selectedRecords } from "@estoc/store";
 
@@ -95,9 +95,9 @@ Indexes and views are the application's, and this package has none:
 ```ts
 const headSchema = schema("Head", { series: link(), head: link() });
 const bySeries = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
-  yield { series: new EstLink(first.link), head: new EstLink(head.link) };
+  yield { series: new LinkValue(first.link), head: new LinkValue(head.link) };
 }).orderedBy("series");
-for await (const { data } of (await scan(store, bySeries)).range([new EstLink(lineage.first.link)])) {
+for await (const { data } of (await scan(store, bySeries)).range([new LinkValue(lineage.first.link)])) {
   // `data.head`: every head of the series written as a record
 }
 ```
@@ -140,16 +140,16 @@ the lineage of a program that reads one version more extends that of one
 that reads one less.
 
 ```ts
-import type { Implementation, Est } from "@estoc/object";
+import type { Implementation, Value } from "@estoc/object";
 
 type Note = { readonly title?: string; readonly text: string };
 
 // noteV1 is a schema of { text }, and noteV2 a schema of { title, body }.
-const v1: Implementation<Est, Note, { readonly text: string }> = {
+const v1: Implementation<Value, Note, { readonly text: string }> = {
   schema: noteV1,
   read: ({ data }) => ({ text: data.text }),
 };
-const v2: Implementation<Est, Note, { readonly title: string; readonly body: string }> = {
+const v2: Implementation<Value, Note, { readonly title: string; readonly body: string }> = {
   schema: noteV2,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };

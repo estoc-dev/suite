@@ -2,7 +2,15 @@ import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
 import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
-import { type EncodedObject, type Est, EstLink, encodeObject, type Link, objectsOf, readObject } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  objectsOf,
+  readObject,
+  type Value,
+} from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Intake, inboundSchema, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -45,7 +53,7 @@ const laptop = signer(ed25519, 3);
 const phone = signer(solanaOffchain, 4);
 const mallory = signer(ed25519, 6);
 
-const offer = encodeObject(accountOfferSchema, { identity: new EstLink(serviceRoot.link) });
+const offer = encodeObject(accountOfferSchema, { identity: new LinkValue(serviceRoot.link) });
 
 const agentOf = async (agent: Signer, root: Signer) =>
   signatures.actor(agent, await publish(root, { agents: [agent.key] }));
@@ -109,12 +117,12 @@ async function accountAt(services: Services, origin: string) {
  */
 async function signedService(
   origin: string,
-  offers: readonly (readonly [EncodedObject<Est>, Actor])[],
+  offers: readonly (readonly [EncodedObject<Value>, Actor])[],
   by: Actor,
   at = 1,
 ) {
   const offerSignatures = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
-  const listedOffers = offerSignatures.map((signature) => new EstLink(signature.link));
+  const listedOffers = offerSignatures.map((signature) => new LinkValue(signature.link));
   const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });
   const signature = await by.sign(service);
   const blobs = [
@@ -155,7 +163,7 @@ async function removeAgent(store: Store) {
 /** The answer to a posted acceptance with `by`'s signature over an acknowledgement of it, with its closure. */
 async function acknowledgementBy(by: Actor, request: Request) {
   const acceptance = decodeBundle(new Uint8Array(await request.arrayBuffer()));
-  const acknowledgement = encodeObject(acknowledgementSchema, { acceptance: new EstLink(acceptance.link), at: 1 });
+  const acknowledgement = encodeObject(acknowledgementSchema, { acceptance: new LinkValue(acceptance.link), at: 1 });
   const signature = await by.sign(acknowledgement);
   const blobs = [
     acknowledgement.bytes,
@@ -274,7 +282,7 @@ describe("a service reached at its origin", () => {
 
   it("passes over an offer of a schema it does not read", async () => {
     const other = schema("Other offer", { identity: link() });
-    const unread = encodeObject(other, { identity: new EstLink(serviceRoot.link) });
+    const unread = encodeObject(other, { identity: new LinkValue(serviceRoot.link) });
     const actor = await actorOf(serviceSigner);
     const { origin } = await startServer(
       async (_, origin) =>
@@ -784,11 +792,11 @@ describe("a mailbox that a service opened", () => {
  */
 async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string, at = 1) {
   const root = keys.encode(offerer.key);
-  const mailboxOffer = encodeObject(mailboxOfferSchema, { identity: new EstLink(root.link), ...terms });
-  const request = encodeObject(mailboxRequestSchema, { offer: new EstLink(mailboxOffer.link), key: keyOf(7) });
+  const mailboxOffer = encodeObject(mailboxOfferSchema, { identity: new LinkValue(root.link), ...terms });
+  const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(mailboxOffer.link), key: keyOf(7) });
   const requestSignature = await requester.sign(request);
   const acknowledgement = encodeObject(mailboxAcknowledgementSchema, {
-    request: new EstLink(requestSignature.link),
+    request: new LinkValue(requestSignature.link),
     at,
     sendId: hex.decode(sendId),
     pickupId: hex.decode("2".repeat(32)),

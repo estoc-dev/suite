@@ -1,14 +1,23 @@
 import { ed25519, eip191, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { decodeObject, EstLink, type EstMap, encodeObject, est, itself, linkOf, readObject } from "@estoc/object";
+import {
+  decodeObject,
+  encodeObject,
+  itself,
+  LinkValue,
+  linkOf,
+  objectFormat,
+  readObject,
+  type ValueMap,
+} from "@estoc/object";
 import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import { decodeBundle, encodeBundle } from "../src/index.ts";
 
 const { identities, signedIdentities, signatures, publish } = loadIdentity([ed25519, eip191]);
 
-const rewritten = (bytes: Uint8Array, change: (data: EstMap) => EstMap) => {
-  const { data, schema } = est.fields(est.decode(bytes));
-  return est.encode(est.object(change(data), schema));
+const rewritten = (bytes: Uint8Array, change: (data: ValueMap) => ValueMap) => {
+  const { data, schema } = objectFormat.fields(objectFormat.decode(bytes));
+  return objectFormat.encode(objectFormat.object(change(data), schema));
 };
 
 const note = schema("Note", { text: string() });
@@ -19,7 +28,7 @@ const asAlice = signatures.actor(alice, await publish(alice, { at: 0 }));
 const signature = await asAlice.sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
-  links: [new EstLink(signature.link), new EstLink(hello.link), new EstLink(linkOf(image))],
+  links: [new LinkValue(signature.link), new LinkValue(hello.link), new LinkValue(linkOf(image))],
 });
 
 describe("a bundle", () => {
@@ -62,10 +71,13 @@ describe("a bundle", () => {
       const bytes = fields.signature as Uint8Array;
       return { ...fields, signature: bytes.map((byte, at) => (at === bytes.length - 1 ? byte ^ 1 : byte)) };
     });
-    const { data } = est.fields(est.decode(signature.signedIdentity.bytes));
-    const laterSchema = linkOf(est.encode(est.object({ title: "A later signed identity" }, itself)));
-    const later = est.encode(est.object(data, laterSchema));
-    const unknown = rewritten(signature.bytes, (fields) => ({ ...fields, signedIdentity: new EstLink(linkOf(later)) }));
+    const { data } = objectFormat.fields(objectFormat.decode(signature.signedIdentity.bytes));
+    const laterSchema = linkOf(objectFormat.encode(objectFormat.object({ title: "A later signed identity" }, itself)));
+    const later = objectFormat.encode(objectFormat.object(data, laterSchema));
+    const unknown = rewritten(signature.bytes, (fields) => ({
+      ...fields,
+      signedIdentity: new LinkValue(linkOf(later)),
+    }));
     const identityBytes = new Map([...signature.signedIdentity.blobs, later].map((bytes) => [linkOf(bytes), bytes]));
     for (const blob of [changed, unknown]) {
       await expect(async () =>

@@ -1,6 +1,14 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import { type Bytes, type EncodedObject, type Est, EstLink, encodeObject, type Link, readObject } from "@estoc/object";
+import {
+  type Bytes,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  readObject,
+  type Value,
+} from "@estoc/object";
 import { Intake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
@@ -19,14 +27,14 @@ export interface Delivery {
   readonly direction: "inbound" | "outbound";
   /** The link of the bundle's root. */
   readonly bundle: Link<never>;
-  readonly mailbox: Link<EncodedObject<Est>>;
+  readonly mailbox: Link<EncodedObject<Value>>;
   /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the record. */
   readonly at: number;
   /** The link of the record. */
-  readonly link: Link<EncodedObject<Est>>;
+  readonly link: Link<EncodedObject<Value>>;
 }
 
-type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Est>> };
+type MailboxBytes = { readonly bytes: Bytes<EncodedObject<Value>> };
 
 /**
  * Sending and receiving with a store, through transports, with the keys of
@@ -60,7 +68,7 @@ export class Post {
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
-  async outbox(mailbox: Link<EncodedObject<Est>>): Promise<Outbox> {
+  async outbox(mailbox: Link<EncodedObject<Value>>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, (bundle) => this.#recordOutbound(mailbox, bundle));
   }
@@ -80,7 +88,7 @@ export class Post {
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
     if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
     await this.#store.write({ records: [mailbox], blobs: [...mailbox.schema.blobs] });
-    const object = encodeObject(mailboxKeySchema, { mailbox: new EstLink(mailbox.link), secret });
+    const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
     await this.#privateStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
@@ -92,7 +100,7 @@ export class Post {
    * @throws when the key's secret is not of the public key the mailbox names: what it opens was
    *   sealed to another mailbox.
    */
-  async inbox(key: Link<EncodedObject<Est, MailboxKeyData>>): Promise<Inbox> {
+  async inbox(key: Link<EncodedObject<Value, MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#privateStore, key, mailboxKeySchema);
     const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
     const opener = await MailboxKey.fromSecretKey(data.secret);
@@ -100,7 +108,7 @@ export class Post {
     return this.#inbox(mailbox, key, opener);
   }
 
-  #inbox(mailbox: EncodedObject<Est>, key: Link<EncodedObject<Est, MailboxKeyData>>, opener: MailboxKey) {
+  #inbox(mailbox: EncodedObject<Value>, key: Link<EncodedObject<Value, MailboxKeyData>>, opener: MailboxKey) {
     return new Inbox(mailbox, key, opener, this.#intake);
   }
 
@@ -110,9 +118,9 @@ export class Post {
     return bytes;
   }
 
-  async #recordOutbound(mailbox: Link<EncodedObject<Est>>, bundle: Link<never>): Promise<Delivery> {
+  async #recordOutbound(mailbox: Link<EncodedObject<Value>>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
-    const record = encodeObject(outboundSchema, { bundle: new EstLink(bundle), mailbox: new EstLink(mailbox), at });
+    const record = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
     await this.#store.write({ records: [record], blobs: [...outboundSchema.blobs] });
     return { direction: "outbound", bundle, mailbox, at, link: record.link };
   }
@@ -157,14 +165,14 @@ export class Inbox {
    * The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this
    * inbox again.
    */
-  readonly key: Link<EncodedObject<Est, MailboxKeyData>>;
-  readonly #mailbox: EncodedObject<Est>;
+  readonly key: Link<EncodedObject<Value, MailboxKeyData>>;
+  readonly #mailbox: EncodedObject<Value>;
   readonly #opener: MailboxKey;
   readonly #intake: Intake;
 
   constructor(
-    mailbox: EncodedObject<Est>,
-    key: Link<EncodedObject<Est, MailboxKeyData>>,
+    mailbox: EncodedObject<Value>,
+    key: Link<EncodedObject<Value, MailboxKeyData>>,
     opener: MailboxKey,
     intake: Intake,
   ) {
@@ -175,7 +183,7 @@ export class Inbox {
   }
 
   /** The link of the mailbox, which the store holds. */
-  get mailbox(): Link<EncodedObject<Est>> {
+  get mailbox(): Link<EncodedObject<Value>> {
     return this.#mailbox.link;
   }
 

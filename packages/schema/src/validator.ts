@@ -1,9 +1,9 @@
-import { type Est, EstLink, rootSchemaOf, type SchemaValidator } from "@estoc/object";
+import { LinkValue, rootSchemaOf, type SchemaValidator, type Value } from "@estoc/object";
 import { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 
-const fits: { readonly [T in Item["type"]]: (value: Est) => boolean } = {
+const fits: { readonly [T in Item["type"]]: (value: Value) => boolean } = {
   array: Array.isArray,
-  link: (value) => value instanceof EstLink,
+  link: (value) => value instanceof LinkValue,
   bytes: (value) => value instanceof Uint8Array,
   integer: Number.isSafeInteger,
   string: (value) => typeof value === "string",
@@ -21,10 +21,10 @@ const mismatch: { readonly [T in Item["type"]]: string } = {
   any: "not a value",
 };
 
-function* problemsIn(value: Est, field: Field | Item, path: string): Generator<string> {
+function* problemsIn(value: Value, field: Field | Item, path: string): Generator<string> {
   if (!fits[field.type](value)) yield `${path}: ${mismatch[field.type]}`;
   else if (field.type === "array")
-    for (const [index, item] of (value as readonly Est[]).entries())
+    for (const [index, item] of (value as readonly Value[]).entries())
       yield* problemsIn(item, field.items, `${path}/${index}`);
 }
 
@@ -36,7 +36,7 @@ function* problemsIn(value: Est, field: Field | Item, path: string): Generator<s
  *   out, and each is a value of its field's type.
  * - Each problem names where in the data it is, as `#/agents/0: not a link`.
  */
-export const schemaValidator: SchemaValidator<Est, SchemaDocument> = {
+export const schemaValidator: SchemaValidator<Value, SchemaDocument> = {
   language: schemaLanguage,
   compile({ fields }) {
     return (data) => {

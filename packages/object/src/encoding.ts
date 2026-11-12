@@ -14,7 +14,7 @@ export type Itself = typeof itself;
 
 /**
  * A model of data and the one way each of its values is written as bytes,
- * of which objects are made. est, in deterministic CBOR, is one. Two encodings
+ * of which objects are made. The object format, in deterministic CBOR, is one. Two encodings
  * of the same content are two blobs with two links, and neither reads as the
  * other.
  */

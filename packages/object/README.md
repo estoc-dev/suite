@@ -6,9 +6,9 @@ its schema, and who has to sign is up to the application that reads it.
 
 An object rests on an encoding, which writes each value of its data one
 way, and a schema language over that encoding. This package writes objects
-against what those two provide. It has one encoding, est, and no language
-of its own: the one in use, Estoc Schema, is in `@estoc/schema` and is over
-est. In that pair:
+against what those two provide. It has one encoding, the Estoc Object
+Format, and no language of its own: the one in use, Estoc Schema, is in
+`@estoc/schema` and is over the object format. In that pair:
 
 ```
 Link       LINK(h'<the SHA-256>'), wherever a value names a blob
@@ -38,8 +38,8 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     and the link of its schema, and refuses any other value as an object.
     Any other value is bytes.
   - A blob cannot hold its own hash, so an encoding may have a mark for an
-    object written to itself, in place of the link of its schema, as est
-    has. The encoding gives the mark as `itself`, and `decodeObject` and
+    object written to itself, in place of the link of its schema, as the
+    object format has. The encoding gives the mark as `itself`, and `decodeObject` and
     `schemaOf` read it as the link of the blob, so every object they read
     names its schema by link. A root schema is such an object, so a
     language of schemas is over an encoding that has the mark.
@@ -64,9 +64,9 @@ of the encoding. `schemaOf`, which reads the link of the schema an object
 names before any schema is picked, is given the encoding.
 
 An encoding is one object, shared by the languages over its data: a
-language over est names `est`. Encodings are told apart as objects, so
-schemas of two languages that both name `est` are schemas of one
-encoding.
+language over the object format names `objectFormat`. Encodings are told
+apart as objects, so schemas of two languages that both name
+`objectFormat` are schemas of one encoding.
 
 Two encodings of the same content are two blobs with two links, and
 neither reads as the other, just as the same data under two schemas is two
@@ -118,9 +118,9 @@ file such as a `biome.json`. Only the links in an object are followed.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 
-## est
+## The object format
 
-`est` is the Estoc Object Format: objects in deterministic CBOR
+`objectFormat` is the Estoc Object Format: objects in deterministic CBOR
 ([RFC 8949, section 4.2.1](https://www.rfc-editor.org/rfc/rfc8949#section-4.2.1)).
 It is the encoding in use: the schema language of `@estoc/schema` is over
 it, and the other packages write their objects in it.
@@ -133,7 +133,7 @@ OBJECT([ LINK(h'…'),               the schema of the object
 The 55 bytes of that object:
 
 ```
-da 65 73 74 3f            the tag of the format, "est?" in ASCII
+da 65 6f 66 21            the tag of the format, "eof!" in ASCII
 82                        an array of two
    d9 48 6c               tag 18540, a SHA-256 hash value: here, a link
    58 20 …                the 32 bytes of the SHA-256 of the schema
@@ -142,16 +142,16 @@ da 65 73 74 3f            the tag of the format, "est?" in ASCII
       65 68 65 6c 6c 6f   "hello"
 ```
 
-- A blob of est is one object: the tag of the format around an array of
-  two, the schema of the object and the map of its fields. The schema is
-  named by its place, so the data may hold a field of any name. est has no
-  value that is not an object: any other bytes are refused, and are a blob
-  of bytes, which links to nothing.
+- A blob of the format is one object: the tag of the format around an
+  array of two, the schema of the object and the map of its fields. The
+  schema is named by its place, so the data may hold a field of any name.
+  The format has no value that is not an object: any other bytes are
+  refused, and are a blob of bytes, which links to nothing.
 - A value in data is of one of seven kinds: an integer, bytes, a string, a
   boolean, an array, a map by string keys, or a link. Floats, null, other
   tags and an object inside data are refused. In TypeScript the seven are a
   number, a `Uint8Array`, a string, a boolean, an array, a plain object and
-  an `EstLink<T>`, which `new EstLink(link)` makes and whose `link` is the
+  a `LinkValue<T>`, which `new LinkValue(link)` makes and whose `link` is the
   `Link<T>`.
 - Integers are up to 2^53 − 1 in magnitude, which a number holds exactly.
 - Decoding is strict: the bytes must be exactly what the encoding writes
@@ -159,17 +159,17 @@ da 65 73 74 3f            the tag of the format, "est?" in ASCII
   out of the order of their bytes or repeated, indefinite lengths, invalid
   UTF-8, and bytes after the object are refused.
 - A link is tag 18540 around the 32 bytes of a SHA-256. IANA lists the tag
-  as a SHA-256 hash value, and est reads one in an object as a link. The
-  links the encoding finds in an object are the ones under the tag, at any
-  depth, its schema among them, and no others. A hash that names no blob
-  to follow is written as bytes, and a string is a string whatever it
-  holds. The tags of other hashes are refused, so that a blob has one
-  link.
+  as a SHA-256 hash value, and the format reads one in an object as a
+  link. The links the encoding finds in an object are the ones under the
+  tag, at any depth, its schema among them, and no others. A hash that
+  names no blob to follow is written as bytes, and a string is a string
+  whatever it holds. The tags of other hashes are refused, so that a blob
+  has one link.
 - An object written to itself names its schema by the string `"self"` in
   place of a link, and any other string there is refused. It reads back
   with its own link as its schema, so it is refused as an object of any
   other schema. The root schema of a language is written so.
-- Every object starts with the same six bytes, `da 65 73 74 3f 82`. Unless
+- Every object starts with the same six bytes, `da 65 6f 66 21 82`. Unless
   it is written to itself, the next five are the same too, and the hash of
   its schema follows them, at byte 11.
 - A blob does not say which version of the format it is in. Another
@@ -197,7 +197,7 @@ decodeObject(object.bytes, login).data.nonce; // "6f1c0a9e"
 A schema carries the type a program reads its data as, `Schema<D, F>`, and
 the data of an object of that schema is an `F`. `schema` works the type out
 from the fields. A program that gets a schema another way declares the type
-there, as in `const login: Schema<Est, Login> = decodeSchema(bytes,
+there, as in `const login: Schema<Value, Login> = decodeSchema(bytes,
 schemaValidator)`. Either way the type is the program's claim, and checking
 the data against the schema is what holds it: data that does not fit is
 refused, not handed out as an `F`. The data of a schema declared with no
@@ -292,18 +292,18 @@ the text it quotes:
 ```ts
 type Text = { readonly link: Link<unknown>; readonly text: string };
 
-const plainText: Implementation<Est, Text, { readonly text: string }> = {
+const plainText: Implementation<Value, Text, { readonly text: string }> = {
   schema: plain,
   read: ({ link, data }) => ({ link, text: data.text }),
 };
-const quotedText: Implementation<Est, Text, { readonly quotes: EstLink<Text> }> = {
+const quotedText: Implementation<Value, Text, { readonly quotes: LinkValue<Text> }> = {
   schema: quote,
   async read({ link, data }, reader) {
     const quoted = await texts.read(data.quotes.link, reader);
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations(est, [plainText, quotedText]);
+const texts = new Implementations(objectFormat, [plainText, quotedText]);
 await texts.read(link, reader); // a Text, whichever of the two schemas the object names
 ```
 
@@ -333,12 +333,12 @@ of several kinds, told apart by what they link to. Here a reply of
 that answer a note of `noteSchema`, each with the note:
 
 ```ts
-type Reply = { readonly to: EstLink<unknown>; readonly text: string };
-type ReplyToNote = { readonly reply: EncodedObject<Est, Reply>; readonly note: EncodedObject<Est, Note> };
+type Reply = { readonly to: LinkValue<unknown>; readonly text: string };
+type ReplyToNote = { readonly reply: EncodedObject<Value, Reply>; readonly note: EncodedObject<Value, Note> };
 
-const repliesToNotes = new SelectionBySchema<Est, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
+const repliesToNotes = new SelectionBySchema<Value, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
   const bytes = await reader.get(reply.data.to.link);
-  if (bytes === undefined || schemaOf(bytes, est) !== noteSchema.link) return undefined;
+  if (bytes === undefined || schemaOf(bytes, objectFormat) !== noteSchema.link) return undefined;
   return { reply, note: decodeObject(bytes, noteSchema) };
 });
 ```

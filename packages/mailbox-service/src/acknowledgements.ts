@@ -1,5 +1,5 @@
 import type { Signature, Signatures } from "@estoc/identity";
-import { type EncodedObject, type Est, EstLink, type Link, objectsOf } from "@estoc/object";
+import { type EncodedObject, type Link, LinkValue, objectsOf, type Value } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, selectedRecords, type View } from "@estoc/store";
 import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
@@ -27,7 +27,7 @@ export interface Acknowledgements {
 }
 
 export type AcknowledgementsView = View<
-  Est,
+  Value,
   DataOf<typeof acknowledgementRowSchema>,
   AcknowledgementOrder,
   Acknowledgements
@@ -39,12 +39,12 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
       selectedRecords(signatures.selectionOver(acknowledgementSchema)),
       acknowledgementRowSchema,
       ({ signature, object }) => [
-        { acceptance: object.data.acceptance, acknowledgement: new EstLink(signature.link as Link<Signature>) },
+        { acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link as Link<Signature>) },
       ],
     ).orderedBy("acceptance", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(acceptance) {
-        for await (const { data } of rows.range([new EstLink(acceptance)])) return data.acknowledgement.link;
+        for await (const { data } of rows.range([new LinkValue(acceptance)])) return data.acknowledgement.link;
         return undefined;
       },
     }),
@@ -56,7 +56,7 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
  * service's signature over its acknowledgement.
  */
 const openedMailboxRowSchema = schema("Opened mailbox row", {
-  mailbox: link<EncodedObject<Est>>(),
+  mailbox: link<EncodedObject<Value>>(),
   acknowledgement: link<Signature>(),
 });
 
@@ -76,10 +76,15 @@ export interface OpenedMailboxes {
    * The link of the service's signature over the acknowledgement of
    * `mailbox`, or `undefined` when the store holds no record of opening it.
    */
-  acknowledgementOf(mailbox: Link<EncodedObject<Est>>): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(mailbox: Link<EncodedObject<Value>>): Promise<Link<Signature> | undefined>;
 }
 
-export type OpenedMailboxesView = View<Est, DataOf<typeof openedMailboxRowSchema>, OpenedMailboxOrder, OpenedMailboxes>;
+export type OpenedMailboxesView = View<
+  Value,
+  DataOf<typeof openedMailboxRowSchema>,
+  OpenedMailboxOrder,
+  OpenedMailboxes
+>;
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
@@ -88,7 +93,7 @@ export function openedMailboxesView(): OpenedMailboxesView {
     ]).orderedBy("mailbox", "acknowledgement"),
     read: (rows) => ({
       async acknowledgementOf(mailbox) {
-        for await (const { data } of rows.range([new EstLink(mailbox)])) return data.acknowledgement.link;
+        for await (const { data } of rows.range([new LinkValue(mailbox)])) return data.acknowledgement.link;
         return undefined;
       },
     }),

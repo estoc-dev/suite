@@ -1,4 +1,4 @@
-import { type EncodedObject, type Est, type Link, linkOf } from "@estoc/object";
+import { type EncodedObject, type Link, linkOf, type Value } from "@estoc/object";
 
 /**
  * The bytes of `objects` and the closures of the schemas they are written to,
@@ -6,7 +6,7 @@ import { type EncodedObject, type Est, type Link, linkOf } from "@estoc/object";
  * when they link to none but one another and what `carried` holds, as an
  * identity, its keys and the signed identity it follows do.
  */
-export function blobsOf(objects: readonly EncodedObject<Est>[], carried: readonly Uint8Array[] = []): Uint8Array[] {
+export function blobsOf(objects: readonly EncodedObject<Value>[], carried: readonly Uint8Array[] = []): Uint8Array[] {
   const blobs = new Map<Link<unknown>, Uint8Array>();
   for (const { link, bytes } of objects) blobs.set(link, bytes);
   for (const { schema } of objects) for (const bytes of schema.blobs) blobs.set(linkOf(bytes), bytes);

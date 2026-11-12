@@ -4,13 +4,13 @@ import { describe, expect, it, test } from "vitest";
 import {
   decodeObject,
   decodeSchema,
-  EstLink,
-  type EstMap,
   encodeObject,
   encodeSchema,
-  est,
+  LinkValue,
+  objectFormat,
   readObject,
   schemaOf,
+  type ValueMap,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
@@ -25,14 +25,14 @@ const malformed: [string, Uint8Array][] = [
 ];
 
 describe("an object", () => {
-  it.each<[string, EstMap]>([
+  it.each<[string, ValueMap]>([
     ["fields", greeting],
     [
       "fields of every kind",
-      { array: [1, "two", { three: true }], string: "hello", link: new EstLink(login.link), bytes: Uint8Array.of(1) },
+      { array: [1, "two", { three: true }], string: "hello", link: new LinkValue(login.link), bytes: Uint8Array.of(1) },
     ],
     ["no fields", {}],
-    ["a field of any name, as it keeps none for its schema", { $schema: "note", schema: new EstLink(login.link) }],
+    ["a field of any name, as it keeps none for its schema", { $schema: "note", schema: new LinkValue(login.link) }],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
@@ -86,12 +86,12 @@ describe("an object read by its link", () => {
 
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
-    expect(schemaOf(encodeObject(login, greeting).bytes, est)).toBe(login.link);
-    expect(schemaOf(est.encode(est.object({ v: 1 }, login.link)), est)).toBe(login.link);
+    expect(schemaOf(encodeObject(login, greeting).bytes, objectFormat)).toBe(login.link);
+    expect(schemaOf(objectFormat.encode(objectFormat.object({ v: 1 }, login.link)), objectFormat)).toBe(login.link);
   });
 
   it.each(malformed)("is not read from an object %s", (_, bytes) => {
-    expect(() => schemaOf(bytes, est)).toThrow();
+    expect(() => schemaOf(bytes, objectFormat)).toThrow();
   });
 });
 

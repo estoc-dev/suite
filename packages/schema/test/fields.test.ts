@@ -1,4 +1,4 @@
-import type { EncodedObject, Est, EstLink } from "@estoc/object";
+import type { EncodedObject, LinkValue, Value } from "@estoc/object";
 import { describe, expectTypeOf, it } from "vitest";
 import { any, array, boolean, bytes, type DataOf, integer, link, optional, schema, string } from "../src/index.ts";
 
@@ -13,8 +13,8 @@ const note = schema("Note", {
 });
 
 // Two schemas whose objects link to each other, each read as the data of its own.
-interface Identity extends EncodedObject<Est, DataOf<typeof identity>> {}
-interface SignedIdentity extends EncodedObject<Est, DataOf<typeof signedIdentity>> {}
+interface Identity extends EncodedObject<Value, DataOf<typeof identity>> {}
+interface SignedIdentity extends EncodedObject<Value, DataOf<typeof signedIdentity>> {}
 const identity = schema("Identity", { at: integer(), prior: optional(link<SignedIdentity>()) });
 const signedIdentity = schema("Signed Identity", { identity: link<Identity>(), signature: bytes() });
 
@@ -27,16 +27,16 @@ describe("DataOf", () => {
       readonly rows: readonly (readonly number[])[];
       readonly isDraft?: boolean;
       readonly tags?: readonly string[];
-      readonly more?: Est;
+      readonly more?: Value;
     }>();
   });
 
   it("reads a link as one to what the schema's program says it names", () => {
     expectTypeOf<DataOf<typeof identity>>().toEqualTypeOf<{
       readonly at: number;
-      readonly prior?: EstLink<SignedIdentity>;
+      readonly prior?: LinkValue<SignedIdentity>;
     }>();
-    expectTypeOf<DataOf<typeof signedIdentity>["identity"]>().toEqualTypeOf<EstLink<Identity>>();
+    expectTypeOf<DataOf<typeof signedIdentity>["identity"]>().toEqualTypeOf<LinkValue<Identity>>();
   });
 });
 

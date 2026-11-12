@@ -26,10 +26,10 @@ store holds comes with its closure, and a write adds only the blobs in the
 closures of its records.
 
 ```ts
-import { encodeObject, est } from "@estoc/object";
+import { encodeObject, objectFormat } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 
-const store = new Store(est, new MemoryBackend());
+const store = new Store(objectFormat, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
 // `schemas` are the `blobs` of each schema the program writes to; the store keeps those named here.
@@ -215,7 +215,7 @@ index in that order, which `scan` reads.
   reads each record once however many of them it is scanned in.
 
 ```ts
-import { EstLink, objectsOf } from "@estoc/object";
+import { LinkValue, objectsOf } from "@estoc/object";
 import { integer, link, schema, string } from "@estoc/schema";
 import { indexOver, scan, selectedRecords } from "@estoc/store";
 
@@ -225,7 +225,7 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 // Notes by tag, oldest first: a row for each tag of a note, from a
 // `noteSchema` whose objects hold `tags` and `at`.
 const tagged = indexOver(selectedRecords(objectsOf(noteSchema)), taggedSchema, ({ link, data }) =>
-  data.tags.map((tag) => ({ tag, at: data.at, note: new EstLink(link) })),
+  data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 );
 const byTag = tagged.orderedBy("tag", "at");
 
@@ -378,14 +378,14 @@ so an application can give the one and a module that knows what the objects
 mean the other. The two meet in the schema of the rows.
 
 ```ts
-import { readObject, type Est } from "@estoc/object";
+import { readObject, type Value } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
 import { view, type View } from "@estoc/store";
 
 // The latest note of a tag, from the rows of `byTag`.
 type Latest = { noteTagged(tag: string): Promise<DataOf<typeof noteSchema> | undefined> };
 
-const latest: View<Est, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
+const latest: View<Value, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
@@ -484,7 +484,7 @@ schema can be kept on either side.
 ```ts
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
-const store = new Store(est, new MemoryBackend());
+const store = new Store(objectFormat, new MemoryBackend());
 const privateStore = new PrivateStore(store, new MemoryBackend());
 await privateStore.write({ records: [key], blobs: keySchema.blobs });
 
@@ -537,7 +537,7 @@ store goes where only its user can read it.
 import { SqliteBackend } from "@estoc/store/sqlite";
 
 const backend = new SqliteBackend("store.db");
-const store = new Store(est, backend);
+const store = new Store(objectFormat, backend);
 // …
 backend.close();
 ```

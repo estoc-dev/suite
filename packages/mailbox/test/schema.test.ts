@@ -1,4 +1,4 @@
-import type { EstMap } from "@estoc/object";
+import type { ValueMap } from "@estoc/object";
 import { string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { mailboxSchema } from "../src/index.ts";
@@ -11,7 +11,7 @@ describe("a mailbox schema", () => {
     expect(() => memory.validate({ key, name: "q" })).not.toThrow();
   });
 
-  it.each<[string, EstMap]>([
+  it.each<[string, ValueMap]>([
     ["without a key", { name: "q" }],
     ["without a field of its transport", { key }],
     ["whose key is in hex", { key: "07".repeat(32), name: "q" }],

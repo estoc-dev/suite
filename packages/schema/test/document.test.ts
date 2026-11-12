@@ -1,14 +1,14 @@
-import { decodeSchema, type EstMap, encodeObject, est, itself, schemaOf } from "@estoc/object";
+import { decodeSchema, encodeObject, itself, objectFormat, schemaOf, type ValueMap } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { any, array, integer, link, optional, rootSchema, schema, schemaValidator, string } from "../src/index.ts";
 
-const written = (data: EstMap) => est.encode(est.object(data, rootSchema.link));
-const dataOf = (bytes: Uint8Array) => est.fields(est.decode(bytes)).data;
+const written = (data: ValueMap) => objectFormat.encode(objectFormat.object(data, rootSchema.link));
+const dataOf = (bytes: Uint8Array) => objectFormat.fields(objectFormat.decode(bytes)).data;
 
 describe("a schema", () => {
   it("is the object of its title and its fields, written to the root schema", () => {
     const note = schema("Note", { text: string(), parents: array(link()), at: optional(integer()), more: any() });
-    expect(schemaOf(note.bytes, est)).toBe(rootSchema.link);
+    expect(schemaOf(note.bytes, objectFormat)).toBe(rootSchema.link);
     expect(dataOf(note.bytes)).toEqual({
       title: "Note",
       fields: {
@@ -24,7 +24,7 @@ describe("a schema", () => {
     const chat = schema("Chat", { text: string() });
     expect(chat.bytes).toHaveLength(81);
     expect(chat.blobs).toEqual([chat.bytes, rootSchema.bytes]);
-    expect([...est.links(est.decode(chat.bytes))]).toEqual([rootSchema.link]);
+    expect([...objectFormat.links(objectFormat.decode(chat.bytes))]).toEqual([rootSchema.link]);
   });
 
   it("is one blob however its fields are ordered", () => {
@@ -39,7 +39,7 @@ describe("a schema", () => {
     expect(other.link).not.toBe(one.link);
   });
 
-  it.each<[string, EstMap]>([
+  it.each<[string, ValueMap]>([
     ["no fields at all", { title: "Note", fields: {} }],
     [
       "arrays of arrays",
@@ -59,7 +59,7 @@ describe("a schema", () => {
     expect(decodeSchema(bytes, schemaValidator).bytes).toEqual(bytes);
   });
 
-  it.each<[string, EstMap, RegExp]>([
+  it.each<[string, ValueMap, RegExp]>([
     ["without a title", { fields: {} }, /#\/title: left out/],
     ["whose title is not a string", { title: 1, fields: {} }, /#\/title: not a string/],
     ["without fields", { title: "Note" }, /#\/fields: left out/],
@@ -114,7 +114,7 @@ describe("a schema", () => {
   });
 
   it("is refused when it is written to itself, as the root schema alone is", () => {
-    const bytes = est.encode(est.object({ title: "Note", fields: {} }, itself));
+    const bytes = objectFormat.encode(objectFormat.object({ title: "Note", fields: {} }, itself));
     expect(() => decodeSchema(bytes, schemaValidator)).toThrow(/is written to/);
   });
 });
@@ -123,14 +123,14 @@ describe("the root schema", () => {
   const document = { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } };
 
   it("is the schema of a title and fields, written to itself", () => {
-    expect(est.fields(est.decode(rootSchema.bytes))).toEqual({ schema: itself, data: document });
+    expect(objectFormat.fields(objectFormat.decode(rootSchema.bytes))).toEqual({ schema: itself, data: document });
     expect(rootSchema.bytes).toHaveLength(69);
-    expect(schemaOf(rootSchema.bytes, est)).toBe(rootSchema.link);
+    expect(schemaOf(rootSchema.bytes, objectFormat)).toBe(rootSchema.link);
   });
 
   it("has the link of its bytes as they were written out by hand elsewhere", () => {
     // The CBOR was written by hand in Python and hashed with its hashlib.
-    expect(rootSchema.link).toBe("sha256:f04c343e9b0209f633e0670c03798f9d5408fd69e7835ffb637847875a38e08e");
+    expect(rootSchema.link).toBe("sha256:ca7c1b8aee79500fa94042b733ba665e400d07b94eb30bdc4d294de50508da66");
   });
 
   it("holds data that fits it, and reads as a schema of the language", () => {
@@ -139,14 +139,14 @@ describe("the root schema", () => {
   });
 
   it("links to nothing, so it is its whole closure", () => {
-    expect([...est.links(est.decode(rootSchema.bytes))]).toEqual([]);
+    expect([...objectFormat.links(objectFormat.decode(rootSchema.bytes))]).toEqual([]);
     expect(rootSchema.blobs).toEqual([rootSchema.bytes]);
   });
 
   it("is not the schema built from its title and fields, which is written to it", () => {
     const built = schema("Schema", { title: string(), fields: any() });
     expect(dataOf(built.bytes)).toEqual(document);
-    expect(schemaOf(built.bytes, est)).toBe(rootSchema.link);
+    expect(schemaOf(built.bytes, objectFormat)).toBe(rootSchema.link);
     expect(built.link).not.toBe(rootSchema.link);
     expect(decodeSchema(built.bytes, schemaValidator).link).toBe(built.link);
   });

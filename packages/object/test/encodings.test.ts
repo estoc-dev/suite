@@ -13,7 +13,7 @@ import {
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
-// An encoding with nothing of est in it, to show that objects and schemas
+// An encoding with nothing of the object format in it, to show that objects and schemas
 // hold over any: a value is fields of text, one to a line, written
 // `name=text` in the order of their names. An object names its schema in the
 // field `schema`, by link or as `self` when it is written to itself, and a
@@ -93,7 +93,7 @@ const fieldCount: SchemaValidator<Text, string> = {
 const pair = encodeSchema("2", fieldCount);
 const note = encodeSchema({ fields: ["text"] }, fieldNames);
 
-describe("an encoding other than est", () => {
+describe("an encoding other than the object format", () => {
   it("writes its objects as it writes any value, and reads them back", () => {
     const object = encodeObject(pair, { greeting: "hello", name: "world" });
     expect(new TextDecoder().decode(object.bytes)).toBe(`greeting=hello\nname=world\nschema=${pair.link}\n`);
@@ -118,7 +118,7 @@ describe("an encoding other than est", () => {
     expect(() => encodeObject(pair, { greeting: "hello" })).toThrow(/does not fit/);
   });
 
-  it("refuses an object of est read with one of its schemas", () => {
+  it("refuses an object written in the object format, read with one of its schemas", () => {
     const received: Uint8Array = encodeObject(note, { text: "hello" }).bytes;
     expect(() => decodeObject(received, pair)).toThrow();
   });

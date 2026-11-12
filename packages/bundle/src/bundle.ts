@@ -1,11 +1,11 @@
-import { type Bytes, est, type Link, linkOf, schemaOf } from "@estoc/object";
+import { type Bytes, type Link, linkOf, objectFormat, schemaOf } from "@estoc/object";
 import { encode, Tokenizer, Type } from "cborg";
 
 /**
  * An object, the root, and blobs carried with it, held by link. Holding one means that the file it
  * was read from was checked:
  *
- * - The root is an object of est.
+ * - The root is an object.
  * - Every blob is held by the link of its bytes.
  *
  * Nothing else about the blobs is read, signatures included.
@@ -46,9 +46,9 @@ export class Bundle {
 
 function checkRoot(bytes: Uint8Array): void {
   try {
-    schemaOf(bytes, est);
+    schemaOf(bytes, objectFormat);
   } catch (cause) {
-    throw new Error("the root of a bundle is an object of est", { cause });
+    throw new Error("the root of a bundle is an object", { cause });
   }
 }
 
@@ -83,7 +83,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
  * - The blobs are written in the order given. A blob given twice is written once, and the root
  *   given among the blobs is left out.
  *
- * @throws when `root` is not an object of est, since no reader would take the file.
+ * @throws when `root` is not an object, since no reader would take the file.
  */
 export function encodeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Uint8Array {
   checkRoot(root.bytes);
@@ -99,7 +99,7 @@ export function encodeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: It
 }
 
 /**
- * Reads a bundle from its file: an object of est, the root, then each blob it carries as a CBOR
+ * Reads a bundle from its file: an object, the root, then each blob it carries as a CBOR
  * byte string.
  *
  * - A blob is any bytes and is not read, so an object carried in the file is a byte string as an
@@ -107,7 +107,7 @@ export function encodeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: It
  * - Nothing in the file is compressed, so the blobs come to less than its length, and reading has
  *   no other limit.
  *
- * @throws when the file does not start with an object of est.
+ * @throws when the file does not start with an object.
  * @throws when what follows the root is not byte strings, each of a definite length under the
  *   shortest head, the last ending where the file does.
  * @throws when the file holds a blob twice, the root included.
@@ -122,7 +122,7 @@ export function decodeBundle(file: Uint8Array): Bundle {
   try {
     passValue(tokens);
   } catch (cause) {
-    throw new Error("the root of a bundle is an object of est", { cause });
+    throw new Error("the root of a bundle is an object", { cause });
   }
   const root = bytes.slice(0, tokens.pos());
   checkRoot(root);

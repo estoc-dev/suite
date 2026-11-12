@@ -1,4 +1,4 @@
-import { type Est, est, type SchemaValidator } from "../src/index.ts";
+import { objectFormat, type SchemaValidator, type Value } from "../src/index.ts";
 
 /** The names of the fields an object holds, or `"any"` for an object that holds any. */
 export type FieldNames = { readonly fields: readonly string[] | "any" };
@@ -6,9 +6,9 @@ export type FieldNames = { readonly fields: readonly string[] | "any" };
 // A language for these tests, so that they turn on no language in use: a
 // schema lists the names of the fields its objects hold, or takes any fields.
 // Its root schema says that a schema holds `fields` alone.
-export const fieldNames: SchemaValidator<Est, FieldNames> = {
+export const fieldNames: SchemaValidator<Value, FieldNames> = {
   language: {
-    encoding: est,
+    encoding: objectFormat,
     root: { fields: ["fields"] },
     data: (document) => document,
     document({ fields }) {

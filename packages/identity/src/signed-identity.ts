@@ -1,12 +1,12 @@
 import {
   digestOf,
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
   type Link,
+  LinkValue,
   type Reader,
   readObject,
+  type Value,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
@@ -34,7 +34,7 @@ export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
  * - `blobs` are what it takes to read it again, each blob once: the bytes of
  *   its object, the closure of its schema, and the identity's `blobs`.
  */
-export interface SignedIdentityObject extends EncodedObject<Est, SignedIdentityData> {
+export interface SignedIdentityObject extends EncodedObject<Value, SignedIdentityData> {
   readonly link: Link<SignedIdentityObject>;
   readonly identity: IdentityObject;
   readonly signature: Uint8Array;
@@ -61,7 +61,7 @@ export class SignedIdentities {
    * @throws when the identity follows a signed identity of another root, or
    *   one that is not earlier.
    */
-  async verify(object: EncodedObject<Est, SignedIdentityData>, reader: Reader): Promise<SignedIdentityObject> {
+  async verify(object: EncodedObject<Value, SignedIdentityData>, reader: Reader): Promise<SignedIdentityObject> {
     if (object.schema.link !== this.schema.link) throw new Error(`a signed identity is written to ${this.schema.link}`);
     const identity = await readObject(reader, object.data.identity.link, this.#identities.schema);
     const prior = identity.data.prior === undefined ? undefined : await this.read(identity.data.prior.link, reader);
@@ -80,13 +80,13 @@ export class SignedIdentities {
    */
   async sign(root: Signer, identity: IdentityObject): Promise<SignedIdentityObject> {
     const signature = await root.sign(digestOf(identity.link));
-    const data = { identity: new EstLink(identity.link), signature };
+    const data = { identity: new LinkValue(identity.link), signature };
     return signedIdentityOf(encodeObject(this.schema, data), identity);
   }
 }
 
 function signedIdentityOf(
-  object: EncodedObject<Est, SignedIdentityData>,
+  object: EncodedObject<Value, SignedIdentityData>,
   identity: IdentityObject,
 ): SignedIdentityObject {
   const { signature } = object.data;

@@ -1,15 +1,15 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  type Est,
-  EstLink,
   encodeObject,
   encodeSchema,
-  est,
   type Implementation,
   Implementations,
   type Link,
+  LinkValue,
   linkOf,
+  objectFormat,
   type Schema,
+  type Value,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
@@ -19,29 +19,29 @@ interface Text {
 }
 
 type PlainData = { readonly text: string };
-type QuoteData = { readonly quotes: EstLink<Text> };
+type QuoteData = { readonly quotes: LinkValue<Text> };
 
 const textAt = ({ link }: { readonly link: Link<unknown> }) => link as Link<Text>;
 
-const plain: Schema<Est, PlainData> = encodeSchema({ fields: ["text"] }, fieldNames);
-const quote: Schema<Est, QuoteData> = encodeSchema({ fields: ["quotes"] }, fieldNames);
+const plain: Schema<Value, PlainData> = encodeSchema({ fields: ["text"] }, fieldNames);
+const quote: Schema<Value, QuoteData> = encodeSchema({ fields: ["quotes"] }, fieldNames);
 const other = encodeSchema({ fields: "any" }, fieldNames);
 
-const plainText: Implementation<Est, Text, PlainData> = {
+const plainText: Implementation<Value, Text, PlainData> = {
   schema: plain,
   read: ({ link, data }) => ({ link, text: data.text }),
 };
-const quotedText: Implementation<Est, Text, QuoteData> = {
+const quotedText: Implementation<Value, Text, QuoteData> = {
   schema: quote,
   async read({ link, data }, reader) {
     const quoted = await texts.read(data.quotes.link, reader);
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations(est, [plainText, quotedText]);
+const texts = new Implementations(objectFormat, [plainText, quotedText]);
 
 const hello = encodeObject(plain, { text: "hello" });
-const echo = encodeObject(quote, { quotes: new EstLink(textAt(hello)) });
+const echo = encodeObject(quote, { quotes: new LinkValue(textAt(hello)) });
 const blobs = (...objects: { bytes: Uint8Array; link: Link<unknown> }[]) =>
   new Map(objects.map(({ bytes, link }) => [link, bytes]));
 
@@ -68,7 +68,7 @@ describe("implementations", () => {
   });
 
   it("refuse an object whose data does not fit its schema", async () => {
-    const bytes = est.encode(est.object({ body: "hello" }, plain.link));
+    const bytes = objectFormat.encode(objectFormat.object({ body: "hello" }, plain.link));
     await expect(texts.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]))).rejects.toThrow(
       "the data does not fit its schema",
     );
@@ -85,7 +85,7 @@ describe("implementations", () => {
   });
 
   it("refuse two implementations of one schema", () => {
-    expect(() => new Implementations(est, [plainText, { ...plainText }])).toThrow(
+    expect(() => new Implementations(objectFormat, [plainText, { ...plainText }])).toThrow(
       `${plain.link} is given two implementations`,
     );
   });

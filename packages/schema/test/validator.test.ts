@@ -1,13 +1,13 @@
 import { inspect } from "node:util";
-import { type Est, EstLink } from "@estoc/object";
+import { LinkValue, type Value } from "@estoc/object";
 import { describe, expect, it, test } from "vitest";
 import { any, array, boolean, bytes, integer, link, optional, schema, string } from "../src/index.ts";
 
-const blob = new EstLink(`sha256:${"0f".repeat(32)}` as const);
+const blob = new LinkValue(`sha256:${"0f".repeat(32)}` as const);
 const digest = new Uint8Array(32).fill(0x0f);
-const named = (value: Est) => [inspect(value, { breakLength: Number.POSITIVE_INFINITY }), value] as const;
+const named = (value: Value) => [inspect(value, { breakLength: Number.POSITIVE_INFINITY }), value] as const;
 
-describe.each<[string, ReturnType<typeof any>, readonly Est[], readonly Est[]]>([
+describe.each<[string, ReturnType<typeof any>, readonly Value[], readonly Value[]]>([
   ["an integer", integer(), [0, -1, 2 ** 53 - 1, -(2 ** 53 - 1)], [2 ** 53, -(2 ** 53), 1e21, 1.5, "1", true]],
   ["bytes", bytes(), [new Uint8Array(), Uint8Array.of(0, 255), digest], ["00ff", 0, [0, 255], blob]],
   ["a link", link(), [blob], [blob.link, digest, { link: blob.link }, {}]],

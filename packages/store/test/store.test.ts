@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { digestOf, EstLink, encodeObject, est, type Link, linkOf } from "@estoc/object";
+import { digestOf, encodeObject, type Link, LinkValue, linkOf, objectFormat } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
@@ -21,7 +21,7 @@ const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 // An array in CBOR, under no tag of an object.
 const notAnObject = Uint8Array.of(0x82, 1, 2);
 
-const newStore = (backend: Backend = new MemoryBackend()) => new Store(est, backend);
+const newStore = (backend: Backend = new MemoryBackend()) => new Store(objectFormat, backend);
 
 const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
   get: (link) => backend.get(link === under ? other : link),
@@ -43,7 +43,7 @@ describe("a store", () => {
     const store = newStore();
     const image = utf8("not an object");
     await store.write({
-      records: [object({ image: new EstLink(linkOf(image)) })],
+      records: [object({ image: new LinkValue(linkOf(image)) })],
       blobs: [image, ...anything.blobs],
     });
     expect(await store.get(linkOf(image))).toEqual(image);
@@ -61,7 +61,7 @@ describe("a store", () => {
   it("lists its records, and not the blobs written with them", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const note = object({ text: "hello", image: new EstLink(linkOf(image)) });
+    const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     await store.write({ records: [note], blobs: [image, ...anything.blobs] });
     expect(await recordsOf(store)).toEqual([note.link]);
     expect(await store.get(linkOf(image))).toEqual(image);
@@ -71,8 +71,8 @@ describe("a store", () => {
     const store = newStore();
     const image = utf8("an image");
     const stray = utf8("led to by nothing written");
-    const incomplete = object({ image: new EstLink(linkOf(utf8("held nowhere"))) });
-    const note = object({ text: "hello", image: new EstLink(linkOf(image)) });
+    const incomplete = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
+    const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     await store.write({
       records: [note],
       blobs: [image, stray, incomplete.bytes, ...anything.blobs, ...signatureSchemas],
@@ -95,7 +95,7 @@ describe("a store", () => {
   it("lists an object that came in with another once it is written as a record", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const record = object({ received: new EstLink(note.link) });
+    const record = object({ received: new LinkValue(note.link) });
     await store.write({ records: [record], blobs: [note.bytes, ...anything.blobs] });
     expect(await recordsOf(store)).toEqual([record.link]);
     await store.write({ records: [note] });
@@ -117,7 +117,7 @@ describe("a store", () => {
   it("refuses a batch in which a blob links to one that neither the batch nor the store holds, and keeps none of it", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const note = object({ text: "hello", image: new EstLink(linkOf(image)) });
+    const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     const carriedObject = object({ text: "carried" });
     await expect(store.write({ records: [note], blobs: [carriedObject.bytes, ...anything.blobs] })).rejects.toThrow(
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
@@ -133,7 +133,7 @@ describe("a store", () => {
 
   it("refuses a batch for what it is with a RefusedBatch, and passes on a backend's own failure as it is", async () => {
     const image = utf8("an image");
-    const note = object({ text: "hello", image: new EstLink(linkOf(image)) });
+    const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     const store = newStore();
     await expect(store.write({ records: [note], blobs: [...anything.blobs] })).rejects.toThrow(RefusedBatch);
     await expect(store.write({ records: [{ bytes: notAnObject }] })).rejects.toThrow(RefusedBatch);
@@ -155,9 +155,9 @@ describe("a store", () => {
   it("takes a batch whose blobs link to blobs it holds from an earlier write", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const first = object({ text: "first", image: new EstLink(linkOf(image)) });
+    const first = object({ text: "first", image: new LinkValue(linkOf(image)) });
     await store.write({ records: [first], blobs: [image, ...anything.blobs] });
-    const second = object({ text: "second", image: new EstLink(linkOf(image)) });
+    const second = object({ text: "second", image: new LinkValue(linkOf(image)) });
     await store.write({ records: [second] });
     expect((await recordsOf(store)).sort()).toEqual([first.link, second.link].sort());
   });
@@ -186,8 +186,8 @@ describe("a store", () => {
       })(),
     );
     const image = utf8("an image");
-    const inner = object({ image: new EstLink(linkOf(image)) });
-    const outer = object({ inner: new EstLink(inner.link) });
+    const inner = object({ image: new LinkValue(linkOf(image)) });
+    const outer = object({ inner: new LinkValue(inner.link) });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     expect(order).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
@@ -195,8 +195,8 @@ describe("a store", () => {
   it("gives where it took in each blob, after the blobs it links to, and keeps it when the blob is written again", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const inner = object({ image: new EstLink(linkOf(image)) });
-    const outer = object({ inner: new EstLink(inner.link) });
+    const inner = object({ image: new LinkValue(linkOf(image)) });
+    const outer = object({ inner: new LinkValue(inner.link) });
     await store.write({ records: [inner], blobs: [image, ...anything.blobs] });
     await store.write({ records: [outer, inner], blobs: [image] });
     const links = [rootSchema.link, anything.link, linkOf(image), inner.link, outer.link];
@@ -220,8 +220,8 @@ describe("the closure of a blob", () => {
   it("holds the blob, the blobs it links to and theirs in turn, its schema and the root schema among them", async () => {
     const store = newStore();
     const image = utf8("an image");
-    const inner = object({ image: new EstLink(linkOf(image)) });
-    const outer = object({ inner: new EstLink(inner.link) });
+    const inner = object({ image: new LinkValue(linkOf(image)) });
+    const outer = object({ inner: new LinkValue(inner.link) });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
@@ -238,9 +238,9 @@ describe("the closure of a blob", () => {
       utf8(`see ${target.link}`),
       linkUnderItsTag,
       Uint8Array.of(0x81, ...linkUnderItsTag),
-      Uint8Array.of(...object({ received: new EstLink(target.link) }).bytes, 0),
+      Uint8Array.of(...object({ received: new LinkValue(target.link) }).bytes, 0),
     ];
-    const outer = object({ attachments: bytes.map((blob) => new EstLink(linkOf(blob))) });
+    const outer = object({ attachments: bytes.map((blob) => new LinkValue(linkOf(blob))) });
     await store.write({ records: [outer], blobs: [...bytes, target.bytes, ...anything.blobs] });
     const closure = await store.closure(outer.link);
     expect([...closure.keys()].sort()).toEqual(
@@ -252,7 +252,7 @@ describe("the closure of a blob", () => {
   it("is refused when the backend gives other bytes under a link in it", async () => {
     const backend = new MemoryBackend();
     const [inner, other] = [object({ text: "inner" }), object({ text: "other" })];
-    const outer = object({ inner: new EstLink(inner.link) });
+    const outer = object({ inner: new LinkValue(inner.link) });
     await newStore(backend).write({
       records: [outer, other],
       blobs: [inner.bytes, ...anything.blobs],
@@ -264,7 +264,7 @@ describe("the closure of a blob", () => {
   it("is refused when the backend no longer gives a blob in it", async () => {
     const backend = new MemoryBackend();
     const [inner, absent] = [object({ text: "inner" }), object({ text: "absent" })];
-    const outer = object({ inner: new EstLink(inner.link) });
+    const outer = object({ inner: new LinkValue(inner.link) });
     await newStore(backend).write({ records: [outer], blobs: [inner.bytes, ...anything.blobs] });
     const store = newStore(backendGiving(backend, inner.link, absent.link));
     await expect(store.closure(outer.link)).rejects.toThrow(`the store does not hold ${inner.link}`);

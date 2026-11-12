@@ -7,7 +7,7 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { EstLink, encodeObject, est, type Link, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, objectFormat, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, RefusedBatch, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
@@ -59,7 +59,7 @@ interface Person {
 
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
-async function personActingAs(actor: Actor, store = new Store(est, new MemoryBackend())): Promise<Person> {
+async function personActingAs(actor: Actor, store = new Store(objectFormat, new MemoryBackend())): Promise<Person> {
   const privateStore = new PrivateStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, { transports: [transport], clock });
   const intake = new Intake(store, clock);
@@ -149,8 +149,8 @@ describe("a grant", () => {
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
     const { data } = await readObject(alice.store, readSignature.object, grants.schema);
     expect(data).toEqual({
-      to: new EstLink(bob.signedIdentity.link),
-      mailboxes: [new EstLink(inbox.mailbox)],
+      to: new LinkValue(bob.signedIdentity.link),
+      mailboxes: [new LinkValue(inbox.mailbox)],
       at: before + 1,
     });
   });
@@ -349,7 +349,7 @@ describe("what came in at a mailbox", () => {
     const { alice, bob, inbox, receive } = await twoPeople();
     const signature = await writeNote(alice, "hi Bob");
     const other = encodeObject(note, { text: "not what was signed" });
-    const forged = encodeObject(signatures.schema, { ...signature.data, object: new EstLink(other.link) });
+    const forged = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(other.link) });
     await alice.store.write({ records: [forged], blobs: [other.bytes] });
     await (await alice.post.outbox(inbox.mailbox)).send(forged.link);
     const { bundle } = await receive();
@@ -414,7 +414,7 @@ describe("what came in at a mailbox", () => {
 
   it("is still a message once the receiver's root has removed the key that signed its grant, as the store took the grant in before", async () => {
     const backend = new MemoryBackend();
-    const store = new Store(est, backend);
+    const store = new Store(objectFormat, backend);
     const [formerBob, currentBob, alice] = await Promise.all([
       personActingAs(signatures.actor(formerAgent, listingIdentityVersion), store),
       personActingAs(signatures.actor(currentAgent, removalIdentityVersion), store),
@@ -428,12 +428,12 @@ describe("what came in at a mailbox", () => {
 
     await seeIdentityVersion(currentBob, removalIdentityVersion);
     expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
-    const again = await personActingAs(currentBob.actor, new Store(est, backend));
+    const again = await personActingAs(currentBob.actor, new Store(objectFormat, backend));
     expect((await again.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 
   it("is no message by a grant that the store took in after the receiver's root removed the key that signed it, until a listed key signs one", async () => {
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     const [formerBob, currentBob, alice] = await Promise.all([
       personActingAs(signatures.actor(formerAgent, listingIdentityVersion), store),
       personActingAs(signatures.actor(currentAgent, removalIdentityVersion), store),
@@ -469,7 +469,7 @@ describe("what came in at a mailbox", () => {
     const signer = signerOf(2);
     const [alice, bob] = await Promise.all([
       person(1),
-      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), new Store(est, backend)),
+      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), new Store(objectFormat, backend)),
     ]);
     const { inbox, pickup } = await grantInbox(bob, alice);
     const signature = await writeNote(alice, "hi Bob");

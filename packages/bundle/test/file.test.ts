@@ -1,4 +1,4 @@
-import { EstLink, est, itself, linkOf, schemaOf } from "@estoc/object";
+import { itself, LinkValue, linkOf, objectFormat, schemaOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { decodeBundle, encodeBundle } from "../src/index.ts";
 
@@ -6,12 +6,14 @@ const bytesOf = (hex: string) => Uint8Array.from(Buffer.from(hex, "hex"));
 const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 
 // The objects are made with the encoding itself, to a schema that is an object
-// written to itself, so that the bytes written out below turn on est alone.
-const anything = est.encode(est.object({ title: "Anything" }, itself));
-const hello = est.encode(est.object({ text: "hello" }, linkOf(anything)));
+// written to itself, so that the bytes written out below turn on the object format alone.
+const anything = objectFormat.encode(objectFormat.object({ title: "Anything" }, itself));
+const hello = objectFormat.encode(objectFormat.object({ text: "hello" }, linkOf(anything)));
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = {
-  bytes: est.encode(est.object({ links: [new EstLink(linkOf(hello)), new EstLink(linkOf(image))] }, linkOf(anything))),
+  bytes: objectFormat.encode(
+    objectFormat.object({ links: [new LinkValue(linkOf(hello)), new LinkValue(linkOf(image))] }, linkOf(anything)),
+  ),
 };
 const rootLink = linkOf(root.bytes);
 const text = new TextEncoder().encode('{"text":"hello"}');
@@ -35,7 +37,7 @@ describe("the file of a bundle", () => {
     const bundle = decodeBundle(encodeBundle(root, [hello, image, anything]));
     expect(bundle.root).toEqual(root.bytes);
     expect(bundle.link).toBe(rootLink);
-    expect(schemaOf(bundle.root, est)).toBe(linkOf(anything));
+    expect(schemaOf(bundle.root, objectFormat)).toBe(linkOf(anything));
     for (const blob of [root.bytes, hello, image, anything]) expect(bundle.get(linkOf(blob))).toEqual(blob);
     expect([...bundle.blobs()]).toEqual([root.bytes, hello, image, anything]);
   });
@@ -81,7 +83,7 @@ describe("the file of a bundle", () => {
     expect(bundle.get(linkOf(image))).toBeUndefined();
   });
 
-  it("does not read the blobs it carries, so one that is no object of est is bytes as an image is", () => {
+  it("does not read the blobs it carries, so one that is no object is bytes as an image is", () => {
     const cut = hello.slice(0, -1);
     const bundle = decodeBundle(encodeBundle(root, [text, cut]));
     expect(bundle.get(linkOf(text))).toEqual(text);
@@ -89,12 +91,16 @@ describe("the file of a bundle", () => {
   });
 
   it.each<[string, string, string | RegExp]>([
-    ["no bytes", "", /is an object of est/],
-    ["a root that is text", hexOf(text), /is an object of est/],
-    ["a root that is a map under no tag", "a0", /is an object of est/],
-    ["a root that is a byte string, as a blob is", helloHex, /is an object of est/],
-    ["a root cut short", rootHex.slice(0, -2), /is an object of est/],
-    ["a root with an array of indefinite length", `da6573743f9f${rootHex.slice(12)}ff`, /is an object of est/],
+    ["no bytes", "", /the root of a bundle is an object/],
+    ["a root that is text", hexOf(text), /the root of a bundle is an object/],
+    ["a root that is a map under no tag", "a0", /the root of a bundle is an object/],
+    ["a root that is a byte string, as a blob is", helloHex, /the root of a bundle is an object/],
+    ["a root cut short", rootHex.slice(0, -2), /the root of a bundle is an object/],
+    [
+      "a root with an array of indefinite length",
+      `da656f66219f${rootHex.slice(12)}ff`,
+      /the root of a bundle is an object/,
+    ],
     ["a blob twice", `${rootHex}${helloHex}${imageHex}${helloHex}`, `holds the blob ${linkOf(hello)} twice`],
     ["its root again as a blob", `${rootHex}${rootAsBlobHex}`, `holds the blob ${rootLink} twice`],
     ["a blob whose length runs past the end of the file", `${rootHex}49${hexOf(image)}`, /not enough data/],
@@ -115,7 +121,7 @@ describe("the file of a bundle", () => {
     ["text", text],
     ["a file that carries a blob", bytesOf(`${rootHex}${imageHex}`)],
   ])("is not written with %s as its root", (_, bytes) => {
-    expect(() => encodeBundle({ bytes }, [hello])).toThrow(/is an object of est/);
+    expect(() => encodeBundle({ bytes }, [hello])).toThrow(/the root of a bundle is an object/);
   });
 
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([

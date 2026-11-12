@@ -496,7 +496,7 @@ const signedNotes = indexOver(
   signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-    yield { signer: new EstLink(signedIdentity.identity.identifier), note: new EstLink(object.link) };
+    yield { signer: new LinkValue(signedIdentity.identity.identifier), note: new LinkValue(object.link) };
   },
 ).orderedBy("signer");
 ```

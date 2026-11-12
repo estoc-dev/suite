@@ -1,4 +1,4 @@
-import { EstLink, linkOf } from "@estoc/object";
+import { LinkValue, linkOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { type CurveScheme, ed25519, eip191, isSameKey, loadIdentity, SoftwareSigner } from "../src/index.ts";
 import { byLink, closure, schemes } from "./fixtures.ts";
@@ -10,7 +10,7 @@ describe("a Wallet Key", () => {
   it.each(schemes)("in $name reads back from its blobs with its key", async (scheme) => {
     const walletKey = walletKeys.encode(key(scheme));
     const read = await walletKeys.read(walletKey.link, byLink(walletKey.blobs));
-    expect(read.data).toEqual({ key: new EstLink(keys.encode(key(scheme)).link) });
+    expect(read.data).toEqual({ key: new LinkValue(keys.encode(key(scheme)).link) });
     expect(read.key.link).toBe(walletKey.key.link);
     expect(isSameKey(read.key, key(scheme))).toBe(true);
   });

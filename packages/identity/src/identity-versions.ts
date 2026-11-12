@@ -1,4 +1,4 @@
-import { type Est, EstLink, type Link, type Reader, SelectionBySchema } from "@estoc/object";
+import { type Link, LinkValue, type Reader, SelectionBySchema, type Value } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { hasSigner } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
@@ -32,7 +32,7 @@ export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity
 /** The rows of an index of identity versions, as `people` reads them. */
 export interface IdentityVersionRows {
   /** The rows of the identity versions of `identifier`. */
-  range(prefix: readonly [identifier: EstLink<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
+  range(prefix: readonly [identifier: LinkValue<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
 /**
@@ -63,7 +63,7 @@ export class IdentityVersions {
    * @throws from `read`, when the reader gives no blob for the record, and
    *   where `decodeObject` throws for an object of the signed identity schema.
    */
-  readonly selection: SelectionBySchema<Est, IdentityVersionData, SignedIdentityData>;
+  readonly selection: SelectionBySchema<Value, IdentityVersionData, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
@@ -81,10 +81,10 @@ export class IdentityVersions {
     const { identity, link } = signedIdentity;
     const lastCrisis = lastCrisisOf(signedIdentity);
     return {
-      identifier: new EstLink(identity.identifier),
+      identifier: new LinkValue(identity.identifier),
       at: identity.data.at,
-      signedIdentity: new EstLink(link),
-      ...(lastCrisis === undefined ? {} : { lastCrisis: new EstLink(lastCrisis) }),
+      signedIdentity: new LinkValue(link),
+      ...(lastCrisis === undefined ? {} : { lastCrisis: new LinkValue(lastCrisis) }),
     };
   }
 
@@ -103,7 +103,7 @@ export class IdentityVersions {
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
-      for await (const { data } of rows.range([new EstLink(signedIdentity.identity.identifier)]))
+      for await (const { data } of rows.range([new LinkValue(signedIdentity.identity.identifier)]))
         seen.set(data.signedIdentity.link, data);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
       return {

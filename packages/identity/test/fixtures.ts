@@ -1,4 +1,4 @@
-import { type Est, est, type Link, linkOf } from "@estoc/object";
+import { type Link, linkOf, objectFormat, type Value } from "@estoc/object";
 import {
   type CurveScheme,
   ed25519,
@@ -21,19 +21,19 @@ export function storeOf(blobs: readonly Uint8Array[]): StoreReader {
 }
 
 // The closure a store gathers from a blob: the blob and every blob reached by
-// the links est finds in it, past which a blob that is not an object links to nothing.
+// the links the object format finds in it, past which a blob that is not an object links to nothing.
 export function closure(link: Link<unknown>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Set<Link<unknown>> {
   const reached = new Set([link]);
   for (const next of reached) {
     const bytes = blobs.get(next);
     if (bytes === undefined) continue;
-    let value: Est;
+    let value: Value;
     try {
-      value = est.decode(bytes);
+      value = objectFormat.decode(bytes);
     } catch {
       continue;
     }
-    for (const linked of est.links(value)) reached.add(linked);
+    for (const linked of objectFormat.links(value)) reached.add(linked);
   }
   return reached;
 }

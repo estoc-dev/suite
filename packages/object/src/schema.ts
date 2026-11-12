@@ -49,7 +49,7 @@ export interface SchemaValidator<D, S> {
 /**
  * A schema as a blob, compiled by the validator it was read with. `F` is the
  * type the program reads the data written to it as. The program declares it
- * where it gets the schema, as in `const note: Schema<Est, Note> =
+ * where it gets the schema, as in `const note: Schema<Value, Note> =
  * encodeSchema(…)`, and only data that fits the schema is handed out as one.
  */
 export class Schema<D, F extends Fields<D> = Fields<D>> {

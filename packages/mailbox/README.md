@@ -66,7 +66,7 @@ sending half alone.
 
 ```ts
 interface Pickup {
-  readonly mailbox: Link<EncodedObject<Est>>;
+  readonly mailbox: Link<EncodedObject<Value>>;
   arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
 }
 
@@ -114,7 +114,7 @@ transport's schema to, and binds the key and the transport once. The
 `Mailbox` it returns shows neither, only `send`.
 
 `send` takes a root and blobs as `encodeBundle` does, and refuses a root
-that is not an object of est. It writes the bundle as one file, seals the
+that is not an object. It writes the bundle as one file, seals the
 file to the key and hands the ciphertext to the transport. It resolves
 once it is handed on. Nothing confirms that a message arrived and
 nothing is sent again: a message can be lost, arrive twice, or arrive out
@@ -463,8 +463,8 @@ A transport is a plugin:
 
 ```ts
 interface Transport {
-  readonly schema: Schema<Est>;
-  deliver(mailbox: EstMap, ciphertext: Uint8Array): Promise<void>;
+  readonly schema: Schema<Value>;
+  deliver(mailbox: ValueMap, ciphertext: Uint8Array): Promise<void>;
 }
 ```
 

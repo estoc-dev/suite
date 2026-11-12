@@ -11,15 +11,15 @@ import {
 import {
   decodeObject,
   type EncodedObject,
-  type Est,
-  EstLink,
   encodeObject,
-  est,
   type Fields,
   type Link,
+  LinkValue,
+  objectFormat,
   readObject,
   type Schema,
   schemaOf,
+  type Value,
 } from "@estoc/object";
 import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -45,7 +45,7 @@ const carriedSchema = schema("Carried", { identityVersions: array(link<SignedIde
 const schemas = [noteSchema, receivedSchema, contactSchema, signatures.schema, carriedSchema].flatMap(
   ({ blobs }) => blobs,
 );
-const newStore = () => new Store(est, new MemoryBackend());
+const newStore = () => new Store(objectFormat, new MemoryBackend());
 
 async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -53,22 +53,22 @@ async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   return links;
 }
 
-async function readListed<F extends Fields<Est>>(
+async function readListed<F extends Fields<Value>>(
   store: Store,
-  schema: Schema<Est, F>,
-): Promise<EncodedObject<Est, F>[]> {
-  const objects: EncodedObject<Est, F>[] = [];
+  schema: Schema<Value, F>,
+): Promise<EncodedObject<Value, F>[]> {
+  const objects: EncodedObject<Value, F>[] = [];
   for await (const link of store.records()) {
     const bytes = await store.get(link);
     assert.exists(bytes);
-    if (schemaOf(bytes, est) === schema.link) objects.push(decodeObject(bytes, schema));
+    if (schemaOf(bytes, objectFormat) === schema.link) objects.push(decodeObject(bytes, schema));
   }
   return objects;
 }
 
 async function receive(store: Store, file: Uint8Array) {
   const bundle = decodeBundle(file);
-  const receivedRecord = encodeObject(receivedSchema, { bundle: new EstLink(bundle.link) });
+  const receivedRecord = encodeObject(receivedSchema, { bundle: new LinkValue(bundle.link) });
   await store.write({ records: [receivedRecord], blobs: [...schemas, ...bundle.blobs()] });
   return receivedRecord;
 }
@@ -148,13 +148,13 @@ describe("a signed identity that comes in a bundle", () => {
   it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
     const aliceIdentityVersion = await publish(alice, { at: 5 });
     const forgedIdentityVersion = encodeObject(signedIdentities.schema, {
-      identity: new EstLink(aliceIdentityVersion.identity.link),
+      identity: new LinkValue(aliceIdentityVersion.identity.link),
       signature: new Uint8Array(64),
     });
     const carriedObject = encodeObject(carriedSchema, {
       identityVersions: [
-        new EstLink(aliceIdentityVersion.link),
-        new EstLink(forgedIdentityVersion.link as Link<SignedIdentityObject>),
+        new LinkValue(aliceIdentityVersion.link),
+        new LinkValue(forgedIdentityVersion.link as Link<SignedIdentityObject>),
       ],
     });
     const signature = await sign(carriedObject, mallory);

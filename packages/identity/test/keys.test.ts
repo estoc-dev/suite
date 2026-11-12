@@ -1,4 +1,4 @@
-import { decodeObject, type EstMap, est, linkOf } from "@estoc/object";
+import { decodeObject, linkOf, objectFormat, type ValueMap } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
@@ -20,8 +20,10 @@ const secretKey = new Uint8Array(32).fill(1);
 const publicKeyOf = (scheme: CurveScheme) => SoftwareSigner.fromSecretKey(scheme, secretKey).key.publicKey;
 const ed25519Key = publicKeyOf(ed25519);
 const eip191Key = publicKeyOf(eip191);
-const written = (scheme: CurveScheme, data: EstMap) =>
-  est.encode(est.object(data, keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link));
+const written = (scheme: CurveScheme, data: ValueMap) =>
+  objectFormat.encode(
+    objectFormat.object(data, keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link),
+  );
 
 describe("a key", () => {
   it.each(schemes)("in $name reads back from its object as the same key", async (scheme) => {
@@ -56,7 +58,7 @@ describe("a key", () => {
     );
   });
 
-  it.each<[string, CurveScheme, EstMap, RegExp]>([
+  it.each<[string, CurveScheme, ValueMap, RegExp]>([
     ["a public key of another scheme's length", ed25519, { publicKey: eip191Key }, /is 32 bytes, not 33/],
     ["a public key shorter than its scheme's", eip191, { publicKey: ed25519Key }, /is 33 bytes, not 32/],
     ["the public key in hex, which is a string", ed25519, { publicKey: bytesToHex(ed25519Key) }, /does not fit/],
@@ -69,7 +71,7 @@ describe("a key", () => {
 
   it("is refused written to the schema of a scheme it does not support, though shaped the same", async () => {
     const lookalike = schema("ed25519ctx", { publicKey: bytes() });
-    const written = est.encode(est.object({ publicKey: ed25519Key }, lookalike.link));
+    const written = objectFormat.encode(objectFormat.object({ publicKey: ed25519Key }, lookalike.link));
     await expect(readKey(written)).rejects.toThrow(`${lookalike.link} is not a schema read here`);
     expect(() => keys.check(decodeObject(written, lookalike))).toThrow(`${lookalike.link} is not a schema read here`);
   });
@@ -84,7 +86,7 @@ describe("a key", () => {
 describe("the schema of a scheme", () => {
   it.each(schemes)("of $name has the scheme's name as its title, and takes a public key alone", (scheme) => {
     const { schema } = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
-    expect(est.fields(est.decode(schema.bytes)).data).toEqual({
+    expect(objectFormat.fields(objectFormat.decode(schema.bytes)).data).toEqual({
       title: scheme.name,
       fields: { publicKey: { type: "bytes" } },
     });

@@ -1,9 +1,9 @@
 # @estoc/schema
 
-A schema language over est for the objects of `@estoc/object`. A schema
-is a title and a list of fields, each of one of seven types, and that is
-all it can say. So what fits a schema is settled by the language, and two
-validators have nothing to differ on.
+A schema language over the Estoc Object Format for the objects of
+`@estoc/object`. A schema is a title and a list of fields, each of one of
+seven types, and that is all it can say. So what fits a schema is settled
+by the language, and two validators have nothing to differ on.
 
 ```
 Schema     an object whose data is {"title": <a string>, "fields": {<name>: <field>, …}}
@@ -27,14 +27,14 @@ The data of the schema of an identity, shown as JSON:
 
 ## Schemas
 
-A schema is an object of `@estoc/object` in est. Its data is a title and
-fields, and it is written to the root schema.
+A schema is an object of `@estoc/object`. Its data is a title and fields,
+and it is written to the root schema.
 
 - Its fields are `title` and `fields`, both of them and nothing more.
 - `title` is a string. It sets apart two schemas of the same fields, which
   would otherwise be one blob with one link, and nothing is checked by it.
-- `fields` holds each field by its name, which is any string: est names
-  the schema of an object by its place and not by a field.
+- `fields` holds each field by its name, which is any string: the object
+  format names the schema of an object by its place and not by a field.
 - A field holds its `type`, one of the seven below. An `array` also holds
   `items`, the type of what it holds: a `type`, with `items` of its own
   when that is an array too. A field of any other type holds no `items`.
@@ -43,9 +43,9 @@ fields, and it is written to the root schema.
   an array are not optional.
 - Any other member, at any depth, is refused.
 
-A schema written to the root schema has one spelling. est orders the
-members of a map, and the language leaves nothing to write two ways, so
-the same title and fields are the same bytes and the same link.
+A schema written to the root schema has one spelling. The object format
+orders the members of a map, and the language leaves nothing to write two
+ways, so the same title and fields are the same bytes and the same link.
 
 ## The root schema
 
@@ -58,9 +58,9 @@ OBJECT([ "self",
            "fields": { "title": { "type": "string" }, "fields": { "type": "any" } } } ])
 ```
 
-- It is written to itself, which est marks by the string `"self"` in place
-  of the link of a schema, so its own data fits it. It is 69 bytes, and
-  `rootSchema` holds it.
+- It is written to itself, which the object format marks by the string
+  `"self"` in place of the link of a schema, so its own data fits it. It
+  is 69 bytes, and `rootSchema` holds it.
 - It says that a schema holds a title, a string, and fields, of any value.
   What the fields of a schema may hold is more than a schema of this
   language can say, so the language checks it when it reads a schema, and
@@ -84,15 +84,15 @@ OBJECT([ "self",
 | `integer` | an integer no further from zero than 2^53 − 1   |
 | `string`  | any string                                      |
 | `boolean` | `true` or `false`                               |
-| `any`     | any value of est: one of the six above or a map |
+| `any`     | any value: one of the six above or a map        |
 
-- est has no null and no float, so neither fits a type. A field with
-  nothing to hold is optional, and left out.
-- A link is a link and bytes are bytes as est writes them: a string fits
-  neither, whatever it holds.
+- The object format has no null and no float, so neither fits a type. A
+  field with nothing to hold is optional, and left out.
+- A link is a link and bytes are bytes as the object format writes them:
+  a string fits neither, whatever it holds.
 - `any` takes a value without saying what it holds, as the fields of a
   schema are to the root schema. The links in it are followed all the
-  same, since est finds them without a schema.
+  same, since the object format finds them without a schema.
 
 ## What fits
 
@@ -117,7 +117,7 @@ that does not fit, each with its place in the data, as in
 data of its objects as follows from the same fields:
 
 ```ts
-import { EstLink, encodeObject } from "@estoc/object";
+import { LinkValue, encodeObject } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 
 const identitySchema = schema("Identity", {
@@ -129,16 +129,16 @@ const identitySchema = schema("Identity", {
 });
 type IdentityData = DataOf<typeof identitySchema>;
 
-const identity = encodeObject(identitySchema, { root: new EstLink(rootKey.link), agents: [], at: Date.now() });
+const identity = encodeObject(identitySchema, { root: new LinkValue(rootKey.link), agents: [], at: Date.now() });
 ```
 
 - `array`, `link`, `bytes`, `integer`, `string`, `boolean` and `any` give
   the seven types, and `optional` marks a field.
-- `link<T>()` reads as an `EstLink<T>`. `T` is what the program reads the
+- `link<T>()` reads as a `LinkValue<T>`. `T` is what the program reads the
   linked blob as, a label the schema does not hold: it says a field is a
   link, and not what the link names.
 - `bytes` reads as a `Uint8Array`, `integer` as a `number`, `any` as an
-  `Est`, and an optional field as a member that may be absent.
+  `Value`, and an optional field as a member that may be absent.
 
 A schema someone else wrote is read from its bytes with
 `decodeSchema(bytes, schemaValidator)`. `schemaLanguage` is the language

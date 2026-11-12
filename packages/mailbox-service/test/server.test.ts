@@ -7,7 +7,7 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { decodeObject, EstLink, encodeObject, est, type Link, linkOf, readObject } from "@estoc/object";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, objectFormat, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -141,12 +141,12 @@ describe("a mailbox service", () => {
     expect(data).toEqual({
       origin: "https://mail.example",
       at: 3_000,
-      offers: [new EstLink(offerSignature.link), new EstLink(mailbox.offerSignature.link)],
+      offers: [new LinkValue(offerSignature.link), new LinkValue(mailbox.offerSignature.link)],
     });
     for (const { signedIdentity } of [offerSignature, mailbox.offerSignature])
       expect(signedIdentity.identity.link).toBe(serviceIdentity(3_000).link);
-    expect(offer.data).toEqual({ identity: new EstLink(serviceRoot.link) });
-    expect(mailbox.offer.data).toEqual({ identity: new EstLink(serviceRoot.link), ...terms });
+    expect(offer.data).toEqual({ identity: new LinkValue(serviceRoot.link) });
+    expect(mailbox.offer.data).toEqual({ identity: new LinkValue(serviceRoot.link), ...terms });
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
@@ -157,7 +157,7 @@ describe("a mailbox service", () => {
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
-    expect(acknowledgement.data).toEqual({ acceptance: new EstLink(acceptance.signature.link), at: 5_001 });
+    expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 5_001 });
     const read = await signatures.read(acceptance.signature.link, bundle, noIdentityVersions);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
@@ -388,13 +388,13 @@ describe("a mailbox service", () => {
   it("answers 410 at the id of an offer that only an earlier Service of its lists", async () => {
     const { service, store } = await memoryService({ start: 3_000 });
     const droppedSchema = schema("Dropped offer", { identity: link() });
-    const droppedOffer = encodeObject(droppedSchema, { identity: new EstLink(serviceRoot.link) });
+    const droppedOffer = encodeObject(droppedSchema, { identity: new LinkValue(serviceRoot.link) });
     const asService = await serviceActor(3_000);
     const offerSignature = await asService.sign(droppedOffer);
     const earlier = encodeObject(serviceSchema, {
       origin: "https://mail.example",
       at: 2_000,
-      offers: [new EstLink(offerSignature.link)],
+      offers: [new LinkValue(offerSignature.link)],
     });
     const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
     await store.write({ records: [await asService.sign(earlier)], blobs });
@@ -611,7 +611,7 @@ function sqliteParts(path: string) {
     accounts.close();
     mailboxes.close();
   };
-  return { store: new Store(est, backend), accounts, mailboxes, close };
+  return { store: new Store(objectFormat, backend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);
@@ -630,7 +630,7 @@ const openAccount = async (service: MailboxService, actor: Actor) =>
 
 /** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
 async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
-  const request = encodeObject(mailboxRequestSchema, { offer: new EstLink(offer.link as Link<never>), key });
+  const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(offer.link as Link<never>), key });
   const signature = await actor.sign(request);
   return { signature, file: encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
 }
@@ -670,7 +670,7 @@ function openedMailboxOf({ signature, acknowledgement }: Awaited<ReturnType<type
 async function pickupRequest(actor: Actor, mailbox: OpenedMailbox, receipts: readonly Uint8Array[] = []) {
   const request = encodeObject(pickupRequestSchema, {
     mailbox: mailbox.request,
-    receipts: receipts.map((ciphertext) => new EstLink<Uint8Array>(linkOf(ciphertext))),
+    receipts: receipts.map((ciphertext) => new LinkValue<Uint8Array>(linkOf(ciphertext))),
   });
   const signature = await actor.sign(request);
   return encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
@@ -707,13 +707,13 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { bundle, signature: acknowledgementSignature, acknowledgement } = await mailboxAcknowledgementIn(response);
     expect(acknowledgementSignature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     const { sendId, pickupId } = acknowledgement.data;
-    expect(acknowledgement.data).toEqual({ request: new EstLink(signature.link), at: 5_002, sendId, pickupId });
+    expect(acknowledgement.data).toEqual({ request: new LinkValue(signature.link), at: 5_002, sendId, pickupId });
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);
     const read = await signatures.read(signature.link, bundle, noIdentityVersions);
     const request = await readObject(bundle, read.object, mailboxRequestSchema);
-    expect(request.data).toEqual({ offer: new EstLink(mailbox.offer.link), key: keyOf(0x11) });
+    expect(request.data).toEqual({ offer: new LinkValue(mailbox.offer.link), key: keyOf(0x11) });
     expect((await readObject(bundle, request.data.offer.link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);
   });
 
@@ -897,7 +897,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
     const mailbox = await openMailbox(behind, actor, keyOf(0x22));
     expect((await post(behind, mailbox.sendId, ciphertextOf(1, 1_000))).status).toBe(204);
-    const own = encodeObject(mailboxOfferSchema, { identity: new EstLink(serviceRoot.link), ...offeredTerms });
+    const own = encodeObject(mailboxOfferSchema, { identity: new LinkValue(serviceRoot.link), ...offeredTerms });
     expect((await post(behind, own.link, (await mailboxRequest(actor, own)).file)).status).toBe(410);
   });
 });
@@ -1043,7 +1043,7 @@ describe("a mailbox that a service opened", () => {
     ["that names another mailbox", (actor, _, other) => pickupRequest(actor, other)],
     [
       "that names the mailbox by its acknowledgement",
-      (actor, mailbox) => pickupRequest(actor, { ...mailbox, request: new EstLink(mailbox.link) }),
+      (actor, mailbox) => pickupRequest(actor, { ...mailbox, request: new LinkValue(mailbox.link) }),
     ],
     [
       "that is not a pickup request",

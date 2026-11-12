@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { type Est, type EstMap, encodeObject, est, type Schema } from "@estoc/object";
+import { encodeObject, objectFormat, type Schema, type Value, type ValueMap } from "@estoc/object";
 import { bytes, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -43,7 +43,7 @@ describe("a mailbox", () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
     await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(
-      /an object of est/,
+      /the root of a bundle is an object/,
     );
     expect(queue.take()).toEqual([]);
   });
@@ -58,7 +58,7 @@ describe("a mailbox", () => {
 });
 
 // Mailboxes of transports that wrote their schemas by hand, each with a key that is not one.
-const looseMailboxes: [string, Schema<Est>, EstMap][] = [
+const looseMailboxes: [string, Schema<Value>, ValueMap][] = [
   ["has no key", schema("Loose mailbox", { name: string() }), { name: "q" }],
   ["has a key in hex", schema("Loose mailbox", { key: string() }), { key: "ab".repeat(32) }],
   ["has a key of 31 bytes", schema("Loose mailbox", { key: bytes() }), { key: new Uint8Array(31) }],
@@ -86,7 +86,7 @@ describe("a mailbox from bytes", () => {
     "is refused when it %s, where its transport's schema let it through",
     async (_, loose, data) => {
       const transport: Transport = { schema: loose, deliver: async () => undefined };
-      const mailbox = est.encode(est.object(loose.validate(data), loose.link));
+      const mailbox = objectFormat.encode(objectFormat.object(loose.validate(data), loose.link));
       await expect(mailboxFrom(mailbox, { transports: [transport] })).rejects.toThrow(/a mailbox/);
     },
   );

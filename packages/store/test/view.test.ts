@@ -1,4 +1,4 @@
-import { type Est, EstLink, encodeObject, est, type Link, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, objectFormat, objectsOf, readObject, type Value } from "@estoc/object";
 import { array, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { indexOver, MemoryBackend, type OrderedIndex, Store, selectedRecords, type View, view } from "../src/index.ts";
@@ -10,17 +10,17 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: OrderedIndex<Est, Tagged, TaggedOrder> = indexOver(
+const byTag: OrderedIndex<Value, Tagged, TaggedOrder> = indexOver(
   selectedRecords(objectsOf(noteSchema)),
   taggedSchema,
-  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new EstLink(link) })),
+  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 ).orderedBy("tag", "at");
 
 interface Latest {
   noteTagged(tag: string): Promise<Note | undefined>;
 }
 
-const latest: View<Est, Tagged, TaggedOrder, Latest> = {
+const latest: View<Value, Tagged, TaggedOrder, Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
@@ -39,7 +39,7 @@ const write = (store: Store, ...notes: Note[]) =>
 
 describe("the value of a view", () => {
   it("is worked out from the rows of its index, with the store giving the objects they name", async () => {
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     await write(
       store,
       { text: "stew", tags: ["dinner"], at: 3 },
@@ -53,7 +53,7 @@ describe("the value of a view", () => {
   });
 
   it("stays as the store was when viewed, and takes in later writes when viewed again", async () => {
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     await write(store, { text: "soup", tags: ["lunch"], at: 1 });
     const before = await view(store, latest);
     await write(store, { text: "salad", tags: ["lunch"], at: 2 });
@@ -62,7 +62,7 @@ describe("the value of a view", () => {
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
-    const tags: View<Est, Tagged, TaggedOrder, Promise<Set<string>>> = {
+    const tags: View<Value, Tagged, TaggedOrder, Promise<Set<string>>> = {
       index: byTag,
       async read(rows) {
         const tags = new Set<string>();
@@ -70,7 +70,7 @@ describe("the value of a view", () => {
         return tags;
       },
     };
-    const store = new Store(est, new MemoryBackend());
+    const store = new Store(objectFormat, new MemoryBackend());
     await write(store, { text: "soup", tags: ["lunch"], at: 1 }, { text: "salad", tags: ["lunch", "dinner"], at: 2 });
     expect(await view(store, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
   });

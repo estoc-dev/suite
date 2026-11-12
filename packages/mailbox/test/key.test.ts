@@ -41,9 +41,11 @@ describe("a mailbox key", () => {
   });
 
   it("refuses what opens but is not a bundle", async () => {
-    await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow(/an object of est/);
+    await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow(
+      /the root of a bundle is an object/,
+    );
     const withoutRoot = encodeBundle(root, [blob]).subarray(root.bytes.length);
-    await expect(bob.open(await sealTo(bob, withoutRoot))).rejects.toThrow(/an object of est/);
+    await expect(bob.open(await sealTo(bob, withoutRoot))).rejects.toThrow(/the root of a bundle is an object/);
     const cut = encodeBundle(root, [blob]).subarray(0, -1);
     await expect(bob.open(await sealTo(bob, cut))).rejects.toThrow();
   });

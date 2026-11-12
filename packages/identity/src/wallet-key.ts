@@ -1,4 +1,12 @@
-import { type EncodedObject, type Est, EstLink, encodeObject, type Link, type Reader, readObject } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  type Reader,
+  readObject,
+  type Value,
+} from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import type { Key, KeyObject } from "./key/interface.ts";
@@ -20,7 +28,7 @@ export type WalletKeyData = DataOf<typeof walletKeySchema>;
  * A Wallet Key read from its object, with its key. `blobs` are its closure,
  * as a Secret Key's are.
  */
-export interface WalletKeyObject extends EncodedObject<Est, WalletKeyData> {
+export interface WalletKeyObject extends EncodedObject<Value, WalletKeyData> {
   readonly link: Link<WalletKeyObject>;
   readonly key: KeyObject;
   readonly blobs: readonly Uint8Array[];
@@ -38,7 +46,7 @@ export class WalletKeys {
   /** Writes the Wallet Key of `key`. */
   encode(key: Key): WalletKeyObject {
     const object = this.#keys.encode(key);
-    return walletKeyOf(encodeObject(this.schema, { key: new EstLink(object.link) }), object);
+    return walletKeyOf(encodeObject(this.schema, { key: new LinkValue(object.link) }), object);
   }
 
   /** Reads the Wallet Key that `link` names from `reader`, with its key. */
@@ -48,6 +56,6 @@ export class WalletKeys {
   }
 }
 
-function walletKeyOf(object: EncodedObject<Est, WalletKeyData>, key: KeyObject): WalletKeyObject {
+function walletKeyOf(object: EncodedObject<Value, WalletKeyData>, key: KeyObject): WalletKeyObject {
   return { ...object, link: object.link as Link<WalletKeyObject>, key, blobs: blobsOf([object, key]) };
 }

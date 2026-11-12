@@ -5,7 +5,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
-import { est, objectsOf } from "@estoc/object";
+import { objectFormat, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -72,7 +72,7 @@ async function secretKeysAt(path: string) {
   const { secretKeys } = loadIdentity([ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
-  const privateStore = new PrivateStore(new Store(est, new MemoryBackend()), backend);
+  const privateStore = new PrivateStore(new Store(objectFormat, new MemoryBackend()), backend);
   const selection = objectsOf(secretKeys.schema);
   const secretKeyObjects = [];
   for await (const record of privateStore.records()) {

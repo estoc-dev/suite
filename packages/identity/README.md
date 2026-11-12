@@ -294,7 +294,7 @@ link, so the rows of one identifier come together, in the order of their `at`.
 each read as the data of its row. A signed identity carries its authority in its root's
 signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
-`indexOverBlobs` of `@estoc/store`. A stranger can add no identity version of
+one over `selectedBlobs` of `@estoc/store`. A stranger can add no identity version of
 someone that their root did not sign, and an older identity version leaves the
 current one as it is, unless it is a crisis that the current one does not
 follow.
@@ -306,7 +306,7 @@ what the signed identity names leaves it out the same way, so what reads with a
 reader that can fail has to notice that itself, as a scan of `@estoc/store`
 does. The object itself is read before any of this: `selection.read` throws as
 that of any `SelectionBySchema` does when the reader gives no blob for it, or
-when it names the schema and does not fit it. `indexOverBlobs` gives no row for
+when it names the schema and does not fit it. An index over blobs gives no row for
 a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
@@ -386,9 +386,11 @@ takes one already read. With `@estoc/store`, an application gives the index
 and `identityVersions.people` reads its rows:
 
 ```ts
-const seen = indexOverBlobs(identityVersions.selection, identityVersions.schema, (identityVersion) => [
-  identityVersion,
-]).orderedBy(...identityVersions.order);
+const seen = indexOver(
+  selectedBlobs(identityVersions.selection),
+  identityVersions.schema,
+  (identityVersion) => [identityVersion],
+).orderedBy(...identityVersions.order);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(link, store, people.asTakenIn);
 const author = people.personOf(signature.signedIdentity);
@@ -488,7 +490,7 @@ their identifier:
 ```ts
 const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
 const signedNotes = indexOver(
-  signatures.selectionOver(noteSchema),
+  selectedRecords(signatures.selectionOver(noteSchema)),
   signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);

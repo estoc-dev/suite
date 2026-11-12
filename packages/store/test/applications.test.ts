@@ -22,7 +22,7 @@ import {
 } from "@estoc/object";
 import { array, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it, vi } from "vitest";
-import { indexOverBlobs, MemoryBackend, Store, scan } from "../src/index.ts";
+import { indexOver, MemoryBackend, Store, scan, selectedBlobs } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
 // is listed in their store; what comes from the other is kept with a record
@@ -135,8 +135,8 @@ describe("an object slipped into a bundle", () => {
 });
 
 describe("a signed identity that comes in a bundle", () => {
-  const identityVersionsHeld = indexOverBlobs(
-    identityVersions.selection,
+  const identityVersionsHeld = indexOver(
+    selectedBlobs(identityVersions.selection),
     identityVersions.schema,
     (identityVersion) => [identityVersion],
   ).orderedBy(...identityVersions.order);
@@ -183,7 +183,7 @@ describe("a signed identity that comes in a bundle", () => {
     validate.mockClear();
     await scan(
       store,
-      indexOverBlobs(identityVersions.selection, identityVersions.schema, (row) => [row]).orderedBy(
+      indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (row) => [row]).orderedBy(
         ...identityVersions.order,
       ),
     );

@@ -1,5 +1,7 @@
 import type { Fields } from "@estoc/object";
-import { type FieldNames, type OrderedIndex, type Rows, scan } from "./scan.ts";
+import { scan } from "./scan.ts";
+import type { Rows } from "./sorted-rows.ts";
+import type { FieldNames, OrderedIndex } from "./source.ts";
 import type { Store } from "./store.ts";
 
 /**

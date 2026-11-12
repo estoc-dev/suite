@@ -20,6 +20,7 @@ import {
   type Rows,
   Store,
   scan,
+  selectedRecords,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
@@ -54,12 +55,12 @@ type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
 const deliveries: OrderedIndex<Json, Delivery, DeliveryOrder> = indexOver(
-  objectsOf(inboundSchema),
+  selectedRecords(objectsOf(inboundSchema)),
   delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
 )
   .union(
-    indexOver(objectsOf(outboundSchema), delivery, ({ data: { mailbox, at, bundle } }) => [
+    indexOver(selectedRecords(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
       { direction: "outbound", mailbox, at, bundle },
     ]),
   )

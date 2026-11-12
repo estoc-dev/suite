@@ -29,12 +29,13 @@ import {
   type FieldNames,
   type Index,
   indexOver,
-  indexOverBlobs,
   MemoryBackend,
   PrivateStore,
   type Rows,
   Store,
   scan,
+  selectedBlobs,
+  selectedRecords,
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that a note or a tag holds any of them.
@@ -58,7 +59,7 @@ type Named = DataOf<typeof named>;
 type NameIndex = Index<Json, Named>;
 const namedOf = ({ data }: { readonly data: Entry }): Named[] => (data.names ?? []).map((name) => ({ name }));
 
-const noteNames: NameIndex = indexOver(objectsOf(note), named, namedOf);
+const noteNames: NameIndex = indexOver(selectedRecords(objectsOf(note)), named, namedOf);
 const byName = noteNames.orderedBy("name");
 
 const pair = schema("Pair", { key: string(), value: string() });
@@ -119,7 +120,7 @@ describe("an index scanned from a store", () => {
     async function rowsOf<const By extends FieldNames<EntryData>>(by: By, entries: readonly EntryData[]) {
       const store = new Store(json, new MemoryBackend());
       await store.write({ records: [encodeObject(note, {})], blobs: schemas });
-      return scan(store, indexOver(objectsOf(note), entry, () => entries).orderedBy(...by));
+      return scan(store, indexOver(selectedRecords(objectsOf(note)), entry, () => entries).orderedBy(...by));
     }
 
     it("gives the rows that hold a prefix, a field left out before any value and numbers in their order", async () => {
@@ -160,7 +161,10 @@ describe("an index scanned from a store", () => {
         const store = new Store(json, new MemoryBackend());
         await store.write({ records: [encodeObject(note, {})], blobs: schemas });
         const entries = [{ id: "with", [field]: "a" }, { id: "without" }];
-        const rows = await scan(store, indexOver(objectsOf(note), labeled, () => entries).orderedBy(field));
+        const rows = await scan(
+          store,
+          indexOver(selectedRecords(objectsOf(note)), labeled, () => entries).orderedBy(field),
+        );
         expect((await rowDataOf(rows.range([]))).map(({ id }) => id)).toEqual(["without", "with"]);
         // @ts-expect-error: a field whose name is not a literal is typed as one every row holds
         expect((await rowDataOf(rows.range([undefined]))).map(({ id }) => id)).toEqual(["without"]);
@@ -180,7 +184,7 @@ describe("an index scanned from a store", () => {
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
     const { signatures, publish } = loadIdentity([ed25519]);
     const signed = schema("Signed", { signer: link(), object: link() });
-    const bySigner = indexOver(objectsOf(signatures.schema), signed, async function* (object, reader) {
+    const bySigner = indexOver(selectedRecords(objectsOf(signatures.schema)), signed, async function* (object, reader) {
       const signature = await signatures.verify(object, reader, noIdentityVersions);
       yield { signer: { $link: signature.signedIdentity.identity.identifier }, object: { $link: signature.object } };
     }).orderedBy("signer");
@@ -211,7 +215,7 @@ describe("an index scanned from a store", () => {
       records: [encodeObject(note, { names: ["a", "b"] }), encodeObject(tag, { names: ["b", "c"] })],
       blobs: schemas,
     });
-    const byNoteOrTag = noteNames.union(indexOver(objectsOf(tag), named, namedOf)).orderedBy("name");
+    const byNoteOrTag = noteNames.union(indexOver(selectedRecords(objectsOf(tag)), named, namedOf)).orderedBy("name");
     expect(await namesOf(await scan(store, byNoteOrTag))).toEqual(["a", "b", "c"]);
   });
 
@@ -223,7 +227,9 @@ describe("an index scanned from a store", () => {
       blobs: schemas,
     });
     expect(
-      await namesOf(await scan(store, indexOver(namedNotes, named, (name) => [{ name }]).orderedBy("name"))),
+      await namesOf(
+        await scan(store, indexOver(selectedRecords(namedNotes), named, (name) => [{ name }]).orderedBy("name")),
+      ),
     ).toEqual(["a"]);
   });
 
@@ -238,17 +244,16 @@ describe("an index scanned from a store", () => {
       records: [encodeObject(note, { names: ["a"] }), encodeObject(tag, { names: ["b"] })],
       blobs: schemas,
     });
-    expect(await namesOf(await scan(store, indexOver(noteOrTag, named, namedOf).orderedBy("name")))).toEqual([
-      "a",
-      "b",
-    ]);
+    expect(
+      await namesOf(await scan(store, indexOver(selectedRecords(noteOrTag), named, namedOf).orderedBy("name"))),
+    ).toEqual(["a", "b"]);
   });
 
   it("hands each of two selections that take one record what that selection reads it as", async () => {
-    const names = indexOver(new SelectionBySchema(note, ({ data }) => data.name), pair, (name) => [
+    const names = indexOver(selectedRecords(new SelectionBySchema(note, ({ data }) => data.name)), pair, (name) => [
       { key: "name", value: name },
     ]);
-    const counts = indexOver(new SelectionBySchema(note, ({ data }) => data.n), pair, (n) => [
+    const counts = indexOver(selectedRecords(new SelectionBySchema(note, ({ data }) => data.n)), pair, (n) => [
       { key: "n", value: String(n) },
     ]);
     const store = new Store(json, new MemoryBackend());
@@ -271,7 +276,7 @@ describe("an index scanned from a store", () => {
       scan(
         store,
         selections
-          .map((selection) => indexOver(selection, named, (name) => [{ name }]))
+          .map((selection) => indexOver(selectedRecords(selection), named, (name) => [{ name }]))
           .reduce((a, b) => a.union(b))
           .orderedBy("name"),
       );
@@ -300,9 +305,9 @@ describe("an index scanned from a store", () => {
     const lax = noteSchemaNoting("lax");
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, {})], blobs: schemas });
-    const index = indexOver(objectsOf(strict), named, () => [{ name: "a" }]).union(
-      indexOver(objectsOf(strict), named, () => [{ name: "b" }]),
-      indexOver(objectsOf(lax), named, () => [{ name: "c" }]),
+    const index = indexOver(selectedRecords(objectsOf(strict)), named, () => [{ name: "a" }]).union(
+      indexOver(selectedRecords(objectsOf(strict)), named, () => [{ name: "b" }]),
+      indexOver(selectedRecords(objectsOf(lax)), named, () => [{ name: "c" }]),
     );
     expect(await namesOf(await scan(store, index.orderedBy("name")))).toEqual(["a", "b", "c"]);
     expect(validationNames).toEqual(["strict", "lax"]);
@@ -322,7 +327,7 @@ describe("an index scanned from a store", () => {
       return (await readObject(reader, data.card.$link, tag)).data.name;
     });
     const nameAs = (key: string, selection: Selection<string>) =>
-      indexOver(selection, pair, (value) => [{ key, value }]);
+      indexOver(selectedRecords(selection), pair, (value) => [{ key, value }]);
     const rows = await scan(
       new Store(json, backendNoting(requestedLinks, backend)),
       nameAs("a", cardName)
@@ -340,7 +345,9 @@ describe("an index scanned from a store", () => {
   it("is not filled when the data of a row does not fit the schema of the index", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(note, { n: 1 })], blobs: schemas });
-    const misfit = indexOver(objectsOf(note), named, ({ data }) => [{ name: data.n as unknown as string }]);
+    const misfit = indexOver(selectedRecords(objectsOf(note)), named, ({ data }) => [
+      { name: data.n as unknown as string },
+    ]);
     await expect(scan(store, misfit.orderedBy("name"))).rejects.toThrow("#/name: not a string");
   });
 
@@ -380,7 +387,7 @@ describe("an index scanned from a store", () => {
 describe("an index whose rows give none of what does not read as they expect", () => {
   const about = encodeObject(note, { names: ["a"] });
   const record = encodeObject(note, { about: { $link: about.link } });
-  const byAbout = indexOver(objectsOf(note), named, async function* ({ data }, reader) {
+  const byAbout = indexOver(selectedRecords(objectsOf(note)), named, async function* ({ data }, reader) {
     const { about } = data;
     if (about === undefined) return;
     let aboutNames: readonly Named[];
@@ -440,9 +447,9 @@ describe("an index scanned again from a store", () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [first, encodeObject(tag, { names: ["t"] })], blobs: schemas });
     expect(await namesOf(await scan(store, byName))).toEqual(["a"]);
-    expect(await namesOf(await scan(store, indexOver(objectsOf(tag), named, namedOf).orderedBy("name")))).toEqual([
-      "t",
-    ]);
+    expect(
+      await namesOf(await scan(store, indexOver(selectedRecords(objectsOf(tag)), named, namedOf).orderedBy("name"))),
+    ).toEqual(["t"]);
   });
 
   it("takes in the records that another store on the same backend writes", async () => {
@@ -512,7 +519,7 @@ describe("an index scanned again from a store", () => {
 
 describe("an index scanned in two orders", () => {
   const counted = schema("Counted", { name: string(), n: integer() });
-  const countedNotes = indexOver(objectsOf(note), counted, ({ data: { name, n } }) =>
+  const countedNotes = indexOver(selectedRecords(objectsOf(note)), counted, ({ data: { name, n } }) =>
     name === undefined || n === undefined ? [] : [{ name, n }],
   );
   const [byCountedName, byCount] = [countedNotes.orderedBy("name"), countedNotes.orderedBy("n")];
@@ -576,7 +583,7 @@ describe("an index scanned in two orders", () => {
 });
 
 describe("an index over blobs", () => {
-  const tagNames: NameIndex = indexOverBlobs(objectsOf(tag), named, namedOf);
+  const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
   const byTagName = tagNames.orderedBy("name");
   const carrying = (...blobs: readonly Uint8Array[]) =>
     encodeObject(note, { attachments: blobs.map((blob) => ({ $link: linkOf(blob) })) });
@@ -587,7 +594,9 @@ describe("an index over blobs", () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [carrying(near.bytes)], blobs: [deep.bytes, near.bytes, ...schemas] });
     expect(await namesOf(await scan(store, byTagName))).toEqual(["deep", "near"]);
-    expect(await namesOf(await scan(store, indexOver(objectsOf(tag), named, namedOf).orderedBy("name")))).toEqual([]);
+    expect(
+      await namesOf(await scan(store, indexOver(selectedRecords(objectsOf(tag)), named, namedOf).orderedBy("name"))),
+    ).toEqual([]);
   });
 
   it("holds the rows of a record of its schema, and of no blob of another schema", async () => {
@@ -616,7 +625,9 @@ describe("an index over blobs", () => {
       blobs: schemas,
     });
     expect(
-      await namesOf(await scan(store, indexOverBlobs(namedTags, named, (name) => [{ name }]).orderedBy("name"))),
+      await namesOf(
+        await scan(store, indexOver(selectedBlobs(namedTags), named, (name) => [{ name }]).orderedBy("name")),
+      ),
     ).toEqual(["a"]);
   });
 
@@ -648,7 +659,7 @@ describe("an index over blobs", () => {
       blobs: [misfit.bytes, fitting.bytes, strict.bytes, ...schemas],
     });
     expect(
-      await namesOf(await scan(store, indexOverBlobs(objectsOf(strict), named, namedOf).orderedBy("name"))),
+      await namesOf(await scan(store, indexOver(selectedBlobs(objectsOf(strict)), named, namedOf).orderedBy("name"))),
     ).toEqual(["fitting"]);
   });
 
@@ -667,14 +678,17 @@ describe("an index over blobs", () => {
     }
 
     it.each<[string, NameIndex]>([
-      ["selection throws", indexOverBlobs(new SelectionBySchema(tag, readableNamedOf), named, (rows) => rows)],
-      ["rows throw", indexOverBlobs(objectsOf(tag), named, readableNamedOf)],
+      [
+        "selection throws",
+        indexOver(selectedBlobs(new SelectionBySchema(tag, readableNamedOf)), named, (rows) => rows),
+      ],
+      ["rows throw", indexOver(selectedBlobs(objectsOf(tag)), named, readableNamedOf)],
     ])("passes over the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
       expect(await rowsOf(index)).toEqual(["a"]);
     });
 
     it("keeps no row that its rows gave of the blob before they threw", async () => {
-      const index = indexOverBlobs(objectsOf(tag), named, function* (object) {
+      const index = indexOver(selectedBlobs(objectsOf(tag)), named, function* (object) {
         yield* namedOf(object);
         readableNamedOf(object);
       });
@@ -685,7 +699,7 @@ describe("an index over blobs", () => {
   it("passes over a blob when the data of a row of it does not fit the schema of the index", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [encodeObject(tag, { names: ["a"] }), encodeObject(tag, { n: 1 })], blobs: schemas });
-    const index = indexOverBlobs(objectsOf(tag), named, (object) => [
+    const index = indexOver(selectedBlobs(objectsOf(tag)), named, (object) => [
       ...namedOf(object),
       ...(object.data.n === undefined ? [] : [{ name: object.data.n as unknown as string }]),
     ]);
@@ -743,23 +757,25 @@ describe("an index over blobs", () => {
     it.each<[string, NameIndex]>([
       [
         "its selection reads and catches",
-        indexOverBlobs(
-          new SelectionBySchema(tag, async ({ data }, reader) => {
-            const of = linkedFrom(data);
-            if (of === undefined) return undefined;
-            try {
-              return namedOf(await readObject(reader, of, tag));
-            } catch {
-              return undefined;
-            }
-          }),
+        indexOver(
+          selectedBlobs(
+            new SelectionBySchema(tag, async ({ data }, reader) => {
+              const of = linkedFrom(data);
+              if (of === undefined) return undefined;
+              try {
+                return namedOf(await readObject(reader, of, tag));
+              } catch {
+                return undefined;
+              }
+            }),
+          ),
           named,
           (rows) => rows,
         ),
       ],
       [
         "its rows read",
-        indexOverBlobs(objectsOf(tag), named, async function* ({ data }, reader) {
+        indexOver(selectedBlobs(objectsOf(tag)), named, async function* ({ data }, reader) {
           const of = linkedFrom(data);
           if (of !== undefined) yield* namedOf(await readObject(reader, of, tag));
         }),
@@ -877,6 +893,192 @@ describe("an index over blobs", () => {
       await privateStore.write({ records: [kept], blobs: [secondTag.bytes] });
       expect(await namesOf(await scan(privateStore, byTagName))).toEqual(["y"]);
       expect(await namesOf(await scan(store, byTagName))).toEqual(["x"]);
+    });
+  });
+});
+
+describe("an index over another index", () => {
+  const upperNames: NameIndex = indexOver(noteNames, named, ({ data }) => [{ name: data.name.toUpperCase() }]);
+  const byUpperName = upperNames.orderedBy("name");
+  const [first, second] = [encodeObject(note, { names: ["a"] }), encodeObject(note, { names: ["b"] })];
+
+  it("holds the rows that its rows give of each row of the other index", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [encodeObject(note, { names: ["b", "a"] })], blobs: schemas });
+    expect(await namesOf(await scan(store, byUpperName))).toEqual(["A", "B"]);
+    expect(await namesOf(await scan(store, byName))).toEqual(["a", "b"]);
+  });
+
+  it("holds no rows of an object of the schema of those rows that the store holds", async () => {
+    const [listed, unlisted] = [encodeObject(named, { name: "listed" }), encodeObject(named, { name: "unlisted" })];
+    const store = new Store(json, new MemoryBackend());
+    await store.write({
+      records: [first, listed, encodeObject(note, { of: { $link: unlisted.link } })],
+      blobs: [unlisted.bytes, named.bytes, ...schemas],
+    });
+    expect(await namesOf(await scan(store, byUpperName))).toEqual(["A"]);
+  });
+
+  it("leaves its rows and those it reads out of the store, and out of an index over the blobs of their schema", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: [named.bytes, ...schemas] });
+    const rows = [await scan(store, byName), await scan(store, byUpperName)];
+    for (const each of rows) for await (const { link } of each.range([])) expect(await store.get(link)).toBeUndefined();
+    const namedBlobs = indexOver(selectedBlobs(objectsOf(named)), named, ({ data }) => [data]);
+    expect(await namesOf(await scan(store, namedBlobs.orderedBy("name")))).toEqual([]);
+  });
+
+  it("reads through the indexes it is over: their rows by link, and what those link to from the store", async () => {
+    const traced = schema("Traced", { name: string(), from: link() });
+    const tracedNotes = indexOver(selectedRecords(plainSelectionOf(objectsOf(note))), traced, ({ link, data }) =>
+      (data.names ?? []).map((name) => ({ name, from: { $link: link } })),
+    );
+    const tracedRows = indexOver(tracedNotes, traced, ({ link, data }) => [
+      { name: data.name.toUpperCase(), from: { $link: link } },
+    ]);
+    const sources = indexOver(tracedRows, named, async function* ({ data }, reader) {
+      const row = await readObject(reader, data.from.$link, traced);
+      const record = await readObject(reader, row.data.from.$link, note);
+      yield { name: `${data.name} from ${row.data.name} of ${record.data.n}` };
+    });
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [encodeObject(note, { names: ["a", "b"], n: 1 })], blobs: schemas });
+    expect(await namesOf(await scan(store, sources.orderedBy("name")))).toEqual(["A from a of 1", "B from b of 1"]);
+  });
+
+  it("reads the closure of a row through the indexes it is over, with the schemas of their rows, which the store does not hold", async () => {
+    const traced = schema("Traced", { name: string(), from: link() });
+    const retraced = schema("Retraced", { name: string(), from: link() });
+    const tracedNotes = indexOver(selectedRecords(objectsOf(note)), traced, ({ link, data }) =>
+      (data.names ?? []).map((name) => ({ name, from: { $link: link } })),
+    );
+    const retracedRows = indexOver(tracedNotes, retraced, ({ link, data }) => [
+      { name: data.name.toUpperCase(), from: { $link: link } },
+    ]);
+    const closure = new Set<Link<unknown>>();
+    const closures = indexOver(retracedRows, named, async function* ({ link, data }, reader) {
+      const pending: Link<unknown>[] = [link];
+      for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+        if (closure.has(next)) continue;
+        closure.add(next);
+        const bytes = await reader.get(next);
+        if (bytes !== undefined) pending.push(...json.links(json.decode(bytes)));
+      }
+      yield { name: data.name };
+    });
+    const tracedRow = encodeObject(traced, { name: "a", from: { $link: first.link } });
+    const retracedRow = encodeObject(retraced, { name: "A", from: { $link: tracedRow.link } });
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    expect(await namesOf(await scan(store, closures.orderedBy("name")))).toEqual(["A"]);
+    expect(closure).toEqual(
+      new Set([retracedRow.link, retraced.link, tracedRow.link, traced.link, first.link, note.link]),
+    );
+    for (const { link } of [retraced, traced]) expect(await store.get(link)).toBeUndefined();
+  });
+
+  it("hands on a row of the other index as that index wrote it, validated once", async () => {
+    let validationCount = 0;
+    const namedCounting = encodeSchema(
+      { title: "Named", fields: { name: string() } },
+      {
+        language: schemaValidator.language,
+        compile(document) {
+          const check = schemaValidator.compile(document);
+          return (data) => {
+            validationCount += 1;
+            return check(data);
+          };
+        },
+      },
+    );
+    const names = indexOver(selectedRecords(objectsOf(note)), namedCounting, namedOf);
+    const upper: NameIndex = indexOver(names, named, ({ data }) => [{ name: `${data.name}`.toUpperCase() }]);
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    expect(await namesOf(await scan(store, upper.orderedBy("name")))).toEqual(["A"]);
+    expect(validationCount).toBe(1);
+  });
+
+  it("holds its rows with those of an index of records, in a union", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first, encodeObject(tag, { names: ["t"] })], blobs: schemas });
+    const union = upperNames.union(indexOver(selectedRecords(objectsOf(tag)), named, namedOf)).orderedBy("name");
+    expect(await namesOf(await scan(store, union))).toEqual(["A", "t"]);
+  });
+
+  it("is not filled when its rows throw on a row of the other index, which is filled still", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    const index = indexOver(noteNames, named, () => {
+      throw new Error("does not read");
+    });
+    await expect(scan(store, index.orderedBy("name"))).rejects.toThrow("does not read");
+    expect(await namesOf(await scan(store, byName))).toEqual(["a"]);
+  });
+
+  it("is filled from something else with a `get` and `records`, unless an index it is over reads blobs", async () => {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    const standIn = { get: <T>(link: Link<T>) => store.get(link), records: () => store.records() };
+    expect(await namesOf(await scan(standIn, byUpperName))).toEqual(["A"]);
+    const tagNames = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
+    const overBlobs = indexOver(tagNames, named, ({ data }) => [data]);
+    await expect(scan(standIn, overBlobs.orderedBy("name"))).rejects.toThrow(
+      "lists the blobs an index over blobs reads",
+    );
+  });
+
+  describe("scanned again", () => {
+    /** An index over `noteNames` that notes in `readNames` each row it reads. */
+    const upperNamesNoting = (readNames: string[]): NameIndex =>
+      indexOver(noteNames, named, ({ data }) => {
+        readNames.push(data.name);
+        return [{ name: data.name.toUpperCase() }];
+      });
+
+    it("reads only the rows that the other index gave since the last scan", async () => {
+      const readNames: string[] = [];
+      const index = upperNamesNoting(readNames).orderedBy("name");
+      const store = new Store(json, new MemoryBackend());
+      await store.write({ records: [first], blobs: schemas });
+      expect(await namesOf(await scan(store, index))).toEqual(["A"]);
+      await store.write({ records: [second] });
+      expect(await namesOf(await scan(store, index))).toEqual(["A", "B"]);
+      expect(readNames).toEqual(["a", "b"]);
+    });
+
+    it("reads each record once for the other index, an order of it and each index over it", async () => {
+      const requestedLinks: Link<unknown>[] = [];
+      const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
+      await store.write({ records: [first], blobs: schemas });
+      await scan(store, byUpperName);
+      await scan(store, byName);
+      await scan(store, upperNamesNoting([]).orderedBy("name"));
+      expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
+    });
+
+    it("reads, on a staged batch, the rows that the other index gives of the batch on top of those its store keeps", async () => {
+      const readNames: string[] = [];
+      const index = upperNamesNoting(readNames).orderedBy("name");
+      const store = new Store(json, new MemoryBackend());
+      await store.write({ records: [first], blobs: schemas });
+      await scan(store, index);
+      const stagedStore = await store.stage({ records: [second] });
+      expect(await namesOf(await scan(stagedStore, index))).toEqual(["A", "B"]);
+      expect(readNames).toEqual(["a", "b"]);
+      expect(await namesOf(await scan(store, index))).toEqual(["A"]);
+      await stagedStore.commit();
+      expect(await namesOf(await scan(store, index))).toEqual(["A", "B"]);
+    });
+
+    it("reads, on a private store, the rows that the other index gives of the records written to it", async () => {
+      const store = new Store(json, new MemoryBackend());
+      const privateStore = new PrivateStore(store, new MemoryBackend());
+      await store.write({ records: [first], blobs: schemas });
+      await privateStore.write({ records: [second] });
+      expect(await namesOf(await scan(privateStore, byUpperName))).toEqual(["B"]);
+      expect(await namesOf(await scan(store, byUpperName))).toEqual(["A"]);
     });
   });
 });

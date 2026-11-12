@@ -1,5 +1,5 @@
-import { type Bytes, type Encoding, type Fields, type Link, linkOf, schemaOf } from "@estoc/object";
-import { type FieldNames, KeptRows, type OrderedIndex, type RowKeeper, rowsOf, type SortedRows } from "./scan.ts";
+import { type Bytes, type Encoding, type Link, linkOf, schemaOf } from "@estoc/object";
+import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
  * Where a store keeps its blobs and its records: memory, a file, or storage in a browser. It
@@ -60,7 +60,7 @@ export interface Batch {
  * - Blobs are kept by link, whoever wrote them, and are not listed.
  * - Only records are listed, and anything else is reached by following links from them, so an
  *   object that someone else slipped into a bundle is read only as part of what it came with.
- * - The one exception is an index made by `indexOverBlobs`, which reads the blobs by schema, for
+ * - The one exception is an index over `selectedBlobs`, which reads the blobs by schema, for
  *   objects that carry their authority in a signature.
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
@@ -174,12 +174,12 @@ export class RefusedBatch extends Error {
 class StoreOf<D> implements Store, RowKeeper {
   readonly #encoding: Encoding<D>;
   readonly #backend: Backend;
-  readonly #keptRows: KeptRows;
+  readonly [rowsByIndex]: RowsByIndex;
 
   constructor(encoding: Encoding<D>, backend: Backend) {
     this.#encoding = encoding;
     this.#backend = backend;
-    this.#keptRows = new KeptRows(this, backend);
+    this[rowsByIndex] = new KeptRows(this, backend);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -223,12 +223,6 @@ class StoreOf<D> implements Store, RowKeeper {
 
   positionOf(link: Link<unknown>): Promise<number | undefined> {
     return this.#backend.positionOf(link);
-  }
-
-  [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
-    return this.#keptRows.rowsOf(index);
   }
 
   /**
@@ -330,6 +324,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly #records: readonly Link<never>[];
+  readonly [rowsByIndex]: RowsByIndex;
 
   constructor(
     store: Pick<Store, "get" | "positionOf"> & RowKeeper,
@@ -341,6 +336,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     this.#backend = backend;
     this.#blobs = blobs;
     this.#records = records;
+    this[rowsByIndex] = new AddedRows(store[rowsByIndex], { records, blobs: [...blobs.keys()] }, this);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -361,12 +357,6 @@ class StagedStoreOf implements StagedStore, RowKeeper {
 
   positionOf(link: Link<unknown>): Promise<number | undefined> {
     return this.#store.positionOf(link);
-  }
-
-  async [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
-    return (await this.#store[rowsOf](index)).adding({ records: this.#records, blobs: this.#blobs.keys() }, this);
   }
 
   commit(): Promise<void> {
@@ -442,9 +432,7 @@ export class PrivateStore {
     return this.#store.positionOf(link);
   }
 
-  [rowsOf]<D, F extends Fields<D>, By extends FieldNames<F>>(
-    index: OrderedIndex<D, F, By>,
-  ): Promise<SortedRows<D, F, By>> {
-    return this.#store[rowsOf](index);
+  get [rowsByIndex](): RowsByIndex {
+    return this.#store[rowsByIndex];
   }
 }

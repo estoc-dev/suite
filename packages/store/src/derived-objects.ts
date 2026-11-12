@@ -41,9 +41,11 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
 
   /**
    * These rows, then those that the index gives of what each of its origins lists in `rows` beyond
-   * what these are of, each read from `store`. What a source of the index or its `rows` throw on, or
-   * give a row of that does not fit the schema, gives no rows of that source and is among the
-   * failures from then on, without being read again.
+   * what these are of, each read from `store`.
+   *
+   * - What a source of the index or its `rows` throw on, or give a row of that does not fit the
+   *   schema, gives no rows of that source. The other sources that read it give theirs still.
+   * - It is among the failures from then on, and is not read again.
    *
    * @throws when `store` throws, or gives no blob, for a link that is read. Nothing is added then,
    *   as it may give the blob later.

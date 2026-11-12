@@ -275,8 +275,9 @@ gives no rows of that source, and the scan goes on with the rest:
   blobs gives the rows with their failures, as anyone can send a blob that it
   fails on. `scan(store, index, { throwsOnFailure })` says which a scan does,
   whatever the index reads.
-- A failure is kept with the rows, so a later scan does not read that again,
-  and a scan that throws on it throws without reading.
+- A failure is kept with the rows, so a later scan does not read that again.
+  It reads what was listed since, and then throws or gives the rows, as it
+  does on a failure it has just found.
 
 A store keeps in memory the rows of each index it is scanned for, and those
 rows in each order it is scanned in, and a

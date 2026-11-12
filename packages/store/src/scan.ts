@@ -88,7 +88,7 @@ export interface RowsByIndex {
   ): Promise<SortedRows<D, F, By>>;
 }
 
-/** What a store lists of the blobs it holds: its records, or all of them. */
+/** What a store lists of the blobs it holds, each once: its records, or all of them. */
 class ListedLinks implements Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[] = [];
@@ -97,11 +97,13 @@ class ListedLinks implements Listing {
     this.links = links;
   }
 
-  /** These, then `links`. */
+  /** These, then those of `links` that are not among them, each once. */
   async adding(links: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>): Promise<ListedLinks> {
     const addedLinks: Link<unknown>[] = [];
     for await (const link of links) addedLinks.push(link);
-    return addedLinks.length === 0 ? this : new ListedLinks([...this.links, ...addedLinks]);
+    if (addedLinks.length === 0) return this;
+    const listedLinks = new Set([...this.links, ...addedLinks]);
+    return listedLinks.size === this.links.length ? this : new ListedLinks([...listedLinks]);
   }
 
   objectOf(): undefined {
@@ -209,11 +211,15 @@ interface AddedLinks {
 
 /**
  * What a store lists and some records and blobs besides, as for a staged batch, and the rows of
- * each index for that: what `rows` has for the store, then `added` and the rows of it, each read
- * from `reader`.
+ * each index for that.
  *
- * It is for one scan: the rows of an index are worked out once for the order and for each index
- * that reads it, and nothing is kept of them for the next scan, which makes another of these.
+ * - It lists what `rows` has for the store, then those of `added` that the store does not list,
+ *   each once. A batch can list a record twice, or hold what its store holds already, and the rows
+ *   and their failures are those of the store once the batch is written.
+ * - The rows of what it lists beyond the store are read from `reader`, on top of those that `rows`
+ *   has.
+ * - It is for one scan: the rows of an index are worked out once for the order and for each index
+ *   that reads it, and nothing is kept of them for the next scan, which makes another of these.
  */
 export class AddedRows implements RowsByIndex {
   readonly #rows: RowsByIndex;

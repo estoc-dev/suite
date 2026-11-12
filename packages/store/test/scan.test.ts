@@ -535,6 +535,25 @@ describe("an index that fails on something it reads", () => {
     expect((await scan(store, byReadableName)).failures).toEqual([]);
   });
 
+  it("lists, on a staged batch, one failure for a record that the batch lists twice, as its store does once the batch is written", async () => {
+    const store = new Store(json, new MemoryBackend());
+    const stagedStore = await store.stage({ records: [unreadable, unreadable, readable], blobs: schemas });
+    const failures = [{ item: unreadable.link, error: readError }];
+    const stagedRows = await scan(stagedStore, byReadableName, { throwsOnFailure: false });
+    expect(await namesOf(stagedRows)).toEqual(["a"]);
+    expect(stagedRows.failures).toEqual(failures);
+    await stagedStore.commit();
+    expect((await scan(store, byReadableName, { throwsOnFailure: false })).failures).toEqual(failures);
+    expect((await scan(stagedStore, byReadableName, { throwsOnFailure: false })).failures).toEqual(failures);
+  });
+
+  it("lists, on a staged batch, no failure again for a record that its store lists already", async () => {
+    const store = await storeOf(unreadable, readable);
+    const rows = await scan(store, byReadableName, { throwsOnFailure: false });
+    const stagedStore = await store.stage({ records: [unreadable] });
+    expect(await scan(stagedStore, byReadableName, { throwsOnFailure: false })).toBe(rows);
+  });
+
   describe("read by another index", () => {
     it("is among the failures of that index, which is scanned as it is", async () => {
       const store = await storeOf(unreadable, readable);
@@ -861,6 +880,20 @@ describe("an index over blobs", () => {
         readableNamedOf(object);
       });
       expect(await namesOf(await rowsOf(index))).toEqual(["a"]);
+    });
+
+    it("fails once, on a staged batch, on a blob that its store holds already", async () => {
+      const index = indexOver(selectedBlobs(objectsOf(tag)), named, readableNamedOf).orderedBy("name");
+      const carrierNamed = (name: string) => encodeObject(note, { names: [name], of: { $link: unreadable.link } });
+      const [first, second] = [carrierNamed("first"), carrierNamed("second")];
+      const store = new Store(json, new MemoryBackend());
+      await store.write({ records: [first], blobs: [unreadable.bytes, ...schemas] });
+      const stagedStore = await store.stage({ records: [second, readable], blobs: [unreadable.bytes] });
+      const stagedRows = await scan(stagedStore, index);
+      expect(await namesOf(stagedRows)).toEqual(["a"]);
+      expect(stagedRows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
+      await stagedStore.commit();
+      expect((await scan(store, index)).failures).toEqual(stagedRows.failures);
     });
   });
 

@@ -73,7 +73,7 @@ describe("a key", () => {
     const lookalike = schema("ed25519ctx", { publicKey: bytes() });
     const written = objectFormat.encode(objectFormat.object({ publicKey: ed25519Key }, lookalike.link));
     await expect(readKey(written)).rejects.toThrow(`${lookalike.link} is not a schema read here`);
-    expect(() => keys.check(decodeObject(written, lookalike))).toThrow(`${lookalike.link} is not a schema read here`);
+    expect(() => keys.verify(decodeObject(written, lookalike))).toThrow(`${lookalike.link} is not a schema read here`);
   });
 
   it("is refused when the reader gives another blob for its link", async () => {

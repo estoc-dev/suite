@@ -137,7 +137,7 @@ const identity = encodeObject(identitySchema, { root: new LinkValue(rootKey.link
 - `link<T>()` reads as a `LinkValue<T>`. `T` is what the program reads the
   linked blob as, a label the schema does not hold: it says a field is a
   link, and not what the link names.
-- `bytes` reads as a `Uint8Array`, `integer` as a `number`, `any` as an
+- `bytes` reads as a `Uint8Array`, `integer` as a `number`, `any` as a
   `Value`, and an optional field as a member that may be absent.
 
 A schema someone else wrote is read from its bytes with

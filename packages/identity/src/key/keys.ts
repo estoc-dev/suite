@@ -51,7 +51,7 @@ export class Keys {
     this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
   }
 
-  check(object: EncodedObject<Value, KeyData>): KeyObject {
+  verify(object: EncodedObject<Value, KeyData>): KeyObject {
     return this.#implementations.implementationOf(object.schema.link).read(object);
   }
 

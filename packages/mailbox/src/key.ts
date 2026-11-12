@@ -60,8 +60,7 @@ export class MailboxKey {
   /**
    * Opens `ciphertext` to the bundle inside.
    *
-   * @throws when the ciphertext does not open with this key, or opens to bytes that are not a
-   *   bundle in one file.
+   * @throws when the ciphertext does not open with this key, or opens to bytes that are not a bundle.
    */
   async open(ciphertext: Uint8Array): Promise<Bundle> {
     const { encSize } = suite.kem;

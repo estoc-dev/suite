@@ -63,8 +63,8 @@ export class Mailbox {
   }
 
   /**
-   * Sends the bundle of `root` and `blobs`, in one file as `encodeBundle` writes it, sealed to the
-   * mailbox's key and handed to the transport.
+   * Sends the bundle of `root` and `blobs`, as `encodeBundle` writes it, sealed to the mailbox's key
+   * and handed to the transport.
    *
    * @throws when `root` is not an object of est.
    * @throws {UndeliveredMessage} when the transport cannot hand the ciphertext on.

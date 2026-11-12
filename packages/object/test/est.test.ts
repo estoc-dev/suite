@@ -9,7 +9,6 @@ import {
   encodeSchema,
   est,
   itself,
-  json,
   type Link,
   linkOf,
   rootSchemaOf,
@@ -86,12 +85,6 @@ describe("an object of est", () => {
   it("is refused when read with a schema other than its own", () => {
     const other = encodeSchema({ fields: ["text"] }, fieldNames);
     expect(() => decodeObject(encodeObject(anything, { text: "hello" }).bytes, other)).toThrow(/is written to/);
-  });
-
-  it("is not a JSON object, nor a JSON object one of est", () => {
-    const inJson = json.encode(json.object({ text: "hello" }, anything.link));
-    expect(() => est.decode(inJson)).toThrow();
-    expect(() => json.decode(encodeObject(anything, { text: "hello" }).bytes)).toThrow();
   });
 });
 
@@ -217,10 +210,6 @@ describe("an object written to itself", () => {
     expect([...est.links(est.decode(selfWritten))]).toEqual([]);
     const linkingBytes = est.encode(est.object({ to: new EstLink(a) }, itself));
     expect([...est.links(est.decode(linkingBytes))]).toEqual([a]);
-  });
-
-  it("cannot be written in JSON", () => {
-    expect(() => json.object({ text: "hello" }, itself)).toThrow(/written to itself/);
   });
 });
 

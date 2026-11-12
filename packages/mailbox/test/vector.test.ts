@@ -5,11 +5,11 @@ import { expect, test } from "vitest";
 import { MailboxKey } from "../src/index.ts";
 
 // The ciphertext was made by the HPKE of Python's cryptography package, with
-// a random ephemeral key, for the secret key of 32 bytes of 1, over a bundle
-// in one file whose CBOR was written out by hand in Python; another info, KEM,
-// KDF or AEAD does not open it. The root is written to the schema of a note,
-// whose bytes and those of its root schema were written the same way, and the
-// links were checked against Python's hashlib.
+// a random ephemeral key, for the secret key of 32 bytes of 1, over the file
+// of a bundle, whose CBOR was written out by hand in Python; another info,
+// KEM, KDF or AEAD does not open it. The root is written to the schema of a
+// note, whose bytes and those of its root schema were written the same way,
+// and the links were checked against Python's hashlib.
 const noteLink = "sha256:72e1185b089bff27d532382d74c6722631eddbf6785f56b76a2c3b87b85cfca2";
 const root = `da6573743f82d9486c5820${noteLink.slice("sha256:".length)}a164746578746568656c6c6f`;
 const rootLink = "sha256:50513b27ba0ecae5395f5ed741ebcc843b97bc49617d7d354716d25e250f5fdb";

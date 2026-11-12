@@ -40,7 +40,7 @@ describe("a mailbox key", () => {
     await expect(bob.open(ciphertext.subarray(0, length))).rejects.toThrow(/does not open with this key/);
   });
 
-  it("refuses what opens but is not a bundle in one file", async () => {
+  it("refuses what opens but is not a bundle", async () => {
     await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow(/an object of est/);
     const withoutRoot = encodeBundle(root, [blob]).subarray(root.bytes.length);
     await expect(bob.open(await sealTo(bob, withoutRoot))).rejects.toThrow(/an object of est/);

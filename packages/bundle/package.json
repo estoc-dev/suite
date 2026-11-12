@@ -11,14 +11,12 @@
   },
   "dependencies": {
     "@estoc/object": "workspace:*",
-    "@zip.js/zip.js": "^2.24.0",
     "cborg": "^6.2.1"
   },
   "devDependencies": {
     "@estoc/identity": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@types/node": "^26.6.2",
-    "fflate": "^0.8.3",
     "typescript": "~5.8.0",
     "vitest": "^3.2.7"
   }

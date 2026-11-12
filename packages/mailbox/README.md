@@ -8,7 +8,7 @@ deal with keys, encryption or transports.
 
 ```
 Mailbox     {"key": <x25519 public key>, <the transport's fields>…}
-Message     a bundle of @estoc/bundle, in one file
+Message     the file of a bundle of @estoc/bundle
 Ciphertext  the HPKE encapsulated key, 32 bytes, followed by HPKE's ciphertext of a Message
 ```
 
@@ -85,7 +85,7 @@ once, and one given again reads as one that arrived twice.
 
 `open` takes a ciphertext that a transport received and gives back the
 bundle inside. It refuses a ciphertext that does not open with its key, and what
-opens but is not a bundle in one file. It does not read who stands behind
+opens but is not a bundle. It does not read who stands behind
 the root: the receiver does that, against the object it expects, with
 `signatures.read` and the bundle as the reader. A receiver that keeps the
 identity versions it has seen passes its `SeenIdentityVersions` in place of

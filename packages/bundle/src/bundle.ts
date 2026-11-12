@@ -1,13 +1,11 @@
-import { type Bytes, json, type Link, linkOf, schemaOf } from "@estoc/object";
-
-export const ROOT = "index.json";
-export const BLOB = /^blobs\/sha256\/([0-9a-f]{64})$/;
+import { type Bytes, est, type Link, linkOf, schemaOf } from "@estoc/object";
+import { encode, Tokenizer, Type } from "cborg";
 
 /**
- * An object, the root, and blobs carried with it, held by link. Holding one means that what it was
- * read from was checked:
+ * An object, the root, and blobs carried with it, held by link. Holding one means that the file it
+ * was read from was checked:
  *
- * - The root is an object: of JSON in a folder or a zip, of est in one file.
+ * - The root is an object of est.
  * - Every blob is held by the link of its bytes.
  *
  * Nothing else about the blobs is read, signatures included.
@@ -22,8 +20,8 @@ export class Bundle {
   readonly #blobs: Map<string, Uint8Array>;
 
   /**
-   * Takes what a reader of this package has checked and keeps as its own: the root, which is an
-   * object and has `link`, and each blob by its link, the root among them or not.
+   * Takes what `decodeBundle` has checked and keeps as its own: the root, which is an object and
+   * has `link`, and each blob by its link, the root among them or not.
    */
   constructor(root: Uint8Array, link: Link<never>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>) {
     this.root = root;
@@ -48,53 +46,95 @@ export class Bundle {
 
 function checkRoot(bytes: Uint8Array): void {
   try {
-    schemaOf(bytes, json);
+    schemaOf(bytes, est);
   } catch (cause) {
-    throw new Error(`${ROOT} is not an object in canonical JSON`, { cause });
+    throw new Error("the root of a bundle is an object of est", { cause });
   }
 }
 
-/**
- * Reads a bundle from its files by path: a folder read into memory, or a zip unzipped. The root is
- * `index.json`, and a blob is a file under `blobs/sha256/`.
- *
- * @throws when `index.json` is missing or is not an object in canonical JSON.
- * @throws when a blob does not have the link its name says.
- */
-export function readBundle(files: ReadonlyMap<string, Uint8Array>): Bundle {
-  const index = files.get(ROOT);
-  if (index === undefined) throw new Error(`a bundle has an ${ROOT}`);
-  // Each blob is copied before it is hashed, so that what was checked is
-  // what is kept, whatever happens to the given arrays afterwards. A file
-  // read in Node is a Buffer, whose `slice` shares memory instead of copying.
-  const root = new Uint8Array(index);
-  checkRoot(root);
-  const blobs = new Map<Link<unknown>, Uint8Array>();
-  for (const [path, bytes] of files) {
-    // Any other path is not a blob: a directory entry, a file an archiver
-    // adds, or a name that no link turns into.
-    const hex = BLOB.exec(path)?.[1];
-    if (hex === undefined) continue;
-    const blob = new Uint8Array(bytes);
-    const link = linkOf(blob);
-    if (link !== `sha256:${hex}`) throw new Error(`${path} holds the blob ${link}`);
-    blobs.set(link, blob);
+// Whether the value is an object is the encoding's to say, once its bytes are
+// set apart from the blobs after it.
+function passValue(tokens: Tokenizer): void {
+  const token = tokens.next();
+  if (token.type.terminal) return;
+  const items = Type.equals(token.type, Type.tag)
+    ? 1
+    : Type.equals(token.type, Type.map)
+      ? token.value * 2
+      : token.value;
+  for (let item = 0; item < items; item++) passValue(tokens);
+}
+
+function joined(chunks: readonly Uint8Array[]): Uint8Array {
+  const bytes = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
   }
-  return new Bundle(root, linkOf(root), blobs);
+  return bytes;
 }
 
 /**
- * The files of a bundle with `root` as its `index.json`, carrying `blobs`. `root` is an object of
- * whatever type the caller holds it as: only its bytes are written.
+ * The file of the bundle of `root` and `blobs`: the bytes of the root, then each blob as a CBOR
+ * byte string.
  *
- * @throws when `root` is not an object in canonical JSON, since no reader would take the bundle.
+ * - With no blobs the file is the bytes of the root, and the hash of the file is its link.
+ * - The blobs are written in the order given. A blob given twice is written once, and the root
+ *   given among the blobs is left out.
+ *
+ * @throws when `root` is not an object of est, since no reader would take the file.
  */
-export function writeBundle(
-  root: { readonly bytes: Bytes<unknown> },
-  blobs: Iterable<Bytes<unknown>>,
-): Map<string, Uint8Array> {
+export function encodeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Uint8Array {
   checkRoot(root.bytes);
-  const files = new Map<string, Uint8Array>([[ROOT, root.bytes]]);
-  for (const blob of blobs) files.set(`blobs/${linkOf(blob).replace(":", "/")}`, blob);
-  return files;
+  const links = new Set<Link<unknown>>([linkOf(root.bytes)]);
+  const parts: Uint8Array[] = [root.bytes];
+  for (const blob of blobs) {
+    const link = linkOf(blob);
+    if (links.has(link)) continue;
+    links.add(link);
+    parts.push(encode(blob));
+  }
+  return joined(parts);
+}
+
+/**
+ * Reads a bundle from its file: an object of est, the root, then each blob it carries as a CBOR
+ * byte string.
+ *
+ * - A blob is any bytes and is not read, so an object carried in the file is a byte string as an
+ *   image is.
+ * - Nothing in the file is compressed, so the blobs come to less than its length, and reading has
+ *   no other limit.
+ *
+ * @throws when the file does not start with an object of est.
+ * @throws when what follows the root is not byte strings, each of a definite length under the
+ *   shortest head, the last ending where the file does.
+ * @throws when the file holds a blob twice, the root included.
+ */
+export function decodeBundle(file: Uint8Array): Bundle {
+  // The root and each blob are copied out of the file before they are hashed,
+  // so that what was checked is what is kept, whatever happens to the given
+  // array afterwards. A file read in Node is a Buffer, whose `slice` shares
+  // memory instead of copying, so the file is read through a plain view.
+  const bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength);
+  const tokens = new Tokenizer(bytes, { strict: true, allowIndefinite: false });
+  try {
+    passValue(tokens);
+  } catch (cause) {
+    throw new Error("the root of a bundle is an object of est", { cause });
+  }
+  const root = bytes.slice(0, tokens.pos());
+  checkRoot(root);
+  const link = linkOf(root);
+  const blobs = new Map<Link<unknown>, Uint8Array>();
+  while (!tokens.done()) {
+    const token = tokens.next();
+    if (!Type.equals(token.type, Type.bytes)) throw new Error("a blob after the root is a byte string");
+    const blob: Uint8Array = token.value;
+    const blobLink = linkOf(blob);
+    if (blobLink === link || blobs.has(blobLink)) throw new Error(`the file holds the blob ${blobLink} twice`);
+    blobs.set(blobLink, blob);
+  }
+  return new Bundle(root, link, blobs);
 }

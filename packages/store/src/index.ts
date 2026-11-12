@@ -6,6 +6,8 @@ export {
   type ReceivedBundle,
 } from "./inbound.ts";
 export { MemoryBackend } from "./memory.ts";
+export { scan } from "./scan.ts";
+export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
   type Index,
@@ -13,11 +15,9 @@ export {
   type KeyOf,
   type OrderedIndex,
   type Prefix,
-  type Rows,
   type Source,
-  scan,
   selectedBlobs,
   selectedRecords,
-} from "./scan.ts";
+} from "./source.ts";
 export { type Backend, type Batch, PrivateStore, RefusedBatch, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";

@@ -125,15 +125,15 @@ async function zeroBomb(claimed: number, mib = 4096): Promise<Uint8Array> {
 
 // A DEFLATE that unzips each piece it is handed whole, as the one zip.js
 // carries does, and counts what it makes.
-class Whole extends TransformStream<Uint8Array, Uint8Array> {
-  static made = 0;
+class WholeChunkInflater extends TransformStream<Uint8Array, Uint8Array> {
+  static inflatedBytes = 0;
 
   constructor() {
     let inflate: Inflate;
     super({
       start(controller) {
         inflate = new Inflate((data) => {
-          Whole.made += data.length;
+          WholeChunkInflater.inflatedBytes += data.length;
           controller.enqueue(data);
         });
       },
@@ -155,19 +155,19 @@ describe("a zipped bundle", () => {
   });
 
   it("unzips to its files and reads as the same bundle", async () => {
-    const unzipped = await unzipBundle(await zipBundle(files));
-    expect(unzipped).toEqual(files);
-    const bundle = readBundle(unzipped);
+    const unzippedFiles = await unzipBundle(await zipBundle(files));
+    expect(unzippedFiles).toEqual(files);
+    const bundle = readBundle(unzippedFiles);
     expect(bundle.link).toBe(root.link);
     for (const blob of [root.bytes, text, image]) expect(bundle.get(linkOf(blob))).toEqual(blob);
   });
 
   it("without compression holds its files as they are, and unzips to them", async () => {
     const large = writeBundle(root, [zeros]);
-    const stored = await zipBundle(large, { compress: false });
-    expect(stored.length).toBeGreaterThan(sizeOf(large));
+    const storedZip = await zipBundle(large, { compress: false });
+    expect(storedZip.length).toBeGreaterThan(sizeOf(large));
     expect((await zipBundle(large)).length).toBeLessThan(sizeOf(large));
-    expect(linksOf(await unzipBundle(stored))).toEqual(linksOf(large));
+    expect(linksOf(await unzipBundle(storedZip))).toEqual(linksOf(large));
   });
 
   it("is the same bytes whenever and wherever it is zipped", async () => {
@@ -197,9 +197,9 @@ describe("a zipped bundle", () => {
 
   it("unzips with its files in a folder as no bundle", async () => {
     const zip = await zipBundle(new Map([...files].map(([path, bytes]) => [`bundle/${path}`, bytes])));
-    const unzipped = await unzipBundle(zip);
-    expect(unzipped.size).toBe(0);
-    expect(() => readBundle(unzipped)).toThrow();
+    const unzippedFiles = await unzipBundle(zip);
+    expect(unzippedFiles.size).toBe(0);
+    expect(() => readBundle(unzippedFiles)).toThrow();
   });
 
   it("unzips a blob that is itself a zip, from a zip written as a stream", async () => {
@@ -213,18 +213,18 @@ describe("a zipped bundle", () => {
   });
 
   it("unzips the entry its directory lists, where a reader going from header to header finds another", async () => {
-    const listed = new Map([["index.json", root.bytes]]);
-    const zip = shadowed(await zipBundle(listed), await zipBundle(new Map([["index.json", another.bytes]])));
-    expect(await unzipBundle(zip)).toEqual(listed);
+    const listedFiles = new Map([["index.json", root.bytes]]);
+    const zip = shadowed(await zipBundle(listedFiles), await zipBundle(new Map([["index.json", another.bytes]])));
+    expect(await unzipBundle(zip)).toEqual(listedFiles);
   });
 
   it("is refused when it unzips to more bytes than its limit", async () => {
     const zip = await zipBundle(new Map([[pathOf(zeros), zeros]]));
     await expect(unzipBundle(zip, { bytes: zeros.length - 1 })).rejects.toThrow(/more than/);
-    const unzipped = await unzipBundle(zip, { bytes: zeros.length });
-    const kept = unzipped.get(pathOf(zeros));
-    assert.exists(kept);
-    expect(linkOf(kept)).toBe(linkOf(zeros));
+    const unzippedFiles = await unzipBundle(zip, { bytes: zeros.length });
+    const blob = unzippedFiles.get(pathOf(zeros));
+    assert.exists(blob);
+    expect(linkOf(blob)).toBe(linkOf(zeros));
   });
 
   it("is refused at its limit when it unzips to a thousand times its size, whatever size it gives", async () => {
@@ -236,9 +236,9 @@ describe("a zipped bundle", () => {
   });
 
   it("is refused at its limit with a few MiB unzipped, where each piece is unzipped whole", async () => {
-    configure({ useCompressionStream: false, DecompressionStreamFallback: Whole });
+    configure({ useCompressionStream: false, DecompressionStreamFallback: WholeChunkInflater });
     await expect(unzipBundle(await zeroBomb(2 ** 26, 64), { bytes: 2 ** 10 })).rejects.toThrow(/more than/);
-    expect(Whole.made).toBeLessThan(32 * 2 ** 20);
+    expect(WholeChunkInflater.inflatedBytes).toBeLessThan(32 * 2 ** 20);
   });
 
   it("is refused when its index.json or a blob is compressed other than with DEFLATE", async () => {
@@ -282,18 +282,18 @@ describe("a zipped bundle", () => {
   });
 
   it("is refused when the header of an entry its directory lists is damaged", async () => {
-    const damaged = await zipBundle(files);
-    const second = Buffer.from(damaged).indexOf("PK\x03\x04", 1, "latin1");
-    damaged[second + 3] = 0x05;
-    await expect(unzipBundle(damaged)).rejects.toThrow();
+    const damagedZip = await zipBundle(files);
+    const second = Buffer.from(damagedZip).indexOf("PK\x03\x04", 1, "latin1");
+    damagedZip[second + 3] = 0x05;
+    await expect(unzipBundle(damagedZip)).rejects.toThrow();
   });
 
   it("is refused when its index.json is damaged into another object", async () => {
-    const stored = zipSync(Object.fromEntries(files), { level: 0 });
-    const damaged = stored.slice();
-    damaged[Buffer.from(stored).indexOf("a note") + 2] = "b".charCodeAt(0);
-    expect(await unzipBundle(stored)).toEqual(files);
-    await expect(unzipBundle(damaged)).rejects.toThrow();
+    const storedZip = zipSync(Object.fromEntries(files), { level: 0 });
+    const damagedZip = storedZip.slice();
+    damagedZip[Buffer.from(storedZip).indexOf("a note") + 2] = "b".charCodeAt(0);
+    expect(await unzipBundle(storedZip)).toEqual(files);
+    await expect(unzipBundle(damagedZip)).rejects.toThrow();
   });
 });
 
@@ -303,9 +303,9 @@ describe("a packed bundle", () => {
     expect(linkOf(zip)).toBe(linkOf(await zipBundle(writeBundle(root, [zeros]), { compress: false })));
     const bundle = await unpackBundle(zip);
     expect(bundle.link).toBe(root.link);
-    const kept = bundle.get(linkOf(zeros));
-    assert.exists(kept);
-    expect(linkOf(kept)).toBe(linkOf(zeros));
+    const blob = bundle.get(linkOf(zeros));
+    assert.exists(blob);
+    expect(linkOf(blob)).toBe(linkOf(zeros));
   });
 
   it("is refused when its files come to more bytes than the zip, as only a compressed one's can", async () => {

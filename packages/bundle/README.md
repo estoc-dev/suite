@@ -88,9 +88,9 @@ lists the signatures over what it holds. The reader goes through each
 signature to the object it is over.
 
 ```ts
-const signed = await signatures.read(bundle.link, bundle, noIdentityVersions);
-const message = await readObject(bundle, signed.object, chatSchema);
-// signed.signedIdentity.identity stands behind message
+const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+const message = await readObject(bundle, signature.object, chatSchema);
+// signature.signedIdentity.identity stands behind message
 ```
 
 A `Bundle` is a `Reader`, with the `get` that `readObject` and verifiers

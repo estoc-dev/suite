@@ -74,7 +74,7 @@ export async function unzipBundle(
   });
   const files = new Map<string, Uint8Array>();
   const paths = new Set<string>();
-  let unzipped = 0;
+  let unzippedBytes = 0;
   for await (const entry of reader.getEntriesGenerator()) {
     const path = entry.filename;
     if (paths.has(path)) throw new Error(`the zip holds ${path} twice`);
@@ -92,8 +92,8 @@ export async function unzipBundle(
           // Counted as they come out, since the sizes a zip gives can be false.
           // The reader is aborted before the error is thrown, so that zip.js
           // keeps the error when it comes at the last chunk.
-          unzipped += chunk.length;
-          if (unzipped > bytes) abort.abort(new Error(`the zip unzips to more than ${bytes} bytes`));
+          unzippedBytes += chunk.length;
+          if (unzippedBytes > bytes) abort.abort(new Error(`the zip unzips to more than ${bytes} bytes`));
           abort.signal.throwIfAborted();
           chunks.push(chunk);
         },

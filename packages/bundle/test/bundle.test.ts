@@ -76,20 +76,22 @@ describe("a bundle", () => {
   it("reads with a signature as its root, which links to the object it is over and to its signed identity", async () => {
     const bundle = readBundle(writeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
     expect(bundle.link).toBe(signature.link);
-    const signed = await signatures.read(bundle.link, bundle, noIdentityVersions);
+    const readSignature = await signatures.read(bundle.link, bundle, noIdentityVersions);
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noIdentityVersions)).toEqual(
-      signed,
+      readSignature,
     );
-    expect(signed.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
-    expect((await readObject(bundle, signed.object, note)).data).toEqual({ text: "hello" });
+    expect(readSignature.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
+    expect((await readObject(bundle, readSignature.object, note)).data).toEqual({ text: "hello" });
   });
 
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
-    const signed = await publish(wallet, { agents: [alice.key] });
-    const bundle = readBundle(writeBundle(signed, [signed.schema.bytes, ...signed.identity.blobs]));
-    expect(bundle.link).toBe(signed.link);
-    expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signed);
+    const signedIdentity = await publish(wallet, { agents: [alice.key] });
+    const bundle = readBundle(
+      writeBundle(signedIdentity, [signedIdentity.schema.bytes, ...signedIdentity.identity.blobs]),
+    );
+    expect(bundle.link).toBe(signedIdentity.link);
+    expect(await signedIdentities.read(bundle.link, bundle)).toEqual(signedIdentity);
   });
 
   it("reads with a signature that does not verify or whose signed identity is written to an unknown schema, as bytes", async () => {
@@ -162,7 +164,7 @@ describe("a bundle", () => {
     const bundle = readBundle(files);
     for (const bytes of files.values()) bytes.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);
-    const signed = await signatures.read(signature.link, bundle, noIdentityVersions);
-    expect(bundle.get(signed.object)).toEqual(hello.bytes);
+    const readSignature = await signatures.read(signature.link, bundle, noIdentityVersions);
+    expect(bundle.get(readSignature.object)).toEqual(hello.bytes);
   });
 });

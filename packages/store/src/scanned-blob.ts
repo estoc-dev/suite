@@ -20,8 +20,10 @@ export class ScannedBlob {
   readonly #objects = new Map<object, unknown>();
   #readFailure: { readonly error: unknown } | undefined;
 
-  constructor(link: Link<unknown>, store: Reader) {
+  /** `object` is what `link` names where an index derived it, so that it is not read and validated again. */
+  constructor(link: Link<unknown>, store: Reader, object?: { readonly schema: object }) {
     this.link = link;
+    if (object !== undefined) this.#objects.set(object.schema, object);
     this.reader = readerOnce(async (blob) => {
       try {
         const bytes = await store.get(blob);

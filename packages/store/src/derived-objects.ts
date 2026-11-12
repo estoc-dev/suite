@@ -6,7 +6,8 @@ import type { Derivation, Listing, Origin } from "./source.ts";
 /**
  * The rows that an index gives of what a store lists, each once, in the order it first gave them.
  * They are kept beside the store, which does not hold them: an index over this one reads them from
- * here, by link as it reads any blob, and whatever else it reads from the store.
+ * here, by link as it reads any blob, with the schema they are written to, which the store need not
+ * hold either, and whatever else it reads from the store.
  */
 export class DerivedObjects<D, F extends Fields<D>> implements Listing {
   readonly objects: readonly EncodedObject<D, F>[];
@@ -44,7 +45,7 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
       const readCount = this.#listings.get(origin)?.links.length ?? 0;
       const reader: Reader = { get: (link) => listing.bytesOf(link) ?? store.get(link) };
       for (const link of listing.links.slice(readCount)) {
-        const blob = new ScannedBlob(link, reader);
+        const blob = new ScannedBlob(link, reader, listing.objectOf(link));
         for (const part of originParts) {
           const partObjects: EncodedObject<D, F>[] = [];
           try {
@@ -66,9 +67,15 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
     return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings);
   }
 
+  objectOf(link: Link<unknown>): EncodedObject<D, F> | undefined {
+    return this.#objectsByLink.get(link);
+  }
+
   bytesOf(link: Link<unknown>): Uint8Array | undefined {
     const object = this.#objectsByLink.get(link);
     if (object !== undefined) return object.bytes;
+    const { schema } = this.#derivation;
+    if (link === schema.link) return schema.bytes;
     for (const listing of this.#listings.values()) {
       const bytes = listing.bytesOf(link);
       if (bytes !== undefined) return bytes;

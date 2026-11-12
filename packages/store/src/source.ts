@@ -39,14 +39,18 @@ export interface Origin {
    * row of that part: a scan that threw on it would fail from then on.
    */
   readonly listsWhatAnyoneCanSend: boolean;
-  /** What it lists in `rows`. */
   listingIn(rows: RowsByIndex): Promise<Listing>;
 }
 
 /** What an origin lists for one store, in the order it listed them. A later one starts with these. */
 export interface Listing {
   readonly links: readonly Link<unknown>[];
-  /** The bytes of one of them that the store does not hold, or of one that such a one was derived from. */
+  /** One of them as the object an index derived, which is handed on without being read and validated again. */
+  objectOf(link: Link<unknown>): { readonly schema: object } | undefined;
+  /**
+   * The bytes of a blob that the store does not hold: one of them, the schema it is written to, or
+   * either of one that such a one was derived from.
+   */
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 
@@ -62,7 +66,6 @@ const heldBlobs: Origin = {
   listingIn: (rows) => rows.heldBlobs(),
 };
 
-/** What a source is made of: where what it reads is listed, and what it reads each one as. */
 interface Reading<T> {
   readonly origin: Origin;
   /** Gives `undefined` for one the source leaves out. */
@@ -224,8 +227,8 @@ export class OrderedIndex<D, F extends Fields<D>, By extends FieldNames<F>> {
  * - The rows depend on what is read and its closure, which `reader` gives by link, and on nothing
  *   else; what depends on what else is written, such as whether something replaced a record, is
  *   worked out from the rows when they are read.
- * - Over another index, `reader` gives the rows of that index by link, as it gives what the store
- *   holds.
+ * - Over another index, `reader` gives the rows of that index and the schema they are written to
+ *   by link, as it gives what the store holds.
  * - `reader` throws for a blob the store fails to give, and a scan of the index fails with that
  *   even where the source or `rows` catch it, such as to give no row of something that came from
  *   elsewhere and does not read as they expect.

@@ -336,8 +336,9 @@ order they are read in.
   a record stands on is that the user wrote it, and what a row stands on is
   that its index gave it.
 - Its `reader` gives those rows by link, those of the indexes they were
-  derived from, and what the store holds, so a row can name the row or the
-  record it came from.
+  derived from, the schemas all of them are written to, and what the store
+  holds, so a row can name the row or the record it came from, and the
+  closure of a row can be read whether or not the store holds its schema.
 - It is an index as any other: its rows depend on the row read and its
   closure alone, a store keeps them and reads only the rows given since, and
   another index can read it in turn. A staged batch reads what the other index

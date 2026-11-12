@@ -946,6 +946,60 @@ describe("an index over another index", () => {
     expect(await namesOf(await scan(store, sources.orderedBy("name")))).toEqual(["A from a of 1", "B from b of 1"]);
   });
 
+  it("reads the closure of a row through the indexes it is over, with the schemas of their rows, which the store does not hold", async () => {
+    const traced = schema("Traced", { name: string(), from: link() });
+    const retraced = schema("Retraced", { name: string(), from: link() });
+    const tracedNotes = indexOver(selectedRecords(objectsOf(note)), traced, ({ link, data }) =>
+      (data.names ?? []).map((name) => ({ name, from: { $link: link } })),
+    );
+    const retracedRows = indexOver(tracedNotes, retraced, ({ link, data }) => [
+      { name: data.name.toUpperCase(), from: { $link: link } },
+    ]);
+    const closure = new Set<Link<unknown>>();
+    const closures = indexOver(retracedRows, named, async function* ({ link, data }, reader) {
+      const pending: Link<unknown>[] = [link];
+      for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+        if (closure.has(next)) continue;
+        closure.add(next);
+        const bytes = await reader.get(next);
+        if (bytes !== undefined) pending.push(...json.links(json.decode(bytes)));
+      }
+      yield { name: data.name };
+    });
+    const tracedRow = encodeObject(traced, { name: "a", from: { $link: first.link } });
+    const retracedRow = encodeObject(retraced, { name: "A", from: { $link: tracedRow.link } });
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    expect(await namesOf(await scan(store, closures.orderedBy("name")))).toEqual(["A"]);
+    expect(closure).toEqual(
+      new Set([retracedRow.link, retraced.link, tracedRow.link, traced.link, first.link, note.link]),
+    );
+    for (const { link } of [retraced, traced]) expect(await store.get(link)).toBeUndefined();
+  });
+
+  it("hands on a row of the other index as that index wrote it, validated once", async () => {
+    let validationCount = 0;
+    const namedCounting = encodeSchema(
+      { title: "Named", fields: { name: string() } },
+      {
+        language: schemaValidator.language,
+        compile(document) {
+          const check = schemaValidator.compile(document);
+          return (data) => {
+            validationCount += 1;
+            return check(data);
+          };
+        },
+      },
+    );
+    const names = indexOver(selectedRecords(objectsOf(note)), namedCounting, namedOf);
+    const upper: NameIndex = indexOver(names, named, ({ data }) => [{ name: `${data.name}`.toUpperCase() }]);
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records: [first], blobs: schemas });
+    expect(await namesOf(await scan(store, upper.orderedBy("name")))).toEqual(["A"]);
+    expect(validationCount).toBe(1);
+  });
+
   it("holds its rows with those of an index of records, in a union", async () => {
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [first, encodeObject(tag, { names: ["t"] })], blobs: schemas });

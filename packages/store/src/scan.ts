@@ -56,13 +56,9 @@ export interface RowKeeper {
 
 /** What one store lists, and the rows of each index for that. */
 export interface RowsByIndex {
-  /** The records that the store lists. */
   listedRecords(): Promise<ListedLinks>;
-  /** The blobs that the store holds. */
   heldBlobs(): Promise<ListedLinks>;
-  /** The rows that the index of `derivation` gives, each once. */
   derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>>;
-  /** The rows of `index` in its order. */
   sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(
     index: OrderedIndex<D, F, By>,
   ): Promise<SortedRows<D, F, By>>;
@@ -83,6 +79,10 @@ class ListedLinks implements Listing {
     return addedLinks.length === 0 ? this : new ListedLinks([...this.links, ...addedLinks]);
   }
 
+  objectOf(): undefined {
+    return undefined;
+  }
+
   bytesOf(): undefined {
     return undefined;
   }
@@ -100,14 +100,13 @@ const noRows: RowsByIndex = {
  * What a store keeps from one scan to the next. Scans take it further one after another, each from
  * where the last left it, and one that fails leaves it as it was.
  */
-class Kept<T> {
+class KeptValue<T> {
   #value: Promise<T>;
 
   constructor(initial: T) {
     this.#value = Promise.resolve(initial);
   }
 
-  /** Keeps what `step` gives of what is kept. */
   advance(step: (value: T) => Promise<T>): Promise<T> {
     const previous = this.#value;
     const next = previous.then(step);
@@ -132,10 +131,10 @@ class Kept<T> {
 export class KeptRows implements RowsByIndex {
   readonly #reader: Reader;
   readonly #backend: Pick<Backend, "records" | "blobs">;
-  readonly #records = new Kept(new ListedLinks());
-  readonly #blobs = new Kept(new ListedLinks());
-  readonly #objectsByDerivation = new WeakMap<object, Kept<unknown>>();
-  readonly #sortedRowsByIndex = new WeakMap<object, Kept<unknown>>();
+  readonly #records = new KeptValue(new ListedLinks());
+  readonly #blobs = new KeptValue(new ListedLinks());
+  readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
+  readonly #sortedRowsByIndex = new WeakMap<object, KeptValue<unknown>>();
 
   /** Keeps rows of what `backend` lists, each read from `reader`. */
   constructor(reader: Reader, backend: Pick<Backend, "records" | "blobs">) {
@@ -153,9 +152,9 @@ export class KeptRows implements RowsByIndex {
 
   derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
     // What is kept under what an index is made of are rows of it.
-    let kept = this.#objectsByDerivation.get(derivation) as Kept<DerivedObjects<D, F>> | undefined;
+    let kept = this.#objectsByDerivation.get(derivation) as KeptValue<DerivedObjects<D, F>> | undefined;
     if (kept === undefined) {
-      kept = new Kept(new DerivedObjects(derivation));
+      kept = new KeptValue(new DerivedObjects(derivation));
       this.#objectsByDerivation.set(derivation, kept);
     }
     return kept.advance((objects) => objects.adding(this.#reader, this));
@@ -165,9 +164,9 @@ export class KeptRows implements RowsByIndex {
     index: OrderedIndex<D, F, By>,
   ): Promise<SortedRows<D, F, By>> {
     // What is kept under an ordered index are rows of it.
-    let kept = this.#sortedRowsByIndex.get(index) as Kept<SortedRows<D, F, By>> | undefined;
+    let kept = this.#sortedRowsByIndex.get(index) as KeptValue<SortedRows<D, F, By>> | undefined;
     if (kept === undefined) {
-      kept = new Kept(new SortedRows(index));
+      kept = new KeptValue(new SortedRows(index));
       this.#sortedRowsByIndex.set(index, kept);
     }
     // The rows in their order come first, so that those derived next go on from the ones they are of.

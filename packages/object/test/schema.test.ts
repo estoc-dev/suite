@@ -43,9 +43,7 @@ describe("decodeSchema", () => {
     const anything = encodeSchema({}, fieldNames);
     const object = encodeObject(anything, { fields: [] });
     // @ts-expect-error: refused at compile time too
-    expect(() => decodeSchema(object.bytes, fieldNames)).toThrow(
-      `a schema is bytes and links to nothing, not to ${anything.link}`,
-    );
+    expect(() => decodeSchema(object.bytes, fieldNames)).toThrow(`a schema links to nothing, not to ${anything.link}`);
   });
 });
 

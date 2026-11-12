@@ -1,5 +1,5 @@
-import { decodeBlob, type Encoding, type Fields } from "./encoding.ts";
-import type { Bytes, Link } from "./link.ts";
+import { decodeBlob, type Encoding, type Fields, itself } from "./encoding.ts";
+import { type Bytes, type Link, linkOf } from "./link.ts";
 import type { Schema } from "./schema.ts";
 
 /**
@@ -40,8 +40,8 @@ export function decodeObject<D, F extends Fields<D>>(
 ): EncodedObject<D, F> {
   const { value, bytes: owned, link } = decodeBlob(schema.encoding, bytes);
   const fields = schema.encoding.fields(value);
-  if (fields.schema !== schema.link)
-    throw new Error(`the object is written to ${fields.schema}, not to ${schema.link}`);
+  const schemaLink = fields.schema === itself ? link : fields.schema;
+  if (schemaLink !== schema.link) throw new Error(`the object is written to ${schemaLink}, not to ${schema.link}`);
   return { schema, data: schema.validate(fields.data), bytes: owned, link };
 }
 
@@ -88,10 +88,12 @@ export function decodeObjectAt<D, F extends Fields<D>>(
  * The link of the schema an object names, read before the object is: a
  * program that takes objects of several schemas picks by it which schema to
  * read the object with. With no schema yet to say so, the caller names the
- * encoding of the object.
+ * encoding of the object. For an object written to itself, it is the link of
+ * the bytes.
  *
  * @throws when the bytes are not an object in `encoding`.
  */
 export function schemaOf<D>(bytes: Bytes<unknown>, encoding: Encoding<D>): Link<Schema<D>> {
-  return encoding.fields(encoding.decode(bytes)).schema;
+  const { schema } = encoding.fields(encoding.decode(bytes));
+  return schema === itself ? (linkOf(bytes) as Link<Schema<D>>) : schema;
 }

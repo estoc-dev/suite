@@ -6,9 +6,9 @@ its schema, and who has to sign is up to the application that reads it.
 
 An object rests on an encoding, which writes each value of its data one
 way, and a schema language over that encoding. This package writes objects
-against what those two provide. It has one encoding, JSON with JCS, and no
-language of its own: the one in use, Estoc Schema, is in `@estoc/schema`.
-In that pair:
+against what those two provide. It has two encodings, JSON with JCS and
+est, and no language of its own: the one in use, Estoc Schema, is in
+`@estoc/schema` and is over JSON. In that pair:
 
 ```
 Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
@@ -16,8 +16,9 @@ Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
 Schema     {"title": <a string>, "fields": <the fields of its objects>}
 ```
 
-A schema is not an object. It is bytes, as every blob that is not an
-object is, and the objects that name it are what make it a schema.
+In that pair a schema is not an object. It is bytes, as every blob of JSON
+that is not an object is, and the objects that name it are what make it a
+schema.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -35,12 +36,18 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     before the schema is.
   - The data of an object is fields, values of the encoding by name
     (`Fields<D>`). The encoding writes an object as one value, those fields
-    and one more for the link of its schema, and refuses any other value as
-    an object. Any other value is bytes.
+    and the link of its schema, and refuses any other value as an object.
+    Any other value is bytes.
+  - A blob cannot hold its own hash, so an encoding may have a mark for an
+    object written to itself, in place of the link of its schema: est has
+    one, and JSON has none. The encoding gives the mark as `itself`, and
+    `decodeObject` and `schemaOf` read it as the link of the blob, so every
+    object they read names its schema by link.
   - The encoding finds the links in an object, so that the blobs in a
     blob's closure can be gathered without a schema to read it by, as a
     store gathers the closure it carries along with an object. Bytes link
-    to nothing, whatever they hold.
+    to nothing, whatever they hold, and an object written to itself does
+    not link to itself.
 - A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
   one encoding, which it names, with documents `S`. It writes a document
   as a value of the encoding, and reads a schema's document out of one.
@@ -66,31 +73,36 @@ translating old ones.
 
 ## Schemas
 
-A schema is bytes: a value of its encoding that is not an object, and so
-names no schema of its own.
+A schema is a blob that links to nothing, and that objects name by link.
 
 - What a schema holds is its language's to say: in Estoc Schema, a title
   and the fields of its objects.
-- An object names its schema by link, and that is what makes the bytes a
-  schema. A schema is reached from its objects, and no schema describes a
-  schema: an object is written to a schema, and a schema to nothing.
+- An object names its schema by link, and that is what makes the blob a
+  schema. A schema is reached from its objects.
 - No blob says which language a schema is in. The program that reads one
   names the language, by the validator it reads with. An encoding is told
   the same way: no blob says that some bytes are JCS, and `schemaOf` is
   given the encoding by its caller.
-- A schema links to nothing, as bytes link to nothing whatever they hold,
-  and an object, which links to its schema, is refused as a schema. A
-  schema says that a field holds a link without holding one: in Estoc
-  Schema the field is `{"type": "link"}`. So the closure of a schema is
-  the schema alone, and its `bytes` go wherever an object of it goes, as
-  into a store or a bundle.
+- `decodeSchema` refuses a blob that links to another. A schema says that
+  a field holds a link without holding one: in Estoc Schema the field is
+  `{"type": "link"}`. So the closure of a schema is the schema alone, and
+  its `bytes` go wherever an object of it goes, as into a store or a
+  bundle.
+- Which blobs link to nothing is the encoding's to say.
+  - In JSON an object links to its schema, so a schema is JSON that is not
+    an object. It is bytes, and no schema describes a schema: an object is
+    written to a schema, and a schema to nothing.
+  - In est every blob is an object, and the one that links to nothing is
+    written to itself. No language is over est yet, and how its schemas
+    are written is not settled: this is only what `decodeSchema` reads
+    there now.
 
 The link of a schema fixes its bytes, and not the language they are read
 in. Programs that share objects share the language, as they share the
 encoding.
 
-A blob that is not an object is bytes: a schema, an image, or a JSON file
-such as a `biome.json`, whose `$schema` is a string, even when it happens
+A blob that is not an object is bytes: an image, a schema in JSON, or a
+JSON file such as a `biome.json`, whose `$schema` is a string, even when it happens
 to be JCS. Only the links in an object are followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
@@ -105,8 +117,8 @@ to be JCS. Only the links in an object are followed.
 
 ## JSON
 
-`json` is the encoding of this package. The schema language over it is in
-`@estoc/schema`.
+`json` is one of the two encodings of this package. The schema language
+over it is in `@estoc/schema`.
 
 - `json` writes a JSON value as its JCS
   ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
@@ -144,6 +156,61 @@ to be JCS. Only the links in an object are followed.
   where an object names it, in the language the reader names.
 - `json.encode` and `json.decode` are this encoding on its own, for formats
   built on it that are not objects.
+
+## est
+
+`est` is the Estoc Object Format: objects in deterministic CBOR
+([RFC 8949, section 4.2.1](https://www.rfc-editor.org/rfc/rfc8949#section-4.2.1)).
+No schema language is over it: the one of `@estoc/schema` is over JSON.
+
+```
+OBJECT([ LINK(h'…'),               the schema of the object
+         { "text": "hello" } ])    the fields of its data
+```
+
+The 55 bytes of that object:
+
+```
+da 65 73 74 3f            the tag of the format, "est?" in ASCII
+82                        an array of two
+   d9 48 6c               tag 18540, a SHA-256 hash value: here, a link
+   58 20 …                the 32 bytes of the SHA-256 of the schema
+   a1                     a map of one field
+      64 74 65 78 74      "text"
+      65 68 65 6c 6c 6f   "hello"
+```
+
+- A blob of est is one object: the tag of the format around an array of
+  two, the schema of the object and the map of its fields. The schema is
+  named by its place, so the data may hold a field of any name. est has no
+  value that is not an object: any other bytes are refused, and are a blob
+  of bytes, which links to nothing.
+- A value in data is of one of seven kinds: an integer, bytes, a string, a
+  boolean, an array, a map by string keys, or a link. Floats, null, other
+  tags and an object inside data are refused. In TypeScript the seven are a
+  number, a `Uint8Array`, a string, a boolean, an array, a plain object and
+  an `EstLink<T>`.
+- Integers are up to 2^53 − 1 in magnitude, which a number holds exactly.
+- Decoding is strict: the bytes must be exactly what the encoding writes
+  for the value they hold. Heads longer than the shortest, keys of a map
+  out of the order of their bytes or repeated, indefinite lengths, invalid
+  UTF-8, and bytes after the object are refused.
+- A link is tag 18540 around the 32 bytes of a SHA-256. IANA lists the tag
+  as a SHA-256 hash value, and est reads one in an object as a link. The
+  links the encoding finds in an object are the ones under the tag, at any
+  depth, its schema among them, and no others. A hash that names no blob
+  to follow is written as bytes, and a string is a string whatever it
+  holds. The tags of other hashes are refused, so that a blob has one
+  link.
+- An object written to itself names its schema by the string `"self"` in
+  place of a link, and any other string there is refused. It reads back
+  with its own link as its schema, so it is refused as an object of any
+  other schema.
+- Every object starts with the same six bytes, `da 65 73 74 3f 82`. Unless
+  it is written to itself, the next five are the same too, and the hash of
+  its schema follows them, at byte 11.
+- A blob does not say which version of the format it is in. Another
+  encoding would be written under another tag.
 
 ## Objects
 

@@ -4,6 +4,7 @@ import {
   type Encoding,
   encodeObject,
   encodeSchema,
+  itself,
   type Link,
   type SchemaValidator,
   schemaOf,
@@ -51,6 +52,7 @@ const lines: Encoding<Text> = {
     return value;
   },
   object(data, schema) {
+    if (schema === itself) throw new Error("lines have no mark for an object written to itself");
     if (Object.hasOwn(data, "schema")) throw new Error("the data has no field schema");
     return { ...data, schema };
   },

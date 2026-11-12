@@ -5,9 +5,17 @@ import type { Schema } from "./schema.ts";
 export type Fields<D> = { readonly [name: string]: D };
 
 /**
+ * What an object written to itself names as its schema. A blob cannot hold
+ * its own hash, so an encoding with such objects writes a mark in place of
+ * the link, and the mark is read as the link of the blob it is in.
+ */
+export const itself: unique symbol = Symbol("itself");
+export type Itself = typeof itself;
+
+/**
  * A model of data and the one way each of its values is written as bytes,
- * of which objects are made. JSON with JCS is one; deterministic CBOR would
- * be another. Two encodings of the same content are two blobs with two
+ * of which objects are made. JSON with JCS is one, and est, in deterministic
+ * CBOR, is another. Two encodings of the same content are two blobs with two
  * links, and neither reads as the other.
  */
 export interface Encoding<D> {
@@ -22,23 +30,26 @@ export interface Encoding<D> {
    */
   decode(bytes: Uint8Array): D;
   /**
-   * An object as one value: the fields of its data, and one field more,
-   * which the encoding keeps for the link of the schema the data is written
-   * to.
+   * An object as one value: the fields of its data, and the schema the data
+   * is written to, named by link or as `itself`.
    *
-   * @throws when `data` has that field itself.
+   * @throws when the encoding keeps a field for the schema and `data` has
+   * that field, or when `schema` is `itself` and the encoding has no mark
+   * for it.
    */
-  object(data: Fields<D>, schema: Link<unknown>): D;
+  object(data: Fields<D>, schema: Link<unknown> | Itself): D;
   /**
-   * The data and the schema of a value that `object` gives.
+   * The data and the schema of a value that `object` gives, the schema as
+   * the object names it.
    *
    * @throws for any other value, which is not an object but bytes.
    */
-  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> };
+  fields(value: D): { readonly data: Fields<D>; readonly schema: Link<Schema<D>> | Itself };
   /**
    * The links in an object, its schema included, so that a blob's closure
    * can be gathered without reading it through a schema.
    *
+   * - An object written to itself names its schema by no link, and does not link to itself.
    * - A value that is not an object is bytes, and links to nothing whatever it holds.
    * - It may give more than the readers of the object follow, but leaves none out: a reader checks
    *   each blob it follows, and a blob left out would be missing when it is followed.

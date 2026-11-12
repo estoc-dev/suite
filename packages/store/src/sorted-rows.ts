@@ -1,6 +1,14 @@
 import type { EncodedObject, Encoding, Fields } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
-import { derivationOf, type FieldNames, type KeyOf, type OrderedIndex, orderOf, type Prefix } from "./source.ts";
+import {
+  derivationOf,
+  type FieldNames,
+  type ItemFailure,
+  type KeyOf,
+  type OrderedIndex,
+  orderOf,
+  type Prefix,
+} from "./source.ts";
 
 /** The rows of an ordered index, each once however many records give it. */
 export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
@@ -9,6 +17,11 @@ export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
    * the index.
    */
   range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<D, F>>;
+  /**
+   * What the index, and each index it reads, failed on. These rows are short of whatever those
+   * would have given, under any prefix: what failed gave no row to tell where it belongs.
+   */
+  readonly failures: readonly ItemFailure[];
 }
 
 /** What a row holds in a field of the order, as rows are compared by it. */
@@ -36,10 +49,15 @@ export class SortedRows<D, F extends Fields<D>, By extends FieldNames<F>> implem
     this.#rows = rows;
   }
 
+  get failures(): readonly ItemFailure[] {
+    return this.#derivedObjects.failures;
+  }
+
   /** The rows of `derivedObjects` in the order: those these are of, then any the index gave after them. */
   including(derivedObjects: DerivedObjects<D, F>): SortedRows<D, F, By> {
+    if (derivedObjects === this.#derivedObjects) return this;
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
-    if (newRows.length === 0) return this;
+    if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows);
     const { index, by } = orderOf(this.#index);
     const { encoding } = derivationOf(index).schema;
     const keyedRows = newRows.map((row) => {

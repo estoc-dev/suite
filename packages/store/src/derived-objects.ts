@@ -1,7 +1,7 @@
 import { type EncodedObject, encodeObject, type Fields, type Link, type Reader } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
-import type { Derivation, Listing, Origin } from "./source.ts";
+import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
 
 /**
  * The rows that an index gives of what a store lists, each once, in the order it first gave them.
@@ -12,32 +12,48 @@ import type { Derivation, Listing, Origin } from "./source.ts";
 export class DerivedObjects<D, F extends Fields<D>> implements Listing {
   readonly objects: readonly EncodedObject<D, F>[];
   readonly links: readonly Link<unknown>[];
+  /**
+   * What the index failed on, and what the indexes it reads failed on: these rows are short of
+   * whatever those would have come to.
+   */
+  readonly failures: readonly ItemFailure[];
   readonly #derivation: Derivation<D, F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>>;
   /** What each origin of the index listed, all of which these rows are of. */
   readonly #listings: ReadonlyMap<Origin, Listing>;
+  readonly #ownFailures: readonly ItemFailure[];
 
   constructor(
     derivation: Derivation<D, F>,
     objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>> = new Map(),
     listings: ReadonlyMap<Origin, Listing> = new Map(),
+    ownFailures: readonly ItemFailure[] = [],
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
     this.links = [...objectsByLink.keys()];
     this.#objectsByLink = objectsByLink;
     this.#listings = listings;
+    this.#ownFailures = ownFailures;
+    // Two of the indexes it reads may read one index, whose failures are then listed once.
+    this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
 
   /**
    * These rows, then those that the index gives of what each of its origins lists in `rows` beyond
    * what these are of, each read from `store`.
    *
-   * @throws as `scan` does.
+   * - What a source of the index or its `rows` throw on, or give a row of that does not fit the
+   *   schema, gives no rows of that source. The other sources that read it give theirs still.
+   * - It is among the failures from then on, and is not read again.
+   *
+   * @throws when `store` throws, or gives no blob, for a link that is read. Nothing is added then,
+   *   as it may give the blob later.
    */
   async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
     const { schema, parts } = this.#derivation;
     const objectsByLink = new Map(this.#objectsByLink);
+    const ownFailures = [...this.#ownFailures];
     const listings = new Map<Origin, Listing>();
     for (const [origin, originParts] of parts) {
       const listing = await origin.listingIn(rows);
@@ -51,20 +67,18 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
           try {
             for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
-            // A store that failed still fails the scan, by the blob's `readFailure`.
-            if (!origin.listsWhatAnyoneCanSend) throw error;
+            ownFailures.push({ item: link, error });
             continue;
           }
           for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
         }
-        const failure = blob.readFailure;
-        if (failure !== undefined) throw failure.error;
+        // What a part threw because the store failed is not a failure of the part.
+        const readFailure = blob.readFailure;
+        if (readFailure !== undefined) throw readFailure.error;
       }
     }
-    const isSame =
-      objectsByLink.size === this.#objectsByLink.size &&
-      [...listings].every(([origin, listing]) => this.#listings.get(origin) === listing);
-    return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings);
+    const isSame = [...listings].every(([origin, listing]) => this.#listings.get(origin) === listing);
+    return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
   }
 
   objectOf(link: Link<unknown>): EncodedObject<D, F> | undefined {

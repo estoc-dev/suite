@@ -324,7 +324,6 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly #records: readonly Link<never>[];
-  readonly [rowsByIndex]: RowsByIndex;
 
   constructor(
     store: Pick<Store, "get" | "positionOf"> & RowKeeper,
@@ -336,7 +335,11 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     this.#backend = backend;
     this.#blobs = blobs;
     this.#records = records;
-    this[rowsByIndex] = new AddedRows(store[rowsByIndex], { records, blobs: [...blobs.keys()] }, this);
+  }
+
+  get [rowsByIndex](): RowsByIndex {
+    const added = { records: this.#records, blobs: [...this.#blobs.keys()] };
+    return new AddedRows(this.#store[rowsByIndex], added, this);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;

@@ -261,6 +261,24 @@ rows, such as a count, an application keeps in a fold of its own, which
 then has to come to the same whatever the order and however often an
 object comes.
 
+An index fails on what a source of it or its `rows` throw on, and on what
+they give a row of whose data does not fit the schema of the index. That
+gives no rows of that source, and the scan goes on with the rest:
+
+- The rows list each in `failures`, with its link as `item` and the `error`,
+  along with what each index that this one reads failed on. The rows are short
+  of whatever those would have given, under any prefix, as what failed gave no
+  row to tell where it belongs.
+- A scan of an index that reads only records, itself and through the indexes
+  it reads, throws the error of the first failure: what it reads is what its
+  user wrote, so a failure is a mistake to be seen. A scan of one that reads
+  blobs gives the rows with their failures, as anyone can send a blob that it
+  fails on. `scan(store, index, { throwsOnFailure })` says which a scan does,
+  whatever the index reads.
+- A failure is kept with the rows, so a later scan does not read that again.
+  It reads what was listed since, and then throws or gives the rows, as it
+  does on a failure it has just found.
+
 A store keeps in memory the rows of each index it is scanned for, and those
 rows in each order it is scanned in, and a
 later scan reads only the records listed since, those that another store on
@@ -293,13 +311,12 @@ const identityVersionsHeld = indexOver(
 - A write keeps only the blobs in the closures of its records, so these are
   the blobs reached from what the user wrote, and a write cut short can leave
   some besides, each with its closure.
-- A blob gives no row when it is not an object in the encoding of the schema,
-  when it names the schema and does not fit it, when `selection` or `rows`
-  throw on it, or when the data of a row does not fit the schema of the index,
-  though a record or a row that does not fit makes a scan of an index over
-  records, or over another index, throw. Anyone can send such a blob, and a scan that threw on it would fail
-  from then on. A mistake in `selection` or `rows` therefore shows only as rows
-  that are missing.
+- A blob that is not an object in the encoding of the schema, such as an
+  attachment, is not one of these, as an object of another schema is not.
+- Anyone can send a blob that names the schema and does not fit it, or that
+  `selection` or `rows` throw on. The index fails on it as on a record, and a
+  scan gives the rows without those of such a blob, with it among their
+  `failures`, where a mistake in `selection` or `rows` shows as well.
 - What is out of reach of links is out of reach here too: what is encrypted,
   or a bundle wrapped up in a blob, is one blob of bytes.
 - A link does not say what it names, so a scan reads every blob, attachments
@@ -313,9 +330,9 @@ that came from elsewhere and does not read as they expect, cannot tell that
 from a store that fails. A scan therefore fails when the store throws, or
 gives no blob, for a link that a selection or its rows read, even where they
 catch it: the rows of that record would be cut short. A scan that fails
-leaves the rows a store keeps as they were, so the next one reads that
-record again. The same goes for an index over blobs, which catches for them,
-and for a blob that it reads and that turns out to be no object of its schema.
+leaves the rows a store keeps as they were, failures among them, so the next
+one reads that record again. The same goes for an index over blobs, and for
+a blob that it reads and that turns out to be no object of its schema.
 
 An index is itself a source. One over another index reads the rows of that
 one in place of records, each as the object it is, so what one index works
@@ -346,7 +363,9 @@ order they are read in.
   keeps its own.
 - The rows of the other index are kept once, for its own orders and for each
   index over it, so a record is read once for all of them.
-- A row that its `rows` throw on makes a scan throw, as a record does.
+- It fails on a row that its `rows` throw on, as on a record, and its failures
+  include those of the other index. A scan of it throws on them unless one of
+  the indexes it reads through reads blobs.
 
 ## Views
 

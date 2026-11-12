@@ -1,7 +1,15 @@
 import type { Fields, Link, Reader } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
-import { type Derivation, derivationOf, type FieldNames, type Listing, type OrderedIndex, orderOf } from "./source.ts";
+import {
+  type Derivation,
+  derivationOf,
+  type FieldNames,
+  type ItemFailure,
+  type Listing,
+  type OrderedIndex,
+  orderOf,
+} from "./source.ts";
 import type { Backend, Store } from "./store.ts";
 
 /**
@@ -25,31 +33,47 @@ import type { Backend, Store } from "./store.ts";
  * - A store and a private store keep the rows of each index they are scanned for, and those rows in
  *   each order they are scanned in, so a later scan reads only the records listed, the blobs put and
  *   the rows given since. A staged batch reads its own on top of the rows that its store keeps.
+ * - What a source of the index or its `rows` throw on, or give a row of whose data does not fit the
+ *   schema of the index, gives no rows of that source, and the rest is read still. It is listed in
+ *   the `failures` of the rows, as is what each index that this one reads failed on, and is kept
+ *   with the rows, so a later scan does not read it again.
+ * - A scan of an index that reads only records, itself and through the indexes it reads, throws
+ *   when there are failures: what it reads is what its user wrote, so a failure is a mistake to be
+ *   seen. A scan of one that reads blobs gives the rows with their failures, as anyone can send a
+ *   blob that it fails on. `throwsOnFailure` says which a scan does, whatever the index reads.
  *
- * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
- * @throws where a selection over records throws, where the `rows` of an index throw over records or
- *   over another index, and when the data of a row they give does not fit the schema of the index.
+ * @throws the error of the first of the failures, when it throws on failure.
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
- *   even where they catch it.
+ *   even where they catch it. Nothing is kept of what such a scan read, and a later one reads it
+ *   again.
  * @throws when the index reads blobs, itself or through an index it reads, and `store` is something
  *   else with a `get` and `records`, which cannot list them.
  */
 export async function scan<D, F extends Fields<D>, By extends FieldNames<F>>(
   store: Pick<Store, "get" | "records">,
   index: OrderedIndex<D, F, By>,
+  { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
 ): Promise<Rows<D, F, By>> {
-  if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex].sortedRowsOf(index);
-  if (derivationOf(orderOf(index).index).readsBlobs)
+  const { readsBlobs } = derivationOf(orderOf(index).index);
+  const rows = await (await rowsByIndexOf(store, readsBlobs)).sortedRowsOf(index);
+  const [failure] = rows.failures;
+  if (failure !== undefined && (throwsOnFailure ?? !readsBlobs)) throw failure.error;
+  return rows;
+}
+
+async function rowsByIndexOf(store: Pick<Store, "get" | "records">, listsBlobs: boolean): Promise<RowsByIndex> {
+  if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex];
+  if (listsBlobs)
     throw new Error("only a store, a private store or a staged batch lists the blobs an index over blobs reads");
   const records: Link<unknown>[] = [];
   for await (const link of store.records()) records.push(link);
-  return new AddedRows(noRows, { records, blobs: [] }, store).sortedRowsOf(index);
+  return new AddedRows(noRows, { records, blobs: [] }, store);
 }
 
 /** The key under which `scan` asks a store for the rows it has of each index, which nothing outside this package can. */
 export const rowsByIndex: unique symbol = Symbol("rowsByIndex");
 
-/** A store that has the rows of the indexes it is scanned for. */
+/** A store that has the rows of the indexes it is scanned for. It is asked for them once for each scan. */
 export interface RowKeeper {
   readonly [rowsByIndex]: RowsByIndex;
 }
@@ -64,19 +88,22 @@ export interface RowsByIndex {
   ): Promise<SortedRows<D, F, By>>;
 }
 
-/** What a store lists of the blobs it holds: its records, or all of them. */
+/** What a store lists of the blobs it holds, each once: its records, or all of them. */
 class ListedLinks implements Listing {
   readonly links: readonly Link<unknown>[];
+  readonly failures: readonly ItemFailure[] = [];
 
   constructor(links: readonly Link<unknown>[] = []) {
     this.links = links;
   }
 
-  /** These, then `links`. */
+  /** These, then those of `links` that are not among them, each once. */
   async adding(links: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>): Promise<ListedLinks> {
     const addedLinks: Link<unknown>[] = [];
     for await (const link of links) addedLinks.push(link);
-    return addedLinks.length === 0 ? this : new ListedLinks([...this.links, ...addedLinks]);
+    if (addedLinks.length === 0) return this;
+    const listedLinks = new Set([...this.links, ...addedLinks]);
+    return listedLinks.size === this.links.length ? this : new ListedLinks([...listedLinks]);
   }
 
   objectOf(): undefined {
@@ -184,13 +211,21 @@ interface AddedLinks {
 
 /**
  * What a store lists and some records and blobs besides, as for a staged batch, and the rows of
- * each index for that: what `rows` has for the store, then `added` and the rows of it, each read
- * from `reader`. Nothing is kept of them.
+ * each index for that.
+ *
+ * - It lists what `rows` has for the store, then those of `added` that the store does not list,
+ *   each once. A batch can list a record twice, or hold what its store holds already, and the rows
+ *   and their failures are those of the store once the batch is written.
+ * - The rows of what it lists beyond the store are read from `reader`, on top of those that `rows`
+ *   has.
+ * - It is for one scan: the rows of an index are worked out once for the order and for each index
+ *   that reads it, and nothing is kept of them for the next scan, which makes another of these.
  */
 export class AddedRows implements RowsByIndex {
   readonly #rows: RowsByIndex;
   readonly #added: AddedLinks;
   readonly #reader: Reader;
+  readonly #objectsByDerivation = new Map<object, Promise<unknown>>();
 
   constructor(rows: RowsByIndex, added: AddedLinks, reader: Reader) {
     this.#rows = rows;
@@ -206,8 +241,14 @@ export class AddedRows implements RowsByIndex {
     return (await this.#rows.heldBlobs()).adding(this.#added.blobs);
   }
 
-  async derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
-    return (await this.#rows.derivedObjectsOf(derivation)).adding(this.#reader, this);
+  derivedObjectsOf<D, F extends Fields<D>>(derivation: Derivation<D, F>): Promise<DerivedObjects<D, F>> {
+    // What is worked out under what an index is made of are rows of it.
+    let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<D, F>> | undefined;
+    if (objects === undefined) {
+      objects = this.#rows.derivedObjectsOf(derivation).then((kept) => kept.adding(this.#reader, this));
+      this.#objectsByDerivation.set(derivation, objects);
+    }
+    return objects;
   }
 
   async sortedRowsOf<D, F extends Fields<D>, By extends FieldNames<F>>(

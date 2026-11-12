@@ -1,6 +1,15 @@
-import { readBundle, writeBundle } from "@estoc/bundle";
+import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
+import {
+  type EncodedObject,
+  type Est,
+  EstLink,
+  encodeObject,
+  est,
+  type Link,
+  objectsOf,
+  readObject,
+} from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import {
   Intake,
@@ -12,7 +21,6 @@ import {
   scan,
   selectedRecords,
 } from "@estoc/store";
-import { hex } from "@scure/base";
 import { assert, describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, mailboxKeySchema, outboundSchema, Post, UndeliveredMessage } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -22,7 +30,7 @@ const note = schema("Note", { text: string() });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
-const schemas = [note, signatures.schema].map(({ bytes }) => bytes);
+const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
 const signatureBlobs = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
@@ -37,7 +45,7 @@ async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise
 // time it is read.
 async function postAt(
   network: MemoryNetwork,
-  store = new Store(json, new MemoryBackend()),
+  store = new Store(est, new MemoryBackend()),
   privateStore = new PrivateStore(store, new MemoryBackend()),
 ) {
   let now = 1000;
@@ -46,9 +54,9 @@ async function postAt(
 }
 
 // `store` keeps a mailbox that was handed over out of band, with a record that it came in.
-async function handOver(network: MemoryNetwork, store: Store, mailbox: EncodedObject<Json>) {
+async function handOver(network: MemoryNetwork, store: Store, mailbox: EncodedObject<Est>) {
   const intake = new Intake(store);
-  await intake.receive(readBundle(writeBundle(mailbox, [network.transport.schema.bytes])));
+  await intake.receive(decodeBundle(encodeBundle(mailbox, [...network.transport.schema.blobs])));
 }
 
 // A post whose store holds the mailbox of a new queue sealed to Bob, handed over.
@@ -67,7 +75,7 @@ async function openReceiver(network: MemoryNetwork, store?: Store) {
   return { ...at, queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
-async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject<Json>>, blobs: Uint8Array[]) {
+async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject<Est>>, blobs: Uint8Array[]) {
   const bytes = await store.get(mailbox);
   assert.exists(bytes);
   await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature, blobs);
@@ -89,8 +97,8 @@ describe("an outbox", () => {
     });
     expect(await listed(store)).toContain(delivery.link);
     expect((await readObject(store, delivery.link, outboundSchema)).data).toEqual({
-      bundle: { $link: signature.link },
-      mailbox: { $link: mailbox.link },
+      bundle: new EstLink(signature.link),
+      mailbox: new EstLink(mailbox.link),
       at: 1000,
     });
 
@@ -146,7 +154,7 @@ describe("an outbox", () => {
       }
     })();
     const network = new MemoryNetwork();
-    const { store, post, queue, mailbox } = await prepareSender(network, new Store(json, backend));
+    const { store, post, queue, mailbox } = await prepareSender(network, new Store(est, backend));
     await store.write({ records: [signature], blobs: signatureBlobs });
     const outbox = await post.outbox(mailbox.link);
     const before = await listed(store);
@@ -174,10 +182,10 @@ describe("an inbox", () => {
     expect(await store.get(inbox.key)).toBeUndefined();
 
     const { data } = await readObject(privateStore, inbox.key, mailboxKeySchema);
-    expect(data.mailbox.$link).toBe(inbox.mailbox);
+    expect(data.mailbox.link).toBe(inbox.mailbox);
     const mailbox = await readObject(store, inbox.mailbox, network.transport.schema);
-    const key = await MailboxKey.fromSecretKey(hex.decode(data.secret));
-    expect(mailbox.data.key).toBe(hex.encode(key.publicKey));
+    const key = await MailboxKey.fromSecretKey(data.secret);
+    expect(mailbox.data.key).toEqual(key.publicKey);
   });
 
   it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
@@ -185,11 +193,11 @@ describe("an inbox", () => {
     const { store, privateStore, queue, inbox } = await openReceiver(network);
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
     const byMailbox = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
-      { mailbox: data.mailbox, key: { $link: link } },
+      { mailbox: data.mailbox, key: new EstLink(link) },
     ]).orderedBy("mailbox");
     const keys = [];
-    for await (const { data } of (await scan(privateStore, byMailbox)).range([{ $link: inbox.mailbox }]))
-      keys.push(data.key.$link);
+    for await (const { data } of (await scan(privateStore, byMailbox)).range([new EstLink(inbox.mailbox)]))
+      keys.push(data.key.link);
     expect(keys).toEqual([inbox.key]);
 
     const again = await (await postAt(network, store, privateStore)).post.inbox(inbox.key);
@@ -219,9 +227,9 @@ describe("an inbox", () => {
 
     const delivery = await inbox.receive(queue.takeOne());
     expect((await readObject(store, delivery.link, inboundSchema)).data).toEqual({
-      bundle: { $link: signature.link },
+      bundle: new EstLink(signature.link),
       at: 1000,
-      via: { $link: inbox.mailbox },
+      via: new EstLink(inbox.mailbox),
     });
   });
 
@@ -247,7 +255,7 @@ describe("an inbox", () => {
         return isDiskFull ? Promise.reject(new Error("the disk is full")) : super.put(blobs, records);
       }
     })();
-    const { store, inbox, pickup } = await openReceiver(network, new Store(json, backend));
+    const { store, inbox, pickup } = await openReceiver(network, new Store(est, backend));
     await sendTo(network, store, inbox.mailbox, signatureBlobs);
     await sendTo(network, store, inbox.mailbox, signatureBlobs);
 
@@ -311,8 +319,8 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { privateStore, post, inbox } = await openReceiver(network);
     const wrong = encodeObject(mailboxKeySchema, {
-      mailbox: { $link: inbox.mailbox },
-      secret: hex.encode(new Uint8Array(32)),
+      mailbox: new EstLink(inbox.mailbox),
+      secret: new Uint8Array(32),
     });
     await privateStore.write({ records: [wrong] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
@@ -322,8 +330,8 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { post, inbox } = await openReceiver(network);
     const unkeptKey = encodeObject(mailboxKeySchema, {
-      mailbox: { $link: inbox.mailbox },
-      secret: hex.encode(new Uint8Array(32)),
+      mailbox: new EstLink(inbox.mailbox),
+      secret: new Uint8Array(32),
     });
     await expect(post.inbox(unkeptKey.link)).rejects.toThrow(`no blob is given for ${unkeptKey.link}`);
   });

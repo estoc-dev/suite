@@ -1,4 +1,4 @@
-import { encodeObject, type Link, linkOf } from "@estoc/object";
+import { EstLink, encodeObject, type Link, linkOf } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type LineageNodeObject, lineages } from "../src/index.ts";
@@ -16,7 +16,7 @@ describe("a lineage started with an item", () => {
     const lineage = lineages.startingWith(first);
     expect(lineage.nodes).toEqual([lineage.head]);
     expect(lineage.first).toBe(lineage.head);
-    expect(lineage.head.data).toEqual({ item: { $link: first.link } });
+    expect(lineage.head.data).toEqual({ item: new EstLink(first.link) });
     expect(lineage.items).toEqual([first.link]);
   });
 
@@ -34,8 +34,8 @@ describe("appending an item", () => {
     expect(linksOf(extendedLineage.nodes)).toEqual([initialLineage.head.link, extendedLineage.head.link]);
     expect(extendedLineage.first).toBe(initialLineage.first);
     expect(extendedLineage.head.data).toEqual({
-      previous: { $link: initialLineage.head.link },
-      item: { $link: second.link },
+      previous: new EstLink(initialLineage.head.link),
+      item: new EstLink(second.link),
     });
     expect(extendedLineage.items).toEqual([first.link, second.link]);
   });
@@ -82,10 +82,10 @@ describe("reading a lineage", () => {
 
   it("refuses a lineage whose previous names an object of another schema", async () => {
     const head = encodeObject(lineages.schema, {
-      previous: { $link: first.link as Link<never> },
-      item: { $link: second.link },
+      previous: new EstLink(first.link as Link<never>),
+      item: new EstLink(second.link),
     });
-    const blobs = byLink([head.bytes, lineages.schema.bytes, first.bytes, note.bytes]);
+    const blobs = byLink([head.bytes, ...lineages.schema.blobs, first.bytes, note.bytes]);
     await expect(lineages.read(head.link, blobs)).rejects.toThrow(
       `the object is written to ${note.link}, not to ${lineages.schema.link}`,
     );

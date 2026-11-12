@@ -1,28 +1,27 @@
-import { packBundle } from "@estoc/bundle";
+import { encodeBundle } from "@estoc/bundle";
 import {
   type Bytes,
   decodeObject,
   type EncodedObject,
-  type Json,
-  type JsonObject,
-  json,
+  type Est,
+  type EstMap,
+  est,
   type Schema,
   schemaOf,
 } from "@estoc/object";
-import { hex } from "@scure/base";
 import { publicKeyFrom, seal } from "./key.ts";
 
 /** One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. */
 export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
-  readonly schema: Schema<Json>;
+  readonly schema: Schema<Est>;
   /**
    * Hands `ciphertext` on toward a mailbox whose data fits `schema`. Resolving says only that it
    * was handed on: nothing confirms that a message arrived, and none is sent again.
    *
    * @throws {UndeliveredMessage} when the ciphertext cannot be handed on.
    */
-  deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
+  deliver(mailbox: EstMap, ciphertext: Uint8Array): Promise<void>;
 }
 
 /**
@@ -53,26 +52,25 @@ export interface Options {
  * shows neither, only lets a message be sent there.
  */
 export class Mailbox {
-  readonly #data: JsonObject;
+  readonly #data: EstMap;
   readonly #key: CryptoKey;
   readonly #transport: Transport;
 
-  constructor(data: JsonObject, key: CryptoKey, transport: Transport) {
+  constructor(data: EstMap, key: CryptoKey, transport: Transport) {
     this.#data = data;
     this.#key = key;
     this.#transport = transport;
   }
 
   /**
-   * Sends the bundle of `root` and `blobs`, packed as `packBundle` packs it, sealed to the
+   * Sends the bundle of `root` and `blobs`, in one file as `encodeBundle` writes it, sealed to the
    * mailbox's key and handed to the transport.
    *
-   * @throws when `root` is not an object.
+   * @throws when `root` is not an object of est.
    * @throws {UndeliveredMessage} when the transport cannot hand the ciphertext on.
    */
   async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
-    const zip = await packBundle(root, blobs);
-    await this.#transport.deliver(this.#data, await seal(this.#key, zip));
+    await this.#transport.deliver(this.#data, await seal(this.#key, encodeBundle(root, blobs)));
   }
 }
 
@@ -83,21 +81,21 @@ export class Mailbox {
  * @throws when no transport given takes the mailbox's schema, or its data does not fit that schema
  *   or holds no x25519 public key as `key`.
  */
-export async function mailboxFrom(bytes: Bytes<EncodedObject<Json>>, { transports }: Options): Promise<Mailbox> {
+export async function mailboxFrom(bytes: Bytes<EncodedObject<Est>>, { transports }: Options): Promise<Mailbox> {
   const { data, transport } = readMailbox(bytes, transports);
-  return new Mailbox(data, await publicKeyFrom(hex.decode(data.key)), transport);
+  return new Mailbox(data, await publicKeyFrom(data.key), transport);
 }
 
 /** A mailbox, its data with the key checked, and the transport whose schema it is written to. */
 export function readMailbox(
-  bytes: Bytes<EncodedObject<Json>>,
+  bytes: Bytes<EncodedObject<Est>>,
   transports: readonly Transport[],
 ): {
-  readonly mailbox: EncodedObject<Json>;
-  readonly data: JsonObject & { readonly key: string };
+  readonly mailbox: EncodedObject<Est>;
+  readonly data: EstMap & { readonly key: Uint8Array };
   readonly transport: Transport;
 } {
-  const named = schemaOf(bytes, json);
+  const named = schemaOf(bytes, est);
   const transport = transports.find(({ schema }) => schema.link === named);
   if (transport === undefined) throw new Error(`no transport takes mailboxes written to ${named}`);
   const mailbox = decodeObject(bytes, transport.schema);
@@ -105,8 +103,8 @@ export function readMailbox(
   // A transport may write its schema by hand, so the key every mailbox has is
   // checked here and not left to it.
   const { key } = data;
-  if (typeof key !== "string" || !/^[0-9a-f]{64}$/.test(key)) {
-    throw new Error("a mailbox's key is an x25519 public key, 32 bytes in lowercase hex");
+  if (!(key instanceof Uint8Array) || key.length !== 32) {
+    throw new Error("a mailbox's key is an x25519 public key, 32 bytes");
   }
-  return { mailbox, data: data as JsonObject & { key: string }, transport };
+  return { mailbox, data: { ...data, key }, transport };
 }

@@ -18,21 +18,21 @@ A store holds two things.
   thing in a store that is not a blob.
 
 An object of the store's encoding links to the blobs whose links it holds,
-its schema among them. Any other blob is bytes and links to nothing: an
-image, or JSON that names no schema, whatever links it seems to hold, so
-an attachment does not send the store after blobs. The closure of a blob is the
+its schema among them, and a schema to its root schema. Any other blob is
+bytes and links to nothing: an image, or a JSON file, whatever links it
+seems to hold, so an attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
 store holds comes with its closure, and a write adds only the blobs in the
 closures of its records.
 
 ```ts
-import { encodeObject, json } from "@estoc/object";
+import { encodeObject, est } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 
-const store = new Store(json, new MemoryBackend());
+const store = new Store(est, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
-// `schemas` are the bytes of each schema the program writes to; the store keeps those named here.
+// `schemas` are the `blobs` of each schema the program writes to; the store keeps those named here.
 await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
 for await (const link of store.records()) …;                       // note.link, signature.link
@@ -178,7 +178,7 @@ store does not hold. The closure of an object is what a bundle carrying it
 holds:
 
 ```ts
-const files = writeBundle(signature, (await store.closure(signature.link)).values());
+const file = encodeBundle(signature, (await store.closure(signature.link)).values());
 ```
 
 A store is a `Reader`: `readObject` reads an object from it by link, and a
@@ -225,7 +225,7 @@ const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link
 // Notes by tag, oldest first: a row for each tag of a note, from a
 // `noteSchema` whose objects hold `tags` and `at`.
 const tagged = indexOver(selectedRecords(objectsOf(noteSchema)), taggedSchema, ({ link, data }) =>
-  data.tags.map((tag) => ({ tag, at: data.at, note: { $link: link } })),
+  data.tags.map((tag) => ({ tag, at: data.at, note: new EstLink(link) })),
 );
 const byTag = tagged.orderedBy("tag", "at");
 
@@ -378,19 +378,19 @@ so an application can give the one and a module that knows what the objects
 mean the other. The two meet in the schema of the rows.
 
 ```ts
-import { readObject, type Json } from "@estoc/object";
+import { readObject, type Est } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
 import { view, type View } from "@estoc/store";
 
 // The latest note of a tag, from the rows of `byTag`.
 type Latest = { noteTagged(tag: string): Promise<DataOf<typeof noteSchema> | undefined> };
 
-const latest: View<Json, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
+const latest: View<Est, DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> = {
   index: byTag,
   read: (rows, reader) => ({
     async noteTagged(tag) {
       let last: Link<unknown> | undefined;
-      for await (const { data } of rows.range([tag])) last = data.note.$link;
+      for await (const { data } of rows.range([tag])) last = data.note.link;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
     },
   }),
@@ -484,9 +484,9 @@ schema can be kept on either side.
 ```ts
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 
-const store = new Store(json, new MemoryBackend());
+const store = new Store(est, new MemoryBackend());
 const privateStore = new PrivateStore(store, new MemoryBackend());
-await privateStore.write({ records: [key], blobs: [keySchema.bytes] });
+await privateStore.write({ records: [key], blobs: keySchema.blobs });
 
 await privateStore.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined
@@ -537,7 +537,7 @@ store goes where only its user can read it.
 import { SqliteBackend } from "@estoc/store/sqlite";
 
 const backend = new SqliteBackend("store.db");
-const store = new Store(json, backend);
+const store = new Store(est, backend);
 // …
 backend.close();
 ```

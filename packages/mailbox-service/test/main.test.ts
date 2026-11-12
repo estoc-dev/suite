@@ -5,7 +5,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
-import { json, objectsOf } from "@estoc/object";
+import { est, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -72,7 +72,7 @@ async function secretKeysAt(path: string) {
   const { secretKeys } = loadIdentity([ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
-  const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);
+  const privateStore = new PrivateStore(new Store(est, new MemoryBackend()), backend);
   const selection = objectsOf(secretKeys.schema);
   const secretKeyObjects = [];
   for await (const record of privateStore.records()) {
@@ -140,7 +140,7 @@ describe("main.ts key", { timeout: 20_000 }, () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     const [secretKey, ...others] = await secretKeysAt(path);
     expect(others).toEqual([]);
-    expect(stdout).toBe(`${secretKey?.data.key.$link}\n`);
+    expect(stdout).toBe(`${secretKey?.data.key.link}\n`);
   });
 
   it("refuses to write over a file that is there", async () => {

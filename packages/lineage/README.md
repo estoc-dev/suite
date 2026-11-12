@@ -80,7 +80,7 @@ const finalDraft = encodeObject(note, { text: "final draft" });
 const lineage = lineages.startingWith(firstDraft).appending(secondDraft).appending(finalDraft);
 await store.write({
   records: [lineage.head],
-  blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, note.bytes],
+  blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, ...note.blobs],
 });
 ```
 
@@ -89,15 +89,15 @@ await store.write({
 lineage it is the head of, read back to its first node. An index by
 `first.link` keeps together the heads of each series written as records.
 An index by each link in `items` finds the heads whose lineages hold a
-version, and one by `head.data.item.$link` only the heads that carry it.
+version, and one by `head.data.item.link` only the heads that carry it.
 Indexes and views are the application's, and this package has none:
 
 ```ts
 const headSchema = schema("Head", { series: link(), head: link() });
 const bySeries = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
-  yield { series: { $link: first.link }, head: { $link: head.link } };
+  yield { series: new EstLink(first.link), head: new EstLink(head.link) };
 }).orderedBy("series");
-for await (const { data } of (await scan(store, bySeries)).range([{ $link: lineage.first.link }])) {
+for await (const { data } of (await scan(store, bySeries)).range([new EstLink(lineage.first.link)])) {
   // `data.head`: every head of the series written as a record
 }
 ```
@@ -140,16 +140,16 @@ the lineage of a program that reads one version more extends that of one
 that reads one less.
 
 ```ts
-import type { Implementation, Json } from "@estoc/object";
+import type { Implementation, Est } from "@estoc/object";
 
 type Note = { readonly title?: string; readonly text: string };
 
 // noteV1 is a schema of { text }, and noteV2 a schema of { title, body }.
-const v1: Implementation<Json, Note, { readonly text: string }> = {
+const v1: Implementation<Est, Note, { readonly text: string }> = {
   schema: noteV1,
   read: ({ data }) => ({ text: data.text }),
 };
-const v2: Implementation<Json, Note, { readonly title: string; readonly body: string }> = {
+const v2: Implementation<Est, Note, { readonly title: string; readonly body: string }> = {
   schema: noteV2,
   read: ({ data }) => ({ title: data.title, text: data.body }),
 };

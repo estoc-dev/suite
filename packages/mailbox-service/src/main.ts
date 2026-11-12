@@ -1,6 +1,6 @@
 import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
-import { json, type Link, objectsOf } from "@estoc/object";
+import { est, type Link, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
@@ -43,7 +43,7 @@ async function start(): Promise<void> {
   const backend = new SqliteBackend(database);
   const accounts = new SqliteAccounts(database);
   const mailboxes = new SqliteMailboxes(database);
-  const store = new Store(json, backend);
+  const store = new Store(est, backend);
   const secretKey = await secretKeyIn(new PrivateStore(store, privateBackend), privateStorePath);
   const service = await loadMailboxService(secretKey.signer, {
     origin,
@@ -91,7 +91,7 @@ async function makePrivateStore(path: string): Promise<void> {
   try {
     const { secretKeys } = loadIdentity(schemes);
     const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
-    const privateStore = new PrivateStore(new Store(json, new MemoryBackend()), backend);
+    const privateStore = new PrivateStore(new Store(est, new MemoryBackend()), backend);
     await privateStore.write({ records: [secretKey], blobs: secretKey.blobs });
     console.log(secretKey.key.link);
   } finally {

@@ -1,6 +1,6 @@
-import type { EncodedObject, Json, JsonLink } from "@estoc/object";
+import type { EncodedObject, Est, EstLink } from "@estoc/object";
 import { describe, expectTypeOf, it } from "vitest";
-import { array, boolean, bytes, type DataOf, integer, link, optional, schema, string } from "../src/index.ts";
+import { any, array, boolean, bytes, type DataOf, integer, link, optional, schema, string } from "../src/index.ts";
 
 const note = schema("Note", {
   text: string(),
@@ -9,11 +9,12 @@ const note = schema("Note", {
   rows: array(array(integer())),
   isDraft: optional(boolean()),
   tags: optional(array(string())),
+  more: optional(any()),
 });
 
 // Two schemas whose objects link to each other, each read as the data of its own.
-type Identity = EncodedObject<Json, DataOf<typeof identity>>;
-type SignedIdentity = EncodedObject<Json, DataOf<typeof signedIdentity>>;
+interface Identity extends EncodedObject<Est, DataOf<typeof identity>> {}
+interface SignedIdentity extends EncodedObject<Est, DataOf<typeof signedIdentity>> {}
 const identity = schema("Identity", { at: integer(), prior: optional(link<SignedIdentity>()) });
 const signedIdentity = schema("Signed Identity", { identity: link<Identity>(), signature: bytes() });
 
@@ -22,19 +23,20 @@ describe("DataOf", () => {
     expectTypeOf<DataOf<typeof note>>().toEqualTypeOf<{
       readonly text: string;
       readonly at: number;
-      readonly key: string;
+      readonly key: Uint8Array;
       readonly rows: readonly (readonly number[])[];
       readonly isDraft?: boolean;
       readonly tags?: readonly string[];
+      readonly more?: Est;
     }>();
   });
 
   it("reads a link as one to what the schema's program says it names", () => {
     expectTypeOf<DataOf<typeof identity>>().toEqualTypeOf<{
       readonly at: number;
-      readonly prior?: JsonLink<SignedIdentity>;
+      readonly prior?: EstLink<SignedIdentity>;
     }>();
-    expectTypeOf<DataOf<typeof signedIdentity>["identity"]>().toEqualTypeOf<JsonLink<Identity>>();
+    expectTypeOf<DataOf<typeof signedIdentity>["identity"]>().toEqualTypeOf<EstLink<Identity>>();
   });
 });
 

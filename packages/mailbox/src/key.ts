@@ -1,4 +1,4 @@
-import { type Bundle, unpackBundle } from "@estoc/bundle";
+import { type Bundle, decodeBundle } from "@estoc/bundle";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
 
@@ -52,11 +52,16 @@ export class MailboxKey {
     return this.#publicKey.slice();
   }
 
+  /** Whether `publicKey`, as a mailbox's `key` holds one, is the public key of this pair. */
+  hasPublicKey(publicKey: Uint8Array): boolean {
+    return publicKey.length === this.#publicKey.length && this.#publicKey.every((byte, at) => byte === publicKey[at]);
+  }
+
   /**
    * Opens `ciphertext` to the bundle inside.
    *
-   * @throws when the ciphertext does not open with this key, or opens to bytes that do not unpack
-   *   to a bundle.
+   * @throws when the ciphertext does not open with this key, or opens to bytes that are not a
+   *   bundle in one file.
    */
   async open(ciphertext: Uint8Array): Promise<Bundle> {
     const { encSize } = suite.kem;
@@ -69,6 +74,6 @@ export class MailboxKey {
     } catch (cause) {
       throw new Error("the ciphertext does not open with this key", { cause });
     }
-    return unpackBundle(new Uint8Array(plaintext));
+    return decodeBundle(new Uint8Array(plaintext));
   }
 }

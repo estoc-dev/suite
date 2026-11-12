@@ -1,5 +1,5 @@
 import type { SignedIdentityObject } from "@estoc/identity";
-import type { EncodedObject, Json } from "@estoc/object";
+import type { EncodedObject, Est } from "@estoc/object";
 import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@estoc/schema";
 
 /**
@@ -14,7 +14,7 @@ import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@
 export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
   title: string,
   fields: F,
-): ReturnType<typeof schema<F & { readonly key: ItemOf<string> }>> {
+): ReturnType<typeof schema<F & { readonly key: ItemOf<Uint8Array> }>> {
   if (Object.hasOwn(fields, "key")) throw new Error("key is a field of every mailbox");
   return schema(title, { ...fields, key: bytes() });
 }
@@ -26,7 +26,7 @@ export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
  * two objects.
  */
 export const mailboxKeySchema = schema("Mailbox Key", {
-  mailbox: link<EncodedObject<Json>>(),
+  mailbox: link<EncodedObject<Est>>(),
   secret: bytes(),
 });
 
@@ -38,7 +38,7 @@ export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
  */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
-  mailbox: link<EncodedObject<Json>>(),
+  mailbox: link<EncodedObject<Est>>(),
   at: integer(),
 });
 
@@ -56,7 +56,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  */
 export const mailboxGrantSchema = schema("Mailbox Grant", {
   to: link<SignedIdentityObject>(),
-  mailboxes: array(link<EncodedObject<Json>>()),
+  mailboxes: array(link<EncodedObject<Est>>()),
   at: integer(),
 });
 

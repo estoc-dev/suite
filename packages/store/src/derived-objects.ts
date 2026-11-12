@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Fields, type Link, type Reader } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Fields, type Link, linkOf, type Reader } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
 import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
@@ -6,8 +6,8 @@ import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
 /**
  * The rows that an index gives of what a store lists, each once, in the order it first gave them.
  * They are kept beside the store, which does not hold them: an index over this one reads them from
- * here, by link as it reads any blob, with the schema they are written to, which the store need not
- * hold either, and whatever else it reads from the store.
+ * here, by link as it reads any blob, with the closure of the schema they are written to, which the
+ * store need not hold either, and whatever else it reads from the store.
  */
 export class DerivedObjects<D, F extends Fields<D>> implements Listing {
   readonly objects: readonly EncodedObject<D, F>[];
@@ -88,8 +88,8 @@ export class DerivedObjects<D, F extends Fields<D>> implements Listing {
   bytesOf(link: Link<unknown>): Uint8Array | undefined {
     const object = this.#objectsByLink.get(link);
     if (object !== undefined) return object.bytes;
-    const { schema } = this.#derivation;
-    if (link === schema.link) return schema.bytes;
+    const schemaBlob = this.#derivation.schema.blobs.find((bytes) => linkOf(bytes) === link);
+    if (schemaBlob !== undefined) return schemaBlob;
     for (const listing of this.#listings.values()) {
       const bytes = listing.bytesOf(link);
       if (bytes !== undefined) return bytes;

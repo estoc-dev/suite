@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, type Json, type JsonObject, json, type Schema } from "@estoc/object";
+import { type Est, type EstMap, encodeObject, est, type Schema } from "@estoc/object";
 import { bytes, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -42,7 +42,9 @@ describe("a mailbox", () => {
   it("refuses to send a root that is not an object, and sends nothing", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(/not an object/);
+    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(
+      /an object of est/,
+    );
     expect(queue.take()).toEqual([]);
   });
 
@@ -56,21 +58,22 @@ describe("a mailbox", () => {
 });
 
 // Mailboxes of transports that wrote their schemas by hand, each with a key that is not one.
-const looseMailboxes: [string, Schema<Json>, JsonObject][] = [
+const looseMailboxes: [string, Schema<Est>, EstMap][] = [
   ["has no key", schema("Loose mailbox", { name: string() }), { name: "q" }],
-  ["has a key in uppercase hex", schema("Loose mailbox", { key: string() }), { key: "AB".repeat(32) }],
-  ["has a key of 31 bytes", schema("Loose mailbox", { key: bytes() }), { key: "ab".repeat(31) }],
+  ["has a key in hex", schema("Loose mailbox", { key: string() }), { key: "ab".repeat(32) }],
+  ["has a key of 31 bytes", schema("Loose mailbox", { key: bytes() }), { key: new Uint8Array(31) }],
+  ["has a key of 33 bytes", schema("Loose mailbox", { key: bytes() }), { key: new Uint8Array(33) }],
   ["has a key that is a number", schema("Loose mailbox", { key: integer() }), { key: 1 }],
 ];
 
 describe("a mailbox from bytes", () => {
   it("is refused when the bytes are not an object", async () => {
-    await expect(mailboxFrom(json.encode({ $schema: "not a link" }), options)).rejects.toThrow(/\$schema/);
+    await expect(mailboxFrom(Uint8Array.of(0xa0), options)).rejects.toThrow(/is an object/);
   });
 
-  it("is refused when the bytes are a schema", async () => {
+  it("is refused when the bytes are a schema, which no transport's mailboxes are written to", async () => {
     // @ts-expect-error: refused at compile time too
-    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/\$schema/);
+    await expect(mailboxFrom(note.bytes, options)).rejects.toThrow(/no transport takes/);
   });
 
   it("is refused when no transport given takes its schema", async () => {
@@ -83,7 +86,7 @@ describe("a mailbox from bytes", () => {
     "is refused when it %s, where its transport's schema let it through",
     async (_, loose, data) => {
       const transport: Transport = { schema: loose, deliver: async () => undefined };
-      const mailbox = json.encode(json.object(loose.validate(data), loose.link));
+      const mailbox = est.encode(est.object(loose.validate(data), loose.link));
       await expect(mailboxFrom(mailbox, { transports: [transport] })).rejects.toThrow(/a mailbox/);
     },
   );

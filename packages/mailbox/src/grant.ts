@@ -8,7 +8,7 @@ import {
   type SignatureOver,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
+import { type EncodedObject, type Est, EstLink, encodeObject, type Link, type Reader, readObject } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
@@ -34,7 +34,7 @@ type MailboxGrantOrder = readonly ["from", "to", "at", "signature"];
 
 /** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
 export interface MailboxGrant {
-  readonly object: EncodedObject<Json, MailboxGrantData>;
+  readonly object: EncodedObject<Est, MailboxGrantData>;
   readonly signature: Signature;
   readonly to: SignedIdentityObject;
 }
@@ -71,7 +71,7 @@ type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 export class MailboxGrants {
   readonly schema = mailboxGrantSchema;
   /** The grants of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
-  readonly series: View<Json, MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
+  readonly series: View<Est, MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
   readonly #identity: SignatureReading;
 
   /** The signatures over grants and the signed identities they name are read with `identity`. */
@@ -90,10 +90,14 @@ export class MailboxGrants {
   /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */
   encode(
     to: SignedIdentityObject,
-    mailboxes: readonly Link<EncodedObject<Json>>[],
+    mailboxes: readonly Link<EncodedObject<Est>>[],
     at: number,
-  ): EncodedObject<Json, MailboxGrantData> {
-    return encodeObject(this.schema, { to: { $link: to.link }, mailboxes: mailboxes.map(($link) => ({ $link })), at });
+  ): EncodedObject<Est, MailboxGrantData> {
+    return encodeObject(this.schema, {
+      to: new EstLink(to.link),
+      mailboxes: mailboxes.map((mailbox) => new EstLink(mailbox)),
+      at,
+    });
   }
 
   async *#rowsOf(
@@ -102,16 +106,16 @@ export class MailboxGrants {
   ): AsyncIterable<MailboxGrantRow> {
     const { signatures, signedIdentities } = this.#identity;
     const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
-    const to = await signedIdentities.read(object.data.to.$link, reader);
+    const to = await signedIdentities.read(object.data.to.link, reader);
     yield {
-      from: { $link: signedIdentity.identity.identifier },
-      to: { $link: to.identity.identifier },
+      from: new EstLink(signedIdentity.identity.identifier),
+      to: new EstLink(to.identity.identifier),
       at: object.data.at,
-      signature: { $link: link },
+      signature: new EstLink(link),
     };
   }
 
-  #seriesOf(rows: Rows<Json, MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
+  #seriesOf(rows: Rows<Est, MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (
@@ -119,8 +123,8 @@ export class MailboxGrants {
       to: Identifier,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
-      for await (const { data } of rows.range([{ $link: from }, { $link: to }])) {
-        const signature = await signatures.read(data.signature.$link, reader, noIdentityVersions);
+      for await (const { data } of rows.range([new EstLink(from), new EstLink(to)])) {
+        const signature = await signatures.read(data.signature.link, reader, noIdentityVersions);
         if (await seenIdentityVersions.honors(signature)) yield signature;
       }
     };
@@ -138,6 +142,6 @@ export class MailboxGrants {
 
   async #grantOf(signature: Signature, reader: Reader): Promise<MailboxGrant> {
     const object = await readObject(reader, signature.object, this.schema);
-    return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.$link, reader) };
+    return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.link, reader) };
   }
 }

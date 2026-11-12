@@ -56,8 +56,8 @@ export interface Listing {
   /** One of them as the object an index derived, which is handed on without being read and validated again. */
   objectOf(link: Link<unknown>): { readonly schema: object } | undefined;
   /**
-   * The bytes of a blob that the store does not hold: one of them, the schema it is written to, or
-   * either of one that such a one was derived from.
+   * The bytes of a blob that the store does not hold: one of them, a blob of the closure of the
+   * schema it is written to, or either of one that such a one was derived from.
    */
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }

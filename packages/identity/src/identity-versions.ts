@@ -1,4 +1,4 @@
-import { type Json, type JsonLink, type Link, type Reader, SelectionBySchema } from "@estoc/object";
+import { type Est, EstLink, type Link, type Reader, SelectionBySchema } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { hasSigner } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
@@ -32,7 +32,7 @@ export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity
 /** The rows of an index of identity versions, as `people` reads them. */
 export interface IdentityVersionRows {
   /** The rows of the identity versions of `identifier`. */
-  range(prefix: readonly [identifier: JsonLink<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
+  range(prefix: readonly [identifier: EstLink<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
 /**
@@ -63,7 +63,7 @@ export class IdentityVersions {
    * @throws from `read`, when the reader gives no blob for the record, and
    *   where `decodeObject` throws for an object of the signed identity schema.
    */
-  readonly selection: SelectionBySchema<Json, IdentityVersionData, SignedIdentityData>;
+  readonly selection: SelectionBySchema<Est, IdentityVersionData, SignedIdentityData>;
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
@@ -81,10 +81,10 @@ export class IdentityVersions {
     const { identity, link } = signedIdentity;
     const lastCrisis = lastCrisisOf(signedIdentity);
     return {
-      identifier: { $link: identity.identifier },
+      identifier: new EstLink(identity.identifier),
       at: identity.data.at,
-      signedIdentity: { $link: link },
-      ...(lastCrisis === undefined ? {} : { lastCrisis: { $link: lastCrisis } }),
+      signedIdentity: new EstLink(link),
+      ...(lastCrisis === undefined ? {} : { lastCrisis: new EstLink(lastCrisis) }),
     };
   }
 
@@ -103,8 +103,8 @@ export class IdentityVersions {
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
-      for await (const { data } of rows.range([{ $link: signedIdentity.identity.identifier }]))
-        seen.set(data.signedIdentity.$link, data);
+      for await (const { data } of rows.range([new EstLink(signedIdentity.identity.identifier)]))
+        seen.set(data.signedIdentity.link, data);
       const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
       return {
         inHand,
@@ -139,7 +139,7 @@ export class IdentityVersions {
       if (position !== undefined) {
         const heldThen: IdentityVersionData[] = [];
         for (const row of seen) {
-          const link = row.signedIdentity.$link;
+          const link = row.signedIdentity.link;
           const heldAt = await store.positionOf(link);
           if (inHand.has(link) || (heldAt !== undefined && heldAt < position)) heldThen.push(row);
         }
@@ -182,14 +182,14 @@ function countingVersionsAmong(ordered: readonly IdentityVersionData[]): Link<Si
   let countingVersions: Link<SignedIdentityObject>[] = [];
   let cut: Link<SignedIdentityObject> | undefined;
   for (const { signedIdentity, lastCrisis } of ordered) {
-    const link = signedIdentity.$link;
-    if (link === lastCrisis?.$link) [cut, countingVersions] = [link, [link]];
-    else if (lastCrisis?.$link === cut) countingVersions.push(link);
+    const link = signedIdentity.link;
+    if (link === lastCrisis?.link) [cut, countingVersions] = [link, [link]];
+    else if (lastCrisis?.link === cut) countingVersions.push(link);
   }
   return countingVersions;
 }
 
 function compareIdentityVersions(a: IdentityVersionData, b: IdentityVersionData): number {
-  const [link, otherLink] = [a.signedIdentity.$link, b.signedIdentity.$link];
+  const [link, otherLink] = [a.signedIdentity.link, b.signedIdentity.link];
   return a.at !== b.at ? a.at - b.at : link < otherLink ? -1 : link > otherLink ? 1 : 0;
 }

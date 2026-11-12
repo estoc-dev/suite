@@ -1,9 +1,10 @@
 import {
   type EncodedObject,
+  type Est,
+  EstLink,
   encodeObject,
   type Implementation,
   Implementations,
-  type Json,
   type Link,
   type Reader,
   readObject,
@@ -31,7 +32,7 @@ export const lineageNodeSchema = schema("Lineage Node", {
 
 export type LineageNodeData = DataOf<typeof lineageNodeSchema>;
 
-export interface LineageNodeObject extends EncodedObject<Json, LineageNodeData> {}
+export interface LineageNodeObject extends EncodedObject<Est, LineageNodeData> {}
 
 /**
  * A lineage read or built by `Lineages`, from its first node to its head.
@@ -40,8 +41,9 @@ export interface LineageNodeObject extends EncodedObject<Json, LineageNodeData> 
  *   first names the one before it as `previous`.
  * - `items` are the links the nodes carry, in their order, one for each
  *   node, so an item carried twice is there twice.
- * - `blobs` are the bytes of the nodes and the node schema: the closure of
- *   `head` but for the closures of the items, which the caller holds.
+ * - `blobs` are the bytes of the nodes and the closure of the node schema:
+ *   the closure of `head` but for the closures of the items, which the caller
+ *   holds.
  */
 export interface Lineage {
   readonly first: LineageNodeObject;
@@ -70,14 +72,14 @@ export class Lineages {
    *
    * @throws where `read` does, when it reads a node.
    */
-  readonly selection: SelectionBySchema<Json, Lineage, LineageNodeData> = new SelectionBySchema(
+  readonly selection: SelectionBySchema<Est, Lineage, LineageNodeData> = new SelectionBySchema(
     lineageNodeSchema,
     (head, reader) => this.#readLineageEndingIn(head, reader),
   );
 
   /** The lineage of one node, which carries `item`. It writes nothing. */
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
-    return lineageOf([], encodeObject(lineageNodeSchema, { item: { $link: item.link } }));
+    return lineageOf([], encodeObject(lineageNodeSchema, { item: new EstLink(item.link) }));
   }
 
   /**
@@ -92,7 +94,7 @@ export class Lineages {
     const { encoding } = first.schema;
     return new SchemaLineage(
       later.reduce((earlier, { schema }) => earlier.appending(schema), this.startingWith(first.schema)),
-      versions.map(({ schema }) => schema.bytes),
+      versions.flatMap(({ schema }) => schema.blobs),
       new Implementations(encoding, versions),
       (record) => schemaOf(record, encoding),
     );
@@ -113,7 +115,7 @@ export class Lineages {
     // A node names the one before it by its hash, so the nodes do not loop back.
     const before: LineageNodeObject[] = [];
     for (let node = head; node.data.previous !== undefined; ) {
-      node = await readObject(reader, node.data.previous.$link, this.schema);
+      node = await readObject(reader, node.data.previous.link, this.schema);
       before.push(node);
     }
     return lineageOf(before.reverse(), head);
@@ -126,10 +128,13 @@ function lineageOf(before: readonly LineageNodeObject[], head: LineageNodeObject
     first: before[0] ?? head,
     head,
     nodes,
-    items: nodes.map((node) => node.data.item.$link),
-    blobs: [...nodes.map((node) => node.bytes), lineageNodeSchema.bytes],
+    items: nodes.map((node) => node.data.item.link),
+    blobs: [...nodes.map((node) => node.bytes), ...lineageNodeSchema.blobs],
     appending: (item) =>
-      lineageOf(nodes, encodeObject(lineageNodeSchema, { previous: { $link: head.link }, item: { $link: item.link } })),
+      lineageOf(
+        nodes,
+        encodeObject(lineageNodeSchema, { previous: new EstLink(head.link), item: new EstLink(item.link) }),
+      ),
   };
 }
 

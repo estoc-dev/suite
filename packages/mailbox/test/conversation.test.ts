@@ -1,4 +1,4 @@
-import { readBundle, writeBundle } from "@estoc/bundle";
+import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
@@ -8,7 +8,16 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
+import {
+  type EncodedObject,
+  type Est,
+  EstLink,
+  encodeObject,
+  est,
+  type Link,
+  objectsOf,
+  readObject,
+} from "@estoc/object";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
   Intake,
@@ -38,13 +47,13 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
 const line = schema("Line", { text: string() });
-const schemas = [line, signatures.schema].map(({ bytes }) => bytes);
+const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 
 type Direction = "inbound" | "outbound";
-type Mailbox = Link<EncodedObject<Json>>;
+type Mailbox = Link<EncodedObject<Est>>;
 const delivery = schema("Delivery", {
   direction: string(),
-  mailbox: link<EncodedObject<Json>>(),
+  mailbox: link<EncodedObject<Est>>(),
   at: integer(),
   bundle: link<never>(),
 });
@@ -54,7 +63,7 @@ type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 // The application's index of the deliveries its user wrote: a row for each,
 // by which way it went, the mailbox, when, and the bundle. What was handed
 // over out of band came in at no mailbox, and gives no row.
-const deliveries: OrderedIndex<Json, Delivery, DeliveryOrder> = indexOver(
+const deliveries: OrderedIndex<Est, Delivery, DeliveryOrder> = indexOver(
   selectedRecords(objectsOf(inboundSchema)),
   delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
@@ -76,7 +85,7 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
 async function conversation(
-  rows: Rows<Json, Delivery, DeliveryOrder>,
+  rows: Rows<Est, Delivery, DeliveryOrder>,
   mine: Mailbox,
   theirs: Mailbox,
 ): Promise<Delivery[]> {
@@ -85,14 +94,14 @@ async function conversation(
     return (await all(range))
       .map(({ data }) => data)
       .filter(({ bundle }) => {
-        const isFirst = !seenBundles.has(bundle.$link);
-        seenBundles.add(bundle.$link);
+        const isFirst = !seenBundles.has(bundle.link);
+        seenBundles.add(bundle.link);
         return isFirst;
       });
   };
   const ways = await Promise.all([
-    first(rows.range(["inbound", { $link: mine }])),
-    first(rows.range(["outbound", { $link: theirs }])),
+    first(rows.range(["inbound", new EstLink(mine)])),
+    first(rows.range(["outbound", new EstLink(theirs)])),
   ]);
   return ways.flat().sort((a, b) => a.at - b.at);
 }
@@ -111,7 +120,7 @@ async function handOver(from: Person, to: Person, root: Link<unknown>) {
   const closure = await from.store.closure(root);
   const bytes = closure.get(root);
   assert.exists(bytes);
-  await to.intake.receive(readBundle(writeBundle({ bytes }, closure.values())));
+  await to.intake.receive(decodeBundle(encodeBundle({ bytes }, closure.values())));
 }
 
 async function chat(faults: Faults = {}) {
@@ -123,7 +132,7 @@ async function chat(faults: Faults = {}) {
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
-    const store = new Store(json, new MemoryBackend());
+    const store = new Store(est, new MemoryBackend());
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, { transports, clock });
     const intake = new Intake(store, clock);
@@ -172,8 +181,8 @@ async function chat(faults: Faults = {}) {
       rows.map(async ({ direction, mailbox, bundle }) => {
         const signature: Signature | undefined =
           direction === "inbound"
-            ? await person.correspondence.messageAt(mailbox.$link, bundle.$link)
-            : await signatures.read(bundle.$link, person.store, noIdentityVersions);
+            ? await person.correspondence.messageAt(mailbox.link, bundle.link)
+            : await signatures.read(bundle.link, person.store, noIdentityVersions);
         if (signature === undefined) return undefined;
         const { data } = await readObject(person.store, signature.object, line);
         return [direction, names.get(signature.signedIdentity.identity.identifier), data.text];
@@ -297,7 +306,7 @@ describe("a conversation", () => {
     await alice.collect();
 
     // What Alice wrote, written again to another store, last first and twice.
-    const copy = new Store(json, new MemoryBackend());
+    const copy = new Store(est, new MemoryBackend());
     const recordLinks = await all(alice.store.records());
     for (const link of [...recordLinks, ...recordLinks].reverse()) {
       const closure = await alice.store.closure(link);

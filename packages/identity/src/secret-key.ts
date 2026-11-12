@@ -1,6 +1,5 @@
-import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
+import { type EncodedObject, type Est, EstLink, encodeObject, type Link, type Reader, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
 import { isSameKey, type KeyObject } from "./key/interface.ts";
@@ -22,7 +21,7 @@ export type SecretKeyData = DataOf<typeof secretKeySchema>;
  * its key, and the schemas they are written to, so one write puts it in an
  * empty store.
  */
-export interface SecretKeyObject extends EncodedObject<Json, SecretKeyData> {
+export interface SecretKeyObject extends EncodedObject<Est, SecretKeyData> {
   readonly link: Link<SecretKeyObject>;
   readonly key: KeyObject;
   readonly signer: Signer;
@@ -42,7 +41,7 @@ export class SecretKeys {
   encode(scheme: CurveScheme, secret: Uint8Array): SecretKeyObject {
     const signer = SoftwareSigner.fromSecretKey(scheme, secret);
     const key = this.#keys.encode(signer.key);
-    const object = encodeObject(this.schema, { key: { $link: key.link }, secret: bytesToHex(secret) });
+    const object = encodeObject(this.schema, { key: new EstLink(key.link), secret });
     return secretKeyOf(object, key, signer);
   }
 
@@ -55,15 +54,15 @@ export class SecretKeys {
    */
   async read(link: Link<SecretKeyObject>, reader: Reader): Promise<SecretKeyObject> {
     const object = await readObject(reader, link, this.schema);
-    const key = await this.#keys.read(object.data.key.$link, reader);
+    const key = await this.#keys.read(object.data.key.link, reader);
     const { scheme } = key;
     if (!isCurveScheme(scheme)) throw new Error(`the ${scheme.name} scheme is not one a curve signs in`);
-    const signer = SoftwareSigner.fromSecretKey(scheme, hexToBytes(object.data.secret));
+    const signer = SoftwareSigner.fromSecretKey(scheme, object.data.secret);
     if (!isSameKey(signer.key, key)) throw new Error(`the secret ${link} holds is not that of ${key.link}`);
     return secretKeyOf(object, key, signer);
   }
 }
 
-function secretKeyOf(object: EncodedObject<Json, SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
+function secretKeyOf(object: EncodedObject<Est, SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
   return { ...object, link: object.link as Link<SecretKeyObject>, key, signer, blobs: blobsOf([object, key]) };
 }

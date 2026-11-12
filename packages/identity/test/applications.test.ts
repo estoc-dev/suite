@@ -1,11 +1,18 @@
-import { decodeObject, type EncodedObject, encodeObject, type Json, type Link, type Reader } from "@estoc/object";
+import {
+  decodeObject,
+  type EncodedObject,
+  type Est,
+  EstLink,
+  encodeObject,
+  type Link,
+  type Reader,
+} from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
   type CurveScheme,
   ed25519,
   eip191,
-  type Identifier,
   type IdentityObject,
   type KeyObject,
   loadIdentity,
@@ -106,19 +113,18 @@ const sale = schema("Sale", {
 });
 type Sale = DataOf<typeof sale>;
 
-const delivery = schema("Delivery", { sale: link<EncodedObject<Json, Sale>>() });
+const delivery = schema("Delivery", { sale: link<EncodedObject<Est, Sale>>() });
 
 // A sale is in force once its buyer and its seller have both signed it.
 async function saleInForce(
-  link: Link<EncodedObject<Json, Sale>>,
+  link: Link<EncodedObject<Est, Sale>>,
   receivedSignatures: ReceivedSignatures,
 ): Promise<Sale | undefined> {
   const bytes = await receivedSignatures.blobs.get(link);
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, receivedSignatures);
-  const signed = (party: { readonly $link: Identifier }) =>
-    signers.some((identity) => identity.identifier === party.$link);
+  const signed = (party: EstLink<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
   return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
 }
 
@@ -126,10 +132,10 @@ async function saleInForce(
 async function isDeliveryConfirmed(link: Link<unknown>, receivedSignatures: ReceivedSignatures): Promise<boolean> {
   const bytes = await receivedSignatures.blobs.get(link);
   if (bytes === undefined) return false;
-  const terms = await saleInForce(decodeObject(bytes, delivery).data.sale.$link, receivedSignatures);
+  const terms = await saleInForce(decodeObject(bytes, delivery).data.sale.link, receivedSignatures);
   return (
     terms !== undefined &&
-    (await signersOf(link, receivedSignatures)).some((identity) => identity.identifier === terms.buyer.$link)
+    (await signersOf(link, receivedSignatures)).some((identity) => identity.identifier === terms.buyer.link)
   );
 }
 
@@ -137,12 +143,12 @@ const buyer = signer(eip191, 1);
 const seller = signer(ed25519, 2);
 const witness = signer(solanaOffchain, 3);
 const terms = encodeObject(sale, {
-  buyer: { $link: keys.encode(buyer.key).link },
-  seller: { $link: keys.encode(seller.key).link },
+  buyer: new EstLink(keys.encode(buyer.key).link),
+  seller: new EstLink(keys.encode(seller.key).link),
   goods: "one bicycle",
   price: "120.00 CAD",
 });
-const confirmation = encodeObject(delivery, { sale: { $link: terms.link } });
+const confirmation = encodeObject(delivery, { sale: new EstLink(terms.link) });
 const receive = (signed: readonly Signature[]): ReceivedSignatures => ({
   blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs)]),
   signatures: signed.map(({ bytes }) => bytes),

@@ -8,17 +8,17 @@ signature are written as objects, which another object names by its link.
 
 ```
 Key                 an Object written to the schema of its scheme, with the field
-                    "publicKey": <hex>
+                    "publicKey": <bytes>
 Identity            an Object written to the Identity schema, with the fields
                     "prior": <a Signed identity's link>, "root": <the Key's link>,
                     "agents": [<a Key's link>, …], "crisis": true, "at": <Unix ms>,
                     and "prior" and "crisis" only where they hold
 Signed identity     an Object written to the signed identity schema, with the fields
-                    "identity": <the identity's link>, "signature": <hex>
+                    "identity": <the identity's link>, "signature": <bytes>
 Signature           an Object written to the signature schema, with the fields
-                    "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <hex>
+                    "signedIdentity": <the Signed identity's link>, "object": <the Object's link>, "signature": <bytes>
 Secret Key          an Object written to the Secret Key schema, with the fields
-                    "key": <the Key's link>, "secret": <hex>
+                    "key": <the Key's link>, "secret": <bytes>
 Wallet Key          an Object written to the Wallet Key schema, with the field
                     "key": <the Key's link>
 ```
@@ -138,19 +138,20 @@ Each scheme has a schema that its keys are written to, with the scheme's
 name as its title:
 
 ```
-key                 {"$schema": {"$link": <ed25519>}, "publicKey": "…"}
-ed25519             {"title": "ed25519", "fields": {"publicKey": {"type": "bytes"}}}
+key                 OBJECT([ <the link of ed25519>, {"publicKey": h'…'} ])
+ed25519             OBJECT([ <the link of the root schema>,
+                             {"title": "ed25519", "fields": {"publicKey": {"type": "bytes"}}} ])
 ```
 
-The second line is the schema of the first. A key holds its public key, in
-lowercase hex, and no other field, so each key has one object and one
+The second is the schema of the first. A key holds its public key, as
+bytes, and no other field, so each key has one object and one
 link, and no scheme writes its keys another way. The schemas of `ed25519`
 and `solana-offchain` differ only in their titles: one public key in the
 two schemes is two objects, with two links, as it is two keys. A schema
 does not say how long its bytes are, so `keys` refuses a public key of
 another length than its scheme's.
 
-The scheme of a key is its type, its `$schema`, not a field of its data.
+The scheme of a key is its type, its schema, not a field of its data.
 What a program reads a scheme's keys as is still the program's to say:
 another program could read an `ed25519` key as a Solana address.
 
@@ -216,7 +217,8 @@ while `signedIdentities.read` verifies that its root signed it.
 `hasSigner(identity, key)` says whether `key` signs for an identity. Reading
 an identity takes the blobs of its object, of its keys and of the signed
 identity it follows; an identity carries them as `blobs`, with the
-schemas they are written to, each once. That is the identity's closure,
+schemas they are written to and the root schema of those, each once. That
+is the identity's closure,
 so where an identity goes, as into a store or a bundle, `...identity.blobs`
 goes along and carries all it links to, the identity versions it follows
 among them.
@@ -408,9 +410,9 @@ others over the same object.
 A signature is itself an object, written to `signatureSchema` whatever the
 identity and the key that signs, so a format that holds an object can hold
 a signature. It names a signed identity and the object it is over by their
-links, and holds the signature as bytes, in lowercase hex, which writes
-each byte string one way. The schema of the identity says which key signs
-and how the bytes are laid out, and that key's scheme how its signature in
+links, and holds the signature as bytes. The schema of the identity says
+which key signs and how the bytes are laid out, and that key's scheme how
+its signature in
 them reads: in each scheme here, one signature of 64 bytes. A scheme whose
 signature holds more, such as a passkey's authenticator data, lays it out
 in its own bytes, and the signature schema, and what reads signatures by
@@ -494,7 +496,7 @@ const signedNotes = indexOver(
   signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-    yield { signer: { $link: signedIdentity.identity.identifier }, note: { $link: object.link } };
+    yield { signer: new EstLink(signedIdentity.identity.identifier), note: new EstLink(object.link) };
   },
 ).orderedBy("signer");
 ```
@@ -509,7 +511,7 @@ Which keys a device signs with is for its private store to say, the
 one of two objects for each such key:
 
 - A Secret Key, written to `secretKeySchema`, holds the key by the link of
-  its object, and `secret`, the key's secret as 32 bytes in lowercase hex.
+  its object, and `secret`, the key's secret, 32 bytes.
   The device signs with the secret in memory.
 - A Wallet Key, written to `walletKeySchema`, holds the key alone. The
   device signs through a wallet, the one whose public key is the key's.
@@ -538,8 +540,9 @@ in a scheme no curve signs in, and one whose secret is not that of its key.
 `walletKeys.encode(key)` and `walletKeys.read` do the same for a Wallet
 Key, which reads with its key alone: connecting the wallet is for the
 application, and what signs takes a `Signer` either way. Each carries as
-`blobs` its closure, its object, its key's and the schemas they are
-written to, so one write puts it in an empty private store:
+`blobs` its closure, its object, its key's, the schemas they are written
+to and the root schema of those, so one write puts it in an empty private
+store:
 
 ```ts
 const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));

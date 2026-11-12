@@ -6,19 +6,18 @@ its schema, and who has to sign is up to the application that reads it.
 
 An object rests on an encoding, which writes each value of its data one
 way, and a schema language over that encoding. This package writes objects
-against what those two provide. It has two encodings, JSON with JCS and
-est, and no language of its own: the one in use, Estoc Schema, is in
-`@estoc/schema` and is over JSON. In that pair:
+against what those two provide. It has two encodings, est and JSON with
+JCS, and no language of its own: the one in use, Estoc Schema, is in
+`@estoc/schema` and is over est. In that pair:
 
 ```
-Link       {"$link": "sha256:<hex>"}, wherever a value names a blob
-Object     {"$schema": <the link of its schema>, ...<the fields of its data>}
-Schema     {"title": <a string>, "fields": <the fields of its objects>}
+Link       LINK(h'<the SHA-256>'), wherever a value names a blob
+Object     OBJECT([ <the link of its schema>, { ...<the fields of its data> } ])
+Schema     an object whose data is { "title": <a string>, "fields": <the fields of its objects> }
 ```
 
-In that pair a schema is not an object. It is bytes, as every blob of JSON
-that is not an object is, and the objects that name it are what make it a
-schema.
+A schema is an object too. It is written to the root schema of its
+language, and the root schema is written to itself.
 
 The encodings, objects, schemas and validators are the substrate that every
 application shares, and they give an object no meaning. Identities, and the
@@ -42,15 +41,19 @@ signatures by which they stand behind objects, are in `@estoc/identity`.
     object written to itself, in place of the link of its schema: est has
     one, and JSON has none. The encoding gives the mark as `itself`, and
     `decodeObject` and `schemaOf` read it as the link of the blob, so every
-    object they read names its schema by link.
+    object they read names its schema by link. A root schema is such an
+    object, so a language of schemas is over an encoding that has the
+    mark.
   - The encoding finds the links in an object, so that the blobs in a
     blob's closure can be gathered without a schema to read it by, as a
     store gathers the closure it carries along with an object. Bytes link
     to nothing, whatever they hold, and an object written to itself does
     not link to itself.
 - A `SchemaLanguage<D, S>` is a language of schemas over the data `D` of
-  one encoding, which it names, with documents `S`. It writes a document
-  as a value of the encoding, and reads a schema's document out of one.
+  one encoding, which it names, with documents `S`. A schema is an object,
+  so the language gives the data that a document is written as, and reads
+  a document out of such data. It holds the document of its root schema,
+  which its schemas are written to.
 - A `SchemaValidator<D, S>` compiles the documents of one language, which
   it names, into checks of the fields of an object's data.
 
@@ -62,8 +65,8 @@ of the encoding. `schemaOf`, which reads the link of the schema an object
 names before any schema is picked, is given the encoding.
 
 An encoding is one object, shared by the languages over its data: a
-language over JSON names `json`. Encodings are told apart as objects, so
-schemas of two languages that both name `json` are schemas of one
+language over est names `est`. Encodings are told apart as objects, so
+schemas of two languages that both name `est` are schemas of one
 encoding.
 
 Two encodings of the same content are two blobs with two links, and
@@ -73,37 +76,38 @@ translating old ones.
 
 ## Schemas
 
-A schema is a blob that links to nothing, and that objects name by link.
+A schema is an object that other objects name by link. Its data is its
+document, and it is written to the root schema of its language.
 
 - What a schema holds is its language's to say: in Estoc Schema, a title
   and the fields of its objects.
 - An object names its schema by link, and that is what makes the blob a
-  schema. A schema is reached from its objects.
-- No blob says which language a schema is in. The program that reads one
-  names the language, by the validator it reads with. An encoding is told
-  the same way: no blob says that some bytes are JCS, and `schemaOf` is
-  given the encoding by its caller.
-- `decodeSchema` refuses a blob that links to another. A schema says that
-  a field holds a link without holding one: in Estoc Schema the field is
-  `{"type": "link"}`. So the closure of a schema is the schema alone, and
-  its `bytes` go wherever an object of it goes, as into a store or a
-  bundle.
-- Which blobs link to nothing is the encoding's to say.
-  - In JSON an object links to its schema, so a schema is JSON that is not
-    an object. It is bytes, and no schema describes a schema: an object is
-    written to a schema, and a schema to nothing.
-  - In est every blob is an object, and the one that links to nothing is
-    written to itself. No language is over est yet, and how its schemas
-    are written is not settled: this is only what `decodeSchema` reads
-    there now.
+  schema to the object. A schema is reached from its objects.
+- The root schema of a language is a schema of that language, written to
+  itself. It says what the data of every schema of the language holds, its
+  own included, so a schema is validated as any object is. What else
+  makes a document one of the language is the language's to check, as
+  whether a signature verifies is a verifier's to check and not its
+  schema's.
+- `rootSchemaOf(validator)` gives the root schema of the validator's
+  language. A language has one, whichever validator compiles it.
+- The root schema that a schema names says which language the schema is
+  in. `decodeSchema` reads a schema with a validator, and refuses one that
+  is written to another root schema than that of the validator's language.
+  The encoding is the reader's to name: `schemaOf` is given it by its
+  caller.
+- A schema links to its root schema and to nothing else, and
+  `decodeSchema` refuses one that links to another blob. A schema says
+  that a field holds a link without holding one: in Estoc Schema the field
+  is `{"type": "link"}`. So the closure of a schema is the schema and its
+  root schema, which is what `blobs` of a `Schema` holds, and they go
+  wherever an object of the schema goes, as into a store or a bundle.
 
-The link of a schema fixes its bytes, and not the language they are read
-in. Programs that share objects share the language, as they share the
-encoding.
+The link of a schema fixes its bytes, and through its root schema the
+language they are read in.
 
-A blob that is not an object is bytes: an image, a schema in JSON, or a
-JSON file such as a `biome.json`, whose `$schema` is a string, even when it happens
-to be JCS. Only the links in an object are followed.
+A blob that is not an object is bytes: an image, a ciphertext, or a JSON
+file such as a `biome.json`. Only the links in an object are followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
@@ -115,53 +119,12 @@ to be JCS. Only the links in an object are followed.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 
-## JSON
-
-`json` is one of the two encodings of this package. The schema language
-over it is in `@estoc/schema`.
-
-- `json` writes a JSON value as its JCS
-  ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
-- Decoding is strict: the bytes must be exactly the JCS encoding of the value
-  they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
-  or repeated, needless escapes, and numbers not written the shortest way
-  (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
-  refuses lone surrogates, NaN and Infinity. Apart from the rule on `$link`
-  below, there are no further rules on the JSON.
-- Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
-  `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
-  magnitude are exact in every language; write larger integers and decimal
-  amounts as strings when they have to be exact.
-- A link is the JSON object `{"$link": "sha256:<hex>"}`, with no other
-  member. JSON has no type for a link, so this marks one wherever a value
-  names a blob, as tag 42 does in CBOR, and a string is a string whatever
-  it holds. Any other object with a `$link` member is refused, in writing
-  and in reading, whether it holds something other than a link or a member
-  beside it, so whatever has the mark of a link is one. That holds for
-  schemas as well, which are JSON too. The links the
-  encoding finds in an object are the ones these hold, its schema among
-  them, and no others; in bytes it finds none. In TypeScript a link in JSON data is a
-  `JsonLink<T>`, `{ $link: Link<T> }`.
-- An object is the JSON object of the fields of its data and `$schema`,
-  which holds the link of its schema. Only there does `$schema` name a
-  schema: deeper in the data it is a field like any other, and data with a
-  `$schema` of its own is refused. JSON without a `$schema` that is a link
-  is bytes.
-- A schema is JSON that is not an object. What it holds is the language's:
-  the schemas of Estoc Schema are in the README of `@estoc/schema`.
-- A blob does not say what kind of blob it is, or which version of the
-  format. A reader knows which kind it expects. An object names its
-  schema, so it cannot pass for an object of another, and a signature is
-  an object like any other. A schema names nothing: it is read as one
-  where an object names it, in the language the reader names.
-- `json.encode` and `json.decode` are this encoding on its own, for formats
-  built on it that are not objects.
-
 ## est
 
 `est` is the Estoc Object Format: objects in deterministic CBOR
 ([RFC 8949, section 4.2.1](https://www.rfc-editor.org/rfc/rfc8949#section-4.2.1)).
-No schema language is over it: the one of `@estoc/schema` is over JSON.
+It is the encoding in use: the schema language of `@estoc/schema` is over
+it, and the other packages write their objects in it.
 
 ```
 OBJECT([ LINK(h'…'),               the schema of the object
@@ -189,7 +152,8 @@ da 65 73 74 3f            the tag of the format, "est?" in ASCII
   boolean, an array, a map by string keys, or a link. Floats, null, other
   tags and an object inside data are refused. In TypeScript the seven are a
   number, a `Uint8Array`, a string, a boolean, an array, a plain object and
-  an `EstLink<T>`.
+  an `EstLink<T>`, which `new EstLink(link)` makes and whose `link` is the
+  `Link<T>`.
 - Integers are up to 2^53 − 1 in magnitude, which a number holds exactly.
 - Decoding is strict: the bytes must be exactly what the encoding writes
   for the value they hold. Heads longer than the shortest, keys of a map
@@ -205,19 +169,54 @@ da 65 73 74 3f            the tag of the format, "est?" in ASCII
 - An object written to itself names its schema by the string `"self"` in
   place of a link, and any other string there is refused. It reads back
   with its own link as its schema, so it is refused as an object of any
-  other schema.
+  other schema. The root schema of a language is written so.
 - Every object starts with the same six bytes, `da 65 73 74 3f 82`. Unless
   it is written to itself, the next five are the same too, and the hash of
   its schema follows them, at byte 11.
 - A blob does not say which version of the format it is in. Another
   encoding would be written under another tag.
 
+## JSON
+
+`json` is the other encoding of this package. No schema language is over
+it, since it has no mark for an object written to itself, and no package
+writes its objects in it.
+
+- `json` writes a JSON value as its JCS
+  ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) encoding, in UTF-8.
+- Decoding is strict: the bytes must be exactly the JCS encoding of the value
+  they hold. Invalid UTF-8, a byte order mark, whitespace, keys out of order
+  or repeated, needless escapes, and numbers not written the shortest way
+  (`1.0`, `1e2`, `-0`, `1152921504606846977`) are refused, as JCS itself
+  refuses lone surrogates, NaN and Infinity. Apart from the rule on `$link`
+  below, there are no further rules on the JSON.
+- Numbers are IEEE 754 doubles, written as JCS writes them: 2^60 as
+  `1152921504606847000`, 10^21 as `1e+21`. Integers up to 2^53 − 1 in
+  magnitude are exact in every language; write larger integers and decimal
+  amounts as strings when they have to be exact.
+- A link is the JSON object `{"$link": "sha256:<hex>"}`, with no other
+  member. JSON has no type for a link, so this marks one wherever a value
+  names a blob, and a string is a string whatever it holds. Any other
+  object with a `$link` member is refused, in writing and in reading,
+  whether it holds something other than a link or a member beside it, so
+  whatever has the mark of a link is one. The links the encoding finds in
+  an object are the ones these hold, its schema among them, and no others;
+  in bytes it finds none. In TypeScript a link in JSON data is a
+  `JsonLink<T>`, `{ $link: Link<T> }`.
+- An object is the JSON object of the fields of its data and `$schema`,
+  which holds the link of its schema. Only there does `$schema` name a
+  schema: deeper in the data it is a field like any other, and data with a
+  `$schema` of its own is refused. JSON without a `$schema` that is a link
+  is bytes, and links to nothing.
+- `json.encode` and `json.decode` are this encoding on its own, for formats
+  built on it that are not objects.
+
 ## Objects
 
 An object holds its data and the link of its schema, and nothing else, and
-its data has to fit the schema. The schema checks the data alone, without
-`$schema`, so it does not name the field, and a schema that takes no
-fields beyond its own still takes the object. Reading one takes the schema
+its data has to fit the schema. The schema checks the data alone, and the
+link of the schema is no field of it, so a schema that takes no fields
+beyond its own still takes the object. Reading one takes the schema
 the reader expects and refuses an object written to any other, so an
 application does not mistake another schema's object for one of its own.
 The same value under two schemas is two objects.
@@ -234,7 +233,7 @@ decodeObject(object.bytes, login).data.nonce; // "6f1c0a9e"
 A schema carries the type a program reads its data as, `Schema<D, F>`, and
 the data of an object of that schema is an `F`. `schema` works the type out
 from the fields. A program that gets a schema another way declares the type
-there, as in `const login: Schema<Json, Login> = decodeSchema(bytes,
+there, as in `const login: Schema<Est, Login> = decodeSchema(bytes,
 schemaValidator)`. Either way the type is the program's claim, and checking
 the data against the schema is what holds it: data that does not fit is
 refused, not handed out as an `F`. The data of a schema declared with no
@@ -261,17 +260,17 @@ only because the reader it gets the blob from may answer with one.
 
 What a check may turn on follows from how schemas and languages are built:
 
-- A schema holds all that its data is checked against. It links to
-  nothing, and compiling it fetches nothing, so in one language the link
-  of a schema fixes what its objects may hold, and no one changes that
-  later by changing what a URL names.
+- A schema holds all that its data is checked against. It links to its
+  root schema and to nothing else, and compiling it fetches nothing, so
+  the link of a schema fixes what its objects may hold, and no one changes
+  that later by changing what a URL names.
 - What fits a schema is the language's to say. Estoc Schema leaves nothing
   to a validator, so the same schema and data get the same answer from any
   of them. Where a language leaves something open, a signature commits to
   bytes and a validator is one reading of them, so a stricter validator can
   replace another without any blob changing.
-- A validator reads the schemas of one language, and bytes that are not a
-  schema of it are refused rather than read by other rules.
+- A validator reads the schemas of one language, and a schema written to
+  the root schema of another is refused rather than read by other rules.
 
 ## Verifiers
 
@@ -329,18 +328,18 @@ the text it quotes:
 ```ts
 type Text = { readonly link: Link<unknown>; readonly text: string };
 
-const plainText: Implementation<Json, Text, { readonly text: string }> = {
+const plainText: Implementation<Est, Text, { readonly text: string }> = {
   schema: plain,
   read: ({ link, data }) => ({ link, text: data.text }),
 };
-const quotedText: Implementation<Json, Text, { readonly quotes: JsonLink<Text> }> = {
+const quotedText: Implementation<Est, Text, { readonly quotes: EstLink<Text> }> = {
   schema: quote,
   async read({ link, data }, reader) {
-    const quoted = await texts.read(data.quotes.$link, reader);
+    const quoted = await texts.read(data.quotes.link, reader);
     return { link, text: `"${quoted.text}"` };
   },
 };
-const texts = new Implementations(json, [plainText, quotedText]);
+const texts = new Implementations(est, [plainText, quotedText]);
 await texts.read(link, reader); // a Text, whichever of the two schemas the object names
 ```
 
@@ -370,12 +369,12 @@ of several kinds, told apart by what they link to. Here a reply of
 that answer a note of `noteSchema`, each with the note:
 
 ```ts
-type Reply = { readonly to: JsonLink<unknown>; readonly text: string };
-type ReplyToNote = { readonly reply: EncodedObject<Json, Reply>; readonly note: EncodedObject<Json, Note> };
+type Reply = { readonly to: EstLink<unknown>; readonly text: string };
+type ReplyToNote = { readonly reply: EncodedObject<Est, Reply>; readonly note: EncodedObject<Est, Note> };
 
-const repliesToNotes = new SelectionBySchema<Json, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
-  const bytes = await reader.get(reply.data.to.$link);
-  if (bytes === undefined || schemaOf(bytes, json) !== noteSchema.link) return undefined;
+const repliesToNotes = new SelectionBySchema<Est, ReplyToNote, Reply>(replySchema, async (reply, reader) => {
+  const bytes = await reader.get(reply.data.to.link);
+  if (bytes === undefined || schemaOf(bytes, est) !== noteSchema.link) return undefined;
   return { reply, note: decodeObject(bytes, noteSchema) };
 });
 ```

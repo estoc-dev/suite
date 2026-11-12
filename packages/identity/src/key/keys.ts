@@ -1,20 +1,19 @@
 import {
   type EncodedObject,
+  type Est,
   encodeObject,
+  est,
   type Implementation,
   Implementations,
-  type Json,
-  json,
   type Link,
   type Reader,
 } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Key, KeyData, KeyObject, Scheme } from "./interface.ts";
 
-interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
+interface KeyImplementation extends Implementation<Est, KeyObject, KeyData> {
   readonly scheme: Scheme;
-  read(object: EncodedObject<Json, KeyData>): KeyObject;
+  read(object: EncodedObject<Est, KeyData>): KeyObject;
 }
 
 /**
@@ -29,7 +28,7 @@ interface KeyImplementation extends Implementation<Json, KeyObject, KeyData> {
  *   scheme's is refused here.
  */
 export class Keys {
-  readonly #implementations: Implementations<Json, KeyObject, KeyImplementation>;
+  readonly #implementations: Implementations<Est, KeyObject, KeyImplementation>;
   readonly #byScheme: ReadonlyMap<Scheme, KeyImplementation>;
 
   /** @throws when two of `schemes` have one name. */
@@ -39,7 +38,7 @@ export class Keys {
         scheme,
         schema: schema(scheme.name, { publicKey: bytes() }),
         read(object) {
-          const publicKey = hexToBytes(object.data.publicKey);
+          const { publicKey } = object.data;
           if (publicKey.length !== scheme.publicKeyLength)
             throw new Error(
               `a public key in ${scheme.name} is ${scheme.publicKeyLength} bytes, not ${publicKey.length}`,
@@ -48,11 +47,11 @@ export class Keys {
         },
       }),
     );
-    this.#implementations = new Implementations(json, implementations);
+    this.#implementations = new Implementations(est, implementations);
     this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
   }
 
-  check(object: EncodedObject<Json, KeyData>): KeyObject {
+  check(object: EncodedObject<Est, KeyData>): KeyObject {
     return this.#implementations.implementationOf(object.schema.link).read(object);
   }
 
@@ -65,6 +64,6 @@ export class Keys {
   encode({ scheme, publicKey }: Key): KeyObject {
     const implementation = this.#byScheme.get(scheme);
     if (implementation === undefined) throw new Error(`the ${scheme.name} scheme is not one written here`);
-    return implementation.read(encodeObject(implementation.schema, { publicKey: bytesToHex(publicKey) }));
+    return implementation.read(encodeObject(implementation.schema, { publicKey }));
   }
 }

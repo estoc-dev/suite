@@ -1,5 +1,4 @@
-import { type JsonObject, json, type Link, linkOf } from "@estoc/object";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { EstLink, type EstMap, est, type Link, linkOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { ed25519, eip191, isSameKey, loadIdentity, type Scheme, SoftwareSigner, verify } from "../src/index.ts";
 import { byLink, closure, schemes } from "./fixtures.ts";
@@ -7,13 +6,13 @@ import { byLink, closure, schemes } from "./fixtures.ts";
 const { keys, secretKeys } = loadIdentity(schemes);
 const secret = new Uint8Array(32).fill(1);
 const digest = new Uint8Array(32).fill(7);
-const written = (schema: Link<unknown>, data: JsonObject) => json.encode(json.object(data, schema));
+const written = (schema: Link<unknown>, data: EstMap) => est.encode(est.object(data, schema));
 
 describe("a Secret Key", () => {
   it.each(schemes)("in $name reads back from its blobs with a signer its key verifies", async (scheme) => {
     const secretKey = secretKeys.encode(scheme, secret);
     const read = await secretKeys.read(secretKey.link, byLink(secretKey.blobs));
-    expect(read.data).toEqual({ key: { $link: secretKey.key.link }, secret: bytesToHex(secret) });
+    expect(read.data).toEqual({ key: new EstLink(secretKey.key.link), secret });
     expect(read.key.link).toBe(keys.encode(SoftwareSigner.fromSecretKey(scheme, secret).key).link);
     expect(isSameKey(read.signer.key, read.key)).toBe(true);
     expect(verify(read.key, digest, await read.signer.sign(digest))).toBe(true);
@@ -27,7 +26,7 @@ describe("a Secret Key", () => {
 
   it("is refused when its secret is not that of its key", async () => {
     const other = keys.encode(SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2)).key);
-    const bytes = written(secretKeys.schema.link, { key: { $link: other.link }, secret: bytesToHex(secret) });
+    const bytes = written(secretKeys.schema.link, { key: new EstLink(other.link), secret });
     await expect(secretKeys.read(linkOf(bytes), byLink([bytes, other.bytes]))).rejects.toThrow(/is not that of/);
   });
 
@@ -35,7 +34,7 @@ describe("a Secret Key", () => {
     const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
     const kit = loadIdentity([...schemes, plain]);
     const key = kit.keys.encode({ scheme: plain, publicKey: new Uint8Array(32).fill(3) });
-    const bytes = written(kit.secretKeys.schema.link, { key: { $link: key.link }, secret: bytesToHex(secret) });
+    const bytes = written(kit.secretKeys.schema.link, { key: new EstLink(key.link), secret });
     await expect(kit.secretKeys.read(linkOf(bytes), byLink([bytes, key.bytes]))).rejects.toThrow(
       /not one a curve signs in/,
     );

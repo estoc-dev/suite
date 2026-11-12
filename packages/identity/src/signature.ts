@@ -1,9 +1,10 @@
 import {
   digestOf,
   type EncodedObject,
+  type Est,
+  EstLink,
   encodeObject,
   type Fields,
-  type Json,
   type Link,
   objectsOf,
   type Reader,
@@ -12,7 +13,6 @@ import {
   SelectionBySchema,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
@@ -23,7 +23,7 @@ import type { Signer } from "./signer.ts";
  * that signs. A reader that reads a signature as an object of this schema,
  * such as a viewer, reads its fields without verifying it.
  *
- * `signature` holds bytes in hex, and the schema says no more of them. The
+ * `signature` holds bytes, and the schema says no more of them. The
  * schema of the identity the signature is made for says which key signs and
  * how the bytes are laid out, and that key's scheme how its signature in them
  * reads. However they are laid out, they stay bytes, so this schema and those
@@ -49,7 +49,7 @@ export type SignatureData = DataOf<typeof signatureSchema>;
  * - It travels apart from other signatures over the same object.
  * - It does not say what the object is, so its link reads as any.
  */
-export interface Signature extends EncodedObject<Json, SignatureData> {
+export interface Signature extends EncodedObject<Est, SignatureData> {
   readonly link: Link<Signature>;
   readonly signedIdentity: SignedIdentityObject;
   readonly key: KeyObject;
@@ -85,9 +85,9 @@ export interface SeenIdentityVersions {
 export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
 
 /** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
-export interface SignatureOver<F extends Fields<Json>> {
-  readonly signature: EncodedObject<Json, SignatureData>;
-  readonly object: EncodedObject<Json, F>;
+export interface SignatureOver<F extends Fields<Est>> {
+  readonly signature: EncodedObject<Est, SignatureData>;
+  readonly object: EncodedObject<Est, F>;
 }
 
 /**
@@ -129,12 +129,12 @@ export class Signatures {
    * @throws when `seenIdentityVersions` do not honor it.
    */
   async verify(
-    signature: EncodedObject<Json, SignatureData>,
+    signature: EncodedObject<Est, SignatureData>,
     reader: Reader,
     seenIdentityVersions: SeenIdentityVersions,
   ): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
-    const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.$link, reader);
+    const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.link, reader);
     const verifiedSignature = this.#signatureOf(signature, signedIdentity);
     if (!(await seenIdentityVersions.honors(verifiedSignature))) {
       throw new Error(
@@ -161,12 +161,12 @@ export class Signatures {
    * @throws from `read`, when the reader gives no blob for the object, and
    *   where `decodeObject` throws for an object of `schema`.
    */
-  selectionOver<F extends Fields<Json>>(
-    schema: Schema<Json, F>,
-  ): SelectionBySchema<Json, SignatureOver<F>, SignatureData> {
+  selectionOver<F extends Fields<Est>>(
+    schema: Schema<Est, F>,
+  ): SelectionBySchema<Est, SignatureOver<F>, SignatureData> {
     const objects = objectsOf(schema);
     return new SelectionBySchema(this.schema, async (signature, reader) => {
-      const object = await objects.read(signature.data.object.$link, reader);
+      const object = await objects.read(signature.data.object.link, reader);
       return object === undefined ? undefined : { signature, object };
     });
   }
@@ -184,18 +184,18 @@ export class Signatures {
       signedIdentity,
       sign: async (object) => {
         const data = {
-          signedIdentity: { $link: signedIdentity.link },
-          object: { $link: object.link as Link<never> },
-          signature: bytesToHex(await sign(digestOf(object.link), by)),
+          signedIdentity: new EstLink(signedIdentity.link),
+          object: new EstLink(object.link as Link<never>),
+          signature: await sign(digestOf(object.link), by),
         };
         return this.#signatureOf(encodeObject(this.schema, data), signedIdentity);
       },
     };
   }
 
-  #signatureOf(signature: EncodedObject<Json, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
-    const object = signature.data.object.$link;
-    const value = hexToBytes(signature.data.signature);
+  #signatureOf(signature: EncodedObject<Est, SignatureData>, signedIdentity: SignedIdentityObject): Signature {
+    const object = signature.data.object.link;
+    const value = signature.data.signature;
     const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));
     if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
     return { ...signature, link: signature.link as Link<Signature>, signedIdentity, key, object, signature: value };

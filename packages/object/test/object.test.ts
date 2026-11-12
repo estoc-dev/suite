@@ -1,59 +1,44 @@
 import { createHash } from "node:crypto";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import {
   decodeObject,
   decodeSchema,
+  EstLink,
+  type EstMap,
   encodeObject,
   encodeSchema,
-  type JsonObject,
-  json,
+  est,
   readObject,
   schemaOf,
 } from "../src/index.ts";
 import { fieldNames } from "./field-names.ts";
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const utf8 = (text: string) => new TextEncoder().encode(text);
-
-const anything = encodeSchema({}, fieldNames);
+const anything = encodeSchema({ fields: "any" }, fieldNames);
 const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
-const malformed: [string, string][] = [
-  ["without a $schema", '{"v":1}'],
-  ["whose $schema is null", '{"$schema":null,"v":1}'],
-  ["whose $schema is not a link", '{"$schema":{"$link":"login"},"v":1}'],
-  ["whose $schema is a link as a bare string", `{"$schema":"${anything.link}","v":1}`],
-  ["whose $schema has a member besides $link", `{"$schema":{"$link":"${anything.link}","note":"x"},"v":1}`],
-  ["whose $schema is a dialect, as a JSON Schema document's is", `{"$schema":"${DRAFT}","v":1}`],
-  ["whose $schema is an object without $link", `{"$schema":{"$schema":"${DRAFT}"},"v":1}`],
-  ["that is an array", `[1,{"$link":"${anything.link}"}]`],
-  ["that is a string", `"${anything.link}"`],
+const malformed: [string, Uint8Array][] = [
+  ["of no bytes", new Uint8Array()],
+  ["that is a map under no tag", hexToBytes("a0")],
+  ["that is a link under no tag", hexToBytes(`d9486c5820${anything.link.slice("sha256:".length)}`)],
+  ["written in JSON", new TextEncoder().encode(`{"$schema":{"$link":"${anything.link}"},"v":1}`)],
 ];
 
 describe("an object", () => {
-  it.each<[string, JsonObject]>([
+  it.each<[string, EstMap]>([
     ["fields", greeting],
     [
       "fields of every kind",
-      { array: [1, "two", { three: null }], string: "hello", link: { $link: login.link }, null: null },
+      { array: [1, "two", { three: true }], string: "hello", link: new EstLink(login.link), bytes: Uint8Array.of(1) },
     ],
     ["no fields", {}],
-    ["a $schema deeper in its data, which is data like any other", { inner: { $schema: { $link: login.link } } }],
+    ["a field of any name, as it keeps none for its schema", { $schema: "note", schema: new EstLink(login.link) }],
   ])("holding %s reads back with the same link", (_, data) => {
     const object = encodeObject(anything, data);
     const read = decodeObject(object.bytes, anything);
     expect(read.data).toEqual(data);
     expect(read.link).toBe(object.link);
     expect(read.schema).toBe(anything);
-  });
-
-  it("reads back as its data without its $schema, which a closed schema need not name", () => {
-    expect(decodeObject(encodeObject(login, greeting).bytes, login).data).toEqual(greeting);
-  });
-
-  it("is refused when its data has a $schema of its own", () => {
-    expect(() => encodeObject(anything, { $schema: { $link: login.link } })).toThrow(/\$schema/);
-    expect(() => encodeObject(anything, { $schema: "note" })).toThrow(/\$schema/);
   });
 
   it("is linked by the SHA-256 of its bytes", () => {
@@ -75,8 +60,8 @@ describe("an object", () => {
     expect(() => decodeObject(encodeObject(login, greeting).bytes, anything)).toThrow();
   });
 
-  it.each(malformed)("is refused %s", (_, text) => {
-    expect(() => decodeObject(utf8(text), anything)).toThrow();
+  it.each(malformed)("is refused %s", (_, bytes) => {
+    expect(() => decodeObject(bytes, anything)).toThrow();
   });
 });
 
@@ -101,19 +86,13 @@ describe("an object read by its link", () => {
 
 describe("the schema an object names", () => {
   it("is read without the schema, whether or not the data fits it", () => {
-    expect(schemaOf(encodeObject(login, greeting).bytes, json)).toBe(login.link);
-    expect(schemaOf(utf8(`{"$schema":{"$link":"${login.link}"},"v":1}`), json)).toBe(login.link);
+    expect(schemaOf(encodeObject(login, greeting).bytes, est)).toBe(login.link);
+    expect(schemaOf(est.encode(est.object({ v: 1 }, login.link)), est)).toBe(login.link);
   });
 
-  it.each(malformed)("is not read from an object %s", (_, text) => {
-    expect(() => schemaOf(utf8(text), json)).toThrow();
+  it.each(malformed)("is not read from an object %s", (_, bytes) => {
+    expect(() => schemaOf(bytes, est)).toThrow();
   });
-});
-
-test("a schema is bytes, which name no schema and are an object of none", () => {
-  expect(() => schemaOf(login.bytes, json)).toThrow(/names its schema/);
-  // @ts-expect-error: refused at compile time too
-  expect(() => decodeObject(login.bytes, anything)).toThrow(/names its schema/);
 });
 
 test("an object read with a schema decoded from the same bytes keeps its link", () => {

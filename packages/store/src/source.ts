@@ -34,17 +34,25 @@ type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 export interface Origin {
   /** Whether it lists the blobs a store holds, itself or through an index it reads. */
   readonly readsBlobs: boolean;
-  /**
-   * Whether anyone can send what it lists. One of those that a part of an index throws on gives no
-   * row of that part: a scan that threw on it would fail from then on.
-   */
-  readonly listsWhatAnyoneCanSend: boolean;
   listingIn(rows: RowsByIndex): Promise<Listing>;
+}
+
+/**
+ * Something that an index read and that one of its sources gave no rows of: the source or its
+ * `rows` threw on it, or gave a row whose data does not fit the schema of the index. The rows of
+ * the index are short of whatever it would have given.
+ */
+export interface ItemFailure {
+  /** The link of the record, the blob or the row of another index that was read. */
+  readonly item: Link<unknown>;
+  readonly error: unknown;
 }
 
 /** What an origin lists for one store, in the order it listed them. A later one starts with these. */
 export interface Listing {
   readonly links: readonly Link<unknown>[];
+  /** What the index that derived these failed on, itself or through an index it reads. A store fails on none. */
+  readonly failures: readonly ItemFailure[];
   /** One of them as the object an index derived, which is handed on without being read and validated again. */
   objectOf(link: Link<unknown>): { readonly schema: object } | undefined;
   /**
@@ -56,13 +64,11 @@ export interface Listing {
 
 const listedRecords: Origin = {
   readsBlobs: false,
-  listsWhatAnyoneCanSend: false,
   listingIn: (rows) => rows.listedRecords(),
 };
 
 const heldBlobs: Origin = {
   readsBlobs: true,
-  listsWhatAnyoneCanSend: true,
   listingIn: (rows) => rows.heldBlobs(),
 };
 
@@ -77,7 +83,6 @@ export class Derivation<D, F extends Fields<D>> implements Origin {
   readonly schema: Schema<D, F>;
   readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
   readonly readsBlobs: boolean;
-  readonly listsWhatAnyoneCanSend = false;
 
   constructor(schema: Schema<D, F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
     this.schema = schema;
@@ -139,11 +144,11 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A blob gives no row of an index over these when it is not an object in the encoding of the
- *   schema, when it names the schema and does not fit it, when `selection` or the `rows` of the
- *   index throw on it, or when the data of a row does not fit the schema of the index. Anyone can
- *   send one, and a scan that threw on it would fail from then on. A mistake in `selection` or
- *   `rows` therefore shows only as rows that are missing.
+ * - A blob that is not an object in the encoding of the schema, such as an attachment, is not one
+ *   of these, as an object of another schema is not.
+ * - Anyone can send a blob that names the schema and does not fit it, or that `selection` or the
+ *   `rows` of an index throw on. A scan of an index that reads these, itself or through an index it
+ *   reads, therefore gives the rows without those of such a blob, and lists it in their `failures`.
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
 export function selectedBlobs<D, T, S extends Fields<D>>(selection: SelectionBySchema<D, T, S>): Source<T> {

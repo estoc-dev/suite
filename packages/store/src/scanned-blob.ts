@@ -1,6 +1,7 @@
 import {
   decodeObject,
   type EncodedObject,
+  type Encoding,
   type Fields,
   type Link,
   type Reader,
@@ -16,7 +17,7 @@ export class ScannedBlob {
   readonly link: Link<unknown>;
   /** The blobs of its closure, each read from the store once. */
   readonly reader: { get(link: Link<unknown>): Promise<Uint8Array> };
-  readonly #schemas = new Map<object, Link<unknown>>();
+  readonly #schemas = new Map<object, Link<unknown> | undefined>();
   readonly #objects = new Map<object, unknown>();
   #readFailure: { readonly error: unknown } | undefined;
 
@@ -42,19 +43,30 @@ export class ScannedBlob {
   }
 
   /**
-   * The object read with `schema`, or `undefined` when it is written to another schema. The schema
-   * it names is read once for each encoding, and the object once for each schema.
+   * The object read with `schema`, or `undefined` when it is not an object in the encoding of
+   * `schema`, as an attachment is not, or is written to another schema. The schema it names is read
+   * once for each encoding, and the object once for each schema.
    *
-   * @throws where `schemaOf` and `decodeObject` throw.
+   * @throws where `decodeObject` throws, as when it names `schema` and does not fit it.
    */
   async objectOf<D, F extends Fields<D>>(schema: Schema<D, F>): Promise<EncodedObject<D, F> | undefined> {
     if (!this.#objects.has(schema)) {
       const bytes = await this.reader.get(this.link);
-      const schemaLink = this.#schemas.get(schema.encoding) ?? schemaOf(bytes, schema.encoding);
-      this.#schemas.set(schema.encoding, schemaLink);
-      this.#objects.set(schema, schemaLink === schema.link ? decodeObject(bytes, schema) : undefined);
+      if (!this.#schemas.has(schema.encoding))
+        this.#schemas.set(schema.encoding, namedSchemaOf(bytes, schema.encoding));
+      const isOfSchema = this.#schemas.get(schema.encoding) === schema.link;
+      this.#objects.set(schema, isOfSchema ? decodeObject(bytes, schema) : undefined);
     }
     return this.#objects.get(schema) as EncodedObject<D, F> | undefined;
+  }
+}
+
+/** The schema that `bytes` name as an object in `encoding`, or `undefined` when they are not one. */
+function namedSchemaOf<D>(bytes: Uint8Array, encoding: Encoding<D>): Link<unknown> | undefined {
+  try {
+    return schemaOf(bytes, encoding);
+  } catch {
+    return undefined;
   }
 }
 

@@ -11,6 +11,7 @@ export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
   type Index,
+  type ItemFailure,
   indexOver,
   type KeyOf,
   type OrderedIndex,

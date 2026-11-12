@@ -342,15 +342,6 @@ describe("an index scanned from a store", () => {
     expect(requestedLinks.filter((link) => link === record.link)).toHaveLength(1);
   });
 
-  it("is not filled when the data of a row does not fit the schema of the index", async () => {
-    const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [encodeObject(note, { n: 1 })], blobs: schemas });
-    const misfit = indexOver(selectedRecords(objectsOf(note)), named, ({ data }) => [
-      { name: data.n as unknown as string },
-    ]);
-    await expect(scan(store, misfit.orderedBy("name"))).rejects.toThrow("#/name: not a string");
-  });
-
   it.each([
     ["a schema it reads", note],
     ["a schema it does not read", tag],
@@ -425,6 +416,178 @@ describe("an index whose rows give none of what does not read as they expect", (
     await expect(scan(store, byAbout)).rejects.toThrow(
       `the store lists ${record.link} but does not hold ${about.link} of its closure`,
     );
+  });
+});
+
+describe("an index that fails on something it reads", () => {
+  const [unreadable, readable] = [encodeObject(note, { names: ["unreadable"] }), encodeObject(note, { names: ["a"] })];
+  const readError = new Error("does not read");
+  const readableNamedOf = (object: { readonly data: Entry }) => {
+    const rows = namedOf(object);
+    if (rows[0]?.name === "unreadable") throw readError;
+    return rows;
+  };
+  const readableNames: NameIndex = indexOver(selectedRecords(objectsOf(note)), named, readableNamedOf);
+  const byReadableName = readableNames.orderedBy("name");
+  const upperNamesOf = (index: NameIndex): NameIndex =>
+    indexOver(index, named, ({ data }) => [{ name: data.name.toUpperCase() }]);
+  /** An index that reads `index` by two indexes over it, each a source of its own. */
+  const byEitherNameOf = (index: NameIndex) => {
+    const markedNames: NameIndex = indexOver(index, named, ({ data }) => [{ name: `${data.name}!` }]);
+    return indexOver(upperNamesOf(index), named, ({ data }) => [data])
+      .union(indexOver(markedNames, named, ({ data }) => [data]))
+      .orderedBy("name");
+  };
+
+  async function storeOf(...records: readonly { readonly bytes: Uint8Array }[]): Promise<Store> {
+    const store = new Store(json, new MemoryBackend());
+    await store.write({ records, blobs: schemas });
+    return store;
+  }
+
+  it("gives the rows of what else it reads, and lists what it failed on with the error", async () => {
+    const rows = await scan(await storeOf(unreadable, readable), byReadableName, { throwsOnFailure: false });
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+  });
+
+  it("makes a scan throw the error of its first failure when it reads only records, unless the scan is told not to", async () => {
+    const store = await storeOf(unreadable, readable);
+    await expect(scan(store, byReadableName)).rejects.toBe(readError);
+    await expect(scan(store, byReadableName, { throwsOnFailure: true })).rejects.toBe(readError);
+    expect((await scan(store, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
+  });
+
+  it.each<[string, NameIndex, string]>([
+    [
+      "its selection throws",
+      indexOver(selectedRecords(new SelectionBySchema(note, readableNamedOf)), named, (rows) => rows),
+      "does not read",
+    ],
+    [
+      "the data of a row does not fit its schema",
+      indexOver(selectedRecords(objectsOf(note)), named, (object) =>
+        object.data.names?.[0] === "unreadable" ? [{ name: 1 as unknown as string }] : namedOf(object),
+      ),
+      "#/name: not a string",
+    ],
+  ])("fails on a record when %s", async (_, index, message) => {
+    const store = await storeOf(unreadable, readable);
+    await expect(scan(store, index.orderedBy("name"))).rejects.toThrow(message);
+    const rows = await scan(store, index.orderedBy("name"), { throwsOnFailure: false });
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
+  });
+
+  it("keeps no row that its rows gave of something before they threw on it", async () => {
+    const index = indexOver(selectedRecords(objectsOf(note)), named, function* (object) {
+      yield* namedOf(object);
+      readableNamedOf(object);
+    });
+    const rows = await scan(await storeOf(unreadable, readable), index.orderedBy("name"), { throwsOnFailure: false });
+    expect(await namesOf(rows)).toEqual(["a"]);
+  });
+
+  it("does not read again what it failed on, and reads what is listed after it", async () => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(json, backendNoting(requestedLinks, new MemoryBackend()));
+    await store.write({ records: [readable], blobs: schemas });
+    expect((await scan(store, byReadableName)).failures).toEqual([]);
+    await store.write({ records: [unreadable] });
+    expect((await scan(store, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
+    requestedLinks.length = 0;
+    await store.write({ records: [encodeObject(note, { names: ["b"] })] });
+    await expect(scan(store, byReadableName)).rejects.toBe(readError);
+    const rows = await scan(store, byReadableName, { throwsOnFailure: false });
+    expect(await namesOf(rows)).toEqual(["a", "b"]);
+    expect(rows.failures).toHaveLength(1);
+    expect(requestedLinks).not.toContain(unreadable.link);
+  });
+
+  it("lists no failure for what its rows threw because the store failed, and a later scan reads that again", async () => {
+    const about = encodeObject(note, { names: ["a"] });
+    const record = encodeObject(note, { about: { $link: about.link } });
+    const byAbout = indexOver(selectedRecords(objectsOf(note)), named, async function* ({ data }, reader) {
+      if (data.about !== undefined) yield* namedOf(await readObject(reader, data.about.$link, note));
+    }).orderedBy("name");
+    const backend = new MemoryBackend();
+    const diskError = new Error("the disk is gone");
+    let isGone = false;
+    const store = new Store(json, {
+      ...backendNoting([], backend),
+      get: (link) => (isGone && link === about.link ? Promise.reject(diskError) : backend.get(link)),
+    });
+    await store.write({ records: [record], blobs: [about.bytes, ...schemas] });
+    isGone = true;
+    await expect(scan(store, byAbout, { throwsOnFailure: false })).rejects.toBe(diskError);
+    isGone = false;
+    const rows = await scan(store, byAbout);
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.failures).toEqual([]);
+  });
+
+  it("lists, on a staged batch, what it failed on of the batch, which its store does not keep", async () => {
+    const store = await storeOf(readable);
+    const stagedStore = await store.stage({ records: [unreadable] });
+    const rows = await scan(stagedStore, byReadableName, { throwsOnFailure: false });
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+    expect((await scan(store, byReadableName)).failures).toEqual([]);
+  });
+
+  describe("read by another index", () => {
+    it("is among the failures of that index, which is scanned as it is", async () => {
+      const store = await storeOf(unreadable, readable);
+      const byUpperName = upperNamesOf(readableNames).orderedBy("name");
+      await expect(scan(store, byUpperName)).rejects.toBe(readError);
+      const rows = await scan(store, byUpperName, { throwsOnFailure: false });
+      expect(await namesOf(rows)).toEqual(["A"]);
+      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+    });
+
+    it("is listed once among the failures of an index that reads it by two indexes", async () => {
+      const byEitherName = byEitherNameOf(readableNames);
+      const rows = await scan(await storeOf(unreadable, readable), byEitherName, { throwsOnFailure: false });
+      expect(await namesOf(rows)).toEqual(["A", "a!"]);
+      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+    });
+
+    it("is read once on a staged batch for an index that reads it by two indexes, with each failure listed once", async () => {
+      const readNames: string[] = [];
+      const notedNames: NameIndex = indexOver(selectedRecords(objectsOf(note)), named, (object) => {
+        readNames.push(...(object.data.names ?? []));
+        return readableNamedOf(object);
+      });
+      const byEitherName = byEitherNameOf(notedNames);
+      const stagedStore = await (await storeOf()).stage({ records: [unreadable, readable], blobs: schemas });
+      const rows = await scan(stagedStore, byEitherName, { throwsOnFailure: false });
+      expect(await namesOf(rows)).toEqual(["A", "a!"]);
+      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+      expect(readNames.sort()).toEqual(["a", "unreadable"]);
+    });
+
+    it("gives that index, as a failure of its own, the row that its rows throw on", async () => {
+      const store = await storeOf(unreadable, readable);
+      const index = indexOver(noteNames, named, ({ data }) => {
+        if (data.name === "unreadable") throw readError;
+        return [data];
+      });
+      await expect(scan(store, index.orderedBy("name"))).rejects.toBe(readError);
+      const rows = await scan(store, index.orderedBy("name"), { throwsOnFailure: false });
+      expect(await namesOf(rows)).toEqual(["a"]);
+      expect(rows.failures).toEqual([{ item: encodeObject(named, { name: "unreadable" }).link, error: readError }]);
+      expect(await namesOf(await scan(store, byName))).toEqual(["a", "unreadable"]);
+    });
+
+    it("leaves a scan of that index to give its rows when this one reads blobs, unless the scan is told to throw", async () => {
+      const store = await storeOf(encodeObject(tag, { names: ["unreadable"] }), encodeObject(tag, { names: ["a"] }));
+      const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, readableNamedOf);
+      const byUpperName = upperNamesOf(tagNames).orderedBy("name");
+      const rows = await scan(store, byUpperName);
+      expect(await namesOf(rows)).toEqual(["A"]);
+      expect(rows.failures).toHaveLength(1);
+      await expect(scan(store, byUpperName, { throwsOnFailure: true })).rejects.toBe(readError);
+    });
   });
 });
 
@@ -636,14 +799,16 @@ describe("an index over blobs", () => {
     ["text", new TextEncoder().encode("an image")],
     ["JSON that is not an object", json.encode([1, 2])],
     ["JSON that names no schema", json.encode({ names: ["no schema"] })],
-  ])("passes over %s, and still gives the rows of the other blobs", async (_, blob) => {
+  ])("holds no rows of %s, which it does not fail on", async (_, blob) => {
     const other = encodeObject(tag, { names: ["other"] });
     const store = new Store(json, new MemoryBackend());
     await store.write({ records: [carrying(blob, other.bytes)], blobs: [blob, other.bytes, ...schemas] });
-    expect(await namesOf(await scan(store, byTagName))).toEqual(["other"]);
+    const rows = await scan(store, byTagName);
+    expect(await namesOf(rows)).toEqual(["other"]);
+    expect(rows.failures).toEqual([]);
   });
 
-  it("passes over a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
+  it("fails on a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
     const document = { title: "Named", fields: { name: string(), names: array(string()) } };
     const strict = encodeSchema<Json, SchemaDocument, Entry>(document, schemaValidator);
     const lax = encodeSchema<Json, SchemaDocument, Entry>(document, {
@@ -658,9 +823,9 @@ describe("an index over blobs", () => {
       records: [carrying(misfit.bytes, fitting.bytes)],
       blobs: [misfit.bytes, fitting.bytes, strict.bytes, ...schemas],
     });
-    expect(
-      await namesOf(await scan(store, indexOver(selectedBlobs(objectsOf(strict)), named, namedOf).orderedBy("name"))),
-    ).toEqual(["fitting"]);
+    const rows = await scan(store, indexOver(selectedBlobs(objectsOf(strict)), named, namedOf).orderedBy("name"));
+    expect(await namesOf(rows)).toEqual(["fitting"]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([misfit.link]);
   });
 
   describe("whose selection or rows throw on a blob", () => {
@@ -671,10 +836,10 @@ describe("an index over blobs", () => {
       return rows;
     };
 
-    async function rowsOf(index: NameIndex) {
+    async function rowsOf(index: NameIndex, options?: { readonly throwsOnFailure: boolean }) {
       const store = new Store(json, new MemoryBackend());
       await store.write({ records: [unreadable, readable], blobs: schemas });
-      return namesOf(await scan(store, index.orderedBy("name")));
+      return scan(store, index.orderedBy("name"), options);
     }
 
     it.each<[string, NameIndex]>([
@@ -683,8 +848,11 @@ describe("an index over blobs", () => {
         indexOver(selectedBlobs(new SelectionBySchema(tag, readableNamedOf)), named, (rows) => rows),
       ],
       ["rows throw", indexOver(selectedBlobs(objectsOf(tag)), named, readableNamedOf)],
-    ])("passes over the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
-      expect(await rowsOf(index)).toEqual(["a"]);
+    ])("fails on the blob its %s on, and still gives the rows of the other blobs", async (_, index) => {
+      const rows = await rowsOf(index);
+      expect(await namesOf(rows)).toEqual(["a"]);
+      expect(rows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
+      await expect(rowsOf(index, { throwsOnFailure: true })).rejects.toThrow("does not read");
     });
 
     it("keeps no row that its rows gave of the blob before they threw", async () => {
@@ -692,18 +860,21 @@ describe("an index over blobs", () => {
         yield* namedOf(object);
         readableNamedOf(object);
       });
-      expect(await rowsOf(index)).toEqual(["a"]);
+      expect(await namesOf(await rowsOf(index))).toEqual(["a"]);
     });
   });
 
-  it("passes over a blob when the data of a row of it does not fit the schema of the index", async () => {
+  it("fails on a blob when the data of a row of it does not fit the schema of the index", async () => {
+    const misfit = encodeObject(tag, { n: 1 });
     const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [encodeObject(tag, { names: ["a"] }), encodeObject(tag, { n: 1 })], blobs: schemas });
+    await store.write({ records: [encodeObject(tag, { names: ["a"] }), misfit], blobs: schemas });
     const index = indexOver(selectedBlobs(objectsOf(tag)), named, (object) => [
       ...namedOf(object),
       ...(object.data.n === undefined ? [] : [{ name: object.data.n as unknown as string }]),
     ]);
-    expect(await namesOf(await scan(store, index.orderedBy("name")))).toEqual(["a"]);
+    const rows = await scan(store, index.orderedBy("name"));
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([misfit.link]);
   });
 
   it("is not filled from something else with a `get` and `records`, which still fills an index of records", async () => {
@@ -1005,16 +1176,6 @@ describe("an index over another index", () => {
     await store.write({ records: [first, encodeObject(tag, { names: ["t"] })], blobs: schemas });
     const union = upperNames.union(indexOver(selectedRecords(objectsOf(tag)), named, namedOf)).orderedBy("name");
     expect(await namesOf(await scan(store, union))).toEqual(["A", "t"]);
-  });
-
-  it("is not filled when its rows throw on a row of the other index, which is filled still", async () => {
-    const store = new Store(json, new MemoryBackend());
-    await store.write({ records: [first], blobs: schemas });
-    const index = indexOver(noteNames, named, () => {
-      throw new Error("does not read");
-    });
-    await expect(scan(store, index.orderedBy("name"))).rejects.toThrow("does not read");
-    expect(await namesOf(await scan(store, byName))).toEqual(["a"]);
   });
 
   it("is filled from something else with a `get` and `records`, unless an index it is over reads blobs", async () => {

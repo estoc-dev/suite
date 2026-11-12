@@ -1,6 +1,6 @@
 import type { IdentityVersionData, IdentityVersionOrder, IdentityVersions, People } from "@estoc/identity";
 import type { Json } from "@estoc/object";
-import { indexOver, type View } from "@estoc/store";
+import { indexOver, selectedBlobs, type View } from "@estoc/store";
 
 export type PeopleView = View<Json, IdentityVersionData, IdentityVersionOrder, People>;
 
@@ -15,7 +15,7 @@ export type PeopleView = View<Json, IdentityVersionData, IdentityVersionOrder, P
  */
 export function peopleView(identityVersions: IdentityVersions): PeopleView {
   return {
-    index: indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
+    index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
       identityVersion,
     ]).orderedBy(...identityVersions.order),
     read: (rows, reader) => identityVersions.people(rows, reader),

@@ -405,12 +405,14 @@ as any message can be.
 
 ```ts
 import { MailboxGrants } from "@estoc/mailbox";
-import { indexOver, view } from "@estoc/store";
+import { indexOver, selectedBlobs, view } from "@estoc/store";
 
 const grants = new MailboxGrants({ signatures, signedIdentities });
-const seen = indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
-  identityVersion,
-]).orderedBy(...identityVersions.order);
+const seen = indexOver(
+  selectedBlobs(identityVersions.selection),
+  identityVersions.schema,
+  (identityVersion) => [identityVersion],
+).orderedBy(...identityVersions.order);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 await series.grantFrom(mine, their, people.asTakenIn); // where I take their messages

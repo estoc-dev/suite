@@ -14,7 +14,10 @@ export {
   type OrderedIndex,
   type Prefix,
   type Rows,
+  type Source,
   scan,
+  selectedBlobs,
+  selectedRecords,
 } from "./scan.ts";
 export { type Backend, type Batch, PrivateStore, RefusedBatch, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";

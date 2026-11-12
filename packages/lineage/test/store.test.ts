@@ -1,6 +1,6 @@
 import { encodeObject, type Implementation, type Json, json, type Link } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
-import { indexOver, MemoryBackend, type OrderedIndex, Store, scan } from "@estoc/store";
+import { indexOver, MemoryBackend, type OrderedIndex, Store, scan, selectedRecords } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
@@ -16,10 +16,10 @@ const other = encodeObject(note, { text: "other" });
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
 type HeadIndex = OrderedIndex<Json, DataOf<typeof headSchema>, readonly ["of", "head"]>;
 
-const bySeries: HeadIndex = indexOver("records", lineages.selection, headSchema, function* ({ first, head }) {
+const bySeries: HeadIndex = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
   yield { of: { $link: first.link }, head: { $link: head.link } };
 }).orderedBy("of", "head");
-const byItem: HeadIndex = indexOver("records", lineages.selection, headSchema, function* ({ items, head }) {
+const byItem: HeadIndex = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ items, head }) {
   for (const item of items) yield { of: { $link: item }, head: { $link: head.link } };
 }).orderedBy("of", "head");
 
@@ -92,7 +92,7 @@ describe("the selection of a schema lineage over a store", () => {
     const titledRecord = encodeObject(titledNote, { title: "Greeting", body: "titled" });
     await store.write({ records: [untitledRecord, titledRecord], blobs: notes.blobs });
     const titled = schema("Titled", { text: string(), title: string() });
-    const byText = indexOver("records", notes.selection, titled, function* ({ text, title }) {
+    const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];

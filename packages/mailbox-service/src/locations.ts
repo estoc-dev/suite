@@ -8,7 +8,7 @@ import {
 } from "@estoc/identity";
 import type { Json, Link } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { indexOver, type View } from "@estoc/store";
+import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
 
 /**
@@ -48,8 +48,7 @@ export type LocationsView = View<Json, DataOf<typeof locationSchema>, LocationOr
 export function locationsView(signatures: Signatures): LocationsView {
   return {
     index: indexOver(
-      "blobs",
-      signatures.selectionOver(serviceSchema),
+      selectedBlobs(signatures.selectionOver(serviceSchema)),
       locationSchema,
       async function* ({ signature, object }, reader) {
         // A row depends on the signature and its closure alone, so it is

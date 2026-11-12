@@ -60,8 +60,8 @@ export interface Batch {
  * - Blobs are kept by link, whoever wrote them, and are not listed.
  * - Only records are listed, and anything else is reached by following links from them, so an
  *   object that someone else slipped into a bundle is read only as part of what it came with.
- * - The one exception is an index over `"blobs"`, which reads the blobs by schema, for objects that
- *   carry their authority in a signature.
+ * - The one exception is an index over `selectedBlobs`, which reads the blobs by schema, for
+ *   objects that carry their authority in a signature.
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its records.

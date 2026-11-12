@@ -2,7 +2,16 @@ import { readBundle, writeBundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, json, type Link, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
-import { Intake, inboundSchema, indexOver, MemoryBackend, PrivateStore, Store, scan } from "@estoc/store";
+import {
+  Intake,
+  inboundSchema,
+  indexOver,
+  MemoryBackend,
+  PrivateStore,
+  Store,
+  scan,
+  selectedRecords,
+} from "@estoc/store";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, mailboxKeySchema, outboundSchema, Post, UndeliveredMessage } from "../src/index.ts";
@@ -175,7 +184,7 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox } = await openReceiver(network);
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
-    const byMailbox = indexOver("records", objectsOf(mailboxKeySchema), keyOfMailbox, ({ link, data }) => [
+    const byMailbox = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
       { mailbox: data.mailbox, key: { $link: link } },
     ]).orderedBy("mailbox");
     const keys = [];

@@ -10,7 +10,7 @@ import {
   type SignedIdentityObject,
 } from "@estoc/identity";
 import type { EncodedObject, Json, Link } from "@estoc/object";
-import { indexOver, type Store, type View, view } from "@estoc/store";
+import { indexOver, type Store, selectedBlobs, type View, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -54,7 +54,7 @@ export class Correspondence {
     this.#grants = grants;
     this.#signatures = signatures;
     this.#seenPeople = {
-      index: indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
+      index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
         identityVersion,
       ]).orderedBy(...identityVersions.order),
       read: (rows, reader) => identityVersions.people(rows, reader),

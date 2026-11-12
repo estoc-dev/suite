@@ -294,7 +294,7 @@ link, so the rows of one identifier come together, in the order of their `at`.
 each read as the data of its row. A signed identity carries its authority in its root's
 signature, so it reads the same however it arrived, and an application keeps
 the rows of every one it holds in an index of its own, such as
-one over `"blobs"` with `indexOver` of `@estoc/store`. A stranger can add no identity version of
+one over `selectedBlobs` of `@estoc/store`. A stranger can add no identity version of
 someone that their root did not sign, and an older identity version leaves the
 current one as it is, unless it is a crisis that the current one does not
 follow.
@@ -386,9 +386,11 @@ takes one already read. With `@estoc/store`, an application gives the index
 and `identityVersions.people` reads its rows:
 
 ```ts
-const seen = indexOver("blobs", identityVersions.selection, identityVersions.schema, (identityVersion) => [
-  identityVersion,
-]).orderedBy(...identityVersions.order);
+const seen = indexOver(
+  selectedBlobs(identityVersions.selection),
+  identityVersions.schema,
+  (identityVersion) => [identityVersion],
+).orderedBy(...identityVersions.order);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(link, store, people.asTakenIn);
 const author = people.personOf(signature.signedIdentity);
@@ -487,8 +489,8 @@ their identifier:
 
 ```ts
 const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
-const signedNotes = indexOver("records",
-  signatures.selectionOver(noteSchema),
+const signedNotes = indexOver(
+  selectedRecords(signatures.selectionOver(noteSchema)),
   signedNoteSchema,
   async function* ({ signature, object }, reader) {
     const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);

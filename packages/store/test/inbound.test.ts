@@ -2,7 +2,16 @@ import { readBundle, writeBundle } from "@estoc/bundle";
 import { encodeObject, type JsonObject, json, type Link, linkOf, objectsOf } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { Intake, inboundSchema, indexOver, MemoryBackend, RefusedBatch, Store, scan } from "../src/index.ts";
+import {
+  Intake,
+  inboundSchema,
+  indexOver,
+  MemoryBackend,
+  RefusedBatch,
+  Store,
+  scan,
+  selectedRecords,
+} from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -128,7 +137,7 @@ describe("an intake", () => {
 
 describe("the records of an intake", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-  const cameIn = indexOver("records", objectsOf(inboundSchema), arrivalSchema, ({ data }) => [
+  const cameIn = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
   ]).orderedBy("bundle", "at");
 

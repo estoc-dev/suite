@@ -30,16 +30,51 @@ export type Prefix<K extends readonly unknown[]> =
   | readonly []
   | (K extends readonly [infer First, ...infer Rest] ? readonly [First, ...Prefix<Rest>] : K);
 
-/** The data of the rows that a selection and its `rows` give of what an index reads. */
+/** The data of the rows that a source and the `rows` of an index give of what the index reads. */
 type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 
-/** What an index reads: the records of a store, the blobs it holds, or the rows of another index. */
-type Source<D> = "records" | "blobs" | Derivation<D, Fields<D>>;
+/** Where what an index reads is listed: the records of a store, the blobs it holds, or the rows of another index. */
+type Origin = "records" | "blobs" | SourceIndex;
 
-/** What an index is made of: the schema its rows are written to, and what gives them of each source it reads. */
-interface Derivation<D, F extends Fields<D>> {
+/** An index, as an index over it reads its rows. */
+interface SourceIndex {
+  /** Whether it reads the blobs a store holds, itself or through an index it reads. */
+  readonly readsBlobs: boolean;
+  /** The rows it has in `rows`. */
+  objectsIn(rows: RowsByIndex): Promise<SourceObjects>;
+}
+
+/** The rows of an index, as an index over it reads them. */
+interface SourceObjects {
+  readonly objects: readonly { readonly link: Link<unknown> }[];
+  /** The bytes of one of these rows, or of one of those they were derived from. */
+  bytesOf(link: Link<unknown>): Uint8Array | undefined;
+}
+
+/** What a source is made of: where what it reads is listed, and what it reads each one as. */
+interface Reading<T> {
+  readonly origin: Origin;
+  /** Gives `undefined` for one the source leaves out. */
+  itemOf(blob: ScannedBlob): Promise<T | undefined>;
+}
+
+/** What an index is made of: the schema its rows are written to, and what gives them of what each origin lists. */
+class Derivation<D, F extends Fields<D>> implements SourceIndex {
   readonly schema: Schema<D, F>;
-  readonly parts: ReadonlyMap<Source<D>, readonly Part<F>[]>;
+  readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
+  readonly readsBlobs: boolean;
+
+  constructor(schema: Schema<D, F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
+    this.schema = schema;
+    this.parts = parts;
+    this.readsBlobs = [...parts.keys()].some(
+      (origin) => origin === "blobs" || (origin !== "records" && origin.readsBlobs),
+    );
+  }
+
+  objectsIn(rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
+    return rows.derivedObjectsOf(this);
+  }
 }
 
 interface Order<D, F extends Fields<D>, By extends FieldNames<F>> {
@@ -47,25 +82,76 @@ interface Order<D, F extends Fields<D>, By extends FieldNames<F>> {
   readonly by: By;
 }
 
-// `scan` reads what an index and an ordered index are made of, which nothing outside this module can.
+// `indexOver` and `scan` read what a source, an index and an ordered index are made of, which nothing
+// outside this module can.
+let readingOf: <T>(source: Source<T>) => Reading<T>;
 let derivationOf: <D, F extends Fields<D>>(index: Index<D, F>) => Derivation<D, F>;
 let orderOf: <D, F extends Fields<D>, By extends FieldNames<F>>(index: OrderedIndex<D, F, By>) => Order<D, F, By>;
 
 /**
- * What an application keeps of what some selections take from a store, as rows: objects of one
- * schema, derived from the records its user writes, from the blobs the store holds, or from the rows
- * of another index.
+ * What an index reads, each read as a `T`: the records or the blobs of a store that a selection
+ * takes, from `selectedRecords` and `selectedBlobs`, or the rows of another index, which is itself a
+ * source.
+ *
+ * Where things are listed and what each is read as go together. A reading that trusts what an index
+ * derived holds only over the rows of that index, so it is given as a source of those rows, and not
+ * as a selection that fits any listing.
+ */
+export class Source<T> {
+  readonly #reading: Reading<T>;
+
+  static {
+    readingOf = (source) => source.#reading;
+  }
+
+  constructor(reading: Reading<T>) {
+    this.#reading = reading;
+  }
+}
+
+/**
+ * The records of a store that `selection` takes, each as what it reads it as. What came from
+ * elsewhere is reached by following links from them.
+ */
+export function selectedRecords<T>(selection: Selection<T>): Source<T> {
+  return new Source({ origin: "records", itemOf: (blob) => itemOf(selection, blob) });
+}
+
+/**
+ * The blobs a store holds that read as objects of the schema of `selection`, records or not, each
+ * as what `selection` reads it as.
+ *
+ * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
+ *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
+ *   be a stranger's.
+ * - A blob gives no row of an index over these when it is not an object in the encoding of the
+ *   schema, when it names the schema and does not fit it, when `selection` or the `rows` of the
+ *   index throw on it, or when the data of a row does not fit the schema of the index. Anyone can
+ *   send one, and a scan that threw on it would fail from then on. A mistake in `selection` or
+ *   `rows` therefore shows only as rows that are missing.
+ * - A scan reads every blob the store holds, attachments as well, once for each index.
+ */
+export function selectedBlobs<D, T, S extends Fields<D>>(selection: SelectionBySchema<D, T, S>): Source<T> {
+  return new Source({ origin: "blobs", itemOf: (blob) => itemOf(selection, blob) });
+}
+
+/**
+ * What an application keeps of what it reads from a store, as rows: objects of one schema, derived
+ * from the records its user writes, from the blobs the store holds, or from the rows of another
+ * index.
  *
  * - An index is the set of rows that those give, so going through all of them and adding each as it
  *   is written come to the same rows, whatever the order and however often one is added.
  * - A row is an object written to the schema of the index, with a link as any object has, so the
  *   same data given twice is one row.
- * - An index comes only from `indexOver` and `union`, so what it reads is said by its source and its
- *   selections and not by its rows.
+ * - An index comes only from `indexOver` and `union`, so what it reads is said by its sources and
+ *   not by its rows.
  * - An index says which rows there are and not in what order: `orderedBy` gives it an order, and
  *   `scan` reads it in one.
+ * - As a source, an index gives its rows, each as the object it is, in whatever order it is read,
+ *   and nothing else: an object of its schema that the store holds is not one of them.
  */
-export class Index<D, F extends Fields<D>> {
+export class Index<D, F extends Fields<D>> extends Source<EncodedObject<D, F>> {
   readonly #derivation: Derivation<D, F>;
 
   static {
@@ -73,21 +159,21 @@ export class Index<D, F extends Fields<D>> {
   }
 
   constructor(derivation: Derivation<D, F>) {
+    super({ origin: derivation, itemOf: (blob) => blob.objectOf(derivation.schema) });
     this.#derivation = derivation;
   }
 
   /**
    * The index of what this index and `others` read, with the rows that each of them gives, written
-   * to the schema of this index. Each selection reads what its own source lists and hands what it
-   * reads that as to its own rows, so two selections that take one record each give the rows of
-   * what they read.
+   * to the schema of this index. Each reads what its own source lists and hands what it reads that
+   * as to its own rows, so two that take one record each give the rows of what they read.
    */
   union(...others: readonly Index<D, F>[]): Index<D, F> {
-    const parts = new Map<Source<D>, readonly Part<F>[]>();
+    const parts = new Map<Origin, readonly Part<F>[]>();
     for (const index of [this, ...others])
-      for (const [source, sourceParts] of index.#derivation.parts)
-        parts.set(source, [...(parts.get(source) ?? []), ...sourceParts]);
-    return new Index({ schema: this.#derivation.schema, parts });
+      for (const [origin, originParts] of index.#derivation.parts)
+        parts.set(origin, [...(parts.get(origin) ?? []), ...originParts]);
+    return new Index(new Derivation(this.#derivation.schema, parts));
   }
 
   /**
@@ -120,61 +206,29 @@ export class OrderedIndex<D, F extends Fields<D>, By extends FieldNames<F>> {
 }
 
 /**
- * The index of what `selection` takes of `source`, with the rows that `rows` gives of what it reads
- * each one as: the data of each row, which the index writes to `schema`.
+ * The index of what `source` reads, with the rows that `rows` gives of each: the data of each row,
+ * which the index writes to `schema`.
  *
- * - Over `"records"`, it reads the records of a store. What came from elsewhere is reached by
- *   following links from them.
- * - Over another index, it reads the rows of that index, in whatever order that one is read, and
- *   nothing else: an object of the schema of those rows that the store holds is not one of them.
- *   `reader` gives those rows by link, as it gives what the store holds.
  * - The rows depend on what is read and its closure, which `reader` gives by link, and on nothing
  *   else; what depends on what else is written, such as whether something replaced a record, is
  *   worked out from the rows when they are read.
+ * - Over another index, `reader` gives the rows of that index by link, as it gives what the store
+ *   holds.
  * - `reader` throws for a blob the store fails to give, and a scan of the index fails with that
- *   even where `selection` or `rows` catch it, such as to give no row of something that came from
+ *   even where the source or `rows` catch it, such as to give no row of something that came from
  *   elsewhere and does not read as they expect.
  */
-export function indexOver<D, F extends Fields<D>, T, S extends Fields<D> = Fields<D>>(
-  source: "records" | Index<D, S>,
-  selection: Selection<T>,
-  schema: Schema<D, F>,
-  rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
-): Index<D, F>;
-/**
- * The index of the blobs a store holds that read as objects of the schema of `selection`, records
- * or not, with the rows that `rows` gives of what it reads each one as.
- *
- * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
- *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
- *   be a stranger's.
- * - A blob gives no row when it is not an object in the encoding of the schema, when it names the
- *   schema and does not fit it, when `selection` or `rows` throw on it, or when the data of a row
- *   does not fit `schema`. Anyone can send one, and a scan that threw on it would fail
- *   from then on. A mistake in `selection` or `rows` therefore shows only as rows that are missing.
- * - `reader` throws as it does over records, and a scan of the index still fails with that.
- * - A scan reads every blob the store holds, attachments as well, once for each index.
- */
-export function indexOver<D, F extends Fields<D>, T, S extends Fields<D> = Fields<D>>(
-  source: "blobs",
-  selection: SelectionBySchema<D, T, S>,
-  schema: Schema<D, F>,
-  rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
-): Index<D, F>;
 export function indexOver<D, F extends Fields<D>, T>(
-  source: "records" | "blobs" | Index<D, Fields<D>>,
-  selection: Selection<T>,
+  source: Source<T>,
   schema: Schema<D, F>,
-  rows: (item: T, reader: Reader) => Iterable<F> | AsyncIterable<F>,
+  rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
 ): Index<D, F> {
+  const reading = readingOf(source);
   const part: Part<F> = async function* (blob) {
-    const item = await itemOf(selection, blob);
+    const item = await reading.itemOf(blob);
     if (item !== undefined) yield* rows(item, blob.reader);
   };
-  return new Index({
-    schema,
-    parts: new Map([[typeof source === "string" ? source : derivationOf(source), [part]]]),
-  });
+  return new Index(new Derivation(schema, new Map([[reading.origin, [part]]])));
 }
 
 /**
@@ -209,8 +263,8 @@ export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
  * - Only the rows of an index reach an index over it. They are kept beside the store and are not
  *   blobs of it: its `get` gives none of them, and an index over its blobs reads none.
  * - Each selection of the index reads each record from the store, except that a selection by schema
- *   is handed the record read with its schema, and only a record of that schema. The same goes for
- *   the rows of another index.
+ *   is handed the record read with its schema, and only a record of that schema. A row of another
+ *   index is handed as the object it is.
  * - Within one record, a blob, the record among them, is read from the store once, however many
  *   selections and rows read it, and the record is read and validated with a schema once,
  *   however many selections by that schema read it.
@@ -219,8 +273,8 @@ export interface Rows<D, F extends Fields<D>, By extends FieldNames<F>> {
  *   the rows given since. A staged batch reads its own on top of the rows that its store keeps.
  *
  * @throws when the data of a record does not fit the schema of a selection by schema that reads it.
- * @throws where a selection over records or over another index, or its rows, throw, and when the
- *   data of a row they give does not fit the schema of the index.
+ * @throws where a selection over records throws, where the `rows` of an index throw over records or
+ *   over another index, and when the data of a row they give does not fit the schema of the index.
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
  *   even where they catch it.
  * @throws when the index reads blobs, itself or through an index it reads, and `store` is something
@@ -231,17 +285,11 @@ export async function scan<D, F extends Fields<D>, By extends FieldNames<F>>(
   index: OrderedIndex<D, F, By>,
 ): Promise<Rows<D, F, By>> {
   if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex].sortedRowsOf(index);
-  if (readsBlobs(derivationOf(orderOf(index).index)))
+  if (derivationOf(orderOf(index).index).readsBlobs)
     throw new Error("only a store, a private store or a staged batch lists the blobs an index over blobs reads");
   const records: Link<unknown>[] = [];
   for await (const link of store.records()) records.push(link);
   return new AddedRows(noRows, { records, blobs: [] }, store).sortedRowsOf(index);
-}
-
-function readsBlobs<D>(derivation: Derivation<D, Fields<D>>): boolean {
-  return [...derivation.parts.keys()].some(
-    (source) => source === "blobs" || (source !== "records" && readsBlobs(source)),
-  );
 }
 
 /** The key under which `scan` asks a store for the rows it has of each index, which nothing outside this package can. */
@@ -452,17 +500,17 @@ interface Listed {
  * They are kept beside the store, which does not hold them: an index over this one reads them from
  * here, by link as it reads any blob, and whatever else it reads from the store.
  */
-class DerivedObjects<D, F extends Fields<D>> {
+class DerivedObjects<D, F extends Fields<D>> implements SourceObjects {
   readonly objects: readonly EncodedObject<D, F>[];
   readonly #derivation: Derivation<D, F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>>;
   /** The rows of each index that the index reads, all of which these are of. */
-  readonly #sources: ReadonlyMap<Derivation<D, Fields<D>>, DerivedObjects<D, Fields<D>>>;
+  readonly #sources: ReadonlyMap<SourceIndex, SourceObjects>;
 
   constructor(
     derivation: Derivation<D, F>,
     objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<D, F>> = new Map(),
-    sources: ReadonlyMap<Derivation<D, Fields<D>>, DerivedObjects<D, Fields<D>>> = new Map(),
+    sources: ReadonlyMap<SourceIndex, SourceObjects> = new Map(),
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
@@ -479,29 +527,29 @@ class DerivedObjects<D, F extends Fields<D>> {
   async adding({ records, blobs }: Listed, store: Reader, rows: RowsByIndex): Promise<DerivedObjects<D, F>> {
     const { schema, parts } = this.#derivation;
     const objectsByLink = new Map(this.#objectsByLink);
-    const sources = new Map<Derivation<D, Fields<D>>, DerivedObjects<D, Fields<D>>>();
-    for (const [source, sourceParts] of parts) {
+    const sources = new Map<SourceIndex, SourceObjects>();
+    for (const [origin, originParts] of parts) {
       let links: Links;
       let reader = store;
-      if (source === "records") links = records;
-      else if (source === "blobs") links = blobs;
+      if (origin === "records") links = records;
+      else if (origin === "blobs") links = blobs;
       else {
-        const derivedObjects = await rows.derivedObjectsOf(source);
-        const readCount = this.#sources.get(source)?.objects.length ?? 0;
-        links = derivedObjects.objects.slice(readCount).map(({ link }) => link);
-        reader = derivedObjects.readerOver(store);
-        sources.set(source, derivedObjects);
+        const sourceObjects = await origin.objectsIn(rows);
+        const readCount = this.#sources.get(origin)?.objects.length ?? 0;
+        links = sourceObjects.objects.slice(readCount).map(({ link }) => link);
+        reader = { get: (link) => sourceObjects.bytesOf(link) ?? store.get(link) };
+        sources.set(origin, sourceObjects);
       }
       for await (const link of links) {
         const blob = new ScannedBlob(link, reader);
-        for (const part of sourceParts) {
+        for (const part of originParts) {
           const partObjects: EncodedObject<D, F>[] = [];
           try {
             for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
             // Anyone can send a blob, and a scan that threw on one would fail from then on.
             // A store that failed still fails the scan, by the blob's `readFailure`.
-            if (source !== "blobs") throw error;
+            if (origin !== "blobs") throw error;
             continue;
           }
           for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
@@ -512,20 +560,15 @@ class DerivedObjects<D, F extends Fields<D>> {
     }
     const isSame =
       objectsByLink.size === this.#objectsByLink.size &&
-      [...sources].every(([source, derivedObjects]) => this.#sources.get(source) === derivedObjects);
+      [...sources].every(([origin, sourceObjects]) => this.#sources.get(origin) === sourceObjects);
     return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, sources);
   }
 
-  /** A reader of these rows and of those they were derived from, and of what `store` holds besides. */
-  readerOver(store: Reader): Reader {
-    return { get: (link) => this.#bytesOf(link) ?? store.get(link) };
-  }
-
-  #bytesOf(link: Link<unknown>): Uint8Array | undefined {
+  bytesOf(link: Link<unknown>): Uint8Array | undefined {
     const object = this.#objectsByLink.get(link);
     if (object !== undefined) return object.bytes;
     for (const source of this.#sources.values()) {
-      const bytes = source.#bytesOf(link);
+      const bytes = source.bytesOf(link);
       if (bytes !== undefined) return bytes;
     }
     return undefined;

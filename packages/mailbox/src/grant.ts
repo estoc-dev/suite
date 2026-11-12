@@ -10,7 +10,7 @@ import {
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Json, type Link, type Reader, readObject } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { indexOver, type Rows, type View } from "@estoc/store";
+import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
@@ -79,8 +79,7 @@ export class MailboxGrants {
     this.#identity = identity;
     this.series = {
       index: indexOver(
-        "blobs",
-        identity.signatures.selectionOver(this.schema),
+        selectedBlobs(identity.signatures.selectionOver(this.schema)),
         mailboxGrantRowSchema,
         (grant, reader) => this.#rowsOf(grant, reader),
       ).orderedBy("from", "to", "at", "signature"),

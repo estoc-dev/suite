@@ -66,7 +66,7 @@ sending half alone.
 
 ```ts
 interface Pickup {
-  readonly mailbox: Link<EncodedObject<Json>>;
+  readonly mailbox: Link<EncodedObject<Est>>;
   arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
 }
 
@@ -463,8 +463,8 @@ A transport is a plugin:
 
 ```ts
 interface Transport {
-  readonly schema: Schema<Json>;
-  deliver(mailbox: JsonObject, ciphertext: Uint8Array): Promise<void>;
+  readonly schema: Schema<Est>;
+  deliver(mailbox: EstMap, ciphertext: Uint8Array): Promise<void>;
 }
 ```
 

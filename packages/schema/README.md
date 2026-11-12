@@ -43,9 +43,9 @@ fields, and it is written to the root schema.
   an array are not optional.
 - Any other member, at any depth, is refused.
 
-A schema has one spelling. est orders the members of a map, and the
-language leaves nothing to write two ways, so the same title and fields
-are the same bytes and the same link.
+A schema written to the root schema has one spelling. est orders the
+members of a map, and the language leaves nothing to write two ways, so
+the same title and fields are the same bytes and the same link.
 
 ## The root schema
 
@@ -68,6 +68,9 @@ OBJECT([ "self",
 - A schema links to the root schema and to nothing else, so the closure of
   a schema is the two of them: `blobs` of a schema holds both, and they go
   wherever an object of the schema goes.
+- It is the one schema written to itself. `schema` given its title and
+  fields builds a schema written to the root schema, which is another blob
+  with another link and not a root schema.
 - A schema written to another root schema is of another language, and is
   refused.
 

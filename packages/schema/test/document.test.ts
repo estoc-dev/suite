@@ -143,6 +143,14 @@ describe("the root schema", () => {
     expect(rootSchema.blobs).toEqual([rootSchema.bytes]);
   });
 
+  it("is not the schema built from its title and fields, which is written to it", () => {
+    const built = schema("Schema", { title: string(), fields: any() });
+    expect(dataOf(built.bytes)).toEqual(document);
+    expect(schemaOf(built.bytes, est)).toBe(rootSchema.link);
+    expect(built.link).not.toBe(rootSchema.link);
+    expect(decodeSchema(built.bytes, schemaValidator).link).toBe(built.link);
+  });
+
   it("takes the data of every schema, and of nothing that lacks a title or fields", () => {
     const note = schema("Note", { text: string() });
     expect(() => rootSchema.validate(dataOf(note.bytes))).not.toThrow();

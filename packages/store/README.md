@@ -215,7 +215,7 @@ index in that order, which `scan` reads.
   reads each record once however many of them it is scanned in.
 
 ```ts
-import { objectsOf } from "@estoc/object";
+import { EstLink, objectsOf } from "@estoc/object";
 import { integer, link, schema, string } from "@estoc/schema";
 import { indexOver, scan, selectedRecords } from "@estoc/store";
 

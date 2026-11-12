@@ -104,11 +104,7 @@ export async function unzipBundle(
   return files;
 }
 
-/**
- * The zip of the bundle of `root` and `blobs`, without compression, which is
- * how a bundle travels from one program to another: as a message, a request
- * or an answer.
- */
+/** The zip, without compression, of the folder of `root` and `blobs`, a bundle of JSON objects. */
 export function packBundle(
   root: { readonly bytes: Bytes<unknown> },
   blobs: Iterable<Bytes<unknown>>,

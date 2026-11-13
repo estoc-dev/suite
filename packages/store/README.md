@@ -10,10 +10,12 @@ is kept in its own place and is not an object.
 A store holds two things.
 
 - **Blobs by link**: any bytes, objects or not, kept under their link. A
-  blob is added once and not changed, and is got by its link; the blobs are
-  not listed. Blobs from anyone can be kept together: a link names one
-  blob, so a blob someone sends can neither replace nor change one already
-  kept.
+  link names one blob wherever it is kept, and a store holds those that
+  have come to it: `get` gives nothing for a link whose blob it does not
+  hold, which another store may. A blob is added once and not changed.
+  Blobs from anyone can be kept together, as a blob someone sends can
+  neither replace nor change one already kept. So holding a blob says that
+  it came in, and not whose it is.
 - **Records**: the links of the objects the user wrote. They are the one
   thing in a store that is not a blob.
 
@@ -36,36 +38,44 @@ const signature = await actor.sign(note);
 await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
 
 for await (const link of store.records()) …;                       // note.link, signature.link
+for await (const link of store.blobs()) …;                         // those, and the blobs in their closures
 await signatures.read(signature.link, store, noIdentityVersions);  // the signature, verified
 ```
 
 ## What is listed
 
-Only what the user wrote is listed, and everything else is reached from it.
-Anyone can send a bundle to a mailbox, and a bundle can carry an object of
-any schema, so listing every blob of a schema would list an unsigned contact
-that a stranger slipped in among the user's own contacts.
+A store lists two things, which say different things. `records()` lists what
+the user wrote. `blobs()` lists what the store holds, which is what it has
+seen: anyone can send a bundle to a mailbox, and a bundle can carry an object
+of any schema, so the blobs of a schema include an unsigned contact that a
+stranger slipped in among the user's own contacts. What is the user's own is
+therefore read from the records, and everything else is reached from them.
 
 What comes from elsewhere comes in through something the user does, and that
 is an object the user writes: an `Inbound` record, of receiving a bundle at a
 mailbox, of taking a card, of importing a file. The blobs come in the same
-write, unlisted, and are read by following links from the record. A reader
-then knows they came from elsewhere without any query having to say so.
-Something signed carries its authority in its signature, and reads the same
-when reached by a link.
+write, as blobs and not as records, and are read by following links from the
+record. A reader then knows they came from elsewhere without any query
+having to say so. Something signed carries its authority in its signature,
+and reads the same when reached by a link.
 
 An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
-to them. So the store keeps the list itself rather than working it out.
+to them. So the store keeps the list of records itself rather than working
+it out.
 
-An index can still read the blobs a store holds by schema, as one over
+`blobs()` gives the links of the blobs a store holds, each once, in the order
+it took them in. It is for what asks what a store holds, such as a tool that
+shows it. It tells nothing of who wrote a blob, or of whether the user took
+it for their own.
+
+An index can read the blobs a store holds by schema, as one over
 `selectedBlobs`, and that is for objects that carry their authority in a
 signature. A signed identity reads the same whoever sent it and wherever it
 sits in a closure, and all that a stranger can send is an identity version
 its root signed. An unsigned contact read this way would be the stranger's,
 among the user's own. The types do not tell the two apart, so this rule is
-kept by the schema a program gives it. A `Store` has no method that lists its
-blobs.
+kept by the schema a program gives it.
 
 ## Writing
 
@@ -74,7 +84,7 @@ the blobs that go with them, under `blobs`. Each is copied and hashed as it
 comes in, so the store keeps blobs under the links it computed.
 
 Of the blobs, it keeps those in the closures of the records, and drops the
-rest. Nothing listed would reach them, so they could only wait to
+rest. No record would reach them, so they could only wait to
 be collected. A program can then give the schemas it writes to with every
 write, and a bundle can carry blobs outside its root's closure, without
 either leaving anything behind.
@@ -95,15 +105,16 @@ rejects with an error of its own, so a receiver can tell a bundle it will
 not take from a write that may go through the next time.
 
 Each blob goes in after the blobs it links to, and before the links that
-list it, so a write cut short leaves at worst blobs that nothing lists,
+list it, so a write cut short leaves at worst blobs that no record reaches,
 each with its closure.
 
-A store keeps the order it took its blobs in. `positionOf(link)` gives how
-many blobs it had taken in before that one, or `undefined` for one it does
-not hold. A blob is taken in by the first write that holds it, and writing
-it again leaves it where it was. A store only grows, so a blob keeps its
-position, and a reader can tell what the store held when the blob came in,
-as `@estoc/identity` does to honor a signature by the identity versions the
+A store keeps the order it took its blobs in, and `blobs()` lists them in
+it. `positionOf(link)` gives how many blobs it had taken in before that one,
+which is where it is among them, or `undefined` for one it does not hold. A
+blob is taken in by the first write that holds it, and writing it again
+leaves it where it was. A store only grows, so a blob keeps its position,
+and a reader can tell what the store held when the blob came in, as
+`@estoc/identity` does to honor a signature by the identity versions the
 store held when it took the signature in.
 
 There is no transaction that reads and then writes. Two devices that each
@@ -168,7 +179,8 @@ then writes.
 A store only grows, so what a staged batch found held is still held when
 it is committed, whatever was written in between. A batch that is not
 committed leaves nothing, and committing it again writes nothing more. A
-staged batch is not a store: it has no `write`, `closure` or `stage`.
+staged batch is not a store: it has no `write`, `closure`, `stage` or
+`blobs`.
 
 ## Reading
 
@@ -506,9 +518,10 @@ store's as well.
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,
 and one that the store holds already is not kept again. `scan` and `view`
-take a private store as they take a store. An index over blobs reads only the
-blobs kept in the private store, as its `records` lists only what was written
-to it, so one that the store beside holds is read only by following a link.
+take a private store as they take a store. Its `blobs` lists only the blobs
+kept in it, as its `records` lists only what was written to it, and an index
+over blobs reads only those, so one that the store beside holds is read only
+by following a link.
 Its `positionOf` gives where it kept a blob, and nothing for one that only
 the store beside holds.
 
@@ -523,8 +536,9 @@ links as it is given them; the store does the hashing and decoding, of
 what goes in and of what comes back. The list keeps the order in which
 links were first put, and a backend gives it from any point on, so a store
 reads only the records listed since it last scanned. A backend gives the links
-of its blobs in the same way, which a store uses for an index over blobs, and
-where a blob is among them, which is the store's `positionOf`.
+of its blobs in the same way, which are the store's `blobs` and what it reads
+for an index over blobs, and where a blob is among them, which is the store's
+`positionOf`.
 `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 

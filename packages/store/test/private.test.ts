@@ -25,6 +25,12 @@ async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Prom
   return links;
 }
 
+async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.blobs()) links.push(link);
+  return links;
+}
+
 describe("a private store", () => {
   it("gives what is kept in it and what the store beside it holds, and lists only what is written to it", async () => {
     const { store, privateStore } = sides();
@@ -47,6 +53,16 @@ describe("a private store", () => {
     expect(await privateStore.positionOf(secret.link)).toBe(0);
     expect(await privateStore.positionOf(card.link)).toBeUndefined();
     expect(await store.positionOf(card.link)).toBe(2);
+  });
+
+  it("lists the blobs kept in it, and none that only the store beside it holds", async () => {
+    const { store, privateStore } = sides();
+    const card = object({ name: "Alice" });
+    await store.write({ records: [card], blobs: [...anything.blobs] });
+    const image = utf8("an image");
+    const secret = object({ card: new LinkValue(card.link), image: new LinkValue(linkOf(image)) });
+    await privateStore.write({ records: [secret], blobs: [image] });
+    expect(await blobsOf(privateStore)).toEqual([linkOf(image), secret.link]);
   });
 
   it("keeps in its backend nothing that the store beside it holds already", async () => {
@@ -95,6 +111,7 @@ describe("a private store", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       records: () => store.records(),
+      blobs: () => store.blobs(),
       positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
@@ -138,6 +155,7 @@ describe("the store beside a private store", () => {
     expect(await store.get(secret.link)).toBeUndefined();
     await expect(store.closure(secret.link)).rejects.toThrow(`the store does not hold ${secret.link}`);
     expect(await recordsOf(store)).toEqual([card.link]);
+    expect(await blobsOf(store)).not.toContain(secret.link);
   });
 
   it("refuses to write anything with a blob kept in the private store in its closure", async () => {

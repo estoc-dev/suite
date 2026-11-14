@@ -18,6 +18,7 @@ import {
   type OrderedIndex,
   PrivateStore,
   type Rows,
+  recordSchema,
   Store,
   scan,
   selectedRecords,
@@ -295,7 +296,8 @@ describe("a conversation", () => {
     // What Alice wrote, written again to another store, last first and twice.
     const copy = new Store(new MemoryBackend());
     const recordLinks = await all(alice.store.records());
-    for (const link of [...recordLinks, ...recordLinks].reverse()) {
+    for (const recordLink of [...recordLinks, ...recordLinks].reverse()) {
+      const link = (await readObject(alice.store, recordLink, recordSchema)).data.object.link;
       const closure = await alice.store.closure(link);
       const bytes = closure.get(link);
       assert.exists(bytes);

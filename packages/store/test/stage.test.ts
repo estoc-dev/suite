@@ -14,6 +14,7 @@ import {
   indexOver,
   MemoryBackend,
   type OrderedIndex,
+  recordSchema,
   Store,
   selectedBlobs,
   selectedRecords,
@@ -32,9 +33,10 @@ const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
 const newStore = () => new Store(new MemoryBackend());
 
-async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
 
@@ -70,10 +72,10 @@ describe("a staged batch", () => {
     await store.write({ records: [held], blobs: [...anything.blobs] });
     const note = object({ held: new LinkValue(held.link) });
     const stagedStore = await store.stage({ records: [note, held] });
-    expect(await stagedStore.positionOf(held.link)).toBe(2);
+    expect(await stagedStore.positionOf(held.link)).toBe(3);
     expect(await stagedStore.positionOf(note.link)).toBeUndefined();
     await stagedStore.commit();
-    expect(await stagedStore.positionOf(note.link)).toBe(3);
+    expect(await stagedStore.positionOf(note.link)).toBe(5);
   });
 
   it("lists the records of the store and of the batch, each once", async () => {
@@ -81,7 +83,7 @@ describe("a staged batch", () => {
     const [first, second, third] = [object({ text: "first" }), object({ text: "second" }), object({ text: "third" })];
     await store.write({ records: [first], blobs: [...anything.blobs] });
     const stagedStore = await store.stage({ records: [first, second, second, third] });
-    expect((await recordsOf(stagedStore)).sort()).toEqual([first.link, second.link, third.link].sort());
+    expect((await recordedObjectsOf(stagedStore)).sort()).toEqual([first.link, second.link, third.link].sort());
   });
 
   it("is refused as a write of the batch is refused, and leaves the store as it was", async () => {
@@ -99,17 +101,17 @@ describe("a staged batch", () => {
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     expect(await store.get(carriedObject.link)).toBeUndefined();
-    expect(await recordsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
   });
 
   it("leaves the store as it was until it is committed", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const stagedStore = await store.stage({ records: [note], blobs: [...anything.blobs] });
-    expect(await recordsOf(stagedStore)).toEqual([note.link]);
+    expect(await recordedObjectsOf(stagedStore)).toEqual([note.link]);
     expect(await store.get(note.link)).toBeUndefined();
     expect(await store.get(anything.link)).toBeUndefined();
-    expect(await recordsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
   });
 
   it("writes, once committed, what a write of the batch writes", async () => {
@@ -122,7 +124,7 @@ describe("a staged batch", () => {
     const stagedStore = await committedStore.stage(batch);
     await stagedStore.commit();
     await stagedStore.commit();
-    expect(await recordsOf(committedStore)).toEqual(await recordsOf(writtenStore));
+    expect(await recordedObjectsOf(committedStore)).toEqual(await recordedObjectsOf(writtenStore));
     for (const link of [note.link, linkOf(image), linkOf(stray), anything.link])
       expect(await committedStore.get(link)).toEqual(await writtenStore.get(link));
   });
@@ -136,7 +138,7 @@ describe("a staged batch", () => {
     const other = object({ text: "other" });
     await store.write({ records: [other, note] });
     await stagedStore.commit();
-    expect((await recordsOf(store)).sort()).toEqual([heldObject.link, other.link, note.link].sort());
+    expect((await recordedObjectsOf(store)).sort()).toEqual([heldObject.link, other.link, note.link].sort());
     expect(await store.get(note.link)).toEqual(note.bytes);
   });
 

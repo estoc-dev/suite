@@ -30,7 +30,7 @@ export type Prefix<K extends readonly unknown[]> =
 /** The data of the rows that a source and the `rows` of an index give of what the index reads. */
 type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 
-/** Where what an index reads is listed: the records of a store, the blobs it holds, or the rows of another index. */
+/** Where what an index reads is listed: the objects a store records, the blobs it holds, or the rows of another index. */
 export interface Origin {
   /** Whether it lists the blobs a store holds, itself or through an index it reads. */
   readonly readsBlobs: boolean;
@@ -43,7 +43,7 @@ export interface Origin {
  * the index are short of whatever it would have given.
  */
 export interface ItemFailure {
-  /** The link of the record, the blob or the row of another index that was read. */
+  /** The link of the recorded object, the blob or the row of another index that was read. */
   readonly item: Link<unknown>;
   readonly error: unknown;
 }
@@ -62,9 +62,9 @@ export interface Listing {
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 
-const listedRecords: Origin = {
+const recordedObjects: Origin = {
   readsBlobs: false,
-  listingIn: (rows) => rows.listedRecords(),
+  listingIn: (rows) => rows.recordedObjects(),
 };
 
 const heldBlobs: Origin = {
@@ -107,9 +107,9 @@ export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
 export let orderOf: <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => Order<F, By>;
 
 /**
- * What an index reads, each read as a `T`: the records or the blobs of a store that a selection
- * takes, from `selectedRecords` and `selectedBlobs`, or the rows of another index, which is itself a
- * source.
+ * What an index reads, each read as a `T`: the recorded objects or the blobs of a store that a
+ * selection takes, from `selectedRecords` and `selectedBlobs`, or the rows of another index, which
+ * is itself a source.
  *
  * Where things are listed and what each is read as go together. A reading that trusts what an index
  * derived holds only over the rows of that index, so it is given as a source of those rows, and not
@@ -128,15 +128,16 @@ export class Source<T> {
 }
 
 /**
- * The records of a store that `selection` takes, each as what it reads it as. What came from
- * elsewhere is reached by following links from them.
+ * The objects a store records that `selection` takes, each as what it reads it as. They are what
+ * the records link to, and not the records themselves. What came from elsewhere is reached by
+ * following links from them.
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: listedRecords, itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
- * The blobs a store holds that read as objects of the schema of `selection`, records or not, each
+ * The blobs a store holds that read as objects of the schema of `selection`, recorded or not, each
  * as what `selection` reads it as.
  *
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
@@ -155,7 +156,7 @@ export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchem
 
 /**
  * What an application keeps of what it reads from a store, as rows: objects of one schema, derived
- * from the records its user writes, from the blobs the store holds, or from the rows of another
+ * from the objects its user records, from the blobs the store holds, or from the rows of another
  * index.
  *
  * - An index is the set of rows that those give, so going through all of them and adding each as it
@@ -202,8 +203,8 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    * - A field that a row leaves out comes before any value. Numbers are in their order, strings in
    *   the order of their code units, and any other value, such as a link, in the order of its bytes
    *   in the object format.
-   * - The orders of one index share its rows, so a store that keeps them reads each record once
-   *   however many orders it is scanned in.
+   * - The orders of one index share its rows, so a store that keeps them reads each recorded object
+   *   once however many orders it is scanned in.
    */
   orderedBy<const By extends FieldNames<F>>(...by: By): OrderedIndex<F, By> {
     return new OrderedIndex({ index: this, by });
@@ -228,7 +229,7 @@ export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
  * which the index writes to `schema`.
  *
  * - The rows depend on what is read and its closure, which `reader` gives by link, and on nothing
- *   else; what depends on what else is written, such as whether something replaced a record, is
+ *   else; what depends on what else is written, such as whether something replaced an object, is
  *   worked out from the rows when they are read.
  * - Over another index, `reader` gives the rows of that index and the schema they are written to
  *   by link, as it gives what the store holds.

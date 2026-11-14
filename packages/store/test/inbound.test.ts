@@ -1,5 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, type ValueMap } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject, type ValueMap } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +8,7 @@ import {
   indexOver,
   MemoryBackend,
   RefusedBatch,
+  recordSchema,
   Store,
   scan,
   selectedRecords,
@@ -33,9 +34,10 @@ const ticking = (start = 1000) => {
 };
 const intakeOf = (store: Store, clock = ticking()) => new Intake(store, clock);
 
-async function recordsOf(store: Store): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
 
@@ -62,13 +64,13 @@ describe("inboundSchema", () => {
 });
 
 describe("an intake", () => {
-  it("keeps a bundle with a record that it came in, by its clock, which is the only record it writes", async () => {
+  it("keeps a bundle and records an Inbound that says it came in, by its clock, and nothing else", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ image: new LinkValue(linkOf(image)) });
     const record = await intakeOf(store).receive(bundleOf(note, [image, ...anything.blobs]));
     expect(record.data).toEqual({ bundle: new LinkValue(note.link), at: 1000 });
-    expect(await recordsOf(store)).toEqual([record.link]);
+    expect(await recordedObjectsOf(store)).toEqual([record.link]);
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
     expect(await store.get(inboundSchema.link)).toEqual(inboundSchema.bytes);
@@ -81,7 +83,7 @@ describe("an intake", () => {
     const note = object({ text: "hello" });
     const record = await intakeOf(store).receive(bundleOf(note), mailbox);
     expect(record.data).toEqual({ bundle: new LinkValue(note.link), at: 1000, via: new LinkValue(mailbox.link) });
-    expect(await recordsOf(store)).toEqual([record.link]);
+    expect(await recordedObjectsOf(store)).toEqual([record.link]);
     expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
     expect(await store.get(channel.link)).toEqual(channel.bytes);
   });
@@ -101,7 +103,7 @@ describe("an intake", () => {
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
     expect(second.data.at).toBeGreaterThan(first.data.at);
-    expect((await recordsOf(store)).sort()).toEqual([first.link, second.link].sort());
+    expect((await recordedObjectsOf(store)).sort()).toEqual([first.link, second.link].sort());
   });
 
   it("takes a bundle that leaves out blobs the store holds", async () => {
@@ -119,7 +121,7 @@ describe("an intake", () => {
     const note = object({ image: new LinkValue(linkOf(missing)) });
     const intake = intakeOf(store);
     await expect(intake.receive(bundleOf(note))).rejects.toThrow(RefusedBatch);
-    expect(await recordsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
   });
 
@@ -129,19 +131,19 @@ describe("an intake", () => {
     const note = object({ text: "hello" });
     const intake = intakeOf(store);
     await expect(intake.receive(bundleOf(note), mailbox)).rejects.toThrow(RefusedBatch);
-    expect(await recordsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
     expect(await store.get(mailbox.link)).toBeUndefined();
   });
 });
 
-describe("the records of an intake", () => {
+describe("what an intake records", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
   const cameIn = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
   ]).orderedBy("bundle", "at");
 
-  it("give an index when each bundle came in, the earliest first", async () => {
+  it("gives an index when each bundle came in, the earliest first", async () => {
     const store = newStore();
     const intake = intakeOf(store);
     const bundle = bundleOf(object({ text: "hello" }));

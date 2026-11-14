@@ -1,7 +1,16 @@
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { bytes, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Backend, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedRecords } from "../src/index.ts";
+import {
+  type Backend,
+  indexOver,
+  MemoryBackend,
+  PrivateStore,
+  recordSchema,
+  Store,
+  scan,
+  selectedRecords,
+} from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -19,11 +28,14 @@ function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Bac
   return { store, privateStore: new PrivateStore(store, privateBackend) };
 }
 
-async function recordsOf(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
+
+const recordOf = (recorded: EncodedObject) => encodeObject(recordSchema, { object: new LinkValue(recorded.link) });
 
 async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
@@ -32,7 +44,7 @@ async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promis
 }
 
 describe("a private store", () => {
-  it("gives what is kept in it and what the store beside it holds, and lists among its records only those written to it", async () => {
+  it("gives what is kept in it and what the store beside it holds, and records only what is written to it", async () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
@@ -40,8 +52,8 @@ describe("a private store", () => {
     await privateStore.write({ records: [secret] });
     expect(await privateStore.get(secret.link)).toEqual(secret.bytes);
     expect(await privateStore.get(card.link)).toEqual(card.bytes);
-    expect(await recordsOf(privateStore)).toEqual([secret.link]);
-    expect(await recordsOf(store)).toEqual([card.link]);
+    expect(await recordedObjectsOf(privateStore)).toEqual([secret.link]);
+    expect(await recordedObjectsOf(store)).toEqual([card.link]);
   });
 
   it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
@@ -52,7 +64,7 @@ describe("a private store", () => {
     await privateStore.write({ records: [secret] });
     expect(await privateStore.positionOf(secret.link)).toBe(0);
     expect(await privateStore.positionOf(card.link)).toBeUndefined();
-    expect(await store.positionOf(card.link)).toBe(2);
+    expect(await store.positionOf(card.link)).toBe(3);
   });
 
   it("lists the blobs kept in it, and none that only the store beside it holds", async () => {
@@ -62,7 +74,7 @@ describe("a private store", () => {
     const image = utf8("an image");
     const secret = object({ card: new LinkValue(card.link), image: new LinkValue(linkOf(image)) });
     await privateStore.write({ records: [secret], blobs: [image] });
-    expect(await blobsOf(privateStore)).toEqual([linkOf(image), secret.link]);
+    expect(await blobsOf(privateStore)).toEqual([linkOf(image), secret.link, recordOf(secret).link]);
   });
 
   it("keeps in its backend nothing that the store beside it holds already", async () => {
@@ -79,6 +91,16 @@ describe("a private store", () => {
     expect(await backend.has(anything.link)).toBe(false);
   });
 
+  it("records an object that the store beside it records as well, and does not keep the record again", async () => {
+    const backend = new MemoryBackend();
+    const { store, privateStore } = sides(new MemoryBackend(), backend);
+    const card = object({ name: "Alice" });
+    await store.write({ records: [card], blobs: [...anything.blobs] });
+    await privateStore.write({ records: [card] });
+    expect(await recordedObjectsOf(privateStore)).toEqual([card.link]);
+    expect(await backend.has(recordOf(card).link)).toBe(false);
+  });
+
   it("refuses a batch with a blob in a record's closure that neither the batch, it nor the store beside it holds", async () => {
     const { privateStore } = sides();
     const absent = object({ name: "absent" });
@@ -86,7 +108,7 @@ describe("a private store", () => {
     await expect(privateStore.write({ records: [secret], blobs: [...anything.blobs] })).rejects.toThrow(
       `${secret.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
-    expect(await recordsOf(privateStore)).toEqual([]);
+    expect(await recordedObjectsOf(privateStore)).toEqual([]);
   });
 
   it("refuses to give a blob when the backend of the store beside it gives other bytes under the link", async () => {
@@ -154,7 +176,7 @@ describe("the store beside a private store", () => {
     await privateStore.write({ records: [secret] });
     expect(await store.get(secret.link)).toBeUndefined();
     await expect(store.closure(secret.link)).rejects.toThrow(`the store does not hold ${secret.link}`);
-    expect(await recordsOf(store)).toEqual([card.link]);
+    expect(await recordedObjectsOf(store)).toEqual([card.link]);
     expect(await blobsOf(store)).not.toContain(secret.link);
   });
 
@@ -166,6 +188,6 @@ describe("the store beside a private store", () => {
     await expect(store.write({ records: [leak], blobs: [...anything.blobs] })).rejects.toThrow(
       `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,
     );
-    expect(await recordsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
   });
 });

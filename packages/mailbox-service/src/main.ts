@@ -1,7 +1,7 @@
 import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
-import { type Link, objectsOf } from "@estoc/object";
-import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { type Link, objectsOf, readObject } from "@estoc/object";
+import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { loadMailboxService } from "./server.ts";
@@ -109,8 +109,9 @@ async function secretKeyIn(privateStore: PrivateStore, path: string): Promise<Se
   const selection = objectsOf(secretKeys.schema);
   const links: Link<SecretKeyObject>[] = [];
   for await (const record of privateStore.records()) {
-    const object = await selection.read(record, privateStore);
-    if (object !== undefined) links.push(object.link as Link<SecretKeyObject>);
+    const { object } = (await readObject(privateStore, record, recordSchema)).data;
+    const secretKey = await selection.read(object.link, privateStore);
+    if (secretKey !== undefined) links.push(secretKey.link as Link<SecretKeyObject>);
   }
   const [link, ...others] = links;
   if (link === undefined || others.length > 0)

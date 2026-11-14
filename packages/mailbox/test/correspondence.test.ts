@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, RefusedBatch, Store } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordSchema, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
@@ -121,9 +121,10 @@ async function writeNote({ actor, store }: Person, text: string) {
   return signature;
 }
 
-async function listed({ store }: Person): Promise<Link<unknown>[]> {
+async function recordedObjectsOf({ store }: Person): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
 
@@ -144,7 +145,7 @@ describe("a grant", () => {
     const before = now;
     const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
 
-    expect(await listed(alice)).toContain(signature.link);
+    expect(await recordedObjectsOf(alice)).toContain(signature.link);
     const readSignature = await signatures.read(signature.link, alice.store, noIdentityVersions);
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
     const { data } = await readObject(alice.store, readSignature.object, grants.schema);
@@ -171,9 +172,9 @@ describe("a grant", () => {
   it("is refused when the store does not hold a mailbox it names, and nothing is written", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const elsewhere = network.queue().mailbox(new Uint8Array(32).fill(7));
-    const before = await listed(alice);
+    const before = await recordedObjectsOf(alice);
     await expect(alice.correspondence.grant(bob.signedIdentity, [elsewhere.link])).rejects.toThrow(RefusedBatch);
-    expect(await listed(alice)).toEqual(before);
+    expect(await recordedObjectsOf(alice)).toEqual(before);
   });
 });
 
@@ -186,7 +187,7 @@ describe("sending to someone", () => {
     const signature = await writeNote(alice, "hi Bob");
     const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
     expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([first.inbox.mailbox, second.inbox.mailbox]);
-    expect(await listed(alice)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
+    expect(await recordedObjectsOf(alice)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
     expect(await first.inbox.collect(first.pickup)).toHaveLength(1);
     expect(await second.inbox.collect(second.pickup)).toHaveLength(1);
   });
@@ -265,11 +266,11 @@ describe("sending to someone", () => {
     await grantMailboxes(bob, alice, [gone, busy]);
 
     const signature = await writeNote(alice, "hi Bob");
-    const before = await listed(alice);
+    const before = await recordedObjectsOf(alice);
     await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({
       kind: "later",
     });
-    expect(await listed(alice)).toEqual(before);
+    expect(await recordedObjectsOf(alice)).toEqual(before);
   });
 
   it("sends nothing when the post has no transport for a mailbox of the grant", async () => {

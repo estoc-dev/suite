@@ -1,8 +1,8 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
+import { digestOf, type EncodedObject, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { type Backend, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
+import { type Backend, MemoryBackend, RefusedBatch, recordSchema, Store } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -18,6 +18,7 @@ const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7))
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
+const recordOf = (recorded: EncodedObject) => encodeObject(recordSchema, { object: new LinkValue(recorded.link) });
 // An array in CBOR, under no tag of an object.
 const notAnObject = Uint8Array.of(0x82, 1, 2);
 
@@ -64,13 +65,23 @@ describe("a store", () => {
     await expect(store.get(keptObject.link)).rejects.toThrow(`another blob under ${keptObject.link}`);
   });
 
-  it("lists its records, and not the blobs written with them", async () => {
+  it("lists a record of each object written, which links to it, and not the blobs written with them", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
     await store.write({ records: [note], blobs: [image, ...anything.blobs] });
-    expect(await recordsOf(store)).toEqual([note.link]);
+    expect(await recordsOf(store)).toEqual([recordOf(note).link]);
+    expect(await store.get(recordOf(note).link)).toEqual(recordOf(note).bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
+  });
+
+  it("does not list a record that came in as a blob", async () => {
+    const store = newStore();
+    const note = object({ text: "hello" });
+    const carrier = object({ received: new LinkValue(recordOf(note).link) });
+    await store.write({ records: [carrier], blobs: [recordOf(note).bytes, note.bytes, ...anything.blobs] });
+    expect(await store.get(recordOf(note).link)).toEqual(recordOf(note).bytes);
+    expect(await recordsOf(store)).toEqual([recordOf(carrier).link]);
   });
 
   it("keeps of the blobs written with its records only those in their closures", async () => {
@@ -90,25 +101,25 @@ describe("a store", () => {
     expect(await store.get(linkOf(stray))).toBeUndefined();
   });
 
-  it("lists an object once, however many times it is written", async () => {
+  it("records an object once, however many times it is written", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     await store.write({ records: [note, note], blobs: [...anything.blobs] });
     await store.write({ records: [note] });
-    expect(await recordsOf(store)).toEqual([note.link]);
+    expect(await recordsOf(store)).toEqual([recordOf(note).link]);
   });
 
-  it("lists among its records an object that came in with another, once it is written as one", async () => {
+  it("records an object that came in with another, once it is written as one of the records", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const record = object({ received: new LinkValue(note.link) });
-    await store.write({ records: [record], blobs: [note.bytes, ...anything.blobs] });
-    expect(await recordsOf(store)).toEqual([record.link]);
+    const carrier = object({ received: new LinkValue(note.link) });
+    await store.write({ records: [carrier], blobs: [note.bytes, ...anything.blobs] });
+    expect(await recordsOf(store)).toEqual([recordOf(carrier).link]);
     await store.write({ records: [note] });
-    expect((await recordsOf(store)).sort()).toEqual([record.link, note.link].sort());
+    expect((await recordsOf(store)).sort()).toEqual([recordOf(carrier).link, recordOf(note).link].sort());
   });
 
-  it("refuses a batch with a record that is not an object, and keeps none of it", async () => {
+  it("refuses a batch that records what is not an object, and keeps none of it", async () => {
     const store = newStore();
     const carriedObject = object({ text: "carried" });
     const followedByAByte = Uint8Array.of(...object({ text: "hello" }).bytes, 0);
@@ -129,9 +140,9 @@ describe("a store", () => {
       `${note.link} links to ${linkOf(image)}, which neither the batch nor the store holds`,
     );
     const unheldSchema = schema("Unheld", { text: string() });
-    const writtenRecord = encodeObject(unheldSchema, { text: "hello" });
-    await expect(store.write({ records: [writtenRecord] })).rejects.toThrow(
-      `${writtenRecord.link} links to ${unheldSchema.link}`,
+    const writtenObject = encodeObject(unheldSchema, { text: "hello" });
+    await expect(store.write({ records: [writtenObject] })).rejects.toThrow(
+      `${writtenObject.link} links to ${unheldSchema.link}`,
     );
     expect(await store.get(carriedObject.link)).toBeUndefined();
     expect(await recordsOf(store)).toEqual([]);
@@ -165,14 +176,14 @@ describe("a store", () => {
     await store.write({ records: [first], blobs: [image, ...anything.blobs] });
     const second = object({ text: "second", image: new LinkValue(linkOf(image)) });
     await store.write({ records: [second] });
-    expect((await recordsOf(store)).sort()).toEqual([first.link, second.link].sort());
+    expect((await recordsOf(store)).sort()).toEqual([recordOf(first).link, recordOf(second).link].sort());
   });
 
   it("takes a string that is a link as a whole as a string, and does not ask for the blob it names", async () => {
     const store = newStore();
     const commitment = object({ hash: linkOf(utf8("a secret")) });
     await store.write({ records: [commitment], blobs: [...anything.blobs] });
-    expect(await recordsOf(store)).toEqual([commitment.link]);
+    expect(await recordsOf(store)).toEqual([recordOf(commitment).link]);
     expect([...(await store.closure(commitment.link)).keys()].sort()).toEqual(
       [commitment.link, anything.link, rootSchema.link].sort(),
     );
@@ -195,7 +206,15 @@ describe("a store", () => {
     const inner = object({ image: new LinkValue(linkOf(image)) });
     const outer = object({ inner: new LinkValue(inner.link) });
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
-    expect(order).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
+    expect(order).toEqual([
+      rootSchema.link,
+      recordSchema.link,
+      anything.link,
+      linkOf(image),
+      inner.link,
+      outer.link,
+      recordOf(outer).link,
+    ]);
   });
 
   it("gives where it took in each blob, after the blobs it links to, and keeps it when the blob is written again", async () => {
@@ -205,8 +224,17 @@ describe("a store", () => {
     const outer = object({ inner: new LinkValue(inner.link) });
     await store.write({ records: [inner], blobs: [image, ...anything.blobs] });
     await store.write({ records: [outer, inner], blobs: [image] });
-    const links = [rootSchema.link, anything.link, linkOf(image), inner.link, outer.link];
-    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
+    const links = [
+      rootSchema.link,
+      recordSchema.link,
+      anything.link,
+      linkOf(image),
+      inner.link,
+      recordOf(inner).link,
+      outer.link,
+      recordOf(outer).link,
+    ];
+    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(await store.positionOf(linkOf(utf8("never written")))).toBeUndefined();
   });
 
@@ -219,9 +247,17 @@ describe("a store", () => {
     await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
     await store.write({ records: [outer], blobs: [inner.bytes, image] });
     const links = await blobsOf(store);
-    expect(links).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
-    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
-    expect(await recordsOf(store)).toEqual([outer.link]);
+    expect(links).toEqual([
+      rootSchema.link,
+      recordSchema.link,
+      anything.link,
+      linkOf(image),
+      inner.link,
+      outer.link,
+      recordOf(outer).link,
+    ]);
+    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(await recordsOf(store)).toEqual([recordOf(outer).link]);
   });
 
   it("lists among its blobs none that a write dropped or refused", async () => {
@@ -231,7 +267,13 @@ describe("a store", () => {
     await store.write({ records: [note], blobs: [stray, ...anything.blobs] });
     const incomplete = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
     await expect(store.write({ records: [incomplete], blobs: [stray] })).rejects.toThrow(RefusedBatch);
-    expect(await blobsOf(store)).toEqual([rootSchema.link, anything.link, note.link]);
+    expect(await blobsOf(store)).toEqual([
+      rootSchema.link,
+      recordSchema.link,
+      anything.link,
+      note.link,
+      recordOf(note).link,
+    ]);
   });
 
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {

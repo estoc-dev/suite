@@ -10,7 +10,7 @@ import {
   type Prefix,
 } from "./source.ts";
 
-/** The rows of an ordered index, each once however many records give it. */
+/** The rows of an ordered index, each once however many of what the index reads give it. */
 export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
   /**
    * The rows that hold `prefix` in the first fields of the order, one value for each, in the order of

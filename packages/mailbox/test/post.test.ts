@@ -8,6 +8,7 @@ import {
   indexOver,
   MemoryBackend,
   PrivateStore,
+  recordSchema,
   Store,
   scan,
   selectedRecords,
@@ -25,9 +26,10 @@ const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
 const signatureBlobs = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
-async function listed(store: { records(): AsyncIterable<Link<never>> }): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
 
@@ -86,7 +88,7 @@ describe("an outbox", () => {
       at: 1000,
       link: delivery.link,
     });
-    expect(await listed(store)).toContain(delivery.link);
+    expect(await recordedObjectsOf(store)).toContain(delivery.link);
     expect((await readObject(store, delivery.link, outboundSchema)).data).toEqual({
       bundle: new LinkValue(signature.link),
       mailbox: new LinkValue(mailbox.link),
@@ -120,12 +122,12 @@ describe("an outbox", () => {
     await store.write({ records: [signature], blobs: signatureBlobs });
     const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
     await handOver(network, store, elsewhere);
-    const before = await listed(store);
+    const before = await recordedObjectsOf(store);
 
     const sending = (await post.outbox(elsewhere.link)).send(signature.link);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
     await expect(sending).rejects.toMatchObject({ kind: "gone" });
-    expect(await listed(store)).toEqual(before);
+    expect(await recordedObjectsOf(store)).toEqual(before);
   });
 
   it("refuses a root that the store does not hold, and sends nothing", async () => {
@@ -148,12 +150,12 @@ describe("an outbox", () => {
     const { store, post, queue, mailbox } = await prepareSender(network, new Store(backend));
     await store.write({ records: [signature], blobs: signatureBlobs });
     const outbox = await post.outbox(mailbox.link);
-    const before = await listed(store);
+    const before = await recordedObjectsOf(store);
 
     lostLink = hello.link;
     await expect(outbox.send(signature.link)).rejects.toThrow(`the store does not hold ${hello.link}`);
     expect(queue.take()).toEqual([]);
-    expect(await listed(store)).toEqual(before);
+    expect(await recordedObjectsOf(store)).toEqual(before);
   });
 
   it("is not made for a mailbox that the store does not hold", async () => {
@@ -168,8 +170,8 @@ describe("an inbox", () => {
   it("is opened at a mailbox that the store holds, with its key kept in the private store alone", async () => {
     const network = new MemoryNetwork();
     const { store, privateStore, inbox } = await openReceiver(network);
-    expect(await listed(store)).toEqual([inbox.mailbox]);
-    expect(await listed(privateStore)).toEqual([inbox.key]);
+    expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox]);
+    expect(await recordedObjectsOf(privateStore)).toEqual([inbox.key]);
     expect(await store.get(inbox.key)).toBeUndefined();
 
     const { data } = await readObject(privateStore, inbox.key, mailboxKeySchema);
@@ -206,7 +208,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1000 },
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1001 },
     ]);
-    expect(await listed(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
+    expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect((await signatures.read(signature.link, store, noIdentityVersions)).object).toBe(hello.link);
     expect(queue.take()).toEqual([]);
   });
@@ -234,7 +236,7 @@ describe("an inbox", () => {
 
     const deliveries = await inbox.collect(pickup);
     expect(deliveries.map(({ bundle }) => bundle)).toEqual([signature.link]);
-    expect(await listed(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
+    expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect(queue.take()).toEqual([]);
   });
 
@@ -283,7 +285,7 @@ describe("an inbox", () => {
     await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
 
     await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`links to ${hello.link}`);
-    expect(await listed(store)).toEqual([inbox.mailbox]);
+    expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox]);
     expect(await store.get(signature.link)).toBeUndefined();
   });
 
@@ -294,7 +296,7 @@ describe("an inbox", () => {
     await sendTo(network, other.store, other.inbox.mailbox, signatureBlobs);
 
     await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/does not open/);
-    expect(await listed(store)).toEqual([inbox.mailbox]);
+    expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox]);
   });
 
   it("is not opened at a mailbox that names another key than the one given, and writes nothing", async () => {
@@ -302,8 +304,8 @@ describe("an inbox", () => {
     const { store, privateStore, post } = await postAt(network);
     const queue = network.queue();
     await expect(post.openInbox(() => queue.mailbox(bob.publicKey))).rejects.toThrow(/names another key/);
-    expect(await listed(store)).toEqual([]);
-    expect(await listed(privateStore)).toEqual([]);
+    expect(await recordedObjectsOf(store)).toEqual([]);
+    expect(await recordedObjectsOf(privateStore)).toEqual([]);
   });
 
   it("is not made from a key whose secret is not of the key its mailbox names", async () => {

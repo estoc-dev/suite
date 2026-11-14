@@ -5,8 +5,8 @@ import {
   type Backend,
   indexOver,
   MemoryBackend,
-  PrivateStore,
   recordSchema,
+  SecretStore,
   Store,
   scan,
   selectedRecords,
@@ -23,9 +23,9 @@ const anything = schema("Anything", {
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
-function sides(sharedBackend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
+function sides(sharedBackend: Backend = new MemoryBackend(), secretBackend: Backend = new MemoryBackend()) {
   const store = new Store(sharedBackend);
-  return { store, privateStore: new PrivateStore(store, privateBackend) };
+  return { store, secretStore: new SecretStore(store, secretBackend) };
 }
 
 async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise<Link<unknown>[]> {
@@ -44,48 +44,48 @@ async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promis
   return links;
 }
 
-describe("a private store", () => {
+describe("a secret store", () => {
   it("gives what is kept in it and what the store beside it holds, and records only what is written to it", async () => {
-    const { store, privateStore } = sides();
+    const { store, secretStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const secret = object({ card: new LinkValue(card.link), secret: Uint8Array.of(0) });
-    await privateStore.write({ records: [secret] });
-    expect(await privateStore.get(secret.link)).toEqual(secret.bytes);
-    expect(await privateStore.get(card.link)).toEqual(card.bytes);
-    expect(await recordedObjectsOf(privateStore)).toEqual([secret.link]);
+    await secretStore.write({ records: [secret] });
+    expect(await secretStore.get(secret.link)).toEqual(secret.bytes);
+    expect(await secretStore.get(card.link)).toEqual(card.bytes);
+    expect(await recordedObjectsOf(secretStore)).toEqual([secret.link]);
     expect(await recordedObjectsOf(store)).toEqual([card.link]);
   });
 
   it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
-    const { store, privateStore } = sides();
+    const { store, secretStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const secret = object({ card: new LinkValue(card.link), secret: Uint8Array.of(0) });
-    await privateStore.write({ records: [secret] });
-    expect(await privateStore.positionOf(secret.link)).toBe(0);
-    expect(await privateStore.positionOf(card.link)).toBeUndefined();
+    await secretStore.write({ records: [secret] });
+    expect(await secretStore.positionOf(secret.link)).toBe(0);
+    expect(await secretStore.positionOf(card.link)).toBeUndefined();
     expect(await store.positionOf(card.link)).toBe(3);
   });
 
   it("lists the blobs kept in it, and none that only the store beside it holds", async () => {
-    const { store, privateStore } = sides();
+    const { store, secretStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const image = utf8("an image");
     const secret = object({ card: new LinkValue(card.link), image: new LinkValue(linkOf(image)) });
-    await privateStore.write({ records: [secret], blobs: [image] });
-    expect(await blobsOf(privateStore)).toEqual([linkOf(image), secret.link, recordOf(secret).link]);
+    await secretStore.write({ records: [secret], blobs: [image] });
+    expect(await blobsOf(secretStore)).toEqual([linkOf(image), secret.link, recordOf(secret).link]);
   });
 
   it("keeps in its backend nothing that the store beside it holds already", async () => {
     const backend = new MemoryBackend();
-    const { store, privateStore } = sides(new MemoryBackend(), backend);
+    const { store, secretStore } = sides(new MemoryBackend(), backend);
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const image = utf8("an image");
     const secret = object({ card: new LinkValue(card.link), image: new LinkValue(linkOf(image)) });
-    await privateStore.write({ records: [secret], blobs: [card.bytes, image, ...anything.blobs] });
+    await secretStore.write({ records: [secret], blobs: [card.bytes, image, ...anything.blobs] });
     expect(await backend.has(secret.link)).toBe(true);
     expect(await backend.has(linkOf(image))).toBe(true);
     expect(await backend.has(card.link)).toBe(false);
@@ -94,29 +94,29 @@ describe("a private store", () => {
 
   it("records an object that the store beside it records as well, and does not keep the record again", async () => {
     const backend = new MemoryBackend();
-    const { store, privateStore } = sides(new MemoryBackend(), backend);
+    const { store, secretStore } = sides(new MemoryBackend(), backend);
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    await privateStore.write({ records: [card] });
-    expect(await recordedObjectsOf(privateStore)).toEqual([card.link]);
+    await secretStore.write({ records: [card] });
+    expect(await recordedObjectsOf(secretStore)).toEqual([card.link]);
     expect(await backend.has(recordOf(card).link)).toBe(false);
   });
 
   it("refuses a batch with a blob in a record's closure that neither the batch, it nor the store beside it holds", async () => {
-    const { privateStore } = sides();
+    const { secretStore } = sides();
     const absent = object({ name: "absent" });
     const secret = object({ card: new LinkValue(absent.link) });
-    await expect(privateStore.write({ records: [secret], blobs: [...anything.blobs] })).rejects.toThrow(
+    await expect(secretStore.write({ records: [secret], blobs: [...anything.blobs] })).rejects.toThrow(
       `${secret.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
-    expect(await recordedObjectsOf(privateStore)).toEqual([]);
+    expect(await recordedObjectsOf(secretStore)).toEqual([]);
   });
 
   it("refuses to give a blob when the backend of the store beside it gives other bytes under the link", async () => {
     const backend = new MemoryBackend();
     const [card, other] = [object({ name: "Alice" }), object({ name: "Bob" })];
     await new Store(backend).write({ records: [card, other], blobs: [...anything.blobs] });
-    const { privateStore } = sides({
+    const { secretStore } = sides({
       get: (link) => backend.get(link === card.link ? other.link : link),
       has: (link) => backend.has(link),
       put: (blobs, records) => backend.put(blobs, records),
@@ -124,7 +124,7 @@ describe("a private store", () => {
       blobs: (start) => backend.blobs(start),
       positionOf: (link) => backend.positionOf(link),
     });
-    await expect(privateStore.get(card.link)).rejects.toThrow(`another blob under ${card.link}`);
+    await expect(secretStore.get(card.link)).rejects.toThrow(`another blob under ${card.link}`);
   });
 
   it("is refused beside a store not made by `new Store`", () => {
@@ -138,24 +138,24 @@ describe("a private store", () => {
       positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
-    expect(() => new PrivateStore(lookalike, new MemoryBackend())).toThrow(TypeError);
+    expect(() => new SecretStore(lookalike, new MemoryBackend())).toThrow(TypeError);
   });
 
   it("cannot be given as a store, nor a store as it", () => {
-    const { store, privateStore } = sides();
-    // @ts-expect-error: a private store has no closure to bundle what it keeps
-    const asStore: Store = privateStore;
+    const { store, secretStore } = sides();
+    // @ts-expect-error: a secret store has no closure to bundle what it keeps
+    const asStore: Store = secretStore;
     // @ts-expect-error: a store would carry in bundles what is written to it
-    const asPrivate: PrivateStore = store;
-    expect(asStore).toBe(privateStore);
-    expect(asPrivate).toBe(store);
+    const asSecret: SecretStore = store;
+    expect(asStore).toBe(secretStore);
+    expect(asSecret).toBe(store);
   });
 
   it("can be scanned for an index, which reads through it what the store beside it holds", async () => {
-    const { store, privateStore } = sides();
+    const { store, secretStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
-    await privateStore.write({ records: [object({ card: new LinkValue(card.link) })] });
+    await secretStore.write({ records: [object({ card: new LinkValue(card.link) })] });
     const named = schema("Named", { name: string() });
     const byName = indexOver(selectedRecords(objectsOf(anything)), named, async function* ({ data }, reader) {
       if (data.card === undefined) return;
@@ -163,28 +163,28 @@ describe("a private store", () => {
       if (name !== undefined) yield { name };
     }).orderedBy("name");
     const names: string[] = [];
-    for await (const { data } of (await scan(privateStore, byName)).range([])) names.push(data.name);
+    for await (const { data } of (await scan(secretStore, byName)).range([])) names.push(data.name);
     expect(names).toEqual(["Alice"]);
   });
 });
 
-describe("the store beside a private store", () => {
-  it("does not give, gather or list what is kept in the private store", async () => {
-    const { store, privateStore } = sides();
+describe("the store beside a secret store", () => {
+  it("does not give, gather or list what is kept in the secret store", async () => {
+    const { store, secretStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });
     const secret = object({ card: new LinkValue(card.link) });
-    await privateStore.write({ records: [secret] });
+    await secretStore.write({ records: [secret] });
     expect(await store.get(secret.link)).toBeUndefined();
     await expect(store.closure(secret.link)).rejects.toThrow(`the store does not hold ${secret.link}`);
     expect(await recordedObjectsOf(store)).toEqual([card.link]);
     expect(await blobsOf(store)).not.toContain(secret.link);
   });
 
-  it("refuses to write anything with a blob kept in the private store in its closure", async () => {
-    const { store, privateStore } = sides();
+  it("refuses to write anything with a blob kept in the secret store in its closure", async () => {
+    const { store, secretStore } = sides();
     const secret = object({ secret: Uint8Array.of(0) });
-    await privateStore.write({ records: [secret], blobs: [...anything.blobs] });
+    await secretStore.write({ records: [secret], blobs: [...anything.blobs] });
     const leak = object({ leak: new LinkValue(secret.link) });
     await expect(store.write({ records: [leak], blobs: [...anything.blobs] })).rejects.toThrow(
       `${leak.link} links to ${secret.link}, which neither the batch nor the store holds`,

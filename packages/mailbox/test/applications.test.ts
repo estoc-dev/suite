@@ -23,7 +23,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { link, optional, schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { Intake, MemoryBackend, SecretStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Delivery, type Mailbox, MailboxKey, mailboxFrom, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
@@ -246,9 +246,9 @@ describe("two people who meet", () => {
       const by = signer(ed25519, fill);
       const actor = signatures.actor(by, await publish(by, { at: 0 }));
       const store = new Store(new MemoryBackend());
-      const privateStore = new PrivateStore(store, new MemoryBackend());
+      const secretStore = new SecretStore(store, new MemoryBackend());
       const options = { transports: [network.transport], clock };
-      const post = new Post(store, privateStore, options);
+      const post = new Post(store, secretStore, options);
       const intake = new Intake(store, clock);
       const correspondence = post.correspondenceAs(actor, identity);
       const openInbox = async () => {

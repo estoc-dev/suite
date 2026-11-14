@@ -4,7 +4,7 @@ import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
-import { Intake, inboundSchema, MemoryBackend, PrivateStore, recordSchema, type Store } from "@estoc/store";
+import { Intake, inboundSchema, MemoryBackend, recordSchema, SecretStore, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
@@ -553,7 +553,7 @@ describe("a mailbox that a service opened", () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
     const options = { transports: [http] };
-    const post = new Post(store, new PrivateStore(store, new MemoryBackend()), options);
+    const post = new Post(store, new SecretStore(store, new MemoryBackend()), options);
     const inbox = await post.openInbox((publicKey) => offer.open(actor, publicKey));
     const sender = memoryStore();
     const bytes = await store.get(inbox.mailbox);
@@ -564,7 +564,7 @@ describe("a mailbox that a service opened", () => {
       records: [{ bytes }, note],
       blobs: [...http.schema.blobs, ...noteSchema.blobs],
     });
-    const outbox = await new Post(sender, new PrivateStore(sender, new MemoryBackend()), options).outbox(inbox.mailbox);
+    const outbox = await new Post(sender, new SecretStore(sender, new MemoryBackend()), options).outbox(inbox.mailbox);
     await outbox.send(note.link);
     const [delivery, ...more] = await inbox.collect(await services.pickup(inbox.mailbox, actor));
     expect(more).toEqual([]);

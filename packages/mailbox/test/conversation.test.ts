@@ -16,9 +16,9 @@ import {
   indexOver,
   MemoryBackend,
   type OrderedIndex,
-  PrivateStore,
   type Rows,
   recordSchema,
+  SecretStore,
   Store,
   scan,
   selectedRecords,
@@ -28,7 +28,7 @@ import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } fr
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a store and a mailbox for the other,
-// whose key they keep in a private store beside it, and each with a grant of
+// whose key they keep in a secret store beside it, and each with a grant of
 // that mailbox from the other, handed over out of band. What one sends is a
 // signed line from their store, recorded there as gone out; what arrives is
 // kept with a record that it came in. The application reads a conversation
@@ -121,8 +121,8 @@ async function chat(faults: Faults = {}) {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
     const store = new Store(new MemoryBackend());
-    const privateStore = new PrivateStore(store, new MemoryBackend());
-    const post = new Post(store, privateStore, { transports, clock });
+    const secretStore = new SecretStore(store, new MemoryBackend());
+    const post = new Post(store, secretStore, { transports, clock });
     const intake = new Intake(store, clock);
     const correspondence = post.correspondenceAs(actor, identity);
     return { name, actor, store, post, intake, correspondence };

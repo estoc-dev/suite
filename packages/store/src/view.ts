@@ -22,7 +22,7 @@ export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
 }
 
 /**
- * The value of `view` for what `store` holds now. The store may also be a `PrivateStore` or a
+ * The value of `view` for what `store` holds now. The store may also be a `SecretStore` or a
  * `StagedStore`.
  *
  * - The index is scanned from the store and read with the store, so the rows, the objects they name

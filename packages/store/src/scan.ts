@@ -14,7 +14,7 @@ import {
 import type { Backend, Store } from "./store.ts";
 
 /**
- * Fills `index` from `store`, which may also be a `PrivateStore` or a `StagedStore`: from all the
+ * Fills `index` from `store`, which may also be a `SecretStore` or a `StagedStore`: from all the
  * objects it records, from all the blobs it holds when the index reads blobs, and from all the rows
  * of each index it reads, filled from `store` in the same way.
  *
@@ -22,7 +22,7 @@ import type { Backend, Store } from "./store.ts";
  *   records as well: what came from elsewhere is reached by following links from them. A record
  *   itself does not: the index reads the object it links to.
  * - The blobs a store holds reach an index over blobs, records among them, and on a staged batch
- *   those that the batch keeps as well. On a private store, only the blobs kept in it do, as its
+ *   those that the batch keeps as well. On a secret store, only the blobs kept in it do, as its
  *   records are only those listed in it: a blob that the store beside holds is not kept there.
  * - Only the rows of an index reach an index over it. They are kept beside the store and are not
  *   blobs of it: its `get` gives none of them, and an index over its blobs reads none.
@@ -32,7 +32,7 @@ import type { Backend, Store } from "./store.ts";
  * - Within one recorded object, a blob, the object among them, is read from the store once, however
  *   many selections and rows read it, and the object is read and validated with a schema once,
  *   however many selections by that schema read it.
- * - A store and a private store keep the rows of each index they are scanned for, and those rows in
+ * - A store and a secret store keep the rows of each index they are scanned for, and those rows in
  *   each order they are scanned in, so a later scan reads only the records listed, the blobs put and
  *   the rows given since. A staged batch reads its own on top of the rows that its store keeps.
  * - What a source of the index or its `rows` throw on, or give a row of whose data does not fit the
@@ -68,7 +68,7 @@ export async function scan<F extends ValueMap, By extends FieldNames<F>>(
 async function rowsByIndexOf(store: Pick<Store, "get" | "records">, listsBlobs: boolean): Promise<RowsByIndex> {
   if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex];
   if (listsBlobs)
-    throw new Error("only a store, a private store or a staged batch lists the blobs an index over blobs reads");
+    throw new Error("only a store, a secret store or a staged batch lists the blobs an index over blobs reads");
   const objects: Link<unknown>[] = [];
   for await (const link of objectsRecordedBy(store.records(), store)) objects.push(link);
   return new AddedRows(noRows, { recordedObjects: objects, blobs: [] }, store);

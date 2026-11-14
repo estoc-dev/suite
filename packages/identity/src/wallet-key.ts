@@ -5,7 +5,7 @@ import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 
 /**
- * The schema of a Wallet Key, kept in a device's private store for each key
+ * The schema of a Wallet Key, kept in a device's secret store for each key
  * the device signs with through a wallet.
  *
  * - It is kept private as it means something to that device alone.

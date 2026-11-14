@@ -4,7 +4,7 @@ import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
-import { Intake, inboundSchema, MemoryBackend, PrivateStore, type Store } from "@estoc/store";
+import { Intake, inboundSchema, MemoryBackend, PrivateStore, recordSchema, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
@@ -79,13 +79,14 @@ async function startService(
   return { ...run, origin: server.origin, close: () => server.close() };
 }
 
-/** What the Inbound records of `store` say came in, each as the link of its root and the origin it came from. */
+/** What the recorded Inbound objects of `store` say came in, each as the link of its root and the origin it came from. */
 async function inboundRowsOf(store: Store) {
   const rows: (readonly [Link<never>, string])[] = [];
-  for await (const link of store.records()) {
-    const record = await objectsOf(inboundSchema).read(link, store);
-    if (record === undefined) continue;
-    const { bundle, via } = record.data;
+  for await (const record of store.records()) {
+    const { object } = (await readObject(store, record, recordSchema)).data;
+    const inbound = await objectsOf(inboundSchema).read(object.link, store);
+    if (inbound === undefined) continue;
+    const { bundle, via } = inbound.data;
     assert.exists(via);
     rows.push([bundle.link, (await readObject(store, via.link, originSchema)).data.origin]);
   }

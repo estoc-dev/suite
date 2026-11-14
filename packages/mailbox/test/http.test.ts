@@ -1,8 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, type Link } from "@estoc/object";
+import { encodeObject, type Link, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
@@ -113,13 +113,13 @@ describe("an HTTP outbox", () => {
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
-    const before = await listed(store);
+    const before = await recordedObjectsOf(store);
 
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
-    expect(await listed(store)).toEqual(before);
+    expect(await recordedObjectsOf(store)).toEqual(before);
 
     const delivery = await outbox.send(hello.link);
-    expect(new Set(await listed(store))).toEqual(new Set([...before, delivery.link]));
+    expect(new Set(await recordedObjectsOf(store))).toEqual(new Set([...before, delivery.link]));
     const sentRequests = take();
     expect(sentRequests.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = sentRequests.at(-1);
@@ -128,9 +128,10 @@ describe("an HTTP outbox", () => {
   });
 });
 
-async function listed(store: Store): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link);
   return links;
 }
 

@@ -19,8 +19,8 @@ async function openInTemporaryFolder(): Promise<Backend> {
   return backend;
 }
 
-async function recordsOf(backend: Backend, start?: number): Promise<Link<never>[]> {
-  const links: Link<never>[] = [];
+async function recordsOf(backend: Backend, start?: number): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
   for await (const link of backend.records(start)) links.push(link);
   return links;
 }

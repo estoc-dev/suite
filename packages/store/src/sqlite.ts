@@ -1,5 +1,6 @@
 import { DatabaseSync, type SQLTagStore } from "node:sqlite";
 import type { Link } from "@estoc/object";
+import type { RecordObject } from "./record.ts";
 import type { Backend } from "./store.ts";
 
 /** Keeps a store in one SQLite file, writing each batch that is put as one transaction. */
@@ -32,7 +33,7 @@ export class SqliteBackend implements Backend {
     return this.#sql.get`SELECT 1 FROM blobs WHERE link = ${link}` !== undefined;
   }
 
-  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void> {
+  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<RecordObject>>): Promise<void> {
     this.#database.exec("BEGIN");
     try {
       for (const [link, bytes] of blobs) this.#sql.run`INSERT OR IGNORE INTO blobs VALUES (${link}, ${bytes})`;
@@ -45,10 +46,10 @@ export class SqliteBackend implements Backend {
     }
   }
 
-  async *records(start = 0): AsyncIterable<Link<never>> {
+  async *records(start = 0): AsyncIterable<Link<RecordObject>> {
     // Read whole, so that no statement holds a read lock on the file while the caller goes through the links.
     const rows = this.#sql.all`SELECT link FROM records ORDER BY rowid LIMIT -1 OFFSET ${start}`;
-    for (const { link } of rows) yield link as Link<never>;
+    for (const { link } of rows) yield link as Link<RecordObject>;
   }
 
   async *blobs(start = 0): AsyncIterable<Link<unknown>> {

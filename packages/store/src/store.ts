@@ -1,9 +1,20 @@
-import { type Bytes, type Link, linkOf, type ObjectValue, objectFormat, schemaOf } from "@estoc/object";
+import {
+  type Bytes,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  type ObjectValue,
+  objectFormat,
+  schemaOf,
+} from "@estoc/object";
+import { type RecordObject, recordSchema } from "./record.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
- * Where a store keeps its blobs and its records: memory, a file, or storage in a browser. It
- * keeps bytes and links as it is given them; the store hashes and decodes, and hashes again what it
+ * Where a store keeps its blobs and the list of its records: memory, a file, or storage in a
+ * browser. It keeps bytes and links as it is given them; the store hashes and decodes, and hashes again what it
  * gets back, so a backend that was damaged makes reading fail.
  */
 export interface Backend {
@@ -24,12 +35,12 @@ export interface Backend {
    *   hold of the two together: part of a blob's closure, or the blob of a listed link, may be in
    *   the store beside instead.
    */
-  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void>;
+  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<RecordObject>>): Promise<void>;
   /**
    * The links listed by `put`, each once and in the order they were first listed, leaving out the
    * first `start`.
    */
-  records(start?: number): AsyncIterable<Link<never>>;
+  records(start?: number): AsyncIterable<Link<RecordObject>>;
   /**
    * The links of the blobs put, each once and in the order they were first put, leaving out the
    * first `start`. A write cut short can leave blobs here that no listed link reaches.
@@ -42,14 +53,15 @@ export interface Backend {
 /** What one write puts in a store. */
 export interface Batch {
   /**
-   * Objects that the user of the store writes, of whatever type the caller
-   * holds them as: only their bytes are written. The store lists them.
+   * Objects that the user of the store writes, of whatever type the caller holds them as: only
+   * their bytes are written. The store records each: it writes a record, an object of
+   * `recordSchema` that links to the object, and lists the record.
    */
   readonly records?: Iterable<{ readonly bytes: Bytes<unknown> }>;
   /**
-   * Blobs that come with them and are not records: what the objects link to,
-   * or the blobs of a bundle received along with an object that notes its
-   * arrival. Only those in the closure of a record are kept.
+   * Blobs that come with them and are not recorded: what the objects link to, or the blobs of a
+   * bundle received along with an object that notes its arrival. Only those in the closure of a
+   * recorded object are kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
@@ -60,9 +72,12 @@ export interface Batch {
  * - Blobs are kept by link, whoever wrote them. A link names one blob wherever it is kept, and a
  *   store holds those that have come to it, so holding one says that it came in and not whose it
  *   is.
- * - Records are the objects the user wrote, and anything else is reached by following links from
- *   them, so an object that someone else slipped into a bundle is read only as part of what it
- *   came with.
+ * - A record marks an object that the user wrote: it is an object of `recordSchema` that links to
+ *   that object, and the store lists it. Anything else is reached by following links from the
+ *   recorded objects, so an object that someone else slipped into a bundle is read only as part of
+ *   what it came with.
+ * - A record is a blob as well, which anyone can write. One that came in a bundle is held and not
+ *   listed, so it records nothing here.
  * - What reads the blobs themselves, from `blobs` or in an index over `selectedBlobs`, reads a
  *   stranger's among them. That is for showing what a store holds, and for objects that carry
  *   their authority in a signature.
@@ -74,7 +89,7 @@ export interface Batch {
  */
 export interface Store {
   /**
-   * A blob by its link, a record or not.
+   * A blob by its link, recorded or not.
    *
    * @throws when the backend gives other bytes under the link.
    */
@@ -83,12 +98,13 @@ export interface Store {
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * Puts in the batch's records and the blobs in their closures, and drops the other blobs. A
-   * refused batch writes nothing.
+   * Records each of the batch's `records`: puts in a record of it and the blobs in the record's
+   * closure, the object among them, and lists the record. The other blobs are dropped. A refused
+   * batch writes nothing.
    *
-   * @throws {RefusedBatch} when a record is not an object.
-   * @throws {RefusedBatch} when a blob in a record's closure is neither in the batch nor held by
-   *   the store, such as the schema of an object or a blob its data links to.
+   * @throws {RefusedBatch} when one of `records` is not an object.
+   * @throws {RefusedBatch} when a blob in the closure of one of `records` is neither in the batch
+   *   nor held by the store, such as the schema of an object or a blob its data links to.
    * @throws the backend's own error when the backend fails.
    */
   write(batch: Batch): Promise<void>;
@@ -101,14 +117,17 @@ export interface Store {
    * @throws {RefusedBatch} for a batch that `write` refuses, before anything reads it.
    */
   stage(batch: Batch): Promise<StagedStore>;
-  /** The links of the records, each once, in no particular order. */
-  records(): AsyncIterable<Link<never>>;
   /**
-   * The links of the blobs the store holds, records or not, each once and in the order it took
+   * The links of the records, each once, in no particular order. The `object` of a record is the
+   * link of the object it records.
+   */
+  records(): AsyncIterable<Link<RecordObject>>;
+  /**
+   * The links of the blobs the store holds, recorded or not, each once and in the order it took
    * them in, so `positionOf` gives where each is among them.
    *
    * - They are what the store has seen: an attachment as well as an object, and a stranger's as
-   *   well as the user's. What the user wrote is listed by `records`.
+   *   well as the user's. What the user wrote is what the records link to.
    * - A write cut short can leave one here that no record reaches.
    */
   blobs(): AsyncIterable<Link<unknown>>;
@@ -160,9 +179,9 @@ export interface StagedStore {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
    * The links of the store's records and of the batch's, each once, in no particular order. Those
-   * of the batch are listed here before anything has verified them.
+   * of the batch are listed here before anything has verified what they record.
    */
-  records(): AsyncIterable<Link<never>>;
+  records(): AsyncIterable<Link<RecordObject>>;
   /**
    * Where the store took in the blob of `link`, as its `positionOf` gives it. The batch is taken in
    * only once it is committed, so a blob of the batch that the store does not hold has none until
@@ -174,8 +193,8 @@ export interface StagedStore {
 }
 
 /**
- * A batch that a store refuses for what it is: a record that is not an object, or a blob in a
- * record's closure that neither the batch nor the store holds. The same batch is refused again
+ * A batch that a store refuses for what it is: one of its `records` that is not an object, or a
+ * blob in the closure of one that neither the batch nor the store holds. The same batch is refused again
  * until the store holds what was missing, while a backend that fails, which rejects with an error
  * of its own, may write it the next time.
  */
@@ -212,22 +231,28 @@ class StoreOf implements Store, RowKeeper {
       const ownedBytes = new Uint8Array(blob);
       batchBlobs.set(linkOf(ownedBytes), ownedBytes);
     }
-    const recordLinks: Link<never>[] = [];
+    const recordLinks: Link<RecordObject>[] = [];
+    const objectLinks: Link<EncodedObject>[] = [];
     for (const { bytes } of records) {
-      const ownedBytes = new Uint8Array(bytes);
+      const ownedBytes: Bytes<EncodedObject> = new Uint8Array(bytes);
       const link = linkOf(ownedBytes);
       try {
         schemaOf(ownedBytes);
       } catch (cause) {
-        throw new RefusedBatch(`${link} is written as a record but is not an object`, { cause });
+        throw new RefusedBatch(`${link} is recorded but is not an object`, { cause });
       }
+      const record = encodeObject(recordSchema, { object: new LinkValue(link) });
       batchBlobs.set(link, ownedBytes);
-      recordLinks.push(link);
+      batchBlobs.set(record.link, record.bytes);
+      recordLinks.push(record.link);
+      objectLinks.push(link);
     }
-    return new StagedStoreOf(this, this.#backend, await this.#leavesFirst(recordLinks, batchBlobs), recordLinks);
+    for (const blob of recordSchema.blobs) batchBlobs.set(linkOf(blob), blob);
+    const keptBlobs = await this.#leavesFirst(recordLinks, batchBlobs);
+    return new StagedStoreOf(this, this.#backend, keptBlobs, recordLinks, objectLinks);
   }
 
-  records(): AsyncIterable<Link<never>> {
+  records(): AsyncIterable<Link<RecordObject>> {
     return this.#backend.records();
   }
 
@@ -281,7 +306,8 @@ class StoreOf implements Store, RowKeeper {
    * `records` and the blobs of `blobs` in their closures, each after the blobs it links to. A held
    * blob comes with its closure, so its links are not followed.
    *
-   * @throws {RefusedBatch} when a blob in a record's closure is neither in `blobs` nor held.
+   * @throws {RefusedBatch} when a blob in the closure of one of `records` is neither in `blobs` nor
+   *   held.
    */
   async #leavesFirst(
     records: readonly Link<unknown>[],
@@ -336,22 +362,25 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   readonly #store: Pick<Store, "get" | "positionOf"> & RowKeeper;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
-  readonly #records: readonly Link<never>[];
+  readonly #records: readonly Link<RecordObject>[];
+  readonly #recordedObjects: readonly Link<EncodedObject>[];
 
   constructor(
     store: Pick<Store, "get" | "positionOf"> & RowKeeper,
     backend: Backend,
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
-    records: readonly Link<never>[],
+    records: readonly Link<RecordObject>[],
+    recordedObjects: readonly Link<EncodedObject>[],
   ) {
     this.#store = store;
     this.#backend = backend;
     this.#blobs = blobs;
     this.#records = records;
+    this.#recordedObjects = recordedObjects;
   }
 
   get [rowsByIndex](): RowsByIndex {
-    const added = { records: this.#records, blobs: [...this.#blobs.keys()] };
+    const added = { recordedObjects: this.#recordedObjects, blobs: [...this.#blobs.keys()] };
     return new AddedRows(this.#store[rowsByIndex], added, this);
   }
 
@@ -362,7 +391,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
   }
 
-  async *records(): AsyncIterable<Link<never>> {
+  async *records(): AsyncIterable<Link<RecordObject>> {
     const unlistedLinks = new Set(this.#records);
     for await (const link of this.#backend.records()) {
       unlistedLinks.delete(link);
@@ -423,15 +452,15 @@ export class PrivateStore {
   }
 
   /**
-   * Keeps the batch's records and the blobs in their closures, as a store writes them. A blob of a
-   * closure that the store beside holds counts as held and is not kept here again.
+   * Records each of the batch's `records` here, as a store writes them. A blob of a closure that
+   * the store beside holds counts as held and is not kept here again, a record among them.
    */
   write(batch: Batch): Promise<void> {
     return this.#store.write(batch);
   }
 
-  /** The links of the records written here, each once, in no particular order. */
-  records(): AsyncIterable<Link<never>> {
+  /** The links of the records listed here, each once, in no particular order, as a store's `records` gives them. */
+  records(): AsyncIterable<Link<RecordObject>> {
     return this.#store.records();
   }
 

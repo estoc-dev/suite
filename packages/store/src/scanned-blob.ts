@@ -9,8 +9,8 @@ import {
 } from "@estoc/object";
 
 /**
- * A record, another blob a store holds, or a row of another index, as the parts of an index read
- * it, so that what they share is done once.
+ * A recorded object, another blob a store holds, or a row of another index, as the parts of an
+ * index read it, so that what they share is done once.
  */
 export class ScannedBlob {
   readonly link: Link<unknown>;

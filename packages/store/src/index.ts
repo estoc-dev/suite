@@ -6,6 +6,7 @@ export {
   type ReceivedBundle,
 } from "./inbound.ts";
 export { MemoryBackend } from "./memory.ts";
+export { type RecordData, type RecordObject, recordSchema } from "./record.ts";
 export { scan } from "./scan.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {

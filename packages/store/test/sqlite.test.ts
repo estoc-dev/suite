@@ -25,8 +25,8 @@ function open(path: string): SqliteBackend {
   return backend;
 }
 
-async function recordsOf(source: { records(): AsyncIterable<Link<never>> }): Promise<Link<never>[]> {
-  const links: Link<never>[] = [];
+async function recordsOf(source: { records(): AsyncIterable<Link<unknown>> }): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
   for await (const link of source.records()) links.push(link);
   return links;
 }

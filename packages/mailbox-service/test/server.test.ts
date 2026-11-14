@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { Store, view } from "@estoc/store";
+import { recordSchema, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -56,9 +56,10 @@ const getRoot = (service: MailboxService) => service.fetch(request("/"));
 const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
-const records = async (store: { records(): AsyncIterable<Link<never>> }) => {
+const recordedObjectsOf = async (store: Pick<Store, "get" | "records">) => {
   const links: Link<never>[] = [];
-  for await (const link of store.records()) links.push(link);
+  for await (const record of store.records())
+    links.push((await readObject(store, record, recordSchema)).data.object.link as Link<never>);
   return links.sort();
 };
 
@@ -175,11 +176,11 @@ describe("a mailbox service", () => {
     const { service, store } = await memoryService();
     const { file } = await directAcceptance((await rootOf(service)).offer);
     const first = new Uint8Array(await (await postAcceptance(service, file)).arrayBuffer());
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     const again = await postAcceptance(service, file);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it("opens the account of someone for the signature of an agent that an identity of theirs lists", async () => {
@@ -213,11 +214,11 @@ describe("a mailbox service", () => {
     const first = await publish(wallet, { agents: [device.key, phone.key], at: 1_000 });
     const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/is not honored/);
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it("answers 400 to an agent that a later identity version removed, though the agent opened the account before it came", async () => {
@@ -259,12 +260,12 @@ describe("a mailbox service", () => {
     await firstPull;
     const second = await publish(wallet, { prior: removed, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     release();
     const response = await pendingResponse;
     expect(response.status).toBe(400);
     expect(await response.text()).toMatch(/is not honored/);
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it("answers two acceptances that open one account at once with 201 and 200, each acknowledged, and has seen the identity versions of both", async () => {
@@ -312,12 +313,12 @@ describe("a mailbox service", () => {
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     const answers = await Promise.all([openerAnswer, racerAnswer].map(acknowledgementIn));
     for (const { acknowledgement } of answers) expect(acknowledgement.data.acceptance.link).toBe(acceptance.link);
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     const again = await postAcceptance(service, file);
     expect(again.status).toBe(200);
     const [least] = answers.map(({ signature }) => signature.link).sort();
     expect((await acknowledgementIn(again)).signature.link).toBe(least);
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
@@ -343,7 +344,7 @@ describe("a mailbox service", () => {
     const response = await postAcceptance(service, await body(service));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toBe("");
-    expect(await records(store)).toEqual([(await rootOf(service)).signature.link]);
+    expect(await recordedObjectsOf(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
   it("answers 413 to a body of more than 64 KiB", async () => {
@@ -465,7 +466,7 @@ describe("a mailbox service", () => {
       ),
     );
     const serviceSignatures = await Promise.all(
-      (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
+      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const ats = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data.at),
@@ -486,7 +487,7 @@ describe("a mailbox service started again", () => {
     const first = new Uint8Array(await (await getRoot(service)).arrayBuffer());
     const { service: again } = await memoryService({ store, start: 9_000 });
     expect(new Uint8Array(await (await getRoot(again)).arrayBuffer())).toEqual(first);
-    expect(await records(store)).toHaveLength(1);
+    expect(await recordedObjectsOf(store)).toHaveLength(1);
   });
 
   it("at another origin signs a new Service, which keeps the signature over its offer", async () => {
@@ -495,7 +496,7 @@ describe("a mailbox service started again", () => {
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 9_000 });
     const after = await rootOf(moved);
     expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
-    expect(await records(store)).toEqual([before.signature.link, after.signature.link].sort());
+    expect(await recordedObjectsOf(store)).toEqual([before.signature.link, after.signature.link].sort());
     expect((await post(moved, after.acceptId, (await directAcceptance(after.offer)).file)).status).toBe(201);
   });
 
@@ -558,11 +559,11 @@ describe("a mailbox service started again", () => {
       expect(renewal.signature.object).toBe(first.signature.object);
       expect((await signatures.read(renewal.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
     }
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     expect((await acknowledgementIn(await postAcceptance(again, acceptance.file))).signature.link).toBe(
       renewedAccountAcknowledgement.signature.link,
     );
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
     const mailbox = openedMailboxOf(renewedMailboxAcknowledgement);
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
@@ -573,7 +574,7 @@ describe("a mailbox service started again", () => {
     const { service: movedService } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(movedService)).data).toEqual(before.data);
     const serviceSignatures = await Promise.all(
-      (await records(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
+      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
     );
     const services = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data),
@@ -739,11 +740,11 @@ describe("a mailbox service's offer of mailboxes", () => {
     await openAccount(service, actor);
     const { file } = await mailboxRequest(actor, (await rootOf(service)).mailbox.offer);
     const first = new Uint8Array(await (await postMailboxRequest(service, file)).arrayBuffer());
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     const again = await postMailboxRequest(service, file);
     expect(again.status).toBe(200);
     expect(new Uint8Array(await again.arrayBuffer())).toEqual(first);
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it("answers one request posted twice at once with 201 and 200, each with the acknowledgement of the mailbox it opened", async () => {
@@ -804,7 +805,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const response = await postMailboxRequest(service, file);
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/has no account here/);
-    expect(await records(store)).toEqual([(await rootOf(service)).signature.link]);
+    expect(await recordedObjectsOf(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
   it("answers 400 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {
@@ -849,11 +850,11 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { service, store } = await memoryService();
     const actor = await actorOf(alice);
     await openAccount(service, actor);
-    const recordsBefore = await records(store);
+    const recordsBefore = await recordedObjectsOf(store);
     const response = await postMailboxRequest(service, await body(service, actor));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toBe("");
-    expect(await records(store)).toEqual(recordsBefore);
+    expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
   it("keeps the mailboxes it opened on the terms of their offer once it offers other terms", async () => {

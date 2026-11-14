@@ -66,12 +66,16 @@ describe("an object", () => {
     ]);
   });
 
-  it("gives its links as walking its data meets them, a member named by a whole number first", async () => {
-    const to = new LinkValue(linkOf(photo));
+  it("gives its links as walking its data meets them, a member named 10 before one named a", async () => {
+    const photoLink = new LinkValue(linkOf(photo));
     const listSchema = schema("List", { a: link(), 10: link(), more: any() });
-    const list = encodeObject(listSchema, { a: to, 10: to, more: { a: to, 10: [to, to] } });
-    const { data, links, schema: named } = await inspectedObject(list.bytes, ...listSchema.blobs);
-    expect(named).toMatchObject({ kind: "schema", problems: [] });
+    const list = encodeObject(listSchema, {
+      a: photoLink,
+      10: photoLink,
+      more: { a: photoLink, 10: [photoLink, photoLink] },
+    });
+    const { data, links, schema: namedSchema } = await inspectedObject(list.bytes, ...listSchema.blobs);
+    expect(namedSchema).toMatchObject({ kind: "schema", problems: [] });
     expect(Object.keys(data)).toEqual(["10", "a", "more"]);
     expect(links.map(({ path }) => path)).toEqual(["#/10", "#/a", "#/more/10/0", "#/more/10/1", "#/more/a"]);
   });

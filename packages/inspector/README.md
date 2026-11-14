@@ -75,8 +75,8 @@ way, as in `#/replies/0`.
 
 The links come as walking `data` meets them: the items of an array by
 index, and the members of a map in the order `data` gives them. That is
-not always the order of the bytes. JavaScript lists a member named by a
-whole number, such as `10`, before the others, wherever the bytes have it.
+not always the order of the bytes. JavaScript lists a member named `10`
+before one named `a`, and the bytes have them the other way around.
 
 The schema an object names is given apart, under `schema`, and is not
 among `links`.

@@ -47,7 +47,7 @@ export interface Batch {
    */
   readonly records?: Iterable<{ readonly bytes: Bytes<unknown> }>;
   /**
-   * Blobs that come with them and are not listed: what the objects link to,
+   * Blobs that come with them and are not records: what the objects link to,
    * or the blobs of a bundle received along with an object that notes its
    * arrival. Only those in the closure of a record are kept.
    */
@@ -57,11 +57,15 @@ export interface Batch {
 /**
  * The objects a user writes and the blobs that come with them.
  *
- * - Blobs are kept by link, whoever wrote them, and are not listed.
- * - Only records are listed, and anything else is reached by following links from them, so an
- *   object that someone else slipped into a bundle is read only as part of what it came with.
- * - The one exception is an index over `selectedBlobs`, which reads the blobs by schema, for
- *   objects that carry their authority in a signature.
+ * - Blobs are kept by link, whoever wrote them. A link names one blob wherever it is kept, and a
+ *   store holds those that have come to it, so holding one says that it came in and not whose it
+ *   is.
+ * - Records are the objects the user wrote, and anything else is reached by following links from
+ *   them, so an object that someone else slipped into a bundle is read only as part of what it
+ *   came with.
+ * - What reads the blobs themselves, from `blobs` or in an index over `selectedBlobs`, reads a
+ *   stranger's among them. That is for showing what a store holds, and for objects that carry
+ *   their authority in a signature.
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its records.
@@ -99,6 +103,15 @@ export interface Store {
   stage(batch: Batch): Promise<StagedStore>;
   /** The links of the records, each once, in no particular order. */
   records(): AsyncIterable<Link<never>>;
+  /**
+   * The links of the blobs the store holds, records or not, each once and in the order it took
+   * them in, so `positionOf` gives where each is among them.
+   *
+   * - They are what the store has seen: an attachment as well as an object, and a stranger's as
+   *   well as the user's. What the user wrote is listed by `records`.
+   * - A write cut short can leave one here that no record reaches.
+   */
+  blobs(): AsyncIterable<Link<unknown>>;
   /**
    * How many blobs the store had taken in before the one of `link`, or `undefined` when it holds
    * none. A blob is taken in once, by the first write that holds it, and after the blobs it links
@@ -216,6 +229,10 @@ class StoreOf implements Store, RowKeeper {
 
   records(): AsyncIterable<Link<never>> {
     return this.#backend.records();
+  }
+
+  blobs(): AsyncIterable<Link<unknown>> {
+    return this.#backend.blobs();
   }
 
   positionOf(link: Link<unknown>): Promise<number | undefined> {
@@ -416,6 +433,15 @@ export class PrivateStore {
   /** The links of the records written here, each once, in no particular order. */
   records(): AsyncIterable<Link<never>> {
     return this.#store.records();
+  }
+
+  /**
+   * The links of the blobs kept here, each once and in the order they were kept, as a store's
+   * `blobs` gives them. A blob that only the store beside holds was not kept here, and is not
+   * among them.
+   */
+  blobs(): AsyncIterable<Link<unknown>> {
+    return this.#store.blobs();
   }
 
   /**

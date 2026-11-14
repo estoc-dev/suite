@@ -38,6 +38,12 @@ async function recordsOf(store: Store): Promise<Link<unknown>[]> {
   return links;
 }
 
+async function blobsOf(store: Store): Promise<Link<unknown>[]> {
+  const links: Link<unknown>[] = [];
+  for await (const link of store.blobs()) links.push(link);
+  return links;
+}
+
 describe("a store", () => {
   it("gives a blob back by its link, and nothing for a link it does not hold", async () => {
     const store = newStore();
@@ -92,7 +98,7 @@ describe("a store", () => {
     expect(await recordsOf(store)).toEqual([note.link]);
   });
 
-  it("lists an object that came in with another once it is written as a record", async () => {
+  it("lists among its records an object that came in with another, once it is written as one", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const record = object({ received: new LinkValue(note.link) });
@@ -202,6 +208,30 @@ describe("a store", () => {
     const links = [rootSchema.link, anything.link, linkOf(image), inner.link, outer.link];
     expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
     expect(await store.positionOf(linkOf(utf8("never written")))).toBeUndefined();
+  });
+
+  it("lists the blobs it holds, records or not, each once and where `positionOf` gives it", async () => {
+    const store = newStore();
+    expect(await blobsOf(store)).toEqual([]);
+    const image = utf8("an image");
+    const inner = object({ image: new LinkValue(linkOf(image)) });
+    const outer = object({ inner: new LinkValue(inner.link) });
+    await store.write({ records: [outer], blobs: [inner.bytes, image, ...anything.blobs] });
+    await store.write({ records: [outer], blobs: [inner.bytes, image] });
+    const links = await blobsOf(store);
+    expect(links).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
+    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
+    expect(await recordsOf(store)).toEqual([outer.link]);
+  });
+
+  it("lists among its blobs none that a write dropped or refused", async () => {
+    const store = newStore();
+    const stray = utf8("led to by nothing written");
+    const note = object({ text: "hello" });
+    await store.write({ records: [note], blobs: [stray, ...anything.blobs] });
+    const incomplete = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
+    await expect(store.write({ records: [incomplete], blobs: [stray] })).rejects.toThrow(RefusedBatch);
+    expect(await blobsOf(store)).toEqual([rootSchema.link, anything.link, note.link]);
   });
 
   it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {

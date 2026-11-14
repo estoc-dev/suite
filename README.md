@@ -48,6 +48,9 @@ gives no meaning and no reader an advantage.
 - `@estoc/store`: the objects a user writes, and the blobs that come with
   them, kept on their device; and the indexes an application fills from
   the user's records.
+- `@estoc/inspector`: what a link reads as by what the blob says of
+  itself, with no schema in hand: its fields, the schema it names and the
+  links in its data.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

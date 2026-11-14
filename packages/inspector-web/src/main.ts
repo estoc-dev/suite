@@ -1,6 +1,7 @@
 import { type Bundle, decodeBundle } from "@estoc/bundle";
 import { type Inspection, inspect } from "@estoc/inspector";
 import { type Child, h, mono, muted } from "./dom.ts";
+import { latestOnly } from "./latest.ts";
 import { objectView } from "./object-view.ts";
 import { messageOf, sizeOf } from "./text.ts";
 
@@ -11,16 +12,19 @@ type Page =
 
 const app = document.querySelector("#app") as HTMLElement;
 
-async function open(file: File): Promise<void> {
+const drawLatest = latestOnly(draw);
+
+const open = (file: File) => void drawLatest(pageOf(file));
+
+async function pageOf(file: File): Promise<Page> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let bundle: Bundle;
   try {
     bundle = decodeBundle(bytes);
   } catch (error) {
-    draw({ kind: "refused", name: file.name, error });
-    return;
+    return { kind: "refused", name: file.name, error };
   }
-  draw({ kind: "open", name: file.name, file: bytes, root: await inspect(bundle.link, bundle) });
+  return { kind: "open", name: file.name, file: bytes, root: await inspect(bundle.link, bundle) };
 }
 
 function filePicker(label: string): HTMLElement {
@@ -28,7 +32,7 @@ function filePicker(label: string): HTMLElement {
     type: "file",
     onChange: () => {
       const file = (input as HTMLInputElement).files?.[0];
-      if (file !== undefined) void open(file);
+      if (file !== undefined) open(file);
     },
   });
   return h("label", { class: "button" }, label, input);
@@ -65,13 +69,13 @@ function inspectionView(inspection: Inspection): HTMLElement {
 }
 
 function draw(page: Page): void {
-  const opened = page.kind === "open" && h("span", null, mono(page.name), muted(` · ${sizeOf(page.file)}`));
+  const fileSummary = page.kind === "open" && h("span", null, mono(page.name), muted(` · ${sizeOf(page.file)}`));
   app.replaceChildren(
     h(
       "header",
       null,
       h("span", { class: "brand" }, "Inspector"),
-      opened,
+      fileSummary,
       page.kind === "open" && filePicker("Open another…"),
     ),
     page.kind === "open"
@@ -89,7 +93,7 @@ window.addEventListener("drop", (event) => {
   event.preventDefault();
   document.body.classList.remove("over");
   const file = event.dataTransfer?.files[0];
-  if (file !== undefined) void open(file);
+  if (file !== undefined) open(file);
 });
 
 draw({ kind: "closed" });

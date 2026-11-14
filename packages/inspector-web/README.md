@@ -26,6 +26,11 @@ A row of the field table is a member of the data, or a field of the
 schema that the data leaves out. What the validator says of a value is
 shown where the value is, down to the item of an array.
 
+The validator names the place of a problem as text, and a field name that
+holds `/` or `: ` can spell the place of another value. A problem that
+reads as that of more than one value is marked on none of them: it is
+listed under the schema, as the validator words it.
+
 ## The file stays in the page
 
 The file comes from elsewhere. What it holds is put in the page as text,

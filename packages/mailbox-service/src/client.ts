@@ -249,12 +249,12 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<Sig
   },
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
-  { store, intake, origin, signatures, people }: Posting,
+  { intake, origin, signatures, people }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
   const body = encodeBundle(signature, [...blobs, ...signature.signedIdentity.blobs]);
   const request = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body };
   const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
-  const stagedStore = await store.stage({ records: [{ bytes: answer.root }], blobs: answer.blobs() });
+  const stagedStore = await intake.stage(answer, origin);
   const stagedPeople = await view(stagedStore, people);
   const acknowledgement = await signatures.read(answer.link, stagedStore, stagedPeople);
   if (!stagedPeople.personOf(to.service).hasSigned(acknowledgement)) {
@@ -264,7 +264,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<Sig
   const acknowledgedSignature = data[to.field].link;
   if (acknowledgedSignature !== signature.link)
     throw new Error(`the acknowledgement is of ${acknowledgedSignature}, not the one sent`);
-  await intake.receive(answer, origin);
+  await stagedStore.commit();
   return { signature: acknowledgement, data };
 }
 
@@ -394,10 +394,10 @@ export class Services {
   async fetch(origin: string): Promise<Service> {
     checkOrigin(origin);
     const bundle = await bundleIn(await fetch(new URL("/", origin), REQUEST), [200]);
-    const stagedStore = await this.#store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+    const stagedStore = await this.#intake.stage(bundle, this.#originOf(origin));
     const service = await this.#read(bundle.link, stagedStore);
     if (service.origin !== origin) throw new Error(`the Service at ${origin} names ${service.origin}`);
-    await this.#intake.receive(bundle, this.#originOf(origin));
+    await stagedStore.commit();
     return service;
   }
 

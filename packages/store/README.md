@@ -144,10 +144,12 @@ store. For the two to come out the same, the first is read from the store
 as it will be once the batch is written. `stage(batch)` gives that, a
 `StagedStore`: the blobs the store holds and those of the batch that `write`
 keeps, and the links of the store's records with those of the batch.
-`commit` writes the batch, as `write` does.
+`commit` writes the batch, as `write` does. What comes from elsewhere is kept
+through an `Intake` ([Receiving](#receiving)), whose `stage` stages the batch
+that its `receive` writes:
 
 ```ts
-const stagedStore = await store.stage({ records: [{ bytes: bundle.root }], blobs: bundle.blobs() });
+const stagedStore = await new Intake(store).stage(bundle);
 const people = await view(stagedStore, { index: seenIdentityVersions, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(bundle.link, stagedStore, people);
 // … whether whoever signed is someone to take it from …
@@ -465,7 +467,15 @@ the channel's object, which it keeps with its schema whether or not the
 store held them. The bundle, the channel and the `Inbound` go in one write,
 which is refused with a `RefusedBatch` when a blob in the closure of the
 bundle's root or of `via` is neither in that write nor held by the store.
-What comes in twice is recorded twice, and a reader takes the earliest `at`:
+What comes in twice is recorded twice, and a reader takes the earliest `at`.
+
+`stage` takes what `receive` takes and gives the store as it will be once
+that is received, a `StagedStore` ([Staging](#staging)) to verify on. Its
+`commit` keeps the bundle and records the `Inbound`, whose `at` is the time
+it was staged. The bundle's root is in the closure of the `Inbound` there as
+in the store, and is not recorded.
+
+An index reads when each bundle came in:
 
 ```ts
 // When each bundle came in: the first row of a root is the earliest.

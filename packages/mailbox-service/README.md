@@ -261,9 +261,9 @@ which each identity version of the root lists, so its signatures are refused
 this way only after the root signs a crisis.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
-it will be once that is kept: `stage` of `@estoc/store` gives it with the
-bundle's root as a record, and once it reads, the intake keeps the bundle
-and the staged batch is dropped. So a Service that `fetch` takes reads alike
+it will be once that is kept: the `stage` of an `Intake` of `@estoc/store`
+gives it, with the Inbound record that says the bundle came in, and once it
+reads, the staged batch is committed. So a Service that `fetch` takes reads alike
 by `latestOf` until the store holds an identity version of the service by
 which it is no longer honored.
 The offers a Service lists are read as any signature is, and the store then

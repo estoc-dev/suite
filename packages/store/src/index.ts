@@ -19,7 +19,17 @@ export {
   type Prefix,
   type Source,
   selectedBlobs,
+  selectedMarks,
   selectedRecords,
 } from "./source.ts";
-export { type Backend, type Batch, RefusedBatch, SecretStore, type StagedStore, Store } from "./store.ts";
+export {
+  type Backend,
+  type Batch,
+  type MarkBatch,
+  PrivateStore,
+  RefusedBatch,
+  SecretStore,
+  type StagedStore,
+  Store,
+} from "./store.ts";
 export { type View, view } from "./view.ts";

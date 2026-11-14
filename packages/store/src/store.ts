@@ -13,9 +13,10 @@ import { type RecordObject, recordSchema } from "./record.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
- * Where a store keeps its blobs and the list of its records: memory, a file, or storage in a
- * browser. It keeps bytes and links as it is given them; the store hashes and decodes, and hashes again what it
- * gets back, so a backend that was damaged makes reading fail.
+ * Where a store keeps its blobs and its list, of its records or, for a private store, of its
+ * marks: memory, a file, or storage in a browser. It keeps bytes and links as it is given them; the
+ * store hashes and decodes, and hashes again what it gets back, so a backend that was damaged makes
+ * reading fail.
  */
 export interface Backend {
   /**
@@ -34,13 +35,15 @@ export interface Backend {
    * - The backend of a `SecretStore` is not given what the store beside it holds, so there these
    *   hold of the two together: part of a blob's closure, or the blob of a listed link, may be in
    *   the store beside instead.
+   * - The backend of a `PrivateStore` is given the blob of each link it lists. Part of a blob's
+   *   closure may be in the store beside instead.
    */
-  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<RecordObject>>): Promise<void>;
+  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<EncodedObject>>): Promise<void>;
   /**
    * The links listed by `put`, each once and in the order they were first listed, leaving out the
    * first `start`.
    */
-  records(start?: number): AsyncIterable<Link<RecordObject>>;
+  records(start?: number): AsyncIterable<Link<EncodedObject>>;
   /**
    * The links of the blobs put, each once and in the order they were first put, leaving out the
    * first `start`. A write cut short can leave blobs here that no listed link reaches.
@@ -62,6 +65,21 @@ export interface Batch {
    * Blobs that come with them and are not recorded: what the objects link to, or the blobs of a
    * bundle received along with an object that notes its arrival. Only those in the closure of a
    * recorded object are kept.
+   */
+  readonly blobs?: Iterable<Bytes<unknown>>;
+}
+
+/** What one write puts in a private store. */
+export interface MarkBatch {
+  /**
+   * Marks that the user of the private store writes: objects, of whatever type the caller holds
+   * them as, of which only the bytes are written. The private store lists each as it is, with no
+   * record of it.
+   */
+  readonly marks: Iterable<{ readonly bytes: Bytes<unknown> }>;
+  /**
+   * Blobs that come with them and are not listed, such as their schemas. Only those in the closure
+   * of a mark are kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
@@ -202,9 +220,54 @@ export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
 }
 
+/**
+ * The blobs of a batch under their links, `objects` among them, and the links of `objects`. Each is
+ * copied before it is hashed, so that what is kept is what was hashed, whatever happens to the
+ * given arrays afterwards.
+ *
+ * @throws {RefusedBatch} when one of `objects` is not an object, saying what the batch gave it to
+ *   be `listedAs`.
+ */
+function copiedBatch(
+  objects: Iterable<{ readonly bytes: Bytes<unknown> }>,
+  blobs: Iterable<Bytes<unknown>>,
+  listedAs: "recorded" | "marked",
+): { readonly blobs: Map<Link<unknown>, Uint8Array>; readonly objects: Link<EncodedObject>[] } {
+  const batchBlobs = new Map<Link<unknown>, Uint8Array>();
+  for (const blob of blobs) {
+    const ownedBytes = new Uint8Array(blob);
+    batchBlobs.set(linkOf(ownedBytes), ownedBytes);
+  }
+  const objectLinks: Link<EncodedObject>[] = [];
+  for (const { bytes } of objects) {
+    const ownedBytes: Bytes<EncodedObject> = new Uint8Array(bytes);
+    const link = linkOf(ownedBytes);
+    try {
+      schemaOf(ownedBytes);
+    } catch (cause) {
+      throw new RefusedBatch(`${link} is ${listedAs} but is not an object`, { cause });
+    }
+    batchBlobs.set(link, ownedBytes);
+    objectLinks.push(link);
+  }
+  return { blobs: batchBlobs, objects: objectLinks };
+}
+
+// A private store orders what it keeps as the store beside it does, which nothing outside this
+// module can ask of a store.
+let leavesFirstIn: (
+  store: StoreOf,
+  listed: readonly Link<unknown>[],
+  blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+) => Promise<Map<Link<unknown>, Uint8Array>>;
+
 class StoreOf implements Store, RowKeeper {
   readonly #backend: Backend;
   readonly [rowsByIndex]: RowsByIndex;
+
+  static {
+    leavesFirstIn = (store, listed, blobs) => store.#leavesFirst(listed, blobs);
+  }
 
   constructor(backend: Backend) {
     this.#backend = backend;
@@ -224,36 +287,21 @@ class StoreOf implements Store, RowKeeper {
   }
 
   async stage({ records = [], blobs = [] }: Batch): Promise<StagedStore> {
-    // Each blob is copied before it is hashed, so that what is kept is what
-    // was hashed, whatever happens to the given arrays afterwards.
-    const batchBlobs = new Map<Link<unknown>, Uint8Array>();
-    for (const blob of blobs) {
-      const ownedBytes = new Uint8Array(blob);
-      batchBlobs.set(linkOf(ownedBytes), ownedBytes);
-    }
+    const batch = copiedBatch(records, blobs, "recorded");
     const recordLinks: Link<RecordObject>[] = [];
-    const objectLinks: Link<EncodedObject>[] = [];
-    for (const { bytes } of records) {
-      const ownedBytes: Bytes<EncodedObject> = new Uint8Array(bytes);
-      const link = linkOf(ownedBytes);
-      try {
-        schemaOf(ownedBytes);
-      } catch (cause) {
-        throw new RefusedBatch(`${link} is recorded but is not an object`, { cause });
-      }
+    for (const link of batch.objects) {
       const record = encodeObject(recordSchema, { object: new LinkValue(link) });
-      batchBlobs.set(link, ownedBytes);
-      batchBlobs.set(record.link, record.bytes);
+      batch.blobs.set(record.link, record.bytes);
       recordLinks.push(record.link);
-      objectLinks.push(link);
     }
-    for (const blob of recordSchema.blobs) batchBlobs.set(linkOf(blob), blob);
-    const keptBlobs = await this.#leavesFirst(recordLinks, batchBlobs);
-    return new StagedStoreOf(this, this.#backend, keptBlobs, recordLinks, objectLinks);
+    for (const blob of recordSchema.blobs) batch.blobs.set(linkOf(blob), blob);
+    const keptBlobs = await this.#leavesFirst(recordLinks, batch.blobs);
+    return new StagedStoreOf(this, this.#backend, keptBlobs, recordLinks, batch.objects);
   }
 
   records(): AsyncIterable<Link<RecordObject>> {
-    return this.#backend.records();
+    // A store lists only the records it writes.
+    return this.#backend.records() as AsyncIterable<Link<RecordObject>>;
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
@@ -268,8 +316,8 @@ class StoreOf implements Store, RowKeeper {
    * A store that writes to `backend` and holds besides all that `store`
    * holds. What `store` holds already is not put in `backend` again.
    */
-  static beside(store: Store, backend: Backend): Store & RowKeeper {
-    if (!(#backend in store)) throw new TypeError("a secret store is kept beside a store made by `new Store`");
+  static beside(store: Store, backend: Backend): StoreOf {
+    if (!(#backend in store)) throw new TypeError("only a store made by `new Store` has another kept beside it");
     const sharedBackend = store.#backend;
     return new StoreOf({
       get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
@@ -303,14 +351,14 @@ class StoreOf implements Store, RowKeeper {
   }
 
   /**
-   * `records` and the blobs of `blobs` in their closures, each after the blobs it links to. A held
-   * blob comes with its closure, so its links are not followed.
+   * `listed`, which are among `blobs`, and the blobs of `blobs` in their closures, each after the
+   * blobs it links to. A held blob comes with its closure, so its links are not followed.
    *
-   * @throws {RefusedBatch} when a blob in the closure of one of `records` is neither in `blobs` nor
+   * @throws {RefusedBatch} when a blob in the closure of one of `listed` is neither in `blobs` nor
    *   held.
    */
   async #leavesFirst(
-    records: readonly Link<unknown>[],
+    listed: readonly Link<unknown>[],
     blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
   ): Promise<Map<Link<unknown>, Uint8Array>> {
     const orderedBlobs = new Map<Link<unknown>, Uint8Array>();
@@ -320,10 +368,10 @@ class StoreOf implements Store, RowKeeper {
       bytes,
       links: this.#linksIn(bytes)[Symbol.iterator](),
     });
-    for (const start of records) {
+    for (const start of listed) {
       if (orderedBlobs.has(start)) continue;
       // A link is a hash of its blob, so no blob on the path is in the closure of one after it.
-      // biome-ignore lint/style/noNonNullAssertion: each record is among the blobs
+      // biome-ignore lint/style/noNonNullAssertion: each listed link is among the blobs
       const path = [frame(start, blobs.get(start)!)];
       for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
         const next = top.links.next();
@@ -393,7 +441,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
 
   async *records(): AsyncIterable<Link<RecordObject>> {
     const unlistedLinks = new Set(this.#records);
-    for await (const link of this.#backend.records()) {
+    for await (const link of this.#backend.records() as AsyncIterable<Link<RecordObject>>) {
       unlistedLinks.delete(link);
       yield link;
     }
@@ -483,5 +531,84 @@ export class SecretStore {
 
   get [rowsByIndex](): RowsByIndex {
     return this.#store[rowsByIndex];
+  }
+}
+
+/**
+ * The marks a user keeps of what was done on their devices, such as when something was taken in:
+ * objects that are listed as they are, kept apart from the store that bundles are gathered from.
+ *
+ * - It is kept beside a store, in a backend of its own, and reads that store too, so a mark can
+ *   link to what the store holds.
+ * - It lists the marks written to it and nothing else. An object of the schema of a mark that came
+ *   to the store beside, as in a bundle, is read here by its link like any blob and is not a mark.
+ * - A mark is kept here whether or not the store beside holds the same bytes, which anyone can
+ *   send it. So the blob of every mark is in this backend, and what the store beside comes to hold
+ *   changes neither what is listed here nor where it is kept.
+ * - The store does not read it: a blob that only this keeps is not held by the store, so the store
+ *   refuses to write anything with one in its closure, and neither its `get` nor its `closure`
+ *   gives one.
+ * - There is no `closure` here, and this is neither a `Store` nor a `SecretStore`, so it cannot be
+ *   given to what gathers bundles from a store, nor to what keeps or reads a secret.
+ * - It only grows, as a store does.
+ */
+export class PrivateStore implements RowKeeper {
+  // Private fields make the type nominal, so neither a store nor a secret store can be given in
+  // its place.
+  readonly #backend: Backend;
+  readonly #beside: StoreOf;
+  readonly [rowsByIndex]: RowsByIndex;
+
+  /**
+   * Keeps what is written to it in `backend`, beside `store`.
+   *
+   * @throws {TypeError} for a store not made by `new Store`.
+   */
+  constructor(store: Store, backend: Backend) {
+    this.#backend = backend;
+    this.#beside = StoreOf.beside(store, backend);
+    this[rowsByIndex] = new KeptRows(this, { marks: (start) => backend.records(start) });
+  }
+
+  /**
+   * A blob by its link, kept here or held by the store beside.
+   *
+   * @throws when a backend gives other bytes under the link.
+   */
+  get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
+    return this.#beside.get(link);
+  }
+
+  /**
+   * Keeps each of the batch's `marks` and lists it, with the blobs of the batch in its closure.
+   * The other blobs are dropped. A refused batch writes nothing.
+   *
+   * - What the batch gives of a closure is kept here, whether or not the store beside holds it.
+   * - A blob of a closure that the batch leaves out counts as held when either side holds it.
+   * - A mark written again is listed once.
+   *
+   * @throws {RefusedBatch} when one of `marks` is not an object.
+   * @throws {RefusedBatch} when a blob in the closure of one of `marks` is neither in the batch,
+   *   kept here, nor held by the store beside.
+   * @throws the backend's own error when the backend fails.
+   */
+  async write({ marks, blobs = [] }: MarkBatch): Promise<void> {
+    const batch = copiedBatch(marks, blobs, "marked");
+    await this.#backend.put(await leavesFirstIn(this.#beside, batch.objects, batch.blobs), batch.objects);
+  }
+
+  /** The links of the marks, each once and in the order they were first written. */
+  marks(): AsyncIterable<Link<EncodedObject>> {
+    return this.#backend.records();
+  }
+
+  /**
+   * How many blobs were kept here before the one of `link`, or `undefined` when none is kept here
+   * under it, as for a blob that only the store beside holds.
+   */
+  positionOf(link: Link<unknown>): Promise<number | undefined> {
+    return this.#backend.positionOf(link);
   }
 }

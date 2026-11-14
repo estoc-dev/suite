@@ -11,12 +11,13 @@ import {
   type OrderedIndex,
   orderOf,
 } from "./source.ts";
-import type { Backend, Store } from "./store.ts";
+import type { PrivateStore, Store } from "./store.ts";
 
 /**
- * Fills `index` from `store`, which may also be a `SecretStore` or a `StagedStore`: from all the
- * objects it records, from all the blobs it holds when the index reads blobs, and from all the rows
- * of each index it reads, filled from `store` in the same way.
+ * Fills `index` from `store`, which may also be a `SecretStore`, a `PrivateStore` or a
+ * `StagedStore`: from all the objects it records, from all the blobs it holds when the index reads
+ * blobs, from all the marks it lists when the index reads marks, and from all the rows of each
+ * index it reads, filled from `store` in the same way.
  *
  * - Only recorded objects reach an index over records, and on a staged batch those that the batch
  *   records as well: what came from elsewhere is reached by following links from them. A record
@@ -24,6 +25,10 @@ import type { Backend, Store } from "./store.ts";
  * - The blobs a store holds reach an index over blobs, records among them, and on a staged batch
  *   those that the batch keeps as well. On a secret store, only the blobs kept in it do, as its
  *   records are only those listed in it: a blob that the store beside holds is not kept there.
+ * - The marks of a private store reach an index over marks, each as the object it is. A private
+ *   store lists nothing else, so an index over records or over blobs reads nothing from one, and an
+ *   index over marks reads nothing from anything else: an object of the schema of a mark that a
+ *   store holds is not a mark.
  * - Only the rows of an index reach an index over it. They are kept beside the store and are not
  *   blobs of it: its `get` gives none of them, and an index over its blobs reads none.
  * - Each selection of the index reads each recorded object from the store, except that a selection
@@ -32,17 +37,19 @@ import type { Backend, Store } from "./store.ts";
  * - Within one recorded object, a blob, the object among them, is read from the store once, however
  *   many selections and rows read it, and the object is read and validated with a schema once,
  *   however many selections by that schema read it.
- * - A store and a secret store keep the rows of each index they are scanned for, and those rows in
- *   each order they are scanned in, so a later scan reads only the records listed, the blobs put and
- *   the rows given since. A staged batch reads its own on top of the rows that its store keeps.
+ * - A store, a secret store and a private store keep the rows of each index they are scanned for,
+ *   and those rows in each order they are scanned in, so a later scan reads only the records and
+ *   the marks listed, the blobs put and the rows given since. A staged batch reads its own on top
+ *   of the rows that its store keeps.
  * - What a source of the index or its `rows` throw on, or give a row of whose data does not fit the
  *   schema of the index, gives no rows of that source, and the rest is read still. It is listed in
  *   the `failures` of the rows, as is what each index that this one reads failed on, and is kept
  *   with the rows, so a later scan does not read it again.
- * - A scan of an index that reads only recorded objects, itself and through the indexes it reads,
- *   throws when there are failures: what it reads is what its user wrote, so a failure is a mistake
- *   to be seen. A scan of one that reads blobs gives the rows with their failures, as anyone can send a
- *   blob that it fails on. `throwsOnFailure` says which a scan does, whatever the index reads.
+ * - A scan of an index that reads only recorded objects and marks, itself and through the indexes
+ *   it reads, throws when there are failures: what it reads is what its user wrote, so a failure is
+ *   a mistake to be seen. A scan of one that reads blobs gives the rows with their failures, as
+ *   anyone can send a blob that it fails on. `throwsOnFailure` says which a scan does, whatever the
+ *   index reads.
  *
  * @throws the error of the first of the failures, when it throws on failure.
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
@@ -54,7 +61,7 @@ import type { Backend, Store } from "./store.ts";
  *   else with a `get` and `records`, which cannot list them.
  */
 export async function scan<F extends ValueMap, By extends FieldNames<F>>(
-  store: Pick<Store, "get" | "records">,
+  store: Pick<Store, "get" | "records"> | PrivateStore,
   index: OrderedIndex<F, By>,
   { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
 ): Promise<Rows<F, By>> {
@@ -65,7 +72,10 @@ export async function scan<F extends ValueMap, By extends FieldNames<F>>(
   return rows;
 }
 
-async function rowsByIndexOf(store: Pick<Store, "get" | "records">, listsBlobs: boolean): Promise<RowsByIndex> {
+async function rowsByIndexOf(
+  store: Pick<Store, "get" | "records"> | PrivateStore,
+  listsBlobs: boolean,
+): Promise<RowsByIndex> {
   if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex];
   if (listsBlobs)
     throw new Error("only a store, a secret store or a staged batch lists the blobs an index over blobs reads");
@@ -85,12 +95,13 @@ export interface RowKeeper {
 /** What one store lists, and the rows of each index for that. */
 export interface RowsByIndex {
   recordedObjects(): Promise<ListedLinks>;
+  marks(): Promise<ListedLinks>;
   heldBlobs(): Promise<ListedLinks>;
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
   sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>>;
 }
 
-/** What a store lists of the blobs it holds, each once: the objects it records, or all of them. */
+/** What a store lists of the blobs it holds, each once: the objects it records, its marks, or all of them. */
 class ListedLinks implements Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[] = [];
@@ -120,6 +131,7 @@ class ListedLinks implements Listing {
 /** What a store that lists nothing has. */
 const noRows: RowsByIndex = {
   recordedObjects: async () => new ListedLinks(),
+  marks: async () => new ListedLinks(),
   heldBlobs: async () => new ListedLinks(),
   derivedObjectsOf: async (derivation) => new DerivedObjects(derivation),
   sortedRowsOf: async (index) => new SortedRows(index),
@@ -145,12 +157,22 @@ class KeptValue<T> {
 }
 
 /**
+ * The lists of a store, each from the link at `start` on: the links of its records, of its marks
+ * and of its blobs. A store and a secret store list no marks, and a private store lists only marks.
+ */
+export interface StoreLists {
+  records?(start: number): AsyncIterable<Link<unknown>>;
+  marks?(start: number): AsyncIterable<Link<unknown>>;
+  blobs?(start: number): AsyncIterable<Link<unknown>>;
+}
+
+/**
  * What a store keeps of what it lists and of each index it is scanned for, so that a scan reads
- * only what was listed since: the links of the objects it records and of its blobs, the rows of
- * each index, and those rows in each order they are scanned in.
+ * only what was listed since: the links of the objects it records, of its marks and of its blobs,
+ * the rows of each index, and those rows in each order they are scanned in.
  *
- * - The rows of a recorded object, a blob or a row of another index depend on it and its closure
- *   alone, and a store only grows, so the rows of those read before still hold.
+ * - The rows of a recorded object, a mark, a blob or a row of another index depend on it and its
+ *   closure alone, and a store only grows, so the rows of those read before still hold.
  * - The links are kept once for all the indexes that read them, and those of the blobs only once
  *   an index reads blobs: a store holds many more blobs than records, and most indexes read none.
  * - The rows of an index are kept once, for its orders and for each index that reads it.
@@ -159,27 +181,33 @@ class KeptValue<T> {
  */
 export class KeptRows implements RowsByIndex {
   readonly #reader: Reader;
-  readonly #backend: Pick<Backend, "records" | "blobs">;
+  readonly #lists: StoreLists;
   readonly #recordedObjects = new KeptValue(new ListedLinks());
+  readonly #marks = new KeptValue(new ListedLinks());
   readonly #blobs = new KeptValue(new ListedLinks());
   readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
   readonly #sortedRowsByIndex = new WeakMap<object, KeptValue<unknown>>();
 
-  /** Keeps rows of what `backend` lists, each read from `reader`. */
-  constructor(reader: Reader, backend: Pick<Backend, "records" | "blobs">) {
+  /** Keeps rows of what `lists` give, each read from `reader`. A store's backend gives its records and blobs. */
+  constructor(reader: Reader, lists: StoreLists) {
     this.#reader = reader;
-    this.#backend = backend;
+    this.#lists = lists;
   }
 
   recordedObjects(): Promise<ListedLinks> {
     // An object has one record, so as many objects are listed as records were read.
-    return this.#recordedObjects.advance((listed) =>
-      listed.adding(objectsRecordedBy(this.#backend.records(listed.links.length), this.#reader)),
-    );
+    return this.#recordedObjects.advance((listed) => {
+      const records = this.#lists.records?.(listed.links.length);
+      return listed.adding(records === undefined ? [] : objectsRecordedBy(records, this.#reader));
+    });
+  }
+
+  marks(): Promise<ListedLinks> {
+    return this.#marks.advance((listed) => listed.adding(this.#lists.marks?.(listed.links.length) ?? []));
   }
 
   heldBlobs(): Promise<ListedLinks> {
-    return this.#blobs.advance((listed) => listed.adding(this.#backend.blobs(listed.links.length)));
+    return this.#blobs.advance((listed) => listed.adding(this.#lists.blobs?.(listed.links.length) ?? []));
   }
 
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
@@ -238,6 +266,10 @@ export class AddedRows implements RowsByIndex {
 
   async recordedObjects(): Promise<ListedLinks> {
     return (await this.#rows.recordedObjects()).adding(this.#added.recordedObjects);
+  }
+
+  marks(): Promise<ListedLinks> {
+    return this.#rows.marks();
   }
 
   async heldBlobs(): Promise<ListedLinks> {

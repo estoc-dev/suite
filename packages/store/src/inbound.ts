@@ -1,6 +1,6 @@
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import type { Store } from "./store.ts";
+import type { Batch, StagedStore, Store } from "./store.ts";
 
 /**
  * The schema of an object that says a bundle came in from outside the store.
@@ -50,16 +50,34 @@ export class Intake {
    *
    * - `via` is the object of the channel it came in by, when there is one. It and its schema go in
    *   the same write as the bundle and that object, whether or not the store held them.
-   * - What comes in twice is recorded twice, once for each time it came in.
+   * - What comes in again is recorded again, with the time it came in then. Two that agree on the
+   *   bundle, `via` and the time by the clock are one object, recorded once.
    *
    * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
    *   that write nor held by the store; nothing is kept then.
    */
   async receive(bundle: ReceivedBundle, via?: EncodedObject): Promise<InboundObject> {
+    const { inbound, batch } = this.#arrivalOf(bundle, via);
+    await this.#store.write(batch);
+    return inbound;
+  }
+
+  /**
+   * The store as it will be once `bundle` is received, to read before keeping it.
+   *
+   * - `commit` keeps the bundle and records the object that says it came in, as `receive` does.
+   * - `at` is the time the bundle was staged.
+   *
+   * @throws {RefusedBatch} for a bundle or a `via` that `receive` refuses, before anything reads it.
+   */
+  stage(bundle: ReceivedBundle, via?: EncodedObject): Promise<StagedStore> {
+    return this.#store.stage(this.#arrivalOf(bundle, via).batch);
+  }
+
+  #arrivalOf(bundle: ReceivedBundle, via?: EncodedObject): { readonly inbound: InboundObject; readonly batch: Batch } {
     const data: InboundData = { bundle: new LinkValue(bundle.link), at: this.#clock() };
     const inbound = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new LinkValue(via.link) });
     const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
-    await this.#store.write({ records: [inbound], blobs: [...inboundSchema.blobs, ...viaBlobs, ...bundle.blobs()] });
-    return inbound;
+    return { inbound, batch: { records: [inbound], blobs: [...inboundSchema.blobs, ...viaBlobs, ...bundle.blobs()] } };
   }
 }

@@ -3,6 +3,7 @@ import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject, type
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
+  type InboundObject,
   Intake,
   inboundSchema,
   indexOver,
@@ -34,7 +35,7 @@ const ticking = (start = 1000) => {
 };
 const intakeOf = (store: Store, clock = ticking()) => new Intake(store, clock);
 
-async function recordedObjectsOf(store: Store): Promise<Link<unknown>[]> {
+async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
   for await (const record of store.records())
     links.push((await readObject(store, record, recordSchema)).data.object.link);
@@ -106,6 +107,16 @@ describe("an intake", () => {
     expect((await recordedObjectsOf(store)).sort()).toEqual([first.link, second.link].sort());
   });
 
+  it("records a bundle once when it comes in twice at the same time by its clock", async () => {
+    const store = newStore();
+    const intake = intakeOf(store, () => 1000);
+    const bundle = bundleOf(object({ text: "hello" }));
+    const first = await intake.receive(bundle);
+    const second = await intake.receive(bundle);
+    expect(second.link).toBe(first.link);
+    expect(await recordedObjectsOf(store)).toEqual([first.link]);
+  });
+
   it("takes a bundle that leaves out blobs the store holds", async () => {
     const store = newStore();
     const heldNote = object({ text: "held" });
@@ -123,6 +134,35 @@ describe("an intake", () => {
     await expect(intake.receive(bundleOf(note))).rejects.toThrow(RefusedBatch);
     expect(await recordedObjectsOf(store)).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
+  });
+
+  it("stages a bundle with the Inbound that says it came in, and keeps neither until that is committed", async () => {
+    const store = newStore();
+    const channel = schema("Channel", { name: string() });
+    const mailbox = encodeObject(channel, { name: "a mailbox" });
+    const note = object({ text: "hello" });
+    const stagedStore = await intakeOf(store).stage(bundleOf(note), mailbox);
+    const stagedObjects = await recordedObjectsOf(stagedStore);
+    expect(stagedObjects).toHaveLength(1);
+    const inbound = stagedObjects[0] as Link<InboundObject>;
+    expect((await readObject(stagedStore, inbound, inboundSchema)).data).toEqual({
+      bundle: new LinkValue(note.link),
+      at: 1000,
+      via: new LinkValue(mailbox.link),
+    });
+    expect(await stagedStore.get(note.link)).toEqual(note.bytes);
+    expect(await recordedObjectsOf(store)).toEqual([]);
+    expect(await store.get(note.link)).toBeUndefined();
+    await stagedStore.commit();
+    expect(await recordedObjectsOf(store)).toEqual([inbound]);
+    expect(await store.get(note.link)).toEqual(note.bytes);
+    expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
+  });
+
+  it("refuses to stage a bundle that it refuses to receive", async () => {
+    const store = newStore();
+    const note = object({ image: new LinkValue(linkOf(utf8("not in the bundle"))) });
+    await expect(intakeOf(store).stage(bundleOf(note))).rejects.toThrow(RefusedBatch);
   });
 
   it("refuses a channel that links to a blob neither the bundle nor the store holds, and keeps nothing", async () => {

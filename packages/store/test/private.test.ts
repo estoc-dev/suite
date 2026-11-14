@@ -32,7 +32,7 @@ async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promis
 }
 
 describe("a private store", () => {
-  it("gives what is kept in it and what the store beside it holds, and lists only what is written to it", async () => {
+  it("gives what is kept in it and what the store beside it holds, and lists among its records only those written to it", async () => {
     const { store, privateStore } = sides();
     const card = object({ name: "Alice" });
     await store.write({ records: [card], blobs: [...anything.blobs] });

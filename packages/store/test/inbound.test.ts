@@ -62,7 +62,7 @@ describe("inboundSchema", () => {
 });
 
 describe("an intake", () => {
-  it("keeps a bundle with a record that it came in, by its clock, and lists only the record", async () => {
+  it("keeps a bundle with a record that it came in, by its clock, which is the only record it writes", async () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ image: new LinkValue(linkOf(image)) });

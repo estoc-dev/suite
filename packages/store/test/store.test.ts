@@ -98,7 +98,7 @@ describe("a store", () => {
     expect(await recordsOf(store)).toEqual([note.link]);
   });
 
-  it("lists an object that came in with another once it is written as a record", async () => {
+  it("lists among its records an object that came in with another, once it is written as one", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const record = object({ received: new LinkValue(note.link) });

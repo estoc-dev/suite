@@ -55,6 +55,7 @@ const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note, [reply.bytes, photo, ...noteSchema.blobs]),
   "misfit.eof": encodeBundle(misfit, [reply.bytes, ...noteSchema.blobs]),
   "unplaced.eof": encodeBundle(unplacedExample, pathSchema.blobs),
+  "left-out.eof": encodeBundle(note, [...noteSchema.blobs, misfit.bytes, new TextEncoder().encode("a stray blob")]),
   "schema-absent.eof": encodeBundle(note, []),
   "schema-refused.eof": encodeBundle(writtenToNote, [note.bytes]),
   "note-schema.eof": encodeBundle(noteSchema, noteSchema.blobs),

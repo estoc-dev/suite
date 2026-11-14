@@ -2,6 +2,7 @@ import type { NamedSchema } from "@estoc/inspector";
 import { isValueMap, LinkValue, type Value } from "@estoc/object";
 import { type Child, h, mono, muted } from "./dom.ts";
 import { type FieldRow, type FieldTable, fieldTableOf, type InspectedObject, type Place } from "./field-table.ts";
+import { linkView } from "./link-view.ts";
 import { hexOf, messageOf, sizeOf, typeNameOf } from "./text.ts";
 
 const quantityOf = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
@@ -9,7 +10,7 @@ const quantityOf = (count: number, one: string, many: string) => `${count} ${cou
 function valueView(value: Value, partCount: number): HTMLElement {
   if (typeof value === "string") return mono(JSON.stringify(value), "string");
   if (value instanceof Uint8Array) return h("span", null, muted(`${sizeOf(value)} `), mono(hexOf(value), "bytes"));
-  if (value instanceof LinkValue) return mono(value.link, "link");
+  if (value instanceof LinkValue) return linkView(value.link);
   if (Array.isArray(value)) return muted(`array · ${quantityOf(partCount, "item", "items")}`);
   if (isValueMap(value)) return muted(`map · ${quantityOf(partCount, "member", "members")}`);
   return mono(String(value));
@@ -57,7 +58,7 @@ function fieldTableView({ rows }: FieldTable, isTyped: boolean): HTMLElement {
 // A title is the one the schema gave itself, so it is shown beside the link of the schema, which
 // is what tells one schema from another of the same title.
 function schemaView(schema: NamedSchema, object: InspectedObject, { unplacedProblems }: FieldTable): Child[] {
-  const link = mono(schema.link, "link");
+  const link = linkView(schema.link);
   if (schema.kind === "absent") return [link, h("p", { class: "note" }, "No blob is given for it.")];
   if (schema.kind === "refused")
     return [link, h("p", { class: "problem" }, `Not a schema of Estoc Schema: ${messageOf(schema.error)}`)];
@@ -88,7 +89,7 @@ export function objectView(object: InspectedObject): HTMLElement {
       "dl",
       { class: "head" },
       h("dt", null, "Link"),
-      h("dd", null, mono(object.link, "link")),
+      h("dd", null, mono(object.link)),
       h("dt", null, "Size"),
       h("dd", null, sizeOf(object.bytes)),
       h("dt", null, "Schema"),

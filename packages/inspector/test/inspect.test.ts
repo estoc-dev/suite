@@ -57,13 +57,23 @@ describe("a blob that is not an object", () => {
 });
 
 describe("an object", () => {
-  it("gives its data, and the links in it with their places, in the order its bytes hold them", async () => {
+  it("gives its data, and each link in it with its place", async () => {
     const { link, bytes, data, links } = await inspectedObject(note.bytes, ...noteSchema.blobs);
     expect({ link, bytes, data }).toEqual({ link: note.link, bytes: note.bytes, data: note.data });
     expect(links).toEqual([
       { path: "#/more/files/0/photo", link: linkOf(photo) },
       { path: "#/replies/0", link: reply.link },
     ]);
+  });
+
+  it("gives its links as walking its data meets them, a member named by a whole number first", async () => {
+    const to = new LinkValue(linkOf(photo));
+    const listSchema = schema("List", { a: link(), 10: link(), more: any() });
+    const list = encodeObject(listSchema, { a: to, 10: to, more: { a: to, 10: [to, to] } });
+    const { data, links, schema: named } = await inspectedObject(list.bytes, ...listSchema.blobs);
+    expect(named).toMatchObject({ kind: "schema", problems: [] });
+    expect(Object.keys(data)).toEqual(["10", "a", "more"]);
+    expect(links.map(({ path }) => path)).toEqual(["#/10", "#/a", "#/more/10/0", "#/more/10/1", "#/more/a"]);
   });
 
   it("gives the document of the schema it names, with no problems when its data fits", async () => {

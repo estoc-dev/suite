@@ -40,7 +40,10 @@ schema, which an inspection gives, and not by the title.
 ## What an inspection holds
 
 Reading goes one step at a time. Each step stops on its own, and what was
-read before it is still given.
+read before it is still given. A step stops on what the reader
+gives. When the reader throws, as a store does when its backend holds
+another blob under a link, `inspect` throws the same and gives no
+inspection.
 
 | step                             | where it stops                                                |
 | -------------------------------- | ------------------------------------------------------------- |
@@ -68,9 +71,12 @@ read before it is still given.
 `links` holds each link in the data with its `path`, the place of the link
 in the data, spelled as the validator spells the place of a problem: `#`,
 then the name of each field or member and the index of each item on the
-way, as in `#/replies/0`. They come in the order the bytes hold them,
-which is the order the object format puts the members of a map in and not
-the order they were written in.
+way, as in `#/replies/0`.
+
+The links come as walking `data` meets them: the items of an array by
+index, and the members of a map in the order `data` gives them. That is
+not always the order of the bytes. JavaScript lists a member named by a
+whole number, such as `10`, before the others, wherever the bytes have it.
 
 The schema an object names is given apart, under `schema`, and is not
 among `links`.

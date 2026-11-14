@@ -43,8 +43,8 @@ export type NamedSchema =
  *
  * - `absent`: the reader gives no blob for the link.
  * - `bytes`: the blob is not an object of the object format, and links to nothing.
- * - `object`: its data, the links in its data in the order the bytes hold them, and the schema it
- *   names. The schema is not among `links`.
+ * - `object`: its data, each link in its data with its place, and the schema it names. The links
+ *   come as walking `data` meets them, and the schema is not among them.
  */
 export type Inspection =
   | { readonly kind: "absent"; readonly link: Link<unknown> }
@@ -68,6 +68,9 @@ export type Inspection =
  * - Each step stops on its own, and what was read before it is still given. The fields of an object
  *   are read without its schema, since the object format marks the type of every value.
  * - Following a link of the object is inspecting it through the same reader.
+ *
+ * @throws what `reader` throws when it cannot give the blob of `link`, or of the schema the object
+ * names. `absent` says the reader has no blob, and not that reading one failed.
  */
 export async function inspect(link: Link<unknown>, reader: Reader): Promise<Inspection> {
   const bytes = await reader.get(link);

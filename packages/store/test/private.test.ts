@@ -35,7 +35,8 @@ async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise
   return links;
 }
 
-const recordOf = (recorded: EncodedObject) => encodeObject(recordSchema, { object: new LinkValue(recorded.link) });
+const recordOf = (recordedObject: EncodedObject) =>
+  encodeObject(recordSchema, { object: new LinkValue(recordedObject.link) });
 
 async function blobsOf(store: { blobs(): AsyncIterable<Link<unknown>> }): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];

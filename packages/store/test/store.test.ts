@@ -18,7 +18,8 @@ const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7))
 const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
-const recordOf = (recorded: EncodedObject) => encodeObject(recordSchema, { object: new LinkValue(recorded.link) });
+const recordOf = (recordedObject: EncodedObject) =>
+  encodeObject(recordSchema, { object: new LinkValue(recordedObject.link) });
 // An array in CBOR, under no tag of an object.
 const notAnObject = Uint8Array.of(0x82, 1, 2);
 

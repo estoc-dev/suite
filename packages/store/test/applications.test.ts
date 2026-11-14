@@ -23,8 +23,8 @@ import { assert, describe, expect, it, vi } from "vitest";
 import { indexOver, MemoryBackend, recordSchema, Store, scan, selectedBlobs } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes
-// is listed in their store; what comes from the other is kept with a record
-// of receiving it, and read by following links from that record.
+// is recorded in their store; what comes from the other is kept with a recorded
+// object that says it was received, and read by following links from that object.
 
 const { identities, signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
@@ -62,9 +62,9 @@ async function readListed<F extends ValueMap>(store: Store, schema: Schema<F>): 
 
 async function receive(store: Store, file: Uint8Array) {
   const bundle = decodeBundle(file);
-  const receivedRecord = encodeObject(receivedSchema, { bundle: new LinkValue(bundle.link) });
-  await store.write({ records: [receivedRecord], blobs: [...schemas, ...bundle.blobs()] });
-  return receivedRecord;
+  const received = encodeObject(receivedSchema, { bundle: new LinkValue(bundle.link) });
+  await store.write({ records: [received], blobs: [...schemas, ...bundle.blobs()] });
+  return received;
 }
 
 describe("a signed note", () => {
@@ -76,12 +76,12 @@ describe("a signed note", () => {
     const file = encodeBundle(signature, (await aliceStore.closure(signature.link)).values());
 
     const bobStore = newStore();
-    const receivedRecord = await receive(bobStore, file);
-    expect(await recordedObjectsOf(bobStore)).toEqual([receivedRecord.link]);
+    const received = await receive(bobStore, file);
+    expect(await recordedObjectsOf(bobStore)).toEqual([received.link]);
 
-    const [record] = await readListed(bobStore, receivedSchema);
-    assert.exists(record);
-    const bundleSignature = await signatures.read(record.data.bundle.link, bobStore, noIdentityVersions);
+    const [readReceived] = await readListed(bobStore, receivedSchema);
+    assert.exists(readReceived);
+    const bundleSignature = await signatures.read(readReceived.data.bundle.link, bobStore, noIdentityVersions);
     expect(bundleSignature.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
     expect((await readObject(bobStore, bundleSignature.object, noteSchema)).data.text).toBe("hello");
   });
@@ -119,7 +119,7 @@ describe("an object slipped into a bundle", () => {
 
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await sign(slippedContact, mallory);
-    const receivedRecord = await receive(
+    const received = await receive(
       bobStore,
       encodeBundle(signature, [slippedContact.bytes, ...signature.signedIdentity.blobs]),
     );
@@ -128,7 +128,7 @@ describe("an object slipped into a bundle", () => {
       "Mallory, a friend of Bob's",
     );
     expect((await readListed(bobStore, contactSchema)).map(({ data }) => data.name)).toEqual(["Alice"]);
-    expect(await recordedObjectsOf(bobStore)).toContain(receivedRecord.link);
+    expect(await recordedObjectsOf(bobStore)).toContain(received.link);
   });
 });
 

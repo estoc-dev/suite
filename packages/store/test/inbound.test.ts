@@ -47,7 +47,7 @@ describe("inboundSchema", () => {
   it.each<[string, ValueMap]>([
     ["without via", { bundle: blob, at: 0 }],
     ["with via", { bundle: blob, at: 0, via: blob }],
-  ])("takes a record %s", (_, data) => {
+  ])("takes an object %s", (_, data) => {
     expect(() => inboundSchema.validate(data)).not.toThrow();
   });
 
@@ -58,7 +58,7 @@ describe("inboundSchema", () => {
     ["whose via is not a link", { bundle: blob, at: 0, via: "a mailbox" }],
     ["whose at is not whole milliseconds", { bundle: blob, at: 0.5 }],
     ["with a field it does not name", { bundle: blob, at: 0, mailbox: blob }],
-  ])("refuses a record %s", (_, data) => {
+  ])("refuses an object %s", (_, data) => {
     expect(() => inboundSchema.validate(data)).toThrow();
   });
 });
@@ -68,9 +68,9 @@ describe("an intake", () => {
     const store = newStore();
     const image = utf8("an image");
     const note = object({ image: new LinkValue(linkOf(image)) });
-    const record = await intakeOf(store).receive(bundleOf(note, [image, ...anything.blobs]));
-    expect(record.data).toEqual({ bundle: new LinkValue(note.link), at: 1000 });
-    expect(await recordedObjectsOf(store)).toEqual([record.link]);
+    const inbound = await intakeOf(store).receive(bundleOf(note, [image, ...anything.blobs]));
+    expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000 });
+    expect(await recordedObjectsOf(store)).toEqual([inbound.link]);
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
     expect(await store.get(inboundSchema.link)).toEqual(inboundSchema.bytes);
@@ -81,9 +81,9 @@ describe("an intake", () => {
     const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
-    const record = await intakeOf(store).receive(bundleOf(note), mailbox);
-    expect(record.data).toEqual({ bundle: new LinkValue(note.link), at: 1000, via: new LinkValue(mailbox.link) });
-    expect(await recordedObjectsOf(store)).toEqual([record.link]);
+    const inbound = await intakeOf(store).receive(bundleOf(note), mailbox);
+    expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000, via: new LinkValue(mailbox.link) });
+    expect(await recordedObjectsOf(store)).toEqual([inbound.link]);
     expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
     expect(await store.get(channel.link)).toEqual(channel.bytes);
   });
@@ -157,10 +157,10 @@ describe("what an intake records", () => {
   it("are the only Inbound an index reads: one that someone sends stays in the closure of what came in", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const sentRecord = encodeObject(inboundSchema, { bundle: new LinkValue(note.link as Link<never>), at: 0 });
-    await intakeOf(store).receive(bundleOf(sentRecord, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
+    const sentInbound = encodeObject(inboundSchema, { bundle: new LinkValue(note.link as Link<never>), at: 0 });
+    await intakeOf(store).receive(bundleOf(sentInbound, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
     const rows: DataOf<typeof arrivalSchema>[] = [];
     for await (const { data } of (await scan(store, cameIn)).range([])) rows.push(data);
-    expect(rows).toEqual([{ bundle: new LinkValue(sentRecord.link), at: 1000 }]);
+    expect(rows).toEqual([{ bundle: new LinkValue(sentInbound.link), at: 1000 }]);
   });
 });

@@ -139,7 +139,7 @@ const removalIdentityVersion = await publish(wallet, {
 });
 
 describe("a grant", () => {
-  it("is written as a record, signed by the actor, of the mailboxes, at the post's clock", async () => {
+  it("is recorded as a signature by the actor, of the mailboxes, at the post's clock", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { inbox } = await openInbox(alice);
     const before = now;

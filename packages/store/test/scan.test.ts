@@ -66,9 +66,9 @@ const byName = noteNames.orderedBy("name");
 
 const pair = schema("Pair", { key: string(), value: string() });
 
-/** A selection that reads records as `selection` does, without a schema to route them by. */
+/** A selection that reads recorded objects as `selection` does, without a schema to route them by. */
 const plainSelectionOf = <T>(selection: Selection<T>): Selection<T> => ({
-  read: (record, reader) => selection.read(record, reader),
+  read: (link, reader) => selection.read(link, reader),
 });
 
 async function rowDataOf<F>(range: AsyncIterable<{ readonly data: F }>): Promise<F[]> {
@@ -252,8 +252,8 @@ describe("an index scanned from a store", () => {
 
   it("takes recorded objects of several schemas in one selection", async () => {
     const noteOrTag: Selection<{ readonly data: Entry }> = {
-      async read(record, reader) {
-        return (await objectsOf(note).read(record, reader)) ?? (await objectsOf(tag).read(record, reader));
+      async read(link, reader) {
+        return (await objectsOf(note).read(link, reader)) ?? (await objectsOf(tag).read(link, reader));
       },
     };
     const store = new Store(new MemoryBackend());

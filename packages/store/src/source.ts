@@ -185,7 +185,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * The index of what this index and `others` read, with the rows that each of them gives, written
    * to the schema of this index. Each reads what its own source lists and hands what it reads that
-   * as to its own rows, so two that take one record each give the rows of what they read.
+   * as to its own rows, so two that take one recorded object each give the rows of what they read.
    */
   union(...others: readonly Index<F>[]): Index<F> {
     const parts = new Map<Origin, readonly Part<F>[]>();

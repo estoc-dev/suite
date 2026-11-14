@@ -46,9 +46,9 @@ export function fieldTableOf({ data, schema }: InspectedObject): FieldTable {
   const problemsAt = new Map<string, string[][]>();
   const placeAt = (path: string, value: Value | undefined): Place => {
     const problems: string[] = [];
-    const spelledAlike = problemsAt.get(path);
-    if (spelledAlike === undefined) problemsAt.set(path, [problems]);
-    else spelledAlike.push(problems);
+    const problemLists = problemsAt.get(path);
+    if (problemLists === undefined) problemsAt.set(path, [problems]);
+    else problemLists.push(problems);
     return {
       value,
       problems,

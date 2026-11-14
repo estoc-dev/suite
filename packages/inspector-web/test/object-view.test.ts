@@ -5,9 +5,9 @@ import { any, array, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { objectView } from "../src/object-view.ts";
 
-async function viewOf(written: ReturnType<typeof schema>, data: ValueMap): Promise<HTMLElement> {
-  const bytes = objectFormat.encode(new ObjectValue(written.link, data));
-  const blobs = [bytes, ...written.blobs];
+async function viewOf(objectSchema: ReturnType<typeof schema>, data: ValueMap): Promise<HTMLElement> {
+  const bytes = objectFormat.encode(new ObjectValue(objectSchema.link, data));
+  const blobs = [bytes, ...objectSchema.blobs];
   const reader = new Map<Link<unknown>, Uint8Array>(blobs.map((blob) => [linkOf(blob), blob]));
   const inspection = await inspect(linkOf(bytes), reader);
   if (inspection.kind !== "object") throw new Error(`read as ${inspection.kind}`);

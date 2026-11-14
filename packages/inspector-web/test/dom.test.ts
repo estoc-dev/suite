@@ -15,9 +15,8 @@ describe("an element made by h", () => {
     expect(element.childNodes).toHaveLength(5);
   });
 
-  it("takes as an array more children than a call takes arguments", () => {
+  it("has every child of a long array, in turn", () => {
     const texts = Array.from({ length: 130_000 }, (_, index) => `${index} `);
-    expect(() => Array.of(...texts)).toThrow(RangeError);
     const element = h("p", null, texts);
     expect(element.childNodes).toHaveLength(130_000);
     expect(element.firstChild?.textContent).toBe("0 ");

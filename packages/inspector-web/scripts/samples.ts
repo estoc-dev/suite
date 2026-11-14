@@ -42,7 +42,7 @@ const misfit = {
   ),
 };
 const pathSchema = schema("Paths", { a: any(), "a/0": string(), label: string(), "label: detail": string() });
-const unplaced = {
+const unplacedExample = {
   bytes: objectFormat.encode(
     new ObjectValue(pathSchema.link, { a: ["a string"], "a/0": 7, label: "a string", "label: detail": 8 }),
   ),
@@ -54,7 +54,7 @@ const writtenToNote = {
 const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note, [reply.bytes, photo, ...noteSchema.blobs]),
   "misfit.eof": encodeBundle(misfit, [reply.bytes, ...noteSchema.blobs]),
-  "unplaced.eof": encodeBundle(unplaced, pathSchema.blobs),
+  "unplaced.eof": encodeBundle(unplacedExample, pathSchema.blobs),
   "schema-absent.eof": encodeBundle(note, []),
   "schema-refused.eof": encodeBundle(writtenToNote, [note.bytes]),
   "note-schema.eof": encodeBundle(noteSchema, noteSchema.blobs),

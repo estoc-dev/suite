@@ -157,7 +157,7 @@ header .button {
   background: var(--chip);
 }
 
-.refusal {
+.failure {
   display: flex;
   flex-direction: column;
   gap: 4px;

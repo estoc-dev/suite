@@ -27,12 +27,12 @@ export async function blobListOf(bundle: Bundle): Promise<readonly ListedBlob[]>
     Array.from(bundle.blobs(), async (bytes) => ({ bytes, inspection: await inspect(linkOf(bytes), bundle) })),
   );
   const inspectionAt = new Map(blobs.map(({ inspection }) => [inspection.link, inspection]));
-  const reached = new Set<Link<unknown>>();
+  const reachedLinks = new Set<Link<unknown>>();
   const next: Link<unknown>[] = [bundle.link];
   for (let link = next.pop(); link !== undefined; link = next.pop()) {
     const inspection = inspectionAt.get(link);
-    if (inspection === undefined || reached.has(link)) continue;
-    reached.add(link);
+    if (inspection === undefined || reachedLinks.has(link)) continue;
+    reachedLinks.add(link);
     if (inspection.kind !== "object") continue;
     next.push(inspection.schema.link);
     for (const dataLink of inspection.links) next.push(dataLink.link);
@@ -41,6 +41,6 @@ export async function blobListOf(bundle: Bundle): Promise<readonly ListedBlob[]>
     bytes,
     inspection,
     isRoot: inspection.link === bundle.link,
-    isReachedFromRoot: reached.has(inspection.link),
+    isReachedFromRoot: reachedLinks.has(inspection.link),
   }));
 }

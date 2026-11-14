@@ -7,8 +7,8 @@ import {
   inboundSchema,
   indexOver,
   MemoryBackend,
-  PrivateStore,
   recordSchema,
+  SecretStore,
   Store,
   scan,
   selectedRecords,
@@ -33,17 +33,17 @@ async function recordedObjectsOf(store: Pick<Store, "get" | "records">): Promise
   return links;
 }
 
-// A post on `network` at a store and a private store beside it, new ones
+// A post on `network` at a store and a secret store beside it, new ones
 // unless given. Its clock starts at 1000 and moves on a millisecond each
 // time it is read.
 async function postAt(
   network: MemoryNetwork,
   store = new Store(new MemoryBackend()),
-  privateStore = new PrivateStore(store, new MemoryBackend()),
+  secretStore = new SecretStore(store, new MemoryBackend()),
 ) {
   let now = 1000;
   const options = { transports: [network.transport], clock: () => now++ };
-  return { store, privateStore, post: new Post(store, privateStore, options) };
+  return { store, secretStore, post: new Post(store, secretStore, options) };
 }
 
 // `store` keeps a mailbox that was handed over out of band, with a record that it came in.
@@ -167,33 +167,33 @@ describe("an outbox", () => {
 });
 
 describe("an inbox", () => {
-  it("is opened at a mailbox that the store holds, with its key kept in the private store alone", async () => {
+  it("is opened at a mailbox that the store holds, with its key kept in the secret store alone", async () => {
     const network = new MemoryNetwork();
-    const { store, privateStore, inbox } = await openReceiver(network);
+    const { store, secretStore, inbox } = await openReceiver(network);
     expect(await recordedObjectsOf(store)).toEqual([inbox.mailbox]);
-    expect(await recordedObjectsOf(privateStore)).toEqual([inbox.key]);
+    expect(await recordedObjectsOf(secretStore)).toEqual([inbox.key]);
     expect(await store.get(inbox.key)).toBeUndefined();
 
-    const { data } = await readObject(privateStore, inbox.key, mailboxKeySchema);
+    const { data } = await readObject(secretStore, inbox.key, mailboxKeySchema);
     expect(data.mailbox.link).toBe(inbox.mailbox);
     const mailbox = await readObject(store, inbox.mailbox, network.transport.schema);
     const key = await MailboxKey.fromSecretKey(data.secret);
     expect(mailbox.data.key).toEqual(key.publicKey);
   });
 
-  it("is made again from its key, found by an index of the keys that the private store keeps", async () => {
+  it("is made again from its key, found by an index of the keys that the secret store keeps", async () => {
     const network = new MemoryNetwork();
-    const { store, privateStore, queue, inbox } = await openReceiver(network);
+    const { store, secretStore, queue, inbox } = await openReceiver(network);
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
     const byMailbox = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
       { mailbox: data.mailbox, key: new LinkValue(link) },
     ]).orderedBy("mailbox");
     const keys = [];
-    for await (const { data } of (await scan(privateStore, byMailbox)).range([new LinkValue(inbox.mailbox)]))
+    for await (const { data } of (await scan(secretStore, byMailbox)).range([new LinkValue(inbox.mailbox)]))
       keys.push(data.key.link);
     expect(keys).toEqual([inbox.key]);
 
-    const again = await (await postAt(network, store, privateStore)).post.inbox(inbox.key);
+    const again = await (await postAt(network, store, secretStore)).post.inbox(inbox.key);
     await sendTo(network, store, again.mailbox, signatureBlobs);
     expect(await again.receive(queue.takeOne())).toMatchObject({ bundle: signature.link, mailbox: inbox.mailbox });
   });
@@ -301,25 +301,25 @@ describe("an inbox", () => {
 
   it("is not opened at a mailbox that names another key than the one given, and writes nothing", async () => {
     const network = new MemoryNetwork();
-    const { store, privateStore, post } = await postAt(network);
+    const { store, secretStore, post } = await postAt(network);
     const queue = network.queue();
     await expect(post.openInbox(() => queue.mailbox(bob.publicKey))).rejects.toThrow(/names another key/);
     expect(await recordedObjectsOf(store)).toEqual([]);
-    expect(await recordedObjectsOf(privateStore)).toEqual([]);
+    expect(await recordedObjectsOf(secretStore)).toEqual([]);
   });
 
   it("is not made from a key whose secret is not of the key its mailbox names", async () => {
     const network = new MemoryNetwork();
-    const { privateStore, post, inbox } = await openReceiver(network);
+    const { secretStore, post, inbox } = await openReceiver(network);
     const wrong = encodeObject(mailboxKeySchema, {
       mailbox: new LinkValue(inbox.mailbox),
       secret: new Uint8Array(32),
     });
-    await privateStore.write({ records: [wrong] });
+    await secretStore.write({ records: [wrong] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
   });
 
-  it("is not made from a key that the private store does not keep", async () => {
+  it("is not made from a key that the secret store does not keep", async () => {
     const network = new MemoryNetwork();
     const { post, inbox } = await openReceiver(network);
     const unkeptKey = encodeObject(mailboxKeySchema, {

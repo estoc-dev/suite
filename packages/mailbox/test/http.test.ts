@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodeObject, type Link, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
+import { MemoryBackend, recordSchema, SecretStore, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
@@ -108,8 +108,8 @@ describe("an HTTP mailbox", () => {
 describe("an HTTP outbox", () => {
   it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
     const store = new Store(new MemoryBackend());
-    const privateStore = new PrivateStore(store, new MemoryBackend());
-    const post = new Post(store, privateStore, options);
+    const secretStore = new SecretStore(store, new MemoryBackend());
+    const post = new Post(store, secretStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);

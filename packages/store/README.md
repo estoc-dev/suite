@@ -5,7 +5,7 @@ truth is objects: one for each thing the user did, such as writing a note or
 receiving a bundle, a record of each, and the blobs in the closures of those
 records.
 What the user keeps to themselves, such as a secret key, is an object too,
-kept in a private store beside the store. The state of a running program
+kept in a secret store beside the store. The state of a running program
 is kept in its own place and is not an object.
 
 A store holds two things.
@@ -314,7 +314,7 @@ rows in each order it is scanned in, and a
 later scan reads only the records listed since, those that another store on
 the same backend wrote among them. The rows of a recorded object depend on it
 and its closure alone, and a store only grows, so the rows of those read
-before still hold. A private store keeps its own, and a staged batch reads
+before still hold. A secret store keeps its own, and a staged batch reads
 what it records on top of those its store keeps. The rows are kept for an
 index as long as the program holds it, and their order for as long as it
 holds what `orderedBy` gave, so a program makes each once:
@@ -353,8 +353,8 @@ const identityVersionsHeld = indexOver(
 - A link does not say what it names, so a scan reads every blob, attachments
   as well, once for each index. A later scan reads only the blobs put since. A
   staged batch reads the blobs it keeps on top of the rows its store keeps. A
-  private store reads only the blobs kept in it, as
-  [Private stores](#private-stores) says.
+  secret store reads only the blobs kept in it, as
+  [Secret stores](#secret-stores) says.
 
 Rows that catch what they fail to read, so as to give none of something
 that came from elsewhere and does not read as they expect, cannot tell that
@@ -390,7 +390,7 @@ order they are read in.
 - It is an index as any other: its rows depend on the row read and its
   closure alone, a store keeps them and reads only the rows given since, and
   another index can read it in turn. A staged batch reads what the other index
-  gives of the batch on top of the rows its store keeps, and a private store
+  gives of the batch on top of the rows its store keeps, and a secret store
   keeps its own.
 - The rows of the other index are kept once, for its own orders and for each
   index over it, so a recorded object is read once for all of them.
@@ -515,39 +515,39 @@ What an `Inbound` promises is little, so that every way in can keep it:
 `Intake`, and that an object recorded directly is the user's own, is a rule for
 programs that the store does not enforce.
 
-## Private stores
+## Secret stores
 
 Some objects are the user's alone, such as the secret key of a mailbox.
-They are written to a `PrivateStore`, which is kept beside a store, in a
-backend of its own, and is written to and read like one. Being private is
+They are written to a `SecretStore`, which is kept beside a store, in a
+backend of its own, and is written to and read like one. Being secret is
 where an object is kept, not something its schema says: an object of any
 schema can be kept on either side.
 
 ```ts
-import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
+import { MemoryBackend, SecretStore, Store } from "@estoc/store";
 
 const store = new Store(new MemoryBackend());
-const privateStore = new PrivateStore(store, new MemoryBackend());
-await privateStore.write({ records: [key], blobs: keySchema.blobs });
+const secretStore = new SecretStore(store, new MemoryBackend());
+await secretStore.write({ records: [key], blobs: keySchema.blobs });
 
-await privateStore.get(mailbox.link);  // from the store beside
+await secretStore.get(mailbox.link);  // from the store beside
 await store.get(key.link);     // undefined
 ```
 
-The private store reads the store beside it, so what it keeps can link to
+The secret store reads the store beside it, so what it keeps can link to
 what the store holds, and its `get` gives both. The store does not read the
-private store. A blob that only the private store keeps is not one the
+secret store. A blob that only the secret store keeps is not one the
 store holds, so the store refuses to write an object with one in its
-closure, and its `get` and `closure` do not give one. A private store has
+closure, and its `get` and `closure` do not give one. A secret store has
 no `closure` and is not a `Store`, so it cannot be given where a store is
-asked for, as by what gathers bundles. Being private is where bytes are
+asked for, as by what gathers bundles. Being secret is where bytes are
 kept, not a mark on them: bytes that are also written to the store are the
 store's as well.
 
 A write follows the rules of a store's, with what the store beside holds
 counted as held: a blob that either side holds need not come in the batch,
 and one that the store holds already is not kept again. `scan` and `view`
-take a private store as they take a store. Its `blobs` lists only the blobs
+take a secret store as they take a store. Its `blobs` lists only the blobs
 kept in it, as its `records` lists only the records of what was written to
 it, and an index over blobs reads only those, so one that the store beside
 holds is read only by following a link. A record that the store beside holds
@@ -555,7 +555,7 @@ already, of an object written to both, is listed here and not kept again.
 Its `positionOf` gives where it kept a blob, and nothing for one that only
 the store beside holds.
 
-A private store is only on the device that keeps it. Like a store, it only
+A secret store is only on the device that keeps it. Like a store, it only
 grows, so a key that is no longer used is still kept. Whether it is
 encrypted is up to its backend.
 
@@ -575,7 +575,7 @@ keeps nothing once it ends.
 `SqliteBackend` keeps them in one SQLite file. It runs only in Node, so it
 is imported on its own, from `@estoc/store/sqlite`. Each write is one
 transaction, which goes in whole or not at all and is on disk by the time
-the write resolves. The file is not encrypted, so the file of a private
+the write resolves. The file is not encrypted, so the file of a secret
 store goes where only its user can read it.
 
 ```ts

@@ -138,14 +138,14 @@ does no harm, as arriving twice does none.
 ## Through a store
 
 A `Post` binds sending and receiving to a store of `@estoc/store`, and
-keeps the keys of the user's mailboxes in a private store beside it. What
+keeps the keys of the user's mailboxes in a secret store beside it. What
 is sent is taken from the store, what arrives is kept there, and each is
 recorded as an object the user writes:
 
 ```
 Inbound      {"bundle": <link of the root>, "at": <milliseconds>, "via": <link of the mailbox>}
 Outbound     {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
-Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the private store
+Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the secret store
 ```
 
 `Inbound` is the record of `@estoc/store` for whatever comes from outside a
@@ -155,10 +155,10 @@ key's `secret` is 32 bytes.
 
 ```ts
 import { Post } from "@estoc/mailbox";
-import { MemoryBackend, PrivateStore } from "@estoc/store";
+import { MemoryBackend, SecretStore } from "@estoc/store";
 
-const privateStore = new PrivateStore(store, new MemoryBackend());
-const post = new Post(store, privateStore, { transports: [transport] });
+const secretStore = new SecretStore(store, new MemoryBackend());
+const post = new Post(store, secretStore, { transports: [transport] });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and its closure in the store
@@ -187,7 +187,7 @@ await intake.receive(decodeBundle(encodeBundle({ bytes: handedOut }, transport.s
 `openInbox` makes a new key and gives its public key to `makeMailbox`,
 which gives back a mailbox sealed to it, of one of the post's transports.
 The post writes the mailbox to the store as a record, and then the key to
-the private store. A key is one mailbox's, so a key used at two transports
+the secret store. A key is one mailbox's, so a key used at two transports
 would be two. If the post stops in between, what is left is a mailbox that
 nobody receives at and nobody was handed. The inbox's `mailbox` is the
 link of the mailbox to hand out, and its `key` the link of the key.
@@ -197,7 +197,7 @@ whose secret is not of the public key its mailbox names: what that key
 opens was sealed to another mailbox. The caller holds the link of a key and
 not its secret, and no bundle gathered from the store carries one. The
 package keeps no list of the user's mailboxes: an application finds them
-with an index of `@estoc/store` over the private store that reads
+with an index of `@estoc/store` over the secret store that reads
 `mailboxKeySchema`.
 
 `send` takes a root that the store holds, whoever wrote it, so passing on

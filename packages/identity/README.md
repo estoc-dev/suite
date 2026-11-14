@@ -506,8 +506,8 @@ name, so hand an object over together with its signatures.
 
 ## Secret Keys and Wallet Keys
 
-Which keys a device signs with is for its private store to say, the
-`PrivateStore` of `@estoc/store` that it keeps beside its store. It holds
+Which keys a device signs with is for its secret store to say, the
+`SecretStore` of `@estoc/store` that it keeps beside its store. It holds
 one of two objects for each such key:
 
 - A Secret Key, written to `secretKeySchema`, holds the key by the link of
@@ -521,9 +521,9 @@ with a `SoftwareSigner`; with its Wallet Key it connects a wallet and checks
 the public key the wallet gives; with neither it does not sign with the
 key. A key with no secret is not taken to be a wallet's, since the keys of
 others and the agents of other devices have none here either, so the
-private store lists just the keys the device signs with. The two are
+secret store lists just the keys the device signs with. The two are
 separate schemas, so a Wallet Key does not read as a Secret Key that lacks
-its secret. A Wallet Key holds no secret, and is in the private store
+its secret. A Wallet Key holds no secret, and is in the secret store
 because it means something to that device alone.
 
 A key that signs for every request, such as a service's or an agent's on a
@@ -534,18 +534,18 @@ root too.
 
 `secretKeys.encode(scheme, secret)` writes the Secret Key of a secret in a
 `CurveScheme`; the caller makes the secret. `secretKeys.read` reads one
-from its link and a `Reader`, such as a private store, with its key and
+from its link and a `Reader`, such as a secret store, with its key and
 `signer`, a `Signer` over the secret. It refuses a Secret Key whose key is
 in a scheme no curve signs in, and one whose secret is not that of its key.
 `walletKeys.encode(key)` and `walletKeys.read` do the same for a Wallet
 Key, which reads with its key alone: connecting the wallet is for the
 application, and what signs takes a `Signer` either way. Each carries as
 `blobs` its closure, its object, its key's, the schemas they are written
-to and the root schema of those, so one write puts it in an empty private
+to and the root schema of those, so one write puts it in an empty secret
 store:
 
 ```ts
 const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
-await privateStore.write({ records: [secretKey], blobs: secretKey.blobs });
-const { signer } = await secretKeys.read(secretKey.link, privateStore);
+await secretStore.write({ records: [secretKey], blobs: secretKey.blobs });
+const { signer } = await secretKeys.read(secretKey.link, secretStore);
 ```

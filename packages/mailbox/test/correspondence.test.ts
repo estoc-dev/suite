@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordSchema, Store } from "@estoc/store";
+import { Intake, MemoryBackend, RefusedBatch, recordSchema, SecretStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
@@ -60,8 +60,8 @@ interface Person {
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
 async function personActingAs(actor: Actor, store = new Store(new MemoryBackend())): Promise<Person> {
-  const privateStore = new PrivateStore(store, new MemoryBackend());
-  const post = new Post(store, privateStore, { transports: [transport], clock });
+  const secretStore = new SecretStore(store, new MemoryBackend());
+  const post = new Post(store, secretStore, { transports: [transport], clock });
   const intake = new Intake(store, clock);
   const correspondence = post.correspondenceAs(actor, identity);
   return { actor, signedIdentity: actor.signedIdentity, store, post, intake, correspondence };

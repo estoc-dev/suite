@@ -310,7 +310,7 @@ identity. It keeps the service's signature over the acknowledgement as
 post to, `{"key", "url"}`, whose url is the origin the offer was taken at and
 the send id. It writes an Opened mailbox record of the mailbox and the
 acknowledgement, and gives the mailbox. `Post.openInbox` writes the mailbox
-to the store as a record, and its key to the private store. The client
+to the store as a record, and its key to the secret store. The client
 refuses an acknowledgement as `accept` does, and writes nothing then.
 
 The offer names the terms of the mailboxes it opens: what waits is kept
@@ -372,7 +372,7 @@ lists picks up without opening the mailbox again, and one that a later
 identity version takes out, or a crisis cuts off, picks up no more once the
 service has seen that identity version, in an acceptance or a request that
 it acknowledges. Opening what arrives takes the mailbox's key, which
-`Post.openInbox` keeps in the private store of the device that opened the
+`Post.openInbox` keeps in the secret store of the device that opened the
 mailbox.
 
 `pickup` goes by the acknowledgement that the Opened mailbox record of the
@@ -534,7 +534,7 @@ over its offer accepts nothing.
 
 ## Running with Node
 
-`src/main.ts` runs a service in Node, with its private store in one SQLite
+`src/main.ts` runs a service in Node, with its secret store in one SQLite
 file and all else it keeps in another.
 Node runs the TypeScript sources as they are, so a checkout of the
 repository with its dependencies installed is all it takes:
@@ -542,24 +542,24 @@ repository with its dependencies installed is all it takes:
 ```sh
 git clone https://github.com/estoc-dev/suite.git && cd suite
 pnpm install --frozen-lockfile
-node packages/mailbox-service/src/main.ts key /var/lib/mailbox/private.db
+node packages/mailbox-service/src/main.ts key /var/lib/mailbox/secret.db
 ```
 
-`main.ts key <path>` makes a private store at `<path>`, a SQLite file that
+`main.ts key <path>` makes a secret store at `<path>`, a SQLite file that
 its owner alone reads, holding a new Ed25519 Secret Key of
 `@estoc/identity` for the service's identity, and prints the link of its
 key. It refuses to write over a file that is there. The service is named by
 the identifier of that identity, so a lost key is a lost service: keep a copy of
 the file offline, and take a new one whenever it changes. Only `main.ts key`
 writes it for now. It is apart from the database so that each is backed up
-on its own: the private store when it changes, the database often.
+on its own: the secret store when it changes, the database often.
 
 `main.ts` takes its settings from the environment:
 
 | Variable | Setting |
 |---|---|
 | `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
-| `MAILBOX_PRIVATE_STORE` | the path of the private store that `main.ts key` makes |
+| `MAILBOX_SECRET_STORE` | the path of the secret store that `main.ts key` makes |
 | `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes, made when it is missing |
 | `MAILBOX_PORT` | the port it listens at |
 | `MAILBOX_HOST` | the address it listens at; 127.0.0.1 unless set |
@@ -567,7 +567,7 @@ on its own: the private store when it changes, the database often.
 | `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
 | `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
 
-It signs with the one Secret Key in its private store. Without the private
+It signs with the one Secret Key in its secret store. Without the secret
 store, or with no Secret Key or more than one in it, it refuses to start,
 since a new key would be another service. Once it serves, it writes a line
 with its origin, where it listens and the link of its root. It speaks plain
@@ -593,7 +593,7 @@ User=mailbox
 WorkingDirectory=/srv/suite
 ExecStart=/usr/bin/node packages/mailbox-service/src/main.ts
 Environment=MAILBOX_ORIGIN=https://mail.example
-Environment=MAILBOX_PRIVATE_STORE=/var/lib/mailbox/private.db
+Environment=MAILBOX_SECRET_STORE=/var/lib/mailbox/secret.db
 Environment=MAILBOX_DATABASE=/var/lib/mailbox/service.db
 Environment=MAILBOX_PORT=8080
 Restart=always
@@ -641,12 +641,12 @@ docker build -f packages/mailbox-service/Dockerfile -t mailbox-service .
 ```
 
 The image runs `main.ts` as the `node` user. It listens at port 8080 of the
-container, for a proxy on the same network, and keeps its private store
+container, for a proxy on the same network, and keeps its secret store
 and its database in `/data`. The other settings come from the environment
-as above. Arguments go to `main.ts`, so the private store is made with:
+as above. Arguments go to `main.ts`, so the secret store is made with:
 
 ```sh
-docker run --rm -v mailbox:/data mailbox-service key /data/private.db
+docker run --rm -v mailbox:/data mailbox-service key /data/secret.db
 ```
 
 With Docker Compose, from a folder that holds a checkout of the repository
@@ -668,6 +668,6 @@ volumes:
   data:
 ```
 
-`docker compose run --rm mailbox key /data/private.db` makes the private
+`docker compose run --rm mailbox key /data/secret.db` makes the secret
 store in that volume, and `docker compose up -d --build` serves the
 checkout as it is after a pull.

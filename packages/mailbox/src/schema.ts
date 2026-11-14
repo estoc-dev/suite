@@ -22,7 +22,7 @@ export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
 /**
  * The schema of the key that opens what arrives at a mailbox of the user's:
  * the link of the mailbox, and `secret`, the x25519 secret key. One is kept
- * in a private store for each mailbox, so a key used at two transports is
+ * in a secret store for each mailbox, so a key used at two transports is
  * two objects.
  */
 export const mailboxKeySchema = schema("Mailbox Key", {

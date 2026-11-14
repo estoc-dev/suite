@@ -1,7 +1,7 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
-import { Intake, type PrivateStore, RefusedBatch, type Store } from "@estoc/store";
+import { Intake, RefusedBatch, type SecretStore, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -30,25 +30,25 @@ type MailboxBytes = { readonly bytes: Bytes<EncodedObject> };
 
 /**
  * Sending and receiving with a store, through transports, with the keys of
- * the user's mailboxes kept in a private store beside the store.
+ * the user's mailboxes kept in a secret store beside the store.
  *
  * - What is sent is taken from the store, and what arrives is kept in it.
  * - Each is recorded there as a delivery that the user writes, an object of `outboundSchema` or of
  *   `inboundSchema` in `@estoc/store`, listed with the store's other records for the application to
  *   read into its indexes.
- * - The keys that open what arrives are objects of `mailboxKeySchema` in a private store beside the
+ * - The keys that open what arrives are objects of `mailboxKeySchema` in a secret store beside the
  *   store, so no bundle gathered from the store carries one.
  */
 export class Post {
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
+  readonly #secretStore: SecretStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
   readonly #intake: Intake;
 
-  constructor(store: Store, privateStore: PrivateStore, { transports, clock = Date.now }: PostOptions) {
+  constructor(store: Store, secretStore: SecretStore, { transports, clock = Date.now }: PostOptions) {
     this.#store = store;
-    this.#privateStore = privateStore;
+    this.#secretStore = secretStore;
     this.#transports = transports;
     this.#clock = clock;
     this.#intake = new Intake(store, clock);
@@ -68,7 +68,7 @@ export class Post {
   /**
    * Opens a mailbox of the user's with a new key, to receive at. `makeMailbox` is given the public
    * key and gives back a mailbox sealed to it, as the transport makes one. The mailbox is written
-   * to the store and then its key to the private store, so a stop in between leaves at most a
+   * to the store and then its key to the secret store, so a stop in between leaves at most a
    * mailbox that nobody receives at.
    *
    * @throws when the mailbox is of a transport the post was not given, or names another key;
@@ -81,19 +81,19 @@ export class Post {
     if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
     await this.#store.write({ records: [mailbox], blobs: [...mailbox.schema.blobs] });
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
-    await this.#privateStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
+    await this.#secretStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
 
   /**
-   * The inbox of a key that the private store keeps, at the mailbox the key names, which the store
+   * The inbox of a key that the secret store keeps, at the mailbox the key names, which the store
    * holds.
    *
    * @throws when the key's secret is not of the public key the mailbox names: what it opens was
    *   sealed to another mailbox.
    */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
-    const { data } = await readObject(this.#privateStore, key, mailboxKeySchema);
+    const { data } = await readObject(this.#secretStore, key, mailboxKeySchema);
     const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
     const opener = await MailboxKey.fromSecretKey(data.secret);
     if (!opener.hasPublicKey(mailboxData.key)) throw new Error(`${mailbox.link} names another key than ${key} holds`);
@@ -154,7 +154,7 @@ export class Outbox {
 /** A mailbox of the user's bound to its key and a store, to keep what arrives there. */
 export class Inbox {
   /**
-   * The link of the mailbox's key, which the private store keeps, for `Post.inbox` to make this
+   * The link of the mailbox's key, which the secret store keeps, for `Post.inbox` to make this
    * inbox again.
    */
   readonly key: Link<EncodedObject<MailboxKeyData>>;

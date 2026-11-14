@@ -7,9 +7,9 @@ import type { Keys } from "./key/keys.ts";
 import { type Signer, SoftwareSigner } from "./signer.ts";
 
 /**
- * The schema of a Secret Key, kept in a device's private store for each key
+ * The schema of a Secret Key, kept in a device's secret store for each key
  * the device signs with by a secret in memory. With the Wallet Keys there,
- * the private store lists the keys the device signs with.
+ * the secret store lists the keys the device signs with.
  */
 export const secretKeySchema = schema("Secret Key", { key: link<KeyObject>(), secret: bytes() });
 

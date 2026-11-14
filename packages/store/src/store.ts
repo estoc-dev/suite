@@ -31,7 +31,7 @@ export interface Backend {
    * - The store gives each blob after the blobs it links to, and a link is listed only once its
    *   blob is in, so a write cut short leaves no blob without its closure and no listed link
    *   without its blob.
-   * - The backend of a `PrivateStore` is not given what the store beside it holds, so there these
+   * - The backend of a `SecretStore` is not given what the store beside it holds, so there these
    *   hold of the two together: part of a blob's closure, or the blob of a listed link, may be in
    *   the store beside instead.
    */
@@ -269,7 +269,7 @@ class StoreOf implements Store, RowKeeper {
    * holds. What `store` holds already is not put in `backend` again.
    */
   static beside(store: Store, backend: Backend): Store & RowKeeper {
-    if (!(#backend in store)) throw new TypeError("a private store is kept beside a store made by `new Store`");
+    if (!(#backend in store)) throw new TypeError("a secret store is kept beside a store made by `new Store`");
     const sharedBackend = store.#backend;
     return new StoreOf({
       get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
@@ -426,7 +426,7 @@ export const Store: new (backend: Backend) => Store = StoreOf;
  * - Bytes that are also written to the store are the store's as well.
  * - Whether what is kept here is encrypted is up to the backend.
  */
-export class PrivateStore {
+export class SecretStore {
   // A private field makes the type nominal, unlike the interface `Store`, so a
   // store, which has every method of this one, cannot be given in its place.
   readonly #store: Store & RowKeeper;

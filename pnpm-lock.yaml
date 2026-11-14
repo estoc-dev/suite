@@ -90,6 +90,34 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.6.5)
 
+  packages/inspector-web:
+    dependencies:
+      '@estoc/bundle':
+        specifier: workspace:*
+        version: link:../bundle
+      '@estoc/inspector':
+        specifier: workspace:*
+        version: link:../inspector
+      '@estoc/object':
+        specifier: workspace:*
+        version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.5
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.3
+      vite:
+        specifier: ^7.3.7
+        version: 7.3.7(@types/node@26.6.5)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.6.5)
+
   packages/lineage:
     dependencies:
       '@estoc/object':

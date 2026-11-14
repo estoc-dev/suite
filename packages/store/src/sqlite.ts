@@ -1,6 +1,6 @@
 import { DatabaseSync, type SQLTagStore } from "node:sqlite";
 import type { EncodedObject, Link } from "@estoc/object";
-import type { Backend } from "./store.ts";
+import type { Backend } from "./backend.ts";
 
 /** Keeps a store in one SQLite file, writing each batch that is put as one transaction. */
 export class SqliteBackend implements Backend {

@@ -1,5 +1,5 @@
 import type { EncodedObject, Link } from "@estoc/object";
-import type { Backend } from "./store.ts";
+import type { Backend } from "./backend.ts";
 
 /** Keeps a store in memory, for tests and for a program that keeps nothing once it ends. */
 export class MemoryBackend implements Backend {

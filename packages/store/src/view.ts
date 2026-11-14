@@ -1,8 +1,9 @@
 import type { ValueMap } from "@estoc/object";
+import type { PrivateStore } from "./private-store.ts";
 import { scan } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
-import type { PrivateStore, Store } from "./store.ts";
+import type { Store } from "./store.ts";
 
 /**
  * A value worked out from the rows of an index when they are read, such as

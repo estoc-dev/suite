@@ -1,5 +1,6 @@
 import type { Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
+import type { PrivateStore } from "./private-store.ts";
 import { objectsRecordedBy } from "./record.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
 import {
@@ -11,7 +12,7 @@ import {
   type OrderedIndex,
   orderOf,
 } from "./source.ts";
-import type { PrivateStore, Store } from "./store.ts";
+import type { Store } from "./store.ts";
 
 /**
  * Fills `index` from `store`, which may also be a `SecretStore`, a `PrivateStore` or a

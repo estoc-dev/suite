@@ -51,6 +51,8 @@ gives no meaning and no reader an advantage.
 - `@estoc/inspector`: what a link reads as by what the blob says of
   itself, with no schema in hand: its fields, the schema it names and the
   links in its data.
+- `@estoc/inspector-web`: a page that opens a bundle and shows what the
+  inspector reads of its root.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

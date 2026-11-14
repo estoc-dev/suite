@@ -1,0 +1,24 @@
+{
+  "name": "@estoc/inspector-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "samples": "node scripts/samples.ts",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@estoc/bundle": "workspace:*",
+    "@estoc/inspector": "workspace:*",
+    "@estoc/object": "workspace:*",
+    "@estoc/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "happy-dom": "^21.0.4",
+    "typescript": "~5.8.0",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  }
+}

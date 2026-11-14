@@ -107,6 +107,16 @@ describe("an intake", () => {
     expect((await recordedObjectsOf(store)).sort()).toEqual([first.link, second.link].sort());
   });
 
+  it("records a bundle once when it comes in twice at the same time by its clock", async () => {
+    const store = newStore();
+    const intake = intakeOf(store, () => 1000);
+    const bundle = bundleOf(object({ text: "hello" }));
+    const first = await intake.receive(bundle);
+    const second = await intake.receive(bundle);
+    expect(second.link).toBe(first.link);
+    expect(await recordedObjectsOf(store)).toEqual([first.link]);
+  });
+
   it("takes a bundle that leaves out blobs the store holds", async () => {
     const store = newStore();
     const heldNote = object({ text: "held" });

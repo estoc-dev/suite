@@ -467,7 +467,9 @@ the channel's object, which it keeps with its schema whether or not the
 store held them. The bundle, the channel and the `Inbound` go in one write,
 which is refused with a `RefusedBatch` when a blob in the closure of the
 bundle's root or of `via` is neither in that write nor held by the store.
-What comes in twice is recorded twice, and a reader takes the earliest `at`.
+What comes in again is recorded again with its own `at`, and a reader takes
+the earliest. Two that agree on the bundle, `via` and `at`, as when the
+clock gives the same millisecond twice, are one `Inbound`, recorded once.
 
 `stage` takes what `receive` takes and gives the store as it will be once
 that is received, a `StagedStore` ([Staging](#staging)) to verify on. Its

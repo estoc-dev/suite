@@ -50,7 +50,8 @@ export class Intake {
    *
    * - `via` is the object of the channel it came in by, when there is one. It and its schema go in
    *   the same write as the bundle and that object, whether or not the store held them.
-   * - What comes in twice is recorded twice, once for each time it came in.
+   * - What comes in again is recorded again, with the time it came in then. Two that agree on the
+   *   bundle, `via` and the time by the clock are one object, recorded once.
    *
    * @throws {RefusedBatch} when a blob in the closure of the bundle's root or of `via` is neither in
    *   that write nor held by the store; nothing is kept then.

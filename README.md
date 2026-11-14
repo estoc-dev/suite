@@ -52,7 +52,7 @@ gives no meaning and no reader an advantage.
   itself, with no schema in hand: its fields, the schema it names and the
   links in its data.
 - `@estoc/inspector-web`: a page that opens a bundle and shows what the
-  inspector reads of its root.
+  inspector reads of its blobs, from the root along the links.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

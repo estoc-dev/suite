@@ -130,7 +130,6 @@ export class IdentityVersions {
         hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
       };
     };
-    // Without `arrivals` a signature comes in now, as does one that `arrivals` give no time for.
     const honors = async (signature: Signature, arrivals?: Arrivals) => {
       const { signedIdentity, key } = signature;
       const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);

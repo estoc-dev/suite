@@ -57,11 +57,14 @@ describe("a staged batch", () => {
 
   it("gives where the store took in a blob it holds, and nothing for one that only the batch holds", async () => {
     const store = newStore();
-    const held = object({ text: "held" });
-    await store.write({ roots: [held.link], blobs: [held.bytes, ...anything.blobs] });
-    const note = object({ held: new LinkValue(held.link) });
-    const stagedStore = await store.stage({ roots: [note.link, held.link], blobs: [note.bytes, held.bytes] });
-    expect(await stagedStore.positionOf(held.link)).toBe(2);
+    const heldObject = object({ text: "held" });
+    await store.write({ roots: [heldObject.link], blobs: [heldObject.bytes, ...anything.blobs] });
+    const note = object({ held: new LinkValue(heldObject.link) });
+    const stagedStore = await store.stage({
+      roots: [note.link, heldObject.link],
+      blobs: [note.bytes, heldObject.bytes],
+    });
+    expect(await stagedStore.positionOf(heldObject.link)).toBe(2);
     expect(await stagedStore.positionOf(note.link)).toBeUndefined();
     await stagedStore.commit();
     expect(await stagedStore.positionOf(note.link)).toBe(3);

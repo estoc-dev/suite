@@ -620,8 +620,8 @@ leaves an object that the store holds with no record of it.
 Its rows are kept apart from those of the store beside, so an index over
 blobs that is scanned on both is worked out once for each. Its `positionOf`
 gives where it kept a blob, and nothing for one that only the store beside
-holds. So a view that asks where a blob of the store beside was taken in,
-as one of the people a store has seen does, is viewed on that store.
+holds. So a view that asks where a blob of the store beside was taken in is
+viewed on that store.
 
 `arrivalsView` gives a view of when what the user's devices hold came to
 them, by the inbound marks and the records of a private store:

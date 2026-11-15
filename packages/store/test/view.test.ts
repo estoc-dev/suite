@@ -52,7 +52,7 @@ async function record({ store, privateStore }: ReturnType<typeof newStores>, ...
     roots: objects.map(({ link }) => link),
     blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs],
   });
-  await privateStore.write(recordsOf(objects));
+  await privateStore.write(recordsOf(objects, Date.now()));
 }
 
 describe("the value of a view", () => {

@@ -76,7 +76,8 @@ export class Correspondence {
    */
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject>[]): Promise<Signature> {
     const current = await (await view(this.#store, this.#seenPeople)).current(to);
-    const grant = this.#grants.encode(current, mailboxes, this.#clock());
+    const at = this.#clock();
+    const grant = this.#grants.encode(current, mailboxes, at);
     const signature = await this.#actor.sign(grant);
     await this.#store.write({
       roots: [signature.link],
@@ -89,7 +90,7 @@ export class Correspondence {
         ...current.blobs,
       ],
     });
-    await this.#privateStore.write(recordsOf([signature]));
+    await this.#privateStore.write(recordsOf([signature], at));
     return signature;
   }
 

@@ -70,6 +70,7 @@ async function prepareSender(network: MemoryNetwork, store?: Store) {
   return { ...at, queue, mailbox };
 }
 
+// A post with an inbox at a new queue. The record of its mailbox is at 1000, so the clock reads 1001 next.
 async function openReceiver(network: MemoryNetwork, store?: Store) {
   const at = await postAt(network, storesBeside(store));
   const queue = network.queue();
@@ -217,8 +218,8 @@ describe("an inbox", () => {
 
     const deliveries = await inbox.collect(pickup);
     expect(deliveries.map(({ link, ...delivery }) => delivery)).toEqual([
-      { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1000 },
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1001 },
+      { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1002 },
     ]);
     expect(await listedIn(privateStore)).toEqual([inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect((await signatures.read(signature.link, store, noIdentityVersions)).object).toBe(hello.link);
@@ -234,7 +235,7 @@ describe("an inbox", () => {
     expect(await store.get(delivery.link)).toBeUndefined();
     expect((await readObject(privateStore, delivery.link, inboundSchema)).data).toEqual({
       bundle: new LinkValue(signature.link),
-      at: 1000,
+      at: 1001,
       via: new LinkValue(inbox.mailbox),
     });
   });

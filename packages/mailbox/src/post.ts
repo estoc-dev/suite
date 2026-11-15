@@ -91,7 +91,7 @@ export class Post {
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
     if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
     await this.#store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
-    await this.#privateStore.write(recordsOf([mailbox]));
+    await this.#privateStore.write(recordsOf([mailbox], this.#clock()));
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
     await this.#secretStore.write({ secrets: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);

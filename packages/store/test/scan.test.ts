@@ -120,7 +120,7 @@ async function recordIn(
   blobs?: Iterable<Uint8Array>,
 ): Promise<void> {
   await store.write(batchOf(objects, blobs));
-  await privateStore.write(recordsOf(objects));
+  await privateStore.write(recordsOf(objects, Date.now()));
 }
 
 describe("an index scanned from a private store", () => {

@@ -355,18 +355,20 @@ class MailboxService {
    * honor it. Once a crisis of the service's root cuts it, the service
    * signs the same acknowledgement as its current identity version, and
    * writes that signature to the store and a record of it to the private
-   * store.
+   * store. A signer that signs the same bytes the same way gives that
+   * signature again when asked again, and one the store holds is not written
+   * or recorded a second time.
    */
   async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.honors(signature)) return link;
     const renewedSignature = await this.#sign({ link: signature.object }, people);
-    await this.#write(renewedSignature);
+    if ((await this.#store.get(renewedSignature.link)) === undefined) await this.#write(renewedSignature);
     return renewedSignature.link;
   }
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
-    await writeSigned(signature, blobs, { store: this.#store, privateStore: this.#privateStore });
+    await writeSigned(signature, blobs, this.#clock(), { store: this.#store, privateStore: this.#privateStore });
   }
 
   /**
@@ -561,7 +563,7 @@ export async function loadMailboxService(
       ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
-    await writeSigned(await actor.sign(object), blobs, { store, privateStore });
+    await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
   return new MailboxService(signer, actor.signedIdentity, identifier, kit, seenPeople, {
     ...options,
@@ -571,15 +573,17 @@ export async function loadMailboxService(
 
 /**
  * Writes `signature`, which the service signed, to the store with those of
- * `blobs` in its closure, and then a record of it to the private store.
+ * `blobs` in its closure, and then a record of it at `at` to the private
+ * store.
  */
 async function writeSigned(
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
+  at: number,
   { store, privateStore }: Pick<ServiceOptions, "store" | "privateStore">,
 ): Promise<void> {
   await store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobs] });
-  await privateStore.write(recordsOf([signature]));
+  await privateStore.write(recordsOf([signature], at));
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

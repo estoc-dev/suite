@@ -712,7 +712,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const { bundle, signature: acknowledgementSignature, acknowledgement } = await mailboxAcknowledgementIn(response);
     expect(acknowledgementSignature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     const { sendId, pickupId } = acknowledgement.data;
-    expect(acknowledgement.data).toEqual({ request: new LinkValue(signature.link), at: 5_002, sendId, pickupId });
+    expect(acknowledgement.data).toEqual({ request: new LinkValue(signature.link), at: 5_003, sendId, pickupId });
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);

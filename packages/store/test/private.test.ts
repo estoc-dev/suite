@@ -7,6 +7,7 @@ import {
   MemoryBackend,
   PrivateStore,
   RefusedBatch,
+  recordSchema,
   recordsOf,
   SecretStore,
   Store,
@@ -293,14 +294,14 @@ describe("an index over records, scanned on a private store", () => {
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
     await privateStore.write({ marks: [taken(bob, 1)], blobs: [...takenSchema.blobs] });
-    await privateStore.write(recordsOf([alice]));
+    await privateStore.write(recordsOf([alice], 1));
     expect(await namesByName(privateStore, recordedNames())).toEqual(["Alice"]);
   });
 
   it("reads no object whose record came to the store beside", async () => {
     const { store, privateStore } = sides();
     const mallory = card("Mallory");
-    const { marks, blobs = [] } = recordsOf([mallory]);
+    const { marks, blobs = [] } = recordsOf([mallory], 1);
     const [sentRecord] = [...marks];
     if (sentRecord === undefined) throw new Error("no record was made");
     await store.write({
@@ -320,12 +321,33 @@ describe("an index over records, scanned on a private store", () => {
       return [{ name: data.name, at: 0 }];
     }).orderedBy("name");
     await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
-    await privateStore.write(recordsOf([bob]));
+    await privateStore.write(recordsOf([bob], 1));
     expect(await namesByName(privateStore, index)).toEqual(["Bob"]);
     await privateStore.write({ marks: [taken(bob, 2)] });
-    await privateStore.write(recordsOf([alice]));
+    await privateStore.write(recordsOf([alice], 2));
     expect(await namesByName(privateStore, index)).toEqual(["Alice", "Bob"]);
     expect(readNames).toEqual(["Bob", "Alice"]);
+  });
+
+  it("reads an object once that was recorded again, which is marked with the time of each", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
+    const readNames: string[] = [];
+    const index = indexOver(selectedRecords(objectsOf(cardSchema)), namedSchema, ({ data }) => {
+      readNames.push(data.name);
+      return [{ name: data.name, at: 0 }];
+    }).orderedBy("name");
+    await privateStore.write(recordsOf([alice], 1));
+    await privateStore.write(recordsOf([alice], 1));
+    expect(await namesByName(privateStore, index)).toEqual(["Alice"]);
+    await privateStore.write(recordsOf([alice], 2));
+    expect(await namesByName(privateStore, index)).toEqual(["Alice"]);
+    expect(readNames).toEqual(["Alice"]);
+    const records = objectsOf(recordSchema);
+    const times: number[] = [];
+    for await (const mark of privateStore.marks()) times.push((await records.read(mark, privateStore))?.data.at ?? -1);
+    expect(times).toEqual([1, 2]);
   });
 });
 

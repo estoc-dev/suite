@@ -21,7 +21,17 @@ import {
   ObjectValue,
   objectFormat,
 } from "@estoc/object";
-import { Intake, indexOver, MemoryBackend, SecretStore, Store, selectedBlobs, type View, view } from "@estoc/store";
+import {
+  Intake,
+  indexOver,
+  MemoryBackend,
+  PrivateStore,
+  SecretStore,
+  Store,
+  selectedBlobs,
+  type View,
+  view,
+} from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -59,9 +69,10 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const signer = signerOf(fill);
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
   const store = new Store(backend);
+  const privateStore = new PrivateStore(store, new MemoryBackend());
   const secretStore = new SecretStore(store, new MemoryBackend());
-  const post = new Post(store, secretStore, { transports: [network.transport] });
-  const intake = new Intake(store);
+  const post = new Post(store, privateStore, secretStore, { transports: [network.transport] });
+  const intake = new Intake(store, privateStore);
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));

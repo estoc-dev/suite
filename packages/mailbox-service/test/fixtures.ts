@@ -10,8 +10,8 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
-import { encodeObject } from "@estoc/object";
-import { MemoryBackend, Store } from "@estoc/store";
+import { encodeObject, type Link, objectsOf } from "@estoc/object";
+import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
 import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
@@ -20,6 +20,24 @@ export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain]
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(new MemoryBackend());
+
+const privateStores = new WeakMap<Store, PrivateStore>();
+/** The private store that a test keeps beside `store`, in memory: the same one each time it is asked for. */
+export function privateStoreBeside(store: Store): PrivateStore {
+  const privateStore = privateStores.get(store) ?? new PrivateStore(store, new MemoryBackend());
+  privateStores.set(store, privateStore);
+  return privateStore;
+}
+
+/** The links of the objects that the records among the marks of `privateStore` link to, in the order of the records. */
+export async function recordedObjectsIn(privateStore: PrivateStore): Promise<Link<never>[]> {
+  const links: Link<never>[] = [];
+  for await (const mark of privateStore.marks()) {
+    const record = await objectsOf(recordSchema).read(mark, privateStore);
+    if (record !== undefined) links.push(record.data.object.link as Link<never>);
+  }
+  return links;
+}
 
 /** A path to a file in a folder of its own, which is removed once the test finishes. */
 export async function makeTemporaryPath(): Promise<string> {
@@ -44,13 +62,15 @@ export const serviceActor = async (start: number) =>
  * A service that keeps everything in memory, and whose clock counts up a
  * millisecond a reading from `start`, or stands at `clock.now` when it is
  * given, which a test moves. Given the store of another, with its accounts
- * and its mailboxes, it is that service started again.
+ * and its mailboxes, it is that service started again. Its private store is
+ * the one the tests keep beside the store, unless it is given another.
  */
 export async function memoryService({
   start = 1_000,
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
+  privateStore = privateStoreBeside(store),
   offeredTerms = terms,
   clock,
   accounts = new MemoryAccounts(),
@@ -60,6 +80,7 @@ export async function memoryService({
   readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
+  readonly privateStore?: PrivateStore;
   readonly offeredTerms?: MailboxTerms;
   readonly clock?: { now: number };
   readonly accounts?: Accounts;
@@ -69,13 +90,14 @@ export async function memoryService({
   const service = await loadMailboxService(by, {
     origin,
     store,
+    privateStore,
     accounts,
     mailboxes,
     terms: offeredTerms,
     schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
-  return { service, store, accounts, mailboxes };
+  return { service, store, privateStore, accounts, mailboxes };
 }
 
 /**

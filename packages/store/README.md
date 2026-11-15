@@ -1,9 +1,8 @@
 # @estoc/store
 
 A store keeps what a user writes and what comes to them, on one device. Its
-truth is objects: one for each thing the user did, such as writing a note or
-receiving a bundle, a record of each, and the blobs in the closures of those
-records.
+truth is objects: those the user wrote, a record of each, those that came
+from elsewhere, and the blobs in the closures of them all.
 What the user keeps to themselves is an object too, kept beside the store:
 a secret, such as a secret key, in a secret store, and a mark of what was
 done on their devices in a private store. The state of a running program
@@ -30,7 +29,8 @@ bytes and links to nothing: an image, or a JSON file, whatever links it
 seems to hold, so an attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
 store holds comes with its closure, and a write adds only the blobs in the
-closures of its records.
+closures of its records and of its roots, the blobs it names to be held
+with no record of them.
 
 ```ts
 import { encodeObject, readObject } from "@estoc/object";
@@ -57,15 +57,21 @@ the store holds, which is what it has
 seen: anyone can send a bundle to a mailbox, and a bundle can carry an object
 of any schema, so the blobs of a schema include an unsigned contact that a
 stranger slipped in among the user's own contacts. What is the user's own is
-therefore read from the records, and everything else is reached from them.
+therefore read from the records, and what came from elsewhere is reached
+from the marks of its arrivals.
 
-What comes from elsewhere comes in through something the user does, and that
-is an object the user writes: an `Inbound`, of receiving a bundle at a
-mailbox, of taking a card, of importing a file. The blobs come in the same
-write, as blobs that are not recorded, and are read by following links from
-that object. A reader then knows they came from elsewhere without any query
-having to say so. Something signed carries its authority in its signature,
-and reads the same when reached by a link.
+What comes from elsewhere comes in through something the user does:
+receiving a bundle at a mailbox, taking a card, importing a file. An
+[`Intake`](#receiving) writes the bundle to the store as a root, so the store
+holds its closure and records none of it, and then writes an `Inbound`, a
+mark of the arrival, to the [private store](#private-stores) beside. The
+store lists no record of an arrival: the arrivals are read from the marks of
+the private store, as by an index over `selectedMarks`, and the blobs by
+following links from an `Inbound`. A reader then knows they came from
+elsewhere without any query having to say so. A receive that stops between
+the two writes leaves the bundle held, with no mark of it. Something signed
+carries its authority in its signature, and reads the same when reached by a
+link.
 
 An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
@@ -98,17 +104,28 @@ records each of the objects: it writes a record that links to the object, and
 lists the record. Writing an object again gives the same record, which is
 listed once.
 
-Of the blobs, it keeps those in the closures of the records, and drops the
-rest. No record would reach them, so they could only wait to
-be collected. A program can then give the schemas it writes to with every
-write, and a bundle can carry blobs outside its root's closure, without
-either leaving anything behind.
+A batch can also name `roots`: links of blobs that the store is to hold
+with their closures, without recording them. That is how what comes from
+elsewhere goes in, and how an object goes in whose record is kept in a
+[private store](#private-stores). The store lists nothing for a root, and a
+root that it holds already need not be in the batch.
+
+```ts
+await store.write({ roots: [bundle.link], blobs: bundle.blobs() });
+```
+
+Of the blobs, the store keeps those in the closures of the records and of
+the roots, and drops the rest. Neither a record nor a root would reach them,
+so they could only wait to be collected. A program can then give the schemas
+it writes to with every write, and a bundle can carry blobs outside its
+root's closure, without either leaving anything behind.
 
 The whole batch is refused when:
 
 - one of `records` is not an object, or
-- a blob in the closure of one is neither in the batch nor held by the
-  store: the schema of an object, or a blob its data links to.
+- one of `roots`, or a blob in the closure of a root or of a record, is
+  neither in the batch nor held by the store: the schema of an object, or a
+  blob its data links to.
 
 So the schemas of objects come with them unless the store holds them
 already, and a bundle is taken in only with the closures of its objects,
@@ -146,11 +163,11 @@ as it will be once the batch is written. `stage(batch)` gives that, a
 `StagedStore`: the blobs the store holds and those of the batch that `write`
 keeps, and the links of the store's records with those of the batch.
 `commit` writes the batch, as `write` does. What comes from elsewhere is kept
-through an `Intake` ([Receiving](#receiving)), whose `stage` stages the batch
-that its `receive` writes:
+through an `Intake` ([Receiving](#receiving)), whose `stage` stages the bundle
+that its `receive` keeps:
 
 ```ts
-const stagedStore = await new Intake(store).stage(bundle);
+const stagedStore = await new Intake(store, privateStore).stage(bundle);
 const people = await view(stagedStore, { index: seenIdentityVersions, read: (rows, reader) => identityVersions.people(rows, reader) });
 const signature = await signatures.read(bundle.link, stagedStore, people);
 // … whether whoever signed is someone to take it from …
@@ -341,9 +358,9 @@ const identityVersionsHeld = indexOver(
 ).orderedBy(...identityVersions.order);
 ```
 
-- A write keeps only the blobs in the closures of its records, so these are
-  the blobs reached from what the user wrote, and a write cut short can leave
-  some besides, each with its closure.
+- A write keeps only the blobs in the closures of its records and its roots,
+  so these are the blobs reached from what the user wrote and from what came
+  in, and a write cut short can leave some besides, each with its closure.
 - A blob that is not an object, such as an attachment, is not one of these,
   as an object of another schema is not.
 - Anyone can send a blob that names the schema and does not fit it, or that
@@ -444,20 +461,26 @@ where a blob was taken in finds where the store has taken it in by then.
 
 ## Receiving
 
-What comes from outside a store is kept with an object that says it came in,
-whichever way it came. An `Intake` records that object:
+What comes from outside a store is kept with a mark that says it came in,
+whichever way it came. An `Intake` keeps the bundle in the store and writes
+that mark to the [private store](#private-stores) beside it:
 
 ```
 Inbound  {"bundle": <link of the root>, "at": <milliseconds>, "via": <link>}
 ```
 
 ```ts
-import { Intake } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore } from "@estoc/store";
 
-const intake = new Intake(store);
+const privateStore = new PrivateStore(store, new MemoryBackend());
+const intake = new Intake(store, privateStore);
 await intake.receive(bundle);          // handed over out of band
 await intake.receive(bundle, mailbox); // at a mailbox
 ```
+
+When something came in, and by which way, is nobody else's to check and
+says more than the user means to send, so the `Inbound` is not a blob of the
+store, and no bundle gathered from the store carries it.
 
 `at` is by the clock of the device that writes the `Inbound`, so a sender has
 no say in it. `via` links to the channel it came in by, and is left out for
@@ -466,28 +489,36 @@ links to, so another channel is another kind of object and not another
 schema, and an index that reads `inboundSchema` covers them all.
 
 `receive` takes anything with a `link` and `blobs()`, as a `Bundle` has, and
-the channel's object, which it keeps with its schema whether or not the
-store held them. The bundle, the channel and the `Inbound` go in one write,
-which is refused with a `RefusedBatch` when a blob in the closure of the
-bundle's root or of `via` is neither in that write nor held by the store.
-What comes in again is recorded again with its own `at`, and a reader takes
-the earliest. Two that agree on the bundle, `via` and `at`, as when the
-clock gives the same millisecond twice, are one `Inbound`, recorded once.
+the channel's object.
+
+- The bundle goes in the store first, as a root with the blobs in its
+  closure. It is refused with a `RefusedBatch` when a blob in the closure of
+  its root is neither in the bundle nor held by the store, and blobs outside
+  that closure are dropped.
+- The `Inbound` goes in the private store after, with the channel's object
+  and its schema, which are kept there whether or not the store holds them.
+- The two are not one write. A stop in between leaves a bundle that the
+  store holds with no mark of it, and receiving it again writes the mark.
+- What comes in again is marked again with its own `at`, and a reader takes
+  the earliest. Two that agree on the bundle, `via` and `at`, as when the
+  clock gives the same millisecond twice, are one `Inbound`, listed once.
 
 `stage` takes what `receive` takes and gives the store as it will be once
-that is received, a `StagedStore` ([Staging](#staging)) to verify on. Its
-`commit` keeps the bundle and records the `Inbound`, whose `at` is the time
-it was staged. The bundle's root is in the closure of the `Inbound` there as
-in the store, and is not recorded.
+the bundle is kept, a `StagedStore` ([Staging](#staging)) to verify on. It is
+the store alone that is staged: what is verified there, such as who signed
+the bundle, is read from blobs of the store, and the mark is the device's
+own say. Its `commit` keeps the bundle and then writes the `Inbound`, whose
+`at` is the time it was staged.
 
-An index reads when each bundle came in:
+An index reads when each bundle came in, scanned on the private store:
 
 ```ts
 // When each bundle came in: the first row of a root is the earliest.
 const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-const cameIn = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
+const cameIn = indexOver(selectedMarks(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
   { bundle: data.bundle, at: data.at },
 ]).orderedBy("bundle", "at");
+await scan(privateStore, cameIn);
 ```
 
 What an `Inbound` promises is little, so that every way in can keep it:
@@ -500,23 +531,22 @@ What an `Inbound` promises is little, so that every way in can keep it:
 - A reader of `Inbound` objects verifies signatures and identity versions
   itself. Anyone can send a bundle to a mailbox.
 - A program that checks what came in, and whose judgement another program
-  reads, writes a mark: an object of its own that links to the `Inbound`, of a
-  schema in its own package, that says what it checked. It records the mark
-  as it records any object it writes. One `Inbound` can have marks of several
-  programs, or none. To take a program's judgement, read its marks by their
-  schema.
-- A mark cannot be sent from outside. What is sent stays in the closure of an
-  `Inbound`, and is not recorded.
+  reads, writes a mark of its own to the private store: an object that links
+  to the `Inbound`, of a schema in its own package, that says what it
+  checked. One `Inbound` can have marks of several programs, or none. To take
+  a program's judgement, read its marks by their schema.
+- A mark cannot be sent from outside. What is sent is a blob of the store,
+  which the private store does not list.
 - A mark is a judgement made at that time, and stays as it is. What can change
   later, such as whether the identity version a signature carries still
   counts, is worked out when it is read.
-- Programs that share a store need no signature on a mark. A mark is no
-  boundary between them either: whatever writes to a store can record any
-  object.
+- Programs that share a private store need no signature on a mark. A mark is
+  no boundary between them either: whatever is handed the private store can
+  write any mark.
 
-`write` records any object. That what comes from elsewhere goes through an
-`Intake`, and that an object recorded directly is the user's own, is a rule for
-programs that the store does not enforce.
+That what comes from elsewhere goes through an `Intake`, and that what is
+written to the private store is the user's own, is a rule for programs that
+the stores do not enforce.
 
 ## Private stores
 
@@ -532,12 +562,12 @@ import { Intake, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedMa
 const store = new Store(new MemoryBackend());
 const privateStore = new PrivateStore(store, new MemoryBackend());
 // The card came in a bundle, which the store holds.
-await new Intake(store).receive(card);
+await new Intake(store, privateStore).receive(card);
 // A mark of the program's own schema: that the user took the card, and when.
 const taken = encodeObject(takenSchema, { card: new LinkValue(card.link), at: Date.now() });
 await privateStore.write({ marks: [taken], blobs: takenSchema.blobs });
 
-for await (const link of privateStore.marks()) …; // taken.link
+for await (const link of privateStore.marks()) …; // the `Inbound` of the card, then taken.link
 await privateStore.get(card.link);                // from the store beside
 await store.get(taken.link);                      // undefined
 
@@ -576,11 +606,36 @@ a `Store`, so it cannot be given to what gathers bundles. It is not a
 secret stays on the device that keeps it, and marks are for the user's own
 devices.
 
-`scan` and `view` take a private store. An index over `selectedMarks` reads
-its marks, each as the object it is, and reads nothing from a store or a
-secret store. An index over records or over blobs reads nothing from a
-private store, which lists only marks. Its `positionOf` gives where it kept
-a blob, and nothing for one that only the store beside holds.
+A record is one kind of mark: an object of `recordSchema` that links to an
+object the user wrote, which the store beside holds. The object goes in the
+store as a root, and `recordsOf` gives the batch that records it:
+
+```ts
+import { recordsOf } from "@estoc/store";
+
+await store.write({ roots: [note.link], blobs: [note.bytes, ...noteSchema.blobs] });
+await privateStore.write(recordsOf([note]));
+```
+
+The two writes are not one. The store goes first, since the private store
+refuses a record of an object that neither side holds, and a stop in between
+leaves an object that the store holds with no record of it.
+
+`scan` and `view` take a private store, and read both sides through it:
+
+- An index over `selectedMarks` reads its marks, each as the object it is,
+  and reads nothing from a store or a secret store.
+- An index over `selectedRecords` reads the objects that the records among
+  its marks link to. A record that came to the store beside, as in a bundle,
+  is not a mark, and records nothing.
+- An index over `selectedBlobs` reads the blobs that the store beside holds.
+  What only the private store keeps, its marks among them, is not read.
+
+Its rows are kept apart from those of the store beside, so an index over
+blobs that is scanned on both is worked out once for each. Its `positionOf`
+gives where it kept a blob, and nothing for one that only the store beside
+holds. So a view that asks where a blob of the store beside was taken in,
+as one of the people a store has seen does, is viewed on that store.
 
 ## Secret stores
 

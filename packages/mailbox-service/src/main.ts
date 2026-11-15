@@ -1,7 +1,7 @@
 import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
 import { type Link, objectsOf, readObject } from "@estoc/object";
-import { MemoryBackend, recordSchema, SecretStore, Store } from "@estoc/store";
+import { MemoryBackend, PrivateStore, recordSchema, SecretStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { loadMailboxService } from "./server.ts";
@@ -30,6 +30,7 @@ else {
 async function start(): Promise<void> {
   const origin = settingNamed("MAILBOX_ORIGIN");
   const secretStorePath = settingNamed("MAILBOX_SECRET_STORE");
+  const privateStorePath = settingNamed("MAILBOX_PRIVATE_STORE");
   const database = settingNamed("MAILBOX_DATABASE");
   const port = Number(settingNamed("MAILBOX_PORT"));
   const terms = {
@@ -40,6 +41,7 @@ async function start(): Promise<void> {
   // SQLite makes a file that is missing, which would be a new service with no key.
   await access(secretStorePath);
   const secretBackend = new SqliteBackend(secretStorePath);
+  const privateBackend = new SqliteBackend(privateStorePath);
   const backend = new SqliteBackend(database);
   const accounts = new SqliteAccounts(database);
   const mailboxes = new SqliteMailboxes(database);
@@ -48,6 +50,7 @@ async function start(): Promise<void> {
   const service = await loadMailboxService(secretKey.signer, {
     origin,
     store,
+    privateStore: new PrivateStore(store, privateBackend),
     accounts,
     mailboxes,
     terms,
@@ -70,7 +73,7 @@ async function start(): Promise<void> {
   );
   const stop = async () => {
     await server.close();
-    for (const file of [secretBackend, backend, accounts, mailboxes]) file.close();
+    for (const file of [secretBackend, privateBackend, backend, accounts, mailboxes]) file.close();
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
   // Whoever waits for this line can ask it to stop from then on.

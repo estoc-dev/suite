@@ -9,6 +9,7 @@ USER node
 ENV MAILBOX_HOST=0.0.0.0 \
     MAILBOX_PORT=8080 \
     MAILBOX_SECRET_STORE=/data/secret.db \
+    MAILBOX_PRIVATE_STORE=/data/private.db \
     MAILBOX_DATABASE=/data/service.db
 VOLUME /data
 EXPOSE 8080

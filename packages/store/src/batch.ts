@@ -11,9 +11,10 @@ import type { Backend } from "./backend.ts";
 
 /**
  * A batch that a store or a private store refuses for what it is: one of its `records` or `marks`
- * that is not an object, or a blob in the closure of one that is neither in the batch nor held
- * already. The same batch is refused again until what was missing is held, while a backend that
- * fails, which rejects with an error of its own, may write it the next time.
+ * that is not an object, or one of its `roots` or a blob in the closure of any of these that is
+ * neither in the batch nor held already. The same batch is refused again until what was missing is
+ * held, while a backend that fails, which rejects with an error of its own, may write it the next
+ * time.
  */
 export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
@@ -64,15 +65,15 @@ export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
 }
 
 /**
- * `listed`, which are among `blobs`, and the blobs of `blobs` in their closures, each after the
- * blobs it links to. A blob that `backend` holds comes with its closure, so its links are not
- * followed.
+ * The blobs of `blobs` in the closures of `roots`, each after the blobs it links to. A blob that
+ * `backend` holds comes with its closure, so its links are not followed, apart from a root that
+ * `blobs` gives as well.
  *
- * @throws {RefusedBatch} when a blob in the closure of one of `listed` is neither in `blobs` nor
- *   held by `backend`.
+ * @throws {RefusedBatch} when one of `roots`, or a blob in the closure of one, is neither in
+ *   `blobs` nor held by `backend`.
  */
 export async function leavesFirst(
-  listed: readonly Link<unknown>[],
+  roots: Iterable<Link<unknown>>,
   blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
   backend: Pick<Backend, "has">,
 ): Promise<Map<Link<unknown>, Uint8Array>> {
@@ -83,11 +84,15 @@ export async function leavesFirst(
     bytes,
     links: linksIn(bytes)[Symbol.iterator](),
   });
-  for (const start of listed) {
-    if (orderedBlobs.has(start)) continue;
+  for (const root of roots) {
+    if (orderedBlobs.has(root)) continue;
+    const rootBytes = blobs.get(root);
+    if (rootBytes === undefined) {
+      if (await backend.has(root)) continue;
+      throw new RefusedBatch(`neither the batch nor the store holds ${root}, which the batch is to keep`);
+    }
     // A link is a hash of its blob, so no blob on the path is in the closure of one after it.
-    // biome-ignore lint/style/noNonNullAssertion: each listed link is among the blobs
-    const path = [frame(start, blobs.get(start)!)];
+    const path = [frame(root, rootBytes)];
     for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
       const next = top.links.next();
       if (next.done) {

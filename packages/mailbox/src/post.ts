@@ -1,7 +1,7 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
-import { Intake, RefusedBatch, type SecretStore, type Store } from "@estoc/store";
+import { Intake, type PrivateStore, RefusedBatch, recordsOf, type SecretStore, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -14,62 +14,73 @@ export interface PostOptions extends Options {
   readonly clock?: () => number;
 }
 
-/** A record, written to a store, that a bundle came in at a mailbox or went out to one. */
+/** A mark, written to a private store, that a bundle came in at a mailbox or went out to one. */
 export interface Delivery {
   readonly direction: "inbound" | "outbound";
   /** The link of the bundle's root. */
   readonly bundle: Link<never>;
   readonly mailbox: Link<EncodedObject>;
-  /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the record. */
+  /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the mark. */
   readonly at: number;
-  /** The link of the record. */
+  /** The link of the mark. */
   readonly link: Link<EncodedObject>;
 }
 
 type MailboxBytes = { readonly bytes: Bytes<EncodedObject> };
 
 /**
- * Sending and receiving with a store, through transports, with the keys of
- * the user's mailboxes kept in a secret store beside the store.
+ * Sending and receiving with a store, through transports, with a private store and a secret store
+ * beside the store.
  *
  * - What is sent is taken from the store, and what arrives is kept in it.
- * - Each is recorded there as a delivery that the user writes, an object of `outboundSchema` or of
- *   `inboundSchema` in `@estoc/store`, listed with the store's other records for the application to
- *   read into its indexes.
- * - The keys that open what arrives are objects of `mailboxKeySchema` in a secret store beside the
- *   store, so no bundle gathered from the store carries one.
+ * - Each is marked in the private store as a delivery, an object of `outboundSchema` or of
+ *   `inboundSchema` in `@estoc/store`, listed with the private store's other marks for the
+ *   application to read into its indexes. No bundle gathered from the store carries one.
+ * - A mailbox that the user opens and a grant that the user signs are in the store, each with a
+ *   record of it in the private store.
+ * - The keys that open what arrives are objects of `mailboxKeySchema` in the secret store, so no
+ *   bundle gathered from the store carries one either.
  */
 export class Post {
   readonly #store: Store;
+  readonly #privateStore: PrivateStore;
   readonly #secretStore: SecretStore;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
   readonly #intake: Intake;
 
-  constructor(store: Store, secretStore: SecretStore, { transports, clock = Date.now }: PostOptions) {
+  /** `privateStore` and `secretStore` are each kept beside `store`. */
+  constructor(
+    store: Store,
+    privateStore: PrivateStore,
+    secretStore: SecretStore,
+    { transports, clock = Date.now }: PostOptions,
+  ) {
     this.#store = store;
+    this.#privateStore = privateStore;
     this.#secretStore = secretStore;
     this.#transports = transports;
     this.#clock = clock;
-    this.#intake = new Intake(store, clock);
+    this.#intake = new Intake(store, privateStore, clock);
   }
 
   /** Sending and reading as `actor`, by the Mailbox Grants and the identity versions the store holds. */
   correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Correspondence {
-    return new Correspondence(this.#store, this, actor, this.#clock, new MailboxGrants(identity), identity);
+    const stores = { store: this.#store, privateStore: this.#privateStore };
+    return new Correspondence(stores, this, actor, this.#clock, new MailboxGrants(identity), identity);
   }
 
   /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
-    return new Outbox(boundMailbox, this.#store, (bundle) => this.#recordOutbound(mailbox, bundle));
+    return new Outbox(boundMailbox, this.#store, (bundle) => this.#markOutbound(mailbox, bundle));
   }
 
   /**
    * Opens a mailbox of the user's with a new key, to receive at. `makeMailbox` is given the public
    * key and gives back a mailbox sealed to it, as the transport makes one. The mailbox is written
-   * to the store and then its key to the secret store, so a stop in between leaves at most a
-   * mailbox that nobody receives at.
+   * to the store, then a record of it to the private store, and then its key to the secret store,
+   * so a stop in between leaves at most a mailbox that nobody receives at.
    *
    * @throws when the mailbox is of a transport the post was not given, or names another key;
    *   nothing is written then.
@@ -79,7 +90,8 @@ export class Post {
     const key = await MailboxKey.fromSecretKey(secret);
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
     if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
-    await this.#store.write({ records: [mailbox], blobs: [...mailbox.schema.blobs] });
+    await this.#store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
+    await this.#privateStore.write(recordsOf([mailbox]));
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
     await this.#secretStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
@@ -110,11 +122,11 @@ export class Post {
     return bytes;
   }
 
-  async #recordOutbound(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Delivery> {
+  async #markOutbound(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
-    const record = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
-    await this.#store.write({ records: [record], blobs: [...outboundSchema.blobs] });
-    return { direction: "outbound", bundle, mailbox, at, link: record.link };
+    const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
+    await this.#privateStore.write({ marks: [mark], blobs: [...outboundSchema.blobs] });
+    return { direction: "outbound", bundle, mailbox, at, link: mark.link };
   }
 }
 
@@ -122,18 +134,18 @@ export class Post {
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
-  readonly #record: (bundle: Link<never>) => Promise<Delivery>;
+  readonly #mark: (bundle: Link<never>) => Promise<Delivery>;
 
-  constructor(mailbox: Mailbox, store: Store, record: (bundle: Link<never>) => Promise<Delivery>) {
+  constructor(mailbox: Mailbox, store: Store, mark: (bundle: Link<never>) => Promise<Delivery>) {
     this.#mailbox = mailbox;
     this.#store = store;
-    this.#record = record;
+    this.#mark = mark;
   }
 
   /**
    * Sends `root` and its closure in the store as a bundle, whoever wrote it, and once the transport
-   * takes the bundle, writes that it went out. Sending a root again sends the same bundle and
-   * writes another record.
+   * takes the bundle, marks that it went out. Sending a root again sends the same bundle and
+   * writes another mark.
    *
    * @throws when the store does not hold `root` or a blob of its closure; nothing is sent then.
    * @throws {UndeliveredMessage} when the transport cannot hand the bundle on; nothing is written
@@ -147,7 +159,7 @@ export class Outbox {
       { bytes },
       [...closure].filter(([link]) => link !== root).map(([, blob]) => blob),
     );
-    return this.#record(root as Link<never>);
+    return this.#mark(root as Link<never>);
   }
 }
 
@@ -175,8 +187,8 @@ export class Inbox {
   }
 
   /**
-   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle inside with a record that
-   * it came in. What arrives twice is recorded twice, once for each time it came in.
+   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle inside with a mark that it
+   * came in. What arrives twice is marked twice, once for each time it came in.
    *
    * @throws when the ciphertext does not open with the mailbox's key; nothing is kept then.
    * @throws {RefusedBatch} when the bundle leaves out a blob in its root's closure that the store
@@ -187,15 +199,15 @@ export class Inbox {
   }
 
   /**
-   * Receives what waits at the mailbox, one arrival at a time, and gives back the records it wrote.
+   * Receives what waits at the mailbox, one arrival at a time, and gives back the marks it wrote.
    *
    * - It is done with each arrival once it is kept.
    * - What does not open, and a bundle that the store refuses, are done with too and leave no
-   *   record, rather than wait for the blobs a bundle leaves out to reach the store.
+   *   mark, rather than wait for the blobs a bundle leaves out to reach the store.
    *
    * @throws when `pickup` is of another mailbox; nothing is done with then.
-   * @throws when the store fails to write; that arrival is not done with, and waits to be
-   *   collected again.
+   * @throws when the store or the private store fails to write; that arrival is not done with, and
+   *   waits to be collected again.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
     if (pickup.mailbox !== this.mailbox)

@@ -66,7 +66,8 @@ semantics written elsewhere could not.
   format's versions are strung the same way, and an object of any version
   is read, and selected for an index, as the same shape.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
-  receiver's key, and the records in a store of what came in and went out.
+  receiver's key, and the marks in a private store of what came in and went
+  out.
 - `@estoc/mailbox-service`: a service that keeps messages for receivers
   who are not online, reached by its identity, and opening an account
   there by signing its offer.

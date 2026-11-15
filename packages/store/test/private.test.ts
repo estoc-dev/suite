@@ -7,6 +7,7 @@ import {
   MemoryBackend,
   PrivateStore,
   RefusedBatch,
+  recordsOf,
   SecretStore,
   Store,
   scan,
@@ -277,16 +278,83 @@ describe("an index over marks", () => {
   });
 });
 
-describe("an index over records or over blobs", () => {
-  it("reads nothing from a private store", async () => {
+describe("an index over records, scanned on a private store", () => {
+  const recordedNames = () =>
+    indexOver(selectedRecords(objectsOf(cardSchema)), namedSchema, ({ data }) => [
+      { name: data.name, at: 0 },
+    ]).orderedBy("name");
+  const namesByName = async (privateStore: PrivateStore, index: ReturnType<typeof recordedNames>) =>
+    (await listOf((await scan(privateStore, index)).range([]))).map(({ data }) => data.name);
+
+  it("reads the objects that the records among the marks link to, which the store beside holds", async () => {
+    const { store, privateStore } = sides();
+    const [alice, bob] = [card("Alice"), card("Bob")];
+    await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
+    await privateStore.write({ marks: [taken(bob, 1)], blobs: [...takenSchema.blobs] });
+    await privateStore.write(recordsOf([alice]));
+    expect(await namesByName(privateStore, recordedNames())).toEqual(["Alice"]);
+  });
+
+  it("reads no object whose record came to the store beside", async () => {
+    const { store, privateStore } = sides();
+    const mallory = card("Mallory");
+    const { marks, blobs = [] } = recordsOf([mallory]);
+    const [sentRecord] = [...marks];
+    if (sentRecord === undefined) throw new Error("no record was made");
+    await store.write({
+      roots: [linkOf(sentRecord.bytes)],
+      blobs: [sentRecord.bytes, mallory.bytes, ...cardSchema.blobs, ...blobs],
+    });
+    expect(await namesByName(privateStore, recordedNames())).toEqual([]);
+  });
+
+  it("reads on a later scan only what was recorded since, among marks of other schemas", async () => {
+    const { store, privateStore } = sides();
+    const [alice, bob] = [card("Alice"), card("Bob")];
+    await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
+    const readNames: string[] = [];
+    const index = indexOver(selectedRecords(objectsOf(cardSchema)), namedSchema, ({ data }) => {
+      readNames.push(data.name);
+      return [{ name: data.name, at: 0 }];
+    }).orderedBy("name");
+    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    await privateStore.write(recordsOf([bob]));
+    expect(await namesByName(privateStore, index)).toEqual(["Bob"]);
+    await privateStore.write({ marks: [taken(bob, 2)] });
+    await privateStore.write(recordsOf([alice]));
+    expect(await namesByName(privateStore, index)).toEqual(["Alice", "Bob"]);
+    expect(readNames).toEqual(["Bob", "Alice"]);
+  });
+});
+
+describe("an index over blobs, scanned on a private store", () => {
+  const rowsOf = ({ data }: { readonly data: { readonly at: number } }) => [{ name: "", at: data.at }];
+  const takenBlobs = () => indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, rowsOf).orderedBy("at");
+
+  it("reads the blobs that the store beside holds, and none that only the private store keeps", async () => {
     const { store, privateStore } = sides();
     const alice = card("Alice");
-    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
-    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
-    const rowsOf = ({ data }: { readonly data: { readonly at: number } }) => [{ name: "", at: data.at }];
-    const overRecords = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, rowsOf).orderedBy("at");
-    const overBlobs = indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, rowsOf).orderedBy("at");
-    expect(await namesIn(privateStore, overRecords)).toEqual([]);
-    expect(await namesIn(privateStore, overBlobs)).toEqual([]);
+    const sentMark = taken(alice, 0);
+    await store.write({
+      roots: [sentMark.link],
+      blobs: [sentMark.bytes, alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
+    });
+    await privateStore.write({ marks: [taken(alice, 1)] });
+    const rows = await listOf((await scan(privateStore, takenBlobs())).range([]));
+    expect(rows.map(({ data }) => data.at)).toEqual([0]);
+  });
+
+  it("gives its rows with their failures, as on the store beside", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    const sentMark = taken(alice, 0);
+    await store.write({
+      roots: [sentMark.link],
+      blobs: [sentMark.bytes, alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
+    });
+    const index = indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, () => {
+      throw new Error("not read");
+    }).orderedBy("at");
+    expect((await scan(privateStore, index)).failures.map(({ item }) => item)).toEqual([sentMark.link]);
   });
 });

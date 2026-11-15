@@ -1,7 +1,7 @@
 import type { Signature, Signatures } from "@estoc/identity";
 import { type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, selectedRecords, type View } from "@estoc/store";
+import { indexOver, selectedMarks, selectedRecords, type View } from "@estoc/store";
 import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
 
 /**
@@ -15,11 +15,15 @@ const acknowledgementRowSchema = schema("Acknowledgement row", {
 
 type AcknowledgementOrder = readonly ["acceptance", "acknowledgement"];
 
-/** The acknowledgements that recorded signatures sign, by the acceptance each acknowledges. */
+/**
+ * The acknowledgements that recorded signatures sign, by the acceptance each
+ * acknowledges. They are viewed on the private store that lists the records
+ * of the signatures.
+ */
 export interface Acknowledgements {
   /**
    * The least link of the signatures over an acknowledgement of `acceptance`,
-   * or `undefined` when the store holds none. Requests of one acceptance at
+   * or `undefined` when none is recorded. Requests of one acceptance at
    * once can each sign one, and the least is the one that every service
    * sharing the store answers with.
    */
@@ -62,18 +66,18 @@ const openedMailboxRowSchema = schema("Opened mailbox row", {
 type OpenedMailboxOrder = readonly ["mailbox", "acknowledgement"];
 
 /**
- * The mailboxes that the user's client opened, by the records that it
- * writes once a service acknowledged its request for each. An
- * acknowledgement that the store came to hold another way, such as at a
- * mailbox, opens none: a key that a later identity version of whoever holds
- * the account takes out still signs requests by the identity version before,
- * so the signature does not tell a request sent while the key was listed
- * from one sent after.
+ * The mailboxes that the user's client opened, by the marks that it writes
+ * to the private store once a service acknowledged its request for each.
+ * They are viewed on that private store. An acknowledgement that the store
+ * came to hold another way, such as at a mailbox, opens none: a key that a
+ * later identity version of whoever holds the account takes out still signs
+ * requests by the identity version before, so the signature does not tell a
+ * request sent while the key was listed from one sent after.
  */
 export interface OpenedMailboxes {
   /**
    * The link of the service's signature over the acknowledgement of
-   * `mailbox`, or `undefined` when the store holds no record of opening it.
+   * `mailbox`, or `undefined` when the private store lists no mark of opening it.
    */
   acknowledgementOf(mailbox: Link<EncodedObject>): Promise<Link<Signature> | undefined>;
 }
@@ -82,7 +86,7 @@ export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, Op
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(selectedRecords(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
+    index: indexOver(selectedMarks(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
       { mailbox: data.mailbox, acknowledgement: data.acknowledgement },
     ]).orderedBy("mailbox", "acknowledgement"),
     read: (rows) => ({

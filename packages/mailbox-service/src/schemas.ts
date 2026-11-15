@@ -37,8 +37,8 @@ export function formOf({ at: _, ...content }: ServiceData): Link<unknown> {
 
 /**
  * An origin that a client reached a service at, which the client gives as
- * the `via` of the Inbound records that keep what the service answered
- * there. One origin is one object, however often it is reached.
+ * the `via` of the Inbound marks of what the service answered there. One
+ * origin is one object, however often it is reached.
  */
 export const originSchema = schema("Origin", { origin: string() });
 

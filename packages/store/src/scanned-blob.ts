@@ -60,7 +60,7 @@ export class ScannedBlob {
 }
 
 /** The schema that `bytes` name as an object, or `undefined` when they are not one. */
-function namedSchemaOf(bytes: Uint8Array): Link<unknown> | undefined {
+export function namedSchemaOf(bytes: Uint8Array): Link<unknown> | undefined {
   try {
     return schemaOf(bytes);
   } catch {

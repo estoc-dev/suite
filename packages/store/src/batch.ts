@@ -5,6 +5,7 @@ import {
   linkOf,
   type ObjectValue,
   objectFormat,
+  type Reader,
   schemaOf,
 } from "@estoc/object";
 import type { Backend } from "./backend.ts";
@@ -70,6 +71,28 @@ export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
     return [];
   }
   return objectFormat.links(object);
+}
+
+/**
+ * The closure of the blob that `link` names, each blob of it as `reader` gives it.
+ *
+ * @throws when `reader` gives no blob of the closure, the one `link` names among them.
+ */
+export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Map<Link<unknown>, Uint8Array>> {
+  const closureBlobs = new Map<Link<unknown>, Uint8Array>();
+  const seenLinks = new Set([link]);
+  const pendingLinks = [link];
+  for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
+    const bytes = await reader.get(next);
+    if (bytes === undefined) throw new Error(`the store does not hold ${next}`);
+    closureBlobs.set(next, bytes);
+    for (const targetLink of linksIn(bytes)) {
+      if (seenLinks.has(targetLink)) continue;
+      seenLinks.add(targetLink);
+      pendingLinks.push(targetLink);
+    }
+  }
+  return closureBlobs;
 }
 
 /**

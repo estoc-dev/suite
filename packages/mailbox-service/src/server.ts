@@ -18,10 +18,12 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  objectsOf,
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
+import { type DataOf, link, schema } from "@estoc/schema";
+import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
@@ -136,6 +138,7 @@ class MailboxService {
   readonly #locations: LocationsView;
   readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
+  readonly #recordedSignatures: RecordedSignaturesView;
   readonly #signatures: Signatures;
   readonly #store: Store;
   readonly #privateStore: PrivateStore;
@@ -163,6 +166,7 @@ class MailboxService {
     this.#locations = locationsView(kit.signatures);
     this.#people = people;
     this.#acknowledgements = acknowledgementsView(kit.signatures);
+    this.#recordedSignatures = recordedSignaturesView(kit.signatures);
     this.#signatures = kit.signatures;
     this.#store = store;
     this.#privateStore = privateStore;
@@ -355,18 +359,21 @@ class MailboxService {
    * honor it. Once a crisis of the service's root cuts it, the service
    * signs the same acknowledgement as its current identity version, and
    * writes that signature to the store and a record of it to the private
-   * store.
+   * store. A signer that signs the same bytes the same way gives that
+   * signature again when asked again, and one that is recorded already is
+   * not recorded a second time.
    */
   async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.honors(signature)) return link;
     const renewedSignature = await this.#sign({ link: signature.object }, people);
-    await this.#write(renewedSignature);
+    const recordedSignatures = await view(this.#privateStore, this.#recordedSignatures);
+    if (!(await recordedSignatures.has(renewedSignature.link))) await this.#write(renewedSignature);
     return renewedSignature.link;
   }
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
-    await writeSigned(signature, blobs, { store: this.#store, privateStore: this.#privateStore });
+    await writeSigned(signature, blobs, this.#clock(), { store: this.#store, privateStore: this.#privateStore });
   }
 
   /**
@@ -561,7 +568,7 @@ export async function loadMailboxService(
       ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
-    await writeSigned(await actor.sign(object), blobs, { store, privateStore });
+    await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
   return new MailboxService(signer, actor.signedIdentity, identifier, kit, seenPeople, {
     ...options,
@@ -571,15 +578,44 @@ export async function loadMailboxService(
 
 /**
  * Writes `signature`, which the service signed, to the store with those of
- * `blobs` in its closure, and then a record of it to the private store.
+ * `blobs` in its closure, and then a record of it at `at` to the private
+ * store.
  */
 async function writeSigned(
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
+  at: number,
   { store, privateStore }: Pick<ServiceOptions, "store" | "privateStore">,
 ): Promise<void> {
   await store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobs] });
-  await privateStore.write(recordsOf([signature]));
+  await privateStore.write(recordsOf([signature], at));
+}
+
+const recordedSignatureSchema = schema("Recorded signature", { signature: link<Signature>() });
+
+type RecordedSignaturesView = View<
+  DataOf<typeof recordedSignatureSchema>,
+  readonly ["signature"],
+  { has(signature: Link<Signature>): Promise<boolean> }
+>;
+
+/**
+ * The signatures that the records of a private store link to, viewed on that
+ * private store. A signature that the store holds may have no record, as
+ * when a write stopped between the two.
+ */
+function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
+  return {
+    index: indexOver(selectedRecords(objectsOf(signatures.schema)), recordedSignatureSchema, ({ link }) => [
+      { signature: new LinkValue(link as Link<Signature>) },
+    ]).orderedBy("signature"),
+    read: (rows) => ({
+      async has(signature) {
+        for await (const _ of rows.range([new LinkValue(signature)])) return true;
+        return false;
+      },
+    }),
+  };
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

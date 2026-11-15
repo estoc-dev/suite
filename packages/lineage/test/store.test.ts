@@ -45,7 +45,7 @@ async function recordHeads({ store, privateStore }: Stores, ...chains: readonly 
     roots: heads.map(({ link }) => link),
     blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs],
   });
-  await privateStore.write(recordsOf(heads));
+  await privateStore.write(recordsOf(heads, Date.now()));
 }
 
 async function readHeads(
@@ -116,7 +116,7 @@ describe("the selection of a schema lineage over a store", () => {
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await stores.privateStore.write(recordsOf([untitled, titledObject]));
+    await stores.privateStore.write(recordsOf([untitled, titledObject], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
     const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };

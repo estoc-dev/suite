@@ -128,7 +128,7 @@ describe("an object slipped into a bundle", () => {
     const bob = newStores();
     const contact = encodeObject(contactSchema, { name: "Alice" });
     await bob.store.write({ roots: [contact.link], blobs: [contact.bytes, ...schemas] });
-    await bob.privateStore.write(recordsOf([contact]));
+    await bob.privateStore.write(recordsOf([contact], Date.now()));
 
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await sign(slippedContact, mallory);

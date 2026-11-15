@@ -39,11 +39,11 @@ await store.write({
   roots: [signature.link],
   blobs: [note.bytes, signature.bytes, ...signature.signedIdentity.blobs, ...schemas],
 });
-await privateStore.write(recordsOf([note, signature]));            // the user wrote both
+await privateStore.write(recordsOf([note, signature], Date.now())); // the user wrote both
 
-for await (const link of store.blobs()) …;                         // the blobs in the closure of the signature
-for await (const link of privateStore.marks()) …;                  // a record of the note, one of the signature
-await signatures.read(signature.link, store, noIdentityVersions);  // the signature, verified
+for await (const link of store.blobs()) …;                          // the blobs in the closure of the signature
+for await (const link of privateStore.marks()) …;                   // a record of the note, one of the signature
+await signatures.read(signature.link, store, noIdentityVersions);   // the signature, verified
 ```
 
 ## What is listed
@@ -593,14 +593,16 @@ secret stays on the device that keeps it, and marks are for the user's own
 devices.
 
 A record is one kind of mark: an object of `recordSchema` that links to an
-object the user wrote, which the store beside holds. The object goes in the
-store as a root, and `recordsOf` gives the batch that records it:
+object the user wrote, which the store beside holds, and says when the user
+wrote it, by the clock of the device that wrote the record. The object goes
+in the store as a root, and `recordsOf` gives the batch that records it at
+the time given:
 
 ```ts
 import { recordsOf } from "@estoc/store";
 
 await store.write({ roots: [note.link], blobs: [note.bytes, ...noteSchema.blobs] });
-await privateStore.write(recordsOf([note]));
+await privateStore.write(recordsOf([note], Date.now()));
 ```
 
 The two writes are not one. The store goes first, since the private store
@@ -612,8 +614,10 @@ leaves an object that the store holds with no record of it.
 - An index over `selectedMarks` reads its marks, each as the object it is,
   and has no rows on a store or a secret store.
 - An index over `selectedRecords` reads the objects that the records among
-  its marks link to. A record that came to the store beside, as in a bundle,
-  is not a mark, and records nothing.
+  its marks link to, each once: an object written again is recorded again,
+  with the time then, and two records that agree on the object and the time
+  by the clock are one mark, listed once. A record that came to the store
+  beside, as in a bundle, is not a mark, and records nothing.
 - An index over `selectedBlobs` reads the blobs that the store beside holds.
   What only the private store keeps, its marks among them, is not read.
 

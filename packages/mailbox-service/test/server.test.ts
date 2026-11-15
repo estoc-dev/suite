@@ -700,7 +700,6 @@ async function queueAt(
   });
 }
 
-/** A backend in memory that refuses the next `put` when `isInterrupted` is set, and takes those after it. */
 class InterruptedBackend extends MemoryBackend {
   isInterrupted = false;
 

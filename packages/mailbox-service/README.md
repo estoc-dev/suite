@@ -503,8 +503,9 @@ memory, and `SqliteMailboxes` in a SQLite file.
 `SqliteAccounts` and `SqliteMailboxes` run only in Node, so they are
 imported on their own, from `@estoc/mailbox-service/sqlite`. Each is given
 the path of a file, which can be the one that a `SqliteBackend` keeps the
-store in, so that one file holds all that a service keeps. Each `add`,
-`open`, `put` and `drop` is one transaction, on disk by the time it
+store in, so that one file holds the store, the accounts and the mailboxes.
+The private store has a backend of its own, and so a file of its own. Each
+`add`, `open`, `put` and `drop` is one transaction, on disk by the time it
 resolves. They share none with the store, which the service writes an
 acknowledgement to before it keeps the account or the mailbox: a service
 that stops in between has not answered yet, and the acceptance or the
@@ -515,6 +516,7 @@ import { SqliteAccounts, SqliteMailboxes } from "@estoc/mailbox-service/sqlite";
 import { SqliteBackend } from "@estoc/store/sqlite";
 
 const store = new Store(new SqliteBackend("service.db"));
+const privateStore = new PrivateStore(store, new SqliteBackend("private.db"));
 const accounts = new SqliteAccounts("service.db");
 const mailboxes = new SqliteMailboxes("service.db");
 ```
@@ -559,8 +561,8 @@ its owner alone reads, holding a new Ed25519 Secret Key of
 key. It refuses to write over a file that is there. The service is named by
 the identifier of that identity, so a lost key is a lost service: keep a copy of
 the file offline, and take a new one whenever it changes. Only `main.ts key`
-writes it for now. It is apart from the database so that each is backed up
-on its own: the secret store when it changes, the database often.
+writes it for now. It is apart from the database and the private store so
+that it is backed up on its own, when it changes, and those two often.
 
 `main.ts` takes its settings from the environment:
 
@@ -619,12 +621,23 @@ mail.example {
 }
 ```
 
-The database can be backed up while the service runs, with SQLite's
-online backup:
+The private store and the database are backed up as a pair, and can be
+while the service runs, with SQLite's online backup, the private store
+first:
 
 ```sh
+sqlite3 /var/lib/mailbox/private.db ".backup /var/backups/mailbox-private.db"
 sqlite3 /var/lib/mailbox/service.db ".backup /var/backups/mailbox.db"
 ```
+
+The service writes what it signs to the database before it writes the
+record of it to the private store, so a copy of the database holds all that
+an earlier copy of the private store records. Restore the two together, from
+one such pair, with the service stopped. A private store that is later than
+the database beside it can record a signature that the database does not
+hold, and the service then fails each request to open an account. An
+account that the database holds with no record of its acknowledgement gets
+a new acknowledgement when its acceptance is posted again.
 
 `src/smoke.ts` checks a running service:
 

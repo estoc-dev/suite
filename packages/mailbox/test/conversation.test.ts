@@ -28,14 +28,11 @@ import { assert, describe, expect, it } from "vitest";
 import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
-// A chat between two people, each with a store and a mailbox for the other,
-// whose key they keep in a secret store beside it, and each with a grant of
-// that mailbox from the other, handed over out of band. What one sends is a
-// signed line from their store, recorded there as gone out; what arrives is
-// kept with a record that it came in. The application reads a conversation
-// out of those records alone, through an index of all that its user wrote,
-// and reads each line from its bundle when it shows it, as a message from
-// whoever signed it where the reader gave them that mailbox.
+// A chat between two people, each with a mailbox for the other and a grant of
+// that mailbox from the other, handed over out of band. The application reads
+// a conversation out of the marks of its private store alone, and shows a
+// line as a message from whoever signed it where the reader gave them that
+// mailbox.
 
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
@@ -237,7 +234,7 @@ describe("a conversation", () => {
     ]);
   });
 
-  it("shows a line that arrived twice once, though each arrival is recorded", async () => {
+  it("shows a line that arrived twice once, though each arrival is marked", async () => {
     const { alice, bob } = await chat({ twice: true });
     await alice.say("hi Bob");
     await alice.say("lunch at noon?");
@@ -250,7 +247,7 @@ describe("a conversation", () => {
     ]);
   });
 
-  it("shows a line once that was collected again because the network was cut before it was done, though each time is recorded", async () => {
+  it("shows a line once that was collected again because the network was cut before it was done, though each time is marked", async () => {
     const { alice, bob } = await chat({ cut: (n) => n === 0 });
     await alice.say("hi Bob");
     await expect(bob.collect()).rejects.toThrow(/cut/);
@@ -281,7 +278,7 @@ describe("a conversation", () => {
     ]);
   });
 
-  it("leaves out a line by someone who was given no grant, though it is recorded", async () => {
+  it("leaves out a line by someone who was given no grant, though its arrival is marked", async () => {
     const { alice, bob, carol } = await chat();
     await bob.say("hi Alice");
     await carol.sayToAlice("hi Alice, I am Bob");

@@ -1,9 +1,8 @@
 # @estoc/store
 
 A store keeps what a user writes and what comes to them, on one device. Its
-truth is objects: one for each thing the user did, such as writing a note or
-receiving a bundle, a record of each, and the blobs in the closures of those
-records.
+truth is objects: those the user wrote, a record of each, those that came
+from elsewhere, and the blobs in the closures of them all.
 What the user keeps to themselves is an object too, kept beside the store:
 a secret, such as a secret key, in a secret store, and a mark of what was
 done on their devices in a private store. The state of a running program
@@ -30,7 +29,8 @@ bytes and links to nothing: an image, or a JSON file, whatever links it
 seems to hold, so an attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
 store holds comes with its closure, and a write adds only the blobs in the
-closures of its records.
+closures of its records and of its roots, the blobs it names to be held
+with no record of them.
 
 ```ts
 import { encodeObject, readObject } from "@estoc/object";
@@ -57,15 +57,21 @@ the store holds, which is what it has
 seen: anyone can send a bundle to a mailbox, and a bundle can carry an object
 of any schema, so the blobs of a schema include an unsigned contact that a
 stranger slipped in among the user's own contacts. What is the user's own is
-therefore read from the records, and everything else is reached from them.
+therefore read from the records, and what came from elsewhere is reached
+from the marks of its arrivals.
 
-What comes from elsewhere comes in through something the user does, and that
-is an object the user writes: an `Inbound`, of receiving a bundle at a
-mailbox, of taking a card, of importing a file. The blobs come in the same
-write, as blobs that are not recorded, and are read by following links from
-that object. A reader then knows they came from elsewhere without any query
-having to say so. Something signed carries its authority in its signature,
-and reads the same when reached by a link.
+What comes from elsewhere comes in through something the user does:
+receiving a bundle at a mailbox, taking a card, importing a file. An
+[`Intake`](#receiving) writes the bundle to the store as a root, so the store
+holds its closure and records none of it, and then writes an `Inbound`, a
+mark of the arrival, to the [private store](#private-stores) beside. The
+store lists no record of an arrival: the arrivals are read from the marks of
+the private store, as by an index over `selectedMarks`, and the blobs by
+following links from an `Inbound`. A reader then knows they came from
+elsewhere without any query having to say so. A receive that stops between
+the two writes leaves the bundle held, with no mark of it. Something signed
+carries its authority in its signature, and reads the same when reached by a
+link.
 
 An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
@@ -98,22 +104,21 @@ records each of the objects: it writes a record that links to the object, and
 lists the record. Writing an object again gives the same record, which is
 listed once.
 
-Of the blobs, it keeps those in the closures of the records, and drops the
-rest. No record would reach them, so they could only wait to
-be collected. A program can then give the schemas it writes to with every
-write, and a bundle can carry blobs outside its root's closure, without
-either leaving anything behind.
-
 A batch can also name `roots`: links of blobs that the store is to hold
 with their closures, without recording them. That is how what comes from
 elsewhere goes in, and how an object goes in whose record is kept in a
-[private store](#private-stores). The store keeps the blobs of the batch in
-the closures of the roots, as it does for records, and lists nothing. A
-root that the store holds already need not be in the batch.
+[private store](#private-stores). The store lists nothing for a root, and a
+root that it holds already need not be in the batch.
 
 ```ts
 await store.write({ roots: [bundle.link], blobs: bundle.blobs() });
 ```
+
+Of the blobs, the store keeps those in the closures of the records and of
+the roots, and drops the rest. Neither a record nor a root would reach them,
+so they could only wait to be collected. A program can then give the schemas
+it writes to with every write, and a bundle can carry blobs outside its
+root's closure, without either leaving anything behind.
 
 The whole batch is refused when:
 
@@ -353,9 +358,9 @@ const identityVersionsHeld = indexOver(
 ).orderedBy(...identityVersions.order);
 ```
 
-- A write keeps only the blobs in the closures of its records, so these are
-  the blobs reached from what the user wrote, and a write cut short can leave
-  some besides, each with its closure.
+- A write keeps only the blobs in the closures of its records and its roots,
+  so these are the blobs reached from what the user wrote and from what came
+  in, and a write cut short can leave some besides, each with its closure.
 - A blob that is not an object, such as an attachment, is not one of these,
   as an object of another schema is not.
 - Anyone can send a blob that names the schema and does not fit it, or that
@@ -562,7 +567,7 @@ await new Intake(store, privateStore).receive(card);
 const taken = encodeObject(takenSchema, { card: new LinkValue(card.link), at: Date.now() });
 await privateStore.write({ marks: [taken], blobs: takenSchema.blobs });
 
-for await (const link of privateStore.marks()) …; // taken.link
+for await (const link of privateStore.marks()) …; // the `Inbound` of the card, then taken.link
 await privateStore.get(card.link);                // from the store beside
 await store.get(taken.link);                      // undefined
 
@@ -629,7 +634,8 @@ leaves an object that the store holds with no record of it.
 Its rows are kept apart from those of the store beside, so an index over
 blobs that is scanned on both is worked out once for each. Its `positionOf`
 gives where it kept a blob, and nothing for one that only the store beside
-holds.
+holds. So a view that asks where a blob of the store beside was taken in,
+as one of the people a store has seen does, is viewed on that store.
 
 ## Secret stores
 

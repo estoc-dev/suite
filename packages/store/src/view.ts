@@ -28,6 +28,9 @@ export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
  *
  * - The index is scanned from the store and read with the store, so the rows, the objects they name
  *   and where each was taken in come from one store.
+ * - A private store gives where it kept a blob itself, and nothing for one that only the store
+ *   beside holds. So a view that asks where a blob of the store beside was taken in is viewed on
+ *   that store.
  * - Later writes do not change the rows the value is worked out from; it takes them in when viewed
  *   again. A value that asks the store later where a blob was taken in finds where the store has
  *   taken it in by then, as for a blob of a staged batch once it is committed.

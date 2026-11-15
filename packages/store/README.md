@@ -128,11 +128,10 @@ Each blob goes in after the blobs it links to, so a write cut short leaves
 at worst some blobs of the batch and not its roots, each with its closure.
 
 A store keeps the order it took its blobs in, and `blobs()` lists them in
-it. `positionOf(link)` gives how many blobs it had taken in before that one,
-which is where it is among them, or `undefined` for one it does not hold. A
-blob is taken in by the first write that holds it, and writing it again
-leaves it where it was. A store only grows, so a blob keeps its position,
-and a reader can tell what the store held when the blob came in.
+it. A blob is taken in by the first write that holds it, and writing it again
+leaves it where it was. A store only grows, so an index over blobs reads on
+from where it left off. The order says nothing of when a blob came: that is
+in the marks of the private store beside ([Private stores](#private-stores)).
 
 There is no transaction that reads and then writes. Two devices that each
 check that something is missing before writing it will both write it, and
@@ -169,11 +168,10 @@ alone, which is what its sender chose to show. Staged on the user's
 store, it is read by what the user has seen as well, so an identity version
 that took an agent out applies even when the batch leaves it out.
 
-The batch is taken in only once it is committed. The `positionOf` of a
-staged batch is the store's, and gives nothing for a blob that only the
-batch holds, so a reader takes what the batch adds as coming in now.
-`commit` takes the blobs in one after another, so what depends on the order
-the store took them in can read otherwise once the batch is committed.
+The batch is taken in only once it is committed, and a bundle staged
+through an `Intake` is marked only then. So `arrivalsView` has no time for
+what only a staged bundle holds, and a reader that asks when it came takes
+it as coming in now.
 
 A staged batch holds blobs and lists no marks, so an index over
 `selectedBlobs` reads it, and one over `selectedMarks` or `selectedRecords`
@@ -182,14 +180,12 @@ has no rows on it.
 The batch is fixed when it is staged, and the store is read as it is at
 each read, so what is written to the store afterwards shows on the staged
 batch too. What is verified on it reads the same from the store once it is
-committed when nothing else is written in between, apart from what depends
-on that order. A write in between, such as of an identity version that took
-an agent out, can change what a view comes to when it is viewed again, on
-the staged batch as on the store. The rows a value already viewed was worked
-out from stay as they were, though a value that asks the store later where
-a blob was taken in finds where `commit` put it. `commit` does not verify
-the batch again: as with a write, there is no transaction that reads and
-then writes.
+committed when nothing else is written in between. A write in between, such
+as of an identity version that took an agent out, can change what a view
+comes to when it is viewed again, on the staged batch as on the store. The
+rows a value already viewed was worked out from stay as they were. `commit`
+does not verify the batch again: as with a write, there is no transaction
+that reads and then writes.
 
 A store only grows, so what a staged batch found held is still held when
 it is committed, whatever was written in between. A batch that is not
@@ -404,8 +400,8 @@ order they are read in.
 
 What depends on what else is written is worked out from the rows when they
 are read, and a `View` does it: an index, and `read`, which works a value
-out from the rows of that index, reading what they name from the store,
-which also gives where it took each in.
+out from the rows of that index, reading what they name by link from the
+`Reader` it is given.
 The index says which objects are read, and `read` what their rows come to,
 so an application can give the one and a module that knows what the objects
 mean the other. The two meet in the schema of the rows.
@@ -434,12 +430,11 @@ await notes.noteTagged("lunch");
 ```
 
 `view` takes what `scan` takes. It scans that for the index and reads the
-rows with it, so the rows, the objects they name and where each was taken in
-come from one place. When `read` gives a promise, as it does when it works the value
+rows with it, so the rows and the objects they name come from one place.
+When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
 The rows are of what was listed when it was viewed: what is written later is
-taken in when it is viewed again. A value that asks the store later
-where a blob was taken in finds where the store has taken it in by then.
+taken in when it is viewed again.
 
 ## Receiving
 
@@ -618,10 +613,7 @@ leaves an object that the store holds with no record of it.
   What only the private store keeps, its marks among them, is not read.
 
 Its rows are kept apart from those of the store beside, so an index over
-blobs that is scanned on both is worked out once for each. Its `positionOf`
-gives where it kept a blob, and nothing for one that only the store beside
-holds. So a view that asks where a blob of the store beside was taken in is
-viewed on that store.
+blobs that is scanned on both is worked out once for each.
 
 `arrivalsView` gives a view of when what the user's devices hold came to
 them, by the inbound marks and the records of a private store:
@@ -646,7 +638,7 @@ await arrivals.atOf(card.link); // when the bundle of the card came in
 - What no mark says so of has no time either, such as an object written to
   the store with no record of it.
 - The times are those the marks say, by the clocks of the user's devices,
-  and not where a store keeps a blob.
+  and not the order a store took its blobs in.
 
 ## Secret stores
 
@@ -704,9 +696,6 @@ again. A secret that the store beside holds is listed here still. `scan` and
   a link.
 - An index over `selectedMarks` or `selectedRecords` has no rows on it.
 
-Its `positionOf` gives where it kept a blob, and nothing for one that only
-the store beside holds.
-
 A secret store is only on the device that keeps it. Like a store, it only
 grows, so a key that is no longer used is still kept. Whether it is
 encrypted is up to its backend.
@@ -720,8 +709,7 @@ what goes in and of what comes back. The list keeps the order in which links
 were first listed, and a backend gives it from any point on, so a scan reads
 only what was listed since the last one. A backend gives the links of its
 blobs in the same way, which are the store's `blobs` and what it reads for an
-index over blobs, and where a blob is among them, which is the store's
-`positionOf`. `MemoryBackend` keeps them in memory, for tests and for a program that
+index over blobs. `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 
 `SqliteBackend` keeps them in one SQLite file. It runs only in Node, so it

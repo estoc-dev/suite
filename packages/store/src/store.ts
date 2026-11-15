@@ -1,4 +1,4 @@
-import type { Bytes, Link } from "@estoc/object";
+import type { Bytes, Link, Reader } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
 import { closureIn, copiedBlobs, leavesFirst } from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
@@ -35,8 +35,6 @@ export interface Batch {
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its roots.
- * - A store keeps the order it took its blobs in, which a later write leaves as it is, so a reader
- *   can tell what it held when a blob came in.
  */
 export interface Store {
   /**
@@ -67,8 +65,9 @@ export interface Store {
    */
   stage(batch: Batch): Promise<StagedStore>;
   /**
-   * The links of the blobs the store holds, each once and in the order it took them in, so
-   * `positionOf` gives where each is among them.
+   * The links of the blobs the store holds, each once and in the order it took them in, which a
+   * later write leaves as it is. A blob is taken in once, by the first write that holds it, and
+   * after the blobs it links to.
    *
    * - They are what the store has seen: an attachment as well as an object, and a stranger's as
    *   well as the user's. What the user wrote is what the records in the private store beside link
@@ -76,12 +75,6 @@ export interface Store {
    * - A write cut short can leave one here that no root reaches.
    */
   blobs(): AsyncIterable<Link<unknown>>;
-  /**
-   * How many blobs the store had taken in before the one of `link`, or `undefined` when it holds
-   * none. A blob is taken in once, by the first write that holds it, and after the blobs it links
-   * to.
-   */
-  positionOf(link: Link<unknown>): Promise<number | undefined>;
   /**
    * The closure of the blob that `link` names: the blob and every blob it links to, directly or
    * through others.
@@ -103,9 +96,7 @@ export interface Store {
  * - The batch is fixed when it is staged, and the store is read as it is at each read, so what is
  *   written to the store afterwards shows here too.
  * - What a verifier or a view reads from it reads the same from the store once it is committed,
- *   when nothing else is written in between, apart from what depends on the order the store took
- *   blobs in: here a blob that only the batch holds comes in now, and `commit` takes the batch's
- *   blobs in one after another.
+ *   when nothing else is written in between.
  * - A write in between, such as of an identity version that takes an agent out, can change what a
  *   view comes to when it is viewed again, here as on the store. `commit` does not verify the batch
  *   again.
@@ -121,12 +112,6 @@ export interface StagedStore {
    */
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
-  /**
-   * Where the store took in the blob of `link`, as its `positionOf` gives it. The batch is taken in
-   * only once it is committed, so a blob of the batch that the store does not hold has none until
-   * then.
-   */
-  positionOf(link: Link<unknown>): Promise<number | undefined>;
   /** Writes the batch as `write` writes it. Committing again writes nothing more. */
   commit(): Promise<void>;
 }
@@ -159,10 +144,6 @@ export class StoreOf implements Store, RowKeeper {
     return this.#backend.blobs();
   }
 
-  positionOf(link: Link<unknown>): Promise<number | undefined> {
-    return this.#backend.positionOf(link);
-  }
-
   /**
    * A backend that keeps what is put in it in `backend` and holds besides all that `store` holds.
    * What `store` holds already is not put in `backend` again.
@@ -181,7 +162,6 @@ export class StoreOf implements Store, RowKeeper {
       },
       listedLinks: (start) => backend.listedLinks(start),
       blobs: (start) => backend.blobs(start),
-      positionOf: (link) => backend.positionOf(link),
     };
   }
 
@@ -205,15 +185,11 @@ export class StoreOf implements Store, RowKeeper {
 }
 
 class StagedStoreOf implements StagedStore, RowKeeper {
-  readonly #store: Pick<Store, "get" | "positionOf"> & RowKeeper;
+  readonly #store: Reader & RowKeeper;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
 
-  constructor(
-    store: Pick<Store, "get" | "positionOf"> & RowKeeper,
-    backend: Backend,
-    blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
-  ) {
+  constructor(store: Reader & RowKeeper, backend: Backend, blobs: ReadonlyMap<Link<unknown>, Uint8Array>) {
     this.#store = store;
     this.#backend = backend;
     this.#blobs = blobs;
@@ -228,10 +204,6 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
     const bytes = this.#blobs.get(link);
     return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
-  }
-
-  positionOf(link: Link<unknown>): Promise<number | undefined> {
-    return this.#store.positionOf(link);
   }
 
   commit(): Promise<void> {

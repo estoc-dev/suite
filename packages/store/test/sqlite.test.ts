@@ -66,7 +66,7 @@ describe("a SqliteBackend", () => {
     expect(await listedLinksOf(backend)).toEqual([]);
   });
 
-  it("gives a blob put after a put that fails partway the position after those put before", async () => {
+  it("lists a blob put after a put that fails partway right after those put before", async () => {
     const backend = open(await makeTemporaryPath());
     await backend.put(blobsOf("zero"), []);
     const failure = new Error("cut short");
@@ -77,7 +77,7 @@ describe("a SqliteBackend", () => {
     };
     await expect(backend.put(blobsOf("one", "two"), listedLinks)).rejects.toBe(failure);
     await backend.put(blobsOf("three"), []);
-    expect(await backend.positionOf(linkOf(utf8("three")))).toBe(1);
+    expect(await Array.fromAsync(backend.blobs(1))).toEqual([linkOf(utf8("three"))]);
   });
 
   it("rejects every call once it is closed", async () => {
@@ -99,7 +99,7 @@ describe("a store in a SqliteBackend", () => {
     const writer = new Store(open(path));
     await writer.write({ roots: [reply.link], blobs: [note.bytes, reply.bytes, ...anything.blobs] });
     const reader = new Store(open(path));
-    expect(await reader.positionOf(reply.link)).toBe(await writer.positionOf(reply.link));
+    expect(await Array.fromAsync(reader.blobs())).toEqual(await Array.fromAsync(writer.blobs()));
     expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
   });
 

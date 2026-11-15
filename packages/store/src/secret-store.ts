@@ -96,12 +96,4 @@ export class SecretStore implements RowKeeper {
   blobs(): AsyncIterable<Link<unknown>> {
     return this.#backend.blobs();
   }
-
-  /**
-   * How many blobs were kept here before the one of `link`, or `undefined` when none is kept here
-   * under it, as for a blob that only the store beside holds.
-   */
-  positionOf(link: Link<unknown>): Promise<number | undefined> {
-    return this.#backend.positionOf(link);
-  }
 }

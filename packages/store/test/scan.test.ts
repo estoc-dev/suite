@@ -93,7 +93,6 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
   put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
   listedLinks: (start) => backend.listedLinks(start),
   blobs: (start) => backend.blobs(start),
-  positionOf: (link) => backend.positionOf(link),
 });
 
 /** A store, and the private store beside it that lists the records. */
@@ -408,7 +407,6 @@ describe("an index scanned from a private store", () => {
         put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
         listedLinks: (start) => backend.listedLinks(start),
         blobs: (start) => backend.blobs(start),
-        positionOf: (link) => backend.positionOf(link),
       };
       await expect(scan(newStores(swappedBackend, privateBackend).privateStore, byName)).rejects.toThrow(
         `another blob under ${listedObject.link}`,
@@ -933,7 +931,6 @@ describe("an index over blobs", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       blobs: () => store.blobs(),
-      positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
     await expect(scan(lookalike, byTagName)).rejects.toThrow(TypeError);
@@ -955,7 +952,6 @@ describe("an index over blobs", () => {
         put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
         listedLinks: (start) => backend.listedLinks(start),
         blobs: (start) => backend.blobs(start),
-        positionOf: (link) => backend.positionOf(link),
       });
       await store.write(batchOf([record], [attachment, other.bytes, nested.bytes, reaching.bytes, ...schemas]));
       return { store, failing };

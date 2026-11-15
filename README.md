@@ -45,9 +45,9 @@ gives no meaning and no reader an advantage.
   schemas in it.
 - `@estoc/bundle`: blobs carried together in one file, with one object as
   the way in, as they travel between programs.
-- `@estoc/store`: the objects a user writes, and the blobs that come with
-  them, kept on their device; and the indexes an application fills from
-  the user's records.
+- `@estoc/store`: the blobs that come to a user and those they write,
+  kept on their device, with the marks and the secrets they keep to
+  themselves beside; and the indexes an application fills from them.
 - `@estoc/inspector`: what a link reads as by what the blob says of
   itself, with no schema in hand: its fields, the schema it names and the
   links in its data.

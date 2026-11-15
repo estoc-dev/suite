@@ -56,7 +56,7 @@ export class PrivateStore implements RowKeeper {
     this.#backend = backend;
     this.#heldBlobs = StoreOf.backendBeside(store, backend);
     this[rowsByIndex] = new KeptRows(this, {
-      marks: (start) => backend.records(start),
+      marks: (start) => backend.listedLinks(start),
       blobs: (start) => StoreOf.blobsOf(store, start),
     });
   }
@@ -86,13 +86,13 @@ export class PrivateStore implements RowKeeper {
    * @throws the backend's own error when the backend fails.
    */
   async write({ marks, blobs = [] }: MarkBatch): Promise<void> {
-    const batch = copiedBatch(marks, blobs, "marked");
+    const batch = copiedBatch(marks, blobs, "a mark");
     await this.#backend.put(await leavesFirst(batch.objects, batch.blobs, this.#heldBlobs), batch.objects);
   }
 
   /** The links of the marks, each once and in the order they were first written. */
   marks(): AsyncIterable<Link<EncodedObject>> {
-    return this.#backend.records();
+    return this.#backend.listedLinks();
   }
 
   /**

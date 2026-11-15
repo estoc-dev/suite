@@ -19,9 +19,9 @@ async function openInTemporaryFolder(): Promise<Backend> {
   return backend;
 }
 
-async function recordsOf(backend: Backend, start?: number): Promise<Link<unknown>[]> {
+async function listedLinksOf(backend: Backend, start?: number): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of backend.records(start)) links.push(link);
+  for await (const link of backend.listedLinks(start)) links.push(link);
   return links;
 }
 
@@ -56,28 +56,28 @@ describe.each([
     expect(await backend.get(link)).toEqual(utf8("one"));
   });
 
-  it("lists records in the order they were put, each once", async () => {
+  it("lists links in the order they were first listed, each once", async () => {
     const backend = await open();
     const a = linkOf(utf8("a"));
     const b = linkOf(utf8("b"));
     const c = linkOf(utf8("c"));
     await backend.put(blobsOf("a", "b"), [a, b]);
     await backend.put(blobsOf("c"), [c, a]);
-    expect(await recordsOf(backend)).toEqual([a, b, c]);
+    expect(await listedLinksOf(backend)).toEqual([a, b, c]);
   });
 
-  it("lists the records after the first `start`, in the order they were first put", async () => {
+  it("lists the links after the first `start`, in the order they were first listed", async () => {
     const backend = await open();
     const a = linkOf(utf8("a"));
     const b = linkOf(utf8("b"));
     const c = linkOf(utf8("c"));
     await backend.put(blobsOf("a", "b"), [a, b]);
     await backend.put(blobsOf("c"), [c, a]);
-    expect(await recordsOf(backend, 1)).toEqual([b, c]);
-    expect(await recordsOf(backend, 3)).toEqual([]);
+    expect(await listedLinksOf(backend, 1)).toEqual([b, c]);
+    expect(await listedLinksOf(backend, 3)).toEqual([]);
   });
 
-  it("lists blobs in the order they were first put, each once, listed as records or not", async () => {
+  it("lists blobs in the order they were first put, each once, whether or not their links are listed", async () => {
     const backend = await open();
     const [a, b, c] = [linkOf(utf8("a")), linkOf(utf8("b")), linkOf(utf8("c"))];
     await backend.put(blobsOf("a", "b"), [a]);

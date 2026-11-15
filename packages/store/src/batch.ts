@@ -10,20 +10,32 @@ import {
 import type { Backend } from "./backend.ts";
 
 /**
- * A batch that a store or a private store refuses for what it is: one of its `records` or `marks`
- * that is not an object, or one of its `roots` or a blob in the closure of any of these that is
- * neither in the batch nor held already. The same batch is refused again until what was missing is
- * held, while a backend that fails, which rejects with an error of its own, may write it the next
- * time.
+ * A batch that a store, a private store or a secret store refuses for what it is: one of its
+ * `marks` or `secrets` that is not an object, or one of its `roots` or a blob in the closure of any
+ * of these that is neither in the batch nor held already. The same batch is refused again until
+ * what was missing is held, while a backend that fails, which rejects with an error of its own, may
+ * write it the next time.
  */
 export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
 }
 
 /**
- * The blobs of a batch under their links, `objects` among them, and the links of `objects`. Each is
- * copied before it is hashed, so that what is kept is what was hashed, whatever happens to the
- * given arrays afterwards.
+ * The blobs of a batch under their links. Each is copied before it is hashed, so that what is kept
+ * is what was hashed, whatever happens to the given arrays afterwards.
+ */
+export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>, Uint8Array> {
+  const batchBlobs = new Map<Link<unknown>, Uint8Array>();
+  for (const blob of blobs) {
+    const ownedBytes = new Uint8Array(blob);
+    batchBlobs.set(linkOf(ownedBytes), ownedBytes);
+  }
+  return batchBlobs;
+}
+
+/**
+ * The blobs of a batch under their links, `objects` among them, and the links of `objects`, which
+ * the batch is to list. Each is copied as `copiedBlobs` copies it.
  *
  * @throws {RefusedBatch} when one of `objects` is not an object, saying what the batch gave it to
  *   be `listedAs`.
@@ -31,13 +43,9 @@ export class RefusedBatch extends Error {
 export function copiedBatch(
   objects: Iterable<{ readonly bytes: Bytes<unknown> }>,
   blobs: Iterable<Bytes<unknown>>,
-  listedAs: "recorded" | "marked",
+  listedAs: "a mark" | "a secret",
 ): { readonly blobs: Map<Link<unknown>, Uint8Array>; readonly objects: Link<EncodedObject>[] } {
-  const batchBlobs = new Map<Link<unknown>, Uint8Array>();
-  for (const blob of blobs) {
-    const ownedBytes = new Uint8Array(blob);
-    batchBlobs.set(linkOf(ownedBytes), ownedBytes);
-  }
+  const batchBlobs = copiedBlobs(blobs);
   const objectLinks: Link<EncodedObject>[] = [];
   for (const { bytes } of objects) {
     const ownedBytes: Bytes<EncodedObject> = new Uint8Array(bytes);
@@ -45,7 +53,7 @@ export function copiedBatch(
     try {
       schemaOf(ownedBytes);
     } catch (cause) {
-      throw new RefusedBatch(`${link} is ${listedAs} but is not an object`, { cause });
+      throw new RefusedBatch(`${link} is written as ${listedAs} but is not an object`, { cause });
     }
     batchBlobs.set(link, ownedBytes);
     objectLinks.push(link);

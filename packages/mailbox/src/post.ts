@@ -93,7 +93,7 @@ export class Post {
     await this.#store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
     await this.#privateStore.write(recordsOf([mailbox]));
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
-    await this.#secretStore.write({ records: [object], blobs: [...mailboxKeySchema.blobs] });
+    await this.#secretStore.write({ secrets: [object], blobs: [...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
 

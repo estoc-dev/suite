@@ -4,7 +4,7 @@ import type { Backend } from "./backend.ts";
 /** Keeps a store in memory, for tests and for a program that keeps nothing once it ends. */
 export class MemoryBackend implements Backend {
   readonly #blobs = new Map<Link<unknown>, { readonly bytes: Uint8Array; readonly position: number }>();
-  readonly #records = new Set<Link<EncodedObject>>();
+  readonly #listedLinks = new Set<Link<EncodedObject>>();
 
   async get(link: Link<unknown>): Promise<Uint8Array | undefined> {
     const blob = this.#blobs.get(link);
@@ -15,14 +15,14 @@ export class MemoryBackend implements Backend {
     return this.#blobs.has(link);
   }
 
-  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<EncodedObject>>): Promise<void> {
+  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<EncodedObject>>): Promise<void> {
     for (const [link, bytes] of blobs)
       if (!this.#blobs.has(link)) this.#blobs.set(link, { bytes, position: this.#blobs.size });
-    for (const link of records) this.#records.add(link);
+    for (const link of listedLinks) this.#listedLinks.add(link);
   }
 
-  async *records(start = 0): AsyncIterable<Link<EncodedObject>> {
-    yield* [...this.#records].slice(start);
+  async *listedLinks(start = 0): AsyncIterable<Link<EncodedObject>> {
+    yield* [...this.#listedLinks].slice(start);
   }
 
   async *blobs(start = 0): AsyncIterable<Link<unknown>> {

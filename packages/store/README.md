@@ -1,86 +1,82 @@
 # @estoc/store
 
 A store keeps what a user writes and what comes to them, on one device. Its
-truth is objects: those the user wrote, a record of each, those that came
-from elsewhere, and the blobs in the closures of them all.
-What the user keeps to themselves is an object too, kept beside the store:
-a secret, such as a secret key, in a secret store, and a mark of what was
-done on their devices in a private store. The state of a running program
-is kept in its own place and is not an object.
+truth is objects: those the user wrote, those that came from elsewhere, and
+the blobs in the closures of them all. What the user keeps to themselves is
+an object too, kept beside the store: a mark of what was done on their
+devices, such as that they wrote an object, in a private store, and a
+secret, such as a secret key, in a secret store. The state of a running
+program is kept in its own place and is not an object.
 
-A store holds two things.
-
-- **Blobs by link**: any bytes, objects or not, kept under their link. A
-  link names one blob wherever it is kept, and a store holds those that
-  have come to it: `get` gives nothing for a link whose blob it does not
-  hold, which another store may. A blob is added once and not changed.
-  Blobs from anyone can be kept together, as a blob someone sends can
-  neither replace nor change one already kept. So holding a blob says that
-  it came in, and not whose it is.
-- **Records**: the marks that the user wrote an object. A record is an
-  object of `recordSchema` that links to the object, and the store lists the
-  links of its records. That list is the one thing in a store that is not a
-  blob. A record is a blob like any other, and is a record of this store
-  because the store lists it.
+A store holds blobs by link: any bytes, objects or not, kept under their
+link. A link names one blob wherever it is kept, and a store holds those
+that have come to it: `get` gives nothing for a link whose blob it does not
+hold, which another store may. A blob is added once and not changed. Blobs
+from anyone can be kept together, as a blob someone sends can neither
+replace nor change one already kept. So holding a blob says that it came in,
+and not whose it is. The store lists its blobs and nothing else: whose a
+blob is, and how it came, is said by the marks of the
+[private store](#private-stores) beside.
 
 An object links to the blobs whose links it holds, its schema among them,
-and a schema to its root schema. Any other blob is
-bytes and links to nothing: an image, or a JSON file, whatever links it
-seems to hold, so an attachment does not send the store after blobs. The closure of a blob is the
+and a schema to its root schema. Any other blob is bytes and links to
+nothing: an image, or a JSON file, whatever links it seems to hold, so an
+attachment does not send the store after blobs. The closure of a blob is the
 blob and every blob it links to, directly or through others. Every blob a
 store holds comes with its closure, and a write adds only the blobs in the
-closures of its records and of its roots, the blobs it names to be held
-with no record of them.
+closures of its roots, the blobs it names to be held.
 
 ```ts
-import { encodeObject, readObject } from "@estoc/object";
-import { MemoryBackend, recordSchema, Store } from "@estoc/store";
+import { encodeObject } from "@estoc/object";
+import { MemoryBackend, PrivateStore, recordsOf, Store } from "@estoc/store";
 
 const store = new Store(new MemoryBackend());
+const privateStore = new PrivateStore(store, new MemoryBackend());
 const note = encodeObject(noteSchema, { text: "hello" });
 const signature = await actor.sign(note);
 // `schemas` are the `blobs` of each schema the program writes to; the store keeps those named here.
-await store.write({ records: [note, signature], blobs: [...signature.signedIdentity.blobs, ...schemas] });
+await store.write({
+  roots: [signature.link],
+  blobs: [note.bytes, signature.bytes, ...signature.signedIdentity.blobs, ...schemas],
+});
+await privateStore.write(recordsOf([note, signature]));            // the user wrote both
 
-for await (const link of store.records()) {                        // a record of the note, one of the signature
-  (await readObject(store, link, recordSchema)).data.object.link;  // note.link, signature.link
-}
-for await (const link of store.blobs()) …;                         // the records, and the blobs in their closures
+for await (const link of store.blobs()) …;                         // the blobs in the closure of the signature
+for await (const link of privateStore.marks()) …;                  // a record of the note, one of the signature
 await signatures.read(signature.link, store, noIdentityVersions);  // the signature, verified
 ```
 
 ## What is listed
 
-A store lists two things, which say different things. `records()` lists the
-records, each of which links to something the user wrote. `blobs()` lists what
-the store holds, which is what it has
-seen: anyone can send a bundle to a mailbox, and a bundle can carry an object
-of any schema, so the blobs of a schema include an unsigned contact that a
-stranger slipped in among the user's own contacts. What is the user's own is
-therefore read from the records, and what came from elsewhere is reached
-from the marks of its arrivals.
+A store lists what it holds and a private store what the user did, and the
+two say different things. `blobs()` lists what the store holds, which is what
+it has seen: anyone can send a bundle to a mailbox, and a bundle can carry
+an object of any schema, so the blobs of a schema include an unsigned
+contact that a stranger slipped in among the user's own contacts. What is
+the user's own is therefore read from the records, which are among the marks
+of the private store, and what came from elsewhere is reached from the marks
+of its arrivals.
 
 What comes from elsewhere comes in through something the user does:
 receiving a bundle at a mailbox, taking a card, importing a file. An
 [`Intake`](#receiving) writes the bundle to the store as a root, so the store
-holds its closure and records none of it, and then writes an `Inbound`, a
-mark of the arrival, to the [private store](#private-stores) beside. The
-store lists no record of an arrival: the arrivals are read from the marks of
-the private store, as by an index over `selectedMarks`, and the blobs by
-following links from an `Inbound`. A reader then knows they came from
-elsewhere without any query having to say so. A receive that stops between
-the two writes leaves the bundle held, with no mark of it. Something signed
-carries its authority in its signature, and reads the same when reached by a
-link.
+holds its closure, and then writes an `Inbound`, a mark of the arrival, to
+the [private store](#private-stores) beside. The arrivals are read from the
+marks of the private store, as by an index over `selectedMarks`, and the
+blobs by following links from an `Inbound`. A reader then knows they came
+from elsewhere without any query having to say so. A receive that stops
+between the two writes leaves the bundle held, with no mark of it. Something
+signed carries its authority in its signature, and reads the same when
+reached by a link.
 
 An unsigned object has no author to tell who wrote it, and the closure of
 a bundle's root can include the user's own objects, as when someone replies
-to them. So the store keeps the list of records itself rather than working
-it out.
+to them. So what the user wrote is listed, in the private store, rather than
+worked out from what the store holds.
 
-A record is an object, so one can come in a bundle. The store then holds it
-as a blob and does not list it, so it records nothing here: a store lists the
-records it writes itself, of the `records` of a batch.
+A mark is an object, so one can come in a bundle. The store then holds it as
+a blob, and it marks nothing: a private store lists the marks written to it,
+and reads none from the store beside.
 
 `blobs()` gives the links of the blobs a store holds, each once, in the order
 it took them in. It is for what asks what a store holds, such as a tool that
@@ -97,35 +93,27 @@ kept by the schema a program gives it.
 
 ## Writing
 
-A write puts in a batch: objects the user writes, under `records`, and
-the blobs that go with them, under `blobs`. Each is copied and hashed as it
-comes in, so the store keeps blobs under the links it computed. The store
-records each of the objects: it writes a record that links to the object, and
-lists the record. Writing an object again gives the same record, which is
-listed once.
-
-A batch can also name `roots`: links of blobs that the store is to hold
-with their closures, without recording them. That is how what comes from
-elsewhere goes in, and how an object goes in whose record is kept in a
-[private store](#private-stores). The store lists nothing for a root, and a
-root that it holds already need not be in the batch.
+A write puts in a batch: `roots`, the links of blobs that the store is to
+hold with their closures, and `blobs`, the roots themselves and what they
+link to. A root is an object the user wrote, the root of a bundle that came
+in, or any other blob. Each blob is copied and hashed as it comes in, so the
+store keeps blobs under the links it computed. The store lists nothing for a
+root, and a root that it holds already need not be in the batch.
 
 ```ts
+await store.write({ roots: [note.link], blobs: [note.bytes, ...noteSchema.blobs] });
 await store.write({ roots: [bundle.link], blobs: bundle.blobs() });
 ```
 
-Of the blobs, the store keeps those in the closures of the records and of
-the roots, and drops the rest. Neither a record nor a root would reach them,
-so they could only wait to be collected. A program can then give the schemas
-it writes to with every write, and a bundle can carry blobs outside its
-root's closure, without either leaving anything behind.
+Of the blobs, the store keeps those in the closures of the roots, and drops
+the rest. No root would reach them, so they could only wait to be collected.
+A program can then give the schemas it writes to with every write, and a
+bundle can carry blobs outside its root's closure, without either leaving
+anything behind.
 
-The whole batch is refused when:
-
-- one of `records` is not an object, or
-- one of `roots`, or a blob in the closure of a root or of a record, is
-  neither in the batch nor held by the store: the schema of an object, or a
-  blob its data links to.
+The whole batch is refused when one of `roots`, or a blob in the closure of
+one, is neither in the batch nor held by the store: the schema of an object,
+or a blob its data links to.
 
 So the schemas of objects come with them unless the store holds them
 already, and a bundle is taken in only with the closures of its objects,
@@ -136,9 +124,8 @@ refused again until the store holds what was missing. A backend that fails
 rejects with an error of its own, so a receiver can tell a bundle it will
 not take from a write that may go through the next time.
 
-Each blob goes in after the blobs it links to, and before the links that
-list it, so a write cut short leaves at worst blobs that no record reaches,
-each with its closure.
+Each blob goes in after the blobs it links to, so a write cut short leaves
+at worst some blobs of the batch and not its roots, each with its closure.
 
 A store keeps the order it took its blobs in, and `blobs()` lists them in
 it. `positionOf(link)` gives how many blobs it had taken in before that one,
@@ -161,8 +148,7 @@ reads who signed a Service it reaches, and read again later from the
 store. For the two to come out the same, the first is read from the store
 as it will be once the batch is written. `stage(batch)` gives that, a
 `StagedStore`: the blobs the store holds and those of the batch that `write`
-keeps, and the links of the store's records with those of the batch.
-`commit` writes the batch, as `write` does. What comes from elsewhere is kept
+keeps. `commit` writes the batch, as `write` does. What comes from elsewhere is kept
 through an `Intake` ([Receiving](#receiving)), whose `stage` stages the bundle
 that its `receive` keeps:
 
@@ -193,10 +179,9 @@ the store took them in can read otherwise once the batch is committed, such
 as a signature the batch holds before an identity version that took its
 agent out.
 
-The records of a staged batch are listed before anything has verified what
-they record. A row stands on its object and its closure, as an identity version
-stands on its root's signature, and not on whether the user took the
-object.
+A staged batch holds blobs and lists no marks, so an index over
+`selectedBlobs` reads it, and one over `selectedMarks` or `selectedRecords`
+has no rows on it.
 
 The batch is fixed when it is staged, and the store is read as it is at
 each read, so what is written to the store afterwards shows on the staged
@@ -238,9 +223,9 @@ gives other bytes, as a damaged disk may.
 
 A store has no index of its own. An application makes its own, of the
 objects the user records: an `Index` over `selectedRecords` reads the recorded
-objects that a `Selection` takes, which are what the records link to and not
-the records themselves, and gives rows of what the selection reads each one
-as. A row is an object too, written to a schema that the index names, and
+objects that a `Selection` takes, which are what the records among the marks
+of a [private store](#private-stores) link to and not the records themselves,
+and gives rows of what the selection reads each one as. A row is an object too, written to a schema that the index names, and
 `rows` gives the data of each. The rows of a recorded object depend on it and
 its closure, which the selection and `rows` read by link from the `Reader`
 they are given, and on nothing else. An index is the set of the rows that
@@ -259,8 +244,8 @@ index in that order, which `scan` reads.
   format.
 - Rows that hold the same in all of those fields are in the order of their
   links.
-- One index can be given several orders. They share its rows, so a store
-  reads each recorded object once however many of them it is scanned in.
+- One index can be given several orders. They share its rows, so each
+  recorded object is read once however many of them it is scanned in.
 
 ```ts
 import { LinkValue, objectsOf } from "@estoc/object";
@@ -277,37 +262,37 @@ const tagged = indexOver(selectedRecords(objectsOf(noteSchema)), taggedSchema, (
 );
 const byTag = tagged.orderedBy("tag", "at");
 
-const rows = await scan(store, byTag);
+const rows = await scan(privateStore, byTag);
 for await (const { data } of rows.range(["lunch"])) …; // `data.at`, `data.note`
 ```
 
-Rows are kept in memory, beside the store, and are not blobs of it: its `get`
-gives none of them, a bundle gathered from it holds none, and an index over
-its blobs reads none.
+Rows are kept in memory, beside what was scanned, and are not blobs of the
+store: its `get` gives none of them, a bundle gathered from it holds none,
+and an index over its blobs reads none.
 
 An index comes only from `indexOver`, of one source, and from `union`, of
 indexes whose rows are of one schema, so what an index reads is said by its
 sources and not worked out in `rows`. A source says where what it reads is
-listed and what each is read as, together: `selectedRecords` and
-`selectedBlobs` give the recorded objects and the blobs of a store that a
-selection takes, `selectedMarks` the marks of a
-[private store](#private-stores), and another index is a source of its own
-rows. Each part of a union
+listed and what each is read as, together: `selectedBlobs` gives the blobs
+of a store that a selection takes, `selectedMarks` and `selectedRecords` the
+marks of a [private store](#private-stores) and the objects they record,
+`selectedSecrets` the secrets of a [secret store](#secret-stores), and
+another index is a source of its own rows. Each part of a union
 reads what its own source lists and hands what it reads that as to its own
 rows, so the rows of objects of several schemas, or of several selections of
 one schema, need not tell one kind of object from another.
 
-`scan` goes through all that the user wrote. It hands each recorded object to
-each selection of the index, and what the selection reads it as to `rows`. A
+`scan` goes through all that the private store records. It hands each
+recorded object to each selection of the index, and what the selection reads
+it as to `rows`. A
 `SelectionBySchema` is handed instead the object read with its schema, and
 only an object of that schema: an object is checked against a schema once,
 however many selections by that schema read it. What came from elsewhere
 reaches `indexOver` only by following links from what the user wrote. A blob
 is read from the store once for a recorded object, the object among them,
-however many selections and rows read it. `range(prefix)` gives the rows that hold
-`prefix` in the first fields of the order, one value for each, in the order
-of the index. What does not fit in
-rows, such as a count, an application keeps in a fold of its own, which
+however many selections and rows read it. `range(prefix)` gives the rows
+that hold `prefix` in the first fields of the order, one value for each, in
+the order of the index. What does not fit in rows, such as a count, an application keeps in a fold of its own, which
 then has to come to the same whatever the order and however often an
 object comes.
 
@@ -319,9 +304,10 @@ gives no rows of that source, and the scan goes on with the rest:
   along with what each index that this one reads failed on. The rows are short
   of whatever those would have given, under any prefix, as what failed gave no
   row to tell where it belongs.
-- A scan of an index that reads only recorded objects, itself and through the
-  indexes it reads, throws the error of the first failure: what it reads is what its
-  user wrote, so a failure is a mistake to be seen. A scan of one that reads
+- A scan of an index that reads only recorded objects, marks and secrets,
+  itself and through the indexes it reads, throws the error of the first
+  failure: what it reads is what its user wrote, so a failure is a mistake to
+  be seen. A scan of one that reads
   blobs gives the rows with their failures, as anyone can send a blob that it
   fails on. `scan(store, index, { throwsOnFailure })` says which a scan does,
   whatever the index reads.
@@ -329,20 +315,20 @@ gives no rows of that source, and the scan goes on with the rest:
   It reads what was listed since, and then throws or gives the rows, as it
   does on a failure it has just found.
 
-A store keeps in memory the rows of each index it is scanned for, and those
-rows in each order it is scanned in, and a
-later scan reads only the records listed since, those that another store on
-the same backend wrote among them. The rows of a recorded object depend on it
-and its closure alone, and a store only grows, so the rows of those read
-before still hold. A secret store and a private store keep their own, and a
-staged batch reads what it records on top of those its store keeps. The rows are kept for an
-index as long as the program holds it, and their order for as long as it
-holds what `orderedBy` gave, so a program makes each once:
-an index made again by `indexOver` is another, and is read from all that the
-store records, as each index is once a program starts.
+A store, a private store and a secret store each keep in memory the rows of
+each index they are scanned for, and those rows in each order they are
+scanned in, and a later scan reads only what was listed since, what another
+on the same backend wrote among it. The rows of a recorded object depend on
+it and its closure alone, and each of the three only grows, so the rows of
+those read before still hold. A staged batch reads the blobs it keeps on top
+of the rows its store keeps. The rows are kept for an index as long as the
+program holds it, and their order for as long as it holds what `orderedBy`
+gave, so a program makes each once: an index made again by `indexOver` is
+another, and is read from all that is listed, as each index is once a program
+starts.
 
 An index over `selectedBlobs` reads the blobs a store holds in place of what
-it records, for objects that carry their authority in a signature, as
+the user recorded, for objects that carry their authority in a signature, as
 [What is listed](#what-is-listed) says. `selectedBlobs` takes a
 `SelectionBySchema`, which looks only at the objects of its schema:
 
@@ -358,9 +344,9 @@ const identityVersionsHeld = indexOver(
 ).orderedBy(...identityVersions.order);
 ```
 
-- A write keeps only the blobs in the closures of its records and its roots,
-  so these are the blobs reached from what the user wrote and from what came
-  in, and a write cut short can leave some besides, each with its closure.
+- A write keeps only the blobs in the closures of its roots, so these are
+  the blobs reached from what the user wrote and from what came in, and a
+  write cut short can leave some besides, each with its closure.
 - A blob that is not an object, such as an attachment, is not one of these,
   as an object of another schema is not.
 - Anyone can send a blob that names the schema and does not fit it, or that
@@ -410,8 +396,8 @@ order they are read in.
 - It is an index as any other: its rows depend on the row read and its
   closure alone, a store keeps them and reads only the rows given since, and
   another index can read it in turn. A staged batch reads what the other index
-  gives of the batch on top of the rows its store keeps, and a secret store
-  keeps its own.
+  gives of the batch on top of the rows its store keeps, and a private store
+  and a secret store keep their own.
 - The rows of the other index are kept once, for its own orders and for each
   index over it, so a recorded object is read once for all of them.
 - It fails on a row that its `rows` throw on, as on a recorded object, and its
@@ -447,16 +433,16 @@ const latest: View<DataOf<typeof taggedSchema>, readonly ["tag", "at"], Latest> 
   }),
 };
 
-const notes = await view(store, latest);
+const notes = await view(privateStore, latest);
 await notes.noteTagged("lunch");
 ```
 
-`view(store, view)` scans the store for the index and reads the rows with
-the store, so the rows, the objects they name and where each was taken in
-come from one store. When `read` gives a promise, as it does when it works the value
+`view` takes what `scan` takes. It scans that for the index and reads the
+rows with it, so the rows, the objects they name and where each was taken in
+come from one place. When `read` gives a promise, as it does when it works the value
 out from all the rows at once, `view` gives what the promise resolves to.
-The rows are of what the store held when it was viewed: what is written
-later is taken in when it is viewed again. A value that asks the store later
+The rows are of what was listed when it was viewed: what is written later is
+taken in when it is viewed again. A value that asks the store later
 where a blob was taken in finds where the store has taken it in by then.
 
 ## Receiving
@@ -624,7 +610,7 @@ leaves an object that the store holds with no record of it.
 `scan` and `view` take a private store, and read both sides through it:
 
 - An index over `selectedMarks` reads its marks, each as the object it is,
-  and reads nothing from a store or a secret store.
+  and has no rows on a store or a secret store.
 - An index over `selectedRecords` reads the objects that the records among
   its marks link to. A record that came to the store beside, as in a bundle,
   is not a mark, and records nothing.
@@ -641,39 +627,58 @@ as one of the people a store has seen does, is viewed on that store.
 
 Some objects are the user's alone, such as the secret key of a mailbox.
 They are written to a `SecretStore`, which is kept beside a store, in a
-backend of its own, and is written to and read like one. Being secret is
-where an object is kept, not something its schema says: an object of any
-schema can be kept on either side.
+backend of its own. Being secret is where an object is kept, not something
+its schema says: an object of any schema can be kept on either side.
 
 ```ts
-import { MemoryBackend, SecretStore, Store } from "@estoc/store";
+import { LinkValue, objectsOf } from "@estoc/object";
+import { indexOver, MemoryBackend, SecretStore, Store, scan, selectedSecrets } from "@estoc/store";
 
 const store = new Store(new MemoryBackend());
 const secretStore = new SecretStore(store, new MemoryBackend());
-await secretStore.write({ records: [key], blobs: keySchema.blobs });
+await secretStore.write({ secrets: [key], blobs: keySchema.blobs });
 
-await secretStore.get(mailbox.link);  // from the store beside
-await store.get(key.link);     // undefined
+for await (const link of secretStore.secrets()) …; // key.link
+await secretStore.get(mailbox.link);               // from the store beside
+await store.get(key.link);                         // undefined
+
+// The key of each mailbox, from a `keyOfMailboxSchema` that links to both.
+const byMailbox = indexOver(selectedSecrets(objectsOf(keySchema)), keyOfMailboxSchema, ({ link, data }) => [
+  { mailbox: data.mailbox, key: new LinkValue(link) },
+]).orderedBy("mailbox");
+await scan(secretStore, byMailbox);
 ```
+
+A secret store lists its secrets as they are, as a private store lists its
+marks. `write` takes them under `secrets` and lists each, and `secrets()`
+gives their links in the order they were first written. A secret is an
+object of whatever schema its program gives it, and is a secret because the
+secret store lists it: an object of the same schema that the store beside
+holds is given by its link and is not listed.
 
 The secret store reads the store beside it, so what it keeps can link to
 what the store holds, and its `get` gives both. The store does not read the
 secret store. A blob that only the secret store keeps is not one the
 store holds, so the store refuses to write an object with one in its
 closure, and its `get` and `closure` do not give one. A secret store has
-no `closure` and is not a `Store`, so it cannot be given where a store is
-asked for, as by what gathers bundles. Being secret is where bytes are
-kept, not a mark on them: bytes that are also written to the store are the
-store's as well.
+no `closure` and is neither a `Store` nor a `PrivateStore`, so it cannot be
+given to what gathers bundles, nor to what keeps marks. Being secret is
+where bytes are kept, not a mark on them: bytes that are also written to the
+store are the store's as well.
 
-A write follows the rules of a store's, with what the store beside holds
-counted as held: a blob that either side holds need not come in the batch,
-and one that the store holds already is not kept again. `scan` and `view`
-take a secret store as they take a store. Its `blobs` lists only the blobs
-kept in it, as its `records` lists only the records of what was written to
-it, and an index over blobs reads only those, so one that the store beside
-holds is read only by following a link. A record that the store beside holds
-already, of an object written to both, is listed here and not kept again.
+A write keeps each secret with the blobs of the batch in its closure, and
+what the store beside holds counts as held: a blob that either side holds
+need not come in the batch, and one that the store holds already is not kept
+again. A secret that the store beside holds is listed here still. `scan` and
+`view` take a secret store:
+
+- An index over `selectedSecrets` reads its secrets, each as the object it
+  is, and reads nothing from a store or a private store.
+- An index over `selectedBlobs` reads only the blobs kept in it, which its
+  `blobs` lists, so one that the store beside holds is read only by following
+  a link.
+- An index over `selectedMarks` or `selectedRecords` has no rows on it.
+
 Its `positionOf` gives where it kept a blob, and nothing for one that only
 the store beside holds.
 
@@ -683,15 +688,15 @@ encrypted is up to its backend.
 
 ## Backends
 
-A store keeps its blobs and its list in a backend, which keeps bytes and
-links as it is given them; the store does the hashing and decoding, of
-what goes in and of what comes back. The list keeps the order in which
-links were first put, and a backend gives it from any point on, so a store
-reads only the records listed since it last scanned. A backend gives the links
-of its blobs in the same way, which are the store's `blobs` and what it reads
-for an index over blobs, and where a blob is among them, which is the store's
-`positionOf`.
-`MemoryBackend` keeps them in memory, for tests and for a program that
+A store keeps its blobs in a backend, and a private store or a secret store
+its blobs and the list of its marks or of its secrets. A backend keeps bytes
+and links as it is given them; the store does the hashing and decoding, of
+what goes in and of what comes back. The list keeps the order in which links
+were first listed, and a backend gives it from any point on, so a scan reads
+only what was listed since the last one. A backend gives the links of its
+blobs in the same way, which are the store's `blobs` and what it reads for an
+index over blobs, and where a blob is among them, which is the store's
+`positionOf`. `MemoryBackend` keeps them in memory, for tests and for a program that
 keeps nothing once it ends.
 
 `SqliteBackend` keeps them in one SQLite file. It runs only in Node, so it

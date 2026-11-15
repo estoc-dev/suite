@@ -118,8 +118,14 @@ async function writeNote({ actor, store }: Person, text: string) {
   const object = encodeObject(note, { text });
   const signature = await actor.sign(object);
   await store.write({
-    records: [signature],
-    blobs: [object.bytes, ...signature.signedIdentity.blobs, ...note.blobs, ...signatures.schema.blobs],
+    roots: [signature.link],
+    blobs: [
+      signature.bytes,
+      object.bytes,
+      ...signature.signedIdentity.blobs,
+      ...note.blobs,
+      ...signatures.schema.blobs,
+    ],
   });
   return signature;
 }
@@ -274,7 +280,7 @@ describe("sending to someone", () => {
     const { inbox, pickup } = await openInbox(bob);
     const otherSchema = mailboxSchema("Other mailbox", { place: string() });
     const other = encodeObject(otherSchema, { key: new Uint8Array(32), place: "elsewhere" });
-    await bob.store.write({ records: [other], blobs: [...otherSchema.blobs] });
+    await bob.store.write({ roots: [other.link], blobs: [other.bytes, ...otherSchema.blobs] });
     const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
     await handOver(bob, alice, givenGrant.link);
 
@@ -335,7 +341,7 @@ describe("what came in at a mailbox", () => {
   it("is no message when its root is not a signature", async () => {
     const { alice, bob, inbox, receive } = await twoPeople();
     const object = encodeObject(note, { text: "no one signed this" });
-    await alice.store.write({ records: [object], blobs: [...note.blobs] });
+    await alice.store.write({ roots: [object.link], blobs: [object.bytes, ...note.blobs] });
     await (await alice.post.outbox(inbox.mailbox)).send(object.link);
     const { bundle } = await receive();
 
@@ -347,7 +353,7 @@ describe("what came in at a mailbox", () => {
     const signature = await writeNote(alice, "hi Bob");
     const other = encodeObject(note, { text: "not what was signed" });
     const forged = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(other.link) });
-    await alice.store.write({ records: [forged], blobs: [other.bytes] });
+    await alice.store.write({ roots: [forged.link], blobs: [forged.bytes, other.bytes] });
     await (await alice.post.outbox(inbox.mailbox)).send(forged.link);
     const { bundle } = await receive();
 

@@ -81,12 +81,11 @@ describe("an intake", () => {
     expect(await privateStore.get(inbound.link)).toEqual(inbound.bytes);
   });
 
-  it("gives the store neither the mark nor a record of anything", async () => {
+  it("gives the store neither the mark nor its schema", async () => {
     const { store, intake } = sides();
     const inbound = await intake.receive(bundleOf(object({ text: "hello" })));
     expect(await store.get(inbound.link)).toBeUndefined();
     expect(await store.get(inboundSchema.link)).toBeUndefined();
-    expect(await listOf(store.records())).toEqual([]);
   });
 
   it("drops the blobs of a bundle outside its root's closure, whatever they link to", async () => {

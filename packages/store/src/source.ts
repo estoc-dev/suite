@@ -31,8 +31,8 @@ export type Prefix<K extends readonly unknown[]> =
 type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 
 /**
- * Where what an index reads is listed: the objects a store records, the blobs it holds, the marks a
- * private store lists, or the rows of another index.
+ * Where what an index reads is listed: the blobs a store holds, the marks a private store lists,
+ * the objects they record, the secrets a secret store lists, or the rows of another index.
  */
 export interface Origin {
   /** Whether it lists the blobs a store holds, itself or through an index it reads. */
@@ -46,7 +46,7 @@ export interface Origin {
  * the index are short of whatever it would have given.
  */
 export interface ItemFailure {
-  /** The link of the recorded object, the blob or the row of another index that was read. */
+  /** The link of what was read: a recorded object, a mark, a secret, a blob or a row of another index. */
   readonly item: Link<unknown>;
   readonly error: unknown;
 }
@@ -73,6 +73,11 @@ const recordedObjects: Origin = {
 const listedMarks: Origin = {
   readsBlobs: false,
   listingIn: (rows) => rows.marks(),
+};
+
+const listedSecrets: Origin = {
+  readsBlobs: false,
+  listingIn: (rows) => rows.secrets(),
 };
 
 const heldBlobs: Origin = {
@@ -115,9 +120,10 @@ export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
 export let orderOf: <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => Order<F, By>;
 
 /**
- * What an index reads, each read as a `T`: the recorded objects or the blobs of a store, or the
- * marks of a private store, that a selection takes, from `selectedRecords`, `selectedBlobs` and
- * `selectedMarks`, or the rows of another index, which is itself a source.
+ * What an index reads, each read as a `T`: the blobs of a store, the marks of a private store, the
+ * objects they record or the secrets of a secret store that a selection takes, from
+ * `selectedBlobs`, `selectedMarks`, `selectedRecords` and `selectedSecrets`, or the rows of another
+ * index, which is itself a source.
  *
  * Where things are listed and what each is read as go together. A reading that trusts what an index
  * derived holds only over the rows of that index, so it is given as a source of those rows, and not
@@ -138,11 +144,11 @@ export class Source<T> {
 /**
  * The recorded objects that `selection` takes, each as what it reads it as.
  *
- * - They are what the records link to, and not the records themselves. What came from elsewhere is
- *   reached by following links from them.
- * - On a private store, the records are those among its marks, and the objects they link to are
- *   read from the store beside it. On a store or a secret store, they are the records it wrote
- *   itself.
+ * - They are what the records among the marks of a private store link to, and not the records
+ *   themselves, each read from the store beside it. What came from elsewhere is reached by
+ *   following links from them.
+ * - Only a private store lists records. One that a store holds, as one that came in a bundle,
+ *   records nothing, on the store or on the private store beside it.
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
@@ -161,8 +167,19 @@ export function selectedMarks<T>(selection: Selection<T>): Source<T> {
 }
 
 /**
- * The blobs a store holds that read as objects of the schema of `selection`, recorded or not, each
- * as what `selection` reads it as.
+ * The secrets a secret store lists that `selection` takes, each as what it reads it as.
+ *
+ * - They are the secrets themselves, as they were written to the secret store, and not the other
+ *   blobs kept in it.
+ * - Only a secret store lists secrets.
+ */
+export function selectedSecrets<T>(selection: Selection<T>): Source<T> {
+  return new Source({ origin: listedSecrets, itemOf: (blob) => itemOf(selection, blob) });
+}
+
+/**
+ * The blobs a store holds that read as objects of the schema of `selection`, whoever wrote them,
+ * each as what `selection` reads it as.
  *
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
@@ -180,8 +197,8 @@ export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchem
 
 /**
  * What an application keeps of what it reads from a store, as rows: objects of one schema, derived
- * from the objects its user records, from the blobs the store holds, or from the rows of another
- * index.
+ * from the objects its user records, from the marks and the secrets its user writes, from the
+ * blobs the store holds, or from the rows of another index.
  *
  * - An index is the set of rows that those give, so going through all of them and adding each as it
  *   is written come to the same rows, whatever the order and however often one is added.

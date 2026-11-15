@@ -25,9 +25,9 @@ function open(path: string): SqliteBackend {
   return backend;
 }
 
-async function recordsOf(source: { records(): AsyncIterable<Link<unknown>> }): Promise<Link<unknown>[]> {
+async function listedLinksOf(backend: SqliteBackend): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const link of source.records()) links.push(link);
+  for await (const link of backend.listedLinks()) links.push(link);
   return links;
 }
 
@@ -35,13 +35,13 @@ describe("a SqliteBackend", () => {
   it("reads what was put before, when the file is opened again", async () => {
     const path = await makeTemporaryPath();
     const blobs = blobsOf("one", "two");
-    const records = [...blobs.keys()];
+    const listedLinks = [...blobs.keys()];
     const writer = new SqliteBackend(path);
-    await writer.put(blobs, records);
+    await writer.put(blobs, listedLinks);
     writer.close();
     const reader = open(path);
     for (const [link, bytes] of blobs) expect(await reader.get(link)).toEqual(bytes);
-    expect(await recordsOf(reader)).toEqual(records);
+    expect(await listedLinksOf(reader)).toEqual(listedLinks);
   });
 
   it("reads what another backend open on the same file puts", async () => {
@@ -50,32 +50,32 @@ describe("a SqliteBackend", () => {
     const one = utf8("one");
     await writer.put(new Map([[linkOf(one), one]]), [linkOf(one)]);
     expect(await reader.get(linkOf(one))).toEqual(one);
-    expect(await recordsOf(reader)).toEqual([linkOf(one)]);
+    expect(await listedLinksOf(reader)).toEqual([linkOf(one)]);
   });
 
   it("leaves nothing of a put that fails partway", async () => {
     const backend = open(await makeTemporaryPath());
     const blobs = blobsOf("one", "two");
     const failure = new Error("cut short");
-    function* records() {
+    function* listedLinks() {
       yield linkOf(utf8("one"));
       throw failure;
     }
-    await expect(backend.put(blobs, records())).rejects.toBe(failure);
+    await expect(backend.put(blobs, listedLinks())).rejects.toBe(failure);
     for (const link of blobs.keys()) expect(await backend.has(link)).toBe(false);
-    expect(await recordsOf(backend)).toEqual([]);
+    expect(await listedLinksOf(backend)).toEqual([]);
   });
 
   it("gives a blob put after a put that fails partway the position after those put before", async () => {
     const backend = open(await makeTemporaryPath());
     await backend.put(blobsOf("zero"), []);
     const failure = new Error("cut short");
-    const records = {
+    const listedLinks = {
       [Symbol.iterator](): Iterator<Link<never>> {
         throw failure;
       },
     };
-    await expect(backend.put(blobsOf("one", "two"), records)).rejects.toBe(failure);
+    await expect(backend.put(blobsOf("one", "two"), listedLinks)).rejects.toBe(failure);
     await backend.put(blobsOf("three"), []);
     expect(await backend.positionOf(linkOf(utf8("three")))).toBe(1);
   });
@@ -87,7 +87,7 @@ describe("a SqliteBackend", () => {
     await expect(backend.get(link)).rejects.toThrow();
     await expect(backend.has(link)).rejects.toThrow();
     await expect(backend.put(blobsOf("one"), [])).rejects.toThrow();
-    await expect(recordsOf(backend)).rejects.toThrow();
+    await expect(listedLinksOf(backend)).rejects.toThrow();
   });
 });
 
@@ -97,9 +97,9 @@ describe("a store in a SqliteBackend", () => {
     const note = object({ text: "hello" });
     const reply = object({ text: "hi", to: new LinkValue(note.link) });
     const writer = new Store(open(path));
-    await writer.write({ records: [note, reply], blobs: [...anything.blobs] });
+    await writer.write({ roots: [reply.link], blobs: [note.bytes, reply.bytes, ...anything.blobs] });
     const reader = new Store(open(path));
-    expect(await recordsOf(reader)).toEqual(await recordsOf(writer));
+    expect(await reader.positionOf(reply.link)).toBe(await writer.positionOf(reply.link));
     expect(await reader.closure(reply.link)).toEqual(await writer.closure(reply.link));
   });
 
@@ -107,7 +107,7 @@ describe("a store in a SqliteBackend", () => {
     const path = await makeTemporaryPath();
     const store = new Store(open(path));
     const note = object({ text: "hello" });
-    await store.write({ records: [note], blobs: [...anything.blobs] });
+    await store.write({ roots: [note.link], blobs: [note.bytes, ...anything.blobs] });
     const database = new DatabaseSync(path);
     database.prepare("UPDATE blobs SET bytes = ? WHERE link = ?").run(utf8("changed"), note.link);
     database.close();

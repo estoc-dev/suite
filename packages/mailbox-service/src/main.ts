@@ -1,7 +1,7 @@
 import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
-import { type Link, objectsOf, readObject } from "@estoc/object";
-import { MemoryBackend, PrivateStore, recordSchema, SecretStore, Store } from "@estoc/store";
+import { type Link, objectsOf } from "@estoc/object";
+import { MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { loadMailboxService } from "./server.ts";
@@ -95,7 +95,7 @@ async function makeSecretStore(path: string): Promise<void> {
     const { secretKeys } = loadIdentity(schemes);
     const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
     const secretStore = new SecretStore(new Store(new MemoryBackend()), backend);
-    await secretStore.write({ records: [secretKey], blobs: secretKey.blobs });
+    await secretStore.write({ secrets: [secretKey], blobs: secretKey.blobs });
     console.log(secretKey.key.link);
   } finally {
     backend.close();
@@ -111,9 +111,8 @@ async function secretKeyIn(secretStore: SecretStore, path: string): Promise<Secr
   const { secretKeys } = loadIdentity(schemes);
   const selection = objectsOf(secretKeys.schema);
   const links: Link<SecretKeyObject>[] = [];
-  for await (const record of secretStore.records()) {
-    const { object } = (await readObject(secretStore, record, recordSchema)).data;
-    const secretKey = await selection.read(object.link, secretStore);
+  for await (const secret of secretStore.secrets()) {
+    const secretKey = await selection.read(secret, secretStore);
     if (secretKey !== undefined) links.push(secretKey.link as Link<SecretKeyObject>);
   }
   const [link, ...others] = links;

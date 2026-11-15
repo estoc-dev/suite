@@ -394,8 +394,9 @@ describe("a mailbox service", () => {
       at: 2_000,
       offers: [new LinkValue(offerSignature.link)],
     });
-    const blobs = [earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
-    await store.write({ records: [await asService.sign(earlier)], blobs });
+    const signature = await asService.sign(earlier);
+    const blobs = [signature.bytes, earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
+    await store.write({ roots: [signature.link], blobs });
     expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).file)).status).toBe(410);
   });
 
@@ -414,7 +415,7 @@ describe("a mailbox service", () => {
       isCrisis: true,
       at: 2_000,
     });
-    await store.write({ records: [crisis], blobs: crisis.blobs });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const actor = await actorOf(alice);
     const { file } = await directAcceptance((await rootOf(service)).offer);
@@ -435,9 +436,9 @@ describe("a mailbox service", () => {
     assert.exists(greater);
     assert.exists(lesser);
     for (const { object, signature } of [greater, lesser])
-      await first.store.write({ records: [signature], blobs: [object.bytes] });
+      await first.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
     for (const { object, signature } of [lesser, greater])
-      await second.store.write({ records: [signature], blobs: [object.bytes] });
+      await second.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
     for (const { service } of [first, second])
       expect((await rootOf(service)).signature.link).toBe(greater.signature.link);
   });
@@ -516,7 +517,7 @@ describe("a mailbox service started again", () => {
     const mailbox = await openMailbox(service, actor);
     const before = await rootOf(service);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ records: [crisis], blobs: crisis.blobs });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const after = await rootOf(again);
     expect(after.signature.signedIdentity.link).toBe(crisis.link);
@@ -540,7 +541,7 @@ describe("a mailbox service started again", () => {
     const sendId = hex.encode(firstMailboxAcknowledgement.acknowledgement.data.sendId);
     expect((await post(service, sendId, ciphertextOf(1))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ records: [crisis], blobs: crisis.blobs });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const repeatedAcceptanceResponse = await postAcceptance(again, acceptance.file);
     expect(repeatedAcceptanceResponse.status).toBe(200);
@@ -785,7 +786,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const opener = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ records: [crisis], blobs: crisis.blobs });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const racer = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(2));

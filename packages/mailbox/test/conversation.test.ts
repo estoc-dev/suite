@@ -148,8 +148,8 @@ async function chat(faults: Faults = {}) {
     const object = encodeObject(line, { text });
     const signature = await actor.sign(object);
     await store.write({
-      records: [signature],
-      blobs: [object.bytes, ...signature.signedIdentity.blobs, ...schemas],
+      roots: [signature.link],
+      blobs: [signature.bytes, object.bytes, ...signature.signedIdentity.blobs, ...schemas],
     });
     return signature;
   };

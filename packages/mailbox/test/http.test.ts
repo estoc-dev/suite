@@ -113,7 +113,10 @@ describe("an HTTP outbox", () => {
     const secretStore = new SecretStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, secretStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
-    await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, ...note.blobs] });
+    await store.write({
+      roots: [mailbox.link, hello.link],
+      blobs: [mailbox.bytes, hello.bytes, ...http.schema.blobs, ...note.blobs],
+    });
     const outbox = await post.outbox(mailbox.link);
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
     expect(await listedIn(privateStore)).toEqual([]);

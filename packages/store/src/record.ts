@@ -7,8 +7,8 @@ import type { MarkBatch } from "./private-store.ts";
  *
  * - `object` is the link of the object the user wrote.
  * - A record says nothing else, so writing an object again gives the same record.
- * - Anyone can write an object of this schema. It is a record only where it is listed: among the
- *   marks of a private store, or by a store that wrote it.
+ * - Anyone can write an object of this schema. It is a record only where it is listed, among the
+ *   marks of a private store.
  */
 export const recordSchema = schema("Record", { object: link<EncodedObject>() });
 

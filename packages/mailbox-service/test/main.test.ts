@@ -5,8 +5,8 @@ import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
-import { objectsOf, readObject } from "@estoc/object";
-import { MemoryBackend, recordSchema, SecretStore, Store } from "@estoc/store";
+import { objectsOf } from "@estoc/object";
+import { MemoryBackend, SecretStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
@@ -76,9 +76,8 @@ async function secretKeysAt(path: string) {
   const secretStore = new SecretStore(new Store(new MemoryBackend()), backend);
   const selection = objectsOf(secretKeys.schema);
   const secretKeyObjects = [];
-  for await (const record of secretStore.records()) {
-    const { object } = (await readObject(secretStore, record, recordSchema)).data;
-    const secretKey = await selection.read(object.link, secretStore);
+  for await (const secret of secretStore.secrets()) {
+    const secretKey = await selection.read(secret, secretStore);
     if (secretKey !== undefined) secretKeyObjects.push(secretKey);
   }
   return secretKeyObjects;

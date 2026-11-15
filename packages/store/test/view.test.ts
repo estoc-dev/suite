@@ -1,7 +1,17 @@
 import { encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { indexOver, MemoryBackend, type OrderedIndex, Store, selectedRecords, type View, view } from "../src/index.ts";
+import {
+  indexOver,
+  MemoryBackend,
+  type OrderedIndex,
+  PrivateStore,
+  recordsOf,
+  Store,
+  selectedRecords,
+  type View,
+  view,
+} from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
@@ -31,34 +41,42 @@ const latest: View<Tagged, TaggedOrder, Latest> = {
   }),
 };
 
-const write = (store: Store, ...notes: Note[]) =>
-  store.write({
-    records: notes.map((note) => encodeObject(noteSchema, note)),
-    blobs: [...noteSchema.blobs],
+function newStores() {
+  const store = new Store(new MemoryBackend());
+  return { store, privateStore: new PrivateStore(store, new MemoryBackend()) };
+}
+
+async function record({ store, privateStore }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
+  const objects = notes.map((note) => encodeObject(noteSchema, note));
+  await store.write({
+    roots: objects.map(({ link }) => link),
+    blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs],
   });
+  await privateStore.write(recordsOf(objects));
+}
 
 describe("the value of a view", () => {
-  it("is worked out from the rows of its index, with the store giving the objects they name", async () => {
-    const store = new Store(new MemoryBackend());
-    await write(
-      store,
+  it("is worked out from the rows of its index, with what it is viewed on giving the objects they name", async () => {
+    const stores = newStores();
+    await record(
+      stores,
       { text: "stew", tags: ["dinner"], at: 3 },
       { text: "soup", tags: ["lunch"], at: 1 },
       { text: "salad", tags: ["lunch", "dinner"], at: 2 },
     );
-    const notes = await view(store, latest);
+    const notes = await view(stores.privateStore, latest);
     expect(await notes.noteTagged("lunch")).toMatchObject({ text: "salad" });
     expect(await notes.noteTagged("dinner")).toMatchObject({ text: "stew" });
     expect(await notes.noteTagged("breakfast")).toBeUndefined();
   });
 
-  it("stays as the store was when viewed, and takes in later writes when viewed again", async () => {
-    const store = new Store(new MemoryBackend());
-    await write(store, { text: "soup", tags: ["lunch"], at: 1 });
-    const before = await view(store, latest);
-    await write(store, { text: "salad", tags: ["lunch"], at: 2 });
+  it("stays as it was when viewed, and takes in later writes when viewed again", async () => {
+    const stores = newStores();
+    await record(stores, { text: "soup", tags: ["lunch"], at: 1 });
+    const before = await view(stores.privateStore, latest);
+    await record(stores, { text: "salad", tags: ["lunch"], at: 2 });
     expect(await before.noteTagged("lunch")).toMatchObject({ text: "soup" });
-    expect(await (await view(store, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
+    expect(await (await view(stores.privateStore, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
@@ -70,8 +88,8 @@ describe("the value of a view", () => {
         return tags;
       },
     };
-    const store = new Store(new MemoryBackend());
-    await write(store, { text: "soup", tags: ["lunch"], at: 1 }, { text: "salad", tags: ["lunch", "dinner"], at: 2 });
-    expect(await view(store, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
+    const stores = newStores();
+    await record(stores, { text: "soup", tags: ["lunch"], at: 1 }, { text: "salad", tags: ["lunch", "dinner"], at: 2 });
+    expect(await view(stores.privateStore, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
   });
 });

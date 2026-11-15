@@ -65,29 +65,31 @@ does not loop back, and it can be as long as it grows.
 
 ## In a store
 
-A program writes a head as a record, with the lineage's `blobs` and the
-closures of its items:
+A program writes a head to the store as a root, with the lineage's `blobs`
+and the closures of its items, and a record of it to the private store
+beside:
 
 ```ts
 import { lineages } from "@estoc/lineage";
 import { LinkValue, encodeObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { indexOver, scan, selectedRecords } from "@estoc/store";
+import { indexOver, recordsOf, scan, selectedRecords } from "@estoc/store";
 
 const firstDraft = encodeObject(note, { text: "first draft" });
 const secondDraft = encodeObject(note, { text: "second draft" });
 const finalDraft = encodeObject(note, { text: "final draft" });
 const lineage = lineages.startingWith(firstDraft).appending(secondDraft).appending(finalDraft);
 await store.write({
-  records: [lineage.head],
+  roots: [lineage.head.link],
   blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, ...note.blobs],
 });
+await privateStore.write(recordsOf([lineage.head]));
 ```
 
 `lineages.selection` is a `SelectionBySchema` of the node schema, as
-`@estoc/object` has selections. It takes every node record, each as the
+`@estoc/object` has selections. It takes every recorded node, each as the
 lineage it is the head of, read back to its first node. An index by
-`first.link` keeps together the heads of each series written as records.
+`first.link` keeps together the recorded heads of each series.
 An index by each link in `items` finds the heads whose lineages hold a
 version, and one by `head.data.item.link` only the heads that carry it.
 Indexes and views are the application's, and this package has none:
@@ -97,12 +99,12 @@ const headSchema = schema("Head", { series: link(), head: link() });
 const bySeries = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
   yield { series: new LinkValue(first.link), head: new LinkValue(head.link) };
 }).orderedBy("series");
-for await (const { data } of (await scan(store, bySeries)).range([new LinkValue(lineage.first.link)])) {
-  // `data.head`: every head of the series written as a record
+for await (const { data } of (await scan(privateStore, bySeries)).range([new LinkValue(lineage.first.link)])) {
+  // `data.head`: every recorded head of the series
 }
 ```
 
-The rows of a series hold every head written as a record, those appended
+The rows of a series hold every recorded head, those appended
 to since among them, and those on either side of a fork. Which of them to
 show, such as those that no other head of the series extends, is worked
 out by the application from the rows.

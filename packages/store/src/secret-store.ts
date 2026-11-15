@@ -1,27 +1,46 @@
-import type { Bytes, Link } from "@estoc/object";
-import type { Backend } from "./backend.ts";
-import type { RecordObject } from "./record.ts";
-import { type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
-import { type Batch, type Store, StoreOf } from "./store.ts";
+import type { Bytes, EncodedObject, Link } from "@estoc/object";
+import { type Backend, blobIn } from "./backend.ts";
+import { copiedBatch, leavesFirst } from "./batch.ts";
+import { KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
+import { type Store, StoreOf } from "./store.ts";
+
+/** What one write puts in a secret store. */
+export interface SecretBatch {
+  /**
+   * Secrets that the user of the secret store writes: objects, of whatever type the caller holds
+   * them as, of which only the bytes are written. The secret store lists each as it is.
+   */
+  readonly secrets: Iterable<{ readonly bytes: Bytes<unknown> }>;
+  /**
+   * Blobs that come with them and are not listed, such as their schemas. Only those in the closure
+   * of a secret are kept.
+   */
+  readonly blobs?: Iterable<Bytes<unknown>>;
+}
 
 /**
- * What the user keeps to themselves: objects they write and the blobs in their closures, kept
- * apart from the store that bundles are gathered from.
+ * What the user keeps on one device: secrets, objects that are listed as they are, and the blobs in
+ * their closures, kept apart from the store that bundles are gathered from.
  *
  * - It is kept beside a store, in a backend of its own, and reads that store too, so what is kept
  *   here can link to what the store holds.
+ * - It lists the secrets written to it and nothing else. An object of the schema of a secret that
+ *   came to the store beside, as in a bundle, is read here by its link like any blob and is not
+ *   listed.
  * - The store does not read it: a blob that only this keeps is not held by the store, so the store
  *   refuses to write anything with one in its closure, and neither its `get` nor its `closure`
  *   gives one.
- * - There is no `closure` here, and this is not a `Store`, so it cannot be given to what gathers
- *   bundles from a store.
- * - Bytes that are also written to the store are the store's as well.
+ * - There is no `closure` here, and this is neither a `Store` nor a `PrivateStore`, so it cannot be
+ *   given to what gathers bundles from a store, nor to what keeps marks.
+ * - Bytes that are also written to the store are the store's as well: a blob that the store beside
+ *   holds is not kept here again.
  * - Whether what is kept here is encrypted is up to the backend.
  */
-export class SecretStore {
-  // A private field makes the type nominal, unlike the interface `Store`, so a
-  // store, which has every method of this one, cannot be given in its place.
-  readonly #store: Store & RowKeeper;
+export class SecretStore implements RowKeeper {
+  // A private field makes the type nominal, so neither a store nor a private store can be given in
+  // its place.
+  readonly #backend: Backend;
+  readonly [rowsByIndex]: RowsByIndex;
 
   /**
    * Keeps what is written to it in `backend`, beside `store`.
@@ -29,7 +48,11 @@ export class SecretStore {
    * @throws {TypeError} for a store not made by `new Store`.
    */
   constructor(store: Store, backend: Backend) {
-    this.#store = new StoreOf(StoreOf.backendBeside(store, backend));
+    this.#backend = StoreOf.backendBeside(store, backend);
+    this[rowsByIndex] = new KeptRows(this, {
+      secrets: (start) => backend.listedLinks(start),
+      blobs: (start) => backend.blobs(start),
+    });
   }
 
   /**
@@ -40,40 +63,45 @@ export class SecretStore {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
-    return this.#store.get(link);
+    return blobIn(this.#backend, link);
   }
 
   /**
-   * Records each of the batch's `records` here, as a store writes them. A blob of a closure that
-   * the store beside holds counts as held and is not kept here again, a record among them.
+   * Lists each of the batch's `secrets` and keeps it, with the blobs of the batch in its closure.
+   * The other blobs are dropped. A refused batch writes nothing.
+   *
+   * - A blob that the store beside holds counts as held and is not kept here again, a secret among
+   *   them, which is listed here still.
+   * - A secret written again is listed once.
+   *
+   * @throws {RefusedBatch} when one of `secrets` is not an object.
+   * @throws {RefusedBatch} when a blob in the closure of one of `secrets` is neither in the batch,
+   *   kept here, nor held by the store beside.
+   * @throws the backend's own error when the backend fails.
    */
-  write(batch: Batch): Promise<void> {
-    return this.#store.write(batch);
+  async write({ secrets, blobs = [] }: SecretBatch): Promise<void> {
+    const batch = copiedBatch(secrets, blobs, "a secret");
+    await this.#backend.put(await leavesFirst(batch.objects, batch.blobs, this.#backend), batch.objects);
   }
 
-  /** The links of the records listed here, each once, in no particular order, as a store's `records` gives them. */
-  records(): AsyncIterable<Link<RecordObject>> {
-    return this.#store.records();
+  /** The links of the secrets, each once and in the order they were first written. */
+  secrets(): AsyncIterable<Link<EncodedObject>> {
+    return this.#backend.listedLinks();
   }
 
   /**
-   * The links of the blobs kept here, each once and in the order they were kept, as a store's
-   * `blobs` gives them. A blob that only the store beside holds was not kept here, and is not
-   * among them.
+   * The links of the blobs kept here, each once and in the order they were kept. A blob that only
+   * the store beside holds was not kept here, and is not among them.
    */
   blobs(): AsyncIterable<Link<unknown>> {
-    return this.#store.blobs();
+    return this.#backend.blobs();
   }
 
   /**
-   * How many blobs were kept here before the one of `link`, as a store's `positionOf` gives it. A
-   * blob that only the store beside holds was not kept here, and has none.
+   * How many blobs were kept here before the one of `link`, or `undefined` when none is kept here
+   * under it, as for a blob that only the store beside holds.
    */
   positionOf(link: Link<unknown>): Promise<number | undefined> {
-    return this.#store.positionOf(link);
-  }
-
-  get [rowsByIndex](): RowsByIndex {
-    return this.#store[rowsByIndex];
+    return this.#backend.positionOf(link);
   }
 }

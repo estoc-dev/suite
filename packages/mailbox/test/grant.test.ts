@@ -38,8 +38,8 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
 // takes someone's messages at some mailboxes signs a grant of them to that
-// someone, writes the signature as a record and sends it to them or hands it
-// over out of band, and each reads the latest grant of a series from their own
+// someone, writes the signature to their own store and sends it to them or hands
+// it over out of band, and each reads the latest grant of a series from their own
 // store.
 
 const identity = loadIdentity([ed25519]);
@@ -88,11 +88,11 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
 async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
-  await store.write({ records: [mailbox], blobs: [...network.transport.schema.blobs] });
+  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...network.transport.schema.blobs] });
   return mailbox.link;
 }
 
-// The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`, as a record.
+// The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`.
 const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
   grant.bytes,
   ...grants.schema.blobs,
@@ -104,7 +104,7 @@ const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
 async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
   const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
-  await from.store.write({ records: [signature], blobs: blobsOf(grant, signature, to) });
+  await from.store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobsOf(grant, signature, to)] });
   return signature;
 }
 
@@ -169,7 +169,7 @@ describe("the latest grant of one person to another", () => {
     expect((await grantFrom(alice, alice, bob))?.object.data.mailboxes).toEqual([]);
   });
 
-  it("reads the same from the bundle it came in as from the record its signer wrote", async () => {
+  it("reads the same from the bundle it came in as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     expect(await grantFrom(bob, alice, bob)).toBeUndefined();
@@ -182,7 +182,7 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
-  it("reads the same from what was handed over out of band as from the record its signer wrote", async () => {
+  it("reads the same from what was handed over out of band as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     await handOver(alice, bob, signature.link);
@@ -194,11 +194,11 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
-  it("reads the same from below the root of what came in as from the record its signer wrote", async () => {
+  it("reads the same from below the root of what came in as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     const countersignature = await alice.actor.sign(signature);
-    await alice.store.write({ records: [countersignature] });
+    await alice.store.write({ roots: [countersignature.link], blobs: [countersignature.bytes] });
     await handOver(alice, bob, countersignature.link);
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
@@ -238,7 +238,10 @@ describe("the latest grant of one person to another", () => {
     // puts them over a later grant of a mailbox Mallory receives at.
     const grant = grants.encode(bob.actor.signedIdentity, [mallory.inbox.mailbox], 2_000);
     const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(grant.link) });
-    await mallory.store.write({ records: [forgedSignature], blobs: blobsOf(grant, signature, bob) });
+    await mallory.store.write({
+      roots: [forgedSignature.link],
+      blobs: [forgedSignature.bytes, ...blobsOf(grant, signature, bob)],
+    });
     await send(mallory, bob, forgedSignature.link);
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);

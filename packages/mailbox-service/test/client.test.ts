@@ -149,7 +149,7 @@ async function removeAgent(store: Store) {
   const agent = signer(ed25519, 7);
   const earlier = await publish(serviceSigner, { agents: [agent.key], at: 1_500 });
   const later = await publish(serviceSigner, { prior: earlier, at: 2_000 });
-  await store.write({ records: [later], blobs: later.blobs });
+  await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
   return signatures.actor(agent, earlier);
 }
 
@@ -258,7 +258,7 @@ describe("a service reached at its origin", () => {
     const { origin } = await startService({ start: 1_000 });
     const { store, services } = client();
     const { signedIdentity: later } = await serviceActor(2_000);
-    await store.write({ records: [later], blobs: later.blobs });
+    await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
     const account = await (await accountAt(services, origin)).accept(await actorOf(alice));
     expect(account.service.identity.link).toBe(serviceIdentity(1_000).link);
   });
@@ -333,9 +333,9 @@ describe("a service found by its identifier", () => {
     assert.exists(greater);
     assert.exists(lesser);
     for (const { object, signature } of [greater, lesser])
-      await first.store.write({ records: [signature], blobs: [object.bytes] });
+      await first.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
     for (const { object, signature } of [lesser, greater])
-      await second.store.write({ records: [signature], blobs: [object.bytes] });
+      await second.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
     for (const { services } of [first, second]) {
       expect(await services.latestOf(signedIdentity)).toMatchObject({
         origin: greater.object.data.origin,
@@ -363,7 +363,7 @@ describe("a service found by its identifier", () => {
     expect((await services.latestOf(signedIdentity))?.link).toBe(link);
   });
 
-  it("is undefined once the store holds, by another record, a crisis that follows the identity version that signed each Service", async () => {
+  it("is undefined once the store holds a crisis that follows the identity version that signed each Service", async () => {
     const { origin } = await startService();
     const { store, services } = client();
     const { signedIdentity } = await services.fetch(origin);
@@ -372,7 +372,7 @@ describe("a service found by its identifier", () => {
       isCrisis: true,
       at: signedIdentity.identity.data.at + 1,
     });
-    await store.write({ records: [later], blobs: later.blobs });
+    await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
     expect(await services.latestOf(signedIdentity)).toBeUndefined();
   });
 
@@ -577,8 +577,8 @@ describe("a mailbox that a service opened", () => {
     const noteSchema = schema("Note", { text: string() });
     const note = encodeObject(noteSchema, { text: "hello, Alice" });
     await sender.write({
-      records: [{ bytes }, note],
-      blobs: [...http.schema.blobs, ...noteSchema.blobs],
+      roots: [inbox.mailbox, note.link],
+      blobs: [bytes, note.bytes, ...http.schema.blobs, ...noteSchema.blobs],
     });
     const senderPost = new Post(
       sender,
@@ -639,7 +639,7 @@ describe("a mailbox that a service opened", () => {
     const mailbox = await openMailbox(before.mailbox, actor);
     expect((await postTo(mailbox.data.url, new Uint8Array([1]))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signedIdentity, isCrisis: true, at: 2_000 });
-    await run.store.write({ records: [crisis], blobs: crisis.blobs });
+    await run.store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
     const { accounts, mailboxes } = run;
     current = (await memoryService({ store: run.store, accounts, mailboxes, origin: server.origin, start: 3_000 }))
       .service;
@@ -790,7 +790,7 @@ describe("a mailbox that a service opened", () => {
     const { store, services } = client();
     await services.fetch(origin);
     const mailbox = encodeObject(http.schema, { key: keyOf(7), url: `${origin}/${"0".repeat(32)}` });
-    await store.write({ records: [mailbox], blobs: [...http.schema.blobs] });
+    await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...http.schema.blobs] });
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/lists no mark of opening/);
   });
 });
@@ -841,7 +841,7 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     const { store, services } = client();
     await services.fetch(origin);
     const mailbox = encodeObject(http.schema, { key: keyOf(7), url: `${origin}/${sendId}` });
-    await store.write({ records: [mailbox], blobs: [...http.schema.blobs] });
+    await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...http.schema.blobs] });
     await new Intake(store, privateStoreBeside(store)).receive(acknowledgement, mailbox);
     return { services, mailbox };
   }

@@ -19,7 +19,7 @@ export class SqliteBackend implements Backend {
     this.#database.exec(`
       PRAGMA synchronous = EXTRA;
       CREATE TABLE IF NOT EXISTS blobs (link TEXT PRIMARY KEY, bytes BLOB NOT NULL);
-      CREATE TABLE IF NOT EXISTS records (link TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS listed_links (link TEXT PRIMARY KEY);
     `);
     this.#sql = this.#database.createTagStore();
   }
@@ -32,11 +32,11 @@ export class SqliteBackend implements Backend {
     return this.#sql.get`SELECT 1 FROM blobs WHERE link = ${link}` !== undefined;
   }
 
-  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<EncodedObject>>): Promise<void> {
+  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<EncodedObject>>): Promise<void> {
     this.#database.exec("BEGIN");
     try {
       for (const [link, bytes] of blobs) this.#sql.run`INSERT OR IGNORE INTO blobs VALUES (${link}, ${bytes})`;
-      for (const link of records) this.#sql.run`INSERT OR IGNORE INTO records VALUES (${link})`;
+      for (const link of listedLinks) this.#sql.run`INSERT OR IGNORE INTO listed_links VALUES (${link})`;
       this.#database.exec("COMMIT");
     } catch (error) {
       // SQLite rolls back by itself on some errors, such as a full disk.
@@ -45,9 +45,9 @@ export class SqliteBackend implements Backend {
     }
   }
 
-  async *records(start = 0): AsyncIterable<Link<EncodedObject>> {
+  async *listedLinks(start = 0): AsyncIterable<Link<EncodedObject>> {
     // Read whole, so that no statement holds a read lock on the file while the caller goes through the links.
-    const rows = this.#sql.all`SELECT link FROM records ORDER BY rowid LIMIT -1 OFFSET ${start}`;
+    const rows = this.#sql.all`SELECT link FROM listed_links ORDER BY rowid LIMIT -1 OFFSET ${start}`;
     for (const { link } of rows) yield link as Link<EncodedObject>;
   }
 

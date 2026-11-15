@@ -11,7 +11,7 @@ export { MemoryBackend } from "./memory.ts";
 export { type MarkBatch, PrivateStore } from "./private-store.ts";
 export { type RecordData, type RecordObject, recordSchema, recordsOf } from "./record.ts";
 export { scan } from "./scan.ts";
-export { SecretStore } from "./secret-store.ts";
+export { type SecretBatch, SecretStore } from "./secret-store.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
@@ -25,6 +25,7 @@ export {
   selectedBlobs,
   selectedMarks,
   selectedRecords,
+  selectedSecrets,
 } from "./source.ts";
 export { type Batch, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";

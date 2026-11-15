@@ -25,7 +25,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
-import { Intake, type PrivateStore, type Store, view } from "@estoc/store";
+import { Intake, type PrivateStore, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
@@ -478,7 +478,7 @@ export class Services {
    *   an offer it lists is signed for another identifier, or when its offer
    *   of an account or of mailboxes names another identifier.
    */
-  async #read(link: Link<Signature>, reader: Pick<Store, "get" | "records" | "positionOf">): Promise<Service> {
+  async #read(link: Link<Signature>, reader: Store | StagedStore): Promise<Service> {
     const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.personOf(signedIdentity);

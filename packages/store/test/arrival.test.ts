@@ -8,15 +8,15 @@ import { arrivalsView, Intake, MemoryBackend, PrivateStore, recordsOf, Store, vi
 // holds an object of the schema the view is made for and one of another.
 const cardSchema = schema("Card", { name: string() });
 const noteSchema = schema("Note", { text: string() });
-const letterSchema = schema("Letter", { text: string(), from: link(), enclosed: optional(link()) });
+const letterSchema = schema("Letter", { text: string(), from: link(), enclosedNote: optional(link()) });
 
 const card = (name: string) => encodeObject(cardSchema, { name });
 const note = (text: string) => encodeObject(noteSchema, { text });
-const letter = (text: string, from: EncodedObject, enclosed?: EncodedObject) =>
+const letter = (text: string, from: EncodedObject, enclosedNote?: EncodedObject) =>
   encodeObject(letterSchema, {
     text,
     from: new LinkValue(from.link),
-    ...(enclosed === undefined ? {} : { enclosed: new LinkValue(enclosed.link) }),
+    ...(enclosedNote === undefined ? {} : { enclosedNote: new LinkValue(enclosedNote.link) }),
   });
 
 const blobsWith = (...objects: readonly EncodedObject[]) => [
@@ -74,9 +74,9 @@ describe("when something came to a user's devices, by the marks of a private sto
     await receive(5, letter("hello", ada), ada);
     await record(7, letter("hi", ben), ben);
 
-    const arrived = await arrivals();
-    expect(await arrived.atOf(ada.link)).toBe(5);
-    expect(await arrived.atOf(ben.link)).toBe(7);
+    const arrivalTimes = await arrivals();
+    expect(await arrivalTimes.atOf(ada.link)).toBe(5);
+    expect(await arrivalTimes.atOf(ben.link)).toBe(7);
   });
 
   it("is the earliest, for what several marks have", async () => {
@@ -87,19 +87,19 @@ describe("when something came to a user's devices, by the marks of a private sto
     await record(4, letter("an earlier draft", ada), ada);
     await receive(6, hello, ada);
 
-    const arrived = await arrivals();
-    expect(await arrived.atOf(hello.link)).toBe(6);
-    expect(await arrived.atOf(ada.link)).toBe(4);
+    const arrivalTimes = await arrivals();
+    expect(await arrivalTimes.atOf(hello.link)).toBe(6);
+    expect(await arrivalTimes.atOf(ada.link)).toBe(4);
   });
 
   it("is nothing for a blob of a closure that is of another schema", async () => {
     const { receive, arrivals } = sides();
-    const [ada, enclosed] = [card("Ada"), note("see you soon")];
-    await receive(5, letter("hello", ada, enclosed), ada, enclosed);
+    const [ada, enclosedNote] = [card("Ada"), note("see you soon")];
+    await receive(5, letter("hello", ada, enclosedNote), ada, enclosedNote);
 
-    const arrived = await arrivals();
-    expect(await arrived.atOf(enclosed.link)).toBeUndefined();
-    expect(await arrived.atOf(letterSchema.link)).toBeUndefined();
+    const arrivalTimes = await arrivals();
+    expect(await arrivalTimes.atOf(enclosedNote.link)).toBeUndefined();
+    expect(await arrivalTimes.atOf(letterSchema.link)).toBeUndefined();
   });
 
   it("is nothing for what the store holds with no mark of it", async () => {

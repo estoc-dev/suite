@@ -1,6 +1,6 @@
 import type { Bytes, Link } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { copiedBlobs, leavesFirst, linksIn } from "./batch.ts";
+import { closureIn, copiedBlobs, leavesFirst } from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /** What one write puts in a store. */
@@ -199,21 +199,8 @@ export class StoreOf implements Store, RowKeeper {
     return store.#backend;
   }
 
-  async closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
-    const closureBlobs = new Map<Link<unknown>, Uint8Array>();
-    const seenLinks = new Set([link]);
-    const pendingLinks = [link];
-    for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
-      const bytes = await this.get(next);
-      if (bytes === undefined) throw new Error(`the store does not hold ${next}`);
-      closureBlobs.set(next, bytes);
-      for (const targetLink of linksIn(bytes)) {
-        if (seenLinks.has(targetLink)) continue;
-        seenLinks.add(targetLink);
-        pendingLinks.push(targetLink);
-      }
-    }
-    return closureBlobs;
+  closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
+    return closureIn(this, link);
   }
 }
 

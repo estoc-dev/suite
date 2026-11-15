@@ -627,6 +627,31 @@ gives where it kept a blob, and nothing for one that only the store beside
 holds. So a view that asks where a blob of the store beside was taken in,
 as one of the people a store has seen does, is viewed on that store.
 
+`arrivalsView` gives a view of when what the user's devices hold came to
+them, by the inbound marks and the records of a private store:
+
+```ts
+import { arrivalsView, view } from "@estoc/store";
+
+// Made once and kept, as any view is.
+const arrivalsOfCards = arrivalsView(cardSchema);
+
+const arrivals = await view(privateStore, arrivalsOfCards);
+await arrivals.atOf(card.link); // when the bundle of the card came in
+```
+
+- An inbound mark says at its `at` that the root of its bundle was on the
+  user's devices, and a record that the object it links to was. `atOf` gives
+  the earliest time at which a mark says so.
+- Each mark says so as well of the objects in the closure of that root that
+  are of the schema the view is made for, so a card that came inside a
+  bundle has the time of that bundle. Any other blob of a closure has no
+  time.
+- What no mark says so of has no time either, such as an object written to
+  the store with no record of it.
+- The times are those the marks say, by the clocks of the user's devices,
+  and not where a store keeps a blob.
+
 ## Secret stores
 
 Some objects are the user's alone, such as the secret key of a mailbox.

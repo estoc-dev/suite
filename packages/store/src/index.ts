@@ -1,3 +1,11 @@
+export {
+  type ArrivalData,
+  type ArrivalOrder,
+  type Arrivals,
+  type ArrivalsView,
+  arrivalSchema,
+  arrivalsView,
+} from "./arrival.ts";
 export type { Backend } from "./backend.ts";
 export { RefusedBatch } from "./batch.ts";
 export {

@@ -1,11 +1,10 @@
-import type { Link } from "@estoc/object";
-import type { RecordObject } from "./record.ts";
-import type { Backend } from "./store.ts";
+import type { EncodedObject, Link } from "@estoc/object";
+import type { Backend } from "./backend.ts";
 
 /** Keeps a store in memory, for tests and for a program that keeps nothing once it ends. */
 export class MemoryBackend implements Backend {
   readonly #blobs = new Map<Link<unknown>, { readonly bytes: Uint8Array; readonly position: number }>();
-  readonly #records = new Set<Link<RecordObject>>();
+  readonly #records = new Set<Link<EncodedObject>>();
 
   async get(link: Link<unknown>): Promise<Uint8Array | undefined> {
     const blob = this.#blobs.get(link);
@@ -16,13 +15,13 @@ export class MemoryBackend implements Backend {
     return this.#blobs.has(link);
   }
 
-  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<RecordObject>>): Promise<void> {
+  async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<EncodedObject>>): Promise<void> {
     for (const [link, bytes] of blobs)
       if (!this.#blobs.has(link)) this.#blobs.set(link, { bytes, position: this.#blobs.size });
     for (const link of records) this.#records.add(link);
   }
 
-  async *records(start = 0): AsyncIterable<Link<RecordObject>> {
+  async *records(start = 0): AsyncIterable<Link<EncodedObject>> {
     yield* [...this.#records].slice(start);
   }
 

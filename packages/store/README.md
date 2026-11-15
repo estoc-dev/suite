@@ -4,8 +4,9 @@ A store keeps what a user writes and what comes to them, on one device. Its
 truth is objects: one for each thing the user did, such as writing a note or
 receiving a bundle, a record of each, and the blobs in the closures of those
 records.
-What the user keeps to themselves, such as a secret key, is an object too,
-kept in a secret store beside the store. The state of a running program
+What the user keeps to themselves is an object too, kept beside the store:
+a secret, such as a secret key, in a secret store, and a mark of what was
+done on their devices in a private store. The state of a running program
 is kept in its own place and is not an object.
 
 A store holds two things.
@@ -272,7 +273,9 @@ indexes whose rows are of one schema, so what an index reads is said by its
 sources and not worked out in `rows`. A source says where what it reads is
 listed and what each is read as, together: `selectedRecords` and
 `selectedBlobs` give the recorded objects and the blobs of a store that a
-selection takes, and another index is a source of its own rows. Each part of a union
+selection takes, `selectedMarks` the marks of a
+[private store](#private-stores), and another index is a source of its own
+rows. Each part of a union
 reads what its own source lists and hands what it reads that as to its own
 rows, so the rows of objects of several schemas, or of several selections of
 one schema, need not tell one kind of object from another.
@@ -314,8 +317,8 @@ rows in each order it is scanned in, and a
 later scan reads only the records listed since, those that another store on
 the same backend wrote among them. The rows of a recorded object depend on it
 and its closure alone, and a store only grows, so the rows of those read
-before still hold. A secret store keeps its own, and a staged batch reads
-what it records on top of those its store keeps. The rows are kept for an
+before still hold. A secret store and a private store keep their own, and a
+staged batch reads what it records on top of those its store keeps. The rows are kept for an
 index as long as the program holds it, and their order for as long as it
 holds what `orderedBy` gave, so a program makes each once:
 an index made again by `indexOver` is another, and is read from all that the
@@ -514,6 +517,70 @@ What an `Inbound` promises is little, so that every way in can keep it:
 `write` records any object. That what comes from elsewhere goes through an
 `Intake`, and that an object recorded directly is the user's own, is a rule for
 programs that the store does not enforce.
+
+## Private stores
+
+Some objects say what was done on the user's devices, such as when
+something was taken in and by which way. Nobody else can check what they
+say, and they tell more than the user means to send. Such marks are written
+to a `PrivateStore`, which is kept beside a store, in a backend of its own.
+
+```ts
+import { encodeObject, LinkValue, objectsOf } from "@estoc/object";
+import { Intake, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedMarks } from "@estoc/store";
+
+const store = new Store(new MemoryBackend());
+const privateStore = new PrivateStore(store, new MemoryBackend());
+// The card came in a bundle, which the store holds.
+await new Intake(store).receive(card);
+// A mark of the program's own schema: that the user took the card, and when.
+const taken = encodeObject(takenSchema, { card: new LinkValue(card.link), at: Date.now() });
+await privateStore.write({ marks: [taken], blobs: takenSchema.blobs });
+
+for await (const link of privateStore.marks()) …; // taken.link
+await privateStore.get(card.link);                // from the store beside
+await store.get(taken.link);                      // undefined
+
+// When each card was taken, from a `takenAtSchema` of the same two fields.
+const takenAt = indexOver(selectedMarks(objectsOf(takenSchema)), takenAtSchema, ({ data }) => [
+  { card: data.card, at: data.at },
+]).orderedBy("card", "at");
+await scan(privateStore, takenAt);
+```
+
+A private store lists its marks as they are. `write` takes them under
+`marks` and lists each, with no record of it, and `marks()` gives their links
+in the order they were first written. A mark is an object of whatever schema
+its program gives it, and is a mark because the private store lists it:
+
+- An object of the same schema can come to the store beside, as in a bundle.
+  The private store gives it by its link, as it gives any blob the store
+  holds, and does not list it, so an index over `selectedMarks` does not read
+  it.
+- A mark is kept in the private store's backend whether or not the store
+  beside holds the same bytes, which anyone can send it. So what the store
+  comes to hold changes neither what is listed here nor where it is kept.
+- What a batch gives of the closure of a mark, such as its schema, is kept
+  here too. A blob of the closure that the batch leaves out counts as held
+  when either side holds it, so a mark can link to what the store holds.
+- Marks are not signed. That a mark is the user's own rests on what is handed
+  the private store: what takes in bundles is handed the store and writes
+  there. Whatever is handed the private store can write any mark.
+
+The store does not read the private store, as it does not read a secret
+store. A blob that only the private store holds is not one the store holds:
+its `get` and `closure` do not give it, and it refuses a batch whose closure
+needs it and does not bring it. A private store has no `closure` and is not
+a `Store`, so it cannot be given to what gathers bundles. It is not a
+`SecretStore` either, so what writes marks is not handed the secrets: a
+secret stays on the device that keeps it, and marks are for the user's own
+devices.
+
+`scan` and `view` take a private store. An index over `selectedMarks` reads
+its marks, each as the object it is, and reads nothing from a store or a
+secret store. An index over records or over blobs reads nothing from a
+private store, which lists only marks. Its `positionOf` gives where it kept
+a blob, and nothing for one that only the store beside holds.
 
 ## Secret stores
 

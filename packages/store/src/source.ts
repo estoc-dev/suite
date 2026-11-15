@@ -30,7 +30,10 @@ export type Prefix<K extends readonly unknown[]> =
 /** The data of the rows that a source and the `rows` of an index give of what the index reads. */
 type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
 
-/** Where what an index reads is listed: the objects a store records, the blobs it holds, or the rows of another index. */
+/**
+ * Where what an index reads is listed: the objects a store records, the blobs it holds, the marks a
+ * private store lists, or the rows of another index.
+ */
 export interface Origin {
   /** Whether it lists the blobs a store holds, itself or through an index it reads. */
   readonly readsBlobs: boolean;
@@ -65,6 +68,11 @@ export interface Listing {
 const recordedObjects: Origin = {
   readsBlobs: false,
   listingIn: (rows) => rows.recordedObjects(),
+};
+
+const listedMarks: Origin = {
+  readsBlobs: false,
+  listingIn: (rows) => rows.marks(),
 };
 
 const heldBlobs: Origin = {
@@ -107,9 +115,9 @@ export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
 export let orderOf: <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => Order<F, By>;
 
 /**
- * What an index reads, each read as a `T`: the recorded objects or the blobs of a store that a
- * selection takes, from `selectedRecords` and `selectedBlobs`, or the rows of another index, which
- * is itself a source.
+ * What an index reads, each read as a `T`: the recorded objects or the blobs of a store, or the
+ * marks of a private store, that a selection takes, from `selectedRecords`, `selectedBlobs` and
+ * `selectedMarks`, or the rows of another index, which is itself a source.
  *
  * Where things are listed and what each is read as go together. A reading that trusts what an index
  * derived holds only over the rows of that index, so it is given as a source of those rows, and not
@@ -134,6 +142,18 @@ export class Source<T> {
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
+}
+
+/**
+ * The marks a private store lists that `selection` takes, each as what it reads it as.
+ *
+ * - They are the marks themselves, as they were written to the private store, and not what they
+ *   link to.
+ * - Only a private store lists marks. An object of the schema of a mark that a store holds, as one
+ *   that came in a bundle, is not one of these, on the store or on the private store beside it.
+ */
+export function selectedMarks<T>(selection: Selection<T>): Source<T> {
+  return new Source({ origin: listedMarks, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**

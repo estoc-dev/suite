@@ -1,4 +1,5 @@
 import type { ValueMap } from "@estoc/object";
+import type { PrivateStore } from "./private-store.ts";
 import { scan } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
@@ -22,8 +23,8 @@ export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
 }
 
 /**
- * The value of `view` for what `store` holds now. The store may also be a `SecretStore` or a
- * `StagedStore`.
+ * The value of `view` for what `store` holds now. The store may also be a `SecretStore`, a
+ * `PrivateStore` or a `StagedStore`.
  *
  * - The index is scanned from the store and read with the store, so the rows, the objects they name
  *   and where each was taken in come from one store.
@@ -34,7 +35,7 @@ export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
  * @throws as `scan` does.
  */
 export async function view<F extends ValueMap, By extends FieldNames<F>, V>(
-  store: Pick<Store, "get" | "records" | "positionOf">,
+  store: Pick<Store, "get" | "records" | "positionOf"> | PrivateStore,
   view: View<F, By, V>,
 ): Promise<Awaited<V>> {
   return await view.read(await scan(store, view.index), store);

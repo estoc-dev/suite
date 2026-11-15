@@ -1,0 +1,292 @@
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import { integer, link, schema, string } from "@estoc/schema";
+import { describe, expect, it } from "vitest";
+import {
+  type Backend,
+  indexOver,
+  MemoryBackend,
+  PrivateStore,
+  RefusedBatch,
+  SecretStore,
+  Store,
+  scan,
+  selectedBlobs,
+  selectedMarks,
+  selectedRecords,
+  view,
+} from "../src/index.ts";
+
+const cardSchema = schema("Card", { name: string() });
+// A mark as a program writes one: that it took a card, and when.
+const takenSchema = schema("Taken", { card: link(), at: integer() });
+const shownSchema = schema("Shown", { card: link() });
+const card = (name: string) => encodeObject(cardSchema, { name });
+const taken = (of: { readonly link: Link<unknown> }, at: number) =>
+  encodeObject(takenSchema, { card: new LinkValue(of.link), at });
+const utf8 = (text: string) => new TextEncoder().encode(text);
+
+function sides(sharedBackend: Backend = new MemoryBackend()) {
+  const store = new Store(sharedBackend);
+  const privateBackend = new MemoryBackend();
+  return { store, privateBackend, privateStore: new PrivateStore(store, privateBackend) };
+}
+
+async function listOf<T>(links: AsyncIterable<T>): Promise<T[]> {
+  const listed: T[] = [];
+  for await (const link of links) listed.push(link);
+  return listed;
+}
+
+const namedSchema = schema("Named", { name: string(), at: integer() });
+const takenNames = () =>
+  indexOver(selectedMarks(objectsOf(takenSchema)), namedSchema, async function* ({ data }, reader) {
+    yield { name: (await readObject(reader, data.card.link, cardSchema)).data.name, at: data.at };
+  }).orderedBy("at");
+
+async function namesIn(store: Parameters<typeof scan>[0], index = takenNames()): Promise<string[]> {
+  const names: string[] = [];
+  for await (const { data } of (await scan(store, index)).range([])) names.push(data.name);
+  return names;
+}
+
+describe("a private store", () => {
+  it("gives what is kept in it and what the store beside it holds, and lists the marks in the order they were written", async () => {
+    const { store, privateStore } = sides();
+    const [alice, bob] = [card("Alice"), card("Bob")];
+    await store.write({ records: [alice, bob], blobs: [...cardSchema.blobs] });
+    const [first, second] = [taken(bob, 1), taken(alice, 2)];
+    await privateStore.write({ marks: [first], blobs: [...takenSchema.blobs] });
+    await privateStore.write({ marks: [second] });
+    expect(await privateStore.get(first.link)).toEqual(first.bytes);
+    expect(await privateStore.get(alice.link)).toEqual(alice.bytes);
+    expect(await listOf(privateStore.marks())).toEqual([first.link, second.link]);
+  });
+
+  it("lists a mark once, however often it is written", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const mark = taken(alice, 1);
+    await privateStore.write({ marks: [mark, mark], blobs: [...takenSchema.blobs] });
+    await privateStore.write({ marks: [mark] });
+    expect(await listOf(privateStore.marks())).toEqual([mark.link]);
+  });
+
+  it("keeps a mark that the store beside it holds already", async () => {
+    const { store, privateBackend, privateStore } = sides();
+    const alice = card("Alice");
+    const mark = taken(alice, 1);
+    await store.write({ records: [alice, mark], blobs: [...cardSchema.blobs, ...takenSchema.blobs] });
+    await privateStore.write({ marks: [mark] });
+    expect(await privateBackend.has(mark.link)).toBe(true);
+    expect(await listOf(privateStore.marks())).toEqual([mark.link]);
+  });
+
+  it("keeps what the batch gives of a mark's closure, whether or not the store beside it holds that, and drops the rest", async () => {
+    const { store, privateBackend, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const stray = utf8("not in the closure");
+    await privateStore.write({ marks: [taken(alice, 1)], blobs: [alice.bytes, ...takenSchema.blobs, stray] });
+    expect(await privateBackend.has(alice.link)).toBe(true);
+    expect(await privateBackend.has(takenSchema.link)).toBe(true);
+    expect(await privateBackend.has(linkOf(stray))).toBe(false);
+  });
+
+  it("takes a blob of a mark's closure that the batch leaves out as held when the store beside it holds it", async () => {
+    const { store, privateBackend, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const mark = taken(alice, 1);
+    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    expect(await privateBackend.has(alice.link)).toBe(false);
+    expect(await listOf(privateStore.marks())).toEqual([mark.link]);
+  });
+
+  it("refuses a batch with a blob in a mark's closure that neither the batch, it nor the store beside it holds", async () => {
+    const { privateStore } = sides();
+    const absent = card("absent");
+    const mark = taken(absent, 1);
+    await expect(privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] })).rejects.toThrow(
+      `${mark.link} links to ${absent.link}, which neither the batch nor the store holds`,
+    );
+    expect(await listOf(privateStore.marks())).toEqual([]);
+  });
+
+  it("refuses a mark that is not an object", async () => {
+    const { privateStore } = sides();
+    const image = utf8("an image");
+    const refusal = privateStore.write({ marks: [{ bytes: image }] });
+    await expect(refusal).rejects.toThrow(RefusedBatch);
+    await expect(refusal).rejects.toThrow(`${linkOf(image)} is marked but is not an object`);
+  });
+
+  it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const [first, second] = [taken(alice, 1), taken(alice, 2)];
+    await privateStore.write({ marks: [first], blobs: [...takenSchema.blobs] });
+    await privateStore.write({ marks: [second] });
+    const [firstPosition, secondPosition] = [
+      await privateStore.positionOf(first.link),
+      await privateStore.positionOf(second.link),
+    ];
+    expect(firstPosition).toBeLessThan(secondPosition as number);
+    expect(await privateStore.positionOf(alice.link)).toBeUndefined();
+  });
+
+  it("refuses to give a blob when its backend gives other bytes under the link", async () => {
+    const store = new Store(new MemoryBackend());
+    const backend = new MemoryBackend();
+    const [alice, bob] = [card("Alice"), card("Bob")];
+    await store.write({ records: [alice, bob], blobs: [...cardSchema.blobs] });
+    const [mark, other] = [taken(alice, 1), taken(bob, 2)];
+    await new PrivateStore(store, backend).write({ marks: [mark, other], blobs: [...takenSchema.blobs] });
+    const privateStore = new PrivateStore(store, {
+      get: (link) => backend.get(link === mark.link ? other.link : link),
+      has: (link) => backend.has(link),
+      put: (blobs, records) => backend.put(blobs, records),
+      records: (start) => backend.records(start),
+      blobs: (start) => backend.blobs(start),
+      positionOf: (link) => backend.positionOf(link),
+    });
+    await expect(privateStore.get(mark.link)).rejects.toThrow(`another blob under ${mark.link}`);
+  });
+
+  it("is refused beside a store not made by `new Store`", () => {
+    const store = new Store(new MemoryBackend());
+    const lookalike: Store = {
+      get: <T>(link: Link<T>) => store.get(link),
+      write: (batch) => store.write(batch),
+      stage: (batch) => store.stage(batch),
+      records: () => store.records(),
+      blobs: () => store.blobs(),
+      positionOf: (link) => store.positionOf(link),
+      closure: (link) => store.closure(link),
+    };
+    expect(() => new PrivateStore(lookalike, new MemoryBackend())).toThrow(TypeError);
+  });
+
+  it("cannot be given as a store or a secret store, nor either of them as it", () => {
+    const { store, privateStore } = sides();
+    const secretStore = new SecretStore(store, new MemoryBackend());
+    // @ts-expect-error: a private store has no closure to bundle its marks
+    const asStore: Store = privateStore;
+    // @ts-expect-error: a secret is not kept among what a user's other devices take
+    const asSecret: SecretStore = privateStore;
+    // @ts-expect-error: a store would carry in bundles what is written to it
+    const fromStore: PrivateStore = store;
+    // @ts-expect-error: a secret store records what is written to it, and stays on one device
+    const fromSecret: PrivateStore = secretStore;
+    expect([asStore, asSecret, fromStore, fromSecret]).toEqual([privateStore, privateStore, store, secretStore]);
+  });
+});
+
+describe("the store beside a private store", () => {
+  it("does not give, gather or list a mark", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const mark = taken(alice, 1);
+    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    expect(await store.get(mark.link)).toBeUndefined();
+    await expect(store.closure(mark.link)).rejects.toThrow(`the store does not hold ${mark.link}`);
+    expect(await listOf(store.blobs())).not.toContain(mark.link);
+    expect(await listOf(store.records())).toHaveLength(1);
+  });
+
+  it("refuses to write anything with a mark in its closure", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const mark = taken(alice, 1);
+    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    const leak = encodeObject(shownSchema, { card: new LinkValue(mark.link) });
+    await expect(store.write({ records: [leak], blobs: [...shownSchema.blobs] })).rejects.toThrow(
+      `${leak.link} links to ${mark.link}, which neither the batch nor the store holds`,
+    );
+  });
+});
+
+describe("an index over marks", () => {
+  it("reads the marks that its selection takes, and through them what the store beside holds", async () => {
+    const { store, privateStore } = sides();
+    const [alice, bob] = [card("Alice"), card("Bob")];
+    await store.write({ records: [alice, bob], blobs: [...cardSchema.blobs] });
+    await privateStore.write({
+      marks: [taken(bob, 1), taken(alice, 2), encodeObject(shownSchema, { card: new LinkValue(alice.link) })],
+      blobs: [...takenSchema.blobs, ...shownSchema.blobs],
+    });
+    expect(await namesIn(privateStore)).toEqual(["Bob", "Alice"]);
+  });
+
+  it("reads no object of the schema of a mark that came to the store beside", async () => {
+    const { store, privateStore } = sides();
+    const [alice, mallory] = [card("Alice"), card("Mallory")];
+    await store.write({
+      records: [alice, taken(mallory, 0)],
+      blobs: [mallory.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
+    });
+    await privateStore.write({ marks: [taken(alice, 1)] });
+    expect(await namesIn(privateStore)).toEqual(["Alice"]);
+    expect(await namesIn(store)).toEqual([]);
+  });
+
+  it("reads on a later scan only the marks written since", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const readTimes: number[] = [];
+    const index = indexOver(selectedMarks(objectsOf(takenSchema)), namedSchema, ({ data }) => {
+      readTimes.push(data.at);
+      return [{ name: "", at: data.at }];
+    }).orderedBy("at");
+    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    await scan(privateStore, index);
+    await privateStore.write({ marks: [taken(alice, 2)] });
+    expect((await listOf((await scan(privateStore, index)).range([]))).map(({ data }) => data.at)).toEqual([1, 2]);
+    expect(readTimes).toEqual([1, 2]);
+  });
+
+  it("fails the scan on a mark that its rows throw on", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    const index = indexOver(selectedMarks(objectsOf(takenSchema)), namedSchema, () => {
+      throw new Error("not read");
+    }).orderedBy("at");
+    await expect(scan(privateStore, index)).rejects.toThrow("not read");
+  });
+
+  it("gives a view its rows, with the private store to read what they name", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    const mark = taken(alice, 1);
+    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    const latest = await view(privateStore, {
+      index: indexOver(selectedMarks(objectsOf(takenSchema)), takenSchema, ({ data }) => [data]).orderedBy("at"),
+      read: async (rows, reader) => {
+        const [row] = await listOf(rows.range([]));
+        return row && (await readObject(reader, row.data.card.link, cardSchema)).data.name;
+      },
+    });
+    expect(latest).toBe("Alice");
+  });
+});
+
+describe("an index over records or over blobs", () => {
+  it("reads nothing from a private store", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    await store.write({ records: [alice], blobs: [...cardSchema.blobs] });
+    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    const rowsOf = ({ data }: { readonly data: { readonly at: number } }) => [{ name: "", at: data.at }];
+    const overRecords = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, rowsOf).orderedBy("at");
+    const overBlobs = indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, rowsOf).orderedBy("at");
+    expect(await namesIn(privateStore, overRecords)).toEqual([]);
+    expect(await namesIn(privateStore, overBlobs)).toEqual([]);
+  });
+});

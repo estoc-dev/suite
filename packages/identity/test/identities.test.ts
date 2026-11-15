@@ -30,7 +30,7 @@ import {
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, closure, rowsOf, schemes, storeOf } from "./fixtures.ts";
+import { byLink, closure, rowsOf, schemes } from "./fixtures.ts";
 
 const { keys, identities, signedIdentities, identityVersions, publish } = loadIdentity(schemes);
 
@@ -531,7 +531,7 @@ describe("the selection of identity versions", () => {
 describe("the identity versions a reader has seen", () => {
   const wallet = signer(eip191);
   const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-    identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
+    identityVersions.people(rowsOf(identityVersions, ...signed), byLink(signed.flatMap(({ blobs }) => blobs)));
 
   it("give as current the identity version of a root with the greatest at", async () => {
     const earlier = await publish(wallet, { agents: [key(ed25519, 3)], at: 1_000 });

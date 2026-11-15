@@ -3,7 +3,6 @@ import {
   type IdentityVersionData,
   type IdentityVersionOrder,
   loadIdentity,
-  noIdentityVersions,
   type People,
   SoftwareSigner,
 } from "@estoc/identity";
@@ -232,48 +231,5 @@ describe("a view of a staged batch", () => {
     await stagedStore.commit();
     expect(await store.get(byAgent.link)).toEqual(byAgent.bytes);
     expect(await store.get(hello.link)).toEqual(hello.bytes);
-  });
-
-  it("takes in the batch after what the store holds, so a signature the store holds is honored as it took it in", async () => {
-    const store = newStore();
-    const hello = object({ text: "hello" });
-    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(hello);
-    await store.write({
-      roots: [byAgent.link],
-      blobs: [byAgent.bytes, hello.bytes, ...anything.blobs, ...signatures.schema.blobs, ...listing.blobs],
-    });
-    const agentsOut = await publish(root, { prior: listing, at: 2_000 });
-    const stagedStore = await store.stage({ roots: [agentsOut.link], blobs: [agentsOut.bytes, ...agentsOut.blobs] });
-    const stagedPeople = await view(stagedStore, people);
-    const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
-    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(true);
-    expect(await stagedPeople.honors(signature)).toBe(false);
-  });
-
-  it("takes a signature that only the batch holds as coming in now, and as the store took it in once committed", async () => {
-    const store = newStore();
-    const hello = object({ text: "hello" });
-    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(hello);
-    const agentsOut = await publish(root, { prior: listing, at: 2_000 });
-    const stagedStore = await store.stage({
-      roots: [byAgent.link, agentsOut.link],
-      blobs: [
-        byAgent.bytes,
-        agentsOut.bytes,
-        hello.bytes,
-        ...anything.blobs,
-        ...signatures.schema.blobs,
-        ...agentsOut.blobs,
-      ],
-    });
-    const stagedPeople = await view(stagedStore, people);
-    const signature = await signatures.read(byAgent.link, stagedStore, noIdentityVersions);
-    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(false);
-
-    await stagedStore.commit();
-    expect(await stagedPeople.asTakenIn.honors(signature)).toBe(true);
-    expect(await (await view(store, people)).asTakenIn.honors(signature)).toBe(true);
   });
 });

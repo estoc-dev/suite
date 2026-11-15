@@ -367,13 +367,14 @@ of theirs to the actor, and gives back a mark for each mailbox that takes it.
 `messageAt` takes a mailbox and the link of a bundle that came in there, as an
 application's index reads them from `Inbound`, and gives the signature at the
 root of the bundle when it is honored as a message from whoever signed it. For
-that, `asTakenIn` of the reader's people honors the signature, and the mailbox
+that, `asOfArrival` of the reader's people honors the signature, and the mailbox
 is in a grant the actor gave them that it honors too. Anything
 else gives `undefined`, since `collect` keeps whatever opens and anyone can
 send to a mailbox. A store that fails to give a blob makes it reject.
 
 What is honored is worked out when it is read, by what the store holds then and
-the order it took it in:
+when each came to the user's devices, as the inbound marks and records of the
+private store say:
 
 - An earlier grant is honored as the latest is, so what came in before a move
   still reads as theirs.
@@ -381,10 +382,18 @@ the order it took it in:
   earlier grants. A mailbox that was given to one person retires by no longer
   receiving there. What comes in at one that was given to several is still
   honored from each, whichever of them has been told to stop.
-- A message, and each grant, is honored as the store took it in, by the
-  identity versions it held then. Once the store holds an identity version
-  that removes an agent, what that agent signs is no longer honored, whichever
+- A message, and each grant, is honored as of when it came, by the identity
+  versions that had come by then. Once an identity version that removes an
+  agent has come, what that agent signs is no longer honored, whichever
   identity version it carries, while what came in before still is.
+- A message came when its bundle came in, and a grant the actor gave when
+  `grant` recorded it. An identity version came with the first bundle or record
+  that has it in its closure, so one that comes with a grant or a message has
+  come by the time that grant or message has.
+- The user's own identity versions go by the same times. A user who publishes
+  one that removes an agent records it then, so that the grants the agent
+  signed before stay honored and the messages at their mailboxes still read.
+  One that the store holds with no mark of it has come before everything.
 - A crisis cuts what came in before as well: messages and grants signed by an
   identity version before it. A grant that a key it lists signs gives the
   mailbox again, and the messages the crisis cut stay cut.
@@ -407,7 +416,7 @@ as any message can be.
 
 ```ts
 import { MailboxGrants } from "@estoc/mailbox";
-import { indexOver, selectedBlobs, view } from "@estoc/store";
+import { arrivalsView, indexOver, selectedBlobs, view } from "@estoc/store";
 
 const grants = new MailboxGrants({ signatures, signedIdentities });
 const seen = indexOver(
@@ -415,10 +424,12 @@ const seen = indexOver(
   identityVersions.schema,
   (identityVersion) => [identityVersion],
 ).orderedBy(...identityVersions.order);
+const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const series = await view(store, grants.series);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
-await series.grantFrom(mine, their, people.asTakenIn); // where I take their messages
-await series.grantFrom(their, mine, people.asTakenIn); // where they take mine
+const peopleAsOfArrival = people.asOfArrival(await view(privateStore, arrivalsOfIdentityVersions));
+await series.grantFrom(mine, their, peopleAsOfArrival); // where I take their messages
+await series.grantFrom(their, mine, peopleAsOfArrival); // where they take mine
 ```
 
 `grants.series` is a `View` of `@estoc/store`, made once for the program
@@ -445,10 +456,11 @@ their schema, wherever they sit in a closure it holds, and is made once for
 the program too.
 
 A root removes an agent by signing an identity version that does not list it,
-as in `@estoc/identity`. `asTakenIn` of the reader's people honors a grant as
-the store took it in: one the agent signed is honored when it came in before
-the store held that identity version, and is not when it came in after, whatever
-identity version it carries and whatever `at` it writes:
+as in `@estoc/identity`. `asOfArrival` of the reader's people honors a grant as
+of when it came to the reader's devices, by the marks of the private store: one
+the agent signed is honored when it came in before that identity version did,
+and is not when it came in with it or after, whatever identity version it
+carries and whatever `at` it writes:
 
 - `grantFrom` gives the latest grant honored so, which may be one the
   removed agent signed before, or `undefined` when there is none.
@@ -459,8 +471,8 @@ identity version it carries and whatever `at` it writes:
 - A reader holds only the identity versions it has seen, so what a key signs
   is honored until the reader sees the identity version that removes it.
 - A grant that came in after the removal is not honored once a later identity
-  version lists the agent again either: it is honored by what the store held
-  when it took the grant in, so reading the store again gives the same.
+  version lists the agent again either: it is honored by what had come when
+  the grant did, so reading the marks again gives the same.
 - A crisis cuts every grant by an identity version before it, whenever it came
   in.
 

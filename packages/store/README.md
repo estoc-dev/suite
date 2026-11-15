@@ -132,9 +132,7 @@ it. `positionOf(link)` gives how many blobs it had taken in before that one,
 which is where it is among them, or `undefined` for one it does not hold. A
 blob is taken in by the first write that holds it, and writing it again
 leaves it where it was. A store only grows, so a blob keeps its position,
-and a reader can tell what the store held when the blob came in, as
-`@estoc/identity` does to honor a signature by the identity versions the
-store held when it took the signature in.
+and a reader can tell what the store held when the blob came in.
 
 There is no transaction that reads and then writes. Two devices that each
 check that something is missing before writing it will both write it, and
@@ -175,9 +173,7 @@ The batch is taken in only once it is committed. The `positionOf` of a
 staged batch is the store's, and gives nothing for a blob that only the
 batch holds, so a reader takes what the batch adds as coming in now.
 `commit` takes the blobs in one after another, so what depends on the order
-the store took them in can read otherwise once the batch is committed, such
-as a signature the batch holds before an identity version that took its
-agent out.
+the store took them in can read otherwise once the batch is committed.
 
 A staged batch holds blobs and lists no marks, so an index over
 `selectedBlobs` reads it, and one over `selectedMarks` or `selectedRecords`

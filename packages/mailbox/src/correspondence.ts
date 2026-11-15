@@ -6,11 +6,22 @@ import {
   type IdentityVersionOrder,
   noIdentityVersions,
   type People,
+  type SeenIdentityVersions,
   type Signature,
   type SignedIdentityObject,
 } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { indexOver, type PrivateStore, recordsOf, type Store, selectedBlobs, type View, view } from "@estoc/store";
+import {
+  type ArrivalsView,
+  arrivalsView,
+  indexOver,
+  type PrivateStore,
+  recordsOf,
+  type Store,
+  selectedBlobs,
+  type View,
+  view,
+} from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -19,12 +30,14 @@ import type { Delivery, Post } from "./post.ts";
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities" | "identityVersions">;
 
 /**
- * Sending and reading as one actor, by the Mailbox Grants and the identity versions a store holds.
+ * Sending and reading as one actor, by the Mailbox Grants and the identity versions a store holds,
+ * and the marks of the private store beside it.
  *
- * - The store's grants and identity versions are read anew at each call, so each call reads what
- *   came in since.
- * - A signature is honored as the store took it in, by the identity versions it held then, so a key
- *   that a later identity version takes out leaves what it signed before standing, until a crisis.
+ * - The store's grants and identity versions and the private store's marks are read anew at each
+ *   call, so each call reads what came in since.
+ * - A signature is honored as of when it came to the user's devices, by the identity versions that
+ *   had come by then, so a key that a later identity version takes out leaves what it signed
+ *   before standing, until a crisis. When each came is what the inbound marks and records say.
  * - The indexes they are read through are made once, with the correspondence, so a store keeps
  *   their rows between scans.
  */
@@ -38,6 +51,7 @@ export class Correspondence {
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
   readonly #seenPeople: View<IdentityVersionData, IdentityVersionOrder, People>;
+  readonly #arrivals: ArrivalsView;
 
   /** `privateStore` is the one kept beside `store`. */
   constructor(
@@ -46,7 +60,7 @@ export class Correspondence {
     actor: Actor,
     clock: () => number,
     grants: MailboxGrants,
-    { signatures, identityVersions }: CorrespondenceIdentity,
+    { signatures, signedIdentities, identityVersions }: CorrespondenceIdentity,
   ) {
     this.#store = store;
     this.#privateStore = privateStore;
@@ -62,6 +76,7 @@ export class Correspondence {
       ]).orderedBy(...identityVersions.order),
       read: (rows, reader) => identityVersions.people(rows, reader),
     };
+    this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
   /**
@@ -112,8 +127,7 @@ export class Correspondence {
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
     const from = to.identity.identifier;
     const series = await view(this.#store, this.#grants.series);
-    const { asTakenIn } = await view(this.#store, this.#seenPeople);
-    const grant = await series.grantFrom(from, this.#identifier, asTakenIn);
+    const grant = await series.grantFrom(from, this.#identifier, await this.#peopleAsOfArrival());
     const mailboxes = grant?.object.data.mailboxes ?? [];
     if (mailboxes.length === 0) throw new UndeliveredMessage("gone", `${from} grants ${this.#identifier} no mailbox`);
     const outboxes = await Promise.all(mailboxes.map(({ link }) => this.#post.outbox(link)));
@@ -135,9 +149,9 @@ export class Correspondence {
    * The signature at the root of `bundle`, which came in at `mailbox`, when it is honored as a
    * message from whoever signed it.
    *
-   * - It is honored as the store took it in.
-   * - `mailbox` is in a grant of the actor to the signer that is honored as the store took it in
-   *   too. An earlier grant is honored as the latest is, so what came in before a move
+   * - It is honored as of when the bundle came in.
+   * - `mailbox` is in a grant of the actor to the signer that is honored as of when the user
+   *   recorded it. An earlier grant is honored as the latest is, so what came in before a move
    *   still reads as theirs.
    * - Anything else gives `undefined`, since anyone can send anything to a mailbox.
    *
@@ -146,14 +160,19 @@ export class Correspondence {
   async messageAt(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Signature | undefined> {
     const signature = await this.#signatureAtRootOf(bundle);
     if (signature === undefined) return undefined;
-    const { asTakenIn } = await view(this.#store, this.#seenPeople);
-    if (!(await asTakenIn.honors(signature))) return undefined;
+    const peopleAsOfArrival = await this.#peopleAsOfArrival();
+    if (!(await peopleAsOfArrival.honors(signature))) return undefined;
     const series = await view(this.#store, this.#grants.series);
     const signer = signature.signedIdentity.identity.identifier;
-    for await (const { object } of series.grantsFrom(this.#identifier, signer, asTakenIn)) {
+    for await (const { object } of series.grantsFrom(this.#identifier, signer, peopleAsOfArrival)) {
       if (object.data.mailboxes.some(({ link }) => link === mailbox)) return signature;
     }
     return undefined;
+  }
+
+  async #peopleAsOfArrival(): Promise<SeenIdentityVersions> {
+    const people = await view(this.#store, this.#seenPeople);
+    return people.asOfArrival(await view(this.#privateStore, this.#arrivals));
   }
 
   // The closure is read first, so that a store that fails is told apart from a bundle that does not read.

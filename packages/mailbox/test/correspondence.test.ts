@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, RefusedBatch, SecretStore, Store } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
@@ -61,8 +61,12 @@ interface Person {
 
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
-async function personActingAs(actor: Actor, store = new Store(new MemoryBackend())): Promise<Person> {
-  const privateStore = new PrivateStore(store, new MemoryBackend());
+// Those given the same backends are one person's devices as one: they share the blobs and the marks.
+const newBackends = () => ({ store: new MemoryBackend(), privateStore: new MemoryBackend() });
+
+async function personActingAs(actor: Actor, backends = newBackends()): Promise<Person> {
+  const store = new Store(backends.store);
+  const privateStore = new PrivateStore(store, backends.privateStore);
   const secretStore = new SecretStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, secretStore, { transports: [transport], clock });
   const intake = new Intake(store, privateStore, clock);
@@ -97,6 +101,12 @@ async function handOver(from: Person, to: Person, root: Link<unknown>) {
 
 const seeIdentityVersion = ({ intake }: Person, identityVersion: SignedIdentityObject) =>
   intake.receive(decodeBundle(encodeBundle({ bytes: identityVersion.bytes }, identityVersion.blobs)));
+
+// A person keeps an identity version that their own root signed, as one they wrote.
+async function recordIdentityVersion({ store, privateStore }: Person, identityVersion: SignedIdentityObject) {
+  await store.write({ roots: [identityVersion.link], blobs: identityVersion.blobs });
+  await privateStore.write(recordsOf([identityVersion], clock()));
+}
 
 // `from` gives `to` a grant of `mailboxes` and hands it over out of band.
 async function grantMailboxes(from: Person, to: Person, mailboxes: readonly OpenedInbox[]) {
@@ -223,7 +233,7 @@ describe("sending to someone", () => {
     expect(await inbox.collect(pickup)).toEqual([]);
   });
 
-  it("goes by a grant that the store took in before their root removed the key that signed it", async () => {
+  it("goes by a grant that came in before the identity version in which their root removed the key that signed it", async () => {
     const [alice, bob] = await Promise.all([
       person(1),
       personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
@@ -236,7 +246,7 @@ describe("sending to someone", () => {
     expect(await inbox.collect(pickup)).toHaveLength(1);
   });
 
-  it("is turned back as gone when the store took their only grant in after their root removed the key that signed it", async () => {
+  it("is turned back as gone when their only grant came in after the identity version in which their root removed the key that signed it", async () => {
     const [alice, bob] = await Promise.all([
       person(1),
       personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
@@ -377,14 +387,14 @@ describe("what came in at a mailbox", () => {
       return { bob, inbox, receive };
     };
 
-    it("is still a message once the store holds the removal, as it took the message in before", async () => {
+    it("is still a message once the removal comes in, as the message came in before", async () => {
       const { bob, inbox, receive } = await formerAlice();
       const { signature, bundle } = await receive();
       await seeIdentityVersion(bob, removalIdentityVersion);
       expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
     });
 
-    it("is no message when the store took it in after the removal, though it carries an identity version that lists the key", async () => {
+    it("is no message when it came in after the removal, though it carries an identity version that lists the key", async () => {
       const { bob, inbox, receive } = await formerAlice();
       await seeIdentityVersion(bob, removalIdentityVersion);
       const { bundle } = await receive();
@@ -415,12 +425,11 @@ describe("what came in at a mailbox", () => {
     expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
   });
 
-  it("is still a message once the receiver's root has removed the key that signed its grant, as the store took the grant in before", async () => {
-    const backend = new MemoryBackend();
-    const store = new Store(backend);
+  it("is still a message once the receiver's root has removed the key that signed its grant, as the grant was recorded before the removal was", async () => {
+    const backends = newBackends();
     const [formerBob, currentBob, alice] = await Promise.all([
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), store),
-      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), store),
+      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), backends),
+      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), backends),
       person(1),
     ]);
     const { inbox, pickup } = await grantInbox(formerBob, alice);
@@ -429,20 +438,20 @@ describe("what came in at a mailbox", () => {
     const [delivery] = await inbox.collect(pickup);
     assert.exists(delivery);
 
-    await seeIdentityVersion(currentBob, removalIdentityVersion);
+    await recordIdentityVersion(currentBob, removalIdentityVersion);
     expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
-    const again = await personActingAs(currentBob.actor, new Store(backend));
+    const again = await personActingAs(currentBob.actor, backends);
     expect((await again.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 
-  it("is no message by a grant that the store took in after the receiver's root removed the key that signed it, until a listed key signs one", async () => {
-    const store = new Store(new MemoryBackend());
+  it("is no message by a grant recorded after the removal of the key that signed it was, until a listed key signs one", async () => {
+    const backends = newBackends();
     const [formerBob, currentBob, alice] = await Promise.all([
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), store),
-      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), store),
+      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), backends),
+      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), backends),
       person(1),
     ]);
-    await seeIdentityVersion(currentBob, removalIdentityVersion);
+    await recordIdentityVersion(currentBob, removalIdentityVersion);
     const { inbox, pickup } = await openInbox(formerBob);
     await handOver(
       formerBob,
@@ -472,7 +481,10 @@ describe("what came in at a mailbox", () => {
     const signer = signerOf(2);
     const [alice, bob] = await Promise.all([
       person(1),
-      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), new Store(backend)),
+      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), {
+        store: backend,
+        privateStore: new MemoryBackend(),
+      }),
     ]);
     const { inbox, pickup } = await grantInbox(bob, alice);
     const signature = await writeNote(alice, "hi Bob");

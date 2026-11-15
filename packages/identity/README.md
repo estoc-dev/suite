@@ -312,10 +312,8 @@ when it names the schema and does not fit it. An index over blobs gives no row f
 a blob that does not fit the schema, and a scan still fails when the store does
 not give a blob it lists.
 
-`identityVersions.people` takes those rows and the store they are of, a
-`StoreReader`, which gives blobs by link and where it took each in, as a
-store of `@estoc/store` does. It gives the `People` of the identity versions
-the reader has seen. The rows hold those each identity version follows, as
+`identityVersions.people` takes those rows and a `Reader` of the store they
+are of. It gives the `People` of the identity versions the reader has seen. The rows hold those each identity version follows, as
 an index over the blobs of a store does.
 Their `current` gives the current identity version of the person of a
 signed identity: of those the reader has seen and the one given with those it follows,
@@ -324,27 +322,37 @@ the latest that counts, read from the reader. They are the reader's
 signature: their `honors` says whether the identity version it carries
 counts, and whether the key that made it signs for the current identity
 version of whoever made it. That is how a signature that comes in now is honored,
-such as a request a service answers, whether or not the store took it in
-before.
+such as a request a service answers, whether or not it came before.
 
-`asTakenIn` of `People` is the `SeenIdentityVersions` of what the store
-holds. It honors a signature as the store took it in:
+`asOfArrival` of `People` takes `Arrivals`, which say when a blob came to
+the reader's devices, and gives the `SeenIdentityVersions` that honor a
+signature as of when it came:
 
-- By the identity versions the store held when it took the signature in,
-  with the one the signature carries and those it follows: its identity
-  version counts by them, and its key signs for the current one of them.
-  An identity version the store takes in later that does not list the key
-  leaves it honored, and one taken in before refuses it, whichever
+- By the identity versions that had come by then, with the one the
+  signature carries and those it follows: its key signs for the current one
+  of them. An identity version that comes later and does not list the key
+  leaves it honored, and one that came before refuses it, whichever
   identity version it carries.
+- An identity version that came at the same time as the signature had come
+  by then, and so had one that the arrivals give no time for.
 - By the identity versions the store holds now, as for its identity version
-  counting: a crisis cuts it, whenever the store took the crisis in.
-- A signature the store does not hold comes in now, and is honored as by
-  `honors`, as is one that only a staged batch holds until the batch is
-  committed.
+  counting: a crisis cuts it, whenever the crisis came.
+- A signature that the arrivals give no time for comes in now, and is
+  honored as by `honors`.
 
-The store keeps the order it took blobs in, so reading it again gives the
-same. The order is of one store: another device that takes in the same
-blobs in another order may honor a signature otherwise.
+The package keeps no times of its own. With `@estoc/store`, the arrivals are
+what `arrivalsView(signedIdentities.schema)` gives on a private store, by its
+inbound marks and records:
+
+- A signature has a time when it is the root of a bundle that came in, or
+  the user recorded it. One that came below the root of something else has
+  none.
+- An identity version has the earliest time of what came with it in its
+  closure. One that the user publishes has a time once the user records it,
+  or records something signed by it, so recording it when it is published
+  keeps what its earlier keys signed before then honored.
+- The times are by the clocks of the user's devices, so devices that share
+  the marks honor alike.
 
 `noIdentityVersions` is a reader that has seen no identity versions, so it
 honors a signature by the identity version it carries and those it follows
@@ -393,8 +401,10 @@ const seen = indexOver(
   identityVersions.schema,
   (identityVersion) => [identityVersion],
 ).orderedBy(...identityVersions.order);
+const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });
-const signature = await signatures.read(link, store, people.asTakenIn);
+const arrivals = await view(privateStore, arrivalsOfIdentityVersions);
+const signature = await signatures.read(link, store, people.asOfArrival(arrivals));
 const author = people.personOf(signature.signedIdentity);
 ```
 
@@ -428,9 +438,9 @@ from the link of the signature. It also refuses a signature that the
 `SeenIdentityVersions` it is given do not honor. By `honors` of `People`,
 that is one whose identity version a crisis cuts, or whose key does not
 sign for the current identity version, the latest that counts of those the
-reader has seen and the one the signature carries; by `asTakenIn`, the
-current identity version is of those the store held when it took the
-signature in. The root signs for an identity, and so do its agents. The one the
+reader has seen and the one the signature carries; by `asOfArrival`, the
+current identity version is of those that had come when the signature
+did. The root signs for an identity, and so do its agents. The one the
 signature carries counts, as a device a wallet has just listed signs by an
 identity version the reader has not seen yet. The `SeenIdentityVersions`
 are not optional, so a reader that keeps no identity versions says so with

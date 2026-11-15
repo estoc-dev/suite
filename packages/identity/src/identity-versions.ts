@@ -36,12 +36,13 @@ export interface IdentityVersionRows {
 }
 
 /**
- * A reader of the blobs a store holds that also says in what order the store
- * took them in, as a store of `@estoc/store` does.
+ * When blobs came to the reader's devices, as `arrivalsView` of
+ * `@estoc/store` says for the signed identity schema, by the marks of a
+ * private store.
  */
-export interface StoreReader extends Reader {
-  /** How many blobs the store had taken in before the one of `link`, or `undefined` when it holds none. */
-  positionOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
+export interface Arrivals {
+  /** When the blob of `link` came, or `undefined` when nothing says when. */
+  atOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
 }
 
 /** Identity versions: the row each is, their selection, and the people of those a reader has seen. */
@@ -91,15 +92,14 @@ export class IdentityVersions {
   /**
    * The people of the identity versions a store holds, from `rows`, the rows
    * of its index of those identity versions, each as `identityVersionOf`
-   * gives it. An identity version a row names is read from `store`, which
-   * also says where it took each in, for `asTakenIn`.
+   * gives it. An identity version a row names is read from `reader`.
    *
    * The rows hold those that each identity version follows, as an index over
    * the blobs of a store does: the store holds the closure of each, and a
    * signed identity whose closure it lacks does not read.
    */
-  people(rows: IdentityVersionRows, store: StoreReader): People {
-    const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, store);
+  people(rows: IdentityVersionRows, reader: Reader): People {
+    const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
       const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
@@ -130,18 +130,19 @@ export class IdentityVersions {
         hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
       };
     };
-    // A signature taken in at `position` is honored by the identity versions the store held before it,
-    // and by the crises it holds now. One with no position comes in now.
-    const honorsTakenIn = async ({ signedIdentity, key }: Signature, position: number | undefined) => {
+    // Without `arrivals` a signature comes in now, as does one that `arrivals` give no time for.
+    const honors = async (signature: Signature, arrivals?: Arrivals) => {
+      const { signedIdentity, key } = signature;
       const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
       const countingVersions = countingVersionsAmong(seen);
       let countingVersionsThen = countingVersions;
-      if (position !== undefined) {
+      const at = await arrivals?.atOf(signature.link);
+      if (arrivals !== undefined && at !== undefined) {
         const heldThen: IdentityVersionData[] = [];
         for (const row of seen) {
-          const link = row.signedIdentity.link;
-          const heldAt = await store.positionOf(link);
-          if (inHand.has(link) || (heldAt !== undefined && heldAt < position)) heldThen.push(row);
+          const { link } = row.signedIdentity;
+          const heldSince = inHand.has(link) ? undefined : await arrivals.atOf(link);
+          if (heldSince === undefined || heldSince <= at) heldThen.push(row);
         }
         countingVersionsThen = countingVersionsAmong(heldThen);
       }
@@ -153,8 +154,8 @@ export class IdentityVersions {
     return {
       personOf,
       current: (signedIdentity) => personOf(signedIdentity).current(),
-      honors: (signature) => honorsTakenIn(signature, undefined),
-      asTakenIn: { honors: async (signature) => honorsTakenIn(signature, await store.positionOf(signature.link)) },
+      honors: (signature) => honors(signature),
+      asOfArrival: (arrivals) => ({ honors: (signature) => honors(signature, arrivals) }),
     };
   }
 }

@@ -1,4 +1,5 @@
 import type { Identifier } from "./identity.ts";
+import type { Arrivals } from "./identity-versions.ts";
 import type { SeenIdentityVersions, Signature } from "./signature.ts";
 import type { SignedIdentityObject } from "./signed-identity.ts";
 
@@ -38,7 +39,7 @@ export interface Person {
  *
  * - Their `honors` takes a signature as one that comes in now, by all the
  *   identity versions the reader's store holds, as a service takes a request.
- * - `asTakenIn` takes a signature as the store took it in.
+ * - `asOfArrival` takes a signature as of when it came to the reader's devices.
  */
 export interface People extends SeenIdentityVersions {
   /** The person of `signedIdentity`, taken with it in hand. */
@@ -46,17 +47,19 @@ export interface People extends SeenIdentityVersions {
   /** The current identity version of the person of `signedIdentity`. */
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
   /**
-   * Whether a signature is honored as the reader's store took it in.
+   * What honors a signature as of when it came to the reader's devices, by
+   * the times `arrivals` give.
    *
-   * - The identity version it carries counts, and the key that made it signs
-   *   for the current identity version, by those the store held when it took
-   *   the signature in. One the store takes in later that does not list the
-   *   key leaves it honored.
+   * - The key that made it signs for the current identity version among
+   *   those that had come by then, with the one it carries and those that
+   *   one follows. An identity version that comes later and does not list
+   *   the key leaves it honored.
+   * - An identity version that came at the same time as the signature had
+   *   come by then, and so had one that `arrivals` give no time for.
    * - The identity version it carries still counts by those the store holds
-   *   now, so a crisis the store takes in later cuts it.
-   * - A signature the store does not hold comes in now, and is honored as
-   *   by `honors`, as is one that only a staged batch holds until the batch
-   *   is committed.
+   *   now, so a crisis cuts it whenever the crisis came.
+   * - A signature that `arrivals` give no time for comes in now, and is
+   *   honored as by `honors`.
    */
-  readonly asTakenIn: SeenIdentityVersions;
+  asOfArrival(arrivals: Arrivals): SeenIdentityVersions;
 }

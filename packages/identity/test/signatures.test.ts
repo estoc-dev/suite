@@ -15,6 +15,7 @@ import { schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import {
+  type Arrivals,
   type CurveScheme,
   ed25519,
   eip191,
@@ -30,7 +31,7 @@ import {
   signatureSchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { rowsOf, schemes, storeOf } from "./fixtures.ts";
+import { rowsOf, schemes } from "./fixtures.ts";
 
 const { identities, signatures, identityVersions, publish } = loadIdentity(schemes);
 const verifiedBy = async (
@@ -52,8 +53,8 @@ const rewritten = (signature: Signature, change: ValueMap) => written(signature,
 const byLink = (...identities: SignedIdentityObject[]) =>
   new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
-const peopleHavingSeen = (...signed: SignedIdentityObject[]) =>
-  identityVersions.people(rowsOf(identityVersions, ...signed), storeOf(signed.flatMap(({ blobs }) => blobs)));
+const peopleHavingSeen = (...versions: SignedIdentityObject[]) =>
+  identityVersions.people(rowsOf(identityVersions, ...versions), byLink(...versions));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
   signatures.actor(by, await publish(by, { at: 0 })).sign(object);
 
@@ -256,53 +257,60 @@ describe("a signature by an agent, as identity versions follow one another", () 
   });
 });
 
-describe("a signature as the store took it in", () => {
+describe("a signature as of when it came to the reader's devices", () => {
   const [wallet, laptop, phone] = [signer(eip191), signer(ed25519, 2), signer(ed25519, 3)];
   const chain = async () => {
     const first = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
     const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     return { first, second, signature: await signatures.actor(laptop, first).sign(hello) };
   };
+  const arrivalsOf = (...arrivals: readonly (readonly [{ readonly link: Link<unknown> }, number])[]): Arrivals => {
+    const times = new Map(arrivals.map(([{ link }, at]) => [link, at]));
+    return { atOf: (link) => times.get(link) };
+  };
 
-  it("is honored when the store took it in before an identity version that takes its key out", async () => {
+  it("is honored when it came before an identity version that takes its key out", async () => {
     const { first, second, signature } = await chain();
-    const people = identityVersions.people(
-      rowsOf(identityVersions, second),
-      storeOf([...first.blobs, signature.bytes, ...second.blobs]),
-    );
-    expect(await people.asTakenIn.honors(signature)).toBe(true);
+    const people = peopleHavingSeen(second);
+    const arrivals = arrivalsOf([first, 1], [signature, 5], [second, 9]);
+    expect(await people.asOfArrival(arrivals).honors(signature)).toBe(true);
     expect(await people.honors(signature)).toBe(false);
   });
 
-  it("is not honored when the store took it in after, though the identity version it carries lists its key", async () => {
+  it("is not honored when it came after, though the identity version it carries lists its key", async () => {
     const { first, second, signature } = await chain();
-    const people = identityVersions.people(
-      rowsOf(identityVersions, second),
-      storeOf([...first.blobs, ...second.blobs, signature.bytes]),
-    );
-    expect(await people.asTakenIn.honors(signature)).toBe(false);
+    const arrivals = arrivalsOf([first, 1], [second, 5], [signature, 9]);
+    expect(await peopleHavingSeen(second).asOfArrival(arrivals).honors(signature)).toBe(false);
   });
 
-  it("is cut by a crisis that the store took in after it", async () => {
+  it("is not honored when it came at the same time as that identity version", async () => {
+    const { first, second, signature } = await chain();
+    const arrivals = arrivalsOf([first, 1], [second, 5], [signature, 5]);
+    expect(await peopleHavingSeen(second).asOfArrival(arrivals).honors(signature)).toBe(false);
+  });
+
+  it("is not honored when nothing says when that identity version came", async () => {
+    const { first, second, signature } = await chain();
+    const arrivals = arrivalsOf([first, 1], [signature, 5]);
+    expect(await peopleHavingSeen(second).asOfArrival(arrivals).honors(signature)).toBe(false);
+  });
+
+  it("is cut by a crisis that came after it", async () => {
     const { first, signature } = await chain();
     const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
     const byCrisis = await signatures.actor(laptop, crisis).sign(hello);
-    const people = identityVersions.people(
-      rowsOf(identityVersions, crisis),
-      storeOf([...first.blobs, signature.bytes, ...crisis.blobs, byCrisis.bytes]),
+    const peopleAsOfArrival = peopleHavingSeen(crisis).asOfArrival(
+      arrivalsOf([first, 1], [signature, 5], [crisis, 9], [byCrisis, 9]),
     );
-    expect(await people.asTakenIn.honors(signature)).toBe(false);
-    expect(await people.asTakenIn.honors(byCrisis)).toBe(true);
+    expect(await peopleAsOfArrival.honors(signature)).toBe(false);
+    expect(await peopleAsOfArrival.honors(byCrisis)).toBe(true);
   });
 
-  it("is honored as one that comes in now when the store does not hold it", async () => {
+  it("is honored as one that comes in now when nothing says when it came", async () => {
     const { first, second, signature } = await chain();
-    const people = identityVersions.people(
-      rowsOf(identityVersions, second),
-      storeOf([...first.blobs, ...second.blobs]),
-    );
-    expect(await people.asTakenIn.honors(signature)).toBe(false);
-    expect(await people.asTakenIn.honors(await signatures.actor(phone, first).sign(hello))).toBe(true);
+    const peopleAsOfArrival = peopleHavingSeen(second).asOfArrival(arrivalsOf([first, 1], [second, 9]));
+    expect(await peopleAsOfArrival.honors(signature)).toBe(false);
+    expect(await peopleAsOfArrival.honors(await signatures.actor(phone, first).sign(hello))).toBe(true);
   });
 });
 
@@ -347,7 +355,7 @@ describe("a signature by an identity version before a crisis", () => {
 
   it("is refused by a reader that has seen only an identity version that follows the crisis", async () => {
     const { first, after } = await chain();
-    const people = identityVersions.people(rowsOf(identityVersions, after), storeOf(after.blobs));
+    const people = identityVersions.people(rowsOf(identityVersions, after), byLink(after));
     expect(await people.honors(await signatures.actor(wallet, first).sign(hello))).toBe(false);
     expect(await people.honors(await signatures.actor(laptop, first).sign(hello))).toBe(false);
   });
@@ -445,12 +453,12 @@ describe("what a signature signs", () => {
 
 describe("the selection of the signatures over objects of a schema", () => {
   const notes = signatures.selectionOver(note);
-  const holding = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>
+  const readerOf = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>
     new Map(objects.map(({ link, bytes }) => [link, bytes]));
 
   it("reads a signature over an object of the schema with the object", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const read = await notes.read(signature.link, holding(signature, hello));
+    const read = await notes.read(signature.link, readerOf(signature, hello));
     expect(read?.signature.link).toBe(signature.link);
     expect(read?.signature.data).toEqual(dataOf(signature));
     expect(read?.object.link).toBe(hello.link);
@@ -460,24 +468,24 @@ describe("the selection of the signatures over objects of a schema", () => {
   it("leaves out a signature over an object of another schema, and what is not a signature", async () => {
     const card = encodeObject(schema("Card", { name: string() }), { name: "Alice" });
     const signature = await sign(card, signer(ed25519));
-    expect(await notes.read(signature.link, holding(signature, card))).toBeUndefined();
-    expect(await notes.read(hello.link, holding(hello))).toBeUndefined();
+    expect(await notes.read(signature.link, readerOf(signature, card))).toBeUndefined();
+    expect(await notes.read(hello.link, readerOf(hello))).toBeUndefined();
   });
 
   it("takes a signature that does not verify", async () => {
     const signature = await sign(hello, signer(ed25519));
     const bytes = rewritten(signature, { object: new LinkValue(goodbye.link) });
-    const read = await notes.read(linkOf(bytes), holding({ link: linkOf(bytes), bytes }, goodbye));
+    const read = await notes.read(linkOf(bytes), readerOf({ link: linkOf(bytes), bytes }, goodbye));
     expect(read?.object.link).toBe(goodbye.link);
     await expect(verified(bytes, identityOf(signature))).rejects.toThrow(/does not verify/);
   });
 
   it("refuses a signature whose object the reader does not give, or which does not fit the schema", async () => {
     const signature = await sign(hello, signer(ed25519));
-    await expect(notes.read(signature.link, holding(signature))).rejects.toThrow(/no blob is given/);
+    await expect(notes.read(signature.link, readerOf(signature))).rejects.toThrow(/no blob is given/);
     const bytes = objectFormat.encode(new ObjectValue(note.link, { title: "hello" }));
     const unfit = await sign({ link: linkOf(bytes) }, signer(ed25519));
-    await expect(notes.read(unfit.link, holding(unfit, { link: linkOf(bytes), bytes }))).rejects.toThrow(
+    await expect(notes.read(unfit.link, readerOf(unfit, { link: linkOf(bytes), bytes }))).rejects.toThrow(
       /does not fit its schema/,
     );
   });

@@ -67,9 +67,9 @@ async function loggedInIdentity(
 
 describe("a login", () => {
   const user = signer(eip191, 1);
-  const signed = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
+  const loginSignature = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
-    const { bytes, signedIdentity } = await signed;
+    const { bytes, signedIdentity } = await loginSignature;
     return loggedInIdentity(audience, nonce, bytes, signedIdentity.blobs);
   };
 
@@ -84,7 +84,7 @@ describe("a login", () => {
 
   it("signed by a browser key that a later identity version of the user lists logs the user in", async () => {
     const browser = signer(ed25519, 5);
-    const prior = (await signed).signedIdentity;
+    const prior = (await loginSignature).signedIdentity;
     const actor = signatures.actor(browser, await publish(user, { prior, agents: [browser.key], at: 1 }));
     const { bytes, signedIdentity } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
@@ -116,8 +116,8 @@ async function saleInForce(
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, receivedSignatures);
-  const signed = (party: LinkValue<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
-  return signed(terms.buyer) && signed(terms.seller) ? terms : undefined;
+  const hasSigned = (party: LinkValue<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
+  return hasSigned(terms.buyer) && hasSigned(terms.seller) ? terms : undefined;
 }
 
 // A delivery is confirmed once the buyer of a sale in force signs for it.
@@ -141,9 +141,13 @@ const terms = encodeObject(sale, {
   price: "120.00 CAD",
 });
 const confirmation = encodeObject(delivery, { sale: new LinkValue(terms.link) });
-const receive = (signed: readonly Signature[]): ReceivedSignatures => ({
-  blobs: byLink([terms.bytes, confirmation.bytes, ...signed.flatMap(({ signedIdentity }) => signedIdentity.blobs)]),
-  signatures: signed.map(({ bytes }) => bytes),
+const receive = (givenSignatures: readonly Signature[]): ReceivedSignatures => ({
+  blobs: byLink([
+    terms.bytes,
+    confirmation.bytes,
+    ...givenSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
+  ]),
+  signatures: givenSignatures.map(({ bytes }) => bytes),
 });
 const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>
   Promise.all(pairs.map(([object, by]) => sign(object, by)));

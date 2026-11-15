@@ -8,12 +8,12 @@ export {
   identitySchema,
 } from "./identity.ts";
 export {
+  type Arrivals,
   type IdentityVersionData,
   type IdentityVersionOrder,
   type IdentityVersionRows,
   type IdentityVersions,
   identityVersionSchema,
-  type StoreReader,
 } from "./identity-versions.ts";
 export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";

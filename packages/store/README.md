@@ -527,11 +527,13 @@ to a `PrivateStore`, which is kept beside a store, in a backend of its own.
 
 ```ts
 import { encodeObject, LinkValue, objectsOf } from "@estoc/object";
-import { indexOver, MemoryBackend, PrivateStore, Store, scan, selectedMarks } from "@estoc/store";
+import { Intake, indexOver, MemoryBackend, PrivateStore, Store, scan, selectedMarks } from "@estoc/store";
 
 const store = new Store(new MemoryBackend());
 const privateStore = new PrivateStore(store, new MemoryBackend());
-// A mark of the program's own schema: that the user took a card, and when.
+// The card came in a bundle, which the store holds.
+await new Intake(store).receive(card);
+// A mark of the program's own schema: that the user took the card, and when.
 const taken = encodeObject(takenSchema, { card: new LinkValue(card.link), at: Date.now() });
 await privateStore.write({ marks: [taken], blobs: takenSchema.blobs });
 
@@ -566,8 +568,9 @@ its program gives it, and is a mark because the private store lists it:
   there. Whatever is handed the private store can write any mark.
 
 The store does not read the private store, as it does not read a secret
-store: its `get` and `closure` give no mark, and it refuses to write an
-object with one in its closure. A private store has no `closure` and is not
+store. A blob that only the private store holds is not one the store holds:
+its `get` and `closure` do not give it, and it refuses a batch whose closure
+needs it and does not bring it. A private store has no `closure` and is not
 a `Store`, so it cannot be given to what gathers bundles. It is not a
 `SecretStore` either, so what writes marks is not handed the secrets: a
 secret stays on the device that keeps it, and marks are for the user's own

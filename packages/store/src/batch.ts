@@ -10,10 +10,10 @@ import {
 import type { Backend } from "./backend.ts";
 
 /**
- * A batch that a store refuses for what it is: one of its `records` that is not an object, or a
- * blob in the closure of one that neither the batch nor the store holds. The same batch is refused again
- * until the store holds what was missing, while a backend that fails, which rejects with an error
- * of its own, may write it the next time.
+ * A batch that a store or a private store refuses for what it is: one of its `records` or `marks`
+ * that is not an object, or a blob in the closure of one that is neither in the batch nor held
+ * already. The same batch is refused again until what was missing is held, while a backend that
+ * fails, which rejects with an error of its own, may write it the next time.
  */
 export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";

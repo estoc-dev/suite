@@ -7,7 +7,8 @@ import type { MarkBatch } from "./private-store.ts";
  *
  * - `object` is the link of the object the user wrote.
  * - `at` is when the user wrote it, in milliseconds since the Unix epoch, by the clock of the device
- *   that wrote the record. So an object written again is recorded again, with the time then.
+ *   that wrote the record. So an object written again is recorded again, with the time then. Two
+ *   that agree on the object and the time by the clock are one record, listed once.
  * - Anyone can write an object of this schema. It is a record only where it is listed, among the
  *   marks of a private store.
  */

@@ -615,8 +615,9 @@ leaves an object that the store holds with no record of it.
   and has no rows on a store or a secret store.
 - An index over `selectedRecords` reads the objects that the records among
   its marks link to, each once: an object written again is recorded again,
-  with the time then. A record that came to the store beside, as in a
-  bundle, is not a mark, and records nothing.
+  with the time then, and two records that agree on the object and the time
+  by the clock are one mark, listed once. A record that came to the store
+  beside, as in a bundle, is not a mark, and records nothing.
 - An index over `selectedBlobs` reads the blobs that the store beside holds.
   What only the private store keeps, its marks among them, is not read.
 

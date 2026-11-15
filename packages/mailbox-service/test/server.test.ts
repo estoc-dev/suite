@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { PrivateStore, Store, view } from "@estoc/store";
+import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -699,6 +699,47 @@ async function queueAt(
     return ciphertext;
   });
 }
+
+/** A backend in memory that refuses the next `put` when `isInterrupted` is set, and takes those after it. */
+class InterruptedBackend extends MemoryBackend {
+  isInterrupted = false;
+
+  override async put(...batch: Parameters<MemoryBackend["put"]>): Promise<void> {
+    if (this.isInterrupted) {
+      this.isInterrupted = false;
+      throw new Error("the write was interrupted");
+    }
+    await super.put(...batch);
+  }
+}
+
+describe("a mailbox service whose private store failed to record an acknowledgement signed again", () => {
+  it("records it when the request is posted again, and once however often it is posted after", async () => {
+    const store = memoryStore();
+    const backend = new InterruptedBackend();
+    const privateStore = new PrivateStore(store, backend);
+    const { service, accounts, mailboxes } = await memoryService({ store, privateStore });
+    const actor = await actorOf(alice);
+    const before = await rootOf(service);
+    await openAccount(service, actor);
+    const { file } = await mailboxRequest(actor, before.mailbox.offer);
+    const first = await mailboxAcknowledgementIn(await postMailboxRequest(service, file));
+    const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    const { service: again } = await memoryService({ store, privateStore, accounts, mailboxes, start: 3_000 });
+
+    backend.isInterrupted = true;
+    await expect(postMailboxRequest(again, file)).rejects.toThrow("the write was interrupted");
+    const renewal = await mailboxAcknowledgementIn(await postMailboxRequest(again, file));
+    expect(renewal.signature.link).not.toBe(first.signature.link);
+    const records = await recordedObjectsIn(privateStore);
+    expect(records).toContain(renewal.signature.link);
+    expect((await mailboxAcknowledgementIn(await postMailboxRequest(again, file))).signature.link).toBe(
+      renewal.signature.link,
+    );
+    expect(await recordedObjectsIn(privateStore)).toEqual(records);
+  });
+});
 
 describe("a mailbox service's offer of mailboxes", () => {
   it("opens a mailbox under the account of whoever signs a request for one, and answers 201 with its signature over an acknowledgement", async () => {

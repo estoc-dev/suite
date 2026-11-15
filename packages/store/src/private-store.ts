@@ -27,6 +27,9 @@ export interface MarkBatch {
  *   link to what the store holds.
  * - It lists the marks written to it and nothing else. An object of the schema of a mark that came
  *   to the store beside, as in a bundle, is read here by its link like any blob and is not a mark.
+ * - A record, an object of `recordSchema`, is the mark that the user wrote an object that the store
+ *   beside holds. A scan of an index over `selectedRecords` reads those objects from here, and one
+ *   of an index over `selectedBlobs` reads the blobs of the store beside.
  * - A mark is kept here whether or not the store beside holds the same bytes, which anyone can
  *   send it. So the blob of every mark is in this backend, and what the store beside comes to hold
  *   changes neither what is listed here nor where it is kept.
@@ -52,7 +55,10 @@ export class PrivateStore implements RowKeeper {
   constructor(store: Store, backend: Backend) {
     this.#backend = backend;
     this.#heldBlobs = StoreOf.backendBeside(store, backend);
-    this[rowsByIndex] = new KeptRows(this, { marks: (start) => backend.records(start) });
+    this[rowsByIndex] = new KeptRows(this, {
+      marks: (start) => backend.records(start),
+      blobs: (start) => StoreOf.blobsOf(store, start),
+    });
   }
 
   /**

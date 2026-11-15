@@ -10,7 +10,7 @@ import {
   type SignedIdentityObject,
 } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { indexOver, type Store, selectedBlobs, type View, view } from "@estoc/store";
+import { indexOver, type PrivateStore, recordsOf, type Store, selectedBlobs, type View, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -30,6 +30,7 @@ export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIde
  */
 export class Correspondence {
   readonly #store: Store;
+  readonly #privateStore: PrivateStore;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
   readonly #identifier: Identifier;
@@ -38,8 +39,9 @@ export class Correspondence {
   readonly #signatures: CorrespondenceIdentity["signatures"];
   readonly #seenPeople: View<IdentityVersionData, IdentityVersionOrder, People>;
 
+  /** `privateStore` is the one kept beside `store`. */
   constructor(
-    store: Store,
+    { store, privateStore }: { readonly store: Store; readonly privateStore: PrivateStore },
     post: Pick<Post, "outbox">,
     actor: Actor,
     clock: () => number,
@@ -47,6 +49,7 @@ export class Correspondence {
     { signatures, identityVersions }: CorrespondenceIdentity,
   ) {
     this.#store = store;
+    this.#privateStore = privateStore;
     this.#post = post;
     this.#actor = actor;
     this.#identifier = actor.signedIdentity.identity.identifier;
@@ -62,7 +65,8 @@ export class Correspondence {
   }
 
   /**
-   * Signs a grant of `mailboxes` to `to`, and writes the signature as a record with its closure.
+   * Signs a grant of `mailboxes` to `to`, and writes the signature to the store with its closure
+   * and then a record of it to the private store.
    *
    * - The grant is to the current identity version of `to` that the store holds, `to` itself when
    *   none is later.
@@ -75,8 +79,9 @@ export class Correspondence {
     const grant = this.#grants.encode(current, mailboxes, this.#clock());
     const signature = await this.#actor.sign(grant);
     await this.#store.write({
-      records: [signature],
+      roots: [signature.link],
       blobs: [
+        signature.bytes,
         grant.bytes,
         ...this.#grants.schema.blobs,
         ...this.#signatures.schema.blobs,
@@ -84,16 +89,17 @@ export class Correspondence {
         ...current.blobs,
       ],
     });
+    await this.#privateStore.write(recordsOf([signature]));
     return signature;
   }
 
   /**
    * Sends `root` and its closure in the store to each mailbox of the latest grant of the person of
-   * `to` to the actor, and writes a record for each mailbox that takes it.
+   * `to` to the actor, and writes a mark for each mailbox that takes it.
    *
    * - `to` takes messages at each of those mailboxes, so the message has gone once one takes it. A
-   *   mailbox that turns it back leaves no record and does not stop the others.
-   * - Sending a root again sends the same bundle and writes other records.
+   *   mailbox that turns it back leaves no mark and does not stop the others.
+   * - Sending a root again sends the same bundle and writes other marks.
    *
    * @throws {UndeliveredMessage} of kind `gone` when the latest grant names no mailbox, or the store
    *   holds no grant that is honored.

@@ -13,9 +13,14 @@ export interface Batch {
    */
   readonly records?: Iterable<{ readonly bytes: Bytes<unknown> }>;
   /**
-   * Blobs that come with them and are not recorded: what the objects link to, or the blobs of a
-   * bundle received along with an object that notes its arrival. Only those in the closure of a
-   * recorded object are kept.
+   * Links of blobs that the store is to hold with their closures, such as the root of a bundle
+   * that came in. The store lists none of them, so a mark of what was written goes in a private
+   * store beside.
+   */
+  readonly roots?: Iterable<Link<unknown>>;
+  /**
+   * Blobs that come with them and are not recorded: what the objects and the roots link to, and
+   * the roots themselves. Only those in the closure of a recorded object or of a root are kept.
    */
   readonly blobs?: Iterable<Bytes<unknown>>;
 }
@@ -37,7 +42,7 @@ export interface Batch {
  *   their authority in a signature.
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
- * - A write adds only the blobs in the closures of its records.
+ * - A write adds only the blobs in the closures of its records and of its roots.
  * - A store keeps the order it took its blobs in, which a later write leaves as it is, so a reader
  *   can tell what it held when a blob came in.
  */
@@ -52,13 +57,17 @@ export interface Store {
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   /**
-   * Records each of the batch's `records`: puts in a record of it and the blobs in the record's
-   * closure, the object among them, and lists the record. The other blobs are dropped. A refused
-   * batch writes nothing.
+   * Puts in the blobs of the batch in the closures of its `roots` and of its `records`. The other
+   * blobs are dropped. A refused batch writes nothing.
+   *
+   * - Each of `records` is recorded: a record of it is put in with the blobs in the record's
+   *   closure, the object among them, and is listed.
+   * - A root is not listed. One that the store holds already need not be in the batch.
    *
    * @throws {RefusedBatch} when one of `records` is not an object.
-   * @throws {RefusedBatch} when a blob in the closure of one of `records` is neither in the batch
-   *   nor held by the store, such as the schema of an object or a blob its data links to.
+   * @throws {RefusedBatch} when one of `roots`, or a blob in the closure of one of `roots` or of
+   *   `records`, is neither in the batch nor held by the store, such as the schema of an object or
+   *   a blob its data links to.
    * @throws the backend's own error when the backend fails.
    */
   write(batch: Batch): Promise<void>;
@@ -165,7 +174,7 @@ export class StoreOf implements Store, RowKeeper {
     await (await this.stage(batch)).commit();
   }
 
-  async stage({ records = [], blobs = [] }: Batch): Promise<StagedStore> {
+  async stage({ records = [], roots = [], blobs = [] }: Batch): Promise<StagedStore> {
     const batch = copiedBatch(records, blobs, "recorded");
     const recordLinks: Link<RecordObject>[] = [];
     for (const link of batch.objects) {
@@ -174,7 +183,7 @@ export class StoreOf implements Store, RowKeeper {
       recordLinks.push(record.link);
     }
     for (const blob of recordSchema.blobs) batch.blobs.set(linkOf(blob), blob);
-    const keptBlobs = await leavesFirst(recordLinks, batch.blobs, this.#backend);
+    const keptBlobs = await leavesFirst([...recordLinks, ...roots], batch.blobs, this.#backend);
     return new StagedStoreOf(this, this.#backend, keptBlobs, recordLinks, batch.objects);
   }
 
@@ -198,8 +207,7 @@ export class StoreOf implements Store, RowKeeper {
    * @throws {TypeError} for a store not made by `new Store`.
    */
   static backendBeside(store: Store, backend: Backend): Backend {
-    if (!(#backend in store)) throw new TypeError("only a store made by `new Store` has another kept beside it");
-    const sharedBackend = store.#backend;
+    const sharedBackend = StoreOf.#backendOf(store);
     return {
       get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
       has: async (link) => (await backend.has(link)) || sharedBackend.has(link),
@@ -212,6 +220,20 @@ export class StoreOf implements Store, RowKeeper {
       blobs: (start) => backend.blobs(start),
       positionOf: (link) => backend.positionOf(link),
     };
+  }
+
+  /**
+   * The links of the blobs `store` holds, as its `blobs` gives them, leaving out the first `start`.
+   *
+   * @throws {TypeError} for a store not made by `new Store`.
+   */
+  static blobsOf(store: Store, start: number): AsyncIterable<Link<unknown>> {
+    return StoreOf.#backendOf(store).blobs(start);
+  }
+
+  static #backendOf(store: Store): Backend {
+    if (!(#backend in store)) throw new TypeError("only a store made by `new Store` has another kept beside it");
+    return store.#backend;
   }
 
   async closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {

@@ -33,8 +33,8 @@ export const mailboxKeySchema = schema("Mailbox Key", {
 export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
 
 /**
- * The schema of a record that a bundle, named by the link of its root, went out to a mailbox. `at`
- * is when, in milliseconds since the Unix epoch, by the clock of the device that wrote the record.
+ * The schema of a mark that a bundle, named by the link of its root, went out to a mailbox. `at`
+ * is when, in milliseconds since the Unix epoch, by the clock of the device that wrote the mark.
  */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),

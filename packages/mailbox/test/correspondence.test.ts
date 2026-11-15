@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, RefusedBatch, recordSchema, SecretStore, Store } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore, RefusedBatch, SecretStore, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
@@ -21,6 +21,7 @@ import {
   type Transport,
   UndeliveredMessage,
 } from "../src/index.ts";
+import { listedIn } from "./listed.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and correspond as one actor: each gives the
@@ -52,6 +53,7 @@ interface Person {
   readonly actor: Actor;
   readonly signedIdentity: SignedIdentityObject;
   readonly store: Store;
+  readonly privateStore: PrivateStore;
   readonly post: Post;
   readonly intake: Intake;
   readonly correspondence: Correspondence;
@@ -60,11 +62,12 @@ interface Person {
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
 async function personActingAs(actor: Actor, store = new Store(new MemoryBackend())): Promise<Person> {
+  const privateStore = new PrivateStore(store, new MemoryBackend());
   const secretStore = new SecretStore(store, new MemoryBackend());
-  const post = new Post(store, secretStore, { transports: [transport], clock });
-  const intake = new Intake(store, clock);
+  const post = new Post(store, privateStore, secretStore, { transports: [transport], clock });
+  const intake = new Intake(store, privateStore, clock);
   const correspondence = post.correspondenceAs(actor, identity);
-  return { actor, signedIdentity: actor.signedIdentity, store, post, intake, correspondence };
+  return { actor, signedIdentity: actor.signedIdentity, store, privateStore, post, intake, correspondence };
 }
 
 async function person(fill: number): Promise<Person> {
@@ -121,13 +124,6 @@ async function writeNote({ actor, store }: Person, text: string) {
   return signature;
 }
 
-async function recordedObjectsOf({ store }: Person): Promise<Link<unknown>[]> {
-  const links: Link<unknown>[] = [];
-  for await (const record of store.records())
-    links.push((await readObject(store, record, recordSchema)).data.object.link);
-  return links;
-}
-
 // A wallet lists one agent at 1_000, and at 2_000 lists another in its place.
 const wallet = signerOf(11);
 const [formerAgent, currentAgent] = [signerOf(12), signerOf(13)];
@@ -139,13 +135,13 @@ const removalIdentityVersion = await publish(wallet, {
 });
 
 describe("a grant", () => {
-  it("is recorded as a signature by the actor, of the mailboxes, at the post's clock", async () => {
+  it("is a signature by the actor, of the mailboxes, at the post's clock, which the private store records", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { inbox } = await openInbox(alice);
     const before = now;
     const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
 
-    expect(await recordedObjectsOf(alice)).toContain(signature.link);
+    expect(await listedIn(alice.privateStore)).toContain(signature.link);
     const readSignature = await signatures.read(signature.link, alice.store, noIdentityVersions);
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
     const { data } = await readObject(alice.store, readSignature.object, grants.schema);
@@ -172,14 +168,14 @@ describe("a grant", () => {
   it("is refused when the store does not hold a mailbox it names, and nothing is written", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const elsewhere = network.queue().mailbox(new Uint8Array(32).fill(7));
-    const before = await recordedObjectsOf(alice);
+    const before = await listedIn(alice.privateStore);
     await expect(alice.correspondence.grant(bob.signedIdentity, [elsewhere.link])).rejects.toThrow(RefusedBatch);
-    expect(await recordedObjectsOf(alice)).toEqual(before);
+    expect(await listedIn(alice.privateStore)).toEqual(before);
   });
 });
 
 describe("sending to someone", () => {
-  it("goes to each mailbox of their latest grant, with a record for each", async () => {
+  it("goes to each mailbox of their latest grant, with a mark for each", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const [first, second] = [await openInbox(bob), await openInbox(bob)];
     await grantMailboxes(bob, alice, [first, second]);
@@ -187,7 +183,7 @@ describe("sending to someone", () => {
     const signature = await writeNote(alice, "hi Bob");
     const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
     expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([first.inbox.mailbox, second.inbox.mailbox]);
-    expect(await recordedObjectsOf(alice)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
+    expect(await listedIn(alice.privateStore)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
     expect(await first.inbox.collect(first.pickup)).toHaveLength(1);
     expect(await second.inbox.collect(second.pickup)).toHaveLength(1);
   });
@@ -266,11 +262,11 @@ describe("sending to someone", () => {
     await grantMailboxes(bob, alice, [gone, busy]);
 
     const signature = await writeNote(alice, "hi Bob");
-    const before = await recordedObjectsOf(alice);
+    const before = await listedIn(alice.privateStore);
     await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({
       kind: "later",
     });
-    expect(await recordedObjectsOf(alice)).toEqual(before);
+    expect(await listedIn(alice.privateStore)).toEqual(before);
   });
 
   it("sends nothing when the post has no transport for a mailbox of the grant", async () => {

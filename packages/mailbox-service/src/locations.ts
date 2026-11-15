@@ -29,8 +29,8 @@ const locationSchema = schema("Location", {
 type LocationOrder = readonly ["identifier", "at", "service"];
 
 /**
- * The Services that the signatures a store holds sign, records or not, by
- * the identifier of the identity that signed each. A Service carries its authority
+ * The Services that the signatures a store holds sign, however they came,
+ * by the identifier of the identity that signed each. A Service carries its authority
  * in the signature, so one that came in at a mailbox is honored as one
  * fetched.
  */

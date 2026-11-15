@@ -289,6 +289,62 @@ describe("a store", () => {
   });
 });
 
+describe("a store given roots", () => {
+  it("keeps the closure of each root, drops the other blobs, and lists nothing", async () => {
+    const store = newStore();
+    const image = utf8("an image");
+    const note = object({ image: new LinkValue(linkOf(image)) });
+    const stray = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
+    await store.write({ roots: [note.link], blobs: [note.bytes, image, stray.bytes, ...anything.blobs] });
+    expect(await store.get(note.link)).toEqual(note.bytes);
+    expect(await store.get(linkOf(image))).toEqual(image);
+    expect(await store.get(stray.link)).toBeUndefined();
+    expect(await recordsOf(store)).toEqual([]);
+  });
+
+  it("takes a root that is not an object", async () => {
+    const store = newStore();
+    const image = utf8("an image");
+    await store.write({ roots: [linkOf(image)], blobs: [image] });
+    expect(await store.get(linkOf(image))).toEqual(image);
+  });
+
+  it("takes a root that it holds already, which the batch need not give", async () => {
+    const store = newStore();
+    const note = object({ text: "hello" });
+    await store.write({ roots: [note.link], blobs: [note.bytes, ...anything.blobs] });
+    const reply = object({ inner: new LinkValue(note.link) });
+    await store.write({ roots: [note.link, reply.link], blobs: [reply.bytes] });
+    expect(await store.get(reply.link)).toEqual(reply.bytes);
+  });
+
+  it("refuses a root that neither the batch nor it holds, and keeps none of the batch", async () => {
+    const store = newStore();
+    const [note, other] = [object({ text: "hello" }), object({ text: "not given" })];
+    const batch = { roots: [note.link, other.link], blobs: [note.bytes, ...anything.blobs] };
+    await expect(store.write(batch)).rejects.toThrow(RefusedBatch);
+    expect(await blobsOf(store)).toEqual([]);
+  });
+
+  it("refuses a root that links to a blob neither the batch nor it holds", async () => {
+    const store = newStore();
+    const note = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
+    const batch = { roots: [note.link], blobs: [note.bytes, ...anything.blobs] };
+    await expect(store.write(batch)).rejects.toThrow(RefusedBatch);
+    expect(await blobsOf(store)).toEqual([]);
+  });
+
+  it("stages the closures of the roots, and holds them once that is committed", async () => {
+    const store = newStore();
+    const note = object({ text: "hello" });
+    const stagedStore = await store.stage({ roots: [note.link], blobs: [note.bytes, ...anything.blobs] });
+    expect(await stagedStore.get(note.link)).toEqual(note.bytes);
+    expect(await store.get(note.link)).toBeUndefined();
+    await stagedStore.commit();
+    expect(await store.get(note.link)).toEqual(note.bytes);
+  });
+});
+
 describe("the closure of a blob", () => {
   it("holds the blob, the blobs it links to and theirs in turn, its schema and the root schema among them", async () => {
     const store = newStore();

@@ -137,40 +137,42 @@ does no harm, as arriving twice does none.
 
 ## Through a store
 
-A `Post` binds sending and receiving to a store of `@estoc/store`, and
-keeps the keys of the user's mailboxes in a secret store beside it. What
-is sent is taken from the store, what arrives is kept there, and each is
-recorded as an object the user writes:
+A `Post` binds sending and receiving to a store of `@estoc/store`, with a
+private store and a secret store beside it. What is sent is taken from the
+store, what arrives is kept there, each is marked in the private store, and
+the keys of the user's mailboxes are kept in the secret store:
 
 ```
-Inbound      {"bundle": <link of the root>, "at": <milliseconds>, "via": <link of the mailbox>}
-Outbound     {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}
+Inbound      {"bundle": <link of the root>, "at": <milliseconds>, "via": <link of the mailbox>}, in the private store
+Outbound     {"bundle": <link of the root>, "mailbox": <link of the mailbox>, "at": <milliseconds>}, in the private store
 Mailbox Key  {"mailbox": <link of the mailbox>, "secret": <x25519 secret key>}, in the secret store
 ```
 
-`Inbound` is the record of `@estoc/store` for whatever comes from outside a
+`Inbound` is the mark of `@estoc/store` for whatever comes from outside a
 store, with the mailbox as its channel, and `inboundSchema` is exported from
-there. The other two schemas are `outboundSchema` and `mailboxKeySchema`. A
+there. When something came or went, and at which mailbox, is not a blob of
+the store, so no bundle gathered from it carries that. The other two schemas are `outboundSchema` and `mailboxKeySchema`. A
 key's `secret` is 32 bytes.
 
 ```ts
 import { Post } from "@estoc/mailbox";
-import { MemoryBackend, SecretStore } from "@estoc/store";
+import { MemoryBackend, PrivateStore, SecretStore } from "@estoc/store";
 
+const privateStore = new PrivateStore(store, new MemoryBackend());
 const secretStore = new SecretStore(store, new MemoryBackend());
-const post = new Post(store, secretStore, { transports: [transport] });
+const post = new Post(store, privateStore, secretStore, { transports: [transport] });
 
 const outbox = await post.outbox(theirs.link);
 await outbox.send(signature.link); // the root and its closure in the store
 
 const inbox = await post.openInbox((publicKey) => encodeObject(schema, { key: publicKey, name: queueName }));
-await inbox.collect(pickup); // each bundle that waits, kept with an Inbound record
+await inbox.collect(pickup); // each bundle that waits, kept with an Inbound mark
 
 const again = await post.inbox(inbox.key); // after a restart
 ```
 
-Both mailboxes have to be in the store, since a record links to its
-mailbox and a store takes in nothing without its closure. A mailbox handed
+Both mailboxes have to be in the store, since a mark links to its mailbox
+and a private store takes in nothing whose closure neither side holds. A mailbox handed
 to the sender comes from outside the store, so the sender keeps it with an
 `Intake` of `@estoc/store`, as the root of a bundle or in the closure of one,
 such as the signature of whoever stands behind it. `post.outbox` takes its
@@ -180,14 +182,14 @@ link all the same.
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { Intake } from "@estoc/store";
 
-const intake = new Intake(store);
+const intake = new Intake(store, privateStore);
 await intake.receive(decodeBundle(encodeBundle({ bytes: handedOut }, transport.schema.blobs)));
 ```
 
 `openInbox` makes a new key and gives its public key to `makeMailbox`,
 which gives back a mailbox sealed to it, of one of the post's transports.
-The post writes the mailbox to the store as a record, and then the key to
-the secret store. A key is one mailbox's, so a key used at two transports
+The post writes the mailbox to the store, a record of it to the private
+store, and then the key to the secret store. A key is one mailbox's, so a key used at two transports
 would be two. If the post stops in between, what is left is a mailbox that
 nobody receives at and nobody was handed. The inbox's `mailbox` is the
 link of the mailbox to hand out, and its `key` the link of the key.
@@ -208,38 +210,41 @@ bundle. When the transport cannot hand it on, `send` rejects with its
 send again. Neither the file nor the ciphertext is kept: sending again
 seals the same bundle afresh.
 
-`receive` hands the bundle to the store's `Intake`, which keeps it and its
-`Inbound` record in one write, and the delivery it gives back names the
-mailbox. What does not open with the key is refused, and so is a bundle
-that leaves out a blob in its root's closure that the store does not hold,
-record and all. Blobs outside the root's closure are dropped.
+`receive` hands the bundle to an `Intake`, which keeps it in the store and
+then writes its `Inbound` mark to the private store, and the delivery it
+gives back names the mailbox. What does not open with the key is refused,
+and so is a bundle that leaves out a blob in its root's closure that the
+store does not hold, with no mark of it. Blobs outside the root's closure
+are dropped.
 
 `collect` takes a pickup of the inbox's mailbox, and refuses one of
-another. It receives each arrival in turn and gives back the records it
+another. It receives each arrival in turn and gives back the marks it
 wrote.
 
-- It is done with an arrival once the write is through.
-- What it refuses is done with too and leaves no record. A bundle that
+- It is done with an arrival once the writes are through.
+- What it refuses is done with too and leaves no mark. A bundle that
   leaves out a blob would be taken once the blob reaches the store, but
   `collect` does not keep it waiting for that: a sender whose store holds
   the bundle can send it again.
-- When the store fails to write, `collect` stops and rejects without being
-  done with that arrival, which waits to be collected again.
-- A stop after the write and before `drop` leaves the arrival waiting as
-  well, and collecting it again writes a second record of the same bundle.
+- When the store or the private store fails to write, `collect` stops and
+  rejects without being done with that arrival, which waits to be collected
+  again.
+- A stop after the writes and before `drop` leaves the arrival waiting as
+  well, and collecting it again writes a second mark of the same bundle.
 
 ### Reading what came and went
 
-Each time something comes in or goes out is a record of its own, so a
+Each time something comes in or goes out is a mark of its own, so a
 message that arrives twice, or is sent again after it was lost, has two.
-`at` is the clock of the device that wrote the record, and is no part of
+`at` is the clock of the device that wrote the mark, and is no part of
 the message. A reader takes the same `bundle` at the same mailbox as one
 message, at the earliest `at`: the bundle is named by its root, which is
 the same each time it is sent.
 
-The package keeps no index of the records. An application keeps its own,
-an index of `@estoc/store` that reads `inboundSchema` of that package and
-`outboundSchema` of this one. The tests give each record a row of its
+The package keeps no index of the marks. An application keeps its own, an
+index of `@estoc/store` over `selectedMarks` that reads `inboundSchema` of
+that package and `outboundSchema` of this one, scanned on the private
+store. The tests give each mark a row of its
 `direction`, `mailbox`, `at` and `bundle`, in the order of those fields, where
 the mailbox of an `Inbound` is its
 `via`, which is the mailbox's link for what came in at one, and one without
@@ -303,8 +308,9 @@ Mailbox Grant  {"to": <link of a signed identity>, "mailboxes": [<link of a mail
 A Mailbox Grant says at which mailboxes whoever signs it takes messages
 from someone. `to` is that someone's signed identity, the identity version
 the signer holds when it signs, and `at` is when, by the signer's clock. The
-signer writes its signature over the grant as a record, which is its own
-account of where it takes whose messages, and sends the signature, with
+signer writes its signature over the grant to its store with a record of it
+in its private store, which is its own account of where it takes whose
+messages, and sends the signature, with
 its closure, to the one the grant is to, or hands it over out of band. That
 one keeps it through an `Intake`, as `Inbox.receive` does, and then sends to
 those mailboxes. A grant with no mailboxes says that the signer no longer
@@ -341,14 +347,15 @@ const message = await correspondence.messageAt(inbox.mailbox, bundle);
 ```
 
 `grant` signs a grant, at the post's clock, to the current identity version
-of `theirs` that the store holds, and writes the signature as a record. It
-refuses a mailbox the store does not hold, and writes nothing then.
+of `theirs` that the store holds, and writes the signature to the store and
+a record of it to the private store. It refuses a mailbox the store does
+not hold, and writes nothing then.
 
 `send` sends a root that the store holds to each mailbox of the latest grant
-of theirs to the actor, and gives back a record for each mailbox that takes it.
+of theirs to the actor, and gives back a mark for each mailbox that takes it.
 
 - They take messages at each of those mailboxes, so the message has gone once
-  one of them takes it. A mailbox that turns it back leaves no record and does
+  one of them takes it. A mailbox that turns it back leaves no mark and does
   not stop the others.
 - When no grant is honored, or the latest names no mailbox, it rejects
   with an `UndeliveredMessage` of kind `gone`, since another mailbox is needed.
@@ -416,8 +423,8 @@ await series.grantFrom(their, mine, people.asTakenIn); // where they take mine
 
 `grants.series` is a `View` of `@estoc/store`, made once for the program
 as the index it holds is. Its index reads the signatures over grants among
-the blobs a store holds, by their schema, wherever they sit in the closure of a
-record or of what came in: a signature carries its authority in itself, so it
+the blobs a store holds, by their schema, wherever they sit in a closure it
+holds: a signature carries its authority in itself, so it
 reads the same whoever sent it. Each gives a row, an object of
 `mailboxGrantRowSchema`: the identifier of the signer, that of `to`, `at` and
 the signature, in the order of those fields; the signature is verified by
@@ -434,8 +441,8 @@ grant, or `undefined` when there is none.
 
 The `SeenIdentityVersions` of a reader are the `People` of the signed
 identities its store holds, as in `@estoc/identity`. `seen` reads them by
-their schema, wherever they sit in the closure of a record or of what came
-in, and is made once for the program too.
+their schema, wherever they sit in a closure it holds, and is made once for
+the program too.
 
 A root removes an agent by signing an identity version that does not list it,
 as in `@estoc/identity`. `asTakenIn` of the reader's people honors a grant as

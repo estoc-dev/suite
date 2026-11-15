@@ -25,7 +25,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
-import { Intake, type Store, view } from "@estoc/store";
+import { Intake, type PrivateStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
@@ -71,6 +71,7 @@ type HttpMailboxData = DataOf<typeof httpTransport.schema>;
  */
 type Posting = {
   readonly store: Store;
+  readonly privateStore: PrivateStore;
   readonly intake: Intake;
   readonly origin: EncodedObject<OriginData>;
   readonly signatures: Signatures;
@@ -128,7 +129,7 @@ export class AccountOffer {
    *
    * - The actor signs the offer, and the service acknowledges that signature.
    * - The service's signature over the acknowledgement is kept in the store
-   *   with an Inbound record whose `via` is the origin the offer was taken
+   *   with an Inbound mark whose `via` is the origin the offer was taken
    *   at.
    *
    * @throws when the service refuses the acceptance, or when its
@@ -192,8 +193,9 @@ export class MailboxOffer {
    * - The actor signs a request for it, and the service acknowledges that
    *   signature.
    * - The service's signature over the acknowledgement is kept in the store
-   *   with an Inbound record whose `via` is the origin the offer was taken
-   *   at, and then with an Opened mailbox record, which `pickup` goes by.
+   *   with an Inbound mark whose `via` is the origin the offer was taken at.
+   *   The mailbox is then written to the store, and an Opened mailbox mark,
+   *   which `pickup` goes by, to the private store.
    * - It gives the HTTP mailbox of `@estoc/mailbox` that senders post to, at
    *   the origin the offer was taken at. It is what `Post.openInbox` is to be
    *   given, as `(publicKey) => offer.open(actor, publicKey)`.
@@ -220,10 +222,9 @@ export class MailboxOffer {
       mailbox: new LinkValue(mailbox.link),
       acknowledgement: new LinkValue(acknowledgement.link),
     });
-    await this.#posting.store.write({
-      records: [openedMailbox],
-      blobs: [mailbox.bytes, ...mailbox.schema.blobs, ...openedMailbox.schema.blobs],
-    });
+    const { store, privateStore } = this.#posting;
+    await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
+    await privateStore.write({ marks: [openedMailbox], blobs: [...openedMailbox.schema.blobs] });
     return mailbox;
   }
 }
@@ -231,7 +232,7 @@ export class MailboxOffer {
 /**
  * Posts the bundle of `signature` to `url`, with `blobs` and the blobs of
  * its signed identity, and keeps the answer in the store with an Inbound
- * record whose `via` is the posting's origin.
+ * mark whose `via` is the posting's origin.
  *
  * The answer is read as `service`'s signature over an acknowledgement of
  * `signature`, written to `schema`, whose `field` links to it.
@@ -353,23 +354,27 @@ class ServicePickup implements Pickup {
  * Mailbox services as a client reaches them, with a store that keeps the
  * Services it reaches, the accounts it opens and the mailboxes.
  *
- * - What a service answers is kept with an Inbound record of `@estoc/store`
+ * - What a service answers is kept with an Inbound mark of `@estoc/store`
  *   whose `via` is the Origin it was reached at.
- * - It reads Services back from the signatures the store holds, records or
- *   not, so one that came in another way, such as at a mailbox, reads alike.
- * - It reads the mailboxes it opened back from the Opened mailbox records
- *   that `open` writes.
+ * - It reads Services back from the signatures the store holds, however
+ *   they came, so one that came in another way, such as at a mailbox, reads
+ *   alike.
+ * - It reads the mailboxes it opened back from the Opened mailbox marks
+ *   that `open` writes to the private store.
  */
 export class Services {
   readonly #store: Store;
+  readonly #privateStore: PrivateStore;
   readonly #intake: Intake;
   readonly #signatures: Signatures;
   readonly #locations: LocationsView;
   readonly #mailboxes: OpenedMailboxesView;
   readonly #people: PeopleView;
 
-  constructor(store: Store, intake: Intake, kit: IdentityKit) {
+  /** `privateStore` is the one kept beside `store`, and `intake` keeps what comes in in the two. */
+  constructor(store: Store, privateStore: PrivateStore, intake: Intake, kit: IdentityKit) {
     this.#store = store;
+    this.#privateStore = privateStore;
     this.#intake = intake;
     this.#signatures = kit.signatures;
     this.#locations = locationsView(kit.signatures);
@@ -380,7 +385,7 @@ export class Services {
   /**
    * Fetches the Service at `origin`, such as `https://mail.example`, and
    * keeps the service's signature over it in the store with an Inbound
-   * record whose `via` is `origin`.
+   * mark whose `via` is `origin`.
    *
    * What the origin answers over TLS is the service's, so the identity that
    * signed the Service is taken as the service's.
@@ -426,10 +431,10 @@ export class Services {
    * What waits at `mailbox`, an HTTP mailbox that a service opened, picked
    * up by `actor`, an actor for the mailbox's account.
    *
-   * - It goes by the acknowledgement that the Opened mailbox record of
+   * - It goes by the acknowledgement that the Opened mailbox mark of
    *   `mailbox` links to, which `open` wrote on this device or on another
-   *   whose store this one syncs with. One that came in another way, such
-   *   as at a mailbox, does not stand in for it.
+   *   whose private store this one syncs with. One that came in another
+   *   way, such as at a mailbox, does not stand in for it.
    * - A later identity version of the account that takes out the key that
    *   signed the request does not change it, so the mailbox stays the
    *   account's.
@@ -437,12 +442,13 @@ export class Services {
    *   service that signed the acknowledgement says, wherever the mailbox was
    *   opened.
    *
-   * @throws when the store holds no Opened mailbox record of `mailbox`, or
-   *   no Service of the service that signed its acknowledgement.
+   * @throws when the private store lists no Opened mailbox mark of
+   *   `mailbox`, or the store holds no Service of the service that signed
+   *   its acknowledgement.
    */
   async pickup(mailbox: Link<EncodedObject>, actor: Actor): Promise<Pickup> {
-    const link = await (await view(this.#store, this.#mailboxes)).acknowledgementOf(mailbox);
-    if (link === undefined) throw new Error(`the store holds no record of opening ${mailbox}`);
+    const link = await (await view(this.#privateStore, this.#mailboxes)).acknowledgementOf(mailbox);
+    if (link === undefined) throw new Error(`the private store lists no mark of opening ${mailbox}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
@@ -481,6 +487,7 @@ export class Services {
     checkOrigin(origin);
     const posting = {
       store: this.#store,
+      privateStore: this.#privateStore,
       intake: this.#intake,
       origin: this.#originOf(origin),
       signatures: this.#signatures,
@@ -540,13 +547,15 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
 
 /**
  * Reaches mailbox services for the identities of the user of `store`, which
- * keeps what it reaches, reading keys in `schemes`. `clock` gives the time
- * in milliseconds since the Unix epoch that the Inbound records are written
- * at, `Date.now` unless given.
+ * keeps what it reaches, with the marks of that in `privateStore`, the one
+ * kept beside it, reading keys in `schemes`. `clock` gives the time in
+ * milliseconds since the Unix epoch that the Inbound marks are written at,
+ * `Date.now` unless given.
  */
 export function loadServices(
   store: Store,
+  privateStore: PrivateStore,
   { schemes, clock = Date.now }: { readonly schemes: readonly Scheme[]; readonly clock?: () => number },
 ): Services {
-  return new Services(store, new Intake(store, clock), loadIdentity(schemes));
+  return new Services(store, privateStore, new Intake(store, privateStore, clock), loadIdentity(schemes));
 }

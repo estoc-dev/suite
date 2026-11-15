@@ -30,7 +30,7 @@ async function run(script: string, args: readonly string[], settings: Readonly<R
   return { code, stdout, stderr };
 }
 
-/** Settings for a service at a free port of 127.0.0.1, which keeps its secret store and its database in a folder of its own. */
+/** Settings for a service at a free port of 127.0.0.1, which keeps its stores and its database in a folder of its own. */
 async function settingsAtFreePort() {
   const database = await makeTemporaryPath();
   const probe = createServer().listen(0, "127.0.0.1");
@@ -40,6 +40,7 @@ async function settingsAtFreePort() {
   return {
     MAILBOX_ORIGIN: `http://127.0.0.1:${port}`,
     MAILBOX_SECRET_STORE: join(dirname(database), "secret.db"),
+    MAILBOX_PRIVATE_STORE: join(dirname(database), "private.db"),
     MAILBOX_DATABASE: database,
     MAILBOX_PORT: String(port),
   };
@@ -115,12 +116,13 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(await service.stop()).toBe(0);
   });
 
-  it("refuses to start without its secret store, and makes no database", async () => {
+  it("refuses to start without its secret store, and makes neither a private store nor a database", async () => {
     const settings = await settingsAtFreePort();
     const { code, stderr } = await run(main, [], settings);
     expect(code).toBe(1);
     expect(stderr).toContain(`no such file or directory, access '${settings.MAILBOX_SECRET_STORE}'`);
     await expect(access(settings.MAILBOX_SECRET_STORE)).rejects.toThrow(/ENOENT/);
+    await expect(access(settings.MAILBOX_PRIVATE_STORE)).rejects.toThrow(/ENOENT/);
     await expect(access(settings.MAILBOX_DATABASE)).rejects.toThrow(/ENOENT/);
   });
 

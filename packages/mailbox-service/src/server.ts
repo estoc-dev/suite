@@ -21,7 +21,7 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { type Store, view } from "@estoc/store";
+import { type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
@@ -92,10 +92,16 @@ export interface ServiceOptions {
    */
   readonly origin: string;
   /**
-   * Where the service writes what it signs as records, with their closure:
-   * its Services, which say what ids it gave out, and the acknowledgements.
+   * Where the service writes what it signs, with its closure: its Services,
+   * which say what ids it gave out, and the acknowledgements.
    */
   readonly store: Store;
+  /**
+   * The private store beside `store`, where the service writes a record of
+   * each thing it signs. It answers by the acknowledgements recorded there,
+   * so one that came to the store another way opens nothing.
+   */
+  readonly privateStore: PrivateStore;
   readonly accounts: Accounts;
   readonly mailboxes: Mailboxes;
   /**
@@ -132,6 +138,7 @@ class MailboxService {
   readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
   readonly #store: Store;
+  readonly #privateStore: PrivateStore;
   readonly #accounts: Accounts;
   readonly #mailboxes: Mailboxes;
   readonly #clock: () => number;
@@ -142,7 +149,13 @@ class MailboxService {
     identifier: Identifier,
     kit: IdentityKit,
     people: PeopleView,
-    { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
+    {
+      store,
+      privateStore,
+      accounts,
+      mailboxes,
+      clock,
+    }: Required<Pick<ServiceOptions, "store" | "privateStore" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#signer = signer;
     this.#signedIdentity = signedIdentity;
@@ -152,6 +165,7 @@ class MailboxService {
     this.#acknowledgements = acknowledgementsView(kit.signatures);
     this.#signatures = kit.signatures;
     this.#store = store;
+    this.#privateStore = privateStore;
     this.#accounts = accounts;
     this.#mailboxes = mailboxes;
     this.#clock = clock;
@@ -239,7 +253,7 @@ class MailboxService {
     } catch (error) {
       return answer(400, reasonOf(error));
     }
-    const acknowledgements = await view(this.#store, this.#acknowledgements);
+    const acknowledgements = await view(this.#privateStore, this.#acknowledgements);
     const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
       heldAcknowledgement === undefined
@@ -314,10 +328,10 @@ class MailboxService {
   }
 
   /**
-   * Signs `acknowledgement` of what `bundle` holds at its root, and writes it
-   * to the store as a record, with `blobs` from the closure of what it
-   * acknowledges. From then on the service holds the identity version that
-   * signed what it acknowledges.
+   * Signs `acknowledgement` of what `bundle` holds at its root, and writes
+   * the signature to the store, with `blobs` from the closure of what it
+   * acknowledges, and then a record of it to the private store. From then on
+   * the service holds the identity version that signed what it acknowledges.
    */
   async #acknowledge(
     acknowledgement: EncodedObject,
@@ -332,7 +346,7 @@ class MailboxService {
     // takes a blob in only with its whole closure.
     const { schema } = acknowledgement;
     const own = [acknowledgement.bytes, ...schema.blobs, ...signedIdentity.blobs, ...blobs];
-    await this.#store.write({ records: [signature], blobs: [...own, ...bundle.blobs()] });
+    await this.#write(signature, [...own, ...bundle.blobs()]);
     return signature;
   }
 
@@ -340,14 +354,19 @@ class MailboxService {
    * The service's signature at `link` over an acknowledgement while `people`
    * honor it. Once a crisis of the service's root cuts it, the service
    * signs the same acknowledgement as its current identity version, and
-   * writes that signature to the store as a record.
+   * writes that signature to the store and a record of it to the private
+   * store.
    */
   async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.honors(signature)) return link;
     const renewedSignature = await this.#sign({ link: signature.object }, people);
-    await this.#store.write({ records: [renewedSignature] });
+    await this.#write(renewedSignature);
     return renewedSignature.link;
+  }
+
+  async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
+    await writeSigned(signature, blobs, { store: this.#store, privateStore: this.#privateStore });
   }
 
   /**
@@ -497,7 +516,7 @@ export async function loadMailboxService(
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
-  const { store } = options;
+  const { store, privateStore } = options;
   const kit = loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
   const identifier: Identifier = keys.encode(signer.key).link;
@@ -542,12 +561,25 @@ export async function loadMailboxService(
       ...signatures.schema.blobs,
       ...actor.signedIdentity.blobs,
     ];
-    await store.write({ records: [await actor.sign(object)], blobs });
+    await writeSigned(await actor.sign(object), blobs, { store, privateStore });
   }
   return new MailboxService(signer, actor.signedIdentity, identifier, kit, seenPeople, {
     ...options,
     clock,
   });
+}
+
+/**
+ * Writes `signature`, which the service signed, to the store with those of
+ * `blobs` in its closure, and then a record of it to the private store.
+ */
+async function writeSigned(
+  signature: Signature,
+  blobs: readonly Bytes<unknown>[],
+  { store, privateStore }: Pick<ServiceOptions, "store" | "privateStore">,
+): Promise<void> {
+  await store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobs] });
+  await privateStore.write(recordsOf([signature]));
 }
 
 /** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */

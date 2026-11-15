@@ -9,7 +9,7 @@ import {
 } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { recordSchema, Store, view } from "@estoc/store";
+import { PrivateStore, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -34,7 +34,9 @@ import {
   makeTemporaryPath,
   memoryService,
   memoryStore,
+  privateStoreBeside,
   publish,
+  recordedObjectsIn,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -56,12 +58,7 @@ const getRoot = (service: MailboxService) => service.fetch(request("/"));
 const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
-const recordedObjectsOf = async (store: Pick<Store, "get" | "records">) => {
-  const links: Link<never>[] = [];
-  for await (const record of store.records())
-    links.push((await readObject(store, record, recordSchema)).data.object.link as Link<never>);
-  return links.sort();
-};
+const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(privateStoreBeside(store))).sort();
 
 /**
  * What `GET /` answers, read: the service's signature over its Service, the
@@ -602,17 +599,23 @@ describe("a mailbox service started again", () => {
   });
 });
 
-/** The store, the accounts and the mailboxes of a service, all in the SQLite file at `path`. */
+/**
+ * The store, the accounts and the mailboxes of a service, all in the SQLite
+ * file at `path`, and its private store in a file beside it.
+ */
 function sqliteParts(path: string) {
   const backend = new SqliteBackend(path);
+  const privateBackend = new SqliteBackend(`${path}.private`);
   const accounts = new SqliteAccounts(path);
   const mailboxes = new SqliteMailboxes(path);
   const close = () => {
     backend.close();
+    privateBackend.close();
     accounts.close();
     mailboxes.close();
   };
-  return { store: new Store(backend), accounts, mailboxes, close };
+  const store = new Store(backend);
+  return { store, privateStore: new PrivateStore(store, privateBackend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);

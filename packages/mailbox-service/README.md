@@ -69,7 +69,7 @@ it, so it stays one object, with one link, wherever the service is reached.
 import { ed25519, eip191 } from "@estoc/identity";
 import { loadServices } from "@estoc/mailbox-service";
 
-const services = loadServices(store, { schemes: [ed25519, eip191] });
+const services = loadServices(store, privateStore, { schemes: [ed25519, eip191] });
 const service = await services.fetch("https://mail.example");
 ```
 
@@ -80,7 +80,8 @@ schemas. What the origin answers over TLS is the service's, so `fetch` takes
 the identity that signed the Service as the service's, and refuses a
 Service that names another origin than the one asked, or that lists an
 offer signed for another identifier. It keeps the bundle in the
-store with an `Inbound` record of `@estoc/store`, and gives a `Service`:
+store with an `Inbound` mark of `@estoc/store` in `privateStore`, the private
+store beside it, and gives a `Service`:
 the service's signed identity that signed it, its
 origin, `at`, the link of the signature, `account`, the offer of an account
 when the Service lists one, and `mailbox`, the offer of mailboxes when it
@@ -211,8 +212,8 @@ What a service answers comes from outside the store, so the client keeps it
 as `@estoc/store` keeps all such: `fetch` keeps the service's signature over
 the Service, whose closure holds the offers and the service's signatures
 over them, and `accept` and `open` keep the service's signature over the
-acknowledgement, each with an `Inbound` record whose `via` is the origin it
-came from:
+acknowledgement, each with an `Inbound` mark in the private store whose `via`
+is the origin it came from:
 
 ```
 Origin  {"origin": <origin>}
@@ -221,35 +222,36 @@ Origin  {"origin": <origin>}
 The origin is an object of its own, written to `originSchema`, so one
 origin is one object however often it is reached. `via` records where
 something came from, and nothing reads it to decide anything. `loadServices`
-takes a `clock` for the `at` of the records, `Date.now` unless given. When the
+takes a `clock` for the `at` of the marks, `Date.now` unless given. When the
 service refuses, or its answer is refused, `fetch`, `accept` and `open` write
 nothing.
 
 What the client reads back of where services are, it reads from the
-signatures the store holds, records or not, by who signed them, as it reads
+signatures the store holds, however they came, by who signed them, as it reads
 identity versions. A Service that came in at a mailbox, or that another
 device fetched, reads as one that came from the service here. Another device
 that syncs the store learns where the services are, by their identifiers,
 without asking them.
 
-The mailboxes it opened, it reads back from a record that `open` writes once
-the service acknowledged the request, written to `openedMailboxSchema`:
+The mailboxes it opened, it reads back from a mark that `open` writes to the
+private store once the service acknowledged the request, written to
+`openedMailboxSchema`:
 
 ```
 Opened mailbox  {"mailbox": <link of the HTTP mailbox>, "acknowledgement": <link of the service's signature over the mailbox acknowledgement>}
 ```
 
-The record is the user's own, so another device that syncs the store picks
-up at the mailbox too. An acknowledgement that came in another way, such as
+The mark is the user's own, so another device that syncs the private store
+picks up at the mailbox too. An acknowledgement that came in another way, such as
 at a mailbox, opens no mailbox to pick up at, even one that the service
 signed of the account's request. A key that a later identity version of
 whoever holds the account takes out still signs requests by the identity version
 before, so a signature over a request does not tell one sent while the key
-was listed from one sent after; the record does.
+was listed from one sent after; the mark does.
 
 The client holds identity versions as the service does, as the signed
-identities in its store. That store can hold other records than the service
-gave out, so it can have seen an identity version that the service has not.
+identities in its store. That store can hold more than the service gave
+out, so it can have seen an identity version that the service has not.
 `fetch`, `latestOf` and `accept` verify the service's signatures against
 them, so a Service, an offer or an acknowledgement whose signature they do
 not honor is refused once the store holds the identity version that
@@ -262,8 +264,8 @@ this way only after the root signs a crisis.
 
 `fetch` reads the Service, and `accept` the acknowledgement, on the store as
 it will be once that is kept: the `stage` of an `Intake` of `@estoc/store`
-gives it, with the Inbound record that says the bundle came in, and once it
-reads, the staged batch is committed. So a Service that `fetch` takes reads alike
+gives it, and once it reads, the staged bundle is committed, which keeps it
+and then writes the Inbound mark that says it came in. So a Service that `fetch` takes reads alike
 by `latestOf` until the store holds an identity version of the service by
 which it is no longer honored.
 The offers a Service lists are read as any signature is, and the store then
@@ -308,9 +310,10 @@ signature as the root, with the request and the blobs of its signed
 identity. It keeps the service's signature over the acknowledgement as
 `accept` does, and makes the HTTP mailbox of `@estoc/mailbox` that senders
 post to, `{"key", "url"}`, whose url is the origin the offer was taken at and
-the send id. It writes an Opened mailbox record of the mailbox and the
-acknowledgement, and gives the mailbox. `Post.openInbox` writes the mailbox
-to the store as a record, and its key to the secret store. The client
+the send id. It writes the mailbox to the store, and an Opened mailbox mark
+of the mailbox and the acknowledgement to the private store, and gives the
+mailbox. `Post.openInbox` writes a record of the mailbox to the private
+store, and its key to the secret store. The client
 refuses an acknowledgement as `accept` does, and writes nothing then.
 
 The offer names the terms of the mailboxes it opens: what waits is kept
@@ -375,8 +378,8 @@ it acknowledges. Opening what arrives takes the mailbox's key, which
 `Post.openInbox` keeps in the secret store of the device that opened the
 mailbox.
 
-`pickup` goes by the acknowledgement that the Opened mailbox record of the
-mailbox links to, through an index over the records of `@estoc/store`. The
+`pickup` goes by the acknowledgement that the Opened mailbox mark of the
+mailbox links to, through an index over the marks of the private store. The
 client verified it when `open` kept it, and a later identity version of the
 account that takes out the key that signed the request does not change it:
 the mailbox stays the account's, and an agent that the root lists picks up
@@ -419,6 +422,7 @@ import { loadMailboxService, MemoryAccounts, MemoryMailboxes } from "@estoc/mail
 const service = await loadMailboxService(serviceKey, {
   origin: "https://mail.example",
   store,
+  privateStore,
   accounts: new MemoryAccounts(),
   mailboxes: new MemoryMailboxes(),
   terms: { retention: 30 * 24 * 60 * 60 * 1000, quota: 64 * 1024 * 1024, size: 1024 * 1024 },
@@ -434,8 +438,9 @@ request, whose host is the requester's to choose. Started with an empty
 store, it has the signer sign the service's identity, then the offer of an
 account, the offer of mailboxes on `terms`, and a Service at that origin
 that lists its signature over each offer, and writes the signature over the
-Service to `store`, a store of `@estoc/store`, as a record, with its
-closure. Started with a store that holds a Service of its, it signs as its
+Service to `store`, a store of `@estoc/store`, with its closure, and a
+record of it to `privateStore`, the private store beside. Started with a
+store that holds a Service of its, it signs as its
 current identity version, by the identity versions the store holds, and the signer does not sign the identity again. Once the store holds
 a crisis of the root, no Service signed before it is honored, so the service
 signs its offers and a Service again, as the crisis or one that follows it,
@@ -446,8 +451,11 @@ Service as a crisis of the root, or one that follows it, a service that
 started before signs as that identity version without starting again.
 While the store holds the crisis and no honored Service, `fetch` throws
 for each request until a service starts on the store again. Each
-acknowledgement is written there too, as a record, with the acceptance or
-the request and its closure, and what the bundle holds besides is dropped.
+acknowledgement is written there too, with the acceptance or the request and
+its closure, and a record of it to the private store. What the bundle holds
+besides is dropped. The service answers a request it acknowledged before by
+the acknowledgements recorded there, so services that share a store share
+its private store too.
 
 The Services in the store are what the service gave out. Of those it
 honors, the latest is the one it answers `GET /` with, as a client takes it for where
@@ -535,7 +543,7 @@ over its offer accepts nothing.
 ## Running with Node
 
 `src/main.ts` runs a service in Node, with its secret store in one SQLite
-file and all else it keeps in another.
+file, its private store in another and all else it keeps in a third.
 Node runs the TypeScript sources as they are, so a checkout of the
 repository with its dependencies installed is all it takes:
 
@@ -560,6 +568,7 @@ on its own: the secret store when it changes, the database often.
 |---|---|
 | `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
 | `MAILBOX_SECRET_STORE` | the path of the secret store that `main.ts key` makes |
+| `MAILBOX_PRIVATE_STORE` | the path of the SQLite file that holds the private store, made when it is missing |
 | `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes, made when it is missing |
 | `MAILBOX_PORT` | the port it listens at |
 | `MAILBOX_HOST` | the address it listens at; 127.0.0.1 unless set |
@@ -594,6 +603,7 @@ WorkingDirectory=/srv/suite
 ExecStart=/usr/bin/node packages/mailbox-service/src/main.ts
 Environment=MAILBOX_ORIGIN=https://mail.example
 Environment=MAILBOX_SECRET_STORE=/var/lib/mailbox/secret.db
+Environment=MAILBOX_PRIVATE_STORE=/var/lib/mailbox/private.db
 Environment=MAILBOX_DATABASE=/var/lib/mailbox/service.db
 Environment=MAILBOX_PORT=8080
 Restart=always
@@ -641,8 +651,8 @@ docker build -f packages/mailbox-service/Dockerfile -t mailbox-service .
 ```
 
 The image runs `main.ts` as the `node` user. It listens at port 8080 of the
-container, for a proxy on the same network, and keeps its secret store
-and its database in `/data`. The other settings come from the environment
+container, for a proxy on the same network, and keeps its secret store,
+its private store and its database in `/data`. The other settings come from the environment
 as above. Arguments go to `main.ts`, so the secret store is made with:
 
 ```sh

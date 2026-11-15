@@ -9,7 +9,7 @@ export {
 } from "./inbound.ts";
 export { MemoryBackend } from "./memory.ts";
 export { type MarkBatch, PrivateStore } from "./private-store.ts";
-export { type RecordData, type RecordObject, recordSchema } from "./record.ts";
+export { type RecordData, type RecordObject, recordSchema, recordsOf } from "./record.ts";
 export { scan } from "./scan.ts";
 export { SecretStore } from "./secret-store.ts";
 export type { Rows } from "./sorted-rows.ts";

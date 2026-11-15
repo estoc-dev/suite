@@ -1,7 +1,7 @@
 import type { Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import type { PrivateStore } from "./private-store.ts";
-import { objectsRecordedBy } from "./record.ts";
+import { objectRecordedAt } from "./record.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
 import {
   type Derivation,
@@ -26,10 +26,12 @@ import type { Store } from "./store.ts";
  * - The blobs a store holds reach an index over blobs, records among them, and on a staged batch
  *   those that the batch keeps as well. On a secret store, only the blobs kept in it do, as its
  *   records are only those listed in it: a blob that the store beside holds is not kept there.
- * - The marks of a private store reach an index over marks, each as the object it is. A private
- *   store lists nothing else, so an index over records or over blobs reads nothing from one, and an
- *   index over marks reads nothing from anything else: an object of the schema of a mark that a
- *   store holds is not a mark.
+ * - The marks of a private store reach an index over marks, each as the object it is. An index
+ *   over marks reads nothing from anything else: an object of the schema of a mark that a store
+ *   holds is not a mark.
+ * - On a private store, the recorded objects are those that the records among its marks link to,
+ *   and the blobs are those that the store beside it holds, in the order that store took them in.
+ *   What only the private store keeps, its marks among them, reaches no index over blobs.
  * - Only the rows of an index reach an index over it. They are kept beside the store and are not
  *   blobs of it: its `get` gives none of them, and an index over its blobs reads none.
  * - Each selection of the index reads each recorded object from the store, except that a selection
@@ -56,8 +58,7 @@ import type { Store } from "./store.ts";
  * @throws when the store throws, or gives no blob, for a link that a selection or its rows read,
  *   even where they catch it. Nothing is kept of what such a scan read, and a later one reads it
  *   again.
- * @throws when the store gives no blob for a record it lists, or one that is not an object of
- *   `recordSchema`.
+ * @throws when the store gives no blob for a record or a mark it lists.
  * @throws when the index reads blobs, itself or through an index it reads, and `store` is something
  *   else with a `get` and `records`, which cannot list them.
  */
@@ -79,10 +80,11 @@ async function rowsByIndexOf(
 ): Promise<RowsByIndex> {
   if (rowsByIndex in store) return (store as RowKeeper)[rowsByIndex];
   if (listsBlobs)
-    throw new Error("only a store, a secret store or a staged batch lists the blobs an index over blobs reads");
-  const objects: Link<unknown>[] = [];
-  for await (const link of objectsRecordedBy(store.records(), store)) objects.push(link);
-  return new AddedRows(noRows, { recordedObjects: objects, blobs: [] }, store);
+    throw new Error(
+      "only a store, a secret store, a private store or a staged batch lists the blobs an index over blobs reads",
+    );
+  const { objects } = await noRecordedObjects.adding(store.records(), store);
+  return new AddedRows(noRows, { recordedObjects: objects.links, blobs: [] }, store);
 }
 
 /** The key under which `scan` asks a store for the rows it has of each index, which nothing outside this package can. */
@@ -129,6 +131,40 @@ class ListedLinks implements Listing {
   }
 }
 
+/**
+ * The objects that the records among what a store lists link to, and how much of that list was
+ * read for them.
+ */
+class RecordedObjects {
+  readonly objects: ListedLinks;
+  /** How many of what the store lists were read, records or not: a later reading starts after them. */
+  readonly readCount: number;
+
+  constructor(objects = new ListedLinks(), readCount = 0) {
+    this.objects = objects;
+    this.readCount = readCount;
+  }
+
+  /**
+   * These, then the objects that the records among `listedLinks` link to, each read from `reader`.
+   * What is listed and is of another schema, as most marks are, records nothing.
+   *
+   * @throws when `reader` gives no blob for one of `listedLinks`, or one that is not an object.
+   */
+  async adding(listedLinks: AsyncIterable<Link<unknown>>, reader: Reader): Promise<RecordedObjects> {
+    const objects: Link<unknown>[] = [];
+    let readCount = this.readCount;
+    for await (const listedLink of listedLinks) {
+      readCount += 1;
+      const object = await objectRecordedAt(listedLink, reader);
+      if (object !== undefined) objects.push(object);
+    }
+    return readCount === this.readCount ? this : new RecordedObjects(await this.objects.adding(objects), readCount);
+  }
+}
+
+const noRecordedObjects = new RecordedObjects();
+
 /** What a store that lists nothing has. */
 const noRows: RowsByIndex = {
   recordedObjects: async () => new ListedLinks(),
@@ -159,7 +195,11 @@ class KeptValue<T> {
 
 /**
  * The lists of a store, each from the link at `start` on: the links of its records, of its marks
- * and of its blobs. A store and a secret store list no marks, and a private store lists only marks.
+ * and of its blobs.
+ *
+ * - A store and a secret store list no marks.
+ * - A private store lists marks, the records among which are its records, and the blobs of the
+ *   store beside it.
  */
 export interface StoreLists {
   records?(start: number): AsyncIterable<Link<unknown>>;
@@ -183,7 +223,7 @@ export interface StoreLists {
 export class KeptRows implements RowsByIndex {
   readonly #reader: Reader;
   readonly #lists: StoreLists;
-  readonly #recordedObjects = new KeptValue(new ListedLinks());
+  readonly #recordedObjects = new KeptValue(noRecordedObjects);
   readonly #marks = new KeptValue(new ListedLinks());
   readonly #blobs = new KeptValue(new ListedLinks());
   readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
@@ -195,12 +235,12 @@ export class KeptRows implements RowsByIndex {
     this.#lists = lists;
   }
 
-  recordedObjects(): Promise<ListedLinks> {
-    // An object has one record, so as many objects are listed as records were read.
-    return this.#recordedObjects.advance((listed) => {
-      const records = this.#lists.records?.(listed.links.length);
-      return listed.adding(records === undefined ? [] : objectsRecordedBy(records, this.#reader));
+  async recordedObjects(): Promise<ListedLinks> {
+    const recorded = await this.#recordedObjects.advance(async (read) => {
+      const listedLinks = this.#lists.records?.(read.readCount) ?? this.#lists.marks?.(read.readCount);
+      return listedLinks === undefined ? read : read.adding(listedLinks, this.#reader);
     });
+    return recorded.objects;
   }
 
   marks(): Promise<ListedLinks> {

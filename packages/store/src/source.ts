@@ -136,9 +136,13 @@ export class Source<T> {
 }
 
 /**
- * The objects a store records that `selection` takes, each as what it reads it as. They are what
- * the records link to, and not the records themselves. What came from elsewhere is reached by
- * following links from them.
+ * The recorded objects that `selection` takes, each as what it reads it as.
+ *
+ * - They are what the records link to, and not the records themselves. What came from elsewhere is
+ *   reached by following links from them.
+ * - On a private store, the records are those among its marks, and the objects they link to are
+ *   read from the store beside it. On a store or a secret store, they are the records it wrote
+ *   itself.
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });

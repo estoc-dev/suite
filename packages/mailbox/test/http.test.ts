@@ -1,11 +1,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { encodeObject, type Link, readObject } from "@estoc/object";
+import { encodeObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { MemoryBackend, recordSchema, SecretStore, Store } from "@estoc/store";
+import { MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
+import { listedIn } from "./listed.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -106,20 +107,19 @@ describe("an HTTP mailbox", () => {
 });
 
 describe("an HTTP outbox", () => {
-  it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
+  it("marks nothing of a send that the server timed out on, and marks the same root once sent again", async () => {
     const store = new Store(new MemoryBackend());
+    const privateStore = new PrivateStore(store, new MemoryBackend());
     const secretStore = new SecretStore(store, new MemoryBackend());
-    const post = new Post(store, secretStore, options);
+    const post = new Post(store, privateStore, secretStore, options);
     const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
     await store.write({ records: [mailbox, hello], blobs: [...http.schema.blobs, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
-    const before = await recordedObjectsOf(store);
-
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
-    expect(await recordedObjectsOf(store)).toEqual(before);
+    expect(await listedIn(privateStore)).toEqual([]);
 
     const delivery = await outbox.send(hello.link);
-    expect(new Set(await recordedObjectsOf(store))).toEqual(new Set([...before, delivery.link]));
+    expect(await listedIn(privateStore)).toEqual([delivery.link]);
     const sentRequests = take();
     expect(sentRequests.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = sentRequests.at(-1);
@@ -127,13 +127,6 @@ describe("an HTTP outbox", () => {
     expect((await bob.open(through.body)).link).toBe(hello.link);
   });
 });
-
-async function recordedObjectsOf(store: Store): Promise<Link<unknown>[]> {
-  const links: Link<unknown>[] = [];
-  for await (const record of store.records())
-    links.push((await readObject(store, record, recordSchema)).data.object.link);
-  return links;
-}
 
 describe("an HTTP mailbox's url", () => {
   const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));

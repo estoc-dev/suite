@@ -1,4 +1,4 @@
-import type { ValueMap } from "@estoc/object";
+import type { Reader, ValueMap } from "@estoc/object";
 import type { PrivateStore } from "./private-store.ts";
 import { scan } from "./scan.ts";
 import type { SecretStore } from "./secret-store.ts";
@@ -16,24 +16,20 @@ import type { StagedStore, Store } from "./store.ts";
 export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
   readonly index: OrderedIndex<F, By>;
   /**
-   * The value of `rows`, with `store` giving by link the objects they name,
-   * and where it took each in. It may be a promise, as when the value is
-   * worked out from all the rows at once.
+   * The value of `rows`, with `reader` giving by link the objects they name.
+   * It may be a promise, as when the value is worked out from all the rows at
+   * once.
    */
-  read(rows: Rows<F, By>, store: Pick<Store, "get" | "positionOf">): V;
+  read(rows: Rows<F, By>, reader: Reader): V;
 }
 
 /**
  * The value of `view` for what `store` holds now.
  *
- * - The index is scanned from the store and read with the store, so the rows, the objects they name
- *   and where each was taken in come from one store.
- * - A private store gives where it kept a blob itself, and nothing for one that only the store
- *   beside holds. So a view that asks where a blob of the store beside was taken in is viewed on
- *   that store.
+ * - The index is scanned from the store and read with the store, so the rows and the objects they
+ *   name come from one store.
  * - Later writes do not change the rows the value is worked out from; it takes them in when viewed
- *   again. A value that asks the store later where a blob was taken in finds where the store has
- *   taken it in by then, as for a blob of a staged batch once it is committed.
+ *   again.
  *
  * @throws as `scan` does.
  */

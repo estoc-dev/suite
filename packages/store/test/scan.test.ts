@@ -93,7 +93,6 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
   put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
   listedLinks: (start) => backend.listedLinks(start),
   blobs: (start) => backend.blobs(start),
-  positionOf: (link) => backend.positionOf(link),
 });
 
 /** A store, and the private store beside it that lists the records. */
@@ -408,7 +407,6 @@ describe("an index scanned from a private store", () => {
         put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
         listedLinks: (start) => backend.listedLinks(start),
         blobs: (start) => backend.blobs(start),
-        positionOf: (link) => backend.positionOf(link),
       };
       await expect(scan(newStores(swappedBackend, privateBackend).privateStore, byName)).rejects.toThrow(
         `another blob under ${listedObject.link}`,
@@ -527,7 +525,7 @@ describe("an index that fails on something it reads", () => {
       ),
       "#/name: not a string",
     ],
-  ])("fails on a record when %s", async (_, index, message) => {
+  ])("fails on a recorded object when %s", async (_, index, message) => {
     const stores = await storesRecording(unreadable, readable);
     await expect(scan(stores.privateStore, index.orderedBy("name"))).rejects.toThrow(message);
     const rows = await scan(stores.privateStore, index.orderedBy("name"), { throwsOnFailure: false });
@@ -933,7 +931,6 @@ describe("an index over blobs", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       blobs: () => store.blobs(),
-      positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
     await expect(scan(lookalike, byTagName)).rejects.toThrow(TypeError);
@@ -944,7 +941,7 @@ describe("an index over blobs", () => {
     const other = encodeObject(tag, { names: ["other"] });
     const nested = encodeObject(tag, { names: ["nested"] });
     const reaching = encodeObject(tag, { names: ["reaching"], of: new LinkValue(nested.link) });
-    const record = carrying(attachment, other.bytes, reaching.bytes);
+    const carrier = carrying(attachment, other.bytes, reaching.bytes);
 
     async function storeGiving(failingLink: Link<unknown>, give: () => Promise<Uint8Array | undefined>) {
       const failing = { isOn: true };
@@ -955,16 +952,15 @@ describe("an index over blobs", () => {
         put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
         listedLinks: (start) => backend.listedLinks(start),
         blobs: (start) => backend.blobs(start),
-        positionOf: (link) => backend.positionOf(link),
       });
-      await store.write(batchOf([record], [attachment, other.bytes, nested.bytes, reaching.bytes, ...schemas]));
+      await store.write(batchOf([carrier], [attachment, other.bytes, nested.bytes, reaching.bytes, ...schemas]));
       return { store, failing };
     }
 
     it.each([
       ["an object of its schema", other.link],
       ["a blob of no schema", linkOf(attachment)],
-      ["a record of another schema", record.link],
+      ["an object of another schema", carrier.link],
     ])("is not filled when the store throws for %s, and a later scan reads the blob", async (_, link) => {
       const diskError = new Error("the disk is gone");
       const { store, failing } = await storeGiving(link, () => Promise.reject(diskError));

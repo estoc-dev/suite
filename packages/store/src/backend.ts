@@ -39,8 +39,6 @@ export interface Backend {
    * first `start`. A write cut short can leave blobs here that no listed link reaches.
    */
   blobs(start?: number): AsyncIterable<Link<unknown>>;
-  /** Where the blob under `link` is in `blobs`, counting from 0, or `undefined` when none was put under it. */
-  positionOf(link: Link<unknown>): Promise<number | undefined>;
 }
 
 /**

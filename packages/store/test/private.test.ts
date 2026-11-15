@@ -126,21 +126,6 @@ describe("a private store", () => {
     await expect(refusal).rejects.toThrow(`${linkOf(image)} is written as a mark but is not an object`);
   });
 
-  it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
-    const { store, privateStore } = sides();
-    const alice = card("Alice");
-    await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
-    const [first, second] = [taken(alice, 1), taken(alice, 2)];
-    await privateStore.write({ marks: [first], blobs: [...takenSchema.blobs] });
-    await privateStore.write({ marks: [second] });
-    const [firstPosition, secondPosition] = [
-      await privateStore.positionOf(first.link),
-      await privateStore.positionOf(second.link),
-    ];
-    expect(firstPosition).toBeLessThan(secondPosition as number);
-    expect(await privateStore.positionOf(alice.link)).toBeUndefined();
-  });
-
   it("refuses to give a blob when its backend gives other bytes under the link", async () => {
     const store = new Store(new MemoryBackend());
     const backend = new MemoryBackend();
@@ -154,7 +139,6 @@ describe("a private store", () => {
       put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
       listedLinks: (start) => backend.listedLinks(start),
       blobs: (start) => backend.blobs(start),
-      positionOf: (link) => backend.positionOf(link),
     });
     await expect(privateStore.get(mark.link)).rejects.toThrow(`another blob under ${mark.link}`);
   });
@@ -166,7 +150,6 @@ describe("a private store", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       blobs: () => store.blobs(),
-      positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
     expect(() => new PrivateStore(lookalike, new MemoryBackend())).toThrow(TypeError);

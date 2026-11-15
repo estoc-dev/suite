@@ -121,10 +121,6 @@ class StagedArrival implements StagedStore, RowKeeper {
     return this.#stagedBundle.get(link);
   }
 
-  positionOf(link: Link<unknown>): Promise<number | undefined> {
-    return this.#stagedBundle.positionOf(link);
-  }
-
   async commit(): Promise<void> {
     await this.#stagedBundle.commit();
     await this.#privateStore.write(this.#mark);

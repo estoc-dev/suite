@@ -33,7 +33,6 @@ const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unkno
   put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
   listedLinks: (start) => backend.listedLinks(start),
   blobs: (start) => backend.blobs(start),
-  positionOf: (link) => backend.positionOf(link),
 });
 
 async function blobsOf(store: Store): Promise<Link<unknown>[]> {
@@ -139,7 +138,6 @@ describe("a store", () => {
       put: () => Promise.reject(diskError),
       listedLinks: (start) => backend.listedLinks(start),
       blobs: (start) => backend.blobs(start),
-      positionOf: (link) => backend.positionOf(link),
     });
     await expect(failingStore.write(batchOf([note], anything.blobs))).rejects.toBe(diskError);
     await expect(failingStore.write(batchOf([note], [image, ...anything.blobs]))).rejects.toBe(diskError);
@@ -184,19 +182,17 @@ describe("a store", () => {
     expect(order).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
 
-  it("gives where it took in each blob, after the blobs it links to, and keeps it when the blob is written again", async () => {
+  it("lists each blob after the blobs it links to, and where it was when the blob is written again", async () => {
     const store = newStore();
     const image = utf8("an image");
     const inner = object({ image: new LinkValue(linkOf(image)) });
     const outer = object({ inner: new LinkValue(inner.link) });
     await store.write(batchOf([inner], [image, ...anything.blobs]));
     await store.write(batchOf([outer, inner], [image]));
-    const links = [rootSchema.link, anything.link, linkOf(image), inner.link, outer.link];
-    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
-    expect(await store.positionOf(linkOf(utf8("never written")))).toBeUndefined();
+    expect(await blobsOf(store)).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
 
-  it("lists the blobs it holds, each once and where `positionOf` gives it", async () => {
+  it("lists the blobs it holds, each once", async () => {
     const store = newStore();
     expect(await blobsOf(store)).toEqual([]);
     const image = utf8("an image");
@@ -204,9 +200,7 @@ describe("a store", () => {
     const outer = object({ inner: new LinkValue(inner.link) });
     await store.write(batchOf([outer], [inner.bytes, image, ...anything.blobs]));
     await store.write(batchOf([outer], [inner.bytes, image]));
-    const links = await blobsOf(store);
-    expect(links).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
-    expect(await Promise.all(links.map((link) => store.positionOf(link)))).toEqual([0, 1, 2, 3, 4]);
+    expect(await blobsOf(store)).toEqual([rootSchema.link, anything.link, linkOf(image), inner.link, outer.link]);
   });
 
   it("lists among its blobs none that a write dropped or refused", async () => {

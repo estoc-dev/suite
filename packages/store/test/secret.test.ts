@@ -58,16 +58,6 @@ describe("a secret store", () => {
     expect(await listOf(secretStore.secrets())).toEqual([first.link, second.link]);
   });
 
-  it("gives where it kept a blob, and nothing for one that only the store beside it holds", async () => {
-    const { store, secretStore } = sides();
-    const card = await writeCard(store);
-    const secret = object({ card: new LinkValue(card.link), secret: Uint8Array.of(0) });
-    await secretStore.write({ secrets: [secret] });
-    expect(await secretStore.positionOf(secret.link)).toBe(0);
-    expect(await secretStore.positionOf(card.link)).toBeUndefined();
-    expect(await store.positionOf(card.link)).toBe(2);
-  });
-
   it("lists the blobs kept in it, and none that only the store beside it holds", async () => {
     const { store, secretStore } = sides();
     const card = await writeCard(store);
@@ -130,7 +120,6 @@ describe("a secret store", () => {
       put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
       listedLinks: (start) => backend.listedLinks(start),
       blobs: (start) => backend.blobs(start),
-      positionOf: (link) => backend.positionOf(link),
     });
     await expect(secretStore.get(card.link)).rejects.toThrow(`another blob under ${card.link}`);
   });
@@ -142,7 +131,6 @@ describe("a secret store", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       blobs: () => store.blobs(),
-      positionOf: (link) => store.positionOf(link),
       closure: (link) => store.closure(link),
     };
     expect(() => new SecretStore(lookalike, new MemoryBackend())).toThrow(TypeError);

@@ -363,7 +363,7 @@ describe("a service found by its identifier", () => {
     expect((await services.latestOf(signedIdentity))?.link).toBe(link);
   });
 
-  it("is undefined once the store holds, by another record, a crisis that follows the identity version that signed each Service", async () => {
+  it("is undefined once the store holds a crisis that follows the identity version that signed each Service", async () => {
     const { origin } = await startService();
     const { store, services } = client();
     const { signedIdentity } = await services.fetch(origin);

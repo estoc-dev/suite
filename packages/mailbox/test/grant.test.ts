@@ -38,8 +38,8 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
 // takes someone's messages at some mailboxes signs a grant of them to that
-// someone, writes the signature as a record and sends it to them or hands it
-// over out of band, and each reads the latest grant of a series from their own
+// someone, writes the signature to their own store and sends it to them or hands
+// it over out of band, and each reads the latest grant of a series from their own
 // store.
 
 const identity = loadIdentity([ed25519]);
@@ -92,7 +92,7 @@ async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
   return mailbox.link;
 }
 
-// The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`, as a record.
+// The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`.
 const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
   grant.bytes,
   ...grants.schema.blobs,
@@ -169,7 +169,7 @@ describe("the latest grant of one person to another", () => {
     expect((await grantFrom(alice, alice, bob))?.object.data.mailboxes).toEqual([]);
   });
 
-  it("reads the same from the bundle it came in as from the record its signer wrote", async () => {
+  it("reads the same from the bundle it came in as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     expect(await grantFrom(bob, alice, bob)).toBeUndefined();
@@ -182,7 +182,7 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
-  it("reads the same from what was handed over out of band as from the record its signer wrote", async () => {
+  it("reads the same from what was handed over out of band as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     await handOver(alice, bob, signature.link);
@@ -194,7 +194,7 @@ describe("the latest grant of one person to another", () => {
     expect(receivedGrant.object.data.mailboxes).toEqual([new LinkValue(alice.inbox.mailbox)]);
   });
 
-  it("reads the same from below the root of what came in as from the record its signer wrote", async () => {
+  it("reads the same from below the root of what came in as from what its signer wrote", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     const countersignature = await alice.actor.sign(signature);

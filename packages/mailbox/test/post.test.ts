@@ -257,8 +257,8 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     let isDiskFull = false;
     const backend = new (class extends MemoryBackend {
-      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, records: Iterable<Link<never>>): Promise<void> {
-        return isDiskFull ? Promise.reject(new Error("the disk is full")) : super.put(blobs, records);
+      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<never>>): Promise<void> {
+        return isDiskFull ? Promise.reject(new Error("the disk is full")) : super.put(blobs, listedLinks);
       }
     })();
     const { store, inbox, pickup } = await openReceiver(network, new Store(backend));

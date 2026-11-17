@@ -33,21 +33,24 @@ export class Implementations<T, I extends Implementation<T> = Implementation<T>>
   }
 
   /**
-   * The implementation of `schema`, for what a program does with objects of
-   * it beyond reading them.
-   *
-   * @throws when `schema` is not one of these.
+   * The implementation of `schema`, for what a program does with objects of it beyond reading
+   * them. Nothing when `schema` is not one of these, so a program that takes objects of other
+   * schemas as well can ask before it reads.
    */
-  implementationOf(schema: Link<Schema>): I {
-    const implementation = this.#implementations.get(schema);
-    if (implementation === undefined) throw new Error(`${schema} is not a schema read here`);
-    return implementation;
+  implementationOf(schema: Link<Schema>): I | undefined {
+    return this.#implementations.get(schema);
   }
 
-  /** Reads the object that `link` names from `reader` with the implementation of the schema it names. */
+  /**
+   * Reads the object that `link` names from `reader` with the implementation of the schema it names.
+   *
+   * @throws when the schema it names is not one of these.
+   */
   async read(link: Link<T>, reader: Reader): Promise<T> {
     const bytes = await readBlob(reader, link);
-    const implementation = this.implementationOf(schemaOf(bytes));
+    const schema = schemaOf(bytes);
+    const implementation = this.implementationOf(schema);
+    if (implementation === undefined) throw new Error(`${schema} is not a schema read here`);
     return implementation.read(decodeObjectAt(link, bytes, implementation.schema), reader);
   }
 }

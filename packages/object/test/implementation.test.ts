@@ -59,7 +59,10 @@ describe("implementations", () => {
   it("give the implementation of a schema by its link", () => {
     expect(texts.implementationOf(plain.link)).toBe(plainText);
     expect(texts.implementationOf(quote.link)).toBe(quotedText);
-    expect(() => texts.implementationOf(other.link)).toThrow(`${other.link} is not a schema read here`);
+  });
+
+  it("give no implementation of a schema that is not one of theirs", () => {
+    expect(texts.implementationOf(other.link)).toBeUndefined();
   });
 
   it("refuse an object written to a schema that is not one of theirs", async () => {

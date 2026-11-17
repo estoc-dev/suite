@@ -278,7 +278,9 @@ await texts.read(link, reader); // a Text, whichever of the two schemas the obje
 The table takes the shape from its implementations, so it is not named
 again. `implementationOf` gives the implementation of a schema, for what a
 program does with objects of it beyond reading them. Its `read` takes an
-object already read with that schema, as the table's `read` gives it.
+object already read with that schema, as the table's `read` gives it. For
+a schema that is not in the table it gives `undefined`, so a program that
+takes objects of other schemas as well can ask before it reads.
 
 ## Selections
 

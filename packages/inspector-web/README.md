@@ -77,10 +77,16 @@ is not known, so a blob marked this way may still be in the closure.
 ## The file stays in the page
 
 The file comes from elsewhere. What it holds is put in the page as text,
-the page sends no request once it is loaded, and it loads no fonts.
+and the page loads no fonts. Once the page is loaded, opening a file and
+showing what it holds send no request.
 
 A rendered body is the one place where the page puts markup of its own
-making. HTML written in a Markdown body is rendered as text. An image in
-a body names an address, and the page loads no image: its content
-security policy refuses them, so the text that stands for the image is
-shown in its place.
+making:
+
+- HTML written in a Markdown body is rendered as text.
+- An image in a body names an address, and the page loads no image: its
+  content security policy refuses them, so the text that stands for the
+  image is shown in its place.
+- A link in a body to an address on the web is an ordinary link. Choosing
+  it is the reader's request: the browser follows it as it does any link,
+  and leaves the page.

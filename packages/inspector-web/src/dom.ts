@@ -20,6 +20,18 @@ export function h(tag: string, attributes: Record<string, Attribute> | null = nu
   return node;
 }
 
+/**
+ * An element whose children are `html`, read as markup.
+ *
+ * It is for markup the page wrote itself, as it does to render a body. What a file holds goes
+ * through `h`, which shows it as text.
+ */
+export function markup(tag: string, attributes: Record<string, Attribute> | null, html: string): HTMLElement {
+  const node = h(tag, attributes);
+  node.innerHTML = html;
+  return node;
+}
+
 function append(node: HTMLElement, child: Child): void {
   if (child === false || child === undefined) return;
   if (typeof child === "string" || child instanceof Node) node.append(child);

@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@estoc/blog": "workspace:*",
     "@estoc/bundle": "workspace:*",
     "@estoc/inspector": "workspace:*",
     "@estoc/object": "workspace:*",

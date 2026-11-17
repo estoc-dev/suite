@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { markdownBodyOf, markdownBodySchema, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
 import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { any, array, boolean, bytes, integer, link, optional, rootSchema, schema, string } from "@estoc/schema";
@@ -50,9 +51,33 @@ const unplacedExample = {
 const writtenToNote = {
   bytes: objectFormat.encode(new ObjectValue(note.link, { text: "written to a note, which is not a schema" })),
 };
+const body = markdownBodyOf(
+  [
+    "## A heading",
+    "",
+    "A paragraph with *emphasis*, `code`, a [link](https://estoc.dev) and <b>a tag</b>.",
+    "",
+    "- one item",
+    "- another, with an image the page does not load: ![a diagram](https://estoc.dev/diagram.png)",
+    "",
+    "> A quote.",
+    "",
+    "```ts",
+    "const a = 1 < 2;",
+    "```",
+    "",
+  ].join("\n"),
+);
+const post = encodeObject(postSchema, {
+  title: "A post",
+  description: "What a post links to.",
+  date: "2026-10-20",
+  body: new LinkValue(body.link),
+});
 
 const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note, [reply.bytes, photo, ...noteSchema.blobs]),
+  "post.eof": encodeBundle(post, [body.bytes, ...postSchema.blobs, ...markdownBodySchema.blobs]),
   "misfit.eof": encodeBundle(misfit, [reply.bytes, ...noteSchema.blobs]),
   "unplaced.eof": encodeBundle(unplacedExample, pathSchema.blobs),
   "left-out.eof": encodeBundle(note, [...noteSchema.blobs, misfit.bytes, new TextEncoder().encode("a stray blob")]),

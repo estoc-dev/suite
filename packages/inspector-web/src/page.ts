@@ -2,6 +2,7 @@ import { type Bundle, decodeBundle } from "@estoc/bundle";
 import { type Inspection, inspect } from "@estoc/inspector";
 import { linkIn } from "./address.ts";
 import { blobListOf, type ListedBlob } from "./blob-list.ts";
+import { type Reading, readingOf } from "./reading.ts";
 
 /** A file that gave no bytes, as one does that is removed after it is chosen. */
 export interface ReadFailure {
@@ -25,8 +26,11 @@ export interface OpenFile {
   readonly blobs: readonly ListedBlob[];
 }
 
-/** A file, and what the link being shown reads as through its bundle. */
-export type ShownFile = OpenFile & { readonly inspection: Inspection };
+/**
+ * A file, and what the link being shown reads as through its bundle. Where that is an object of a
+ * schema the page reads, `reading` is what the page makes of it.
+ */
+export type ShownFile = OpenFile & { readonly inspection: Inspection; readonly reading: Reading | undefined };
 
 export type Page = { readonly kind: "closed" } | ReadFailure | Refusal | ShownFile;
 
@@ -58,5 +62,6 @@ export async function pageOf(fileTask: ReturnType<typeof readFile> | undefined, 
   const file = await fileTask;
   if (file === undefined) return { kind: "closed" };
   if (file.kind !== "open") return file;
-  return { ...file, inspection: await inspect(linkIn(fragment) ?? file.bundle.link, file.bundle) };
+  const inspection = await inspect(linkIn(fragment) ?? file.bundle.link, file.bundle);
+  return { ...file, inspection, reading: await readingOf(inspection, file.bundle) };
 }

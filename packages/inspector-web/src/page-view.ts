@@ -46,13 +46,13 @@ function openView(open: Open, above: Child): HTMLElement {
   );
 }
 
-function fileView({ bundle, blobs, inspection }: ShownFile): HTMLElement {
+function fileView({ bundle, blobs, inspection, reading }: ShownFile): HTMLElement {
   const isAbsent = inspection.kind === "absent";
   return h(
     "main",
     null,
     h("h1", null, inspection.link === bundle.link ? "Root" : isAbsent ? "Absent" : "Blob"),
-    inspectionView(inspection),
+    inspectionView(inspection, reading),
     isAbsent &&
       h(
         "p",

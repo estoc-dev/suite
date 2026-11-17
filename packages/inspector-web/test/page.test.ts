@@ -1,3 +1,4 @@
+import { markdownBodyOf, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
 import { encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
@@ -10,6 +11,10 @@ const photo = Uint8Array.of(0, 10, 255);
 const albumSchema = schema("Album", { cover: link() });
 const album = encodeObject(albumSchema, { cover: new LinkValue(linkOf(photo)) });
 const albumFile = new File([encodeBundle(album, [photo])], "album.eof");
+
+const body = markdownBodyOf("## Identity\n");
+const post = encodeObject(postSchema, { title: "Identity", date: "2026-10-20", body: new LinkValue(body.link) });
+const postFile = new File([encodeBundle(post, [body.bytes])], "post.eof");
 
 const removal = new Error("the file was removed");
 
@@ -56,6 +61,16 @@ describe("the page of a file", () => {
   it("is at the link that the fragment names", async () => {
     const page = await pageOf(readFile(albumFile), fragmentOf(linkOf(photo)));
     expect(page).toMatchObject({ kind: "open", inspection: { kind: "bytes", link: linkOf(photo) } });
+  });
+
+  it("has what the page makes of a body, at the link of the body", async () => {
+    const page = await pageOf(readFile(postFile), fragmentOf(body.link));
+    expect(page).toMatchObject({ inspection: { link: body.link }, reading: { html: "<h2>Identity</h2>\n" } });
+  });
+
+  it("has no more than the fields of an object of a schema the page does not read", async () => {
+    const page = await pageOf(readFile(postFile), "");
+    expect(page).toMatchObject({ inspection: { link: post.link }, reading: undefined });
   });
 
   it("is the failure of a file that could not be read, at any fragment", async () => {

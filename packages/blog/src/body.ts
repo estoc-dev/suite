@@ -21,7 +21,6 @@ export const markdownBody: Implementation<Body, MarkdownBodyData> = {
   read: (object) => bodyFrom(object, micromark(object.data.text)),
 };
 
-/** Writes `text` as a Markdown body. */
 export function markdownBodyOf(text: string): Body {
   return bodyFrom(encodeObject(markdownBodySchema, { text }), micromark(text));
 }

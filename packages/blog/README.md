@@ -15,8 +15,12 @@ Markdown Body  {"text": <CommonMark>}
   stands behind a post by signing it, as it signs any object.
 - A post does not say which format its body is in. The body names its
   schema, as every object does, and that is its format.
-- The closure of a post holds its body, so a store or a bundle that
-  carries the post carries the body with it.
+- The closure of a post holds its body, so a store that holds the post
+  holds the body with it. A bundle carries the body when the application
+  that writes the bundle includes it.
+- The schema says that `date` is a string and no more. Whether it is a day
+  is checked by the program that uses it as one, such as one that orders
+  posts by it.
 - An edit to the body is another body and so another post. `@estoc/lineage`
   strings the versions of a post into a series.
 

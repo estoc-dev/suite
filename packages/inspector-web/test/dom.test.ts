@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { h } from "../src/dom.ts";
+import { h, markup } from "../src/dom.ts";
 
 describe("an element made by h", () => {
   it("shows a string child as text, and not as markup", () => {
@@ -21,5 +21,13 @@ describe("an element made by h", () => {
     expect(element.childNodes).toHaveLength(130_000);
     expect(element.firstChild?.textContent).toBe("0 ");
     expect(element.lastChild?.textContent).toBe("129999 ");
+  });
+});
+
+describe("an element made by markup", () => {
+  it("reads its HTML as markup", () => {
+    const element = markup("div", { class: "rendered" }, "<p>a <b>bold</b> word</p>");
+    expect(element.className).toBe("rendered");
+    expect(element.querySelector("b")?.textContent).toBe("bold");
   });
 });

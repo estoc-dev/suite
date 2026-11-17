@@ -114,6 +114,9 @@ importers:
 
   packages/inspector-web:
     dependencies:
+      '@estoc/blog':
+        specifier: workspace:*
+        version: link:../blog
       '@estoc/bundle':
         specifier: workspace:*
         version: link:../bundle

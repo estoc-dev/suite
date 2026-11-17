@@ -4,14 +4,19 @@ import { type Link, linkOf, ObjectValue, objectFormat, type ValueMap } from "@es
 import { any, array, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { objectView } from "../src/object-view.ts";
+import type { Reading } from "../src/reading.ts";
 
-async function viewOf(objectSchema: ReturnType<typeof schema>, data: ValueMap): Promise<HTMLElement> {
+async function viewOf(
+  objectSchema: ReturnType<typeof schema>,
+  data: ValueMap,
+  reading?: Reading,
+): Promise<HTMLElement> {
   const bytes = objectFormat.encode(new ObjectValue(objectSchema.link, data));
   const blobs = [bytes, ...objectSchema.blobs];
   const reader = new Map<Link<unknown>, Uint8Array>(blobs.map((blob) => [linkOf(blob), blob]));
   const inspection = await inspect(linkOf(bytes), reader);
   if (inspection.kind !== "object") throw new Error(`read as ${inspection.kind}`);
-  return objectView(inspection);
+  return objectView(inspection, reading);
 }
 
 const textsOf = (view: HTMLElement, selector: string) =>
@@ -41,5 +46,25 @@ describe("the view of an object", () => {
       "tags" + "array · 2 items" + '0"a"' + "18not a string" + "array of string",
       "text7not a stringstring",
     ]);
+  });
+
+  it("shows what the page makes of the object as markup, above its fields", async () => {
+    const view = await viewOf(
+      schema("Note", { text: string() }),
+      { text: "a *word*" },
+      { html: "<p>a <em>word</em></p>" },
+    );
+    expect(textsOf(view, ".rendered em")).toEqual(["word"]);
+    expect(Array.from(view.children, ({ className, tagName }) => className || tagName)).toEqual([
+      "head",
+      "reading",
+      "TABLE",
+    ]);
+  });
+
+  it("shows the fields alone where the page makes nothing more of the object", async () => {
+    const view = await viewOf(schema("Note", { text: string() }), { text: "<em>a word</em>" });
+    expect(view.querySelector(".reading")).toBeNull();
+    expect(view.querySelector("em")).toBeNull();
   });
 });

@@ -1,8 +1,9 @@
 import type { NamedSchema } from "@estoc/inspector";
 import { isValueMap, LinkValue, type Value } from "@estoc/object";
-import { type Child, h, mono, muted } from "./dom.ts";
+import { type Child, h, markup, mono, muted } from "./dom.ts";
 import { type FieldRow, type FieldTable, fieldTableOf, type InspectedObject, type Place } from "./field-table.ts";
 import { linkView } from "./link-view.ts";
+import type { Reading } from "./reading.ts";
 import { hexOf, messageOf, sizeOf, typeNameOf } from "./text.ts";
 
 const quantityOf = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
@@ -80,7 +81,18 @@ function schemaView(schema: NamedSchema, object: InspectedObject, { unplacedProb
   ];
 }
 
-export function objectView(object: InspectedObject): HTMLElement {
+// What the page makes of the object stands above its fields and does not take their place: the
+// fields are what the blob says of itself.
+function readingView({ html }: Reading): HTMLElement {
+  return h(
+    "div",
+    { class: "reading" },
+    h("p", { class: "band" }, "Rendered"),
+    markup("div", { class: "rendered" }, html),
+  );
+}
+
+export function objectView(object: InspectedObject, reading?: Reading): HTMLElement {
   const table = fieldTableOf(object);
   return h(
     "section",
@@ -95,6 +107,7 @@ export function objectView(object: InspectedObject): HTMLElement {
       h("dt", null, "Schema"),
       h("dd", null, schemaView(object.schema, object, table)),
     ),
+    reading !== undefined && readingView(reading),
     fieldTableView(table, object.schema.kind === "schema"),
   );
 }

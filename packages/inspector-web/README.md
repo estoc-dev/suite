@@ -12,8 +12,8 @@ pnpm samples  # write files to open into samples/
 
 ## What the page shows
 
-The page draws what `inspect` gives and reads nothing else, so it shows
-what the blob says of itself:
+Apart from a body it renders, the page draws what `inspect` gives and
+reads nothing else, so it shows what the blob says of itself:
 
 - The title of a schema is the one the schema gave itself, and stands
   beside the link of the schema.
@@ -30,6 +30,22 @@ The validator names the place of a problem as text, and a field name that
 holds `/` or `: ` can spell the place of another value. A problem that
 reads as that of more than one value is marked on none of them: it is
 listed under the schema, as the validator words it.
+
+## What the page renders
+
+The page has schemas of its own for one thing: the body of a post. It
+reads the body schemas that `bodies` of `@estoc/blog` lists, which for now
+is the Markdown body.
+
+- An object of one of those schemas is shown rendered, above its fields.
+  The fields stay, since they are what the blob says of itself.
+- The schema is matched by its link and not by its title. The page holds
+  the schema, so a body is rendered whether or not the file gives the blob
+  of its schema.
+- A body whose data does not fit its schema is not rendered. Its fields
+  are shown as those of any object.
+- A post is shown by its fields. Its `body` is a link, and following it
+  shows the body.
 
 ## Following links
 
@@ -62,3 +78,9 @@ is not known, so a blob marked this way may still be in the closure.
 
 The file comes from elsewhere. What it holds is put in the page as text,
 the page sends no request once it is loaded, and it loads no fonts.
+
+A rendered body is the one place where the page puts markup of its own
+making. HTML written in a Markdown body is rendered as text. An image in
+a body names an address, and the page loads no image: its content
+security policy refuses them, so the text that stands for the image is
+shown in its place.

@@ -50,7 +50,10 @@ export class Keys {
   }
 
   verify(object: EncodedObject<KeyData>): KeyObject {
-    return this.#implementations.implementationOf(object.schema.link).read(object);
+    const { link } = object.schema;
+    const implementation = this.#implementations.implementationOf(link);
+    if (implementation === undefined) throw new Error(`${link} is not a schema read here`);
+    return implementation.read(object);
   }
 
   /** Reads the key that `link` names from `reader`, with the schema of the scheme it is written to. */

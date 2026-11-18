@@ -1,13 +1,5 @@
-import {
-  ed25519,
-  eip191,
-  loadIdentity,
-  noIdentityVersions,
-  type Signature,
-  type SignatureData,
-  solanaOffchain,
-} from "@estoc/identity";
-import { type Implementation, Implementations } from "@estoc/object";
+import { ed25519, eip191, loadIdentity, type Signature, solanaOffchain } from "@estoc/identity";
+import { Implementations } from "@estoc/object";
 import { type Child, h } from "./dom.ts";
 import { linkView } from "./link-view.ts";
 import type { ReadingAs } from "./reading.ts";
@@ -18,10 +10,6 @@ const { signatures } = loadIdentity([ed25519, eip191, solanaOffchain]);
 // one file to the next, so a signature it shows as read is honored by those it carries alone, where
 // the same file can hold a crisis that came after them. The links it shows do not say that, so the
 // view says it.
-const signatureImplementation: Implementation<Signature, SignatureData> = {
-  schema: signatures.schema,
-  read: (signature, reader) => signatures.verify(signature, reader, noIdentityVersions),
-};
 const honoredBy =
   "Honored by the identity version it carries and those that version follows alone. The page looks at no others to verify it, a later crisis in the same file among them.";
 
@@ -43,6 +31,6 @@ function signatureView({ signedIdentity, key, object }: Signature): Child {
 
 export const signatureReading: ReadingAs<Signature> = {
   name: "a signature",
-  implementations: new Implementations([signatureImplementation]),
+  implementations: new Implementations([signatures.implementation]),
   viewOf: signatureView,
 };

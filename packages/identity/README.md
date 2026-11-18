@@ -454,6 +454,14 @@ as bytes. Reading a signature with `decodeObject` and the signature schema
 alone, as a viewer of arbitrary objects would, reads its fields without
 verifying it.
 
+`signatures.implementation` is the signature schema as an `Implementation`
+of `@estoc/object`. Its `read` takes the signature as an object and a
+`Reader`, and verifies it as `signatures.verify` does by
+`noIdentityVersions`. It takes no `SeenIdentityVersions`, so what it reads
+depends on the signature and its closure alone. A program lists it among
+the `Implementations` it reads objects by, as a viewer does that shows a
+signature it comes to as verified.
+
 Signing goes through an actor. `signatures.actor` takes a `Signer` and a
 signed identity whose identity the signer's key signs for, its root or one
 of its agents, gives an `Actor` for it, and refuses any other signer. So a

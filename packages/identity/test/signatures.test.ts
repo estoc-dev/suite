@@ -451,6 +451,41 @@ describe("what a signature signs", () => {
   });
 });
 
+describe("the implementation of the signature schema", () => {
+  const { implementation } = signatures;
+  const read = async (bytes: Uint8Array, blobs: Reader = new Map()) =>
+    implementation.read(decodeObject(bytes, implementation.schema), blobs);
+  const refusalOf = (reading: Promise<Signature>) =>
+    reading.then(
+      () => undefined,
+      (error: Error) => error.message,
+    );
+
+  it("reads a signature as verifying it by no identity versions does", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const blobs = identityOf(signature);
+    expect(await read(signature.bytes, blobs)).toEqual(await verified(signature.bytes, blobs));
+  });
+
+  it("reads a signature by an identity version before a crisis, though the reader gives the crisis", async () => {
+    const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    expect((await read(signature.bytes, byLink(first, crisis))).link).toBe(signature.link);
+  });
+
+  it("refuses a signature as verifying it by no identity versions does", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const unverified = rewritten(signature, { object: new LinkValue(goodbye.link) });
+    const blobs = identityOf(signature);
+    expect(await refusalOf(read(unverified, blobs))).toMatch(/does not verify/);
+    expect(await refusalOf(read(unverified, blobs))).toBe(await refusalOf(verified(unverified, blobs)));
+    expect(await refusalOf(read(signature.bytes))).toMatch(/no blob is given/);
+    expect(await refusalOf(read(signature.bytes))).toBe(await refusalOf(verified(signature.bytes)));
+  });
+});
+
 describe("the selection of the signatures over objects of a schema", () => {
   const notes = signatures.selectionOver(note);
   const readerOf = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>

@@ -2,6 +2,7 @@ import {
   digestOf,
   type EncodedObject,
   encodeObject,
+  type Implementation,
   type Link,
   LinkValue,
   objectsOf,
@@ -107,6 +108,19 @@ export interface Actor {
 /** Signatures, verified and made with their schema and the signed identities they name. */
 export class Signatures {
   readonly schema = signatureSchema;
+  /**
+   * The signature schema read as a signature, verified as `verify` does by
+   * `noIdentityVersions`: by the identity version it carries and those it
+   * follows alone.
+   *
+   * What it reads depends on the signature and its closure alone, so an index
+   * can read by it. Whether the signature is still honored is then for a
+   * reader's `SeenIdentityVersions` to say.
+   */
+  readonly implementation: Implementation<Signature, SignatureData> = {
+    schema: signatureSchema,
+    read: (signature, reader) => this.verify(signature, reader, noIdentityVersions),
+  };
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {

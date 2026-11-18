@@ -104,14 +104,12 @@ export class MailboxGrants {
     { signature, object }: SignatureOver<MailboxGrantData>,
     reader: Reader,
   ): AsyncIterable<MailboxGrantRow> {
-    const { signatures, signedIdentities } = this.#identity;
-    const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
-    const to = await signedIdentities.read(object.data.to.link, reader);
+    const to = await this.#identity.signedIdentities.read(object.data.to.link, reader);
     yield {
-      from: new LinkValue(signedIdentity.identity.identifier),
+      from: new LinkValue(signature.signedIdentity.identity.identifier),
       to: new LinkValue(to.identity.identifier),
       at: object.data.at,
-      signature: new LinkValue(link),
+      signature: new LinkValue(signature.link),
     };
   }
 

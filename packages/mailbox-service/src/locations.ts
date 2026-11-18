@@ -50,17 +50,13 @@ export function locationsView(signatures: Signatures): LocationsView {
     index: indexOver(
       selectedBlobs(signatures.selectionOver(serviceSchema)),
       locationSchema,
-      async function* ({ signature, object }, reader) {
-        // A row depends on the signature and its closure alone, so it is
-        // verified by the identity version it carries; whether the signature
-        // is honored is checked as the rows are read.
-        const { signedIdentity, link } = await signatures.verify(signature, reader, noIdentityVersions);
-        yield {
-          identifier: new LinkValue(signedIdentity.identity.identifier),
+      ({ signature, object }) => [
+        {
+          identifier: new LinkValue(signature.signedIdentity.identity.identifier),
           at: object.data.at,
-          service: new LinkValue(link),
-        };
-      },
+          service: new LinkValue(signature.link),
+        },
+      ],
     ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {

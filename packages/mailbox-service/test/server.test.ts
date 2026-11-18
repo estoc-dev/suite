@@ -566,6 +566,39 @@ describe("a mailbox service started again", () => {
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
   });
 
+  it("once an identity version of its root follows the crisis, answers an acceptance and a request posted again with the signatures it made as the crisis", async () => {
+    const { service, store, accounts, mailboxes } = await memoryService();
+    const before = await rootOf(service);
+    const acceptances = await Promise.all(
+      [alice, device, phone, signer(ed25519, 6), signer(ed25519, 7), signer(ed25519, 8)].map((by) =>
+        directAcceptance(before.offer, by),
+      ),
+    );
+    for (const { file } of acceptances) expect((await postAcceptance(service, file)).status).toBe(201);
+    const { file: requestFile } = await mailboxRequest(await actorOf(alice), before.mailbox.offer);
+    expect((await postMailboxRequest(service, requestFile)).status).toBe(201);
+    const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
+    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
+    const answers = async () => [
+      ...(await Promise.all(
+        acceptances.map(async ({ file }) => (await acknowledgementIn(await postAcceptance(again, file))).signature),
+      )),
+      (await mailboxAcknowledgementIn(await postMailboxRequest(again, requestFile))).signature,
+    ];
+    const crisisSignatures = await answers();
+    for (const { signedIdentity } of crisisSignatures) expect(signedIdentity.link).toBe(crisis.link);
+    const records = await recordedObjectsOf(store);
+
+    const laterIdentityVersion = await publish(serviceSigner, { prior: crisis, agents: [otherService.key], at: 4_000 });
+    await store.write({
+      roots: [laterIdentityVersion.link],
+      blobs: [laterIdentityVersion.bytes, ...laterIdentityVersion.blobs],
+    });
+    expect((await answers()).map(({ link }) => link)).toEqual(crisisSignatures.map(({ link }) => link));
+    expect(await recordedObjectsOf(store)).toEqual(records);
+  });
+
   it("at another origin with its clock behind signs a Service earlier than the one before, which stays the latest", async () => {
     const { service, store } = await memoryService({ start: 5_000 });
     const before = await rootOf(service);

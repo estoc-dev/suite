@@ -386,10 +386,15 @@ private store say:
   versions that had come by then. Once an identity version that removes an
   agent has come, what that agent signs is no longer honored, whichever
   identity version it carries, while what came in before still is.
-- A message came when its bundle came in, and a grant the actor gave when
-  `grant` recorded it. An identity version came with the first bundle or record
-  that has it in its closure, so one that comes with a grant or a message has
-  come by the time that grant or message has.
+- A message came when its bundle came in, and so did a grant whose signature
+  is the root of a bundle. A grant the actor gave came when `grant` recorded
+  it. An identity version came with the first bundle or record that has it in
+  its closure, so one that comes with a grant or a message has come by the
+  time that grant or message has.
+- A grant whose signature came only below the root of something else has no
+  time of its own. It is honored by the identity versions the store holds
+  now, so it is no longer once one that removes the agent that signed it has
+  come.
 - The user's own identity versions go by the same times. A user who publishes
   one that removes an agent records it then, so that the grants the agent
   signed before stay honored and the messages at their mailboxes still read.
@@ -464,6 +469,11 @@ carries and whatever `at` it writes:
 
 - `grantFrom` gives the latest grant honored so, which may be one the
   removed agent signed before, or `undefined` when there is none.
+- A grant has a time when its signature is the root of a bundle that came in,
+  or the user recorded it. One whose signature came only below the root of
+  something else has none, and is honored by the identity versions the reader
+  holds now, as by `honors`: it is not once the identity version that removes
+  the agent has come.
 - To take messages at a mailbox that no honored grant names, the signer has a key
   the current identity version lists sign a grant of it again, and sends it to
   the one it is to. The signature carries the new identity version, so that

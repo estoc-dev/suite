@@ -1,4 +1,5 @@
 import {
+  AbsentBlob,
   decodeObject,
   digestOf,
   encodeObject,
@@ -455,11 +456,6 @@ describe("the implementation of the signature schema", () => {
   const { implementation } = signatures;
   const read = async (bytes: Uint8Array, blobs: Reader = new Map()) =>
     implementation.read(decodeObject(bytes, implementation.schema), blobs);
-  const refusalOf = (reading: Promise<Signature>) =>
-    reading.then(
-      () => undefined,
-      (error: Error) => error.message,
-    );
 
   it("reads a signature as verifying it by no identity versions does", async () => {
     const signature = await sign(hello, signer(ed25519));
@@ -475,14 +471,17 @@ describe("the implementation of the signature schema", () => {
     expect((await read(signature.bytes, byLink(first, crisis))).link).toBe(signature.link);
   });
 
-  it("refuses a signature as verifying it by no identity versions does", async () => {
+  it("refuses a signature that does not verify", async () => {
     const signature = await sign(hello, signer(ed25519));
     const unverified = rewritten(signature, { object: new LinkValue(goodbye.link) });
-    const blobs = identityOf(signature);
-    expect(await refusalOf(read(unverified, blobs))).toMatch(/does not verify/);
-    expect(await refusalOf(read(unverified, blobs))).toBe(await refusalOf(verified(unverified, blobs)));
-    expect(await refusalOf(read(signature.bytes))).toMatch(/no blob is given/);
-    expect(await refusalOf(read(signature.bytes))).toBe(await refusalOf(verified(signature.bytes)));
+    await expect(read(unverified, identityOf(signature))).rejects.toThrow(/does not verify/);
+  });
+
+  it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const error = await read(signature.bytes).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AbsentBlob);
+    expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
 });
 

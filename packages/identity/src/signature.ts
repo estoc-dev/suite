@@ -113,9 +113,10 @@ export class Signatures {
    * `noIdentityVersions`: by the identity version it carries and those it
    * follows alone.
    *
-   * What it reads depends on the signature and its closure alone, so an index
-   * can read by it. Whether the signature is still honored is then for a
-   * reader's `SeenIdentityVersions` to say.
+   * For the schemes given to `loadIdentity`, what it reads depends on the
+   * signature and its closure alone, so an index can read by it. Whether the
+   * signature is still honored is then for a reader's `SeenIdentityVersions`
+   * to say.
    */
   readonly implementation: Implementation<Signature, SignatureData> = {
     schema: signatureSchema,

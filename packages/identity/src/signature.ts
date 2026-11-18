@@ -84,9 +84,12 @@ export interface SeenIdentityVersions {
  */
 export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
 
-/** A signature, read without verifying it, with the object it signs, read with the schema it is written to. */
+/**
+ * A signature, verified as `Signatures.implementation` reads it, with the
+ * object it signs, read with the schema it is written to.
+ */
 export interface SignatureOver<F extends ValueMap> {
-  readonly signature: EncodedObject<SignatureData>;
+  readonly signature: Signature;
   readonly object: EncodedObject<F>;
 }
 
@@ -164,22 +167,27 @@ export class Signatures {
   }
 
   /**
-   * The selection of the signatures over objects of `schema`, each read with
-   * the object it signs.
+   * The selection of the signatures over objects of `schema`, each read as
+   * `implementation` reads it, with the object it signs.
    *
-   * - A signature over an object of another schema is left out.
-   * - It does not verify them, as what a selection takes depends on the
-   *   record and its closure alone, and whether a signature is honored
-   *   depends on the identity versions a reader has seen.
+   * - A signature over an object of another schema is left out, and is not
+   *   verified.
+   * - What it takes depends on the signature and its closure alone, as a
+   *   selection has to. Whether a signature is still honored depends on the
+   *   identity versions a reader has seen, so it is for what reads the
+   *   signatures it takes to ask.
    *
-   * @throws from `read`, when the reader gives no blob for the object, and
-   *   where `decodeObject` throws for an object of `schema`.
+   * @throws {AbsentBlob} from `read`, when the reader gives no blob for the
+   *   object.
+   * @throws from `read`, where `decodeObject` throws for an object of
+   *   `schema`, and where `implementation` throws for the signature.
    */
   selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {
     const objects = objectsOf(schema);
     return new SelectionBySchema(this.schema, async (signature, reader) => {
       const object = await objects.read(signature.data.object.link, reader);
-      return object === undefined ? undefined : { signature, object };
+      if (object === undefined) return undefined;
+      return { signature: await this.implementation.read(signature, reader), object };
     });
   }
 

@@ -497,25 +497,42 @@ const user = read.object === expected.link ? read.signedIdentity.identity : unde
 `signatures.selectionOver(schema)` is a `SelectionBySchema` of the
 signature schema, as `@estoc/object` has selections. It takes the
 signatures over objects of `schema`, each as a `SignatureOver`: the
-signature with the object it signs, read with `schema`. A signature over
-an object of another schema is left out. It does not verify the
-signatures it takes, since what a selection takes depends on the record
-and its closure alone, and whether a signature is honored depends on the
-identity versions a reader has seen. An index whose rows need a signature
-verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
-it is still honored to what reads the rows, which asks `honors` of a
-reader's `SeenIdentityVersions`. Here the notes each person has signed, by
-their identifier:
+signature, verified as `signatures.implementation` reads it, with the
+object it signs, read with `schema`. A signature over an object of another
+schema is left out without being verified. One over an object of `schema`
+that does not verify is refused, so the `rows` of an index over the
+selection are given verified signatures, and do not verify them.
+
+An index over the selection fails on a signature it refuses, as
+`@estoc/store` has an index fail: that signature gives no row, and the rest
+is read still. A scan of an index that reads blobs gives the rows with the
+signature among their `failures`. A scan of one that reads only recorded
+objects, as the one below does, throws the error of the first failure. To
+read the other rows and their `failures` there, give `scan` the option
+`{ throwsOnFailure: false }`.
+
+What a selection takes depends on the record and its closure alone, and
+whether a signature is still honored depends on the identity versions a
+reader has seen. That is left to what reads the rows, which asks `honors` of
+a reader's `SeenIdentityVersions`, so a row keeps the link of its signature
+for it to read. Here the notes each person has signed, by their identifier:
 
 ```ts
-const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
+const signedNoteSchema = schema("Signed note", {
+  signer: link(),
+  note: link(),
+  signature: link<Signature>(),
+});
 const signedNotes = indexOver(
   selectedRecords(signatures.selectionOver(noteSchema)),
   signedNoteSchema,
-  async function* ({ signature, object }, reader) {
-    const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-    yield { signer: new LinkValue(signedIdentity.identity.identifier), note: new LinkValue(object.link) };
-  },
+  ({ signature, object }) => [
+    {
+      signer: new LinkValue(signature.signedIdentity.identity.identifier),
+      note: new LinkValue(object.link),
+      signature: new LinkValue(signature.link),
+    },
+  ],
 ).orderedBy("signer");
 ```
 

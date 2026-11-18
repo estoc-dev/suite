@@ -48,11 +48,22 @@ export function encodeObject<F extends ValueMap>(schema: Schema<F>, data: F): En
   return decodeObject(objectFormat.encode(new ObjectValue(schema.link, data)), schema);
 }
 
+/** A link for which a reader gives no blob. */
+export class AbsentBlob extends Error {
+  override readonly name = "AbsentBlob";
+  readonly link: Link<unknown>;
+
+  constructor(link: Link<unknown>) {
+    super(`no blob is given for ${link}`);
+    this.link = link;
+  }
+}
+
 /**
  * Reads the object that `link` names from `reader`, as `decodeObject` would.
  *
- * @throws when the reader gives no blob for `link`, or another blob, and
- * wherever `decodeObject` throws.
+ * @throws {AbsentBlob} when the reader gives no blob for `link`.
+ * @throws when the reader gives another blob, and wherever `decodeObject` throws.
  */
 export async function readObject<F extends ValueMap>(
   reader: Reader,
@@ -64,7 +75,7 @@ export async function readObject<F extends ValueMap>(
 
 export async function readBlob(reader: Reader, link: Link<unknown>): Promise<Uint8Array> {
   const bytes = await reader.get(link);
-  if (bytes === undefined) throw new Error(`no blob is given for ${link}`);
+  if (bytes === undefined) throw new AbsentBlob(link);
   return bytes;
 }
 

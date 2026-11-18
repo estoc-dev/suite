@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
+  AbsentBlob,
   encodeObject,
   encodeSchema,
   type Implementation,
@@ -77,8 +78,8 @@ describe("implementations", () => {
     );
   });
 
-  it("refuse a link for which the reader gives no blob", async () => {
-    await expect(texts.read(textAt(echo), blobs(echo))).rejects.toThrow(`no blob is given for ${hello.link}`);
+  it("refuse an object that links to one the reader gives no blob for, by an error that has that link", async () => {
+    await expect(texts.read(textAt(echo), blobs(echo))).rejects.toStrictEqual(new AbsentBlob(hello.link));
   });
 
   it("refuse a blob given for a link other than its own", async () => {

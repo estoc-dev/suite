@@ -48,8 +48,8 @@ export class SelectionBySchema<T, F extends ValueMap = ValueMap> implements Sele
   /**
    * Gives `undefined` for a record of another schema.
    *
-   * @throws when the reader gives no blob for the record, and where `decodeObject` throws for an
-   * object of `schema`.
+   * @throws {AbsentBlob} when the reader gives no blob for the record.
+   * @throws where `decodeObject` throws for an object of `schema`.
    */
   async read(record: Link<unknown>, reader: Reader): Promise<T | undefined> {
     const bytes = await readBlob(reader, record);

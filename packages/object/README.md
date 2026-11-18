@@ -178,9 +178,14 @@ the link names, or nothing: a bundle checks its blobs when it is made, a
 store hashes what it gets back from where it keeps them, and a `Map` holds
 what was filed in it by `linkOf`. So what reads from a reader, such as a
 verifier that looks at an object's schema before choosing how to read it,
-takes the bytes as the blob of the link. `readObject` fails when the reader
-gives no blob, and refuses one whose bytes have another link all the same,
-since decoding them gives their link anyway.
+takes the bytes as the blob of the link. `readObject` refuses a blob whose
+bytes have another link all the same, since decoding them gives their link
+anyway.
+
+Where the reader gives no blob, `readObject` throws an `AbsentBlob`, whose
+`link` is the link that has no blob. An implementation that reads what an
+object links to throws the same, so a program that catches it can tell which
+blob is absent, and that from any other way the reading failed.
 
 ## Validators
 

@@ -1,4 +1,5 @@
 import {
+  AbsentBlob,
   decodeObject,
   digestOf,
   encodeObject,
@@ -456,6 +457,44 @@ describe("the identity version of a signed identity", () => {
   });
 });
 
+describe("the rows of a signed identity", () => {
+  it("are the one of its identity version", async () => {
+    const signedIdentity = await publish(signer(ed25519), { at: 1_000 });
+    expect(identityVersions.rows(signedIdentity)).toEqual([identityVersions.identityVersionOf(signedIdentity)]);
+  });
+});
+
+describe("the implementation of the signed identity schema", () => {
+  const { implementation } = signedIdentities;
+  const root = signer(ed25519, 4);
+  const read = async (bytes: Uint8Array, blobs: readonly Uint8Array[]) =>
+    implementation.read(decodeObject(bytes, implementation.schema), byLink(blobs));
+
+  it("reads a signed identity as verifying it does", async () => {
+    const signedIdentity = await publish(root, { prior: await publish(root, { at: 500 }), at: 1_000 });
+    const object = decodeObject(signedIdentity.bytes, signedIdentities.schema);
+    expect(await read(signedIdentity.bytes, signedIdentity.blobs)).toEqual(
+      await signedIdentities.verify(object, byLink(signedIdentity.blobs)),
+    );
+  });
+
+  it("refuses a signed identity that another key signed", async () => {
+    const { identity, blobs } = await publish(root, { at: 1_000 });
+    const forgedBytes = writtenSigned({
+      identity: new LinkValue(identity.link),
+      signature: await signer(ed25519, 9).sign(digestOf(identity.link)),
+    });
+    await expect(read(forgedBytes, blobs)).rejects.toThrow(/did not sign/);
+  });
+
+  it("refuses a signed identity without the blob of its identity, by an error that has its link", async () => {
+    const signedIdentity = await publish(root, { at: 1_000 });
+    const error = await read(signedIdentity.bytes, []).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AbsentBlob);
+    expect(error).toHaveProperty("link", signedIdentity.identity.link);
+  });
+});
+
 describe("the selection of identity versions", () => {
   const { selection } = identityVersions;
   const root = signer(ed25519, 4);
@@ -464,10 +503,11 @@ describe("the selection of identity versions", () => {
     ["with no agents", () => publish(root, { at: 1_000 })],
     ["with agents", () => publish(root, { agents: [key(ed25519, 2)], at: 1_000 })],
     ["that follows another", async () => publish(root, { prior: await publish(root, { at: 500 }), at: 1_000 })],
-  ])("reads the signed identity of an identity %s as its identity version", async (_, signIdentity) => {
+  ])("reads the signed identity of an identity %s as the implementation does", async (_, signIdentity) => {
     const signedIdentity = await signIdentity();
-    expect(await selection.read(signedIdentity.link, byLink(signedIdentity.blobs))).toEqual(
-      identityVersions.identityVersionOf(signedIdentity),
+    const reader = byLink(signedIdentity.blobs);
+    expect(await selection.read(signedIdentity.link, reader)).toEqual(
+      await signedIdentities.implementation.read(signedIdentity, reader),
     );
   });
 
@@ -475,25 +515,27 @@ describe("the selection of identity versions", () => {
     const signedIdentity = await publish(root, { at: 1_000 });
     const object = decodeObject(signedIdentity.bytes, signedIdentities.schema);
     const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
-    expect(await selection.itemOf(object, linkedBlobs)).toEqual(identityVersions.identityVersionOf(signedIdentity));
+    expect((await selection.itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
   });
 
-  it("leaves out a signed identity that another key signed", async () => {
+  it("refuses a signed identity that another key signed", async () => {
     const { identity, blobs } = await publish(root, { at: 1_000 });
     const forgedBytes = writtenSigned({
       identity: new LinkValue(identity.link),
       signature: await signer(ed25519, 9).sign(digestOf(identity.link)),
     });
     const reader = byLink([forgedBytes, ...blobs]);
-    expect(await selection.read(linkOf(forgedBytes), reader)).toBeUndefined();
-    expect(await selection.itemOf(decodeObject(forgedBytes, signedIdentities.schema), reader)).toBeUndefined();
+    await expect(selection.read(linkOf(forgedBytes), reader)).rejects.toThrow(/did not sign/);
+    await expect(
+      Promise.resolve(selection.itemOf(decodeObject(forgedBytes, signedIdentities.schema), reader)),
+    ).rejects.toThrow(/did not sign/);
   });
 
-  it("leaves out a signed identity that names what is not an identity", async () => {
+  it("refuses a signed identity that names what is not an identity", async () => {
     const rootKey = keys.encode(root.key);
     const signedIdentityBytes = unsignedOf(rootKey.link);
     const reader = byLink([signedIdentityBytes, rootKey.bytes]);
-    expect(await selection.read(linkOf(signedIdentityBytes), reader)).toBeUndefined();
+    await expect(selection.read(linkOf(signedIdentityBytes), reader)).rejects.toThrow(/is written to/);
   });
 
   it("throws on reading a record that names the signed identity schema and does not fit it", async () => {
@@ -502,15 +544,15 @@ describe("the selection of identity versions", () => {
     await expect(selection.read(linkOf(unfitBytes), byLink([unfitBytes]))).rejects.toThrow(/does not fit/);
   });
 
-  it("leaves out a signed identity whose root's scheme the application does not accept", async () => {
+  it("refuses a signed identity whose root's scheme the application does not accept", async () => {
     const { identityVersions: ed25519IdentityVersions } = loadIdentity([ed25519]);
     const signedIdentity = await publish(signer(eip191), { at: 1_000 });
-    expect(
-      await ed25519IdentityVersions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs)),
-    ).toBeUndefined();
+    await expect(
+      ed25519IdentityVersions.selection.read(signedIdentity.link, byLink(signedIdentity.blobs)),
+    ).rejects.toThrow(/is not a schema read here/);
   });
 
-  it("leaves out a signed identity whose identity the reader does not give", async () => {
+  it("refuses a signed identity whose identity the reader does not give, by the reader's error", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
     const failingReader = {
       get: async (link: Link<unknown>) => {
@@ -518,8 +560,12 @@ describe("the selection of identity versions", () => {
         throw new Error("the disk failed");
       },
     };
-    expect(await selection.read(signedIdentity.link, byLink([signedIdentity.bytes]))).toBeUndefined();
-    expect(await selection.read(signedIdentity.link, failingReader)).toBeUndefined();
+    const error = await selection
+      .read(signedIdentity.link, byLink([signedIdentity.bytes]))
+      .catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AbsentBlob);
+    expect(error).toHaveProperty("link", signedIdentity.identity.link);
+    await expect(selection.read(signedIdentity.link, failingReader)).rejects.toThrow("the disk failed");
   });
 
   it("leaves out an object of another schema", async () => {

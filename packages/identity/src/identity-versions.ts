@@ -45,37 +45,37 @@ export interface Arrivals {
   atOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
 }
 
-/** Identity versions: the row each is, their selection, and the people of those a reader has seen. */
+/** Identity versions: the row each is, the selection and the rows of an index of them, and the people of those a reader has seen. */
 export class IdentityVersions {
   /** The schema of the rows of an index of identity versions, for whoever makes the index. */
   readonly schema = identityVersionSchema;
   /** The fields to order that index by, for `people` to read its rows. */
   readonly order: IdentityVersionOrder = ["identifier", "at", "signedIdentity"];
   /**
-   * The selection of signed identities, each read as the data of the row
-   * `identityVersionOf` gives.
+   * The selection of signed identities, each read as
+   * `SignedIdentities.implementation` reads it.
    *
-   * - Anyone can send a signed identity, so one whose identity does not read,
-   *   or whose root did not sign it, gives `undefined`.
-   * - A reader that throws or gives no blob for what the signed identity names
-   *   leaves it out the same way, so what reads with a reader that can fail
-   *   has to notice that itself.
+   * Anyone can send a signed identity, so one whose identity does not read,
+   * or whose root did not sign it, is refused. An index over the selection
+   * fails on it, as `@estoc/store` has an index fail.
    *
-   * @throws from `read`, when the reader gives no blob for the record, and
-   *   where `decodeObject` throws for an object of the signed identity schema.
+   * @throws {AbsentBlob} from `read`, when the reader gives no blob for the
+   *   record.
+   * @throws from `read`, where `decodeObject` throws for an object of the
+   *   signed identity schema, and where `SignedIdentities.implementation`
+   *   throws for it.
    */
-  readonly selection: SelectionBySchema<IdentityVersionData, SignedIdentityData>;
+  readonly selection: SelectionBySchema<SignedIdentityObject, SignedIdentityData>;
+  /** The rows of that index for a signed identity that `selection` read: the one that `identityVersionOf` gives. */
+  readonly rows = (signedIdentity: SignedIdentityObject): readonly [IdentityVersionData] => [
+    this.identityVersionOf(signedIdentity),
+  ];
   readonly #signedIdentities: SignedIdentities;
 
   constructor(signedIdentities: SignedIdentities) {
     this.#signedIdentities = signedIdentities;
-    this.selection = new SelectionBySchema(signedIdentities.schema, async (object, reader) => {
-      try {
-        return this.identityVersionOf(await signedIdentities.verify(object, reader));
-      } catch {
-        return undefined;
-      }
-    });
+    const { schema, implementation } = signedIdentities;
+    this.selection = new SelectionBySchema(schema, (object, reader) => implementation.read(object, reader));
   }
 
   identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {

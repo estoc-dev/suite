@@ -250,6 +250,12 @@ identity's root did not make. `signedIdentities.read` reads that object
 from its link first. A signed identity carries as `blobs` its object and
 its schema with the identity's `blobs`.
 
+`signedIdentities.implementation` is the signed identity schema as an
+`Implementation` of `@estoc/object`. Its `read` takes the signed identity
+as an object and a `Reader`, and verifies it as `signedIdentities.verify`
+does. For the schemes given to `loadIdentity`, what it reads depends on the
+signed identity and its closure alone.
+
 What a signature asks of an identity, which key made it and how a signer
 signs for it, is asked of the identity in hand, so `signatures` depends on
 signed identities alone.
@@ -292,25 +298,25 @@ latest crisis, and those that count are the ones whose last crisis it is.
 fields to order an index of those rows by: the identifier, `at` and then the
 link, so the rows of one identifier come together, in the order of their `at`.
 
-`identityVersions.selection` is the `SelectionBySchema` of signed identities,
-each read as the data of its row. A signed identity carries its authority in its root's
-signature, so it reads the same however it arrived, and an application keeps
-the rows of every one it holds in an index of its own, such as
-one over `selectedBlobs` of `@estoc/store`. A stranger can add no identity version of
-someone that their root did not sign, and an older identity version leaves the
-current one as it is, unless it is a crisis that the current one does not
-follow.
+`identityVersions.selection` is the `SelectionBySchema` of signed
+identities, each read as `signedIdentities.implementation` reads it, and
+`identityVersions.rows` gives the rows of a signed identity it read: the one
+of `identityVersionOf`. A signed identity carries its authority in its
+root's signature, so it reads the same however it arrived, and an
+application keeps the rows of every one it holds in an index of its own,
+such as one over `selectedBlobs` of `@estoc/store`. A stranger can add no
+identity version of someone that their root did not sign, and an older
+identity version leaves the current one as it is, unless it is a crisis that
+the current one does not follow.
 
-Anyone can send a signed identity, so one whose identity does not read, such
-as one whose root has a scheme the application does not accept, or whose root
-did not sign it, gives `undefined`. A reader that throws or gives no blob for
-what the signed identity names leaves it out the same way, so what reads with a
-reader that can fail has to notice that itself, as a scan of `@estoc/store`
-does. The object itself is read before any of this: `selection.read` throws as
-that of any `SelectionBySchema` does when the reader gives no blob for it, or
-when it names the schema and does not fit it. An index over blobs gives no row for
-a blob that does not fit the schema, and a scan still fails when the store does
-not give a blob it lists.
+Anyone can send a signed identity, so one may not read: its identity does
+not read, as when its root has a scheme the application does not accept, or
+its root did not sign it. The selection refuses it, and an index over the
+selection fails on it, as `@estoc/store` has an index fail: it gives no row,
+and the rest is read still. A scan of an index that reads blobs gives the
+rows with it among their `failures`. `selection.read` throws as well, as
+that of any `SelectionBySchema` does, when the reader gives no blob for the
+record, or when the record names the schema and does not fit it.
 
 `identityVersions.people` takes those rows and a `Reader` of the store they
 are of. It gives the `People` of the identity versions the reader has seen. The rows hold those each identity version follows, as
@@ -399,7 +405,7 @@ and `identityVersions.people` reads its rows:
 const seen = indexOver(
   selectedBlobs(identityVersions.selection),
   identityVersions.schema,
-  (identityVersion) => [identityVersion],
+  identityVersions.rows,
 ).orderedBy(...identityVersions.order);
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const people = await view(store, { index: seen, read: (rows, reader) => identityVersions.people(rows, reader) });

@@ -328,11 +328,11 @@ the user recorded, for objects that carry their authority in a signature, as
 import { indexOver, selectedBlobs } from "@estoc/store";
 
 // The identity versions a store holds, however deep in a closure they came.
-// One whose root did not sign it gives no row.
+// One whose root did not sign it gives no row, and is among the failures.
 const identityVersionsHeld = indexOver(
   selectedBlobs(identityVersions.selection),
   identityVersions.schema,
-  (identityVersion) => [identityVersion],
+  identityVersions.rows,
 ).orderedBy(...identityVersions.order);
 ```
 

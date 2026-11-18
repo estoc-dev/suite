@@ -2,6 +2,7 @@ import {
   digestOf,
   type EncodedObject,
   encodeObject,
+  type Implementation,
   type Link,
   LinkValue,
   type Reader,
@@ -43,6 +44,17 @@ export interface SignedIdentityObject extends EncodedObject<SignedIdentityData> 
 /** Signed identities, with the identities they sign. */
 export class SignedIdentities {
   readonly schema = signedIdentitySchema;
+  /**
+   * The signed identity schema read as a signed identity, verified as
+   * `verify` does.
+   *
+   * For the schemes given to `loadIdentity`, what it reads depends on the
+   * signed identity and its closure alone, so an index can read by it.
+   */
+  readonly implementation: Implementation<SignedIdentityObject, SignedIdentityData> = {
+    schema: signedIdentitySchema,
+    read: (object, reader) => this.verify(object, reader),
+  };
   readonly #identities: Identities;
 
   constructor(identities: Identities) {

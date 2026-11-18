@@ -153,9 +153,9 @@ const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
 const people: View<IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
-    identityVersion,
-  ]).orderedBy(...identityVersions.order),
+  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
+    ...identityVersions.order,
+  ),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 

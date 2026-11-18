@@ -47,9 +47,9 @@ const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
 const seenPeople: View<IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
-    identityVersion,
-  ]).orderedBy(...identityVersions.order),
+  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
+    ...identityVersions.order,
+  ),
   read: (rows, reader) => identityVersions.people(rows, reader),
 };
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);

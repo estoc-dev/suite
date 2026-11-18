@@ -150,10 +150,10 @@ describe("a signed identity that comes in a bundle", () => {
   const identityVersionsHeld = indexOver(
     selectedBlobs(identityVersions.selection),
     identityVersions.schema,
-    (identityVersion) => [identityVersion],
+    identityVersions.rows,
   ).orderedBy(...identityVersions.order);
 
-  it("is read by its schema wherever it sits in the closure of the bundle's root, unless its root did not sign it", async () => {
+  it("is read by its schema wherever it sits in the closure of the bundle's root, and is among the failures when its root did not sign it", async () => {
     const aliceIdentityVersion = await publish(alice, { at: 5 });
     const forgedIdentityVersion = encodeObject(signedIdentities.schema, {
       identity: new LinkValue(aliceIdentityVersion.identity.link),
@@ -178,12 +178,14 @@ describe("a signed identity that comes in a bundle", () => {
     );
     expect(await bob.store.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
 
+    const scannedRows = await scan(bob.store, identityVersionsHeld);
     const rows = [];
-    for await (const { data } of (await scan(bob.store, identityVersionsHeld)).range([])) rows.push(data);
+    for await (const { data } of scannedRows.range([])) rows.push(data);
     const expectedRows = [aliceIdentityVersion, signature.signedIdentity]
       .map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity))
       .sort((a, b) => (a.identifier.link < b.identifier.link ? -1 : 1));
     expect(rows).toEqual(expectedRows);
+    expect(scannedRows.failures.map(({ item }) => item)).toEqual([forgedIdentityVersion.link]);
   });
 
   it("is validated once by a scan", async () => {
@@ -195,7 +197,7 @@ describe("a signed identity that comes in a bundle", () => {
     validate.mockClear();
     await scan(
       store,
-      indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (row) => [row]).orderedBy(
+      indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
         ...identityVersions.order,
       ),
     );

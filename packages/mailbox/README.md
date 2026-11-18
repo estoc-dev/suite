@@ -427,7 +427,7 @@ const grants = new MailboxGrants({ signatures, signedIdentities });
 const seen = indexOver(
   selectedBlobs(identityVersions.selection),
   identityVersions.schema,
-  (identityVersion) => [identityVersion],
+  identityVersions.rows,
 ).orderedBy(...identityVersions.order);
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const series = await view(store, grants.series);

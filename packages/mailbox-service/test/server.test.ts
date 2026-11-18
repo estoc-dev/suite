@@ -586,13 +586,16 @@ describe("a mailbox service started again", () => {
       )),
       (await mailboxAcknowledgementIn(await postMailboxRequest(again, requestFile))).signature,
     ];
-    const signedAsCrisis = await answers();
-    for (const { signedIdentity } of signedAsCrisis) expect(signedIdentity.link).toBe(crisis.link);
+    const crisisSignatures = await answers();
+    for (const { signedIdentity } of crisisSignatures) expect(signedIdentity.link).toBe(crisis.link);
     const records = await recordedObjectsOf(store);
 
-    const later = await publish(serviceSigner, { prior: crisis, agents: [otherService.key], at: 4_000 });
-    await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
-    expect((await answers()).map(({ link }) => link)).toEqual(signedAsCrisis.map(({ link }) => link));
+    const laterIdentityVersion = await publish(serviceSigner, { prior: crisis, agents: [otherService.key], at: 4_000 });
+    await store.write({
+      roots: [laterIdentityVersion.link],
+      blobs: [laterIdentityVersion.bytes, ...laterIdentityVersion.blobs],
+    });
+    expect((await answers()).map(({ link }) => link)).toEqual(crisisSignatures.map(({ link }) => link));
     expect(await recordedObjectsOf(store)).toEqual(records);
   });
 

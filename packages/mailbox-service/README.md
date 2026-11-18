@@ -174,10 +174,13 @@ it from then on while it is honored, so an identity version of its root that
 is no crisis has it sign nothing again. Requests of one acceptance that arrive
 together, as when a client tries again before it hears back, can each
 sign an acknowledgement of it, and each answer acknowledges that
-acceptance. Of more than one, the service answers with the one whose
-signature has the least link, compared as ASCII strings, so services that
-share a store answer alike. Either way a device gets an acknowledgement of
-its own acceptance. The client refuses an
+acceptance. Of more than one acknowledgement, the service takes the one
+that the signature of the least link signs, among the signatures recorded
+for the acceptance, compared as ASCII strings, so services that share a
+store answer alike. It answers with that acknowledgement alone, by the
+signature over it that is honored or by signing it again as above, even
+when a signature over another of them is honored. Either way a device gets
+an acknowledgement of its own acceptance. The client refuses an
 acknowledgement that is signed for another identifier than the service's or
 that acknowledges another acceptance than the one it sent.
 

@@ -370,6 +370,7 @@ class MailboxService {
     if (await people.honors(signature)) return link;
     const recordedSignatures = await view(this.#privateStore, this.#recordedSignatures);
     for (const recordedLink of await recordedSignatures.signaturesOver(signature.object)) {
+      if (recordedLink === link) continue;
       const recordedSignature = await this.#signatures.read(recordedLink, this.#store, noIdentityVersions);
       if (await people.honors(recordedSignature)) return recordedLink;
     }
@@ -597,10 +598,6 @@ async function writeSigned(
   await privateStore.write(recordsOf([signature], at));
 }
 
-/**
- * The schema of a recorded signature as a row of an index: the object it
- * signs, and the signature.
- */
 const recordedSignatureSchema = schema("Recorded signature", { object: link(), signature: link<Signature>() });
 
 type RecordedSignaturesView = View<

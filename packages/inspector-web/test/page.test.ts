@@ -1,6 +1,6 @@
-import { markdownBodyOf, postSchema } from "@estoc/blog";
+import { markdownBodyOf, markdownBodySchema, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
-import { encodeObject, LinkValue, linkOf } from "@estoc/object";
+import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { fragmentOf } from "../src/address.ts";
@@ -63,9 +63,15 @@ describe("the page of a file", () => {
     expect(page).toMatchObject({ kind: "open", inspection: { kind: "bytes", link: linkOf(photo) } });
   });
 
-  it("has what the page makes of a body, at the link of the body", async () => {
+  it("has the body the page reads an object as, at the link of the object", async () => {
     const page = await pageOf(readFile(postFile), fragmentOf(body.link));
-    expect(page).toMatchObject({ inspection: { link: body.link }, reading: { html: "<h2>Identity</h2>\n" } });
+    expect(page).toMatchObject({ inspection: { link: body.link }, reading: { kind: "read", body } });
+  });
+
+  it("has why the page could not read a body, where the file leaves out the blob of its schema", async () => {
+    const misfit = { bytes: objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 })) };
+    const page = await pageOf(readFile(new File([encodeBundle(misfit, [])], "misfit.eof")), "");
+    expect(page).toMatchObject({ inspection: { schema: { kind: "absent" } }, reading: { kind: "unread" } });
   });
 
   it("has no more than the fields of an object of a schema the page does not read", async () => {

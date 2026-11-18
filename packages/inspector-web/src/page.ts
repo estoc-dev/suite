@@ -28,7 +28,7 @@ export interface OpenFile {
 
 /**
  * A file, and what the link being shown reads as through its bundle. Where that is an object of a
- * schema the page reads, `reading` is what the page makes of it.
+ * schema the page reads, `reading` is what the page reads it as, or why it could not.
  */
 export type ShownFile = OpenFile & { readonly inspection: Inspection; readonly reading: Reading | undefined };
 

@@ -255,6 +255,10 @@ th,
   text-align: left;
 }
 
+.reading > .problem {
+  padding: 16px;
+}
+
 .rendered {
   max-width: 68ch;
   padding: 16px;

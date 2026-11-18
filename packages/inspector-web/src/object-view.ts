@@ -1,3 +1,4 @@
+import type { Body } from "@estoc/blog";
 import type { NamedSchema } from "@estoc/inspector";
 import { isValueMap, LinkValue, type Value } from "@estoc/object";
 import { type Child, h, markup, mono, muted } from "./dom.ts";
@@ -81,14 +82,20 @@ function schemaView(schema: NamedSchema, object: InspectedObject, { unplacedProb
   ];
 }
 
-// What the page makes of the object stands above its fields and does not take their place: the
+const bodyView = ({ html }: Body) => markup("div", { class: "rendered" }, html);
+
+// What the page reads the object as stands above its fields and does not take their place: the
 // fields are what the blob says of itself.
-function readingView({ html }: Reading): HTMLElement {
+function readingView(reading: Reading): HTMLElement {
   return h(
     "div",
     { class: "reading" },
-    h("p", { class: "band" }, "Rendered"),
-    markup("div", { class: "rendered" }, html),
+    reading.kind === "read"
+      ? [h("p", { class: "band" }, "Read by this page as the body of a post"), bodyView(reading.body)]
+      : [
+          h("p", { class: "band" }, "Not read by this page as the body of a post"),
+          h("p", { class: "problem" }, messageOf(reading.error)),
+        ],
   );
 }
 

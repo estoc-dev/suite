@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { markdownBodyOf, markdownBodySchema } from "@estoc/blog";
 import { inspect } from "@estoc/inspector";
 import { type Link, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
 import { any, array, schema, string } from "@estoc/schema";
@@ -21,6 +22,8 @@ async function viewOf(
 
 const textsOf = (view: HTMLElement, selector: string) =>
   Array.from(view.querySelectorAll(selector), (node) => node.textContent);
+
+const partsOf = (view: HTMLElement) => Array.from(view.children, ({ className, tagName }) => className || tagName);
 
 describe("the view of an object", () => {
   it("lists once, under the schema, a problem that reads as that of more than one value", async () => {
@@ -48,21 +51,26 @@ describe("the view of an object", () => {
     ]);
   });
 
-  it("shows what the page makes of the object as markup, above its fields", async () => {
+  it("shows the body the page reads the object as, rendered above its fields", async () => {
     const view = await viewOf(
-      schema("Note", { text: string() }),
+      markdownBodySchema,
       { text: "a *word*" },
-      { html: "<p>a <em>word</em></p>" },
+      { kind: "read", body: markdownBodyOf("a *word*") },
     );
+    expect(textsOf(view, ".reading .band")).toEqual(["Read by this page as the body of a post"]);
     expect(textsOf(view, ".rendered em")).toEqual(["word"]);
-    expect(Array.from(view.children, ({ className, tagName }) => className || tagName)).toEqual([
-      "head",
-      "reading",
-      "TABLE",
-    ]);
+    expect(partsOf(view)).toEqual(["head", "reading", "TABLE"]);
   });
 
-  it("shows the fields alone where the page makes nothing more of the object", async () => {
+  it("says above its fields why the page could not read the object as a body", async () => {
+    const error = new Error("the data does not fit its schema: #/text: not a string");
+    const view = await viewOf(markdownBodySchema, { text: 7 }, { kind: "unread", error });
+    expect(textsOf(view, ".reading p")).toEqual(["Not read by this page as the body of a post", error.message]);
+    expect(view.querySelector(".rendered")).toBeNull();
+    expect(partsOf(view)).toEqual(["head", "reading", "TABLE"]);
+  });
+
+  it("shows the fields alone where the page does not read the schema of the object", async () => {
     const view = await viewOf(schema("Note", { text: string() }), { text: "<em>a word</em>" });
     expect(view.querySelector(".reading")).toBeNull();
     expect(view.querySelector("em")).toBeNull();

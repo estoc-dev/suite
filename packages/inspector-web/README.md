@@ -39,11 +39,16 @@ is the Markdown body.
 
 - An object of one of those schemas is shown rendered, above its fields.
   The fields stay, since they are what the blob says of itself.
+- What stands above the fields is titled `Read by this page as the body
+  of a post`. It is this page's reading: the schema titles itself, and
+  another program may read the same object as something else.
 - The schema is matched by its link and not by its title. The page holds
   the schema, so a body is rendered whether or not the file gives the blob
   of its schema.
-- A body whose data does not fit its schema is not rendered. Its fields
-  are shown as those of any object.
+- A body whose data does not fit its schema is not rendered. In its place
+  the page says that it did not read the object as the body of a post, and
+  what does not fit. It says so where the file leaves out the blob of the
+  schema as well, and the field table can then mark no problem.
 - A post is shown by its fields. Its `body` is a link, and following it
   shows the body.
 

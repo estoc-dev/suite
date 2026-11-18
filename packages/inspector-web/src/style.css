@@ -255,8 +255,13 @@ th,
   text-align: left;
 }
 
+.reading > .note,
 .reading > .problem {
   padding: 16px;
+}
+
+.reading > .head + .note {
+  padding-top: 0;
 }
 
 .rendered {

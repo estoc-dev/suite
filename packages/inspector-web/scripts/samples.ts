@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { markdownBodyOf, markdownBodySchema, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
+import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { any, array, boolean, bytes, integer, link, optional, rootSchema, schema, string } from "@estoc/schema";
 
@@ -76,11 +77,31 @@ const post = encodeObject(postSchema, {
   body: new LinkValue(body.link),
 });
 
+const { publish, signatures } = loadIdentity([ed25519]);
+const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
+const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
+const signature = await signatures.actor(agent, signedIdentity).sign(post);
+const signedPost = [
+  ...signatures.schema.blobs,
+  post.bytes,
+  body.bytes,
+  ...postSchema.blobs,
+  ...markdownBodySchema.blobs,
+];
+const unverifiedSignature = encodeObject(signatures.schema, {
+  ...signature.data,
+  signature: signature.signature.map((byte, index) => (index === 1 ? byte ^ 1 : byte)),
+});
+
 const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note, [reply.bytes, photo, ...noteSchema.blobs]),
   "post.eof": encodeBundle(post, [body.bytes, ...postSchema.blobs, ...markdownBodySchema.blobs]),
   "body-misfit.eof": encodeBundle(misfitBody, markdownBodySchema.blobs),
   "body-misfit-schema-absent.eof": encodeBundle(misfitBody, []),
+  "signature.eof": encodeBundle(signature, [...signedIdentity.blobs, ...signedPost]),
+  "signature-identity-absent.eof": encodeBundle(signature, signedPost),
+  "signature-unverified.eof": encodeBundle(unverifiedSignature, [...signedIdentity.blobs, ...signedPost]),
   "misfit.eof": encodeBundle(misfit, [reply.bytes, ...noteSchema.blobs]),
   "unplaced.eof": encodeBundle(unplacedExample, pathSchema.blobs),
   "left-out.eof": encodeBundle(note, [...noteSchema.blobs, misfit.bytes, new TextEncoder().encode("a stray blob")]),

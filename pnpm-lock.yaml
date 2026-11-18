@@ -120,6 +120,9 @@ importers:
       '@estoc/bundle':
         specifier: workspace:*
         version: link:../bundle
+      '@estoc/identity':
+        specifier: workspace:*
+        version: link:../identity
       '@estoc/inspector':
         specifier: workspace:*
         version: link:../inspector

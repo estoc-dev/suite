@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 import { markdownBodyOf, markdownBodySchema } from "@estoc/blog";
 import { inspect } from "@estoc/inspector";
-import { type Link, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
+import { AbsentBlob, type Link, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
 import { any, array, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
+import { fragmentOf } from "../src/address.ts";
+import { bodyReading } from "../src/body-reading.ts";
 import { objectView } from "../src/object-view.ts";
 import type { Reading } from "../src/reading.ts";
+import { signatureReading } from "../src/signature-reading.ts";
 
 async function viewOf(
   objectSchema: ReturnType<typeof schema>,
@@ -55,7 +58,7 @@ describe("the view of an object", () => {
     const view = await viewOf(
       markdownBodySchema,
       { text: "a *word*" },
-      { kind: "read", body: markdownBodyOf("a *word*") },
+      { kind: "read", as: bodyReading, value: markdownBodyOf("a *word*") },
     );
     expect(textsOf(view, ".reading .band")).toEqual(["Read by this page as the body of a post"]);
     expect(textsOf(view, ".rendered em")).toEqual(["word"]);
@@ -64,10 +67,25 @@ describe("the view of an object", () => {
 
   it("says above its fields why the page could not read the object as a body", async () => {
     const error = new Error("the data does not fit its schema: #/text: not a string");
-    const view = await viewOf(markdownBodySchema, { text: 7 }, { kind: "unread", error });
+    const view = await viewOf(markdownBodySchema, { text: 7 }, { kind: "unread", as: bodyReading, error });
     expect(textsOf(view, ".reading p")).toEqual(["Not read by this page as the body of a post", error.message]);
     expect(view.querySelector(".rendered")).toBeNull();
     expect(partsOf(view)).toEqual(["head", "reading", "TABLE"]);
+  });
+
+  it("names, as a link to follow, the link that a reading had no blob for", async () => {
+    const { link } = markdownBodyOf("a signed identity the file leaves out");
+    const view = await viewOf(
+      schema("Signature", { signedIdentity: string() }),
+      { signedIdentity: link },
+      { kind: "unread", as: signatureReading, error: new AbsentBlob(link) },
+    );
+    expect(textsOf(view, ".reading p")).toEqual([
+      "Not read by this page as a signature",
+      `No blob is given for ${link}.`,
+    ]);
+    expect(view.querySelector(".reading a")?.getAttribute("href")).toBe(fragmentOf(link));
+    expect(view.querySelector(".reading .problem")).toBeNull();
   });
 
   it("shows the fields alone where the page does not read the schema of the object", async () => {

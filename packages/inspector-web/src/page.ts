@@ -3,6 +3,7 @@ import { type Inspection, inspect } from "@estoc/inspector";
 import { linkIn } from "./address.ts";
 import { blobListOf, type ListedBlob } from "./blob-list.ts";
 import { type Reading, readingOf } from "./reading.ts";
+import { readings } from "./readings.ts";
 
 /** A file that gave no bytes, as one does that is removed after it is chosen. */
 export interface ReadFailure {
@@ -63,5 +64,5 @@ export async function pageOf(fileTask: ReturnType<typeof readFile> | undefined, 
   if (file === undefined) return { kind: "closed" };
   if (file.kind !== "open") return file;
   const inspection = await inspect(linkIn(fragment) ?? file.bundle.link, file.bundle);
-  return { ...file, inspection, reading: await readingOf(inspection, file.bundle) };
+  return { ...file, inspection, reading: await readingOf(inspection, file.bundle, readings) };
 }

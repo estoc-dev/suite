@@ -45,7 +45,7 @@ export interface Arrivals {
   atOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
 }
 
-/** Identity versions: the row each is, the selection and the rows of an index of them, and the people of those a reader has seen. */
+/** Identity versions, as the rows of an index that signed identities give, and as the people of those a reader has seen. */
 export class IdentityVersions {
   /** The schema of the rows of an index of identity versions, for whoever makes the index. */
   readonly schema = identityVersionSchema;
@@ -60,13 +60,14 @@ export class IdentityVersions {
    * fails on it, as `@estoc/store` has an index fail.
    *
    * @throws {AbsentBlob} from `read`, when the reader gives no blob for the
-   *   record.
+   *   record, or for one that verifying it reads. The error has the link of
+   *   that blob.
+   * @throws from `read`, what the reader throws.
    * @throws from `read`, where `decodeObject` throws for an object of the
    *   signed identity schema, and where `SignedIdentities.implementation`
    *   throws for it.
    */
   readonly selection: SelectionBySchema<SignedIdentityObject, SignedIdentityData>;
-  /** The rows of that index for a signed identity that `selection` read: the one that `identityVersionOf` gives. */
   readonly rows = (signedIdentity: SignedIdentityObject): readonly [IdentityVersionData] => [
     this.identityVersionOf(signedIdentity),
   ];

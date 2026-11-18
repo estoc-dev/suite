@@ -306,17 +306,23 @@ root's signature, so it reads the same however it arrived, and an
 application keeps the rows of every one it holds in an index of its own,
 such as one over `selectedBlobs` of `@estoc/store`. A stranger can add no
 identity version of someone that their root did not sign, and an older
-identity version leaves the current one as it is, unless it is a crisis that
-the current one does not follow.
+identity version leaves the current one as it is, unless it is, or follows,
+a crisis later than any the reader has seen.
 
 Anyone can send a signed identity, so one may not read: its identity does
 not read, as when its root has a scheme the application does not accept, or
 its root did not sign it. The selection refuses it, and an index over the
 selection fails on it, as `@estoc/store` has an index fail: it gives no row,
 and the rest is read still. A scan of an index that reads blobs gives the
-rows with it among their `failures`. `selection.read` throws as well, as
-that of any `SelectionBySchema` does, when the reader gives no blob for the
-record, or when the record names the schema and does not fit it.
+rows with it among their `failures`. A store that throws, or gives no blob,
+for a link that verifying the signed identity reads is no such failure: the
+scan throws, and a later scan reads the signed identity again.
+
+`selection.read` throws as that of any `SelectionBySchema` does, when the
+reader gives no blob for the record, or when the record names the schema and
+does not fit it. It throws what the reader throws as well, and an
+`AbsentBlob` has the link of the blob the reader did not give: the record,
+or one that verifying it reads.
 
 `identityVersions.people` takes those rows and a `Reader` of the store they
 are of. It gives the `People` of the identity versions the reader has seen. The rows hold those each identity version follows, as

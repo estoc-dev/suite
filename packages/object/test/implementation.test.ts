@@ -79,7 +79,9 @@ describe("implementations", () => {
   });
 
   it("refuse an object that links to one the reader gives no blob for, by an error that has that link", async () => {
-    await expect(texts.read(textAt(echo), blobs(echo))).rejects.toStrictEqual(new AbsentBlob(hello.link));
+    const reading = texts.read(textAt(echo), blobs(echo));
+    await expect(reading).rejects.toBeInstanceOf(AbsentBlob);
+    await expect(reading).rejects.toMatchObject({ link: hello.link });
   });
 
   it("refuse a blob given for a link other than its own", async () => {

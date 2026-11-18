@@ -75,7 +75,9 @@ describe("an object read by its link", () => {
   });
 
   it("is refused when the reader gives no blob for the link, by an error that has the link", async () => {
-    await expect(readObject(new Map(), object.link, login)).rejects.toStrictEqual(new AbsentBlob(object.link));
+    const reading = readObject(new Map(), object.link, login);
+    await expect(reading).rejects.toBeInstanceOf(AbsentBlob);
+    await expect(reading).rejects.toMatchObject({ link: object.link });
   });
 
   it("is refused when the reader gives another blob for the link", async () => {

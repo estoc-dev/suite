@@ -183,9 +183,13 @@ bytes have another link all the same, since decoding them gives their link
 anyway.
 
 Where the reader gives no blob, `readObject` throws an `AbsentBlob`, whose
-`link` is the link that has no blob. An implementation that reads what an
-object links to throws the same, so a program that catches it can tell which
-blob is absent, and that from any other way the reading failed.
+`link` is the link that has no blob. A program that catches it can tell which
+blob is absent, and that from any other way the reading failed. What reads
+further objects with `readObject` or `Implementations.read`, as an
+implementation does for what its object links to, lets the same error
+through, so its `link` is the link of the further object. What calls `get` on
+the reader itself gets `undefined` for an absent blob, and what it does then
+is its own to say.
 
 ## Validators
 

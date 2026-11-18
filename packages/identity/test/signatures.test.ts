@@ -490,28 +490,37 @@ describe("the selection of the signatures over objects of a schema", () => {
   const readerOf = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>
     new Map(objects.map(({ link, bytes }) => [link, bytes]));
 
-  it("reads a signature over an object of the schema with the object", async () => {
+  const identityBlobsOf = ({ signedIdentity }: Signature) =>
+    signedIdentity.blobs.map((bytes) => ({ link: linkOf(bytes), bytes }));
+
+  it("reads a signature over an object of the schema as the implementation does, with the object", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const read = await notes.read(signature.link, readerOf(signature, hello));
-    expect(read?.signature.link).toBe(signature.link);
-    expect(read?.signature.data).toEqual(dataOf(signature));
+    const reader = readerOf(signature, hello, ...identityBlobsOf(signature));
+    const read = await notes.read(signature.link, reader);
+    expect(read?.signature).toEqual(await signatures.implementation.read(signature, reader));
     expect(read?.object.link).toBe(hello.link);
     expect(read?.object.data).toEqual({ text: "hello" });
   });
 
-  it("leaves out a signature over an object of another schema, and what is not a signature", async () => {
+  it("leaves out a signature over an object of another schema without verifying it, and what is not a signature", async () => {
     const card = encodeObject(schema("Card", { name: string() }), { name: "Alice" });
     const signature = await sign(card, signer(ed25519));
     expect(await notes.read(signature.link, readerOf(signature, card))).toBeUndefined();
     expect(await notes.read(hello.link, readerOf(hello))).toBeUndefined();
   });
 
-  it("takes a signature that does not verify", async () => {
+  it("refuses a signature that does not verify", async () => {
     const signature = await sign(hello, signer(ed25519));
     const bytes = rewritten(signature, { object: new LinkValue(goodbye.link) });
-    const read = await notes.read(linkOf(bytes), readerOf({ link: linkOf(bytes), bytes }, goodbye));
-    expect(read?.object.link).toBe(goodbye.link);
-    await expect(verified(bytes, identityOf(signature))).rejects.toThrow(/does not verify/);
+    const reader = readerOf({ link: linkOf(bytes), bytes }, goodbye, ...identityBlobsOf(signature));
+    await expect(notes.read(linkOf(bytes), reader)).rejects.toThrow(/does not verify/);
+  });
+
+  it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const error = await notes.read(signature.link, readerOf(signature, hello)).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AbsentBlob);
+    expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
 
   it("refuses a signature whose object the reader does not give, or which does not fit the schema", async () => {

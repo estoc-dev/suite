@@ -497,25 +497,29 @@ const user = read.object === expected.link ? read.signedIdentity.identity : unde
 `signatures.selectionOver(schema)` is a `SelectionBySchema` of the
 signature schema, as `@estoc/object` has selections. It takes the
 signatures over objects of `schema`, each as a `SignatureOver`: the
-signature with the object it signs, read with `schema`. A signature over
-an object of another schema is left out. It does not verify the
-signatures it takes, since what a selection takes depends on the record
-and its closure alone, and whether a signature is honored depends on the
-identity versions a reader has seen. An index whose rows need a signature
-verified verifies it in `rows`, by `noIdentityVersions`, and leaves whether
-it is still honored to what reads the rows, which asks `honors` of a
-reader's `SeenIdentityVersions`. Here the notes each person has signed, by
-their identifier:
+signature, verified as `signatures.implementation` reads it, with the
+object it signs, read with `schema`. A signature over an object of another
+schema is left out without being verified. One over an object of `schema`
+that does not verify is refused, and an index over the selection lists it
+in the `failures` of its rows. So the `rows` of such an index are given
+verified signatures, and do not verify them. What a selection takes depends
+on the record and its closure alone, and whether a signature is still
+honored depends on the identity versions a reader has seen. That is left to
+what reads the rows, which asks `honors` of a reader's
+`SeenIdentityVersions`. Here the notes each person has signed, by their
+identifier:
 
 ```ts
 const signedNoteSchema = schema("Signed note", { signer: link(), note: link() });
 const signedNotes = indexOver(
   selectedRecords(signatures.selectionOver(noteSchema)),
   signedNoteSchema,
-  async function* ({ signature, object }, reader) {
-    const { signedIdentity } = await signatures.verify(signature, reader, noIdentityVersions);
-    yield { signer: new LinkValue(signedIdentity.identity.identifier), note: new LinkValue(object.link) };
-  },
+  ({ signature, object }) => [
+    {
+      signer: new LinkValue(signature.signedIdentity.identity.identifier),
+      note: new LinkValue(object.link),
+    },
+  ],
 ).orderedBy("signer");
 ```
 

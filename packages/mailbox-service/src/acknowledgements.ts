@@ -42,7 +42,7 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
       selectedRecords(signatures.selectionOver(acknowledgementSchema)),
       acknowledgementRowSchema,
       ({ signature, object }) => [
-        { acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link as Link<Signature>) },
+        { acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) },
       ],
     ).orderedBy("acceptance", "acknowledgement"),
     read: (rows) => ({

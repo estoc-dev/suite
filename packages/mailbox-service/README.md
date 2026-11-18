@@ -169,7 +169,9 @@ same acceptance comes again, and the store holds an acknowledgement of it,
 the service answers with that one while the service's signature over it
 is honored. Once a crisis of the service's root cuts that signature, the
 service signs the same acknowledgement again, as its current identity
-version, and answers with that. Requests of one acceptance that arrive
+version, and answers with that. It records that signature, and answers with
+it from then on while it is honored, so an identity version of its root that
+is no crisis has it sign nothing again. Requests of one acceptance that arrive
 together, as when a client tries again before it hears back, can each
 sign an acknowledgement of it, and each answer acknowledges that
 acceptance. Of more than one, the service answers with the one whose

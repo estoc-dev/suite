@@ -18,6 +18,7 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  objectsOf,
   readObject,
   type Schema,
   type ValueMap,
@@ -235,7 +236,7 @@ describe("a sale sent to a registry", () => {
 // so a grant that came in reads as a message, and the application shows the
 // lines among those.
 describe("two people who meet", () => {
-  const lines = signatures.selectionOver(chat);
+  const lines = objectsOf(chat);
 
   const twoPeople = async () => {
     const network = new MemoryNetwork();
@@ -278,10 +279,9 @@ describe("two people who meet", () => {
         const shownLines: [Identifier, string][] = [];
         for (const { mailbox, bundle } of deliveries) {
           const message = await correspondence.messageAt(mailbox, bundle);
-          const line = await lines.read(bundle, store);
-          if (message !== undefined && line !== undefined) {
-            shownLines.push([message.signedIdentity.identity.identifier, line.object.data.text]);
-          }
+          if (message === undefined) continue;
+          const line = await lines.read(message.object, store);
+          if (line !== undefined) shownLines.push([message.signedIdentity.identity.identifier, line.data.text]);
         }
         return shownLines;
       };

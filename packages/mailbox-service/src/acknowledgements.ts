@@ -24,8 +24,8 @@ export interface Acknowledgements {
   /**
    * The least link of the signatures over an acknowledgement of `acceptance`,
    * or `undefined` when none is recorded. Requests of one acceptance at
-   * once can each sign one, and the least is the one that every service
-   * sharing the store answers with.
+   * once can each sign one, and every service sharing the store goes by the
+   * least, so they answer alike.
    */
   acknowledgementOf(acceptance: Link<Signature>): Promise<Link<Signature> | undefined>;
 }

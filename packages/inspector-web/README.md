@@ -70,8 +70,8 @@ for now is the Markdown body, and shows the body rendered.
 ### A signature
 
 The page reads an object of the signature schema of `@estoc/identity` by
-verifying it, as `Signatures.verify` does: the signed identity it names,
-the identity and its keys are read from the file.
+`Signatures.implementation`, which verifies it: the signed identity it
+names, the identity and its keys are read from the file.
 
 - A signature that verifies is shown as the identifier of who signed, the
   key that signed and the object it signs, each a link to follow. The

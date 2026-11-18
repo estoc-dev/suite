@@ -1,4 +1,5 @@
 import {
+  AbsentBlob,
   decodeObject,
   digestOf,
   encodeObject,
@@ -448,6 +449,39 @@ describe("what a signature signs", () => {
       signature: signedIdentity.signature,
     });
     await expect(verified(recast, byLink(signedIdentity))).rejects.toThrow(/does not verify/);
+  });
+});
+
+describe("the implementation of the signature schema", () => {
+  const { implementation } = signatures;
+  const read = async (bytes: Uint8Array, blobs: Reader = new Map()) =>
+    implementation.read(decodeObject(bytes, implementation.schema), blobs);
+
+  it("reads a signature as verifying it by no identity versions does", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const blobs = identityOf(signature);
+    expect(await read(signature.bytes, blobs)).toEqual(await verified(signature.bytes, blobs));
+  });
+
+  it("reads a signature by an identity version before a crisis, though the reader gives the crisis", async () => {
+    const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
+    const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
+    const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
+    const signature = await signatures.actor(laptop, first).sign(hello);
+    expect((await read(signature.bytes, byLink(first, crisis))).link).toBe(signature.link);
+  });
+
+  it("refuses a signature that does not verify", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const unverified = rewritten(signature, { object: new LinkValue(goodbye.link) });
+    await expect(read(unverified, identityOf(signature))).rejects.toThrow(/does not verify/);
+  });
+
+  it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const error = await read(signature.bytes).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(AbsentBlob);
+    expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
 });
 

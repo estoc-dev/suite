@@ -68,6 +68,7 @@ const body = markdownBodyOf(
     "",
   ].join("\n"),
 );
+const misfitBody = { bytes: objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 })) };
 const post = encodeObject(postSchema, {
   title: "A post",
   description: "What a post links to.",
@@ -78,6 +79,8 @@ const post = encodeObject(postSchema, {
 const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note, [reply.bytes, photo, ...noteSchema.blobs]),
   "post.eof": encodeBundle(post, [body.bytes, ...postSchema.blobs, ...markdownBodySchema.blobs]),
+  "body-misfit.eof": encodeBundle(misfitBody, markdownBodySchema.blobs),
+  "body-misfit-schema-absent.eof": encodeBundle(misfitBody, []),
   "misfit.eof": encodeBundle(misfit, [reply.bytes, ...noteSchema.blobs]),
   "unplaced.eof": encodeBundle(unplacedExample, pathSchema.blobs),
   "left-out.eof": encodeBundle(note, [...noteSchema.blobs, misfit.bytes, new TextEncoder().encode("a stray blob")]),

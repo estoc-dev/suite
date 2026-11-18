@@ -16,23 +16,28 @@ async function readingAt(bytes: Uint8Array, others: readonly Uint8Array[] = []) 
 const body = markdownBodyOf("## Identity\n");
 
 describe("the reading of what a link reads as", () => {
-  it("is the HTML of a Markdown body", async () => {
-    expect(await readingAt(body.bytes, markdownBodySchema.blobs)).toMatchObject({ html: "<h2>Identity</h2>\n" });
+  it("is the body that a Markdown body reads as", async () => {
+    expect(await readingAt(body.bytes, markdownBodySchema.blobs)).toEqual({ kind: "read", body });
   });
 
-  it("is given where the reader has no blob for the schema of the body", async () => {
-    expect(await readingAt(body.bytes)).toMatchObject({ html: "<h2>Identity</h2>\n" });
+  it("is the body where the reader has no blob for the schema of the body", async () => {
+    expect(await readingAt(body.bytes)).toEqual({ kind: "read", body });
   });
 
-  it("is nothing for an object of a schema of the same title and fields, which has another link", async () => {
+  it("is nothing for an object of a schema of the same title that has another field", async () => {
     const lookalike = schema("Markdown Body", { text: string(), more: string() });
     const { bytes } = encodeObject(lookalike, { text: "## Identity\n", more: "" });
     expect(await readingAt(bytes, lookalike.blobs)).toBeUndefined();
   });
 
-  it("is nothing for a body whose data does not fit its schema", async () => {
+  it("is what does not fit, for a body whose data does not fit its schema", async () => {
     const misfit = objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 }));
-    expect(await readingAt(misfit, markdownBodySchema.blobs)).toBeUndefined();
+    const expectedReading = {
+      kind: "unread",
+      error: new Error("the data does not fit its schema: #/text: not a string"),
+    };
+    expect(await readingAt(misfit, markdownBodySchema.blobs)).toEqual(expectedReading);
+    expect(await readingAt(misfit)).toEqual(expectedReading);
   });
 
   it("is nothing for bytes that are not an object, and for a link with no blob", async () => {

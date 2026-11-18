@@ -43,14 +43,14 @@ is the Markdown body.
 - What the page reads an object of one of those schemas as stands above
   its fields. The fields stay, since they are what the blob says of
   itself.
-- An object the page could read is titled `Read by this page as the body
-  of a post`, and the body is shown rendered. The title is this page's
-  reading: the schema titles itself, and another program may read the same
-  object as something else.
-- An object the page could not read is titled `Not read by this page as
-  the body of a post`, followed by what stopped the reading. A body whose
-  data does not fit its schema is not read, and what does not fit is said
-  there.
+- Where the page could read the object, it shows the body rendered, under
+  the title `Read by this page as the body of a post`. The title names
+  this page's reading: the schema titles itself, and another program may
+  read the same object as something else.
+- Where the page could not read the object, it shows what stopped the
+  reading, under the title `Not read by this page as the body of a post`.
+  A body whose data does not fit its schema is not read, and what does
+  not fit is said there.
 - The schema is matched by its link and not by its title. The page holds
   the schema, so it reads a body, or says why it could not, whether or not
   the file gives the blob of the schema. Where the file leaves that blob

@@ -17,8 +17,8 @@ The link, the schema and the fields of a blob are drawn from what
 
 - The title of a schema is the one the schema gave itself, and stands
   beside the link of the schema.
-- Data that fits its schema has the right shape. The page says no more of
-  it, and marks nothing as verified.
+- Data that fits its schema has the right shape. The fields say no more
+  of it: a signature whose data fits its schema is not verified by that.
 - The fields are shown whether or not the schema could be read, since the
   object format marks the type of every value.
 
@@ -36,28 +36,58 @@ a title of its own.
 
 ## What the page reads an object as
 
-The page has schemas of its own for one thing: the body of a post. It
-reads the body schemas that `bodies` of `@estoc/blog` lists, which for now
-is the Markdown body.
+The page has schemas of its own for two things: the body of a post, and a
+signature.
 
 - What the page reads an object of one of those schemas as stands above
   its fields. The fields stay, since they are what the blob says of
   itself.
-- Where the page could read the object, it shows the body rendered, under
-  the title `Read by this page as the body of a post`. The title names
-  this page's reading: the schema titles itself, and another program may
-  read the same object as something else.
+- Where the page could read the object, it shows what it read under a
+  title such as `Read by this page as a signature`. The title names this
+  page's reading: the schema titles itself, and another program may read
+  the same object as something else.
 - Where the page could not read the object, it shows what stopped the
-  reading, under the title `Not read by this page as the body of a post`.
-  A body whose data does not fit its schema is not read, and what does
-  not fit is said there.
+  reading, under a title such as `Not read by this page as a signature`.
+  Where that is a blob the file leaves out, the page names its link, as a
+  link to follow. A bundle can leave out a blob that its reader already
+  holds, so this is not shown as a fault of the file.
 - The schema is matched by its link and not by its title. The page holds
-  the schema, so it reads a body, or says why it could not, whether or not
-  the file gives the blob of the schema. Where the file leaves that blob
-  out, the field table can mark no problem, and what does not fit is said
-  above the fields alone.
+  the schema, so it reads the object, or says why it could not, whether or
+  not the file gives the blob of the schema. Where the file leaves that
+  blob out, the field table can mark no problem, and what does not fit is
+  said above the fields alone.
+
+### The body of a post
+
+The page reads the body schemas that `bodies` of `@estoc/blog` lists, which
+for now is the Markdown body, and shows the body rendered.
+
+- A body whose data does not fit its schema is not read, and what does
+  not fit is said there.
 - A post is shown by its fields. Its `body` is a link, and following it
   shows the body.
+
+### A signature
+
+The page reads an object of the signature schema of `@estoc/identity` by
+verifying it, as `Signatures.verify` does: the signed identity it names,
+the identity and its keys are read from the file.
+
+- A signature that verifies is shown as the identifier of who signed, the
+  key that signed and the object it signs, each a link to follow. The
+  signature names the object by link, so it verifies where the file leaves
+  the object out.
+- The page verifies each signature by itself, with `noIdentityVersions`:
+  the signature is honored by the identity version it carries and those
+  that version follows alone. The page looks at no other identity
+  versions, those of the same file among them, so a signature made before
+  a crisis is shown as read where the file holds the crisis too. The page
+  says so under each signature it shows.
+- The page takes keys of the `ed25519`, `eip191` and `solanaOffchain`
+  schemes. A signature whose identity names a key of another schema is
+  not read.
+- A signature that does not verify is not read, and neither is one whose
+  signed identity, identity or key the file leaves out.
 
 ## Following links
 

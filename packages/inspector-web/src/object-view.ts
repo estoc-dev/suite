@@ -1,7 +1,6 @@
-import type { Body } from "@estoc/blog";
 import type { NamedSchema } from "@estoc/inspector";
-import { isValueMap, LinkValue, type Value } from "@estoc/object";
-import { type Child, h, markup, mono, muted } from "./dom.ts";
+import { AbsentBlob, isValueMap, LinkValue, type Value } from "@estoc/object";
+import { type Child, h, mono, muted } from "./dom.ts";
 import { type FieldRow, type FieldTable, fieldTableOf, type InspectedObject, type Place } from "./field-table.ts";
 import { linkView } from "./link-view.ts";
 import type { Reading } from "./reading.ts";
@@ -82,20 +81,24 @@ function schemaView(schema: NamedSchema, object: InspectedObject, { unplacedProb
   ];
 }
 
-const bodyView = ({ html }: Body) => markup("div", { class: "rendered" }, html);
+// A bundle can leave out a blob that its reader already holds, so a blob the reading lacks is not
+// shown as a fault of the file.
+function unreadView(error: unknown): HTMLElement {
+  return error instanceof AbsentBlob
+    ? h("p", { class: "note" }, "No blob is given for ", linkView(error.link), ".")
+    : h("p", { class: "problem" }, messageOf(error));
+}
 
 // What the page reads the object as stands above its fields and does not take their place: the
 // fields are what the blob says of itself.
 function readingView(reading: Reading): HTMLElement {
+  const { name } = reading.as;
   return h(
     "div",
     { class: "reading" },
     reading.kind === "read"
-      ? [h("p", { class: "band" }, "Read by this page as the body of a post"), bodyView(reading.body)]
-      : [
-          h("p", { class: "band" }, "Not read by this page as the body of a post"),
-          h("p", { class: "problem" }, messageOf(reading.error)),
-        ],
+      ? [h("p", { class: "band" }, `Read by this page as ${name}`), reading.as.viewOf(reading.value)]
+      : [h("p", { class: "band" }, `Not read by this page as ${name}`), unreadView(reading.error)],
   );
 }
 

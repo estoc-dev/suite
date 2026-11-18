@@ -14,9 +14,11 @@ export type PeopleView = View<IdentityVersionData, IdentityVersionOrder, People>
  */
 export function peopleView(identityVersions: IdentityVersions): PeopleView {
   return {
-    index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, (identityVersion) => [
-      identityVersion,
-    ]).orderedBy(...identityVersions.order),
+    index: indexOver(
+      selectedBlobs(identityVersions.selection),
+      identityVersions.schema,
+      identityVersions.rows,
+    ).orderedBy(...identityVersions.order),
     read: (rows, reader) => identityVersions.people(rows, reader),
   };
 }

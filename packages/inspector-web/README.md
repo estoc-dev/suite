@@ -77,11 +77,12 @@ the identity and its keys are read from the file.
   key that signed and the object it signs, each a link to follow. The
   signature names the object by link, so it verifies where the file leaves
   the object out.
-- The page has seen no identity versions but those the signature carries,
-  so it verifies with `noIdentityVersions`: the signature is honored by
-  the identity version it carries and those that version follows alone.
-  The page says so under each signature it shows, since it does not know
-  of a crisis that came after them.
+- The page verifies each signature by itself, with `noIdentityVersions`:
+  the signature is honored by the identity version it carries and those
+  that version follows alone. The page looks at no other identity
+  versions, those of the same file among them, so a signature made before
+  a crisis is shown as read where the file holds the crisis too. The page
+  says so under each signature it shows.
 - The page takes keys of the `ed25519`, `eip191` and `solanaOffchain`
   schemes. A signature whose identity names a key of another schema is
   not read.

@@ -29,7 +29,7 @@ describe("the view of a signature", () => {
 
   it("says which identity versions it is honored by", () => {
     expect(view.querySelector(".note")?.textContent).toBe(
-      "Honored by the identity version it carries and those that version follows alone. The page has seen no others, so it does not know of a crisis that came after them.",
+      "Honored by the identity version it carries and those that version follows alone. The page looks at no others to verify it, a later crisis in the same file among them.",
     );
   });
 });

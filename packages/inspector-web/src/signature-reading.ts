@@ -14,15 +14,16 @@ import type { ReadingAs } from "./reading.ts";
 
 const { signatures } = loadIdentity([ed25519, eip191, solanaOffchain]);
 
-// The page keeps no identity versions from one file to the next, so it has seen none but those a
-// signature carries. A signature it shows as read is honored by those alone, which the links it
-// shows do not say, so the view says it.
-const verifiedSignature: Implementation<Signature, SignatureData> = {
+// The page verifies each signature by itself. It gathers no identity versions, from the file or from
+// one file to the next, so a signature it shows as read is honored by those it carries alone, where
+// the same file can hold a crisis that came after them. The links it shows do not say that, so the
+// view says it.
+const signatureImplementation: Implementation<Signature, SignatureData> = {
   schema: signatures.schema,
   read: (signature, reader) => signatures.verify(signature, reader, noIdentityVersions),
 };
 const honoredBy =
-  "Honored by the identity version it carries and those that version follows alone. The page has seen no others, so it does not know of a crisis that came after them.";
+  "Honored by the identity version it carries and those that version follows alone. The page looks at no others to verify it, a later crisis in the same file among them.";
 
 function signatureView({ signedIdentity, key, object }: Signature): Child {
   return [
@@ -42,6 +43,6 @@ function signatureView({ signedIdentity, key, object }: Signature): Child {
 
 export const signatureReading: ReadingAs<Signature> = {
   name: "a signature",
-  implementations: new Implementations([verifiedSignature]),
+  implementations: new Implementations([signatureImplementation]),
   viewOf: signatureView,
 };

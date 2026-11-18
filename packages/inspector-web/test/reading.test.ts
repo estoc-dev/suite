@@ -24,7 +24,7 @@ describe("the reading of what a link reads as", () => {
     expect(await readingAt(body.bytes)).toEqual({ kind: "read", body });
   });
 
-  it("is nothing for an object of a schema of the same title and fields, which has another link", async () => {
+  it("is nothing for an object of a schema of the same title that has another field", async () => {
     const lookalike = schema("Markdown Body", { text: string(), more: string() });
     const { bytes } = encodeObject(lookalike, { text: "## Identity\n", more: "" });
     expect(await readingAt(bytes, lookalike.blobs)).toBeUndefined();
@@ -32,9 +32,12 @@ describe("the reading of what a link reads as", () => {
 
   it("is what does not fit, for a body whose data does not fit its schema", async () => {
     const misfit = objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 }));
-    const unread = { kind: "unread", error: new Error("the data does not fit its schema: #/text: not a string") };
-    expect(await readingAt(misfit, markdownBodySchema.blobs)).toEqual(unread);
-    expect(await readingAt(misfit)).toEqual(unread);
+    const expectedReading = {
+      kind: "unread",
+      error: new Error("the data does not fit its schema: #/text: not a string"),
+    };
+    expect(await readingAt(misfit, markdownBodySchema.blobs)).toEqual(expectedReading);
+    expect(await readingAt(misfit)).toEqual(expectedReading);
   });
 
   it("is nothing for bytes that are not an object, and for a link with no blob", async () => {

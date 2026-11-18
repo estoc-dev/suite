@@ -2,19 +2,13 @@ import { type Body, bodies } from "@estoc/blog";
 import type { Inspection } from "@estoc/inspector";
 import { decodeObject, type Link, type Reader, type Schema } from "@estoc/object";
 
-/**
- * What the page reads an object as, where the object is of a schema the page reads.
- *
- * - `read`: the body of a post that the object reads as.
- * - `unread`: the page reads the schema and could not read this object, and `error` says why.
- */
+/** What the page reads an object as, or why it could not read an object of a schema it reads. */
 export type Reading =
   | { readonly kind: "read"; readonly body: Body }
   | { readonly kind: "unread"; readonly error: unknown };
 
 /**
- * The page's reading of what a link reads as, where that is an object of a schema the page reads.
- * The schemas it reads are the body schemas of a post.
+ * The page's reading of what a link reads as. The schemas the page reads are the body schemas of a post.
  *
  * - A schema is matched by its link and not by its title. The page holds the schema, so the
  *   object is read whether or not the reader gives the blob of its schema.

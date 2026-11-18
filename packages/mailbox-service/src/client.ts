@@ -12,6 +12,7 @@ import {
 import type { Arrival, Pickup } from "@estoc/mailbox";
 import { httpTransport } from "@estoc/mailbox/http";
 import {
+  AbsentBlob,
   type Bytes,
   decodeObject,
   type EncodedObject,
@@ -500,7 +501,7 @@ export class Services {
       if (!service.hasSigned(signature))
         throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
       const bytes = await reader.get(signature.object);
-      if (bytes === undefined) throw new Error(`no blob is given for ${signature.object}`);
+      if (bytes === undefined) throw new AbsentBlob(signature.object);
       const schema = schemaOf(bytes);
       const url = new URL(`/${signature.object}`, origin);
       if (account === undefined && schema === accountOfferSchema.link) {

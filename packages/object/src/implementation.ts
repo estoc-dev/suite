@@ -44,6 +44,7 @@ export class Implementations<T, I extends Implementation<T> = Implementation<T>>
   /**
    * Reads the object that `link` names from `reader` with the implementation of the schema it names.
    *
+   * @throws {AbsentBlob} when the reader gives no blob for `link`.
    * @throws when the schema it names is not one of these.
    */
   async read(link: Link<T>, reader: Reader): Promise<T> {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import {
+  AbsentBlob,
   decodeObject,
   decodeSchema,
   encodeObject,
@@ -73,8 +74,10 @@ describe("an object read by its link", () => {
     expect(await readObject(new Map([[object.link, object.bytes]]), object.link, login)).toEqual(object);
   });
 
-  it("is refused when the reader gives no blob for the link", async () => {
-    await expect(readObject(new Map(), object.link, login)).rejects.toThrow(/no blob is given/);
+  it("is refused when the reader gives no blob for the link, by an error that has the link", async () => {
+    const reading = readObject(new Map(), object.link, login);
+    await expect(reading).rejects.toBeInstanceOf(AbsentBlob);
+    await expect(reading).rejects.toMatchObject({ link: object.link });
   });
 
   it("is refused when the reader gives another blob for the link", async () => {

@@ -35,6 +35,7 @@ export interface SecretBatch {
  * - Bytes that are also written to the store are the store's as well: a blob that the store beside
  *   holds is not kept here again.
  * - Whether what is kept here is encrypted is up to the backend.
+ * - It only grows, as a store does, so a key that is no longer used is still kept.
  */
 export class SecretStore implements RowKeeper {
   // A private field makes the type nominal, so neither a store nor a private store can be given in

@@ -12,7 +12,9 @@ import { bytesToHex } from "@noble/hashes/utils.js";
  * (sha256:<hex>)`. A key signs that text when it signs for an identity,
  * and the bare text only when a root signs an identity, so a signature made
  * for an identity is not one by which a root stands behind an identity, and
- * one made for one signed identity is not one for another.
+ * one made for one signed identity is not one for another. A root lists an
+ * agent without the agent's leave, so a signature the agent made for one
+ * identity would otherwise verify for another that lists it.
  */
 export function signingText(digest: Uint8Array, signedIdentity?: Uint8Array): string {
   const text = `Estoc Object (sha256:${hexOf(digest)})`;

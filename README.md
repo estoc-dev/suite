@@ -78,6 +78,8 @@ semantics written elsewhere could not.
 ## Development
 
 One pnpm workspace; packages go under `packages/` as they are written.
+What a package does is said in the doc comments of what it exports, and
+shown in its tests.
 
 ```bash
 pnpm install

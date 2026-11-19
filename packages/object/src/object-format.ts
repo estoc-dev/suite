@@ -166,6 +166,8 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
  * - Bytes that are anything but what `encode` writes for the object they hold are refused, not
  *   normalized: heads longer than the shortest, keys out of order or repeated, indefinite
  *   lengths, invalid UTF-8, and bytes after the object.
+ * - A blob does not say which version of the format it is in. Another format is written under
+ *   another tag, and its objects are other blobs, with other links.
  */
 export const objectFormat = {
   /** @throws when a value in the data of `object` is not one of the format. */

@@ -34,6 +34,8 @@ export type SchemaDocument = {
  * - What `fields` may hold is more than a schema of the language can say, so it is checked here:
  *   each field is a map of the members the language names, its `type` one of the seven, with
  *   `items` in an array alone, and `optional` either `true` or left out.
+ * - A field says its type and whether it is optional, and nothing more: bounds, lengths and fixed
+ *   values are for the program that reads the object to check.
  * - A document has one spelling, as the object format orders the members. So the same title and fields
  *   are the same blob.
  */

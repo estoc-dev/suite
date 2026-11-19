@@ -15,6 +15,12 @@ import { signingText } from "../signing-text.ts";
  * - `name` is not that of another scheme.
  * - The text is framed as it is, not rewritten, so a key that signs it
  *   signs what it says.
+ * - A plugin takes this package as a peer dependency. A key's scheme is
+ *   compared as a value, so a program holds one copy of this package.
+ * - A scheme is picked by the link of its schema, so a plugin with a bug
+ *   wrongly accepts signatures by keys in its own scheme alone. Its code is
+ *   trusted as the application that picks it is; a link proves the bytes of
+ *   a schema, not that a verifier fetched by it is right.
  */
 export interface Scheme {
   /** The title of the schema its keys are written to, which sets it apart from every other scheme's. */
@@ -30,6 +36,9 @@ export interface Scheme {
  *
  * Ed25519 keys are 32 bytes; secp256k1 keys are 33 bytes, compressed, so
  * that each key has one form to compare.
+ *
+ * It holds its scheme as a value, so it is not data to clone or send: what
+ * goes between programs is the key's object.
  */
 export interface Key {
   readonly scheme: Scheme;

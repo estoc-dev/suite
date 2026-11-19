@@ -48,7 +48,11 @@ export function encodeObject<F extends ValueMap>(schema: Schema<F>, data: F): En
   return decodeObject(objectFormat.encode(new ObjectValue(schema.link, data)), schema);
 }
 
-/** A link for which a reader gives no blob. */
+/**
+ * A link for which a reader gives no blob. What reads further objects through `readObject` or
+ * `Implementations.read` lets it through, so its `link` names the blob that is absent, however far
+ * along the links it is.
+ */
 export class AbsentBlob extends Error {
   override readonly name = "AbsentBlob";
   readonly link: Link<unknown>;

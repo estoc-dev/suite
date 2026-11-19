@@ -55,7 +55,9 @@ export interface People extends SeenIdentityVersions {
    *   one follows. An identity version that comes later and does not list
    *   the key leaves it honored.
    * - An identity version that came at the same time as the signature had
-   *   come by then, and so had one that `arrivals` give no time for.
+   *   come by then, and so had one that `arrivals` give no time for. So a
+   *   program that publishes an identity version records it then, or what
+   *   the keys it takes out signed before is no longer honored.
    * - The identity version it carries still counts by those the store holds
    *   now, so a crisis cuts it whenever the crisis came.
    * - A signature that `arrivals` give no time for comes in now, and is

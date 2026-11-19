@@ -17,6 +17,8 @@ const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9
  * - A 2xx response means the ciphertext was handed on.
  * - 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other response as `refused`.
  * - No response rejects as `later`, and so does a redirect.
+ * - The body goes as `application/octet-stream`, so a server that browsers post to answers their
+ *   CORS preflight for it.
  */
 export const httpTransport = {
   schema: mailboxSchema("HTTP mailbox", { url: string() }),

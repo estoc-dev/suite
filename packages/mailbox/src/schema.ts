@@ -7,6 +7,8 @@ import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@
  * - Every mailbox has `key`, the x25519 public key that messages to it are sealed to.
  * - `fields` are the transport's own, and a mailbox holds no other.
  * - The title tells apart two transports whose fields look the same.
+ * - A mailbox has no end written in it. Whoever receives there retires it by no longer receiving,
+ *   and moving is handing out another.
  *
  * @throws when `fields` names a field `key`.
  */

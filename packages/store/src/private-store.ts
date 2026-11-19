@@ -37,6 +37,8 @@ export interface MarkBatch {
  *   gives one.
  * - There is no `closure` here, and this is neither a `Store` nor a `SecretStore`, so it cannot be
  *   given to what gathers bundles from a store, nor to what keeps or reads a secret.
+ * - Marks are not signed. That one is the user's own rests on what is handed the private store,
+ *   which can write any mark, so it is no boundary between the programs that share it.
  * - It only grows, as a store does.
  */
 export class PrivateStore implements RowKeeper {

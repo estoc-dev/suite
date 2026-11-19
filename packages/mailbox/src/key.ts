@@ -3,7 +3,9 @@ import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke
 import { base64urlnopad } from "@scure/base";
 
 // HPKE (RFC 9180) in base mode, which seals to the receiver's key alone and
-// so does not say who sealed.
+// so does not say who sealed. An authenticated mode would say it of the
+// ciphertext, which a store does not keep once it is opened, so a reader goes
+// by the signatures in the bundle.
 const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes128Gcm() });
 const info = new TextEncoder().encode("Estoc Message");
 

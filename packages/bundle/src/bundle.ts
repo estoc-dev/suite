@@ -77,7 +77,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
 
 /**
  * The file of the bundle of the blob that `root` names and the rest of `blobs`: the bytes of the
- * root, then each other blob as a CBOR byte string.
+ * root, then each other blob as a CBOR byte string. The file takes the extension `.eof`.
  *
  * - `blobs` hold the root, which is written first wherever it is among them.
  * - With no other blob the file is the bytes of the root, and the hash of the file is its link.
@@ -112,7 +112,9 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
  * - A blob is any bytes and is not read, so an object carried in the file is a byte string as an
  *   image is.
  * - Nothing in the file is compressed, so the blobs come to less than its length, and reading has
- *   no other limit.
+ *   no other limit. The length of the file then depends on the sizes of the blobs alone: when a
+ *   bundle is encrypted on the way, its length does not tell whoever wrote part of it whether that
+ *   part repeats something elsewhere in it.
  *
  * @throws when the file does not start with an object.
  * @throws when what follows the root is not byte strings, each of a definite length under the

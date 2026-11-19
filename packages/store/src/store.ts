@@ -35,6 +35,9 @@ export interface Batch {
  * - Every blob a store holds comes with its closure: the blob and every blob it links to, directly
  *   or through others.
  * - A write adds only the blobs in the closures of its roots.
+ * - There is no transaction that reads and then writes. Two devices that each find something
+ *   missing will both write it, so what has to come out as one is written so that every device
+ *   writes the same object, with the same link.
  */
 export interface Store {
   /**

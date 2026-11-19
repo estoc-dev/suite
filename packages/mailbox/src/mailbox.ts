@@ -10,7 +10,11 @@ import {
 } from "@estoc/object";
 import { publicKeyFrom, seal } from "./key.ts";
 
-/** One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. */
+/**
+ * One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. It carries
+ * ciphertexts even where it encrypts on its own: a message is kept, passed on and can arrive late,
+ * so the layer from end to end is the same whatever carries it.
+ */
 export interface Transport {
   /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
   readonly schema: Schema;

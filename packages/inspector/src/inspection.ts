@@ -44,7 +44,8 @@ export type NamedSchema =
  * - `absent`: the reader gives no blob for the link.
  * - `bytes`: the blob is not an object of the object format, and links to nothing.
  * - `object`: its data, each link in its data with its place, and the schema it names. The links
- *   come as walking `data` meets them, and the schema is not among them.
+ *   come as walking `data` meets them, and the schema is not among them. That is not always the
+ *   order of the bytes: JavaScript lists a member named `10` before one named `a`.
  */
 export type Inspection =
   | { readonly kind: "absent"; readonly link: Link<unknown> }

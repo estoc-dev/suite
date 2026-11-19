@@ -21,6 +21,9 @@ import type { Signer } from "./signer.ts";
  *   the root lists them, so it lists at most 255.
  * - It lists each agent once and not its root, or one signature would verify
  *   under two indexes, as two signatures with two links.
+ * - The schema says the fields and their types. The rest is checked where
+ *   `identities` reads or writes an identity, and not by a reader that reads
+ *   one as an object of this schema alone.
  */
 export const identitySchema = schema("Identity", {
   prior: optional(link()),

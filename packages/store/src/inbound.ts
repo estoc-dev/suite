@@ -38,6 +38,8 @@ export interface ReceivedBundle {
  * - The bundle goes in the store first and the mark in the private store after, so a stop in
  *   between leaves a bundle that the store holds with no mark of it.
  * - A reader of these marks verifies what it reads from them itself.
+ * - That what comes from elsewhere goes through an intake is a rule for programs, which the
+ *   stores do not enforce.
  */
 export class Intake {
   readonly #store: Store;

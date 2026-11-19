@@ -2,7 +2,13 @@ import { DatabaseSync, type SQLTagStore } from "node:sqlite";
 import type { EncodedObject, Link } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 
-/** Keeps a store in one SQLite file, writing each batch that is put as one transaction. */
+/**
+ * Keeps a store in one SQLite file, writing each batch that is put as one transaction.
+ *
+ * - The file is not encrypted, so the file of a secret store goes where only its user can read it.
+ * - Stores are joined by writing bundles from one to another, not by copying their files. A file
+ *   copied while it is open, as by a tool that syncs a folder, can come out damaged.
+ */
 export class SqliteBackend implements Backend {
   readonly #database: DatabaseSync;
   readonly #sql: SQLTagStore;

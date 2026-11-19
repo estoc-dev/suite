@@ -110,7 +110,6 @@ async function accountAt(services: Services, origin: string) {
   return account;
 }
 
-/** The bundle of `by`'s signature over a Service at `origin` from `at` that lists `offers`, with its closure. */
 async function signedService(origin: string, offers: readonly EncodedObject[], by: Actor, at = 1) {
   const listedOffers = offers.map(({ link }) => new LinkValue(link));
   const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });

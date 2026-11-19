@@ -368,18 +368,18 @@ export class Services {
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
     for (const { link: listed } of offers) {
-      const bytes = await reader.get(listed);
+      const bytes: Uint8Array | undefined = await reader.get(listed);
       if (bytes === undefined) throw new AbsentBlob(listed);
       const schema = schemaOf(bytes);
       const url = new URL(`/${listed}`, origin);
       if (account === undefined && schema === accountOfferSchema.link) {
-        const offer = await readObject(reader, listed, accountOfferSchema);
+        const offer = decodeObject(bytes, accountOfferSchema);
         if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists an account offer that names another identifier`);
         }
         account = new AccountOffer({ service: signedIdentity, offer: offer.link, url }, posting);
       } else if (mailbox === undefined && schema === mailboxOfferSchema.link) {
-        const offer = await readObject(reader, listed, mailboxOfferSchema);
+        const offer = decodeObject(bytes, mailboxOfferSchema);
         if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists a mailbox offer that names another identifier`);
         }

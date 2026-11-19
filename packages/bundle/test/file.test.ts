@@ -73,8 +73,10 @@ describe("the file of a bundle", () => {
     );
   });
 
-  it("is written with each blob as it was when given, where one array gives them all in turn", () => {
-    const array = new Uint8Array(root.length);
+  it.each<[string, Uint8Array]>([
+    ["a `Uint8Array`", new Uint8Array(root.length)],
+    ["a `Buffer`, whose `slice` does not copy,", Buffer.alloc(root.length)],
+  ])("is written with each blob as it was when given, where %s gives them all in turn", (_, array) => {
     function* blobsInOneArray() {
       for (const blob of [hello, root, image]) {
         array.set(blob);

@@ -15,8 +15,9 @@ import type { Backend } from "./backend.ts";
  *
  * - One of its `marks` or `secrets` whose blob it does not give, or that is not an object: the
  *   same batch is refused again whatever comes to be held.
- * - One of its `roots`, or a blob in the closure of what it lists, that is neither in the batch
- *   nor held already: the same batch is refused again until what was missing is held.
+ * - One of its `roots`, or a blob in the closure of one of its `roots`, `marks` or `secrets`,
+ *   that is neither in the batch nor held already: the same batch is refused again until what
+ *   was missing is held.
  *
  * A backend that fails rejects with an error of its own, and may write the same batch the next
  * time.

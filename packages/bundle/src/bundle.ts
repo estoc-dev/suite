@@ -96,7 +96,8 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
     const link = linkOf(blob);
     if (givenLinks.has(link)) continue;
     givenLinks.add(link);
-    if (link === root) rootBytes = blob.slice();
+    // Not `blob.slice()`, which for a `Buffer` gives a view of the same memory.
+    if (link === root) rootBytes = new Uint8Array(blob);
     else otherBlobs.push(encode(blob));
   }
   if (rootBytes === undefined) throw new Error(`the blobs of a bundle hold its root, and ${root} is not among them`);

@@ -318,7 +318,7 @@ export class Services {
     const locations = await view(this.#store, this.#locations);
     const people = await view(this.#store, this.#people);
     const [latest] = await locations.servicesOf(signedIdentity.identity.identifier, people);
-    return latest === undefined ? undefined : this.#read(latest, this.#store);
+    return latest === undefined ? undefined : this.#read(latest.link, this.#store);
   }
 
   /**

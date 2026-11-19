@@ -339,14 +339,14 @@ describe("a signature by an identity version before a crisis", () => {
     expect(await peopleHavingSeen(crisis).honors(signature)).toBe(false);
   });
 
-  it("is refused by a reader that has seen only an identity version that follows the crisis", async () => {
+  it("is not honored by a reader that has seen only an identity version that follows the crisis", async () => {
     const { first, after } = await chain();
     const people = identityVersions.people(rowsOf(identityVersions, after), byLink(after));
     expect(await people.honors(await signatures.actor(wallet, first).sign(hello))).toBe(false);
     expect(await people.honors(await signatures.actor(laptop, first).sign(hello))).toBe(false);
   });
 
-  it("is refused once the signature of an identity version that follows the crisis carries it to the reader", async () => {
+  it("is not honored once the signature of an identity version that follows the crisis carries it to the reader", async () => {
     const { first, after } = await chain();
     const reading = peopleHavingSeen(first);
     expect(await reading.honors(await signatures.actor(laptop, after).sign(hello))).toBe(true);
@@ -361,7 +361,7 @@ describe("a signature by an identity version before a crisis", () => {
     expect(await peopleHavingSeen().honors(signature)).toBe(true);
   });
 
-  it("is refused once the reader has seen a later crisis that follows it", async () => {
+  it("is not honored once the reader has seen a later crisis that follows it", async () => {
     const { crisis } = await chain();
     const later = await publish(wallet, { prior: crisis, agents: [laptop.key], isCrisis: true, at: 4_000 });
     const people = peopleHavingSeen(later);
@@ -385,7 +385,7 @@ describe("a signature by the crisis or an identity version that follows it", () 
 describe("a signature on a branch that does not follow the crisis", () => {
   const [wallet, laptop] = [signer(eip191), signer(ed25519, 2)];
 
-  it("is refused once the reader has seen the crisis, though the branch is later", async () => {
+  it("is not honored once the reader has seen the crisis, though the branch is later", async () => {
     const first = await publish(wallet, { at: 1_000 });
     const crisis = await publish(wallet, { prior: first, isCrisis: true, at: 2_000 });
     const branch = await publish(wallet, { prior: first, agents: [laptop.key], at: 3_000 });

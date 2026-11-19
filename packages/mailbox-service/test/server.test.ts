@@ -671,13 +671,11 @@ const bob = signer(ed25519, 6);
 const keyOf = (fill: number) => new Uint8Array(32).fill(fill);
 const ciphertextOf = (fill: number, length = 64) => new Uint8Array(length).fill(fill);
 
-/** The status that `service` answers `actor`'s acceptance of its offer of an account with. */
 async function acceptAccount(service: MailboxService, actor: Actor) {
   const signature = await actor.sign((await rootOf(service)).offer);
   return (await postAcceptance(service, encodeBundle(signature.link, signature.blobs))).status;
 }
 
-/** Opens the account of whoever `actor` signs for at `service`, by the actor's acceptance of its offer. */
 const openAccount = async (service: MailboxService, actor: Actor) =>
   expect(await acceptAccount(service, actor)).toBe(201);
 

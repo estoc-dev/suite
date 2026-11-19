@@ -150,7 +150,7 @@ class MailboxService {
     const people = await view(this.#store, this.#people);
     const [latest, ...earlier] = await locations.servicesOf(this.#identifier, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
-    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
+    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest.link, 200));
     const id = pathname.slice(1);
     if (MAILBOX_ID.test(id)) {
       const mailbox = await this.#mailboxes.mailboxNamed(id);
@@ -162,12 +162,11 @@ class MailboxService {
     if (!ID.test(id)) return answer(404);
     if (await this.#serviceListsOffer(latest, id))
       return answerTo(request, "POST", () => this.#acceptOffer(request, id));
-    for (const link of earlier) if (await this.#serviceListsOffer(link, id)) return answer(410);
+    for (const service of earlier) if (await this.#serviceListsOffer(service, id)) return answer(410);
     return answer(404);
   }
 
-  async #serviceListsOffer(link: Link<unknown>, id: string): Promise<boolean> {
-    const { object } = await this.#signatures.read(link, this.#store);
+  async #serviceListsOffer({ object }: Signature, id: string): Promise<boolean> {
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
     // The store's own signatures say which offer each is over, and are read
     // for that alone.
@@ -187,9 +186,10 @@ class MailboxService {
   }
 
   /**
-   * The signature is verified against the identity versions the service holds once the whole body
-   * has come in, however long the sender took to send it. So an agent its root removed is refused
-   * even when they have an account, and even for an acceptance that was acknowledged before.
+   * Whether the acceptance is honored is asked of the identity versions the service holds once the
+   * whole body has come in, however long the sender took to send it. So an agent its root removed
+   * is refused even when they have an account, and even for an acceptance that was acknowledged
+   * before.
    */
   async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
@@ -427,13 +427,9 @@ export async function loadMailboxService(
   const at = clock();
   const [signedBefore] = await locations.servicesOf(identifier, noIdentityVersions);
   const signedIdentity =
-    signedBefore === undefined
-      ? await publish(signer, { at })
-      : await people.current((await signatures.read(signedBefore, store)).signedIdentity);
+    signedBefore === undefined ? await publish(signer, { at }) : await people.current(signedBefore.signedIdentity);
   const actor = signatures.actor(signer, signedIdentity);
-  const serviceSignatures = await Promise.all(
-    (await locations.servicesOf(identifier, people)).map((link) => signatures.read(link, store)),
-  );
+  const serviceSignatures = await locations.servicesOf(identifier, people);
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject, Signature])[] = [];

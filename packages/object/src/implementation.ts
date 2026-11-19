@@ -47,7 +47,7 @@ export class Implementations<T, I extends Implementation<T> = Implementation<T>>
    * @throws {AbsentBlob} when the reader gives no blob for `link`.
    * @throws when the schema it names is not one of these.
    */
-  async read(link: Link<T>, reader: Reader): Promise<T> {
+  async read(link: Link<unknown>, reader: Reader): Promise<T> {
     const bytes = await readBlob(reader, link);
     const schema = schemaOf(bytes);
     const implementation = this.implementationOf(schema);

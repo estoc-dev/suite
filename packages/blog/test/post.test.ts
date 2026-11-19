@@ -54,6 +54,6 @@ describe("a Markdown body", () => {
 describe("a body written to a schema that is not listed", () => {
   it("is refused", async () => {
     const { link, bytes } = encodeObject(schema("Plain Body", { text: string() }), { text: "plain" });
-    await expect(bodies.read(link as Link<never>, byLink([bytes]))).rejects.toThrow("is not a schema read here");
+    await expect(bodies.read(link, byLink([bytes]))).rejects.toThrow("is not a schema read here");
   });
 });

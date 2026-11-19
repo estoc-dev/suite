@@ -273,7 +273,7 @@ const plainText: Implementation<Text, { readonly text: string }> = {
   schema: plain,
   read: ({ link, data }) => ({ link, text: data.text }),
 };
-const quotedText: Implementation<Text, { readonly quotes: LinkValue<Text> }> = {
+const quotedText: Implementation<Text, { readonly quotes: LinkValue<unknown> }> = {
   schema: quote,
   async read({ link, data }, reader) {
     const quoted = await texts.read(data.quotes.link, reader);

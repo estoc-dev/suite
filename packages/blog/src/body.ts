@@ -7,7 +7,7 @@ import { micromark } from "micromark";
  * as HTML, with the link of the object it is read from.
  */
 export interface Body {
-  readonly link: Link<Body>;
+  readonly link: Link<unknown>;
   readonly html: string;
 }
 
@@ -21,13 +21,12 @@ export type MarkdownBodyData = DataOf<typeof markdownBodySchema>;
  */
 export const markdownBody: Implementation<Body, MarkdownBodyData> = {
   schema: markdownBodySchema,
-  read: ({ link, data }) => ({ link: link as Link<never>, html: micromark(data.text) }),
+  read: ({ link, data }) => ({ link, html: micromark(data.text) }),
 };
 
 /** The object of a Markdown body that holds `text`, for a post to name by its link. */
-export function markdownBodyOf(text: string): EncodedObject<MarkdownBodyData> & { readonly link: Link<Body> } {
-  const object = encodeObject(markdownBodySchema, { text });
-  return { ...object, link: object.link as Link<never> };
+export function markdownBodyOf(text: string): EncodedObject<MarkdownBodyData> {
+  return encodeObject(markdownBodySchema, { text });
 }
 
 /** The body schemas read here. A program that reads others lists them in a table of its own. */

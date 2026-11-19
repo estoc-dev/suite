@@ -12,10 +12,10 @@ import type { Backend } from "./backend.ts";
 
 /**
  * A batch that a store, a private store or a secret store refuses for what it is: one of its
- * `marks` or `secrets` that is not an object, or one of its `roots` or a blob in the closure of any
- * of these that is neither in the batch nor held already. The same batch is refused again until
- * what was missing is held, while a backend that fails, which rejects with an error of its own, may
- * write it the next time.
+ * `marks` or `secrets` whose blob it does not give or that is not an object, or one of its `roots`
+ * or a blob in the closure of any of these that is neither in the batch nor held already. The same
+ * batch is refused again until what was missing is held, while a backend that fails, which rejects
+ * with an error of its own, may write it the next time.
  */
 export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
@@ -35,29 +35,30 @@ export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
 }
 
 /**
- * The blobs of a batch under their links, `objects` among them, and the links of `objects`, which
- * the batch is to list. Each is copied as `copiedBlobs` copies it.
+ * The blobs of a batch under their links, each copied as `copiedBlobs` copies it, and `links` as
+ * the links of objects, which the batch is to list.
  *
- * @throws {RefusedBatch} when one of `objects` is not an object, saying what the batch gave it to
- *   be `listedAs`.
+ * @throws {RefusedBatch} when `blobs` do not hold the blob of one of `links`, or it is not an
+ *   object, saying what the batch gave it to be `listedAs`.
  */
 export function copiedBatch(
-  objects: Iterable<{ readonly bytes: Bytes<unknown> }>,
+  links: Iterable<Link<unknown>>,
   blobs: Iterable<Bytes<unknown>>,
   listedAs: "a mark" | "a secret",
 ): { readonly blobs: Map<Link<unknown>, Uint8Array>; readonly objects: Link<EncodedObject>[] } {
   const batchBlobs = copiedBlobs(blobs);
   const objectLinks: Link<EncodedObject>[] = [];
-  for (const { bytes } of objects) {
-    const ownedBytes: Bytes<EncodedObject> = new Uint8Array(bytes);
-    const link = linkOf(ownedBytes);
+  for (const link of links) {
+    const bytes = batchBlobs.get(link);
+    if (bytes === undefined) {
+      throw new RefusedBatch(`${link} is written as ${listedAs} but is not among the blobs of the batch`);
+    }
     try {
-      schemaOf(ownedBytes);
+      schemaOf(bytes);
     } catch (cause) {
       throw new RefusedBatch(`${link} is written as ${listedAs} but is not an object`, { cause });
     }
-    batchBlobs.set(link, ownedBytes);
-    objectLinks.push(link);
+    objectLinks.push(link as Link<EncodedObject>);
   }
   return { blobs: batchBlobs, objects: objectLinks };
 }

@@ -225,7 +225,10 @@ export class MailboxOffer {
     });
     const { store, privateStore } = this.#posting;
     await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
-    await privateStore.write({ marks: [openedMailbox], blobs: [...openedMailbox.schema.blobs] });
+    await privateStore.write({
+      marks: [openedMailbox.link],
+      blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs],
+    });
     return mailbox;
   }
 }
@@ -253,7 +256,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   blobs: readonly Bytes<unknown>[],
   { intake, origin, signatures, people }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
-  const body = encodeBundle(signature, [...blobs, ...signature.signedIdentity.blobs]);
+  const body = encodeBundle(signature.link, [signature.bytes, ...blobs, ...signature.signedIdentity.blobs]);
   const request = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body };
   const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
   const stagedStore = await intake.stage(answer, origin);
@@ -339,7 +342,7 @@ class ServicePickup implements Pickup {
       receipts: receipts.map((receipt) => new LinkValue(receipt)),
     });
     const signature = await this.#actor.sign(request);
-    const body = encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
+    const body = encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]);
     const init = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body, signal: signal ?? null };
     const answer = await bundleIn(await fetch(this.#url, init), [200], this.#limit);
     const { ciphertexts } = decodeObject(answer.root, pickupAnswerSchema).data;

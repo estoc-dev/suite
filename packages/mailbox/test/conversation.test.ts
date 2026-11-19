@@ -104,10 +104,7 @@ interface Person {
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
 async function handOver(from: Person, to: Person, root: Link<unknown>) {
-  const closure = await from.store.closure(root);
-  const bytes = closure.get(root);
-  assert.exists(bytes);
-  await to.intake.receive(decodeBundle(encodeBundle({ bytes }, closure.values())));
+  await to.intake.receive(decodeBundle(encodeBundle(root, (await from.store.closure(root)).values())));
 }
 
 async function chat(faults: Faults = {}) {
@@ -306,7 +303,7 @@ describe("a conversation", () => {
     for (const mark of [...marks, ...marks].reverse()) {
       const bytes = await alice.privateStore.get(mark);
       assert.exists(bytes);
-      await privateCopy.write({ marks: [{ bytes }], blobs: markSchemas });
+      await privateCopy.write({ marks: [mark], blobs: [bytes, ...markSchemas] });
     }
     expect(await alice.conversation(privateCopy)).toEqual(await alice.conversation(alice.privateStore));
   });

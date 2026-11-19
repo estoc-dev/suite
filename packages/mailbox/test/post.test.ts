@@ -58,7 +58,7 @@ async function postAt(network: MemoryNetwork, stores = storesBeside()) {
 // The store keeps a mailbox that was handed over out of band, with a mark that it came in.
 async function handOver(network: MemoryNetwork, { store, privateStore }: Stores, mailbox: EncodedObject) {
   const intake = new Intake(store, privateStore);
-  await intake.receive(decodeBundle(encodeBundle(mailbox, [...network.transport.schema.blobs])));
+  await intake.receive(decodeBundle(encodeBundle(mailbox.link, [mailbox.bytes, ...network.transport.schema.blobs])));
 }
 
 // A post whose store holds the mailbox of a new queue sealed to Bob, handed over.
@@ -81,7 +81,10 @@ async function openReceiver(network: MemoryNetwork, store?: Store) {
 async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject>, blobs: Uint8Array[]) {
   const bytes = await store.get(mailbox);
   assert.exists(bytes);
-  await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature, blobs);
+  await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature.link, [
+    signature.bytes,
+    ...blobs,
+  ]);
 }
 
 describe("an outbox", () => {
@@ -244,7 +247,10 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox, pickup } = await openReceiver(network);
     const sealedToBob = queue.mailbox(bob.publicKey);
-    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(signature, signatureBlobs);
+    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(signature.link, [
+      signature.bytes,
+      ...signatureBlobs,
+    ]);
     await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
     await sendTo(network, store, inbox.mailbox, signatureBlobs);
 
@@ -331,7 +337,7 @@ describe("an inbox", () => {
       mailbox: new LinkValue(inbox.mailbox),
       secret: new Uint8Array(32),
     });
-    await secretStore.write({ secrets: [wrong] });
+    await secretStore.write({ secrets: [wrong.link], blobs: [wrong.bytes] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
   });
 

@@ -103,7 +103,7 @@ const signature = await signatures.read(bundle.link, bundle, noIdentityVersions)
 import { mailboxFrom } from "@estoc/mailbox";
 
 const mailbox = await mailboxFrom(handedOut, { transports: [transport] });
-await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
+await mailbox.send(signature.link, [signature.bytes, object.bytes, ...signature.signedIdentity.blobs]);
 ```
 
 `mailboxFrom` takes the bytes of a mailbox alone; who stands behind it is
@@ -114,7 +114,7 @@ transport's schema to, and binds the key and the transport once. The
 `Mailbox` it returns shows neither, only `send`.
 
 `send` takes a root and blobs as `encodeBundle` does, and refuses a root
-that is not an object. It writes the bundle as one file, seals the
+that the blobs do not hold or that is not an object. It writes the bundle as one file, seals the
 file to the key and hands the ciphertext to the transport. It resolves
 once it is handed on. Nothing confirms that a message arrived and
 nothing is sent again: a message can be lost, arrive twice, or arrive out
@@ -180,10 +180,11 @@ link all the same.
 
 ```ts
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
+import { linkOf } from "@estoc/object";
 import { Intake } from "@estoc/store";
 
 const intake = new Intake(store, privateStore);
-await intake.receive(decodeBundle(encodeBundle({ bytes: handedOut }, transport.schema.blobs)));
+await intake.receive(decodeBundle(encodeBundle(linkOf(handedOut), [handedOut, ...transport.schema.blobs])));
 ```
 
 `openInbox` makes a new key and gives its public key to `makeMailbox`,

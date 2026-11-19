@@ -12,20 +12,21 @@ import type { MarkBatch } from "./private-store.ts";
  * - Anyone can write an object of this schema. It is a record only where it is listed, among the
  *   marks of a private store.
  */
-export const recordSchema = schema("Record", { object: link<EncodedObject>(), at: integer() });
+export const recordSchema = schema("Record", { object: link(), at: integer() });
 
 export type RecordData = DataOf<typeof recordSchema>;
 
 export type RecordObject = EncodedObject<RecordData>;
 
 /**
- * A record that each of `objects` was written at `at`, with the blobs of `recordSchema`, to write
- * to the private store beside the store that holds the objects. An index over `selectedRecords`
- * then reads them from the private store, each once however many records link to it.
+ * A record that each of `objects`, by its link, was written at `at`, with the blobs of
+ * `recordSchema`, to write to the private store beside the store that holds the objects. An index
+ * over `selectedRecords` then reads them from the private store, each once however many records
+ * link to it.
  */
-export function recordsOf(objects: Iterable<{ readonly link: Link<EncodedObject> }>, at: number): MarkBatch {
-  const marks = Array.from(objects, (object) => encodeObject(recordSchema, { object: new LinkValue(object.link), at }));
-  return { marks, blobs: recordSchema.blobs };
+export function recordsOf(objects: Iterable<Link<unknown>>, at: number): MarkBatch {
+  const marks = Array.from(objects, (object) => encodeObject(recordSchema, { object: new LinkValue(object), at }));
+  return { marks: marks.map(({ link }) => link), blobs: [...marks.map(({ bytes }) => bytes), ...recordSchema.blobs] };
 }
 
 const records = objectsOf(recordSchema);
@@ -36,9 +37,6 @@ const records = objectsOf(recordSchema);
  *
  * @throws when `reader` gives no blob for `listedLink`, or one that is not an object.
  */
-export async function objectRecordedAt(
-  listedLink: Link<unknown>,
-  reader: Reader,
-): Promise<Link<EncodedObject> | undefined> {
+export async function objectRecordedAt(listedLink: Link<unknown>, reader: Reader): Promise<Link<unknown> | undefined> {
   return (await records.read(listedLink, reader))?.data.object.link;
 }

@@ -39,7 +39,7 @@ await store.write({
   roots: [signature.link],
   blobs: [note.bytes, signature.bytes, ...signature.signedIdentity.blobs, ...schemas],
 });
-await privateStore.write(recordsOf([note, signature], Date.now())); // the user wrote both
+await privateStore.write(recordsOf([note.link, signature.link], Date.now())); // the user wrote both
 
 for await (const link of store.blobs()) …;                          // the blobs in the closure of the signature
 for await (const link of privateStore.marks()) …;                   // a record of the note, one of the signature
@@ -201,7 +201,7 @@ store does not hold. The closure of an object is what a bundle carrying it
 holds:
 
 ```ts
-const file = encodeBundle(signature, (await store.closure(signature.link)).values());
+const file = encodeBundle(signature.link, (await store.closure(signature.link)).values());
 ```
 
 A store is a `Reader`: `readObject` reads an object from it by link, and a
@@ -542,7 +542,7 @@ const privateStore = new PrivateStore(store, new MemoryBackend());
 await new Intake(store, privateStore).receive(card);
 // A mark of the program's own schema: that the user took the card, and when.
 const taken = encodeObject(takenSchema, { card: new LinkValue(card.link), at: Date.now() });
-await privateStore.write({ marks: [taken], blobs: takenSchema.blobs });
+await privateStore.write({ marks: [taken.link], blobs: [taken.bytes, ...takenSchema.blobs] });
 
 for await (const link of privateStore.marks()) …; // the `Inbound` of the card, then taken.link
 await privateStore.get(card.link);                // from the store beside
@@ -555,9 +555,9 @@ const takenAt = indexOver(selectedMarks(objectsOf(takenSchema)), takenAtSchema, 
 await scan(privateStore, takenAt);
 ```
 
-A private store lists its marks as they are. `write` takes them under
-`marks` and lists each, with no record of it, and `marks()` gives their links
-in the order they were first written. A mark is an object of whatever schema
+A private store lists its marks as they are. `write` takes their links
+under `marks` and their bytes among `blobs`, and lists each, with no record
+of it, and `marks()` gives their links in the order they were first written. A mark is an object of whatever schema
 its program gives it, and is a mark because the private store lists it:
 
 - An object of the same schema can come to the store beside, as in a bundle.
@@ -593,7 +593,7 @@ the time given:
 import { recordsOf } from "@estoc/store";
 
 await store.write({ roots: [note.link], blobs: [note.bytes, ...noteSchema.blobs] });
-await privateStore.write(recordsOf([note], Date.now()));
+await privateStore.write(recordsOf([note.link], Date.now()));
 ```
 
 The two writes are not one. The store goes first, since the private store
@@ -653,7 +653,7 @@ import { indexOver, MemoryBackend, SecretStore, Store, scan, selectedSecrets } f
 
 const store = new Store(new MemoryBackend());
 const secretStore = new SecretStore(store, new MemoryBackend());
-await secretStore.write({ secrets: [key], blobs: keySchema.blobs });
+await secretStore.write({ secrets: [key.link], blobs: [key.bytes, ...keySchema.blobs] });
 
 for await (const link of secretStore.secrets()) …; // key.link
 await secretStore.get(mailbox.link);               // from the store beside
@@ -667,8 +667,9 @@ await scan(secretStore, byMailbox);
 ```
 
 A secret store lists its secrets as they are, as a private store lists its
-marks. `write` takes them under `secrets` and lists each, and `secrets()`
-gives their links in the order they were first written. A secret is an
+marks. `write` takes their links under `secrets` and their bytes among
+`blobs`, and lists each, and `secrets()` gives their links in the order they
+were first written. A secret is an
 object of whatever schema its program gives it, and is a secret because the
 secret store lists it: an object of the same schema that the store beside
 holds is given by its link and is not listed.

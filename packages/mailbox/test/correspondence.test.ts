@@ -93,19 +93,16 @@ async function openInbox({ post }: Person): Promise<OpenedInbox> {
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
 async function handOver(from: Person, to: Person, root: Link<unknown>) {
-  const closure = await from.store.closure(root);
-  const bytes = closure.get(root);
-  assert.exists(bytes);
-  await to.intake.receive(decodeBundle(encodeBundle({ bytes }, closure.values())));
+  await to.intake.receive(decodeBundle(encodeBundle(root, (await from.store.closure(root)).values())));
 }
 
 const seeIdentityVersion = ({ intake }: Person, identityVersion: SignedIdentityObject) =>
-  intake.receive(decodeBundle(encodeBundle({ bytes: identityVersion.bytes }, identityVersion.blobs)));
+  intake.receive(decodeBundle(encodeBundle(identityVersion.link, identityVersion.blobs)));
 
 // A person keeps an identity version that their own root signed, as one they wrote.
 async function recordIdentityVersion({ store, privateStore }: Person, identityVersion: SignedIdentityObject) {
   await store.write({ roots: [identityVersion.link], blobs: identityVersion.blobs });
-  await privateStore.write(recordsOf([identityVersion], clock()));
+  await privateStore.write(recordsOf([identityVersion.link], clock()));
 }
 
 // `from` gives `to` a grant of `mailboxes` and hands it over out of band.

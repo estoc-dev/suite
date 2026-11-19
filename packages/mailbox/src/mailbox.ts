@@ -1,5 +1,13 @@
 import { encodeBundle } from "@estoc/bundle";
-import { type Bytes, decodeObject, type EncodedObject, type Schema, schemaOf, type ValueMap } from "@estoc/object";
+import {
+  type Bytes,
+  decodeObject,
+  type EncodedObject,
+  type Link,
+  type Schema,
+  schemaOf,
+  type ValueMap,
+} from "@estoc/object";
 import { publicKeyFrom, seal } from "./key.ts";
 
 /** One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. */
@@ -54,13 +62,13 @@ export class Mailbox {
   }
 
   /**
-   * Sends the bundle of `root` and `blobs`, as `encodeBundle` writes it, sealed to the mailbox's key
-   * and handed to the transport.
+   * Sends the bundle of the blob that `root` names and the rest of `blobs`, as `encodeBundle` writes
+   * it, sealed to the mailbox's key and handed to the transport.
    *
-   * @throws when `root` is not an object.
+   * @throws when `blobs` do not hold the root, or it is not an object.
    * @throws {UndeliveredMessage} when the transport cannot hand the ciphertext on.
    */
-  async send(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Promise<void> {
+  async send(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Promise<void> {
     await this.#transport.deliver(this.#data, await seal(this.#key, encodeBundle(root, blobs)));
   }
 }

@@ -40,7 +40,7 @@ const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
-  await mailbox.send(signature, [object.bytes, ...signature.signedIdentity.blobs]);
+  await mailbox.send(signature.link, [signature.bytes, object.bytes, ...signature.signedIdentity.blobs]);
   return signature;
 };
 
@@ -89,7 +89,8 @@ describe("a chat line", () => {
     assert.exists(receivedBundle);
     // Bob passes on what he read: the signature, with the line and the signed identity it names.
     const signedLine = await readSigned(receivedBundle, chat);
-    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(signedLine.signature, [
+    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(signedLine.signature.link, [
+      signedLine.signature.bytes,
       signedLine.object.bytes,
       ...signedLine.signature.signedIdentity.blobs,
     ]);
@@ -292,18 +293,14 @@ describe("two people who meet", () => {
   type Correspondent = Awaited<ReturnType<typeof twoPeople>>["grace"];
 
   // What the store holds under `root`, as a bundle to hand over out of band.
-  const bundleIn = async ({ store }: Correspondent, root: Link<unknown>) => {
-    const closure = await store.closure(root);
-    const bytes = closure.get(root);
-    assert.exists(bytes);
-    return decodeBundle(encodeBundle({ bytes }, closure.values()));
-  };
+  const bundleIn = async ({ store }: Correspondent, root: Link<unknown>) =>
+    decodeBundle(encodeBundle(root, (await store.closure(root)).values()));
 
   it("first hand over a signed identity and a grant, and from then on write through their mailboxes", async () => {
     const { grace, heidi } = await twoPeople();
 
     // Heidi hands over a signed identity, and Grace hands back a grant of a mailbox.
-    const handedIdentity = decodeBundle(encodeBundle(heidi.signedIdentity, heidi.signedIdentity.blobs));
+    const handedIdentity = decodeBundle(encodeBundle(heidi.signedIdentity.link, heidi.signedIdentity.blobs));
     await grace.intake.receive(handedIdentity);
     const heidiAsSeen = await signedIdentities.read(heidi.signedIdentity.link, handedIdentity);
     const atGrace = await grace.openInbox();

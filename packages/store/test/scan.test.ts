@@ -119,7 +119,12 @@ async function recordIn(
   blobs?: Iterable<Uint8Array>,
 ): Promise<void> {
   await store.write(batchOf(objects, blobs));
-  await privateStore.write(recordsOf(objects, Date.now()));
+  await privateStore.write(
+    recordsOf(
+      objects.map(({ link }) => link),
+      Date.now(),
+    ),
+  );
 }
 
 describe("an index scanned from a private store", () => {
@@ -1106,7 +1111,7 @@ describe("an index over blobs", () => {
       const secretStore = new SecretStore(store, new MemoryBackend());
       await store.write(batchOf([first], [firstTag.bytes, ...schemas]));
       const kept = encodeObject(note, { of: new LinkValue(secondTag.link), shared: new LinkValue(firstTag.link) });
-      await secretStore.write({ secrets: [kept], blobs: [secondTag.bytes] });
+      await secretStore.write({ secrets: [kept.link], blobs: [kept.bytes, secondTag.bytes] });
       expect(await namesOf(await scan(secretStore, byTagName))).toEqual(["y"]);
       expect(await namesOf(await scan(store, byTagName))).toEqual(["x"]);
     });
@@ -1280,7 +1285,7 @@ describe("an index over another index", () => {
       const stores = newStores();
       const secretStore = new SecretStore(stores.store, new MemoryBackend());
       await recordIn(stores, [first], schemas);
-      await secretStore.write({ secrets: [second] });
+      await secretStore.write({ secrets: [second.link], blobs: [second.bytes] });
       expect(await namesOf(await scan(secretStore, index))).toEqual(["B"]);
       expect(await namesOf(await scan(stores.privateStore, index))).toEqual([]);
     });

@@ -1,5 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, LinkValue, linkOf } from "@estoc/object";
+import { type EncodedObject, encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { array, link, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { blobListOf } from "../src/blob-list.ts";
@@ -10,8 +10,8 @@ const reply = encodeObject(noteSchema, { text: "a reply", replies: [new LinkValu
 const note = encodeObject(noteSchema, { text: "a note", replies: [new LinkValue(reply.link)] });
 const stray = new TextEncoder().encode("a stray blob");
 
-const listOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array>) =>
-  blobListOf(decodeBundle(encodeBundle(root, blobs)));
+const listOf = (root: EncodedObject, blobs: Iterable<Uint8Array>) =>
+  blobListOf(decodeBundle(encodeBundle(root.link, [root.bytes, ...blobs])));
 
 describe("the blob list of a bundle", () => {
   it("has the root, then the blobs as the bundle carries them", async () => {

@@ -92,7 +92,7 @@ export class Intake {
     const data: InboundData = { bundle: new LinkValue(bundle.link), at: this.#clock() };
     const inbound = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new LinkValue(via.link) });
     const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
-    const mark = { marks: [inbound], blobs: [...inboundSchema.blobs, ...viaBlobs] };
+    const mark = { marks: [inbound.link], blobs: [inbound.bytes, ...inboundSchema.blobs, ...viaBlobs] };
     const stagedBundle = await this.#store.stage({ roots: [bundle.link], blobs: bundle.blobs() });
     return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#privateStore, mark) };
   }

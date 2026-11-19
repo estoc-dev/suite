@@ -10,7 +10,8 @@ import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const handOver = (root: { readonly bytes: Uint8Array }, blobs: Uint8Array[]) => decodeBundle(encodeBundle(root, blobs));
+const handOver = (root: { readonly link: Link<unknown>; readonly bytes: Uint8Array }, blobs: Uint8Array[]) =>
+  decodeBundle(encodeBundle(root.link, [root.bytes, ...blobs]));
 const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);

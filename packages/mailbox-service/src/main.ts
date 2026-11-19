@@ -95,7 +95,7 @@ async function makeSecretStore(path: string): Promise<void> {
     const { secretKeys } = loadIdentity(schemes);
     const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
     const secretStore = new SecretStore(new Store(new MemoryBackend()), backend);
-    await secretStore.write({ secrets: [secretKey], blobs: secretKey.blobs });
+    await secretStore.write({ secrets: [secretKey.link], blobs: secretKey.blobs });
     console.log(secretKey.key.link);
   } finally {
     backend.close();

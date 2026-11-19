@@ -128,7 +128,7 @@ async function signedService(origin: string, offers: readonly (readonly [Encoded
     ...offers.flatMap(([object]) => [object.bytes, ...object.schema.blobs]),
     serviceRoot.bytes,
   ];
-  return encodeBundle(signature, blobs);
+  return encodeBundle(signature.link, [signature.bytes, ...blobs]);
 }
 
 /** Keeps `bundle` in `store` as come in at a mailbox elsewhere. */
@@ -169,7 +169,7 @@ async function acknowledgementBy(by: Actor, request: Request) {
     ...accountOfferSchema.blobs,
     serviceRoot.bytes,
   ];
-  return new Response(encodeBundle(signature, blobs), { status: 201 });
+  return new Response(encodeBundle(signature.link, [signature.bytes, ...blobs]), { status: 201 });
 }
 
 describe("a service reached at its origin", () => {
@@ -479,7 +479,12 @@ describe("accepting an account offer", () => {
   it("refuses the service's acknowledgement of another acceptance than the one it sent, and writes nothing", async () => {
     const bobs = await (await actorOf(bob)).sign(offer);
     const { origin } = await startService({}, async (service, request) =>
-      service.fetch(new Request(request.url, { method: "POST", body: encodeBundle(bobs, bobs.signedIdentity.blobs) })),
+      service.fetch(
+        new Request(request.url, {
+          method: "POST",
+          body: encodeBundle(bobs.link, [bobs.bytes, ...bobs.signedIdentity.blobs]),
+        }),
+      ),
     );
     const { store, services } = client();
     const account = await accountAt(services, origin);
@@ -825,7 +830,7 @@ async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Si
     ...mailboxOfferSchema.blobs,
     root.bytes,
   ];
-  return decodeBundle(encodeBundle(signature, blobs));
+  return decodeBundle(encodeBundle(signature.link, [signature.bytes, ...blobs]));
 }
 
 describe("a mailbox acknowledgement that came in at a mailbox", () => {

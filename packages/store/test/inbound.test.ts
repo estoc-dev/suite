@@ -1,5 +1,14 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject, type ValueMap } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectsOf,
+  readObject,
+  type ValueMap,
+} from "@estoc/object";
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -26,8 +35,8 @@ const anything = schema("Anything", {
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
-const bundleOf = (root: { readonly bytes: Uint8Array }, blobs: Iterable<Uint8Array> = [...anything.blobs]) =>
-  decodeBundle(encodeBundle(root, blobs));
+const bundleOf = (root: EncodedObject, blobs: Iterable<Uint8Array> = [...anything.blobs]) =>
+  decodeBundle(encodeBundle(root.link, [root.bytes, ...blobs]));
 
 const ticking = (start = 1000) => {
   let at = start;

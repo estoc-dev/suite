@@ -161,13 +161,7 @@ class MailboxService {
 
   async #serviceListsOffer({ object }: Signature, id: string): Promise<boolean> {
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
-    // The store's own signatures say which offer each is over, and are read
-    // for that alone.
-    for (const { link } of offers) {
-      const signature = await readObject(this.#store, link, this.#signatures.schema);
-      if (signature.data.object.link === id) return true;
-    }
-    return false;
+    return offers.some(({ link }) => link === id);
   }
 
   async #acceptOffer(request: Request, id: string): Promise<Response> {
@@ -408,46 +402,29 @@ export async function loadMailboxService(
   ];
 
   const seenPeople = peopleView(kit);
-  // A store only gains blobs, and holds each Service with the identity versions its signatures
-  // carry, so people read after the locations have seen those of every Service that the locations
+  // A store only gains blobs, and holds each Service with the identity version its signature
+  // carries, so people read after the locations have seen that of every Service that the locations
   // give.
   const locations = await view(store, locationsView(signatures));
   const people = await view(store, seenPeople);
   const at = clock();
   const signedIdentity =
     (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
-  // The signatures made at this start are by the identity version that `people` gives, as `people`
-  // also says which signatures of an earlier Service are kept. Were each signature to ask the
-  // store, a crisis that the store takes in between two of them would leave the Service listing an
-  // offer signed before the crisis.
-  const actorAtStart = signatures.actor(signer, signedIdentity, async (inHand) => inHand);
-  const serviceSignatures = await locations.servicesOf(identifier, people);
-  const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
-  const [previous] = services;
-  const signedOffers: (readonly [EncodedObject, Signature])[] = [];
-  for (const offer of offers) {
-    const signature =
-      (await ownSignatureListedIn(services, { object: offer.link, key: identifier }, signatures, store, people)) ??
-      (await actorAtStart.sign(offer));
-    signedOffers.push([offer, signature]);
-  }
-  const next: ServiceData = {
-    origin,
-    at,
-    offers: signedOffers.map(([, signature]) => new LinkValue(signature.link)),
-  };
-  if (previous === undefined || formOf(previous.data) !== formOf(next)) {
+  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
+    (await view(store, seenPeople)).current(inHand),
+  );
+  const [latest] = await locations.servicesOf(identifier, people);
+  const previous = latest === undefined ? undefined : (await readObject(store, latest.object, serviceSchema)).data;
+  const next: ServiceData = { origin, at, offers: offers.map(({ link }) => new LinkValue(link)) };
+  if (previous === undefined || formOf(previous) !== formOf(next)) {
     const object = encodeObject(serviceSchema, next);
     const blobs = [
       object.bytes,
       ...serviceSchema.blobs,
-      ...signedOffers.flatMap(([offer, signature]) => [...signature.blobs, offer.bytes, ...offer.schema.blobs]),
+      ...offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
     ];
-    await writeSigned(await actorAtStart.sign(object), blobs, at, { store, privateStore });
+    await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
-  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
-    (await view(store, seenPeople)).current(inHand),
-  );
   return new MailboxService(actor, kit, seenPeople, { ...options, clock });
 }
 
@@ -483,26 +460,4 @@ function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView 
       },
     }),
   };
-}
-
-/**
- * A signature by an agent of the root is passed over, though `people` honors it. Once an identity
- * version removes the agent, a Service of the root's that lists it would stay honored while the
- * offer is not, and a start whose clock is behind signs only Services that come before that one.
- */
-async function ownSignatureListedIn(
-  services: readonly EncodedObject<ServiceData>[],
-  { object, key }: { readonly object: Link<unknown>; readonly key: Link<unknown> },
-  signatures: Signatures,
-  store: Store,
-  people: People,
-): Promise<Signature | undefined> {
-  for (const { data } of services) {
-    for (const { link } of data.offers) {
-      const signature = await signatures.read(link, store);
-      if (signature.object === object && signature.key.link === key && (await people.honors(signature)))
-        return signature;
-    }
-  }
-  return undefined;
 }

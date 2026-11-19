@@ -100,7 +100,15 @@ export class AccountOffer {
   readonly #posting: Posting;
 
   constructor(
-    { service, offer, url }: { readonly service: SignedIdentityObject; readonly offer: Link<never>; readonly url: URL },
+    {
+      service,
+      offer,
+      url,
+    }: {
+      readonly service: SignedIdentityObject;
+      readonly offer: Link<EncodedObject<AccountOfferData>>;
+      readonly url: URL;
+    },
     posting: Posting,
   ) {
     this.service = service;
@@ -346,8 +354,7 @@ export class Services {
     const serviceSignature = await this.#signatures.read(link, reader);
     await checkHonors(people, serviceSignature);
     const { signedIdentity, object } = serviceSignature;
-    const service = people.personOf(signedIdentity);
-    const { identifier } = service;
+    const { identifier } = signedIdentity.identity;
     const { origin, at, offers } = (await readObject(reader, object, serviceSchema)).data;
     checkOrigin(origin);
     const posting = {
@@ -360,26 +367,23 @@ export class Services {
     };
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
-    for (const { link } of offers) {
-      const signature = await this.#signatures.read(link, reader);
-      await checkHonors(people, signature);
-      if (!service.hasSigned(signature))
-        throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
-      const bytes = await reader.get(signature.object);
-      if (bytes === undefined) throw new AbsentBlob(signature.object);
+    for (const { link: listed } of offers) {
+      const bytes = await reader.get(listed);
+      if (bytes === undefined) throw new AbsentBlob(listed);
       const schema = schemaOf(bytes);
-      const url = new URL(`/${signature.object}`, origin);
+      const url = new URL(`/${listed}`, origin);
       if (account === undefined && schema === accountOfferSchema.link) {
-        if (decodeObject(bytes, accountOfferSchema).data.identity.link !== identifier) {
+        const offer = await readObject(reader, listed, accountOfferSchema);
+        if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists an account offer that names another identifier`);
         }
-        account = new AccountOffer({ service: signedIdentity, offer: signature.object, url }, posting);
+        account = new AccountOffer({ service: signedIdentity, offer: offer.link, url }, posting);
       } else if (mailbox === undefined && schema === mailboxOfferSchema.link) {
-        const decodedOffer = decodeObject(bytes, mailboxOfferSchema);
-        if (decodedOffer.data.identity.link !== identifier) {
+        const offer = await readObject(reader, listed, mailboxOfferSchema);
+        if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists a mailbox offer that names another identifier`);
         }
-        mailbox = new MailboxOffer({ service: signedIdentity, offer: decodedOffer, url }, posting);
+        mailbox = new MailboxOffer({ service: signedIdentity, offer, url }, posting);
       }
     }
     return { signedIdentity, origin, at, link, account, mailbox };

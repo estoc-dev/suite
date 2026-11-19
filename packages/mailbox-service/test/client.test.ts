@@ -110,20 +110,15 @@ async function accountAt(services: Services, origin: string) {
   return account;
 }
 
-/**
- * The bundle of `by`'s signature over a Service at `origin` from `at` that
- * lists `offers`, each signed by the actor given with it, with its closure.
- */
-async function signedService(origin: string, offers: readonly (readonly [EncodedObject, Actor])[], by: Actor, at = 1) {
-  const offerSignatures = await Promise.all(offers.map(([object, actor]) => actor.sign(object)));
-  const listedOffers = offerSignatures.map((signature) => new LinkValue(signature.link));
+/** The bundle of `by`'s signature over a Service at `origin` from `at` that lists `offers`, with its closure. */
+async function signedService(origin: string, offers: readonly EncodedObject[], by: Actor, at = 1) {
+  const listedOffers = offers.map(({ link }) => new LinkValue(link));
   const service = encodeObject(serviceSchema, { origin, at, offers: listedOffers });
   const signature = await by.sign(service);
   const blobs = [
     service.bytes,
     ...serviceSchema.blobs,
-    ...offerSignatures.flatMap(({ blobs }) => blobs),
-    ...offers.flatMap(([object]) => [object.bytes, ...object.schema.blobs]),
+    ...offers.flatMap((object) => [object.bytes, ...object.schema.blobs]),
     ...serviceRoot.blobs,
   ];
   return encodeBundle(signature.link, [...signature.blobs, ...blobs]);
@@ -198,52 +193,12 @@ describe("a service reached at its origin", () => {
     expect(await inboundRowsOf(store)).toEqual([]);
   });
 
-  it("refuses a Service that lists an offer signed for another identifier", async () => {
-    const { origin } = await startServer(
-      async (_, origin) =>
-        new Response(await signedService(origin, [[offer, await actorOf(mallory)]], await actorOf(serviceSigner))),
-    );
-    const { services } = client();
-    await expect(services.fetch(origin)).rejects.toThrow(/lists an offer signed for another identifier/);
-  });
-
-  it("refuses a Service that lists an offer by an agent that the identity version signing the Service takes out, until the offer is signed again", async () => {
-    const [removedAgent, listedAgent] = [signer(ed25519, 7), signer(ed25519, 8)];
-    const earlier = actorSigningBy(
-      removedAgent,
-      await publish(serviceSigner, { agents: [removedAgent.key], at: 1_000 }),
-    );
-    const later = actorSigningBy(
-      listedAgent,
-      await publish(serviceSigner, { prior: earlier.signedIdentity, agents: [listedAgent.key], at: 2_000 }),
-    );
-    let offerSigner = earlier;
-    const { origin } = await startServer(
-      async (_, origin) => new Response(await signedService(origin, [[offer, offerSigner]], later)),
-    );
+  it("refuses a Service by an agent that an identity version of the service, which the store holds, takes out, and writes nothing", async () => {
     const { store, services } = client();
-    await expect(services.fetch(origin)).rejects.toThrow(/is not honored/);
-    expect(await inboundRowsOf(store)).toEqual([]);
-    offerSigner = later;
-    const service = await services.fetch(origin);
-    expect(service.account?.link).toBe(offer.link);
-    expect((await services.latestOf(service.signedIdentity))?.link).toBe(service.link);
-  });
-
-  it("refuses a Service by an agent that the identity version signing an offer it lists takes out", async () => {
-    const [removedAgent, listedAgent] = [signer(ed25519, 7), signer(ed25519, 8)];
-    const earlier = actorSigningBy(
-      removedAgent,
-      await publish(serviceSigner, { agents: [removedAgent.key], at: 1_000 }),
-    );
-    const later = actorSigningBy(
-      listedAgent,
-      await publish(serviceSigner, { prior: earlier.signedIdentity, agents: [listedAgent.key], at: 2_000 }),
-    );
+    const removedActor = await removeAgent(store);
     const { origin } = await startServer(
-      async (_, origin) => new Response(await signedService(origin, [[offer, later]], earlier)),
+      async (_, origin) => new Response(await signedService(origin, [offer], removedActor)),
     );
-    const { store, services } = client();
     await expect(services.fetch(origin)).rejects.toThrow(/is not honored/);
     expect(await inboundRowsOf(store)).toEqual([]);
   });
@@ -257,12 +212,10 @@ describe("a service reached at its origin", () => {
     expect(account.service.identity.link).toBe(serviceIdentity(1_000).link);
   });
 
-  it("refuses an account offer that names another identifier than that of the identity that signed it", async () => {
-    const file = async (origin: string) => {
-      const actor = await actorOf(mallory);
-      return signedService(origin, [[offer, actor]], actor);
-    };
-    const { origin } = await startServer(async (_, origin) => new Response(await file(origin)));
+  it("refuses an account offer that names another identifier than that of the identity that signed the Service", async () => {
+    const { origin } = await startServer(
+      async (_, origin) => new Response(await signedService(origin, [offer], await actorOf(mallory))),
+    );
     const { services } = client();
     await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another identifier/);
   });
@@ -272,17 +225,7 @@ describe("a service reached at its origin", () => {
     const unread = encodeObject(other, { identity: new LinkValue(serviceRoot.link) });
     const actor = await actorOf(serviceSigner);
     const { origin } = await startServer(
-      async (_, origin) =>
-        new Response(
-          await signedService(
-            origin,
-            [
-              [unread, actor],
-              [offer, actor],
-            ],
-            actor,
-          ),
-        ),
+      async (_, origin) => new Response(await signedService(origin, [unread, offer], actor)),
     );
     const { services } = client();
     expect((await services.fetch(origin)).account?.link).toBe(offer.link);
@@ -336,7 +279,7 @@ describe("a service found by its identifier", () => {
 
   it("is read from a Service that came in at a mailbox as from one fetched", async () => {
     const actor = await serviceActor(1_000);
-    const bundle = decodeBundle(await signedService("https://mail.example", [[offer, actor]], actor));
+    const bundle = decodeBundle(await signedService("https://mail.example", [offer], actor));
     const { store, services } = client();
     await receiveAtMailbox(store, bundle);
     const service = await services.latestOf(actor.signedIdentity);
@@ -458,7 +401,7 @@ describe("accepting an account offer", () => {
     const { origin } = await startServer(async (request, origin) =>
       request.method === "POST"
         ? acknowledgementBy(earlier, request)
-        : new Response(await signedService(origin, [[offer, later]], later)),
+        : new Response(await signedService(origin, [offer], later)),
     );
     const { store, services } = client();
     const account = await accountAt(services, origin);

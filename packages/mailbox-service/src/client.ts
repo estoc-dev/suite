@@ -24,14 +24,13 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
-import { type PeopleView, peopleView } from "@estoc/people";
+import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
 import { Intake, type PrivateStore, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
-import { checkHonors } from "./people.ts";
 import {
   type AccountOfferData,
   accountOfferSchema,

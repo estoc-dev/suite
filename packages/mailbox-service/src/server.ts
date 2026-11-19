@@ -21,7 +21,7 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { type PeopleView, peopleView } from "@estoc/people";
+import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -29,7 +29,6 @@ import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgeme
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
-import { checkHonors } from "./people.ts";
 import {
   accountOfferSchema,
   acknowledgementSchema,

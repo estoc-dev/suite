@@ -23,8 +23,7 @@ const note = schema("Note", { text: string() });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello, Bob" });
 const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
-const schemas = [note, signatures.schema].flatMap(({ blobs }) => blobs);
-const signatureBlobs = [hello.bytes, ...signature.signedIdentity.blobs, ...schemas];
+const signatureBlobs = [...signature.blobs, hello.bytes, ...note.blobs];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
 async function secretsOf(secretStore: SecretStore): Promise<Link<unknown>[]> {
@@ -81,17 +80,14 @@ async function openReceiver(network: MemoryNetwork, store?: Store) {
 async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject>, blobs: Uint8Array[]) {
   const bytes = await store.get(mailbox);
   assert.exists(bytes);
-  await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature.link, [
-    signature.bytes,
-    ...blobs,
-  ]);
+  await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature.link, blobs);
 }
 
 describe("an outbox", () => {
   it("sends the closure of a root the store holds, and marks that it went out once the transport takes it", async () => {
     const network = new MemoryNetwork();
     const { store, privateStore, post, queue, mailbox } = await prepareSender(network);
-    await store.write({ roots: [signature.link], blobs: [signature.bytes, ...signatureBlobs] });
+    await store.write({ roots: [signature.link], blobs: signatureBlobs });
 
     const delivery = await (await post.outbox(mailbox.link)).send(signature.link);
     expect(delivery).toEqual({
@@ -134,7 +130,7 @@ describe("an outbox", () => {
     const network = new MemoryNetwork();
     const sender = await prepareSender(network);
     const { store, privateStore, post } = sender;
-    await store.write({ roots: [signature.link], blobs: [signature.bytes, ...signatureBlobs] });
+    await store.write({ roots: [signature.link], blobs: signatureBlobs });
     const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
     await handOver(network, sender, elsewhere);
     const before = await listedIn(privateStore);
@@ -163,7 +159,7 @@ describe("an outbox", () => {
     })();
     const network = new MemoryNetwork();
     const { store, privateStore, post, queue, mailbox } = await prepareSender(network, new Store(backend));
-    await store.write({ roots: [signature.link], blobs: [signature.bytes, ...signatureBlobs] });
+    await store.write({ roots: [signature.link], blobs: signatureBlobs });
     const outbox = await post.outbox(mailbox.link);
     const before = await listedIn(privateStore);
 
@@ -247,11 +243,11 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox, pickup } = await openReceiver(network);
     const sealedToBob = queue.mailbox(bob.publicKey);
-    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(signature.link, [
-      signature.bytes,
-      ...signatureBlobs,
-    ]);
-    await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
+    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(
+      signature.link,
+      signatureBlobs,
+    );
+    await sendTo(network, store, inbox.mailbox, [...signature.blobs, ...note.blobs]);
     await sendTo(network, store, inbox.mailbox, signatureBlobs);
 
     const deliveries = await inbox.collect(pickup);
@@ -302,7 +298,7 @@ describe("an inbox", () => {
   it("keeps nothing of a bundle that leaves out a blob in its root's closure", async () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox } = await openReceiver(network);
-    await sendTo(network, store, inbox.mailbox, [...signature.signedIdentity.blobs, ...schemas]);
+    await sendTo(network, store, inbox.mailbox, [...signature.blobs, ...note.blobs]);
 
     await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`links to ${hello.link}`);
     expect(await listedIn(privateStore)).toEqual([inbox.mailbox]);

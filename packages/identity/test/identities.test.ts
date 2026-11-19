@@ -29,7 +29,7 @@ import {
   signedIdentitySchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, closure, rowsOf, schemes } from "./fixtures.ts";
+import { byLink, bytesOf, closure, dataOf, rowsOf, schemaLinkOf, schemes } from "./fixtures.ts";
 
 const { keys, identities, signedIdentities, identityVersions, publish } = loadIdentity(schemes);
 
@@ -60,7 +60,12 @@ const linksOf = (blobs: readonly Uint8Array[]) => blobs.map((bytes) => linkOf(by
 describe("an identity", () => {
   it("names its root by the link of the root's object, and holds its agents and its at", () => {
     const identity = identities.encode(key(ed25519), { at: 1_000 });
-    expect(identity.data).toEqual({ root: new LinkValue(keys.encode(key(ed25519)).link), agents: [], at: 1_000 });
+    expect(dataOf(identity)).toEqual({
+      root: new LinkValue(keys.encode(key(ed25519)).link),
+      agents: [],
+      at: 1_000,
+    });
+    expect(identity.at).toBe(1_000);
   });
 
   it("has the link of its root as its identifier", () => {
@@ -72,7 +77,7 @@ describe("an identity", () => {
     const { publicKey } = key(ed25519);
     const plain = identities.encode({ scheme: ed25519, publicKey }, { at: 0 });
     const solana = identities.encode({ scheme: solanaOffchain, publicKey }, { at: 0 });
-    expect(plain.schema.link).toBe(solana.schema.link);
+    expect(schemaLinkOf(plain)).toBe(schemaLinkOf(solana));
     expect(plain.link).not.toBe(solana.link);
   });
 
@@ -88,22 +93,22 @@ describe("an identity", () => {
     const identity = identities.encode(key(eip191), { at: 0 });
     expect(linksOf(identity.blobs)).toEqual([
       identity.link,
-      identity.root.link,
       identitySchema.link,
       rootSchema.link,
-      identity.root.schema.link,
+      identity.root.link,
+      schemaLinkOf(identity.root),
     ]);
   });
 
   it("is refused without the blob of its root", async () => {
-    await expect(readFrom(identities.encode(key(ed25519), { at: 0 }).bytes)).rejects.toThrow(/no blob is given/);
+    await expect(readFrom(bytesOf(identities.encode(key(ed25519), { at: 0 })))).rejects.toThrow(/no blob is given/);
   });
 
   it("is refused when its root is not a key", async () => {
     const other = identities.encode(key(ed25519), { at: 0 });
     await expect(
-      readFrom(written({ root: new LinkValue(other.link), agents: [], at: 0 }), other.bytes),
-    ).rejects.toThrow(`${other.schema.link} is not a schema read here`);
+      readFrom(written({ root: new LinkValue(other.link), agents: [], at: 0 }), bytesOf(other)),
+    ).rejects.toThrow(`${identitySchema.link} is not a schema read here`);
   });
 
   it.each<[string, (root: LinkValue<unknown>) => ValueMap]>([
@@ -117,18 +122,18 @@ describe("an identity", () => {
     ["its prior as a bare string", (root) => ({ prior: root.link as string, root, agents: [], at: 0 })],
   ])("is refused with %s", async (_, data) => {
     const root = keys.encode(key(ed25519));
-    await expect(readFrom(written(data(new LinkValue(root.link))), root.bytes)).rejects.toThrow(/does not fit/);
+    await expect(readFrom(written(data(new LinkValue(root.link))), ...root.blobs)).rejects.toThrow(/does not fit/);
   });
 
   it("is refused with crisis set to false, which leaving it out says", async () => {
     const root = keys.encode(key(ed25519));
     const bytes = written({ root: new LinkValue(root.link), agents: [], crisis: false, at: 0 });
-    await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/marks a crisis with true, or not at all/);
+    await expect(readFrom(bytes, ...root.blobs)).rejects.toThrow(/marks a crisis with true, or not at all/);
   });
 
   it("is refused when it is written to another schema", async () => {
     const other = keys.encode(key(ed25519));
-    await expect(readFrom(other.bytes)).rejects.toThrow(`the object is written to ${other.schema.link}`);
+    await expect(readFrom(bytesOf(other))).rejects.toThrow(`the object is written to ${schemaLinkOf(other)}`);
   });
 
   it("is refused when the reader gives another blob for its link", async () => {
@@ -137,14 +142,18 @@ describe("an identity", () => {
     const signedIdentityBytes = unsignedOf(identity.link);
     const reader = new Map([
       [linkOf(signedIdentityBytes), signedIdentityBytes],
-      [identity.link, other.bytes],
+      [identity.link, bytesOf(other)],
     ]);
     await expect(signedIdentities.read(linkOf(signedIdentityBytes), reader)).rejects.toThrow(/another blob/);
   });
 
   it("is a crisis when its root marks it as one, and holds no crisis otherwise", () => {
-    expect(identities.encode(key(ed25519), { isCrisis: true, at: 0 }).data.crisis).toBe(true);
-    expect(identities.encode(key(ed25519), { at: 0 }).data).not.toHaveProperty("crisis");
+    const crisis = identities.encode(key(ed25519), { isCrisis: true, at: 0 });
+    const plain = identities.encode(key(ed25519), { at: 0 });
+    expect(crisis.isCrisis).toBe(true);
+    expect(dataOf(crisis).crisis).toBe(true);
+    expect(plain.isCrisis).toBe(false);
+    expect(dataOf(plain)).not.toHaveProperty("crisis");
   });
 });
 
@@ -224,14 +233,14 @@ describe("a signed identity", () => {
 
   it("is at the time it is given", async () => {
     const { identity } = await publish(signer(ed25519), { at: 1_767_225_600_000 });
-    expect(identity.data.at).toBe(1_767_225_600_000);
+    expect(identity.at).toBe(1_767_225_600_000);
   });
 
   it("is at the time of the clock when it is given none", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-30T12:00:00Z"), toFake: ["Date"] });
     try {
       const { identity } = await publish(signer(ed25519));
-      expect(identity.data.at).toBe(Date.parse("2026-10-30T12:00:00Z"));
+      expect(identity.at).toBe(Date.parse("2026-10-30T12:00:00Z"));
     } finally {
       vi.useRealTimers();
     }
@@ -257,7 +266,7 @@ describe("the agents of an identity", () => {
 
   it("are named by the links of their objects", async () => {
     const { identity } = await publish(signer(ed25519), { agents: [key(ed25519, 2)], at: 1_000 });
-    expect(identity.data).toEqual({
+    expect(dataOf(identity)).toEqual({
       root: new LinkValue(keys.encode(key(ed25519)).link),
       agents: [new LinkValue(keys.encode(key(ed25519, 2)).link)],
       at: 1_000,
@@ -287,13 +296,13 @@ describe("the agents of an identity", () => {
     assert.exists(second);
     expect(linksOf(identity.blobs)).toEqual([
       identity.link,
-      identity.root.link,
-      first.link,
-      second.link,
       identitySchema.link,
       rootSchema.link,
-      identity.root.schema.link,
-      first.schema.link,
+      identity.root.link,
+      schemaLinkOf(identity.root),
+      first.link,
+      schemaLinkOf(first),
+      second.link,
     ]);
   });
 
@@ -301,15 +310,15 @@ describe("the agents of an identity", () => {
     const root = keys.encode(key(ed25519));
     const other = identities.encode(key(ed25519, 2), { at: 0 });
     const bytes = written({ root: new LinkValue(root.link), agents: [new LinkValue(other.link)], at: 0 });
-    await expect(readFrom(bytes, root.bytes, other.bytes)).rejects.toThrow(
-      `${other.schema.link} is not a schema read here`,
+    await expect(readFrom(bytes, ...root.blobs, bytesOf(other))).rejects.toThrow(
+      `${identitySchema.link} is not a schema read here`,
     );
   });
 
   it("are refused when they list the root", async () => {
     const root = keys.encode(key(ed25519));
     const bytes = written({ root: new LinkValue(root.link), agents: [new LinkValue(root.link)], at: 0 });
-    await expect(readFrom(bytes, root.bytes)).rejects.toThrow(/lists its root as an agent/);
+    await expect(readFrom(bytes, ...root.blobs)).rejects.toThrow(/lists its root as an agent/);
   });
 
   it("are refused when they list one of them twice", async () => {
@@ -317,7 +326,7 @@ describe("the agents of an identity", () => {
     const agent = keys.encode(key(ed25519, 2));
     const agents = [new LinkValue(agent.link), new LinkValue(agent.link)];
     const bytes = written({ root: new LinkValue(root.link), agents, at: 0 });
-    await expect(readFrom(bytes, root.bytes, agent.bytes)).rejects.toThrow(/lists an agent twice/);
+    await expect(readFrom(bytes, ...root.blobs, ...agent.blobs)).rejects.toThrow(/lists an agent twice/);
   });
 
   it("can be none", async () => {
@@ -348,7 +357,7 @@ describe("an identity that follows another", () => {
   it("names the signed identity it follows, and reads back from its blobs with it", async () => {
     const first = await publish(root, { at: 1_000 });
     const second = await publish(root, { prior: first, agents: [key(ed25519, 2)], at: 2_000 });
-    expect(second.identity.data.prior).toEqual(new LinkValue(first.link));
+    expect(dataOf(second.identity).prior).toEqual(new LinkValue(first.link));
     const read = await signedIdentities.read(second.link, byLink(second.blobs));
     expect(read.identity.prior?.link).toBe(first.link);
     expect(read.identity.prior?.identity).toEqual(first.identity);
@@ -387,7 +396,7 @@ describe("an identity that follows another", () => {
       agents: [],
       at,
     });
-    const reader = byLink([...signedIdentity.blobs, rootKey.bytes, ...rootKey.schema.blobs, ...prior.blobs]);
+    const reader = byLink([...signedIdentity.blobs, ...rootKey.blobs, ...prior.blobs]);
     await expect(signedIdentities.read(signedIdentity.link, reader)).rejects.toThrow(error);
   });
 
@@ -470,8 +479,8 @@ describe("the implementation of the signed identity schema", () => {
 
   it("reads a signed identity as verifying it does", async () => {
     const signedIdentity = await publish(root, { prior: await publish(root, { at: 500 }), at: 1_000 });
-    const object = decodeObject(signedIdentity.bytes, signedIdentities.schema);
-    expect(await read(signedIdentity.bytes, signedIdentity.blobs)).toEqual(
+    const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
+    expect(await read(bytesOf(signedIdentity), signedIdentity.blobs)).toEqual(
       await signedIdentities.verify(object, byLink(signedIdentity.blobs)),
     );
   });
@@ -487,7 +496,7 @@ describe("the implementation of the signed identity schema", () => {
 
   it("refuses a signed identity without the blob of its identity, by an error that has its link", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
-    const error = await read(signedIdentity.bytes, []).catch((error: unknown) => error);
+    const error = await read(bytesOf(signedIdentity), []).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signedIdentity.identity.link);
   });
@@ -504,14 +513,15 @@ describe("the selection of identity versions", () => {
   ])("reads the signed identity of an identity %s as the implementation does", async (_, signIdentity) => {
     const signedIdentity = await signIdentity();
     const reader = byLink(signedIdentity.blobs);
+    const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
     expect(await selection.read(signedIdentity.link, reader)).toEqual(
-      await signedIdentities.implementation.read(signedIdentity, reader),
+      await signedIdentities.implementation.read(object, reader),
     );
   });
 
   it("reads an object already read with its schema from the blobs it links to alone", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
-    const object = decodeObject(signedIdentity.bytes, signedIdentities.schema);
+    const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
     const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
     expect((await selection.itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
   });
@@ -532,7 +542,7 @@ describe("the selection of identity versions", () => {
   it("refuses a signed identity that names what is not an identity", async () => {
     const rootKey = keys.encode(root.key);
     const signedIdentityBytes = unsignedOf(rootKey.link);
-    const reader = byLink([signedIdentityBytes, rootKey.bytes]);
+    const reader = byLink([signedIdentityBytes, ...rootKey.blobs]);
     await expect(selection.read(linkOf(signedIdentityBytes), reader)).rejects.toThrow(/is written to/);
   });
 
@@ -554,12 +564,12 @@ describe("the selection of identity versions", () => {
     const signedIdentity = await publish(root, { at: 1_000 });
     const failingReader = {
       get: async (link: Link<unknown>) => {
-        if (link === signedIdentity.link) return signedIdentity.bytes;
+        if (link === signedIdentity.link) return bytesOf(signedIdentity);
         throw new Error("the disk failed");
       },
     };
     const error = await selection
-      .read(signedIdentity.link, byLink([signedIdentity.bytes]))
+      .read(signedIdentity.link, byLink([bytesOf(signedIdentity)]))
       .catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signedIdentity.identity.link);
@@ -568,7 +578,7 @@ describe("the selection of identity versions", () => {
 
   it("leaves out an object of another schema", async () => {
     const rootKey = keys.encode(root.key);
-    expect(await selection.read(rootKey.link, byLink([rootKey.bytes]))).toBeUndefined();
+    expect(await selection.read(rootKey.link, byLink(rootKey.blobs))).toBeUndefined();
   });
 });
 

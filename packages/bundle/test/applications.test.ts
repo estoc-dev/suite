@@ -10,8 +10,7 @@ import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const handOver = (root: { readonly link: Link<unknown>; readonly bytes: Uint8Array }, blobs: Uint8Array[]) =>
-  decodeBundle(encodeBundle(root.link, [root.bytes, ...blobs]));
+const handOver = (root: Link<unknown>, blobs: Uint8Array[]) => decodeBundle(encodeBundle(root, blobs));
 const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
@@ -63,12 +62,12 @@ describe("a card", () => {
   it("reads as the mailbox and the name that its identity signed", async () => {
     const [byMailbox, byName] = await cardSignatures;
     const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byName.link) });
-    const bundle = handOver(root, [
-      byMailbox.bytes,
+    const bundle = handOver(root.link, [
+      root.bytes,
+      ...byMailbox.blobs,
       inbox.bytes,
-      byName.bytes,
+      ...byName.blobs,
       nameObject.bytes,
-      ...byName.signedIdentity.blobs,
     ]);
     expect(await readCard(bundle)).toEqual({
       identity: identities.encode(alice.key, { at: 0 }),
@@ -83,12 +82,12 @@ describe("a card", () => {
       displayName: new LinkValue(byName.link),
       inbox: new LinkValue(byMailbox.link),
     });
-    const bundle = handOver(root, [
-      byMailbox.bytes,
+    const bundle = handOver(root.link, [
+      root.bytes,
+      ...byMailbox.blobs,
       inbox.bytes,
-      byName.bytes,
+      ...byName.blobs,
       nameObject.bytes,
-      ...byName.signedIdentity.blobs,
     ]);
     expect(await readCard(bundle)).toEqual({
       identity: identities.encode(alice.key, { at: 0 }),
@@ -101,13 +100,12 @@ describe("a card", () => {
     const [byMailbox] = await cardSignatures;
     const byOther = await sign(nameObject, signer(eip191, 2));
     const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byOther.link) });
-    const bundle = handOver(root, [
-      byMailbox.bytes,
+    const bundle = handOver(root.link, [
+      root.bytes,
+      ...byMailbox.blobs,
       inbox.bytes,
-      byOther.bytes,
+      ...byOther.blobs,
       nameObject.bytes,
-      ...byMailbox.signedIdentity.blobs,
-      ...byOther.signedIdentity.blobs,
     ]);
     await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
   });
@@ -125,7 +123,7 @@ describe("a chat message", () => {
     const alice = signer(ed25519, 1);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await sign(message, alice);
-    const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
+    const bundle = handOver(signature.link, [...signature.blobs, message.bytes]);
     expect(await readMessage(bundle)).toEqual({
       from: identities.encode(alice.key, { at: 0 }),
       message: { text: "See you at noon." },
@@ -137,7 +135,7 @@ describe("a chat message", () => {
     const device = signer(ed25519, 2);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(message);
-    const bundle = handOver(signature, [message.bytes, ...signature.signedIdentity.blobs]);
+    const bundle = handOver(signature.link, [...signature.blobs, message.bytes]);
     expect(await readMessage(bundle)).toEqual({
       from: signature.signedIdentity.identity,
       message: { text: "See you at noon." },

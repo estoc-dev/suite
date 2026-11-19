@@ -17,10 +17,11 @@ export const walletKeySchema = schema("Wallet Key", { key: link() });
 export type WalletKeyData = DataOf<typeof walletKeySchema>;
 
 /**
- * A Wallet Key read from its object, with its key. `blobs` are its closure,
- * as a Secret Key's are.
+ * A Wallet Key read from its object, which `link` names, with its key.
+ * `blobs` are its closure, as a Secret Key's are.
  */
-export interface WalletKeyObject extends EncodedObject<WalletKeyData> {
+export interface WalletKeyObject {
+  readonly link: Link<unknown>;
   readonly key: KeyObject;
   readonly blobs: readonly Uint8Array[];
 }
@@ -48,5 +49,5 @@ export class WalletKeys {
 }
 
 function walletKeyOf(object: EncodedObject<WalletKeyData>, key: KeyObject): WalletKeyObject {
-  return { ...object, key, blobs: blobsOf([object, key]) };
+  return { link: object.link, key, blobs: blobsOf(object, key.blobs) };
 }

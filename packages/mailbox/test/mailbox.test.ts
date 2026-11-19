@@ -20,11 +20,7 @@ describe("a mailbox", () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const mailboxBytes = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(mailboxBytes, options)).send(signature.link, [
-      signature.bytes,
-      hello.bytes,
-      ...signature.signedIdentity.blobs,
-    ]);
+    await (await mailboxFrom(mailboxBytes, options)).send(signature.link, [...signature.blobs, hello.bytes]);
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);

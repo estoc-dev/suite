@@ -85,8 +85,10 @@ const signedPost = [
   ...postSchema.blobs,
   ...markdownBodySchema.blobs,
 ];
+const signatureAlone = signature.blobs.filter((bytes) => linkOf(bytes) === signature.link);
 const unverifiedSignature = encodeObject(signatures.schema, {
-  ...signature.data,
+  signedIdentity: new LinkValue(signedIdentity.link),
+  object: new LinkValue(signature.object),
   signature: signature.signature.map((byte, index) => (index === 1 ? byte ^ 1 : byte)),
 });
 
@@ -95,8 +97,8 @@ const files: { readonly [name: string]: Uint8Array } = {
   "post.eof": encodeBundle(post.link, [post.bytes, body.bytes, ...postSchema.blobs, ...markdownBodySchema.blobs]),
   "body-misfit.eof": encodeBundle(linkOf(misfitBody), [misfitBody, ...markdownBodySchema.blobs]),
   "body-misfit-schema-absent.eof": encodeBundle(linkOf(misfitBody), [misfitBody]),
-  "signature.eof": encodeBundle(signature.link, [signature.bytes, ...signedIdentity.blobs, ...signedPost]),
-  "signature-identity-absent.eof": encodeBundle(signature.link, [signature.bytes, ...signedPost]),
+  "signature.eof": encodeBundle(signature.link, [...signature.blobs, ...signedPost]),
+  "signature-identity-absent.eof": encodeBundle(signature.link, [...signatureAlone, ...signedPost]),
   "signature-unverified.eof": encodeBundle(unverifiedSignature.link, [
     unverifiedSignature.bytes,
     ...signedIdentity.blobs,

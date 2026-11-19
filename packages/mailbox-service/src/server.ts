@@ -566,9 +566,7 @@ export async function loadMailboxService(
     const blobs = [
       object.bytes,
       ...serviceSchema.blobs,
-      ...signedOffers.flatMap(([offer, signature]) => [signature.bytes, offer.bytes, ...offer.schema.blobs]),
-      ...signatures.schema.blobs,
-      ...actor.signedIdentity.blobs,
+      ...signedOffers.flatMap(([offer, signature]) => [...signature.blobs, offer.bytes, ...offer.schema.blobs]),
     ];
     await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
@@ -589,7 +587,7 @@ async function writeSigned(
   at: number,
   { store, privateStore }: Pick<ServiceOptions, "store" | "privateStore">,
 ): Promise<void> {
-  await store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobs] });
+  await store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobs] });
   await privateStore.write(recordsOf([signature.link], at));
 }
 

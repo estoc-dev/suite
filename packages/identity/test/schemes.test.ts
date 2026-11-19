@@ -1,4 +1,4 @@
-import { encodeObject, linkOf } from "@estoc/object";
+import { encodeObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { ed25519 as edwards } from "@noble/curves/ed25519.js";
 import { p256 } from "@noble/curves/nist.js";
@@ -22,7 +22,7 @@ import {
   signingText,
   solanaOffchain,
 } from "../src/index.ts";
-import { schemes } from "./fixtures.ts";
+import { byLink, schemaLinkOf, schemes } from "./fixtures.ts";
 
 const secretKey = new Uint8Array(32).fill(1);
 
@@ -122,8 +122,7 @@ describe("a scheme given as a Scheme alone", () => {
     const signature = await signatures
       .actor(p256Signer, await publish(p256Signer))
       .sign(encodeObject(note, { text: "hello" }));
-    const blobs = new Map(signature.signedIdentity.blobs.map((bytes) => [linkOf(bytes), bytes]));
-    const read = await signatures.verify(signature, blobs, noIdentityVersions);
+    const read = await signatures.read(signature.link, byLink(signature.blobs), noIdentityVersions);
     expect(isSameKey(read.key, p256Signer.key)).toBe(true);
     expect(read.signature.length).not.toBe(64);
   });
@@ -136,8 +135,8 @@ describe("loadIdentity", () => {
     const key = SoftwareSigner.fromSecretKey(eip191, secretKey).key;
     const object = everyKey.encode(key);
     expect(() => keys.encode(key)).toThrow("the eip191 scheme is not one written here");
-    await expect(keys.read(object.link, new Map([[object.link, object.bytes]]))).rejects.toThrow(
-      `${object.schema.link} is not a schema read here`,
+    await expect(keys.read(object.link, byLink(object.blobs))).rejects.toThrow(
+      `${schemaLinkOf(object)} is not a schema read here`,
     );
   });
 

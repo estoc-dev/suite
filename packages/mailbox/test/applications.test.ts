@@ -40,7 +40,7 @@ const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
   const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
-  await mailbox.send(signature.link, [signature.bytes, object.bytes, ...signature.signedIdentity.blobs]);
+  await mailbox.send(signature.link, [...signature.blobs, object.bytes]);
   return signature;
 };
 
@@ -90,9 +90,8 @@ describe("a chat line", () => {
     // Bob passes on what he read: the signature, with the line and the signed identity it names.
     const signedLine = await readSigned(receivedBundle, chat);
     await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(signedLine.signature.link, [
-      signedLine.signature.bytes,
+      ...signedLine.signature.blobs,
       signedLine.object.bytes,
-      ...signedLine.signature.signedIdentity.blobs,
     ]);
     const [passedBundle] = await atCarol.take();
     assert.exists(passedBundle);
@@ -263,13 +262,7 @@ describe("two people who meet", () => {
         const signature = await actor.sign(object);
         await store.write({
           roots: [signature.link],
-          blobs: [
-            signature.bytes,
-            object.bytes,
-            ...signature.signedIdentity.blobs,
-            ...chat.blobs,
-            ...signatures.schema.blobs,
-          ],
+          blobs: [...signature.blobs, object.bytes, ...chat.blobs],
         });
         return correspondence.send(to, signature.link);
       };

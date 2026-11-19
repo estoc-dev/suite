@@ -97,14 +97,7 @@ export class Correspondence {
     const signature = await this.#actor.sign(grant);
     await this.#store.write({
       roots: [signature.link],
-      blobs: [
-        signature.bytes,
-        grant.bytes,
-        ...this.#grants.schema.blobs,
-        ...this.#signatures.schema.blobs,
-        ...signature.signedIdentity.blobs,
-        ...current.blobs,
-      ],
+      blobs: [...signature.blobs, grant.bytes, ...this.#grants.schema.blobs, ...current.blobs],
     });
     await this.#privateStore.write(recordsOf([signature.link], at));
     return signature;

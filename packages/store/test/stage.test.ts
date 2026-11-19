@@ -188,13 +188,7 @@ describe("a view of a staged batch", () => {
     const byAgent = await signatures.actor(agent, listing).sign(hello);
     const stagedStore = await store.stage({
       roots: [byAgent.link],
-      blobs: [
-        byAgent.bytes,
-        hello.bytes,
-        ...anything.blobs,
-        ...signatures.schema.blobs,
-        ...byAgent.signedIdentity.blobs,
-      ],
+      blobs: [...byAgent.blobs, hello.bytes, ...anything.blobs],
     });
     const before = await view(stagedStore, people);
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
@@ -203,13 +197,7 @@ describe("a view of a staged batch", () => {
     const byRoot = await signatures.actor(root, await publish(root, { prior: listing, at: 2_000 })).sign(agentsOut);
     await store.write({
       roots: [byRoot.link],
-      blobs: [
-        byRoot.bytes,
-        agentsOut.bytes,
-        ...anything.blobs,
-        ...signatures.schema.blobs,
-        ...byRoot.signedIdentity.blobs,
-      ],
+      blobs: [...byRoot.blobs, agentsOut.bytes, ...anything.blobs],
     });
     await expect(signatures.read(byAgent.link, stagedStore, await view(stagedStore, people))).rejects.toThrow(
       "is not honored",
@@ -217,7 +205,8 @@ describe("a view of a staged batch", () => {
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 
     await stagedStore.commit();
-    expect(await store.get(byAgent.link)).toEqual(byAgent.bytes);
+    const kept = await store.get(byAgent.link);
+    expect(kept && linkOf(kept)).toBe(byAgent.link);
     expect(await store.get(hello.link)).toEqual(hello.bytes);
   });
 });

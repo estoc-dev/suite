@@ -37,7 +37,7 @@ const signature = await actor.sign(note);
 // `schemas` are the `blobs` of each schema the program writes to; the store keeps those named here.
 await store.write({
   roots: [signature.link],
-  blobs: [note.bytes, signature.bytes, ...signature.signedIdentity.blobs, ...schemas],
+  blobs: [note.bytes, ...signature.blobs, ...schemas],
 });
 await privateStore.write(recordsOf([note.link, signature.link], Date.now())); // the user wrote both
 

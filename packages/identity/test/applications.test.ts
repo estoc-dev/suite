@@ -32,12 +32,12 @@ const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
  */
 interface ReceivedSignatures {
   readonly blobs: Reader;
-  readonly signatures: readonly Uint8Array[];
+  readonly signatures: readonly Link<unknown>[];
 }
 
 async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignatures): Promise<IdentityObject[]> {
-  const read = receivedSignatures.signatures.map((bytes) =>
-    signatures.verify(decodeObject(bytes, signatures.schema), receivedSignatures.blobs, noIdentityVersions),
+  const read = receivedSignatures.signatures.map((signature) =>
+    signatures.read(signature, receivedSignatures.blobs, noIdentityVersions),
   );
   return (await Promise.all(read))
     .filter((signature) => signature.object === link)
@@ -47,20 +47,15 @@ async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignat
 const login = schema("Login", { audience: string(), nonce: string() });
 
 // The server knows its audience and the nonce it handed out, so it builds the
-// object itself and needs back only the signature, with the blobs of the
-// identity that signed.
+// object itself and needs back only the signature, with its blobs.
 async function loggedInIdentity(
   audience: string,
   nonce: string,
-  signature: Uint8Array,
-  identity: readonly Uint8Array[],
+  signature: Link<unknown>,
+  blobs: readonly Uint8Array[],
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
-  const read = await signatures.verify(
-    decodeObject(signature, signatures.schema),
-    byLink(identity),
-    noIdentityVersions,
-  );
+  const read = await signatures.read(signature, byLink(blobs), noIdentityVersions);
   return read.object === expected.link ? read.signedIdentity.identity : undefined;
 }
 
@@ -68,8 +63,8 @@ describe("a login", () => {
   const user = signer(eip191, 1);
   const loginSignature = sign(encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }), user);
   const logIn = async (audience: string, nonce: string) => {
-    const { bytes, signedIdentity } = await loginSignature;
-    return loggedInIdentity(audience, nonce, bytes, signedIdentity.blobs);
+    const { link, blobs } = await loginSignature;
+    return loggedInIdentity(audience, nonce, link, blobs);
   };
 
   it("logs in whoever signed it, though the object names no one", async () => {
@@ -85,10 +80,10 @@ describe("a login", () => {
     const browser = signer(ed25519, 5);
     const prior = (await loginSignature).signedIdentity;
     const actor = signatures.actor(browser, await publish(user, { prior, agents: [browser.key], at: 1 }));
-    const { bytes, signedIdentity } = await actor.sign(
+    const { link, blobs } = await actor.sign(
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
-    const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", bytes, signedIdentity.blobs);
+    const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", link, blobs);
     expect(identity?.link).not.toBe(identities.encode(user.key, { at: 0 }).link);
     expect(identity?.identifier).toBe((await logIn("https://app.estoc.dev", "6f1c0a9e"))?.identifier);
   });
@@ -141,12 +136,8 @@ const terms = encodeObject(sale, {
 });
 const confirmation = encodeObject(delivery, { sale: new LinkValue(terms.link) });
 const receive = (givenSignatures: readonly Signature[]): ReceivedSignatures => ({
-  blobs: byLink([
-    terms.bytes,
-    confirmation.bytes,
-    ...givenSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
-  ]),
-  signatures: givenSignatures.map(({ bytes }) => bytes),
+  blobs: byLink([terms.bytes, confirmation.bytes, ...givenSignatures.flatMap(({ blobs }) => blobs)]),
+  signatures: givenSignatures.map(({ link }) => link),
 });
 const signedBy = (...pairs: [{ readonly link: Link<unknown> }, SoftwareSigner][]) =>
   Promise.all(pairs.map(([object, by]) => sign(object, by)));

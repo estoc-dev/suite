@@ -83,7 +83,7 @@ export class IdentityVersions {
     const lastCrisis = lastCrisisOf(signedIdentity);
     return {
       identifier: new LinkValue(identity.identifier),
-      at: identity.data.at,
+      at: identity.at,
       signedIdentity: new LinkValue(link),
       ...(lastCrisis === undefined ? {} : { lastCrisis: new LinkValue(lastCrisis) }),
     };
@@ -172,7 +172,7 @@ function* chainOf(signedIdentity: SignedIdentityObject): Iterable<SignedIdentity
 
 /** The link of the latest crisis among `signedIdentity` and those it follows, as each is later than the one it follows. */
 function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<unknown> | undefined {
-  for (const each of chainOf(signedIdentity)) if (each.identity.data.crisis) return each.link;
+  for (const each of chainOf(signedIdentity)) if (each.identity.isCrisis) return each.link;
   return undefined;
 }
 

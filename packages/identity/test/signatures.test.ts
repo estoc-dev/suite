@@ -12,7 +12,7 @@ import {
   type Reader,
   type ValueMap,
 } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
+import { rootSchema, schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import {
@@ -32,7 +32,7 @@ import {
   signatureSchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { rowsOf, schemes } from "./fixtures.ts";
+import { byLink as blobsByLink, bytesOf, dataOf, rowsOf, schemaLinkOf, schemes } from "./fixtures.ts";
 
 const { identities, signatures, identityVersions, publish } = loadIdentity(schemes);
 const verifiedBy = async (
@@ -46,13 +46,11 @@ const verified = (bytes: Uint8Array, blobs?: Reader, seenIdentityVersions?: Seen
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
-const fieldsOf = (object: { readonly bytes: Uint8Array }) => objectFormat.decode(object.bytes);
-const dataOf = (object: { readonly bytes: Uint8Array }) => fieldsOf(object).data;
 const written = (signature: Signature, data: ValueMap) =>
-  objectFormat.encode(new ObjectValue(fieldsOf(signature).schema, data));
+  objectFormat.encode(new ObjectValue(schemaLinkOf(signature), data));
 const rewritten = (signature: Signature, change: ValueMap) => written(signature, { ...dataOf(signature), ...change });
-const byLink = (...identities: SignedIdentityObject[]) =>
-  new Map(identities.flatMap(({ blobs }) => blobs).map((bytes) => [linkOf(bytes), bytes]));
+const linksOf = (blobs: readonly Uint8Array[]) => blobs.map((bytes) => linkOf(bytes));
+const byLink = (...identities: SignedIdentityObject[]) => blobsByLink(identities.flatMap(({ blobs }) => blobs));
 const identityOf = (signature: Signature) => byLink(signature.signedIdentity);
 const peopleHavingSeen = (...versions: SignedIdentityObject[]) =>
   identityVersions.people(rowsOf(identityVersions, ...versions), byLink(...versions));
@@ -67,7 +65,7 @@ describe("a signature", () => {
   it.each(schemes)("by a $name key reads back with its identity and object", async (scheme) => {
     const by = signer(scheme);
     const signature = await sign(hello, by);
-    const read = await verified(signature.bytes, identityOf(signature));
+    const read = await verified(bytesOf(signature), identityOf(signature));
     expect(read.signedIdentity).toEqual(signature.signedIdentity);
     expect(read.signedIdentity.identity).toEqual(identities.encode(by.key, { at: 0 }));
     expect(read.object).toBe(hello.link);
@@ -97,9 +95,25 @@ describe("a signature", () => {
     ).rejects.toThrow();
   });
 
+  it("carries as its blobs its object, the closure of its schema, and its signed identity's, each once", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    expect(linksOf(signature.blobs)).toEqual([
+      signature.link,
+      signatureSchema.link,
+      rootSchema.link,
+      ...linksOf(signature.signedIdentity.blobs).filter((link) => link !== rootSchema.link),
+    ]);
+  });
+
+  it("over a note reads back from its blobs alone, which do not hold the note", async () => {
+    const signature = await sign(hello, signer(eip191));
+    expect(await signatures.read(signature.link, blobsByLink(signature.blobs), noIdentityVersions)).toEqual(signature);
+    expect(linksOf(signature.blobs)).not.toContain(hello.link);
+  });
+
   it("is refused without the blobs of its identity", async () => {
     const signature = await sign(hello, signer(ed25519));
-    await expect(verified(signature.bytes)).rejects.toThrow(/no blob is given/);
+    await expect(verified(bytesOf(signature))).rejects.toThrow(/no blob is given/);
   });
 
   it.each<[string, (fields: ValueMap) => ValueMap]>([
@@ -134,15 +148,13 @@ describe("a signature", () => {
 
   it("is refused with a byte after it", async () => {
     const signature = await sign(hello, signer(ed25519));
-    await expect(verified(Uint8Array.of(...signature.bytes, 0), identityOf(signature))).rejects.toThrow();
+    await expect(verified(Uint8Array.of(...bytesOf(signature), 0), identityOf(signature))).rejects.toThrow();
   });
 
   it("reads as an object written to the signature schema, which does not verify it", async () => {
     for (const scheme of schemes) {
       const signature = await sign(hello, signer(scheme));
-      // Without its label, as bytes read from a file or the network have none.
-      const bytes: Uint8Array = signature.bytes;
-      expect(decodeObject(bytes, signatureSchema).link).toBe(signature.link);
+      expect(decodeObject(bytesOf(signature), signatureSchema).link).toBe(signature.link);
     }
     const signature = await sign(hello, signer(ed25519));
     const unverified = rewritten(signature, { object: new LinkValue(goodbye.link) });
@@ -155,7 +167,7 @@ describe("a signature by an agent", () => {
   it("by the second agent reads back with that agent as its key, named by its index after the root's", async () => {
     const signedIdentity = await publish(signer(ed25519), { agents: [key(ed25519, 2), key(ed25519, 3)] });
     const signature = await signatures.actor(signer(ed25519, 3), signedIdentity).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature));
+    const read = await verified(bytesOf(signature), identityOf(signature));
     expect(read.signedIdentity).toEqual(signedIdentity);
     expect(read.key).toEqual(signedIdentity.identity.agents[1]);
     expect(read.signature[0]).toBe(2);
@@ -165,7 +177,7 @@ describe("a signature by an agent", () => {
   it("in another scheme than its root is read in the agent's scheme", async () => {
     const signedIdentity = await publish(signer(eip191), { agents: [key(ed25519, 2)] });
     const signature = await signatures.actor(signer(ed25519, 2), signedIdentity).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature));
+    const read = await verified(bytesOf(signature), identityOf(signature));
     expect(isSameKey(read.key, key(ed25519, 2))).toBe(true);
   });
 
@@ -200,7 +212,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
     const second = await publish(wallet, { prior: first, agents: [phone.key, laptop.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(second));
+    const read = await verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(second));
     expect(read.signedIdentity).toEqual(first);
   });
 
@@ -208,7 +220,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const first = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
     const second = await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(second))).rejects.toThrow(
+    await expect(verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(second))).rejects.toThrow(
       /is not honored/,
     );
   });
@@ -217,7 +229,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const earlier = await publish(wallet, { agents: [laptop.key], at: 1_000 });
     const later = await publish(wallet, { prior: earlier, at: 2_000 });
     const signature = await signatures.actor(laptop, earlier).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(later))).rejects.toThrow(
+    await expect(verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(later))).rejects.toThrow(
       /is not honored/,
     );
   });
@@ -226,7 +238,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
     const second = await publish(wallet, { prior: first, agents: [laptop.key, phone.key], at: 2_000 });
     const signature = await signatures.actor(phone, second).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(first));
+    const read = await verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(first));
     expect(isSameKey(read.key, phone.key)).toBe(true);
   });
 
@@ -235,7 +247,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const listing = await publish(wallet, { prior: first, agents: [laptop.key, phone.key], at: 1_000 });
     const dropping = await publish(wallet, { prior: first, agents: [phone.key], at: 1_000 });
     const signature = await signatures.actor(laptop, listing).sign(hello);
-    const isHonored = await verified(signature.bytes, identityOf(signature), peopleHavingSeen(dropping)).then(
+    const isHonored = await verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(dropping)).then(
       () => true,
       () => false,
     );
@@ -254,7 +266,7 @@ describe("a signature by an agent, as identity versions follow one another", () 
     const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
     await publish(wallet, { prior: first, agents: [phone.key], at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    expect((await verified(signature.bytes, identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
+    expect((await verified(bytesOf(signature), identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
   });
 });
 
@@ -321,7 +333,7 @@ describe("a signature by a root", () => {
   it("is named by index 0, before the agents", async () => {
     const signedIdentity = await publish(wallet, { agents: [laptop.key] });
     const signature = await signatures.actor(wallet, signedIdentity).sign(hello);
-    const read = await verified(signature.bytes, identityOf(signature));
+    const read = await verified(bytesOf(signature), identityOf(signature));
     expect(read.key).toEqual(signedIdentity.identity.root);
     expect(read.signature[0]).toBe(0);
   });
@@ -330,7 +342,9 @@ describe("a signature by a root", () => {
     const published = await publish(wallet, { at: 1_000 });
     const later = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });
     const signature = await signatures.actor(wallet, published).sign(hello);
-    expect((await verified(signature.bytes, identityOf(signature), peopleHavingSeen(later))).link).toBe(signature.link);
+    expect((await verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(later))).link).toBe(
+      signature.link,
+    );
   });
 });
 
@@ -349,7 +363,7 @@ describe("a signature by an identity version before a crisis", () => {
   ])("by %s is refused once the reader has seen the crisis", async (_, by) => {
     const { first, crisis } = await chain();
     const signature = await signatures.actor(by, first).sign(hello);
-    await expect(verified(signature.bytes, identityOf(signature), peopleHavingSeen(crisis))).rejects.toThrow(
+    await expect(verified(bytesOf(signature), identityOf(signature), peopleHavingSeen(crisis))).rejects.toThrow(
       /is not honored/,
     );
   });
@@ -373,7 +387,7 @@ describe("a signature by an identity version before a crisis", () => {
   it("is honored by the identity version it carries when the reader has seen no identity versions", async () => {
     const { first } = await chain();
     const signature = await signatures.actor(laptop, first).sign(hello);
-    expect((await verified(signature.bytes, identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
+    expect((await verified(bytesOf(signature), identityOf(signature), noIdentityVersions)).link).toBe(signature.link);
   });
 
   it("is refused once the reader has seen a later crisis that follows it", async () => {
@@ -426,7 +440,7 @@ describe("what a signature signs", () => {
     const signedIdentity = await publish(root, { agents: [agent.key, key(ed25519, 2)] });
     const other = await publish(root, { agents: [agent.key] });
     const signature = await signatures.actor(agent, signedIdentity).sign(hello);
-    expect((await verified(signature.bytes, identityOf(signature))).link).toBe(signature.link);
+    expect((await verified(bytesOf(signature), identityOf(signature))).link).toBe(signature.link);
     await expect(
       verified(rewritten(signature, { signedIdentity: new LinkValue(other.link) }), byLink(other)),
     ).rejects.toThrow(/does not verify/);
@@ -460,7 +474,7 @@ describe("the implementation of the signature schema", () => {
   it("reads a signature as verifying it by no identity versions does", async () => {
     const signature = await sign(hello, signer(ed25519));
     const blobs = identityOf(signature);
-    expect(await read(signature.bytes, blobs)).toEqual(await verified(signature.bytes, blobs));
+    expect(await read(bytesOf(signature), blobs)).toEqual(await verified(bytesOf(signature), blobs));
   });
 
   it("reads a signature by an identity version before a crisis, though the reader gives the crisis", async () => {
@@ -468,7 +482,7 @@ describe("the implementation of the signature schema", () => {
     const first = await publish(wallet, { agents: [laptop.key], at: 1_000 });
     const crisis = await publish(wallet, { prior: first, agents: [laptop.key], isCrisis: true, at: 2_000 });
     const signature = await signatures.actor(laptop, first).sign(hello);
-    expect((await read(signature.bytes, byLink(first, crisis))).link).toBe(signature.link);
+    expect((await read(bytesOf(signature), byLink(first, crisis))).link).toBe(signature.link);
   });
 
   it("refuses a signature that does not verify", async () => {
@@ -479,7 +493,7 @@ describe("the implementation of the signature schema", () => {
 
   it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const error = await read(signature.bytes).catch((error: unknown) => error);
+    const error = await read(bytesOf(signature)).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
@@ -487,17 +501,14 @@ describe("the implementation of the signature schema", () => {
 
 describe("the selection of the signatures over objects of a schema", () => {
   const notes = signatures.selectionOver(note);
-  const readerOf = (...objects: readonly { readonly link: Link<unknown>; readonly bytes: Uint8Array }[]) =>
-    new Map(objects.map(({ link, bytes }) => [link, bytes]));
-
-  const identityBlobsOf = ({ signedIdentity }: Signature) =>
-    signedIdentity.blobs.map((bytes) => ({ link: linkOf(bytes), bytes }));
+  const readerOf = (...blobs: readonly Uint8Array[]) => blobsByLink(blobs);
 
   it("reads a signature over an object of the schema as the implementation does, with the object", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const reader = readerOf(signature, hello, ...identityBlobsOf(signature));
+    const reader = readerOf(...signature.blobs, hello.bytes);
     const read = await notes.read(signature.link, reader);
-    expect(read?.signature).toEqual(await signatures.implementation.read(signature, reader));
+    const object = decodeObject(bytesOf(signature), signatureSchema);
+    expect(read?.signature).toEqual(await signatures.implementation.read(object, reader));
     expect(read?.object.link).toBe(hello.link);
     expect(read?.object.data).toEqual({ text: "hello" });
   });
@@ -505,32 +516,31 @@ describe("the selection of the signatures over objects of a schema", () => {
   it("leaves out a signature over an object of another schema without verifying it, and what is not a signature", async () => {
     const card = encodeObject(schema("Card", { name: string() }), { name: "Alice" });
     const signature = await sign(card, signer(ed25519));
-    expect(await notes.read(signature.link, readerOf(signature, card))).toBeUndefined();
-    expect(await notes.read(hello.link, readerOf(hello))).toBeUndefined();
+    expect(await notes.read(signature.link, readerOf(bytesOf(signature), card.bytes))).toBeUndefined();
+    expect(await notes.read(hello.link, readerOf(hello.bytes))).toBeUndefined();
   });
 
   it("refuses a signature that does not verify", async () => {
     const signature = await sign(hello, signer(ed25519));
     const bytes = rewritten(signature, { object: new LinkValue(goodbye.link) });
-    const reader = readerOf({ link: linkOf(bytes), bytes }, goodbye, ...identityBlobsOf(signature));
+    const reader = readerOf(bytes, goodbye.bytes, ...signature.signedIdentity.blobs);
     await expect(notes.read(linkOf(bytes), reader)).rejects.toThrow(/does not verify/);
   });
 
   it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const error = await notes.read(signature.link, readerOf(signature, hello)).catch((error: unknown) => error);
+    const reader = readerOf(bytesOf(signature), hello.bytes);
+    const error = await notes.read(signature.link, reader).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
 
   it("refuses a signature whose object the reader does not give, or which does not fit the schema", async () => {
     const signature = await sign(hello, signer(ed25519));
-    await expect(notes.read(signature.link, readerOf(signature))).rejects.toThrow(/no blob is given/);
+    await expect(notes.read(signature.link, readerOf(bytesOf(signature)))).rejects.toThrow(/no blob is given/);
     const bytes = objectFormat.encode(new ObjectValue(note.link, { title: "hello" }));
     const unfit = await sign({ link: linkOf(bytes) }, signer(ed25519));
-    await expect(notes.read(unfit.link, readerOf(unfit, { link: linkOf(bytes), bytes }))).rejects.toThrow(
-      /does not fit its schema/,
-    );
+    await expect(notes.read(unfit.link, readerOf(bytesOf(unfit), bytes))).rejects.toThrow(/does not fit its schema/);
   });
 });
 
@@ -539,7 +549,7 @@ describe("an identity actor", () => {
     const signedIdentity = await publish(signer(ed25519));
     const signature = await signatures.actor(signer(ed25519), signedIdentity).sign(hello);
     expect(signature.signedIdentity).toBe(signedIdentity);
-    expect(signature.data.signedIdentity.link).toBe(signedIdentity.link);
+    expect(dataOf(signature).signedIdentity).toEqual(new LinkValue(signedIdentity.link));
   });
 
   it("is not made for a signer that is not the root of its identity nor an agent", async () => {
@@ -567,15 +577,9 @@ describe("an identity actor", () => {
 
 test("a signature's bytes do not read as an object of another schema, nor an object's as a signature", async () => {
   const signature = await sign(hello, signer(ed25519));
-  // @ts-expect-error: refused at compile time too
-  expect(() => decodeObject(signature.bytes, note)).toThrow();
+  expect(() => decodeObject(bytesOf(signature), note)).toThrow();
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(hello.bytes, signatures.schema)).toThrow();
   // @ts-expect-error: refused at compile time too
   expect(() => decodeObject(note.bytes, signatures.schema)).toThrow();
-});
-
-test("the bytes of objects and signatures are linked together, each to its own link", async () => {
-  const signature = await sign(hello, signer(ed25519));
-  expect([hello.bytes, signature.bytes].map((bytes) => linkOf(bytes))).toEqual([hello.link, signature.link]);
 });

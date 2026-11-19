@@ -1,5 +1,5 @@
 import { decodeObject, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
-import { bytes, schema } from "@estoc/schema";
+import { bytes, rootSchema, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,7 +11,7 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
-import { schemes } from "./fixtures.ts";
+import { byLink, bytesOf, dataOf, schemaLinkOf, schemes } from "./fixtures.ts";
 
 const { keys } = loadIdentity(schemes);
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
@@ -22,26 +22,33 @@ const ed25519Key = publicKeyOf(ed25519);
 const eip191Key = publicKeyOf(eip191);
 const written = (scheme: CurveScheme, data: ValueMap) =>
   objectFormat.encode(
-    new ObjectValue(keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key).schema.link, data),
+    new ObjectValue(schemaLinkOf(keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key)), data),
   );
 
 describe("a key", () => {
   it.each(schemes)("in $name reads back from its object as the same key", async (scheme) => {
     const key = SoftwareSigner.fromSecretKey(scheme, secretKey).key;
     const object = keys.encode(key);
-    // Without its label, as bytes read from a file or the network have none.
-    const bytes: Uint8Array = object.bytes;
-    const read = await readKey(bytes);
+    const read = await readKey(bytesOf(object));
     expect(isSameKey(read, key)).toBe(true);
     expect(read.link).toBe(object.link);
   });
+
+  it.each(schemes)(
+    "in $name carries as its blobs its object and the closure of its schema, and reads back from them",
+    async (scheme) => {
+      const key = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
+      expect(key.blobs.map((bytes) => linkOf(bytes))).toEqual([key.link, schemaLinkOf(key), rootSchema.link]);
+      expect(await keys.read(key.link, byLink(key.blobs))).toEqual(key);
+    },
+  );
 
   it("is written to the schema of its scheme, so one public key in two schemes is two objects", () => {
     const { publicKey } = SoftwareSigner.fromSecretKey(ed25519, secretKey).key;
     const plain = keys.encode({ scheme: ed25519, publicKey });
     const solana = keys.encode({ scheme: solanaOffchain, publicKey });
-    expect(plain.data).toEqual(solana.data);
-    expect(plain.schema.link).not.toBe(solana.schema.link);
+    expect(dataOf(plain)).toEqual(dataOf(solana));
+    expect(schemaLinkOf(plain)).not.toBe(schemaLinkOf(solana));
     expect(plain.link).not.toBe(solana.link);
   });
 
@@ -79,16 +86,13 @@ describe("a key", () => {
   it("is refused when the reader gives another blob for its link", async () => {
     const object = keys.encode(SoftwareSigner.fromSecretKey(ed25519, secretKey).key);
     const other = keys.encode(SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2)).key);
-    await expect(keys.read(object.link, new Map([[object.link, other.bytes]]))).rejects.toThrow(/another blob/);
+    await expect(keys.read(object.link, new Map([[object.link, bytesOf(other)]]))).rejects.toThrow(/another blob/);
   });
 });
 
 describe("the schema of a scheme", () => {
   it.each(schemes)("of $name has the scheme's name as its title, and takes a public key alone", (scheme) => {
-    const { schema } = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
-    expect(objectFormat.decode(schema.bytes).data).toEqual({
-      title: scheme.name,
-      fields: { publicKey: { type: "bytes" } },
-    });
+    const key = keys.encode(SoftwareSigner.fromSecretKey(scheme, secretKey).key);
+    expect(schemaLinkOf(key)).toBe(schema(scheme.name, { publicKey: bytes() }).link);
   });
 });

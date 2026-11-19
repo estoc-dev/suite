@@ -28,6 +28,7 @@ import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   actorOf,
+  bytesOf,
   identities,
   identityVersions,
   keys,
@@ -85,13 +86,13 @@ const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
 /** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function directAcceptance(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await (await actorOf(by)).sign(offer);
-  return { signature, file: encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]) };
+  return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
 /** The bundle that accepts `offer` for the wallet by the device, which an identity of the wallet's lists. */
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
-  return { signature, file: encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]) };
+  return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
 /** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet lists. */
@@ -101,7 +102,7 @@ async function acceptanceBy(
   offer: { readonly link: Link<unknown> },
 ) {
   const signature = await signatures.actor(agent, identityVersion).sign(offer);
-  return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
+  return encodeBundle(signature.link, signature.blobs);
 }
 
 /** A signer as `signer` that, while `isHolding`, holds each signature back until it is released, the first asked first. */
@@ -165,8 +166,8 @@ describe("a mailbox service", () => {
     const { service } = await memoryService();
     const { signature } = await directAcceptance((await rootOf(service)).offer, wallet);
     const { signedIdentity } = signature;
-    const read = [signedIdentity.bytes, ...signedIdentity.identity.blobs];
-    expect((await postAcceptance(service, encodeBundle(signature.link, [signature.bytes, ...read]))).status).toBe(201);
+    const read = [bytesOf(signature), bytesOf(signedIdentity), ...signedIdentity.identity.blobs];
+    expect((await postAcceptance(service, encodeBundle(signature.link, read))).status).toBe(201);
   });
 
   it("answers the same acceptance again with 200 and the acknowledgement it signed for it, and signs no other", async () => {
@@ -331,7 +332,7 @@ describe("a mailbox service", () => {
       "whose signature comes without its identity",
       async (service) => {
         const { signature } = await directAcceptance((await rootOf(service)).offer);
-        return encodeBundle(signature.link, [signature.bytes]);
+        return encodeBundle(signature.link, [bytesOf(signature)]);
       },
     ],
     [
@@ -404,7 +405,13 @@ describe("a mailbox service", () => {
       offers: [new LinkValue(offerSignature.link)],
     });
     const signature = await asService.sign(earlier);
-    const blobs = [signature.bytes, earlier.bytes, offerSignature.bytes, droppedOffer.bytes, ...droppedSchema.blobs];
+    const blobs = [
+      ...signature.blobs,
+      earlier.bytes,
+      ...offerSignature.blobs,
+      droppedOffer.bytes,
+      ...droppedSchema.blobs,
+    ];
     await store.write({ roots: [signature.link], blobs });
     expect((await post(service, droppedOffer.link, (await directAcceptance(droppedOffer)).file)).status).toBe(410);
   });
@@ -424,7 +431,7 @@ describe("a mailbox service", () => {
       isCrisis: true,
       at: 2_000,
     });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const actor = await actorOf(alice);
     const { file } = await directAcceptance((await rootOf(service)).offer);
@@ -445,9 +452,9 @@ describe("a mailbox service", () => {
     assert.exists(greater);
     assert.exists(lesser);
     for (const { object, signature } of [greater, lesser])
-      await first.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
+      await first.store.write({ roots: [signature.link], blobs: [...signature.blobs, object.bytes] });
     for (const { object, signature } of [lesser, greater])
-      await second.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
+      await second.store.write({ roots: [signature.link], blobs: [...signature.blobs, object.bytes] });
     for (const { service } of [first, second])
       expect((await rootOf(service)).signature.link).toBe(greater.signature.link);
   });
@@ -526,7 +533,7 @@ describe("a mailbox service started again", () => {
     const mailbox = await openMailbox(service, actor);
     const before = await rootOf(service);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const after = await rootOf(again);
     expect(after.signature.signedIdentity.link).toBe(crisis.link);
@@ -550,7 +557,7 @@ describe("a mailbox service started again", () => {
     const sendId = hex.encode(firstMailboxAcknowledgement.acknowledgement.data.sendId);
     expect((await post(service, sendId, ciphertextOf(1))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const repeatedAcceptanceResponse = await postAcceptance(again, acceptance.file);
     expect(repeatedAcceptanceResponse.status).toBe(200);
@@ -587,7 +594,7 @@ describe("a mailbox service started again", () => {
     const { file: requestFile } = await mailboxRequest(await actorOf(alice), before.mailbox.offer);
     expect((await postMailboxRequest(service, requestFile)).status).toBe(201);
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const answers = async () => [
       ...(await Promise.all(
@@ -602,7 +609,7 @@ describe("a mailbox service started again", () => {
     const laterIdentityVersion = await publish(serviceSigner, { prior: crisis, agents: [otherService.key], at: 4_000 });
     await store.write({
       roots: [laterIdentityVersion.link],
-      blobs: [laterIdentityVersion.bytes, ...laterIdentityVersion.blobs],
+      blobs: laterIdentityVersion.blobs,
     });
     expect((await answers()).map(({ link }) => link)).toEqual(crisisSignatures.map(({ link }) => link));
     expect(await recordedObjectsOf(store)).toEqual(records);
@@ -668,9 +675,7 @@ const ciphertextOf = (fill: number, length = 64) => new Uint8Array(length).fill(
 /** The status that `service` answers `actor`'s acceptance of its offer of an account with. */
 async function acceptAccount(service: MailboxService, actor: Actor) {
   const signature = await actor.sign((await rootOf(service)).offer);
-  return (
-    await postAcceptance(service, encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]))
-  ).status;
+  return (await postAcceptance(service, encodeBundle(signature.link, signature.blobs))).status;
 }
 
 /** Opens the account of whoever `actor` signs for at `service`, by the actor's acceptance of its offer. */
@@ -683,7 +688,7 @@ async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown
   const signature = await actor.sign(request);
   return {
     signature,
-    file: encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]),
+    file: encodeBundle(signature.link, [...signature.blobs, request.bytes]),
   };
 }
 
@@ -725,7 +730,7 @@ async function pickupRequest(actor: Actor, mailbox: OpenedMailbox, receipts: rea
     receipts: receipts.map((ciphertext) => new LinkValue<Uint8Array>(linkOf(ciphertext))),
   });
   const signature = await actor.sign(request);
-  return encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]);
+  return encodeBundle(signature.link, [...signature.blobs, request.bytes]);
 }
 
 type OpenedMailbox = Awaited<ReturnType<typeof openMailbox>>;
@@ -771,7 +776,7 @@ describe("a mailbox service whose private store failed to record an acknowledgem
     const { file } = await mailboxRequest(actor, before.mailbox.offer);
     const first = await mailboxAcknowledgementIn(await postMailboxRequest(service, file));
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     const { service: again } = await memoryService({ store, privateStore, accounts, mailboxes, start: 3_000 });
 
     backend.isInterrupted = true;
@@ -873,7 +878,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const opener = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
-    await store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
     await memoryService({ store, accounts, mailboxes, start: 3_000 });
     const racer = postMailboxRequest(service, file);
     await vi.waitFor(() => expect(holder.pending).toHaveLength(2));
@@ -934,7 +939,7 @@ describe("a mailbox service's offer of mailboxes", () => {
       "that is an acceptance of the offer of mailboxes",
       async (service, actor) => {
         const signature = await actor.sign((await rootOf(service)).mailbox.offer);
-        return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
+        return encodeBundle(signature.link, signature.blobs);
       },
     ],
   ])("answers 400 to a request %s, and opens no mailbox", async (_, body) => {
@@ -1141,7 +1146,7 @@ describe("a mailbox that a service opened", () => {
       "that is not a pickup request",
       async (actor, mailbox) => {
         const signature = await actor.sign({ link: mailbox.link });
-        return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
+        return encodeBundle(signature.link, signature.blobs);
       },
     ],
     ["that is not a bundle", async () => new TextEncoder().encode("hello")],

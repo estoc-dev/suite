@@ -27,14 +27,15 @@ export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
  * `signedIdentitySchema`, read with the identity and verified.
  *
  * - `signature` holds the root's signature over the identity's link.
- * - What the root publishes is this object as it is, so a signature names
- *   the identity it is made for by the link of this object.
+ * - `link` is that of the object. What the root publishes is that object as
+ *   it is, so a signature names the identity it is made for by this link.
  * - Two signers are the same someone when the roots of their identities are
  *   the same, whichever signed identities they sign by.
  * - `blobs` are what it takes to read it again, each blob once: the bytes of
  *   its object, the closure of its schema, and the identity's `blobs`.
  */
-export interface SignedIdentityObject extends EncodedObject<SignedIdentityData> {
+export interface SignedIdentityObject {
+  readonly link: Link<unknown>;
   readonly identity: IdentityObject;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];
@@ -100,10 +101,5 @@ function signedIdentityOf(object: EncodedObject<SignedIdentityData>, identity: I
   if (!verify(identity.root, digestOf(identity.link), signature)) {
     throw new Error(`the root of ${identity.link} did not sign ${object.link}`);
   }
-  return {
-    ...object,
-    identity,
-    signature,
-    blobs: blobsOf([object], identity.blobs),
-  };
+  return { link: object.link, identity, signature, blobs: blobsOf(object, identity.blobs) };
 }

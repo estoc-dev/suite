@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identitySchema, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -13,9 +13,9 @@ const anything = schema("Anything", {
   received: optional(link()),
   attachments: optional(array(link())),
 });
-const { identities, signatures, publish } = loadIdentity([ed25519]);
+const { signatures, publish } = loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
-const signatureSchemas = [signatures.schema, identities.encode(signer.key, { at: 0 }).schema].map(({ bytes }) => bytes);
+const signatureSchemas = [signatures.schema, identitySchema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
@@ -287,9 +287,10 @@ describe("a signature read from a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     const signature = await signatures.actor(signer, await publish(signer, { at: 0 })).sign(note);
-    await store.write(
-      batchOf([note, signature], [...signature.signedIdentity.blobs, ...anything.blobs, ...signatureSchemas]),
-    );
+    await store.write({
+      roots: [note.link, signature.link],
+      blobs: [note.bytes, ...signature.blobs, ...anything.blobs],
+    });
     const readSignature = await signatures.read(signature.link, store, noIdentityVersions);
     expect(readSignature.object).toBe(note.link);
     expect(readSignature.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);

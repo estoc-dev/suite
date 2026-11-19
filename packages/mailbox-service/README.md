@@ -144,8 +144,8 @@ const account = await service.account.accept(signatures.actor(device, await publ
 
 The actor signs the offer, and `accept` posts the bundle of that signature
 to `POST /<id>`, at the id of the offer, which is its link: the
-signature as the root, with the blobs of its signed identity. The offer and
-the signature schema are left out, since the service has them.
+signature as the root, with its `blobs`. The offer is left out, since the
+service has it.
 
 The service reads the signature at the bundle's root with `signatures.read`,
 against the identity versions it holds, refuses it unless it is over the
@@ -311,8 +311,7 @@ const inbox = await post.openInbox((publicKey) => service.mailbox.open(actor, pu
 
 The actor signs the request, and `open` posts the bundle of that signature
 to `POST /<id>`, at the id of the offer, which is its link: the
-signature as the root, with the request and the blobs of its signed
-identity. It keeps the service's signature over the acknowledgement as
+signature as the root, with its `blobs` and the request. It keeps the service's signature over the acknowledgement as
 `accept` does, and makes the HTTP mailbox of `@estoc/mailbox` that senders
 post to, `{"key", "url"}`, whose url is the origin the offer was taken at and
 the send id. It writes the mailbox to the store, and an Opened mailbox mark

@@ -10,7 +10,7 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
-import { encodeObject, type Link, objectsOf } from "@estoc/object";
+import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
@@ -20,6 +20,13 @@ export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain]
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const memoryStore = () => new Store(new MemoryBackend());
+
+/** The bytes of the object that a key, a signed identity or a signature is read from, which its blobs hold. */
+export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonly blobs: readonly Uint8Array[] }) {
+  const bytes = blobs.find((each) => linkOf(each) === link);
+  if (bytes === undefined) throw new Error(`the blobs of ${link} do not hold it`);
+  return bytes;
+}
 
 const privateStores = new WeakMap<Store, PrivateStore>();
 /** The private store that a test keeps beside `store`, in memory: the same one each time it is asked for. */

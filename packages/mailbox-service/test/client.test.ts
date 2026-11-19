@@ -121,14 +121,11 @@ async function signedService(origin: string, offers: readonly (readonly [Encoded
   const blobs = [
     service.bytes,
     ...serviceSchema.blobs,
-    ...signature.signedIdentity.blobs,
-    ...signatures.schema.blobs,
-    ...offerSignatures.map(({ bytes }) => bytes),
-    ...offerSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
+    ...offerSignatures.flatMap(({ blobs }) => blobs),
     ...offers.flatMap(([object]) => [object.bytes, ...object.schema.blobs]),
-    serviceRoot.bytes,
+    ...serviceRoot.blobs,
   ];
-  return encodeBundle(signature.link, [signature.bytes, ...blobs]);
+  return encodeBundle(signature.link, [...signature.blobs, ...blobs]);
 }
 
 /** Keeps `bundle` in `store` as come in at a mailbox elsewhere. */
@@ -149,7 +146,7 @@ async function removeAgent(store: Store) {
   const agent = signer(ed25519, 7);
   const earlier = await publish(serviceSigner, { agents: [agent.key], at: 1_500 });
   const later = await publish(serviceSigner, { prior: earlier, at: 2_000 });
-  await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
+  await store.write({ roots: [later.link], blobs: later.blobs });
   return signatures.actor(agent, earlier);
 }
 
@@ -161,15 +158,13 @@ async function acknowledgementBy(by: Actor, request: Request) {
   const blobs = [
     acknowledgement.bytes,
     ...acknowledgementSchema.blobs,
-    ...signature.signedIdentity.blobs,
-    ...signatures.schema.blobs,
     acceptance.root,
     ...acceptance.blobs(),
     offer.bytes,
     ...accountOfferSchema.blobs,
-    serviceRoot.bytes,
+    ...serviceRoot.blobs,
   ];
-  return new Response(encodeBundle(signature.link, [signature.bytes, ...blobs]), { status: 201 });
+  return new Response(encodeBundle(signature.link, [...signature.blobs, ...blobs]), { status: 201 });
 }
 
 describe("a service reached at its origin", () => {
@@ -258,7 +253,7 @@ describe("a service reached at its origin", () => {
     const { origin } = await startService({ start: 1_000 });
     const { store, services } = client();
     const { signedIdentity: later } = await serviceActor(2_000);
-    await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
+    await store.write({ roots: [later.link], blobs: later.blobs });
     const account = await (await accountAt(services, origin)).accept(await actorOf(alice));
     expect(account.service.identity.link).toBe(serviceIdentity(1_000).link);
   });
@@ -333,9 +328,9 @@ describe("a service found by its identifier", () => {
     assert.exists(greater);
     assert.exists(lesser);
     for (const { object, signature } of [greater, lesser])
-      await first.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
+      await first.store.write({ roots: [signature.link], blobs: [...signature.blobs, object.bytes] });
     for (const { object, signature } of [lesser, greater])
-      await second.store.write({ roots: [signature.link], blobs: [signature.bytes, object.bytes] });
+      await second.store.write({ roots: [signature.link], blobs: [...signature.blobs, object.bytes] });
     for (const { services } of [first, second]) {
       expect(await services.latestOf(signedIdentity)).toMatchObject({
         origin: greater.object.data.origin,
@@ -370,9 +365,9 @@ describe("a service found by its identifier", () => {
     const later = await publish(serviceSigner, {
       prior: signedIdentity,
       isCrisis: true,
-      at: signedIdentity.identity.data.at + 1,
+      at: signedIdentity.identity.at + 1,
     });
-    await store.write({ roots: [later.link], blobs: [later.bytes, ...later.blobs] });
+    await store.write({ roots: [later.link], blobs: later.blobs });
     expect(await services.latestOf(signedIdentity)).toBeUndefined();
   });
 
@@ -482,7 +477,7 @@ describe("accepting an account offer", () => {
       service.fetch(
         new Request(request.url, {
           method: "POST",
-          body: encodeBundle(bobs.link, [bobs.bytes, ...bobs.signedIdentity.blobs]),
+          body: encodeBundle(bobs.link, bobs.blobs),
         }),
       ),
     );
@@ -644,7 +639,7 @@ describe("a mailbox that a service opened", () => {
     const mailbox = await openMailbox(before.mailbox, actor);
     expect((await postTo(mailbox.data.url, new Uint8Array([1]))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signedIdentity, isCrisis: true, at: 2_000 });
-    await run.store.write({ roots: [crisis.link], blobs: [crisis.bytes, ...crisis.blobs] });
+    await run.store.write({ roots: [crisis.link], blobs: crisis.blobs });
     const { accounts, mailboxes } = run;
     current = (await memoryService({ store: run.store, accounts, mailboxes, origin: server.origin, start: 3_000 }))
       .service;
@@ -820,17 +815,14 @@ async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Si
   const blobs = [
     acknowledgement.bytes,
     ...mailboxAcknowledgementSchema.blobs,
-    ...signature.signedIdentity.blobs,
-    ...signatures.schema.blobs,
-    requestSignature.bytes,
-    ...requestSignature.signedIdentity.blobs,
+    ...requestSignature.blobs,
     request.bytes,
     ...mailboxRequestSchema.blobs,
     mailboxOffer.bytes,
     ...mailboxOfferSchema.blobs,
-    root.bytes,
+    ...root.blobs,
   ];
-  return decodeBundle(encodeBundle(signature.link, [signature.bytes, ...blobs]));
+  return decodeBundle(encodeBundle(signature.link, [...signature.blobs, ...blobs]));
 }
 
 describe("a mailbox acknowledgement that came in at a mailbox", () => {

@@ -7,6 +7,7 @@ import {
   type Reader,
 } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
+import { blobsOf } from "../blobs.ts";
 import type { Key, KeyData, KeyObject, Scheme } from "./interface.ts";
 
 interface KeyImplementation extends Implementation<KeyObject, KeyData> {
@@ -41,7 +42,7 @@ export class Keys {
             throw new Error(
               `a public key in ${scheme.name} is ${scheme.publicKeyLength} bytes, not ${publicKey.length}`,
             );
-          return { ...object, scheme, publicKey };
+          return { link: object.link, scheme, publicKey, blobs: blobsOf(object) };
         },
       }),
     );

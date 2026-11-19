@@ -43,16 +43,21 @@ export type IdentityData = DataOf<typeof identitySchema>;
  * - Its root signs for it, and so do its agents.
  * - `at` is when the root signs it, in milliseconds since the Unix epoch by
  *   the root's clock. Each identity a root signs is an identity version.
+ * - `isCrisis` says that no identity version before it counts.
  * - `prior` is of the same root, and earlier.
+ * - `link` is that of its object.
  * - `blobs` are the identity's closure, each blob once: the bytes of its
  *   object and of the keys it names, the schemas they are written to, and
  *   the blobs of `prior`.
  */
-export interface IdentityObject extends EncodedObject<IdentityData> {
+export interface IdentityObject {
+  readonly link: Link<unknown>;
   readonly identifier: Link<unknown>;
   readonly prior: SignedIdentityObject | undefined;
   readonly root: KeyObject;
   readonly agents: readonly KeyObject[];
+  readonly at: number;
+  readonly isCrisis: boolean;
   readonly blobs: readonly Uint8Array[];
 }
 
@@ -155,7 +160,8 @@ function identityOf(
   if (prior !== undefined && prior.identity.root.link !== root.link) {
     throw new Error(`${object.link} has another root than ${prior.link}, which it follows`);
   }
-  if (prior !== undefined && object.data.at <= prior.identity.data.at) {
+  const { at, crisis } = object.data;
+  if (prior !== undefined && at <= prior.identity.at) {
     throw new Error(`${object.link} is not later than ${prior.link}, which it follows`);
   }
   if (agents.some(({ link }) => link === root.link)) throw new Error(`${object.link} lists its root as an agent`);
@@ -163,13 +169,18 @@ function identityOf(
     throw new Error(`${object.link} lists an agent twice`);
   }
   if (agents.length > 255) throw new Error(`${object.link} lists more than 255 agents`);
-  if (object.data.crisis === false) throw new Error(`${object.link} marks a crisis with true, or not at all`);
+  if (crisis === false) throw new Error(`${object.link} marks a crisis with true, or not at all`);
   return {
-    ...object,
+    link: object.link,
     identifier: root.link,
     prior,
     root,
     agents,
-    blobs: blobsOf([object, root, ...agents], prior?.blobs),
+    at,
+    isCrisis: crisis === true,
+    blobs: blobsOf(
+      object,
+      [root, ...agents, ...(prior === undefined ? [] : [prior])].flatMap(({ blobs }) => blobs),
+    ),
   };
 }

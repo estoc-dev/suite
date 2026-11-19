@@ -1,12 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import {
-  type Actor,
-  ed25519,
-  eip191,
-  noIdentityVersions,
-  type SignedIdentityObject,
-  type Signer,
-} from "@estoc/identity";
+import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
@@ -67,14 +60,14 @@ const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(priva
  */
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
-  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  const signature = await signatures.read(bundle.link, bundle);
   const { data } = await readObject(bundle, signature.object, serviceSchema);
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
   assert.exists(listedMailbox);
-  const offerSignature = await signatures.read(listedAccount.link, bundle, noIdentityVersions);
+  const offerSignature = await signatures.read(listedAccount.link, bundle);
   const offer = await readObject(bundle, offerSignature.object, accountOfferSchema);
-  const mailboxOfferSignature = await signatures.read(listedMailbox.link, bundle, noIdentityVersions);
+  const mailboxOfferSignature = await signatures.read(listedMailbox.link, bundle);
   const mailboxOffer = await readObject(bundle, mailboxOfferSignature.object, mailboxOfferSchema);
   const mailbox = { offerSignature: mailboxOfferSignature, offer: mailboxOffer, acceptId: mailboxOffer.link };
   return { signature, data, offerSignature, offer, acceptId: offer.link, mailbox };
@@ -125,7 +118,7 @@ function heldSigner(signer: Signer) {
 
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  const signature = await signatures.read(bundle.link, bundle);
   return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchema) };
 }
 
@@ -157,7 +150,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 5_001 });
-    const read = await signatures.read(acceptance.signature.link, bundle, noIdentityVersions);
+    const read = await signatures.read(acceptance.signature.link, bundle);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
   });
@@ -190,7 +183,7 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { acceptance: link } = acknowledgement.data;
     expect(link.link).toBe(acceptance.signature.link);
-    const read = await signatures.read(link.link, bundle, noIdentityVersions);
+    const read = await signatures.read(link.link, bundle);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
     expect(read.key.link).toBe(keys.encode(device.key).link);
@@ -440,8 +433,11 @@ describe("a mailbox service", () => {
     const { signature } = await acknowledgementIn(acceptanceResponse);
     const mailbox = await openMailbox(service, actor);
     const people = await view(store, peopleView(identityVersions));
-    for (const link of [signature.link, mailbox.link])
-      expect((await signatures.read(link, store, people)).signedIdentity.link).toBe(crisis.link);
+    for (const link of [signature.link, mailbox.link]) {
+      const read = await signatures.read(link, store);
+      expect(read.signedIdentity.link).toBe(crisis.link);
+      expect(await people.honors(read)).toBe(true);
+    }
   });
 
   it("answers with the Service whose signature has the greater link, of two at the same at, whichever its store took first", async () => {
@@ -480,7 +476,7 @@ describe("a mailbox service", () => {
       ),
     );
     const serviceSignatures = await Promise.all(
-      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
+      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store)),
     );
     const ats = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data.at),
@@ -539,8 +535,10 @@ describe("a mailbox service started again", () => {
     expect(after.signature.signedIdentity.link).toBe(crisis.link);
     expect(after.acceptId).toBe(before.acceptId);
     const people = await view(store, peopleView(identityVersions));
-    for (const { link } of [after.signature, after.offerSignature, after.mailbox.offerSignature])
-      expect((await signatures.read(link, store, people)).signedIdentity.link).toBe(crisis.link);
+    for (const signature of [after.signature, after.offerSignature, after.mailbox.offerSignature]) {
+      expect(signature.signedIdentity.link).toBe(crisis.link);
+      expect(await people.honors(signature)).toBe(true);
+    }
     await openMailbox(again, actor, keyOf(0x22));
     expect((await post(again, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
     expect(await queueAt(again, mailbox, actor)).toEqual([ciphertextOf(1)]);
@@ -571,7 +569,8 @@ describe("a mailbox service started again", () => {
       [renewedMailboxAcknowledgement, firstMailboxAcknowledgement],
     ] as const) {
       expect(renewal.signature.object).toBe(first.signature.object);
-      expect((await signatures.read(renewal.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
+      expect(renewal.signature.signedIdentity.link).toBe(crisis.link);
+      expect(await people.honors(renewal.signature)).toBe(true);
     }
     const recordsBefore = await recordedObjectsOf(store);
     expect((await acknowledgementIn(await postAcceptance(again, acceptance.file))).signature.link).toBe(
@@ -621,7 +620,7 @@ describe("a mailbox service started again", () => {
     const { service: movedService } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(movedService)).data).toEqual(before.data);
     const serviceSignatures = await Promise.all(
-      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store, noIdentityVersions)),
+      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store)),
     );
     const services = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data),
@@ -697,7 +696,7 @@ const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
 
 async function mailboxAcknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  const signature = await signatures.read(bundle.link, bundle);
   return {
     bundle,
     signature,
@@ -808,7 +807,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);
-    const read = await signatures.read(signature.link, bundle, noIdentityVersions);
+    const read = await signatures.read(signature.link, bundle);
     const request = await readObject(bundle, read.object, mailboxRequestSchema);
     expect(request.data).toEqual({ offer: new LinkValue(mailbox.offer.link), key: keyOf(0x11) });
     expect((await readObject(bundle, request.data.offer.link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);
@@ -892,7 +891,8 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(second?.signature.object).toBe(first?.signature.object);
     const people = await view(store, peopleView(identityVersions));
     assert.exists(second);
-    expect((await signatures.read(second.signature.link, store, people)).signedIdentity.link).toBe(crisis.link);
+    expect(second.signature.signedIdentity.link).toBe(crisis.link);
+    expect(await people.honors(second.signature)).toBe(true);
   });
 
   it("answers 403 to a request by someone who has no account, and opens no mailbox", async () => {

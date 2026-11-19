@@ -1,5 +1,5 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, eip191, noIdentityVersions, type Signer, solanaOffchain } from "@estoc/identity";
+import { type Actor, ed25519, eip191, type Signer, solanaOffchain } from "@estoc/identity";
 import { type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
@@ -177,9 +177,7 @@ describe("a service reached at its origin", () => {
     expect(service.account?.service).toBe(service.signedIdentity);
     expect(service.account?.link).toBe(offer.link);
     expect(await inboundRowsOf(store)).toEqual([[service.link, origin]]);
-    expect((await signatures.read(service.link, store, noIdentityVersions)).signedIdentity.identity.link).toBe(
-      serviceIdentity(2_000).link,
-    );
+    expect((await signatures.read(service.link, store)).signedIdentity.identity.link).toBe(serviceIdentity(2_000).link);
   });
 
   it.each([
@@ -318,11 +316,7 @@ describe("a service found by its identifier", () => {
     const [first, second] = [client(), client()];
     const { link, signedIdentity } = await first.services.fetch(origin);
     await second.services.fetch(origin);
-    const { data } = await readObject(
-      first.store,
-      (await signatures.read(link, first.store, noIdentityVersions)).object,
-      serviceSchema,
-    );
+    const { data } = await readObject(first.store, (await signatures.read(link, first.store)).object, serviceSchema);
     const origins = ["https://one.example", "https://two.example"];
     const [greater, lesser] = await signedAtOrigins({ ...data, at: 9_000 }, origins);
     assert.exists(greater);
@@ -396,10 +390,10 @@ describe("an account offer", () => {
       link: account.link,
     });
     expect(await inboundRowsOf(store)).toEqual([service.link, account.link].sort().map((link) => [link, origin]));
-    const acknowledgement = await signatures.read(account.link, store, noIdentityVersions);
+    const acknowledgement = await signatures.read(account.link, store);
     expect(acknowledgement.signedIdentity.identity.link).toBe(serviceIdentity(7_000).link);
     const { acceptance } = (await readObject(store, acknowledgement.object, acknowledgementSchema)).data;
-    const acceptanceSignature = await signatures.read(acceptance.link, store, noIdentityVersions);
+    const acceptanceSignature = await signatures.read(acceptance.link, store);
     expect(acceptanceSignature.object).toBe(offer.link);
     expect(acceptanceSignature.signedIdentity.link).toBe(account.signedIdentity.link);
   });
@@ -423,10 +417,10 @@ describe("an account offer", () => {
     expect(await inboundRowsOf(store)).toContainEqual([again.link, origin]);
     const acknowledgement = await readObject(
       store,
-      (await signatures.read(again.link, store, noIdentityVersions)).object,
+      (await signatures.read(again.link, store)).object,
       acknowledgementSchema,
     );
-    const acceptance = await signatures.read(acknowledgement.data.acceptance.link, store, noIdentityVersions);
+    const acceptance = await signatures.read(acknowledgement.data.acceptance.link, store);
     expect(acceptance.key.link).toBe(keys.encode(phone.key).link);
   });
 
@@ -549,7 +543,7 @@ describe("a service's offer of mailboxes", () => {
     const [[acknowledgement, from] = []] = newRows;
     assert.exists(acknowledgement);
     expect(from).toBe(run.origin);
-    const signature = await signatures.read(acknowledgement as Link<never>, store, noIdentityVersions);
+    const signature = await signatures.read(acknowledgement as Link<never>, store);
     const { sendId } = (await readObject(store, signature.object, mailboxAcknowledgementSchema)).data;
     expect(pathname).toBe(`/${hex.encode(sendId)}`);
   });

@@ -1,4 +1,4 @@
-import { type CurveScheme, ed25519, eip191, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import { type CurveScheme, ed25519, eip191, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -42,8 +42,8 @@ function cardOf(root: Uint8Array): Card {
 
 async function readCard(bundle: Bundle) {
   const cardLinks = cardOf(bundle.root);
-  const mailboxSignature = await signatures.read(cardLinks.mailbox, bundle, noIdentityVersions);
-  const nameSignature = await signatures.read(cardLinks.name, bundle, noIdentityVersions);
+  const mailboxSignature = await signatures.read(cardLinks.mailbox, bundle);
+  const nameSignature = await signatures.read(cardLinks.name, bundle);
   if (mailboxSignature.signedIdentity.identity.identifier !== nameSignature.signedIdentity.identity.identifier)
     throw new Error("a card is signed by the one identity it is for");
   return {
@@ -114,7 +114,7 @@ describe("a card", () => {
 const chat = schema("Chat message", { text: string() });
 
 async function readMessage(bundle: Bundle) {
-  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  const signature = await signatures.read(bundle.link, bundle);
   return { from: signature.signedIdentity.identity, message: (await readObject(bundle, signature.object, chat)).data };
 }
 

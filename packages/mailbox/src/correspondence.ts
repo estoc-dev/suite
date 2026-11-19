@@ -1,13 +1,12 @@
-import {
-  type Actor,
-  type IdentityKit,
-  type IdentityVersionData,
-  type IdentityVersionOrder,
-  noIdentityVersions,
-  type People,
-  type SeenIdentityVersions,
-  type Signature,
-  type SignedIdentityObject,
+import type {
+  Actor,
+  IdentityKit,
+  IdentityVersionData,
+  IdentityVersionOrder,
+  People,
+  SeenIdentityVersions,
+  Signature,
+  SignedIdentityObject,
 } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
 import {
@@ -130,7 +129,7 @@ export class Correspondence {
   async #signatureAtRootOf(bundle: Link<never>): Promise<Signature | undefined> {
     const closure = await this.#store.closure(bundle);
     try {
-      return await this.#signatures.read(bundle, { get: (link) => closure.get(link) }, noIdentityVersions);
+      return await this.#signatures.read(bundle, { get: (link) => closure.get(link) });
     } catch {
       return undefined;
     }

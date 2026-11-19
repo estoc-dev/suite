@@ -67,16 +67,16 @@ export interface Actor {
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
 }
 
+/**
+ * A signature is verified by the identity version it carries alone, so what is read depends on the
+ * signature and its closure, and an index can read by it. Whether the signature is still honored is
+ * for a reader's `SeenIdentityVersions` to say.
+ */
 export class Signatures {
   readonly schema = signatureSchema;
-  /**
-   * It verifies by the identity version a signature carries alone, so what it reads depends on the
-   * signature and its closure, and an index can read by it. Whether the signature is still honored
-   * is for a reader's `SeenIdentityVersions` to say.
-   */
   readonly implementation: Implementation<Signature, SignatureData> = {
     schema: signatureSchema,
-    read: (signature, reader) => this.verify(signature, reader, noIdentityVersions),
+    read: (signature, reader) => this.verify(signature, reader),
   };
   readonly #signedIdentities: SignedIdentities;
 
@@ -84,24 +84,14 @@ export class Signatures {
     this.#signedIdentities = signedIdentities;
   }
 
-  async verify(
-    signature: EncodedObject<SignatureData>,
-    reader: Reader,
-    seenIdentityVersions: SeenIdentityVersions,
-  ): Promise<Signature> {
+  async verify(signature: EncodedObject<SignatureData>, reader: Reader): Promise<Signature> {
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.link, reader);
-    const verifiedSignature = this.#signatureOf(signature, signedIdentity);
-    if (!(await seenIdentityVersions.honors(verifiedSignature))) {
-      throw new Error(
-        `the signature by ${verifiedSignature.key.link} is not honored by the identity versions of ${signedIdentity.identity.identifier}`,
-      );
-    }
-    return verifiedSignature;
+    return this.#signatureOf(signature, signedIdentity);
   }
 
-  async read(link: Link<unknown>, reader: Reader, seenIdentityVersions: SeenIdentityVersions): Promise<Signature> {
-    return this.verify(await readObject(reader, link, this.schema), reader, seenIdentityVersions);
+  async read(link: Link<unknown>, reader: Reader): Promise<Signature> {
+    return this.verify(await readObject(reader, link, this.schema), reader);
   }
 
   selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {

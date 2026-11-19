@@ -5,7 +5,6 @@ import {
   eip191,
   type IdentityObject,
   loadIdentity,
-  noIdentityVersions,
   type SignedIdentityObject,
   SoftwareSigner,
   solanaOffchain,
@@ -45,7 +44,7 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareS
 };
 
 async function readSigned<F extends ValueMap>(bundle: Bundle, schema: Schema<F>) {
-  const signature = await signatures.read(bundle.link, bundle, noIdentityVersions);
+  const signature = await signatures.read(bundle.link, bundle);
   return {
     signature,
     identity: signature.signedIdentity.identity,
@@ -301,7 +300,7 @@ describe("two people who meet", () => {
     await heidi.intake.receive(handedGrant);
 
     // That grant says who Grace is, and Heidi's own grant goes to the mailbox it names.
-    const graceAsSeen = (await signatures.read(handedGrant.link, handedGrant, noIdentityVersions)).signedIdentity;
+    const graceAsSeen = (await signatures.read(handedGrant.link, handedGrant)).signedIdentity;
     expect(graceAsSeen.link).toBe(grace.signedIdentity.link);
     const atHeidi = await heidi.openInbox();
     const heidisGrant = await heidi.correspondence.grant(graceAsSeen, [atHeidi.mailbox]);

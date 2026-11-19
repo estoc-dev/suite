@@ -1,12 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import {
-  ed25519,
-  loadIdentity,
-  noIdentityVersions,
-  type Signer,
-  SoftwareSigner,
-  signedIdentitySchema,
-} from "@estoc/identity";
+import { ed25519, loadIdentity, type Signer, SoftwareSigner, signedIdentitySchema } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -94,7 +87,7 @@ describe("a signed note", () => {
     assert.exists(readReceived);
     expect(readReceived.link).toBe(received.link);
     expect(others).toEqual([]);
-    const bundleSignature = await signatures.read(readReceived.data.bundle.link, bob.store, noIdentityVersions);
+    const bundleSignature = await signatures.read(readReceived.data.bundle.link, bob.store);
     expect(bundleSignature.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
     expect((await readObject(bob.store, bundleSignature.object, noteSchema)).data.text).toBe("hello");
   });

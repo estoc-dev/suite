@@ -1,4 +1,4 @@
-import { noIdentityVersions, type SeenIdentityVersions, type Signatures } from "@estoc/identity";
+import type { SeenIdentityVersions, Signatures } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
@@ -44,7 +44,7 @@ export function locationsView(signatures: Signatures): LocationsView {
       async servicesOf(identifier, seenIdentityVersions) {
         const links: Link<unknown>[] = [];
         for await (const { data } of rows.range([new LinkValue(identifier)])) {
-          const signature = await signatures.read(data.service.link, reader, noIdentityVersions);
+          const signature = await signatures.read(data.service.link, reader);
           if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.link);
         }
         return links;

@@ -1,10 +1,9 @@
-import {
-  type IdentityKit,
-  noIdentityVersions,
-  type SeenIdentityVersions,
-  type Signature,
-  type SignatureOver,
-  type SignedIdentityObject,
+import type {
+  IdentityKit,
+  SeenIdentityVersions,
+  Signature,
+  SignatureOver,
+  SignedIdentityObject,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
@@ -99,7 +98,7 @@ export class MailboxGrants {
       seenIdentityVersions: SeenIdentityVersions,
     ) {
       for await (const { data } of rows.range([new LinkValue(from), new LinkValue(to)])) {
-        const signature = await signatures.read(data.signature.link, reader, noIdentityVersions);
+        const signature = await signatures.read(data.signature.link, reader);
         if (await seenIdentityVersions.honors(signature)) yield signature;
       }
     };

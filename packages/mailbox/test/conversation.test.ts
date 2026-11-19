@@ -3,7 +3,6 @@ import {
   type Actor,
   ed25519,
   loadIdentity,
-  noIdentityVersions,
   type Signature,
   type SignedIdentityObject,
   SoftwareSigner,
@@ -167,7 +166,7 @@ async function chat(faults: Faults = {}) {
         const signature: Signature | undefined =
           direction === "inbound"
             ? await person.correspondence.messageAt(mailbox.link, bundle.link)
-            : await signatures.read(bundle.link, person.store, noIdentityVersions);
+            : await signatures.read(bundle.link, person.store);
         if (signature === undefined) return undefined;
         const { data } = await readObject(person.store, signature.object, line);
         return [direction, names.get(signature.signedIdentity.identity.identifier), data.text];

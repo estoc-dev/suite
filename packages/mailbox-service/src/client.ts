@@ -3,7 +3,6 @@ import {
   type Actor,
   type IdentityKit,
   loadIdentity,
-  noIdentityVersions,
   type Scheme,
   type Signature,
   type Signatures,
@@ -31,7 +30,7 @@ import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
-import { type PeopleView, peopleView } from "./people.ts";
+import { checkHonors, type PeopleView, peopleView } from "./people.ts";
 import {
   type AccountOfferData,
   accountOfferSchema,
@@ -199,7 +198,8 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
   const stagedStore = await intake.stage(answer, origin);
   const stagedPeople = await view(stagedStore, people);
-  const acknowledgement = await signatures.read(answer.link, stagedStore, stagedPeople);
+  const acknowledgement = await signatures.read(answer.link, stagedStore);
+  await checkHonors(stagedPeople, acknowledgement);
   if (!stagedPeople.personOf(to.service).hasSigned(acknowledgement)) {
     throw new Error("the acknowledgement is signed for another identifier than the service's");
   }
@@ -330,7 +330,7 @@ export class Services {
     if (link === undefined) throw new Error(`the private store lists no mark of opening ${mailbox}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
-    const { signedIdentity, object } = await this.#signatures.read(link, this.#store, noIdentityVersions);
+    const { signedIdentity, object } = await this.#signatures.read(link, this.#store);
     const { request, pickupId } = (await readObject(this.#store, object, mailboxAcknowledgementSchema)).data;
     const { object: requestObject } = (await readObject(this.#store, request.link, this.#signatures.schema)).data;
     const { offer } = (await readObject(this.#store, requestObject.link, mailboxRequestSchema)).data;
@@ -343,7 +343,9 @@ export class Services {
 
   async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {
     const people = await view(reader, this.#people);
-    const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
+    const serviceSignature = await this.#signatures.read(link, reader);
+    await checkHonors(people, serviceSignature);
+    const { signedIdentity, object } = serviceSignature;
     const service = people.personOf(signedIdentity);
     const { identifier } = service;
     const { origin, at, offers } = (await readObject(reader, object, serviceSchema)).data;
@@ -359,7 +361,8 @@ export class Services {
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
     for (const { link } of offers) {
-      const signature = await this.#signatures.read(link, reader, people);
+      const signature = await this.#signatures.read(link, reader);
+      await checkHonors(people, signature);
       if (!service.hasSigned(signature))
         throw new Error(`the Service of ${identifier} lists an offer signed for another identifier`);
       const bytes = await reader.get(signature.object);

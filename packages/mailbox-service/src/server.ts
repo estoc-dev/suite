@@ -408,9 +408,9 @@ export async function loadMailboxService(
   ];
 
   const seenPeople = peopleView(kit);
-  // The people are read after the locations. A store only gains blobs, and holds each Service with
-  // the identity versions its signatures carry, so the people have seen those of every Service
-  // that the locations give.
+  // A store only gains blobs, and holds each Service with the identity versions its signatures
+  // carry, so people read after the locations have seen those of every Service that the locations
+  // give.
   const locations = await view(store, locationsView(signatures));
   const people = await view(store, seenPeople);
   const at = clock();
@@ -427,7 +427,8 @@ export async function loadMailboxService(
   const signedOffers: (readonly [EncodedObject, Signature])[] = [];
   for (const offer of offers) {
     const signature =
-      (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actorAtStart.sign(offer));
+      (await ownSignatureListedIn(services, { object: offer.link, key: identifier }, signatures, store, people)) ??
+      (await actorAtStart.sign(offer));
     signedOffers.push([offer, signature]);
   }
   const next: ServiceData = {
@@ -484,9 +485,14 @@ function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView 
   };
 }
 
-async function signatureListedIn(
+/**
+ * A signature by an agent of the root is passed over, though `people` honors it. Once an identity
+ * version removes the agent, a Service of the root's that lists it would stay honored while the
+ * offer is not, and a start whose clock is behind signs only Services that come before that one.
+ */
+async function ownSignatureListedIn(
   services: readonly EncodedObject<ServiceData>[],
-  offer: Link<unknown>,
+  { object, key }: { readonly object: Link<unknown>; readonly key: Link<unknown> },
   signatures: Signatures,
   store: Store,
   people: People,
@@ -494,7 +500,8 @@ async function signatureListedIn(
   for (const { data } of services) {
     for (const { link } of data.offers) {
       const signature = await signatures.read(link, store);
-      if (signature.object === offer && (await people.honors(signature))) return signature;
+      if (signature.object === object && signature.key.link === key && (await people.honors(signature)))
+        return signature;
     }
   }
   return undefined;

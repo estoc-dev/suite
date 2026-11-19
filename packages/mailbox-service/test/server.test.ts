@@ -610,42 +610,70 @@ describe("a mailbox service started again", () => {
     expect(sign).toHaveBeenCalledOnce();
   });
 
-  it("signs again an offer whose signature is by an agent its root has since removed, and keeps the signature over the other", async () => {
+  it("with its clock behind answers with a Service whose signatures are all honored, once its root removed an agent whose signature over its offer a Service in its store lists", async () => {
     const store = memoryStore();
     const agent = signer(ed25519, 21);
     const listing = await publish(serviceSigner, { agents: [agent.key], at: 500 });
     const agentActor = signatures.actor(agent, listing, identityVersionInHand);
     const offer = encodeObject(accountOfferSchema, { identity: new LinkValue(serviceRoot.link) });
     const offerSignature = await agentActor.sign(offer);
-    const signedByAgent = encodeObject(serviceSchema, {
+    const serviceObject = encodeObject(serviceSchema, {
       origin: "https://mail.example",
       at: 600,
       offers: [new LinkValue(offerSignature.link)],
     });
-    const signature = await agentActor.sign(signedByAgent);
+    const serviceSignature = await agentActor.sign(serviceObject);
     await store.write({
-      roots: [signature.link],
+      roots: [serviceSignature.link],
       blobs: [
-        ...signature.blobs,
-        signedByAgent.bytes,
+        ...serviceSignature.blobs,
+        serviceObject.bytes,
         ...serviceSchema.blobs,
         ...offerSignature.blobs,
         offer.bytes,
         ...accountOfferSchema.blobs,
       ],
     });
-    const before = await rootOf((await memoryService({ store })).service);
-    expect(before.offerSignature.link).toBe(offerSignature.link);
+    const before = await rootOf((await memoryService({ store, start: 3_000 })).service);
+    expect(before.acceptId).toBe(offer.link);
+    expect(before.offerSignature.key.link).toBe(serviceRoot.link);
 
     const removal = await publish(serviceSigner, { prior: listing, at: 2_000 });
     await store.write({ roots: [removal.link], blobs: removal.blobs });
-    const after = await rootOf((await memoryService({ store, start: 3_000 })).service);
-    expect(after.acceptId).toBe(before.acceptId);
-    expect(after.offerSignature.key.link).toBe(serviceRoot.link);
-    expect(after.mailbox.offerSignature.link).toBe(before.mailbox.offerSignature.link);
+    const after = await rootOf((await memoryService({ store, start: 2_999 })).service);
+    expect(after.signature.link).toBe(before.signature.link);
     const people = await view(store, peopleView({ signedIdentities }));
     for (const each of [after.signature, after.offerSignature, after.mailbox.offerSignature])
       expect(await people.honors(each)).toBe(true);
+  });
+
+  it("signs again an offer whose signature it made before a crisis of its root, though a Service that an agent signed since lists it", async () => {
+    const store = memoryStore();
+    const agent = signer(ed25519, 21);
+    const first = await publish(serviceSigner, { at: 500 });
+    const offer = encodeObject(accountOfferSchema, { identity: new LinkValue(serviceRoot.link) });
+    const offerSignature = await signatures.actor(serviceSigner, first, identityVersionInHand).sign(offer);
+    const crisis = await publish(serviceSigner, { prior: first, isCrisis: true, agents: [agent.key], at: 600 });
+    const serviceObject = encodeObject(serviceSchema, {
+      origin: "https://mail.example",
+      at: 700,
+      offers: [new LinkValue(offerSignature.link)],
+    });
+    const serviceSignature = await signatures.actor(agent, crisis, identityVersionInHand).sign(serviceObject);
+    await store.write({
+      roots: [serviceSignature.link],
+      blobs: [
+        ...serviceSignature.blobs,
+        serviceObject.bytes,
+        ...serviceSchema.blobs,
+        ...offerSignature.blobs,
+        offer.bytes,
+        ...accountOfferSchema.blobs,
+      ],
+    });
+    const { acceptId, offerSignature: signedAgain } = await rootOf((await memoryService({ store })).service);
+    expect(acceptId).toBe(offer.link);
+    expect(signedAgain.signedIdentity.link).toBe(crisis.link);
   });
 
   it("once its root signed a crisis, signs as it, and keeps the accounts and the mailboxes it opened", async () => {

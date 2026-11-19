@@ -16,11 +16,11 @@ da 65 6f 66 21 82 ...   the root: an object, as @estoc/object writes it
 ```ts
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 
-const file = encodeBundle(signature.link, [signature.bytes, message.bytes, ...signature.signedIdentity.blobs]);
+const file = encodeBundle(signature.link, [...signature.blobs, message.bytes]);
 const bundle = decodeBundle(file);
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
-[...bundle.blobs()];      // signature.bytes, message.bytes, ...signature.signedIdentity.blobs
+[...bundle.blobs()];      // ...signature.blobs, message.bytes
 ```
 
 ## The root

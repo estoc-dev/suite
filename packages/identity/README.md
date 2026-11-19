@@ -37,6 +37,14 @@ has a file of its own, the key interface and the schemes read as it share
 `src/key/`, with the interface in `interface.ts`, and one file imports
 another where an object of the one links to an object of the other.
 
+Each of them reads an object as a value of its own: a `KeyObject`, an
+`IdentityObject`, a `SignedIdentityObject`, a `Signature`, a
+`SecretKeyObject` or a `WalletKeyObject`. The value holds what was read,
+with the link of the object as `link`, and as `blobs` the bytes it takes to
+read it again, those of the object among them. It is not the object: where
+one is written to a store or sent, its `link` names it and its `blobs` go
+along.
+
 ## Schemes
 
 A scheme is how a key signs: how the text it signs is framed, the code
@@ -198,7 +206,9 @@ epoch. Each identity a root signs is an identity version. `prior` names
 the signed identity of the identity version it follows, of the same root
 and with an earlier `at`, and one without it starts a chain. `crisis`
 marks a crisis, below. An identity holds `prior` and `crisis` only where
-they hold, so it has one object.
+they hold, so it has one object. It reads with `at`, with `prior` as the
+signed identity it names, and with `isCrisis`, which is false where the
+object leaves `crisis` out.
 
 The schema says the fields of an identity and their types. That it lists
 each agent once and not its root, lists at most 255, and writes `crisis`
@@ -459,10 +469,12 @@ are not optional, so a reader that keeps no identity versions says so with
 `noIdentityVersions`, and a signature is then verified by the identity
 version it carries alone. Verifying a
 signature takes the blobs of its signed identity, but not that of the object
-signed, since the digest it signs is in the link. It gives the signature's
-object with the signed identity it read as `signedIdentity`, the key that
-signed as `key`, the link of what it is over as `object`, and the signature
-as bytes. Reading a signature with `decodeObject` and the signature schema
+signed, since the digest it signs is in the link. It gives the signature
+with the signed identity it read as `signedIdentity`, the key that signed
+as `key`, the link of what it is over as `object`, and the signature as
+bytes. Its `blobs` are the bytes of its object, the closure of the
+signature schema and the `blobs` of its signed identity, and not the object
+signed. Reading a signature with `decodeObject` and the signature schema
 alone, as a viewer of arbitrary objects would, reads its fields without
 verifying it.
 
@@ -481,28 +493,26 @@ wallet that lists a key on a device as an agent does not confirm what the
 device signs for it. `actor.sign` signs the
 link of an object, so it takes anything that has one, and gives a signature
 whose `signedIdentity` is
-`actor.signedIdentity`, the signed identity the actor was made for, whose
-`blobs` go along with the signature. It verifies the signature after the
+`actor.signedIdentity`, the signed identity the actor was made for. It verifies the signature after the
 signer signs, so a signer whose signature does not verify is refused.
 
 A server that handed out a nonce can build the login object of the example
-in `@estoc/object` itself, and take back only the signature, with the
-signed identity's blobs:
+in `@estoc/object` itself, and take back only the link of the signature,
+with its blobs:
 
 ```ts
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { decodeObject, encodeObject, linkOf } from "@estoc/object";
+import { encodeObject, linkOf } from "@estoc/object";
 
 const { signatures, publish } = loadIdentity([ed25519]);
 const signer = SoftwareSigner.fromSecretKey(ed25519, secretKey);
 const actor = signatures.actor(signer, await publish(signer));
 const signature = await actor.sign(object);
-// The client sends signature.bytes and signature.signedIdentity.blobs.
+// The client sends signature.link and signature.blobs.
 
 const expected = encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" });
-const signed = decodeObject(signatureBytes, signatures.schema);
-const blobs = new Map(identityBlobs.map((bytes) => [linkOf(bytes), bytes]));
-const read = await signatures.verify(signed, blobs, noIdentityVersions);
+const blobs = new Map(signatureBlobs.map((bytes) => [linkOf(bytes), bytes]));
+const read = await signatures.read(signatureLink, blobs, noIdentityVersions);
 const user = read.object === expected.link ? read.signedIdentity.identity : undefined;
 ```
 

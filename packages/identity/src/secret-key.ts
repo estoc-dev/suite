@@ -16,12 +16,13 @@ export const secretKeySchema = schema("Secret Key", { key: link(), secret: bytes
 export type SecretKeyData = DataOf<typeof secretKeySchema>;
 
 /**
- * A Secret Key read from its object, with its key and `signer`, which signs
- * with the secret. `blobs` are its closure: the bytes of its object and of
- * its key, and the schemas they are written to, so one write puts it in an
- * empty store.
+ * A Secret Key read from its object, which `link` names, with its key and
+ * `signer`, which signs with the secret. `blobs` are its closure: the bytes
+ * of its object and of its key, and the schemas they are written to, so one
+ * write puts it in an empty store.
  */
-export interface SecretKeyObject extends EncodedObject<SecretKeyData> {
+export interface SecretKeyObject {
+  readonly link: Link<unknown>;
   readonly key: KeyObject;
   readonly signer: Signer;
   readonly blobs: readonly Uint8Array[];
@@ -63,5 +64,5 @@ export class SecretKeys {
 }
 
 function secretKeyOf(object: EncodedObject<SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
-  return { ...object, key, signer, blobs: blobsOf([object, key]) };
+  return { link: object.link, key, signer, blobs: blobsOf(object, key.blobs) };
 }

@@ -115,7 +115,7 @@ const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
 async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
   const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
-  await from.store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobsOf(grant, signature, to)] });
+  await from.store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobsOf(grant, signature, to)] });
   return signature;
 }
 
@@ -206,7 +206,7 @@ describe("the latest grant of one person to another", () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     const countersignature = await alice.actor.sign(signature);
-    await alice.store.write({ roots: [countersignature.link], blobs: [countersignature.bytes] });
+    await alice.store.write({ roots: [countersignature.link], blobs: countersignature.blobs });
     await handOver(alice, bob, countersignature.link);
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
@@ -245,7 +245,11 @@ describe("the latest grant of one person to another", () => {
     // Mallory has seen Alice's signed identity and a signature of hers, and
     // puts them over a later grant of a mailbox Mallory receives at.
     const grant = grants.encode(bob.actor.signedIdentity, [mallory.inbox.mailbox], 2_000);
-    const forgedSignature = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(grant.link) });
+    const forgedSignature = encodeObject(signatures.schema, {
+      signedIdentity: new LinkValue(signature.signedIdentity.link),
+      object: new LinkValue(grant.link),
+      signature: signature.signature,
+    });
     await mallory.store.write({
       roots: [forgedSignature.link],
       blobs: [forgedSignature.bytes, ...blobsOf(grant, signature, bob)],
@@ -262,13 +266,7 @@ describe("the latest grant of one person to another", () => {
 
     const misfit = objectFormat.encode(new ObjectValue(grants.schema.link, { at: 2_000 }));
     const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
-    const blobs = [
-      misfitSignature.bytes,
-      misfit,
-      ...grants.schema.blobs,
-      ...signatures.schema.blobs,
-      ...misfitSignature.signedIdentity.blobs,
-    ];
+    const blobs = [...misfitSignature.blobs, misfit, ...grants.schema.blobs];
     await bob.intake.receive(decodeBundle(encodeBundle(misfitSignature.link, blobs)));
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
@@ -332,7 +330,7 @@ describe("a grant by an agent that a later identity version does not list", () =
       identity: new LinkValue(removalIdentityVersion.identity.link),
       signature: new Uint8Array(64),
     });
-    const blobs = removalIdentityVersion.blobs.filter((blob) => blob !== removalIdentityVersion.bytes);
+    const blobs = removalIdentityVersion.blobs.filter((blob) => linkOf(blob) !== removalIdentityVersion.link);
     await bob.intake.receive(
       decodeBundle(encodeBundle(forgedIdentityVersion.link, [forgedIdentityVersion.bytes, ...blobs])),
     );

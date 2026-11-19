@@ -126,13 +126,7 @@ async function writeNote({ actor, store }: Person, text: string) {
   const signature = await actor.sign(object);
   await store.write({
     roots: [signature.link],
-    blobs: [
-      signature.bytes,
-      object.bytes,
-      ...signature.signedIdentity.blobs,
-      ...note.blobs,
-      ...signatures.schema.blobs,
-    ],
+    blobs: [...signature.blobs, object.bytes, ...note.blobs],
   });
   return signature;
 }
@@ -359,7 +353,11 @@ describe("what came in at a mailbox", () => {
     const { alice, bob, inbox, receive } = await twoPeople();
     const signature = await writeNote(alice, "hi Bob");
     const other = encodeObject(note, { text: "not what was signed" });
-    const forged = encodeObject(signatures.schema, { ...signature.data, object: new LinkValue(other.link) });
+    const forged = encodeObject(signatures.schema, {
+      signedIdentity: new LinkValue(signature.signedIdentity.link),
+      object: new LinkValue(other.link),
+      signature: signature.signature,
+    });
     await alice.store.write({ roots: [forged.link], blobs: [forged.bytes, other.bytes] });
     await (await alice.post.outbox(inbox.mailbox)).send(forged.link);
     const { bundle } = await receive();

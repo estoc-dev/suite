@@ -241,15 +241,12 @@ describe("an index scanned from a private store", () => {
       signers.map(async (by) => signatures.actor(by, await publish(by, { at: 0 })).sign(hello)),
     );
     const stores = newStores();
-    await recordIn(
-      stores,
-      [hello, ...helloSignatures],
-      [
-        ...helloSignatures.flatMap(({ signedIdentity }) => signedIdentity.blobs),
-        ...signatures.schema.blobs,
-        ...schemas,
-      ],
-    );
+    const batch = {
+      roots: [hello.link, ...helloSignatures.map(({ link }) => link)],
+      blobs: [hello.bytes, ...helloSignatures.flatMap(({ blobs }) => blobs), ...schemas],
+    };
+    await stores.store.write(batch);
+    await stores.privateStore.write(recordsOf(batch.roots, Date.now()));
     const expectedRows = helloSignatures
       .map(({ signedIdentity }) => signedIdentity.identity.identifier)
       .sort()

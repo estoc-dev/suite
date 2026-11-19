@@ -138,7 +138,7 @@ export class AccountOffer {
    *   is of another signature. Nothing is written then.
    */
   async accept(actor: Actor): Promise<Account> {
-    // The service holds the offer and the signature schema, so they are left out.
+    // The service holds the offer, so it is left out.
     const acceptance = await actor.sign({ link: this.link });
     const { signature, data } = await post(
       { url: this.#url, service: this.service, schema: acknowledgementSchema, field: "acceptance" },
@@ -234,9 +234,9 @@ export class MailboxOffer {
 }
 
 /**
- * Posts the bundle of `signature` to `url`, with `blobs` and the blobs of
- * its signed identity, and keeps the answer in the store with an Inbound
- * mark whose `via` is the posting's origin.
+ * Posts the bundle of `signature` to `url`, with the signature's `blobs` and
+ * the `blobs` given, and keeps the answer in the store with an Inbound mark
+ * whose `via` is the posting's origin.
  *
  * The answer is read as `service`'s signature over an acknowledgement of
  * `signature`, written to `schema`, whose `field` links to it.
@@ -256,7 +256,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   blobs: readonly Bytes<unknown>[],
   { intake, origin, signatures, people }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
-  const body = encodeBundle(signature.link, [signature.bytes, ...blobs, ...signature.signedIdentity.blobs]);
+  const body = encodeBundle(signature.link, [...signature.blobs, ...blobs]);
   const request = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body };
   const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
   const stagedStore = await intake.stage(answer, origin);
@@ -342,7 +342,7 @@ class ServicePickup implements Pickup {
       receipts: receipts.map((receipt) => new LinkValue(receipt)),
     });
     const signature = await this.#actor.sign(request);
-    const body = encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]);
+    const body = encodeBundle(signature.link, [...signature.blobs, request.bytes]);
     const init = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body, signal: signal ?? null };
     const answer = await bundleIn(await fetch(this.#url, init), [200], this.#limit);
     const { ciphertexts } = decodeObject(answer.root, pickupAnswerSchema).data;

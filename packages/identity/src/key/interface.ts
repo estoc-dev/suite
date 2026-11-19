@@ -1,4 +1,4 @@
-import type { EncodedObject } from "@estoc/object";
+import type { Link } from "@estoc/object";
 import { equalBytes } from "@noble/curves/utils.js";
 import { signingText } from "../signing-text.ts";
 
@@ -39,10 +39,16 @@ export interface Key {
 export type KeyData = { readonly publicKey: Uint8Array };
 
 /**
- * A key read from its object, written to the schema of its scheme. An
- * identity names its root by the link of this object.
+ * A key read from its object, written to the schema of its scheme.
+ *
+ * - `link` is that of the object. An identity names its root by it.
+ * - `blobs` are what it takes to read it again: the bytes of its object and the closure of its
+ *   schema.
  */
-export interface KeyObject extends EncodedObject<KeyData>, Key {}
+export interface KeyObject extends Key {
+  readonly link: Link<unknown>;
+  readonly blobs: readonly Uint8Array[];
+}
 
 /**
  * Whether `signature` is `key`'s signature over `signingText(digest,

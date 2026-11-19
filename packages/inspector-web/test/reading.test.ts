@@ -1,7 +1,15 @@
 import { markdownBodyOf, markdownBodySchema } from "@estoc/blog";
-import { ed25519, eip191, loadIdentity, SoftwareSigner, signatureSchema, solanaOffchain } from "@estoc/identity";
+import {
+  ed25519,
+  eip191,
+  loadIdentity,
+  type Signature,
+  SoftwareSigner,
+  signatureSchema,
+  solanaOffchain,
+} from "@estoc/identity";
 import { inspect } from "@estoc/inspector";
-import { AbsentBlob, encodeObject, type Link, linkOf, ObjectValue, objectFormat } from "@estoc/object";
+import { AbsentBlob, encodeObject, type Link, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { bodyReading } from "../src/body-reading.ts";
@@ -15,6 +23,12 @@ const readerOf = (blobs: readonly Uint8Array[]) =>
 async function readingAt(bytes: Uint8Array, others: readonly Uint8Array[] = []) {
   const reader = readerOf([bytes, ...others]);
   return readingOf(await inspect(linkOf(bytes), reader), reader, readings);
+}
+
+function bytesOf({ link, blobs }: Signature): Uint8Array {
+  const bytes = blobs.find((blob) => linkOf(blob) === link);
+  if (bytes === undefined) throw new Error(`the blobs of ${link} do not hold it`);
+  return bytes;
 }
 
 const body = markdownBodyOf("## Identity\n");
@@ -69,11 +83,11 @@ describe("the reading of what a link reads as", () => {
       const agent = SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(2));
       const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
       const signature = await signatures.actor(agent, signedIdentity).sign(body);
-      expect(await readingAt(signature.bytes, signedIdentity.blobs)).toMatchObject({
+      expect(await readingAt(bytesOf(signature), signedIdentity.blobs)).toMatchObject({
         kind: "read",
         as: signatureReading,
         value: {
-          link: linkOf(signature.bytes),
+          link: signature.link,
           signedIdentity: { identity: { identifier: keys.encode(root.key).link } },
           key: { link: keys.encode(agent.key).link },
           object: body.link,
@@ -84,22 +98,26 @@ describe("the reading of what a link reads as", () => {
 
   it("is the signature where the reader gives a crisis that came after the identity version it carries", async () => {
     const crisis = await publish(root, { prior: signedIdentity, isCrisis: true, at: 1763164800000 });
-    expect(await readingAt(signature.bytes, [...signedIdentity.blobs, ...crisis.blobs])).toMatchObject({
+    expect(await readingAt(bytesOf(signature), [...signedIdentity.blobs, ...crisis.blobs])).toMatchObject({
       kind: "read",
       as: signatureReading,
-      value: { link: linkOf(signature.bytes) },
+      value: { link: signature.link },
     });
   });
 
   it("is the link the reader gives no blob for, for a signature whose signed identity it lacks", async () => {
-    const reading = await readingAt(signature.bytes);
+    const reading = await readingAt(bytesOf(signature));
     expect(reading).toMatchObject({ kind: "unread", as: signatureReading, error: { link: signedIdentity.link } });
     expect(reading).toHaveProperty("error", expect.any(AbsentBlob));
   });
 
   it("is that the signature does not verify, for one whose bytes are altered", async () => {
     const bytes = signature.signature.map((byte, index) => (index === 1 ? byte ^ 1 : byte));
-    const altered = encodeObject(signatureSchema, { ...signature.data, signature: bytes });
+    const altered = encodeObject(signatureSchema, {
+      signedIdentity: new LinkValue(signedIdentity.link),
+      object: new LinkValue(signature.object),
+      signature: bytes,
+    });
     expect(await readingAt(altered.bytes, signedIdentity.blobs)).toEqual({
       kind: "unread",
       as: signatureReading,

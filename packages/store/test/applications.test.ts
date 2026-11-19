@@ -83,7 +83,7 @@ describe("a signed note", () => {
     const signature = await sign(note, alice);
     await aliceStore.write({
       roots: [signature.link],
-      blobs: [note.bytes, signature.bytes, ...signature.signedIdentity.blobs, ...schemas],
+      blobs: [note.bytes, ...signature.blobs, ...schemas],
     });
     const file = encodeBundle(signature.link, (await aliceStore.closure(signature.link)).values());
 
@@ -105,7 +105,7 @@ describe("a bundle that leaves out a blob in its objects' closures", () => {
     const bob = newStores();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await sign(note, alice);
-    const file = encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
+    const file = encodeBundle(signature.link, signature.blobs);
     await expect(receive(bob, file)).rejects.toThrow(`${signature.link} links to ${note.link}`);
     expect(await bob.store.get(signature.link)).toBeUndefined();
     expect(await marksOf(bob, receivedSchema)).toEqual([]);
@@ -118,15 +118,7 @@ describe("an object slipped into a bundle", () => {
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const signature = await sign(note, mallory);
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
-    await receive(
-      bob,
-      encodeBundle(signature.link, [
-        signature.bytes,
-        note.bytes,
-        ...signature.signedIdentity.blobs,
-        slippedContact.bytes,
-      ]),
-    );
+    await receive(bob, encodeBundle(signature.link, [...signature.blobs, note.bytes, slippedContact.bytes]));
     expect(await bob.store.get(note.link)).toEqual(note.bytes);
     expect(await bob.store.get(slippedContact.link)).toBeUndefined();
   });
@@ -139,10 +131,7 @@ describe("an object slipped into a bundle", () => {
 
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const signature = await sign(slippedContact, mallory);
-    await receive(
-      bob,
-      encodeBundle(signature.link, [signature.bytes, slippedContact.bytes, ...signature.signedIdentity.blobs]),
-    );
+    await receive(bob, encodeBundle(signature.link, [...signature.blobs, slippedContact.bytes]));
 
     expect((await readObject(bob.store, slippedContact.link, contactSchema)).data.name).toBe(
       "Mallory, a friend of Bob's",
@@ -177,11 +166,10 @@ describe("a signed identity that comes in a bundle", () => {
     await receive(
       bob,
       encodeBundle(signature.link, [
-        signature.bytes,
+        ...signature.blobs,
         carriedObject.bytes,
         ...aliceIdentityVersion.blobs,
         forgedIdentityVersion.bytes,
-        ...signature.signedIdentity.blobs,
       ]),
     );
     expect(await bob.store.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
@@ -200,7 +188,7 @@ describe("a signed identity that comes in a bundle", () => {
     const validate = vi.spyOn(signedIdentitySchema, "validate");
     const identityVersion = await publish(alice, { at: 5 });
     const store = newStore();
-    await store.write({ roots: [identityVersion.link], blobs: [identityVersion.bytes, ...identityVersion.blobs] });
+    await store.write({ roots: [identityVersion.link], blobs: identityVersion.blobs });
 
     validate.mockClear();
     await scan(

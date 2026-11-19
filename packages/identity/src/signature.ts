@@ -13,6 +13,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
+import { blobsOf } from "./blobs.ts";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
@@ -48,12 +49,18 @@ export type SignatureData = DataOf<typeof signatureSchema>;
  *   without the blobs of its signed identity.
  * - It travels apart from other signatures over the same object.
  * - It does not say what the object is, so its link reads as any.
+ * - `link` is that of the signature's own object.
+ * - `blobs` are what it takes to read it again, each blob once: the bytes of
+ *   its object, the closure of its schema, and the `blobs` of its signed
+ *   identity. The object it signs is not among them.
  */
-export interface Signature extends EncodedObject<SignatureData> {
+export interface Signature {
+  readonly link: Link<unknown>;
   readonly signedIdentity: SignedIdentityObject;
   readonly key: KeyObject;
   readonly object: Link<never>;
   readonly signature: Uint8Array;
+  readonly blobs: readonly Uint8Array[];
 }
 
 /** Whether a reader honors a signature, by the identity versions it has seen. */
@@ -100,7 +107,6 @@ export interface Actor {
   readonly signedIdentity: SignedIdentityObject;
   /**
    * Signs the link of an object, and so the object, whatever it is read as.
-   * The signature's `signedIdentity.blobs` go along with it.
    *
    * @throws when the signer's signature does not verify.
    */
@@ -217,6 +223,13 @@ export class Signatures {
     const value = signature.data.signature;
     const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));
     if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
-    return { ...signature, signedIdentity, key, object, signature: value };
+    return {
+      link: signature.link,
+      signedIdentity,
+      key,
+      object,
+      signature: value,
+      blobs: blobsOf(signature, signedIdentity.blobs),
+    };
   }
 }

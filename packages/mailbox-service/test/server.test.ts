@@ -543,6 +543,40 @@ describe("a mailbox service first started on a store that holds identity version
       expect(await people.honors(signature)).toBe(true);
     }
   });
+
+  it("signs as a crisis of its root that its store takes in between its readings of the store, with a Service that another start signed as the crisis", async () => {
+    const first = await publish(serviceSigner, { at: 500 });
+    const crisis = await publish(serviceSigner, { prior: first, isCrisis: true, at: 600 });
+    const elsewhere = memoryStore();
+    await elsewhere.write({ roots: [crisis.link], blobs: crisis.blobs });
+    const signedElsewhere = await bundleOf(await getRoot((await memoryService({ store: elsewhere })).service));
+
+    // A start reads the store once for each of the two views it selects by, and the second is held.
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let listings = 0;
+    class HeldBackend extends MemoryBackend {
+      override async *blobs(start?: number) {
+        if (++listings === 2) await released;
+        yield* super.blobs(start);
+      }
+    }
+    const store = new Store(new HeldBackend());
+    await store.write({ roots: [first.link], blobs: first.blobs });
+    const offeredTerms = { ...terms, quota: terms.quota * 2 };
+    const starting = memoryService({ store, offeredTerms, start: 2_000 });
+    await vi.waitFor(() => expect(listings).toBe(2));
+    await store.write({ roots: [signedElsewhere.link], blobs: [...signedElsewhere.blobs()] });
+    release();
+    const { service } = await starting;
+
+    const root = await rootOf(service);
+    expect(root.mailbox.offer.data.quota).toBe(offeredTerms.quota);
+    for (const { signedIdentity } of [root.signature, root.offerSignature, root.mailbox.offerSignature])
+      expect(signedIdentity.link).toBe(crisis.link);
+  });
 });
 
 describe("a mailbox service started again", () => {
@@ -574,6 +608,44 @@ describe("a mailbox service started again", () => {
     expect(after.data.origin).toBe("https://post.example");
     expect(after.signature.signedIdentity.link).toBe(before.signature.signedIdentity.link);
     expect(sign).toHaveBeenCalledOnce();
+  });
+
+  it("signs again an offer whose signature is by an agent its root has since removed, and keeps the signature over the other", async () => {
+    const store = memoryStore();
+    const agent = signer(ed25519, 21);
+    const listing = await publish(serviceSigner, { agents: [agent.key], at: 500 });
+    const agentActor = signatures.actor(agent, listing, identityVersionInHand);
+    const offer = encodeObject(accountOfferSchema, { identity: new LinkValue(serviceRoot.link) });
+    const offerSignature = await agentActor.sign(offer);
+    const signedByAgent = encodeObject(serviceSchema, {
+      origin: "https://mail.example",
+      at: 600,
+      offers: [new LinkValue(offerSignature.link)],
+    });
+    const signature = await agentActor.sign(signedByAgent);
+    await store.write({
+      roots: [signature.link],
+      blobs: [
+        ...signature.blobs,
+        signedByAgent.bytes,
+        ...serviceSchema.blobs,
+        ...offerSignature.blobs,
+        offer.bytes,
+        ...accountOfferSchema.blobs,
+      ],
+    });
+    const before = await rootOf((await memoryService({ store })).service);
+    expect(before.offerSignature.link).toBe(offerSignature.link);
+
+    const removal = await publish(serviceSigner, { prior: listing, at: 2_000 });
+    await store.write({ roots: [removal.link], blobs: removal.blobs });
+    const after = await rootOf((await memoryService({ store, start: 3_000 })).service);
+    expect(after.acceptId).toBe(before.acceptId);
+    expect(after.offerSignature.key.link).toBe(serviceRoot.link);
+    expect(after.mailbox.offerSignature.link).toBe(before.mailbox.offerSignature.link);
+    const people = await view(store, peopleView({ signedIdentities }));
+    for (const each of [after.signature, after.offerSignature, after.mailbox.offerSignature])
+      expect(await people.honors(each)).toBe(true);
   });
 
   it("once its root signed a crisis, signs as it, and keeps the accounts and the mailboxes it opened", async () => {

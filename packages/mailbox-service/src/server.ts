@@ -408,15 +408,18 @@ export async function loadMailboxService(
   ];
 
   const seenPeople = peopleView(kit);
-  const people = await view(store, seenPeople);
+  // The people are read after the locations. A store only gains blobs, and holds each Service with
+  // the identity versions its signatures carry, so the people have seen those of every Service
+  // that the locations give.
   const locations = await view(store, locationsView(signatures));
+  const people = await view(store, seenPeople);
   const at = clock();
   const signedIdentity =
     (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
-  // A Service and the offers it lists are signed by the identity version that `people` gives, as
-  // `people` also says which signatures of an earlier Service are kept. Were each signature to ask
-  // the store, a crisis that the store takes in between two of them would leave the Service
-  // listing an offer signed before the crisis.
+  // The signatures made at this start are by the identity version that `people` gives, as `people`
+  // also says which signatures of an earlier Service are kept. Were each signature to ask the
+  // store, a crisis that the store takes in between two of them would leave the Service listing an
+  // offer signed before the crisis.
   const actorAtStart = signatures.actor(signer, signedIdentity, async (inHand) => inHand);
   const serviceSignatures = await locations.servicesOf(identifier, people);
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
@@ -491,8 +494,7 @@ async function signatureListedIn(
   for (const { data } of services) {
     for (const { link } of data.offers) {
       const signature = await signatures.read(link, store);
-      await checkHonors(people, signature);
-      if (signature.object === offer) return signature;
+      if (signature.object === offer && (await people.honors(signature))) return signature;
     }
   }
   return undefined;

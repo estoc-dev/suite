@@ -71,9 +71,11 @@ file such as a `biome.json`. Only the links in an object are followed.
   `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
   bytes of a signature handed to `decodeObject` with a schema whose data is
   declared otherwise. A link to a blob of no known kind, such as the object
-  a signature is over, is a `Link<never>`, and reads as any. The type is a
-  label, not a check: bytes read from a file or the network pass as any
-  `Bytes<T>`, and decoding them is what checks them.
+  a signature is over, is a `Link<never>`, and reads as any. What reads the
+  blob of any link, as a reader and a table of implementations do, takes a
+  `Link<unknown>`. The type is a label, not a check: bytes read from a file
+  or the network pass as any `Bytes<T>`, and decoding them is what checks
+  them.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 

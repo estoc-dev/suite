@@ -61,7 +61,7 @@ describe("the view of an object", () => {
       {
         kind: "read",
         as: bodyReading,
-        value: { link: markdownBodyOf("a *word*").link, html: "<p>a <em>word</em></p>\n" },
+        value: { link: markdownBodyOf("a *word*").link, html: "<p>a <em>word</em></p>" },
       },
     );
     expect(textsOf(view, ".reading .band")).toEqual(["Read by this page as the body of a post"]);

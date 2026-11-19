@@ -286,7 +286,7 @@ describe("a signature read from a store", () => {
   it("verifies with the blobs of its signed identity, which the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const signature = await signatures.actor(signer, await publish(signer, { at: 0 })).sign(note);
+    const signature = await signatures.sign(signer, await publish(signer, { at: 0 }), note);
     await store.write({
       roots: [note.link, signature.link],
       blobs: [note.bytes, ...signature.blobs, ...anything.blobs],

@@ -8,6 +8,7 @@ import {
   SoftwareSigner,
 } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
   Intake,
@@ -22,6 +23,7 @@ import {
   Store,
   scan,
   selectedMarks,
+  view,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
@@ -35,6 +37,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
+const seenPeople = peopleView(identity.identityVersions);
 const line = schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 
@@ -94,6 +97,7 @@ async function conversation(rows: Rows<Delivery, DeliveryOrder>, mine: Mailbox, 
 interface Person {
   readonly name: string;
   readonly actor: Actor;
+  readonly signedIdentity: SignedIdentityObject;
   readonly store: Store;
   readonly privateStore: PrivateStore;
   readonly post: Post;
@@ -114,18 +118,19 @@ async function chat(faults: Faults = {}) {
   const clock = () => ++now;
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
-    const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
+    const signedIdentity = await publish(signer, { at: 0 });
     const store = new Store(new MemoryBackend());
+    const actor = signatures.actor(signer, signedIdentity, () => view(store, seenPeople));
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const secretStore = new SecretStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, secretStore, { transports, clock });
     const intake = new Intake(store, privateStore, clock);
     const correspondence = post.correspondenceAs(actor, identity);
-    return { name, actor, store, privateStore, post, intake, correspondence };
+    return { name, actor, signedIdentity, store, privateStore, post, intake, correspondence };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
-  const names = new Map([alice, bob].map(({ name, actor }) => [actor.signedIdentity.identity.identifier, name]));
+  const names = new Map([alice, bob].map(({ name, actor }) => [actor.identifier, name]));
 
   // `owner` opens a mailbox for `peer`, signs a grant of it and hands it over
   // out of band, and the peer keeps it in their store with a mark that it
@@ -133,7 +138,7 @@ async function chat(faults: Faults = {}) {
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
     const inbox = await owner.post.openInbox(queue.mailbox);
-    const grant = await owner.correspondence.grant(peer.actor.signedIdentity, [inbox.mailbox]);
+    const grant = await owner.correspondence.grant(peer.signedIdentity, [inbox.mailbox]);
     await handOver(owner, peer, grant.link);
     return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup(inbox.mailbox) };
   };
@@ -185,18 +190,18 @@ async function chat(faults: Faults = {}) {
 
   return {
     alice: {
-      say: (text: string) => say(alice, bob.actor.signedIdentity, text),
+      say: (text: string) => say(alice, bob.signedIdentity, text),
       collect: () => collect(atAlice),
       show: () => show(alice, atAlice.mailbox, atBob.mailbox),
       marked: (direction: Direction) => marked(alice, direction),
-      resend: (root: Link<unknown>) => alice.correspondence.send(bob.actor.signedIdentity, root),
+      resend: (root: Link<unknown>) => alice.correspondence.send(bob.signedIdentity, root),
       store: alice.store,
       privateStore: alice.privateStore,
       conversation: async (privateStore: PrivateStore) =>
         conversation(await scan(privateStore, deliveries), atAlice.mailbox, atBob.mailbox),
     },
     bob: {
-      say: (text: string) => say(bob, alice.actor.signedIdentity, text),
+      say: (text: string) => say(bob, alice.signedIdentity, text),
       collect: () => collect(atBob),
       show: () => show(bob, atBob.mailbox, atAlice.mailbox),
       marked: (direction: Direction) => marked(bob, direction),

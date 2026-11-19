@@ -81,15 +81,28 @@ describe("a person", () => {
     expect((await person.current()).link).toBe(crisis.link);
   });
 
+  it("is found by their identifier, with as current the latest identity version the reader has seen", async () => {
+    const published = await publish(wallet, { at: 1_000 });
+    const later = await publish(wallet, { prior: published, agents: [key(ed25519, 2)], at: 2_000 });
+    const person = await peopleHavingSeen(later).personIdentifiedBy(published.identity.identifier);
+    expect(person?.identifier).toBe(published.identity.identifier);
+    expect(linksOf((await person?.identityVersions()) ?? [])).toEqual(linksOf([published, later]));
+    expect((await person?.current())?.link).toBe(later.link);
+  });
+
+  it("is not found by their identifier when the reader has seen none of their identity versions", async () => {
+    const published = await publish(wallet, { at: 1_000 });
+    const people = peopleHavingSeen(await publish(signer(ed25519, 9), { at: 2_000 }));
+    expect(await people.personIdentifiedBy(published.identity.identifier)).toBeUndefined();
+  });
+
   it("signed a signature made for any of their identities, and no other", async () => {
     const laptop = signer(ed25519, 2);
     const published = await publish(wallet, { at: 1_000 });
     const identityVersion = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });
     const person = peopleHavingSeen().personOf(published);
-    expect(person.hasSigned(await signatures.actor(wallet, published).sign(hello))).toBe(true);
-    expect(person.hasSigned(await signatures.actor(laptop, identityVersion).sign(hello))).toBe(true);
-    expect(person.hasSigned(await signatures.actor(laptop, await publish(laptop, { at: 1_000 })).sign(hello))).toBe(
-      false,
-    );
+    expect(person.hasSigned(await signatures.sign(wallet, published, hello))).toBe(true);
+    expect(person.hasSigned(await signatures.sign(laptop, identityVersion, hello))).toBe(true);
+    expect(person.hasSigned(await signatures.sign(laptop, await publish(laptop, { at: 1_000 }), hello))).toBe(false);
   });
 });

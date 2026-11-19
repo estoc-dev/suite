@@ -36,7 +36,7 @@ describe("a signature by an agent, checked against the people of a store", () =>
 
   it("is honored when the current identity version the store holds lists the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
+    const byAgent = await signatures.sign(agent, listing, encodeObject(note, { text: "hello" }));
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [listing.link], blobs: [...listing.blobs] });
 
@@ -45,7 +45,7 @@ describe("a signature by an agent, checked against the people of a store", () =>
 
   it("is refused, with its key and the identifier named, when the current identity version the store holds does not list the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
+    const byAgent = await signatures.sign(agent, listing, encodeObject(note, { text: "hello" }));
     const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });
@@ -53,5 +53,34 @@ describe("a signature by an agent, checked against the people of a store", () =>
     await expect(checkHonors(await view(store, peopleView(identityVersions)), byAgent)).rejects.toThrow(
       `the signature by ${byAgent.key.link} is not honored by the identity versions of ${listing.identity.identifier}`,
     );
+  });
+});
+
+describe("an actor that asks the people of a store", () => {
+  const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+  const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
+  const hello = encodeObject(note, { text: "hello" });
+
+  it("signs by an identity version the store takes in after the actor is made", async () => {
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const store = new Store(new MemoryBackend());
+    const seenPeople = peopleView(identityVersions);
+    const actor = signatures.actor(agent, listing, () => view(store, seenPeople));
+    expect((await actor.sign(hello)).signedIdentity.link).toBe(listing.link);
+
+    const later = await publish(root, { prior: listing, agents: [agent.key], at: 2_000 });
+    await store.write({ roots: [later.link], blobs: [...later.blobs] });
+    expect((await actor.sign(hello)).signedIdentity.link).toBe(later.link);
+  });
+
+  it("signs nothing once the store takes in an identity version that does not list its key", async () => {
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const store = new Store(new MemoryBackend());
+    const seenPeople = peopleView(identityVersions);
+    const actor = signatures.actor(agent, listing, () => view(store, seenPeople));
+    const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
+    await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });
+
+    await expect(actor.sign(hello)).rejects.toThrow(`the signer's key does not sign for ${withoutAgent.identity.link}`);
   });
 });

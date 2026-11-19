@@ -41,6 +41,7 @@ const clock = () => ++now;
 
 interface Person {
   readonly actor: Actor;
+  readonly signedIdentity: SignedIdentityObject;
   readonly identifier: Link<unknown>;
   readonly store: Store;
   readonly privateStore: PrivateStore;
@@ -58,8 +59,9 @@ async function person(
   privateBackend = new MemoryBackend(),
 ): Promise<Person> {
   const signer = signerOf(fill);
-  const actor = signatures.actor(signer, await publish(signer, { at: 0 }));
+  const signedIdentity = await publish(signer, { at: 0 });
   const store = new Store(backend);
+  const actor = signatures.actor(signer, signedIdentity, () => view(store, seenPeople));
   const privateStore = new PrivateStore(store, privateBackend);
   const secretStore = new SecretStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
@@ -67,13 +69,18 @@ async function person(
   const queue = network.queue();
   const inbox = await post.openInbox(queue.mailbox);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
-  const identifier = actor.signedIdentity.identity.identifier;
-  return { actor, identifier, store, privateStore, post, intake, inbox, collect };
+  const { identifier } = actor;
+  return { actor, signedIdentity, identifier, store, privateStore, post, intake, inbox, collect };
 }
 
+// The agent signs by `identityVersion` whatever the store holds, as a device its root removed still can.
 const personSigningAs = (someone: Person, agent: Signer, identityVersion: SignedIdentityObject): Person => ({
   ...someone,
-  actor: signatures.actor(agent, identityVersion),
+  actor: {
+    identifier: identityVersion.identity.identifier,
+    sign: (object) => signatures.sign(agent, identityVersion, object),
+  },
+  signedIdentity: identityVersion,
   identifier: identityVersion.identity.identifier,
 });
 
@@ -85,14 +92,10 @@ async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
 }
 
 // The blobs a store that holds the mailboxes of `grant` takes to write it, to `to`, beside those of a signature over it.
-const blobsOf = (grant: EncodedObject, to: Person) => [
-  grant.bytes,
-  ...grants.schema.blobs,
-  ...to.actor.signedIdentity.blobs,
-];
+const blobsOf = (grant: EncodedObject, to: Person) => [grant.bytes, ...grants.schema.blobs, ...to.signedIdentity.blobs];
 
 async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
-  const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
+  const grant = grants.encode(to.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
   await from.store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobsOf(grant, to)] });
   return signature;
@@ -136,7 +139,7 @@ describe("the latest grant of one person to another", () => {
     assert.exists(grant);
     expect(grant.signature.link).toBe(latest.link);
     expect(grant.object.data.mailboxes).toEqual([new LinkValue(second), new LinkValue(third)]);
-    expect(grant.to.link).toBe(bob.actor.signedIdentity.link);
+    expect(grant.to.link).toBe(bob.signedIdentity.link);
   });
 
   it("is, of two at one at, the one whose signature has the greater link", async () => {
@@ -223,7 +226,7 @@ describe("the latest grant of one person to another", () => {
 
     // Mallory has seen Alice's signed identity and a signature of hers, and
     // puts them over a later grant of a mailbox Mallory receives at.
-    const grant = grants.encode(bob.actor.signedIdentity, [mallory.inbox.mailbox], 2_000);
+    const grant = grants.encode(bob.signedIdentity, [mallory.inbox.mailbox], 2_000);
     const forgedSignature = encodeObject(signatures.schema, {
       signedIdentity: new LinkValue(signature.signedIdentity.link),
       object: new LinkValue(grant.link),

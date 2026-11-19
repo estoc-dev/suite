@@ -23,7 +23,7 @@ const { keys, identities, signatures, publish } = loadIdentity(schemes);
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
+  signatures.sign(by, await publish(by, { at: 0 }), object);
 
 /**
  * What an application holds: blobs by link, the objects of the identities
@@ -76,8 +76,9 @@ describe("a login", () => {
   it("signed by a browser key that a later identity version of the user lists logs the user in", async () => {
     const browser = signer(ed25519, 5);
     const prior = (await loginSignature).signedIdentity;
-    const actor = signatures.actor(browser, await publish(user, { prior, agents: [browser.key], at: 1 }));
-    const { link, blobs } = await actor.sign(
+    const { link, blobs } = await signatures.sign(
+      browser,
+      await publish(user, { prior, agents: [browser.key], at: 1 }),
       encodeObject(login, { audience: "https://app.estoc.dev", nonce: "6f1c0a9e" }),
     );
     const identity = await loggedInIdentity("https://app.estoc.dev", "6f1c0a9e", link, blobs);

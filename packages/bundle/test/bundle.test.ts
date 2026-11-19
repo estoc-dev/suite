@@ -32,8 +32,7 @@ const note = schema("Note", { text: string() });
 const links = schema("Links", { links: array(link()) });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const asAlice = signatures.actor(alice, await publish(alice, { at: 0 }));
-const signature = await asAlice.sign(hello);
+const signature = await signatures.sign(alice, await publish(alice, { at: 0 }), hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
   links: [new LinkValue(signature.link), new LinkValue(hello.link), new LinkValue(linkOf(image))],

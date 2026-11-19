@@ -16,6 +16,8 @@ export interface Person {
 
 export interface People extends SeenIdentityVersions {
   personOf(signedIdentity: SignedIdentityObject): Person;
+  /** With no identity version in hand to go by, gives a person only when the reader holds one of theirs. */
+  personIdentifiedBy(identifier: Link<unknown>): Promise<Person | undefined>;
   current(signedIdentity: SignedIdentityObject): Promise<SignedIdentityObject>;
   /** An identity version that `arrivals` give no time for counts as come before any signature. */
   asOfArrival(arrivals: Arrivals): SeenIdentityVersions;

@@ -11,7 +11,7 @@ const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
 const photo = { link: linkOf(Uint8Array.of(0, 10, 255)) };
-const signature = await signatures.actor(agent, signedIdentity).sign(photo);
+const signature = await signatures.sign(agent, signedIdentity, photo);
 
 describe("the view of a signature", () => {
   const view = h("div", null, signatureReading.viewOf(signature));

@@ -21,6 +21,7 @@ import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   actorOf,
+  actorSigningBy,
   bytesOf,
   identities,
   identityVersions,
@@ -82,7 +83,7 @@ async function directAcceptance(offer: { readonly link: Link<unknown> }, by = al
 }
 
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
-  const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
+  const signature = await signatures.sign(device, await publish(wallet, { agents: [device.key] }), offer);
   return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
@@ -91,7 +92,7 @@ async function acceptanceBy(
   identityVersion: SignedIdentityObject,
   offer: { readonly link: Link<unknown> },
 ) {
-  const signature = await signatures.actor(agent, identityVersion).sign(offer);
+  const signature = await signatures.sign(agent, identityVersion, offer);
   return encodeBundle(signature.link, signature.blobs);
 }
 
@@ -488,6 +489,30 @@ describe("a mailbox service", () => {
   });
 });
 
+describe("a mailbox service first started on a store that holds identity versions of its root", () => {
+  it("signs as the current one, so a signature by an agent it lists is still honored", async () => {
+    const store = memoryStore();
+    const agent = signer(ed25519, 21);
+    const listing = await publish(serviceSigner, { agents: [agent.key], at: 500 });
+    await store.write({ roots: [listing.link], blobs: listing.blobs });
+    const { service } = await memoryService({ store });
+    const { signature, offer } = await rootOf(service);
+    expect(signature.signedIdentity.link).toBe(listing.link);
+    const people = await view(store, peopleView(identityVersions));
+    expect(await people.honors(await signatures.sign(agent, listing, offer))).toBe(true);
+  });
+
+  it("signs as the crisis among them, and answers with the Service it signed", async () => {
+    const store = memoryStore();
+    const first = await publish(serviceSigner, { at: 500 });
+    const crisis = await publish(serviceSigner, { prior: first, isCrisis: true, at: 600 });
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
+    const { service } = await memoryService({ store });
+    expect((await getRoot(service)).status).toBe(200);
+    expect((await rootOf(service)).signature.signedIdentity.link).toBe(crisis.link);
+  });
+});
+
 describe("a mailbox service started again", () => {
   it("answers with the same Service when its origin and its offer are as they were", async () => {
     const { service, store } = await memoryService();
@@ -810,7 +835,7 @@ describe("a mailbox service's offer of mailboxes", () => {
   it("opens a mailbox for an agent that an identity of the root lists, under the account its wallet opened", async () => {
     const { service } = await memoryService();
     await openAccount(service, await actorOf(wallet));
-    const agent = signatures.actor(device, await publish(wallet, { agents: [device.key] }));
+    const agent = actorSigningBy(device, await publish(wallet, { agents: [device.key] }));
     const { file } = await mailboxRequest(agent, (await rootOf(service)).mailbox.offer);
     expect((await postMailboxRequest(service, file)).status).toBe(201);
   });
@@ -901,12 +926,12 @@ describe("a mailbox service's offer of mailboxes", () => {
   it("answers 400 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
-    const removedAgent = signatures.actor(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
+    const removedAgent = actorSigningBy(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
     await openAccount(service, removedAgent);
     expect(
       await acceptAccount(
         service,
-        signatures.actor(
+        actorSigningBy(
           phone,
           await publish(wallet, { prior: removedAgent.signedIdentity, agents: [phone.key], at: 2_000 }),
         ),
@@ -1095,7 +1120,7 @@ describe("a mailbox that a service opened", () => {
 
   it("answers a pickup by an agent that an identity version of the root lists which it has not seen, by the identity version that the request carries", async () => {
     const { service, actor, mailbox } = await serviceWithMailbox();
-    const listedAgent = signatures.actor(
+    const listedAgent = actorSigningBy(
       phone,
       await publish(alice, { prior: actor.signedIdentity, agents: [phone.key], at: 2_000 }),
     );
@@ -1116,10 +1141,10 @@ describe("a mailbox that a service opened", () => {
 
   it("answers 403 to a pickup by an agent that a later identity version of the root, which it has seen, takes out", async () => {
     const { service } = await memoryService();
-    const removedAgent = signatures.actor(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
+    const removedAgent = actorSigningBy(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
     await openAccount(service, removedAgent);
     const mailbox = await openMailbox(service, removedAgent);
-    const listedAgent = signatures.actor(
+    const listedAgent = actorSigningBy(
       phone,
       await publish(wallet, { prior: removedAgent.signedIdentity, agents: [phone.key], at: 2_000 }),
     );

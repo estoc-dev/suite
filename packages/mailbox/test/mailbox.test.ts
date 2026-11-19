@@ -13,7 +13,7 @@ const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
-const signature = await signatures.actor(alice, await publish(alice, { at: 0 })).sign(hello);
+const signature = await signatures.sign(alice, await publish(alice, { at: 0 }), hello);
 
 describe("a mailbox", () => {
   it("carries a bundle to the queue it names, sealed so that its key opens it", async () => {

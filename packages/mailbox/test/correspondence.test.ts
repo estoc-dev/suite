@@ -1,8 +1,16 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, loadIdentity, type SignedIdentityObject, SoftwareSigner } from "@estoc/identity";
+import {
+  type Actor,
+  ed25519,
+  loadIdentity,
+  type SignedIdentityObject,
+  type Signer,
+  SoftwareSigner,
+} from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Correspondence,
@@ -57,19 +65,28 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 // Those given the same backends are one person's devices as one: they share the blobs and the marks.
 const newBackends = () => ({ store: new MemoryBackend(), privateStore: new MemoryBackend() });
 
-async function personActingAs(actor: Actor, backends = newBackends()): Promise<Person> {
+const seenPeople = peopleView(identity.identityVersions);
+
+/** Unless `actorOver` gives another, the person's actor asks their own store which identity version is current. */
+async function personActingAs(
+  signer: Signer,
+  signedIdentity: SignedIdentityObject,
+  backends = newBackends(),
+  actorOver = (store: Store) => signatures.actor(signer, signedIdentity, () => view(store, seenPeople)),
+): Promise<Person> {
   const store = new Store(backends.store);
   const privateStore = new PrivateStore(store, backends.privateStore);
   const secretStore = new SecretStore(store, new MemoryBackend());
   const post = new Post(store, privateStore, secretStore, { transports: [transport], clock });
   const intake = new Intake(store, privateStore, clock);
+  const actor = actorOver(store);
   const correspondence = post.correspondenceAs(actor, identity);
-  return { actor, signedIdentity: actor.signedIdentity, store, privateStore, post, intake, correspondence };
+  return { actor, signedIdentity, store, privateStore, post, intake, correspondence };
 }
 
 async function person(fill: number): Promise<Person> {
   const signer = signerOf(fill);
-  return personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })));
+  return personActingAs(signer, await publish(signer, { at: 0 }));
 }
 
 interface OpenedInbox {
@@ -218,10 +235,7 @@ describe("sending to someone", () => {
   });
 
   it("goes by a grant that came in before the identity version in which their root removed the key that signed it", async () => {
-    const [alice, bob] = await Promise.all([
-      person(1),
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
-    ]);
+    const [alice, bob] = await Promise.all([person(1), personActingAs(formerAgent, listingIdentityVersion)]);
     const { inbox, pickup } = await grantInbox(bob, alice);
     await seeIdentityVersion(alice, removalIdentityVersion);
 
@@ -231,10 +245,7 @@ describe("sending to someone", () => {
   });
 
   it("is turned back as gone when their only grant came in after the identity version in which their root removed the key that signed it", async () => {
-    const [alice, bob] = await Promise.all([
-      person(1),
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
-    ]);
+    const [alice, bob] = await Promise.all([person(1), personActingAs(formerAgent, listingIdentityVersion)]);
     await seeIdentityVersion(alice, removalIdentityVersion);
     await grantInbox(bob, alice);
 
@@ -360,10 +371,7 @@ describe("what came in at a mailbox", () => {
 
   describe("signed by a key that its signer's root removes", () => {
     const formerAlice = async () => {
-      const [alice, bob] = await Promise.all([
-        personActingAs(signatures.actor(formerAgent, listingIdentityVersion)),
-        person(2),
-      ]);
+      const [alice, bob] = await Promise.all([personActingAs(formerAgent, listingIdentityVersion), person(2)]);
       const { inbox, pickup } = await grantInbox(bob, alice);
       const receive = async () => {
         const signature = await writeNote(alice, "hi Bob");
@@ -416,8 +424,8 @@ describe("what came in at a mailbox", () => {
   it("is still a message once the receiver's root has removed the key that signed its grant, as the grant was recorded before the removal was", async () => {
     const backends = newBackends();
     const [formerBob, currentBob, alice] = await Promise.all([
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), backends),
-      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), backends),
+      personActingAs(formerAgent, listingIdentityVersion, backends),
+      personActingAs(currentAgent, removalIdentityVersion, backends),
       person(1),
     ]);
     const { inbox, pickup } = await grantInbox(formerBob, alice);
@@ -428,15 +436,19 @@ describe("what came in at a mailbox", () => {
 
     await recordIdentityVersion(currentBob, removalIdentityVersion);
     expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
-    const again = await personActingAs(currentBob.actor, backends);
+    const again = await personActingAs(currentAgent, removalIdentityVersion, backends);
     expect((await again.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 
   it("is no message by a grant recorded after the removal of the key that signed it was, until a listed key signs one", async () => {
     const backends = newBackends();
     const [formerBob, currentBob, alice] = await Promise.all([
-      personActingAs(signatures.actor(formerAgent, listingIdentityVersion), backends),
-      personActingAs(signatures.actor(currentAgent, removalIdentityVersion), backends),
+      // A device that takes in no identity version signs by the one it has, whatever the store it shares holds.
+      personActingAs(formerAgent, listingIdentityVersion, backends, () => ({
+        identifier: listingIdentityVersion.identity.identifier,
+        sign: (object) => signatures.sign(formerAgent, listingIdentityVersion, object),
+      })),
+      personActingAs(currentAgent, removalIdentityVersion, backends),
       person(1),
     ]);
     await recordIdentityVersion(currentBob, removalIdentityVersion);
@@ -469,7 +481,7 @@ describe("what came in at a mailbox", () => {
     const signer = signerOf(2);
     const [alice, bob] = await Promise.all([
       person(1),
-      personActingAs(signatures.actor(signer, await publish(signer, { at: 0 })), {
+      personActingAs(signer, await publish(signer, { at: 0 }), {
         store: backend,
         privateStore: new MemoryBackend(),
       }),

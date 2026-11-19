@@ -32,7 +32,7 @@ const { identities, signatures, signedIdentities, identityVersions, publish } = 
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
+  signatures.sign(by, await publish(by, { at: 0 }), object);
 
 const noteSchema = schema("Note", { text: string() });
 const receivedSchema = schema("Received", { bundle: link<never>() });

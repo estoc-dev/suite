@@ -119,7 +119,7 @@ export class AccountOffer {
       this.#posting,
     );
     return {
-      signedIdentity: actor.signedIdentity,
+      signedIdentity: acceptance.signedIdentity,
       service: signature.signedIdentity,
       at: data.at,
       link: signature.link,

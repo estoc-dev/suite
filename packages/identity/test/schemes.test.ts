@@ -118,9 +118,11 @@ describe("a scheme given as a Scheme alone", () => {
   it("signs for an identity, with signatures of its own length", async () => {
     const { signatures, publish } = loadIdentity([ed25519, p256Der]);
     const note = schema("Note", { text: string() });
-    const signature = await signatures
-      .actor(p256Signer, await publish(p256Signer))
-      .sign(encodeObject(note, { text: "hello" }));
+    const signature = await signatures.sign(
+      p256Signer,
+      await publish(p256Signer),
+      encodeObject(note, { text: "hello" }),
+    );
     const read = await signatures.read(signature.link, byLink(signature.blobs));
     expect(isSameKey(read.key, p256Signer.key)).toBe(true);
     expect(read.signature.length).not.toBe(64);

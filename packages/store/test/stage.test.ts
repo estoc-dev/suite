@@ -185,7 +185,7 @@ describe("a view of a staged batch", () => {
     const store = newStore();
     const hello = object({ text: "hello" });
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(hello);
+    const byAgent = await signatures.sign(agent, listing, hello);
     const stagedStore = await store.stage({
       roots: [byAgent.link],
       blobs: [...byAgent.blobs, hello.bytes, ...anything.blobs],
@@ -194,7 +194,7 @@ describe("a view of a staged batch", () => {
     expect(await before.honors(byAgent)).toBe(true);
 
     const agentsOut = object({ text: "agents out" });
-    const byRoot = await signatures.actor(root, await publish(root, { prior: listing, at: 2_000 })).sign(agentsOut);
+    const byRoot = await signatures.sign(root, await publish(root, { prior: listing, at: 2_000 }), agentsOut);
     await store.write({
       roots: [byRoot.link],
       blobs: [...byRoot.blobs, agentsOut.bytes, ...anything.blobs],

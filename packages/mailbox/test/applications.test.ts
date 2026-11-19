@@ -20,8 +20,9 @@ import {
   type Schema,
   type ValueMap,
 } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { link, optional, schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
+import { Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Delivery, type Mailbox, MailboxKey, mailboxFrom, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
@@ -34,11 +35,12 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
+const seenPeople = peopleView(identity.identityVersions);
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
-  const signature = await signatures.actor(by, await publish(by, { at: 0 })).sign(object);
+  const signature = await signatures.sign(by, await publish(by, { at: 0 }), object);
   await mailbox.send(signature.link, [...signature.blobs, object.bytes]);
   return signature;
 };
@@ -242,8 +244,9 @@ describe("two people who meet", () => {
     const clock = () => ++now;
     const person = async (fill: number) => {
       const by = signer(ed25519, fill);
-      const actor = signatures.actor(by, await publish(by, { at: 0 }));
+      const signedIdentity = await publish(by, { at: 0 });
       const store = new Store(new MemoryBackend());
+      const actor = signatures.actor(by, signedIdentity, () => view(store, seenPeople));
       const privateStore = new PrivateStore(store, new MemoryBackend());
       const secretStore = new SecretStore(store, new MemoryBackend());
       const options = { transports: [network.transport], clock };
@@ -276,7 +279,6 @@ describe("two people who meet", () => {
         }
         return shownLines;
       };
-      const { signedIdentity } = actor;
       const { identifier } = signedIdentity.identity;
       return { identifier, signedIdentity, store, intake, correspondence, openInbox, say, read };
     };

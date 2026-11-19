@@ -36,7 +36,7 @@ export class Correspondence {
     this.#privateStore = privateStore;
     this.#post = post;
     this.#actor = actor;
-    this.#identifier = actor.signedIdentity.identity.identifier;
+    this.#identifier = actor.identifier;
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;

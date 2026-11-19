@@ -30,7 +30,7 @@ import type { Signer } from "./signer.ts";
  * who read signatures by it do not change for a scheme added later.
  */
 export const signatureSchema = schema("Signature", {
-  signedIdentity: link<SignedIdentityObject>(),
+  signedIdentity: link(),
   object: link<never>(),
   signature: bytes(),
 });
@@ -50,7 +50,6 @@ export type SignatureData = DataOf<typeof signatureSchema>;
  * - It does not say what the object is, so its link reads as any.
  */
 export interface Signature extends EncodedObject<SignatureData> {
-  readonly link: Link<Signature>;
   readonly signedIdentity: SignedIdentityObject;
   readonly key: KeyObject;
   readonly object: Link<never>;
@@ -162,7 +161,7 @@ export class Signatures {
   }
 
   /** Reads the signature that `link` names from `reader`, and verifies it by `seenIdentityVersions`. */
-  async read(link: Link<Signature>, reader: Reader, seenIdentityVersions: SeenIdentityVersions): Promise<Signature> {
+  async read(link: Link<unknown>, reader: Reader, seenIdentityVersions: SeenIdentityVersions): Promise<Signature> {
     return this.verify(await readObject(reader, link, this.schema), reader, seenIdentityVersions);
   }
 
@@ -218,6 +217,6 @@ export class Signatures {
     const value = signature.data.signature;
     const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));
     if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
-    return { ...signature, link: signature.link as Link<Signature>, signedIdentity, key, object, signature: value };
+    return { ...signature, signedIdentity, key, object, signature: value };
   }
 }

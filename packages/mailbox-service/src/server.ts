@@ -1,6 +1,5 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
-  type Identifier,
   type IdentityKit,
   loadIdentity,
   noIdentityVersions,
@@ -67,21 +66,21 @@ export interface Accounts {
    * Keeps `acknowledgement` as the account of `identifier` unless it has one,
    * in one step. Resolves to whether it was kept.
    */
-  add(identifier: Identifier, acknowledgement: Link<Signature>): Promise<boolean>;
-  has(identifier: Identifier): Promise<boolean>;
+  add(identifier: Link<unknown>, acknowledgement: Link<unknown>): Promise<boolean>;
+  has(identifier: Link<unknown>): Promise<boolean>;
 }
 
 /** Keeps accounts in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryAccounts implements Accounts {
-  readonly #accounts = new Map<Identifier, Link<Signature>>();
+  readonly #accounts = new Map<Link<unknown>, Link<unknown>>();
 
-  async add(identifier: Identifier, acknowledgement: Link<Signature>): Promise<boolean> {
+  async add(identifier: Link<unknown>, acknowledgement: Link<unknown>): Promise<boolean> {
     if (this.#accounts.has(identifier)) return false;
     this.#accounts.set(identifier, acknowledgement);
     return true;
   }
 
-  async has(identifier: Identifier): Promise<boolean> {
+  async has(identifier: Link<unknown>): Promise<boolean> {
     return this.#accounts.has(identifier);
   }
 }
@@ -134,7 +133,7 @@ export interface ServiceOptions {
 class MailboxService {
   readonly #signer: Signer;
   readonly #signedIdentity: SignedIdentityObject;
-  readonly #identifier: Identifier;
+  readonly #identifier: Link<unknown>;
   readonly #locations: LocationsView;
   readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
@@ -149,7 +148,7 @@ class MailboxService {
   constructor(
     signer: Signer,
     signedIdentity: SignedIdentityObject,
-    identifier: Identifier,
+    identifier: Link<unknown>,
     kit: IdentityKit,
     people: PeopleView,
     {
@@ -203,7 +202,7 @@ class MailboxService {
     return answer(404);
   }
 
-  async #serviceListsOffer(link: Link<Signature>, id: string, people: People): Promise<boolean> {
+  async #serviceListsOffer(link: Link<unknown>, id: string, people: People): Promise<boolean> {
     const { object } = await this.#signatures.read(link, this.#store, people);
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
     // The store's own signatures say which offer each is over, and are read
@@ -365,7 +364,7 @@ class MailboxService {
    *   current identity version, and writes that signature to the store and a
    *   record of it to the private store.
    */
-  async #renew(link: Link<Signature>, people: People): Promise<Link<Signature>> {
+  async #renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.honors(signature)) return link;
     const recordedSignatures = await view(this.#privateStore, this.#recordedSignatures);
@@ -456,7 +455,7 @@ class MailboxService {
    *
    * @throws when the store does not hold `link` or a blob of its closure.
    */
-  async #answerWith(link: Link<Signature>, status: number): Promise<Response> {
+  async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
     const closure = await this.#store.closure(link);
     const bytes = closure.get(link);
     if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
@@ -533,7 +532,7 @@ export async function loadMailboxService(
   const { store, privateStore } = options;
   const kit = loadIdentity(schemes);
   const { keys, signatures, publish } = kit;
-  const identifier: Identifier = keys.encode(signer.key).link;
+  const identifier: Link<unknown> = keys.encode(signer.key).link;
   const identity = new LinkValue(identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
@@ -598,12 +597,12 @@ async function writeSigned(
   await privateStore.write(recordsOf([signature], at));
 }
 
-const recordedSignatureSchema = schema("Recorded signature", { object: link(), signature: link<Signature>() });
+const recordedSignatureSchema = schema("Recorded signature", { object: link(), signature: link() });
 
 type RecordedSignaturesView = View<
   DataOf<typeof recordedSignatureSchema>,
   readonly ["object", "signature"],
-  { signaturesOver(object: Link<unknown>): Promise<Link<Signature>[]> }
+  { signaturesOver(object: Link<unknown>): Promise<Link<unknown>[]> }
 >;
 
 /**
@@ -615,11 +614,11 @@ type RecordedSignaturesView = View<
 function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
   return {
     index: indexOver(selectedRecords(objectsOf(signatures.schema)), recordedSignatureSchema, ({ link, data }) => [
-      { object: new LinkValue(data.object.link), signature: new LinkValue(link as Link<Signature>) },
+      { object: new LinkValue(data.object.link), signature: new LinkValue(link) },
     ]).orderedBy("object", "signature"),
     read: (rows) => ({
       async signaturesOver(object) {
-        const links: Link<Signature>[] = [];
+        const links: Link<unknown>[] = [];
         for await (const { data } of rows.range([new LinkValue(object)])) links.push(data.signature.link);
         return links;
       },

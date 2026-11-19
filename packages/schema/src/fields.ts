@@ -12,7 +12,7 @@ export type ItemOf<T> = Item & Read<T>;
 /** An optional field of the type `ItemOf<T>`. */
 export type OptionalOf<T> = Field & { readonly optional: true } & Read<T>;
 
-/** A link. `T` is what the blob it names is read as, which the schema does not say. */
+/** A link. `T` is what the blob it names decodes to, which the schema does not say. */
 export const link = <T = unknown>(): ItemOf<LinkValue<T>> => ({ type: "link" });
 export const bytes = (): ItemOf<Uint8Array> => ({ type: "bytes" });
 /** An integer of at most 2^53 - 1 either way, which a number holds whole. */

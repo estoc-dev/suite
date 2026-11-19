@@ -1,4 +1,3 @@
-import type { KeyObject, Signature } from "@estoc/identity";
 import { type EncodedObject, type Link, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { array, bytes, type DataOf, integer, link, schema, string } from "@estoc/schema";
 
@@ -21,7 +20,7 @@ export const ID = /^sha256:[0-9a-f]{64}$/;
 export const serviceSchema = schema("Service", {
   origin: string(),
   at: integer(),
-  offers: array(link<Signature>()),
+  offers: array(link()),
 });
 
 export type ServiceData = DataOf<typeof serviceSchema>;
@@ -50,7 +49,7 @@ export type OriginData = DataOf<typeof originSchema>;
  * a link of its own, and a signature over it accepts that service's
  * offer alone.
  */
-export const accountOfferSchema = schema("Account offer", { identity: link<KeyObject>() });
+export const accountOfferSchema = schema("Account offer", { identity: link() });
 
 export type AccountOfferData = DataOf<typeof accountOfferSchema>;
 
@@ -61,7 +60,7 @@ export type AccountOfferData = DataOf<typeof accountOfferSchema>;
  * by the service's clock.
  */
 export const acknowledgementSchema = schema("Acknowledgement", {
-  acceptance: link<Signature>(),
+  acceptance: link(),
   at: integer(),
 });
 
@@ -85,7 +84,7 @@ export const MAILBOX_ID = /^[0-9a-f]{32}$/;
  *   does, so a request for it asks this service alone.
  */
 export const mailboxOfferSchema = schema("Mailbox offer", {
-  identity: link<KeyObject>(),
+  identity: link(),
   retention: integer(),
   quota: integer(),
   size: integer(),
@@ -116,7 +115,7 @@ export type MailboxRequestData = DataOf<typeof mailboxRequestSchema>;
  * id that the account picks up at.
  */
 export const mailboxAcknowledgementSchema = schema("Mailbox acknowledgement", {
-  request: link<Signature>(),
+  request: link(),
   at: integer(),
   sendId: bytes(),
   pickupId: bytes(),
@@ -132,7 +131,7 @@ export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSch
  */
 export const openedMailboxSchema = schema("Opened mailbox", {
   mailbox: link<EncodedObject>(),
-  acknowledgement: link<Signature>(),
+  acknowledgement: link(),
 });
 
 export type OpenedMailboxData = DataOf<typeof openedMailboxSchema>;
@@ -148,7 +147,7 @@ export type OpenedMailboxData = DataOf<typeof openedMailboxSchema>;
  * root cuts the signature.
  */
 export const pickupRequestSchema = schema("Pickup request", {
-  mailbox: link<Signature>(),
+  mailbox: link(),
   receipts: array(link<Uint8Array>()),
 });
 

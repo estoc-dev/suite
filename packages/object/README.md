@@ -68,14 +68,15 @@ A blob that is not an object is bytes: an image, a ciphertext, or a JSON
 file such as a `biome.json`. Only the links in an object are followed.
 
 - In TypeScript a link is a `Link<T>` and the bytes of a blob are a
-  `Bytes<T>`, `T` being what the blob is read as, so the compiler refuses the
+  `Bytes<T>`, `T` being what the blob decodes to, so the compiler refuses the
   bytes of a signature handed to `decodeObject` with a schema whose data is
   declared otherwise. A link to a blob of no known kind, such as the object
   a signature is over, is a `Link<never>`, and reads as any. What reads the
   blob of any link, as a reader and a table of implementations do, takes a
-  `Link<unknown>`. The type is a label, not a check: bytes read from a file
-  or the network pass as any `Bytes<T>`, and decoding them is what checks
-  them.
+  `Link<unknown>`. `T` does not say what an implementation reads the blob
+  as, which the implementation says when it reads it. The type is a label,
+  not a check: bytes read from a file or the network pass as any `Bytes<T>`,
+  and decoding them is what checks them.
 - Encoding goes through the same checks as decoding, so what is encoded here
   decodes again with the same validator.
 

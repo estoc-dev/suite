@@ -3,7 +3,6 @@ import {
   ed25519,
   loadIdentity,
   noIdentityVersions,
-  type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
   signedIdentitySchema,
@@ -45,7 +44,7 @@ const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
 const noteSchema = schema("Note", { text: string() });
 const receivedSchema = schema("Received", { bundle: link<never>() });
 const contactSchema = schema("Contact", { name: string() });
-const carriedSchema = schema("Carried", { identityVersions: array(link<SignedIdentityObject>()) });
+const carriedSchema = schema("Carried", { identityVersions: array(link()) });
 
 // Both people run one application, which gives its schemas with each write;
 // the store keeps those that what is written names.
@@ -160,10 +159,7 @@ describe("a signed identity that comes in a bundle", () => {
       signature: new Uint8Array(64),
     });
     const carriedObject = encodeObject(carriedSchema, {
-      identityVersions: [
-        new LinkValue(aliceIdentityVersion.link),
-        new LinkValue(forgedIdentityVersion.link as Link<SignedIdentityObject>),
-      ],
+      identityVersions: [new LinkValue(aliceIdentityVersion.link), new LinkValue(forgedIdentityVersion.link)],
     });
     const signature = await sign(carriedObject, mallory);
     const bob = newStores();

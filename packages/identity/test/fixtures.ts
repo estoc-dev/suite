@@ -39,7 +39,7 @@ export function rowsOf(
   identityVersions: IdentityVersions,
   ...signedIdentities: readonly SignedIdentityObject[]
 ): IdentityVersionRows {
-  const signedIdentitiesByLink = new Map<Link<SignedIdentityObject>, SignedIdentityObject>();
+  const signedIdentitiesByLink = new Map<Link<unknown>, SignedIdentityObject>();
   for (const signedIdentity of signedIdentities) {
     for (let each: SignedIdentityObject | undefined = signedIdentity; each !== undefined; each = each.identity.prior) {
       signedIdentitiesByLink.set(each.link, each);

@@ -1,4 +1,3 @@
-import type { SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject } from "@estoc/object";
 import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@estoc/schema";
 
@@ -55,7 +54,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  * - `at` is when, in milliseconds since the Unix epoch, by the signer's clock.
  */
 export const mailboxGrantSchema = schema("Mailbox Grant", {
-  to: link<SignedIdentityObject>(),
+  to: link(),
   mailboxes: array(link<EncodedObject>()),
   at: integer(),
 });

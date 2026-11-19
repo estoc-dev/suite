@@ -299,7 +299,6 @@ describe("a signature read from a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     await store.write(batchOf([note], anything.blobs));
-    // @ts-expect-error: refused at compile time too
     await expect(signatures.read(note.link, store, noIdentityVersions)).rejects.toThrow(/is written to/);
   });
 

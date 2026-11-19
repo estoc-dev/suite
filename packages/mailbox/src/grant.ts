@@ -1,7 +1,5 @@
 import {
-  type Identifier,
   type IdentityKit,
-  type KeyObject,
   noIdentityVersions,
   type SeenIdentityVersions,
   type Signature,
@@ -22,10 +20,10 @@ import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
  *   identity versions are.
  */
 export const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
-  from: link<KeyObject>(),
-  to: link<KeyObject>(),
+  from: link(),
+  to: link(),
   at: integer(),
-  signature: link<Signature>(),
+  signature: link(),
 });
 
 export type MailboxGrantRow = DataOf<typeof mailboxGrantRowSchema>;
@@ -45,11 +43,15 @@ export interface GrantSeries {
    * The grants that `from` signed to `to`, by their identifiers, that
    * `seenIdentityVersions` honor, in the order of the series.
    */
-  grantsFrom(from: Identifier, to: Identifier, seenIdentityVersions: SeenIdentityVersions): AsyncIterable<MailboxGrant>;
+  grantsFrom(
+    from: Link<unknown>,
+    to: Link<unknown>,
+    seenIdentityVersions: SeenIdentityVersions,
+  ): AsyncIterable<MailboxGrant>;
   /** The last of `grantsFrom`, which is the latest grant, or `undefined` when there is none. */
   grantFrom(
-    from: Identifier,
-    to: Identifier,
+    from: Link<unknown>,
+    to: Link<unknown>,
     seenIdentityVersions: SeenIdentityVersions,
   ): Promise<MailboxGrant | undefined>;
 }
@@ -117,8 +119,8 @@ export class MailboxGrants {
     const { signatures } = this.#identity;
     const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (
-      from: Identifier,
-      to: Identifier,
+      from: Link<unknown>,
+      to: Link<unknown>,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
       for await (const { data } of rows.range([new LinkValue(from), new LinkValue(to)])) {

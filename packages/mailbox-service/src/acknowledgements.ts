@@ -1,4 +1,4 @@
-import type { Signature, Signatures } from "@estoc/identity";
+import type { Signatures } from "@estoc/identity";
 import { type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, selectedMarks, selectedRecords, type View } from "@estoc/store";
@@ -9,8 +9,8 @@ import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
  * it acknowledges, and the signature over it.
  */
 const acknowledgementRowSchema = schema("Acknowledgement row", {
-  acceptance: link<Signature>(),
-  acknowledgement: link<Signature>(),
+  acceptance: link(),
+  acknowledgement: link(),
 });
 
 type AcknowledgementOrder = readonly ["acceptance", "acknowledgement"];
@@ -27,7 +27,7 @@ export interface Acknowledgements {
    * once can each sign one, and every service sharing the store goes by the
    * least, so they answer alike.
    */
-  acknowledgementOf(acceptance: Link<Signature>): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(acceptance: Link<unknown>): Promise<Link<unknown> | undefined>;
 }
 
 export type AcknowledgementsView = View<
@@ -60,7 +60,7 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
  */
 const openedMailboxRowSchema = schema("Opened mailbox row", {
   mailbox: link<EncodedObject>(),
-  acknowledgement: link<Signature>(),
+  acknowledgement: link(),
 });
 
 type OpenedMailboxOrder = readonly ["mailbox", "acknowledgement"];
@@ -79,7 +79,7 @@ export interface OpenedMailboxes {
    * The link of the service's signature over the acknowledgement of
    * `mailbox`, or `undefined` when the private store lists no mark of opening it.
    */
-  acknowledgementOf(mailbox: Link<EncodedObject>): Promise<Link<Signature> | undefined>;
+  acknowledgementOf(mailbox: Link<EncodedObject>): Promise<Link<unknown> | undefined>;
 }
 
 export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, OpenedMailboxOrder, OpenedMailboxes>;

@@ -16,7 +16,7 @@ import type { Signer } from "./signer.ts";
 
 /** The schema every signed identity is written to, whatever the scheme of its root. */
 export const signedIdentitySchema = schema("Signed Identity", {
-  identity: link<IdentityObject>(),
+  identity: link(),
   signature: bytes(),
 });
 
@@ -35,7 +35,6 @@ export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
  *   its object, the closure of its schema, and the identity's `blobs`.
  */
 export interface SignedIdentityObject extends EncodedObject<SignedIdentityData> {
-  readonly link: Link<SignedIdentityObject>;
   readonly identity: IdentityObject;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];
@@ -80,7 +79,7 @@ export class SignedIdentities {
   }
 
   /** Reads the signed identity that `link` names from `reader`, and verifies it. */
-  async read(link: Link<SignedIdentityObject>, reader: Reader): Promise<SignedIdentityObject> {
+  async read(link: Link<unknown>, reader: Reader): Promise<SignedIdentityObject> {
     return this.verify(await readObject(reader, link, this.schema), reader);
   }
 
@@ -103,7 +102,6 @@ function signedIdentityOf(object: EncodedObject<SignedIdentityData>, identity: I
   }
   return {
     ...object,
-    link: object.link as Link<SignedIdentityObject>,
     identity,
     signature,
     blobs: blobsOf([object], identity.blobs),

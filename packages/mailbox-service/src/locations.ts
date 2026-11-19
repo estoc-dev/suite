@@ -1,11 +1,4 @@
-import {
-  type Identifier,
-  type KeyObject,
-  noIdentityVersions,
-  type SeenIdentityVersions,
-  type Signature,
-  type Signatures,
-} from "@estoc/identity";
+import { noIdentityVersions, type SeenIdentityVersions, type Signatures } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
@@ -16,9 +9,9 @@ import { serviceSchema } from "./schemas.ts";
  * identity that signed it, its `at`, and the signature.
  */
 const locationSchema = schema("Location", {
-  identifier: link<KeyObject>(),
+  identifier: link(),
   at: integer(),
-  service: link<Signature>(),
+  service: link(),
 });
 
 /**
@@ -40,7 +33,7 @@ export interface Locations {
    * `seenIdentityVersions` honor, from the latest back. One by a key that a
    * later identity version takes out is not honored, whatever its `at`.
    */
-  servicesOf(identifier: Identifier, seenIdentityVersions: SeenIdentityVersions): Promise<Link<Signature>[]>;
+  servicesOf(identifier: Link<unknown>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<unknown>[]>;
 }
 
 export type LocationsView = View<DataOf<typeof locationSchema>, LocationOrder, Locations>;
@@ -60,7 +53,7 @@ export function locationsView(signatures: Signatures): LocationsView {
     ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
-        const links: Link<Signature>[] = [];
+        const links: Link<unknown>[] = [];
         for await (const { data } of rows.range([new LinkValue(identifier)])) {
           const signature = await signatures.read(data.service.link, reader, noIdentityVersions);
           if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.link);

@@ -533,7 +533,7 @@ for it to read. Here the notes each person has signed, by their identifier:
 const signedNoteSchema = schema("Signed note", {
   signer: link(),
   note: link(),
-  signature: link<Signature>(),
+  signature: link(),
 });
 const signedNotes = indexOver(
   selectedRecords(signatures.selectionOver(noteSchema)),

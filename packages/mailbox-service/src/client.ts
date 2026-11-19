@@ -88,7 +88,7 @@ export interface Account {
   /** When the service received the acceptance, in milliseconds since the Unix epoch by the service's clock. */
   readonly at: number;
   /** The link of the service's signature over the acknowledgement. */
-  readonly link: Link<Signature>;
+  readonly link: Link<unknown>;
 }
 
 /** A service as one of its Services says: where its identity is reached, and what it offers there. */
@@ -99,7 +99,7 @@ export interface Service {
   /** When the service signed the Service, in milliseconds since the Unix epoch by its clock. */
   readonly at: number;
   /** The link of the service's signature over the Service. */
-  readonly link: Link<Signature>;
+  readonly link: Link<unknown>;
   /** The service's offer of an account, or `undefined` when the Service lists none. */
   readonly account: AccountOffer | undefined;
   /** The service's offer of mailboxes, or `undefined` when the Service lists none. */
@@ -242,7 +242,7 @@ export class MailboxOffer {
  *   the acknowledgement is signed for another identifier than the service's
  *   or is of another signature. Nothing is written then.
  */
-async function post<K extends string, F extends Readonly<Record<K, LinkValue<Signature>>> & ValueMap>(
+async function post<K extends string, F extends Readonly<Record<K, LinkValue<unknown>>> & ValueMap>(
   to: {
     readonly url: URL;
     readonly service: SignedIdentityObject;
@@ -279,7 +279,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<Sig
  */
 class ServicePickup implements Pickup {
   readonly mailbox: Link<EncodedObject>;
-  readonly #request: Link<Signature>;
+  readonly #request: Link<unknown>;
   readonly #url: URL;
   readonly #actor: Actor;
   readonly #limit: number;
@@ -287,7 +287,7 @@ class ServicePickup implements Pickup {
   constructor(
     target: {
       readonly mailbox: Link<EncodedObject>;
-      readonly request: Link<Signature>;
+      readonly request: Link<unknown>;
       readonly url: URL;
       readonly size: number;
     },
@@ -479,7 +479,7 @@ export class Services {
    *   an offer it lists is signed for another identifier, or when its offer
    *   of an account or of mailboxes names another identifier.
    */
-  async #read(link: Link<Signature>, reader: Store | StagedStore): Promise<Service> {
+  async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {
     const people = await view(reader, this.#people);
     const { signedIdentity, object } = await this.#signatures.read(link, reader, people);
     const service = people.personOf(signedIdentity);

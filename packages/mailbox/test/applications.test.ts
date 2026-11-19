@@ -3,9 +3,7 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
-  type Identifier,
   type IdentityObject,
-  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type SignedIdentityObject,
@@ -64,7 +62,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   };
 }
 
-const chat = schema("Chat", { to: optional(link<KeyObject>()), text: string() });
+const chat = schema("Chat", { to: optional(link()), text: string() });
 
 // What a chat shows of a line: who wrote it and, when the line names whom it
 // is for by their identifier, whether that is the reader.
@@ -160,15 +158,15 @@ describe("a one-time invitation", () => {
 });
 
 type Sale = {
-  readonly buyer: LinkValue<KeyObject>;
-  readonly seller: LinkValue<KeyObject>;
+  readonly buyer: LinkValue<unknown>;
+  readonly seller: LinkValue<unknown>;
   readonly goods: string;
   readonly price: string;
 };
 
 const sale = schema("Sale", {
-  buyer: link<KeyObject>(),
-  seller: link<KeyObject>(),
+  buyer: link(),
+  seller: link(),
   goods: string(),
   price: string(),
 });
@@ -185,7 +183,7 @@ async function salesInForce(receivedBundles: readonly Bundle[]): Promise<Sale[]>
     record.identities.push(identity);
     signers.set(object.link, record);
   }
-  const signedBy = (identities: IdentityObject[]) => (party: LinkValue<KeyObject>) =>
+  const signedBy = (identities: IdentityObject[]) => (party: LinkValue<unknown>) =>
     identities.some((identity) => identity.identifier === party.link);
   return [...signers.values()]
     .filter(({ terms, identities }) => [terms.buyer, terms.seller].every(signedBy(identities)))
@@ -276,7 +274,7 @@ describe("two people who meet", () => {
       };
       // Who wrote each line among `deliveries`, and its text, leaving out what is no message and what is no line.
       const read = async (deliveries: readonly Delivery[]) => {
-        const shownLines: [Identifier, string][] = [];
+        const shownLines: [Link<unknown>, string][] = [];
         for (const { mailbox, bundle } of deliveries) {
           const message = await correspondence.messageAt(mailbox, bundle);
           if (message === undefined) continue;

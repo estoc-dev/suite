@@ -6,7 +6,6 @@ import {
   ed25519,
   eip191,
   type IdentityObject,
-  type KeyObject,
   loadIdentity,
   noIdentityVersions,
   type Signature,
@@ -98,8 +97,8 @@ describe("a login", () => {
 // A sale names its parties by their identifiers, and a signature its signer
 // by a signed identity whose closure holds one.
 const sale = schema("Sale", {
-  buyer: link<KeyObject>(),
-  seller: link<KeyObject>(),
+  buyer: link(),
+  seller: link(),
   goods: string(),
   price: string(),
 });
@@ -116,7 +115,7 @@ async function saleInForce(
   if (bytes === undefined) return undefined;
   const terms = decodeObject(bytes, sale).data;
   const signers = await signersOf(link, receivedSignatures);
-  const hasSigned = (party: LinkValue<KeyObject>) => signers.some((identity) => identity.identifier === party.link);
+  const hasSigned = (party: LinkValue<unknown>) => signers.some((identity) => identity.identifier === party.link);
   return hasSigned(terms.buyer) && hasSigned(terms.seller) ? terms : undefined;
 }
 

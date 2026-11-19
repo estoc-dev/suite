@@ -41,7 +41,7 @@ export class Keys {
             throw new Error(
               `a public key in ${scheme.name} is ${scheme.publicKeyLength} bytes, not ${publicKey.length}`,
             );
-          return { ...object, link: object.link as Link<KeyObject>, scheme, publicKey };
+          return { ...object, scheme, publicKey };
         },
       }),
     );
@@ -57,7 +57,7 @@ export class Keys {
   }
 
   /** Reads the key that `link` names from `reader`, with the schema of the scheme it is written to. */
-  read(link: Link<KeyObject>, reader: Reader): Promise<KeyObject> {
+  read(link: Link<unknown>, reader: Reader): Promise<KeyObject> {
     return this.#implementations.read(link, reader);
   }
 

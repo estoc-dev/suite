@@ -19,11 +19,9 @@ import {
   ed25519,
   eip191,
   hasSigner,
-  type IdentityObject,
   identitySchema,
   isSameKey,
   type Key,
-  type KeyObject,
   loadIdentity,
   type SignedIdentityData,
   type SignedIdentityObject,
@@ -108,7 +106,7 @@ describe("an identity", () => {
     ).rejects.toThrow(`${other.schema.link} is not a schema read here`);
   });
 
-  it.each<[string, (root: LinkValue<KeyObject>) => ValueMap]>([
+  it.each<[string, (root: LinkValue<unknown>) => ValueMap]>([
     ["a field besides prior, root, agents, crisis and at", (root) => ({ root, agents: [], at: 0, name: "alice" })],
     ["its root as a bare string", (root) => ({ root: root.link as string, agents: [], at: 0 })],
     ["no root", () => ({ agents: [], at: 0 })],
@@ -160,7 +158,7 @@ describe("a signed identity", () => {
 
   it("is refused by verify when it is written to another schema", async () => {
     const otherSchema: Schema<SignedIdentityData> = schema("Another", {
-      identity: link<IdentityObject>(),
+      identity: link(),
       signature: bytes(),
     });
     const by = signer(ed25519);

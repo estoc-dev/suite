@@ -76,26 +76,33 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
 }
 
 /**
- * The file of the bundle of `root` and `blobs`: the bytes of the root, then each blob as a CBOR
- * byte string.
+ * The file of the bundle of the blob that `root` names and the rest of `blobs`: the bytes of the
+ * root, then each other blob as a CBOR byte string.
  *
- * - With no blobs the file is the bytes of the root, and the hash of the file is its link.
- * - The blobs are written in the order given. A blob given twice is written once, and the root
- *   given among the blobs is left out.
+ * - `blobs` hold the root, which is written first wherever it is among them.
+ * - With no other blob the file is the bytes of the root, and the hash of the file is its link.
+ * - The other blobs are written in the order given. A blob given twice is written once.
+ * - Each blob is taken as it is when given, so what gives the blobs can fill one array again for
+ *   the next.
  *
- * @throws when `root` is not an object, since no reader would take the file.
+ * @throws when `blobs` do not hold the root.
+ * @throws when the root is not an object, since no reader would take the file.
  */
-export function encodeBundle(root: { readonly bytes: Bytes<unknown> }, blobs: Iterable<Bytes<unknown>>): Uint8Array {
-  checkRoot(root.bytes);
-  const links = new Set<Link<unknown>>([linkOf(root.bytes)]);
-  const parts: Uint8Array[] = [root.bytes];
+export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Uint8Array {
+  const givenLinks = new Set<Link<unknown>>();
+  const otherBlobs: Uint8Array[] = [];
+  let rootBytes: Uint8Array | undefined;
   for (const blob of blobs) {
     const link = linkOf(blob);
-    if (links.has(link)) continue;
-    links.add(link);
-    parts.push(encode(blob));
+    if (givenLinks.has(link)) continue;
+    givenLinks.add(link);
+    // Not `blob.slice()`, which for a `Buffer` gives a view of the same memory.
+    if (link === root) rootBytes = new Uint8Array(blob);
+    else otherBlobs.push(encode(blob));
   }
-  return joined(parts);
+  if (rootBytes === undefined) throw new Error(`the blobs of a bundle hold its root, and ${root} is not among them`);
+  checkRoot(rootBytes);
+  return joined([rootBytes, ...otherBlobs]);
 }
 
 /**

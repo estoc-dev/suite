@@ -446,7 +446,7 @@ class MailboxService {
     const pickupAnswer = encodeObject(pickupAnswerSchema, {
       ciphertexts: ciphertexts.map((bytes) => new LinkValue<Uint8Array>(linkOf(bytes))),
     });
-    return bundleAnswer(200, encodeBundle(pickupAnswer, ciphertexts));
+    return bundleAnswer(200, encodeBundle(pickupAnswer.link, [pickupAnswer.bytes, ...ciphertexts]));
   }
 
   /**
@@ -456,11 +456,7 @@ class MailboxService {
    * @throws when the store does not hold `link` or a blob of its closure.
    */
   async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
-    const closure = await this.#store.closure(link);
-    const bytes = closure.get(link);
-    if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
-    const blobs = [...closure].filter(([linked]) => linked !== link).map(([, blob]) => blob);
-    return bundleAnswer(status, encodeBundle({ bytes }, blobs));
+    return bundleAnswer(status, encodeBundle(link, (await this.#store.closure(link)).values()));
   }
 }
 
@@ -594,7 +590,7 @@ async function writeSigned(
   { store, privateStore }: Pick<ServiceOptions, "store" | "privateStore">,
 ): Promise<void> {
   await store.write({ roots: [signature.link], blobs: [signature.bytes, ...blobs] });
-  await privateStore.write(recordsOf([signature], at));
+  await privateStore.write(recordsOf([signature.link], at));
 }
 
 const recordedSignatureSchema = schema("Recorded signature", { object: link(), signature: link() });

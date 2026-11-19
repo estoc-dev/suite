@@ -34,12 +34,12 @@ const root = encodeObject(links, {
 
 describe("a bundle", () => {
   it("gives blobs of several kinds back by their links together", () => {
-    const bundle = decodeBundle(encodeBundle(root, [signature.bytes, hello.bytes]));
+    const bundle = decodeBundle(encodeBundle(root.link, [root.bytes, signature.bytes, hello.bytes]));
     expect([signature.link, hello.link].map((link) => bundle.get(link))).toEqual([signature.bytes, hello.bytes]);
   });
 
   it("gives a signature back as bytes that do not read as an object of another schema", () => {
-    const bundle = decodeBundle(encodeBundle(root, [signature.bytes]));
+    const bundle = decodeBundle(encodeBundle(root.link, [root.bytes, signature.bytes]));
     const bytes = bundle.get(linkOf(signature.bytes));
     assert.exists(bytes);
     // @ts-expect-error: refused at compile time too
@@ -47,7 +47,9 @@ describe("a bundle", () => {
   });
 
   it("reads with a signature as its root, which links to the object it is over and to its signed identity", async () => {
-    const bundle = decodeBundle(encodeBundle(signature, [hello.bytes, ...signature.signedIdentity.blobs]));
+    const bundle = decodeBundle(
+      encodeBundle(signature.link, [signature.bytes, hello.bytes, ...signature.signedIdentity.blobs]),
+    );
     expect(bundle.link).toBe(signature.link);
     const readSignature = await signatures.read(bundle.link, bundle, noIdentityVersions);
     expect(await signatures.verify(decodeObject(bundle.root, signatures.schema), bundle, noIdentityVersions)).toEqual(
@@ -60,7 +62,7 @@ describe("a bundle", () => {
   it("takes as its root a signed identity as it was read, and writes it as it was signed", async () => {
     const wallet = SoftwareSigner.fromSecretKey(eip191, new Uint8Array(32).fill(2));
     const signedIdentity = await publish(wallet, { agents: [alice.key] });
-    const file = encodeBundle(signedIdentity, signedIdentity.blobs);
+    const file = encodeBundle(signedIdentity.link, signedIdentity.blobs);
     expect(file.subarray(0, signedIdentity.bytes.length)).toEqual(signedIdentity.bytes);
     const bundle = decodeBundle(file);
     expect(bundle.link).toBe(signedIdentity.link);
@@ -84,7 +86,7 @@ describe("a bundle", () => {
       await expect(async () =>
         signatures.verify(decodeObject(blob, signatures.schema), identityBytes, noIdentityVersions),
       ).rejects.toThrow();
-      expect(decodeBundle(encodeBundle(root, [blob])).get(linkOf(blob))).toEqual(blob);
+      expect(decodeBundle(encodeBundle(root.link, [root.bytes, blob])).get(linkOf(blob))).toEqual(blob);
     }
   });
 
@@ -92,7 +94,9 @@ describe("a bundle", () => {
     ["array", (bytes) => bytes.slice()],
     ["Node Buffer", (bytes) => Buffer.from(bytes)],
   ])("keeps the signature it checked when the given %s changes afterwards", async (_, given) => {
-    const file = given(encodeBundle(root, [signature.bytes, hello.bytes, ...signature.signedIdentity.blobs]));
+    const file = given(
+      encodeBundle(root.link, [root.bytes, signature.bytes, hello.bytes, ...signature.signedIdentity.blobs]),
+    );
     const bundle = decodeBundle(file);
     file.fill(0x20);
     expect(bundle.root).toEqual(root.bytes);

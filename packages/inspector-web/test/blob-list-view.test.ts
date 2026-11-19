@@ -16,7 +16,7 @@ const textsOf = (view: HTMLElement, selector: string) =>
 
 describe("the view of a blob list", () => {
   it("has a blob an item, with what it reads as and its size", async () => {
-    const bundle = decodeBundle(encodeBundle(album, [photo, ...albumSchema.blobs, stray]));
+    const bundle = decodeBundle(encodeBundle(album.link, [album.bytes, photo, ...albumSchema.blobs, stray]));
     const view = blobListView(await blobListOf(bundle), linkOf(photo));
     const sizeOf = (bytes: Uint8Array) => `${bytes.length} bytes`;
     expect(textsOf(view, "li")).toEqual([
@@ -30,7 +30,7 @@ describe("the view of a blob list", () => {
   });
 
   it("marks as shown the blob of the link given, and no other", async () => {
-    const bundle = decodeBundle(encodeBundle(album, [photo]));
+    const bundle = decodeBundle(encodeBundle(album.link, [album.bytes, photo]));
     const view = blobListView(await blobListOf(bundle), linkOf(photo));
     expect(Array.from(view.querySelectorAll("li"), (item) => item.getAttribute("aria-current"))).toEqual([
       null,
@@ -39,7 +39,7 @@ describe("the view of a blob list", () => {
   });
 
   it("says of an object whose schema the bundle leaves out that no blob is given for it", async () => {
-    const bundle = decodeBundle(encodeBundle(album, []));
+    const bundle = decodeBundle(encodeBundle(album.link, [album.bytes]));
     const view = blobListView(await blobListOf(bundle), album.link);
     expect(textsOf(view, "li")).toEqual([
       `${album.link}root` +

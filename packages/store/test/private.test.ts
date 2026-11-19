@@ -1,4 +1,4 @@
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -26,6 +26,10 @@ const card = (name: string) => encodeObject(cardSchema, { name });
 const taken = (of: { readonly link: Link<unknown> }, at: number) =>
   encodeObject(takenSchema, { card: new LinkValue(of.link), at });
 const utf8 = (text: string) => new TextEncoder().encode(text);
+const batchOf = (marks: readonly EncodedObject[], blobs: readonly Uint8Array[] = []) => ({
+  marks: marks.map(({ link }) => link),
+  blobs: [...marks.map(({ bytes }) => bytes), ...blobs],
+});
 
 function sides(sharedBackend: Backend = new MemoryBackend()) {
   const store = new Store(sharedBackend);
@@ -57,8 +61,8 @@ describe("a private store", () => {
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
     const [first, second] = [taken(bob, 1), taken(alice, 2)];
-    await privateStore.write({ marks: [first], blobs: [...takenSchema.blobs] });
-    await privateStore.write({ marks: [second] });
+    await privateStore.write(batchOf([first], [...takenSchema.blobs]));
+    await privateStore.write(batchOf([second]));
     expect(await privateStore.get(first.link)).toEqual(first.bytes);
     expect(await privateStore.get(alice.link)).toEqual(alice.bytes);
     expect(await listOf(privateStore.marks())).toEqual([first.link, second.link]);
@@ -69,8 +73,8 @@ describe("a private store", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const mark = taken(alice, 1);
-    await privateStore.write({ marks: [mark, mark], blobs: [...takenSchema.blobs] });
-    await privateStore.write({ marks: [mark] });
+    await privateStore.write(batchOf([mark, mark], [...takenSchema.blobs]));
+    await privateStore.write(batchOf([mark]));
     expect(await listOf(privateStore.marks())).toEqual([mark.link]);
   });
 
@@ -82,7 +86,7 @@ describe("a private store", () => {
       roots: [alice.link, mark.link],
       blobs: [alice.bytes, mark.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
     });
-    await privateStore.write({ marks: [mark] });
+    await privateStore.write(batchOf([mark]));
     expect(await privateBackend.has(mark.link)).toBe(true);
     expect(await listOf(privateStore.marks())).toEqual([mark.link]);
   });
@@ -92,7 +96,7 @@ describe("a private store", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const stray = utf8("not in the closure");
-    await privateStore.write({ marks: [taken(alice, 1)], blobs: [alice.bytes, ...takenSchema.blobs, stray] });
+    await privateStore.write(batchOf([taken(alice, 1)], [alice.bytes, ...takenSchema.blobs, stray]));
     expect(await privateBackend.has(alice.link)).toBe(true);
     expect(await privateBackend.has(takenSchema.link)).toBe(true);
     expect(await privateBackend.has(linkOf(stray))).toBe(false);
@@ -103,7 +107,7 @@ describe("a private store", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const mark = taken(alice, 1);
-    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([mark], [...takenSchema.blobs]));
     expect(await privateBackend.has(alice.link)).toBe(false);
     expect(await listOf(privateStore.marks())).toEqual([mark.link]);
   });
@@ -112,7 +116,7 @@ describe("a private store", () => {
     const { privateStore } = sides();
     const absent = card("absent");
     const mark = taken(absent, 1);
-    await expect(privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] })).rejects.toThrow(
+    await expect(privateStore.write(batchOf([mark], [...takenSchema.blobs]))).rejects.toThrow(
       `${mark.link} links to ${absent.link}, which neither the batch nor the store holds`,
     );
     expect(await listOf(privateStore.marks())).toEqual([]);
@@ -121,9 +125,23 @@ describe("a private store", () => {
   it("refuses a mark that is not an object", async () => {
     const { privateStore } = sides();
     const image = utf8("an image");
-    const refusal = privateStore.write({ marks: [{ bytes: image }] });
+    const refusal = privateStore.write({ marks: [linkOf(image)], blobs: [image] });
     await expect(refusal).rejects.toThrow(RefusedBatch);
     await expect(refusal).rejects.toThrow(`${linkOf(image)} is written as a mark but is not an object`);
+  });
+
+  it("refuses a mark whose blob the batch does not give, though the store beside it holds it", async () => {
+    const { store, privateStore } = sides();
+    const alice = card("Alice");
+    const mark = taken(alice, 1);
+    await store.write({
+      roots: [alice.link, mark.link],
+      blobs: [alice.bytes, mark.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
+    });
+    const refusal = privateStore.write({ marks: [mark.link], blobs: [] });
+    await expect(refusal).rejects.toThrow(RefusedBatch);
+    await expect(refusal).rejects.toThrow(`${mark.link} is written as a mark but is not among the blobs of the batch`);
+    expect(await listOf(privateStore.marks())).toEqual([]);
   });
 
   it("refuses to give a blob when its backend gives other bytes under the link", async () => {
@@ -132,7 +150,7 @@ describe("a private store", () => {
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
     const [mark, other] = [taken(alice, 1), taken(bob, 2)];
-    await new PrivateStore(store, backend).write({ marks: [mark, other], blobs: [...takenSchema.blobs] });
+    await new PrivateStore(store, backend).write(batchOf([mark, other], [...takenSchema.blobs]));
     const privateStore = new PrivateStore(store, {
       get: (link) => backend.get(link === mark.link ? other.link : link),
       has: (link) => backend.has(link),
@@ -176,7 +194,7 @@ describe("the store beside a private store", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const mark = taken(alice, 1);
-    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([mark], [...takenSchema.blobs]));
     expect(await store.get(mark.link)).toBeUndefined();
     await expect(store.closure(mark.link)).rejects.toThrow(`the store does not hold ${mark.link}`);
     expect(await listOf(store.blobs())).not.toContain(mark.link);
@@ -187,7 +205,7 @@ describe("the store beside a private store", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const mark = taken(alice, 1);
-    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([mark], [...takenSchema.blobs]));
     const leak = encodeObject(shownSchema, { card: new LinkValue(mark.link) });
     await expect(store.write({ roots: [leak.link], blobs: [leak.bytes, ...shownSchema.blobs] })).rejects.toThrow(
       `${leak.link} links to ${mark.link}, which neither the batch nor the store holds`,
@@ -200,10 +218,12 @@ describe("an index over marks", () => {
     const { store, privateStore } = sides();
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
-    await privateStore.write({
-      marks: [taken(bob, 1), taken(alice, 2), encodeObject(shownSchema, { card: new LinkValue(alice.link) })],
-      blobs: [...takenSchema.blobs, ...shownSchema.blobs],
-    });
+    await privateStore.write(
+      batchOf(
+        [taken(bob, 1), taken(alice, 2), encodeObject(shownSchema, { card: new LinkValue(alice.link) })],
+        [...takenSchema.blobs, ...shownSchema.blobs],
+      ),
+    );
     expect(await namesIn(privateStore)).toEqual(["Bob", "Alice"]);
   });
 
@@ -215,7 +235,7 @@ describe("an index over marks", () => {
       roots: [alice.link, sentMark.link],
       blobs: [alice.bytes, sentMark.bytes, mallory.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
     });
-    await privateStore.write({ marks: [taken(alice, 1)] });
+    await privateStore.write(batchOf([taken(alice, 1)]));
     expect(await namesIn(privateStore)).toEqual(["Alice"]);
     expect(await namesIn(store)).toEqual([]);
   });
@@ -229,9 +249,9 @@ describe("an index over marks", () => {
       readTimes.push(data.at);
       return [{ name: "", at: data.at }];
     }).orderedBy("at");
-    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
     await scan(privateStore, index);
-    await privateStore.write({ marks: [taken(alice, 2)] });
+    await privateStore.write(batchOf([taken(alice, 2)]));
     expect((await listOf((await scan(privateStore, index)).range([]))).map(({ data }) => data.at)).toEqual([1, 2]);
     expect(readTimes).toEqual([1, 2]);
   });
@@ -240,7 +260,7 @@ describe("an index over marks", () => {
     const { store, privateStore } = sides();
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
-    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
     const index = indexOver(selectedMarks(objectsOf(takenSchema)), namedSchema, () => {
       throw new Error("not read");
     }).orderedBy("at");
@@ -252,7 +272,7 @@ describe("an index over marks", () => {
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const mark = taken(alice, 1);
-    await privateStore.write({ marks: [mark], blobs: [...takenSchema.blobs] });
+    await privateStore.write(batchOf([mark], [...takenSchema.blobs]));
     const latest = await view(privateStore, {
       index: indexOver(selectedMarks(objectsOf(takenSchema)), takenSchema, ({ data }) => [data]).orderedBy("at"),
       read: async (rows, reader) => {
@@ -276,21 +296,16 @@ describe("an index over records, scanned on a private store", () => {
     const { store, privateStore } = sides();
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
-    await privateStore.write({ marks: [taken(bob, 1)], blobs: [...takenSchema.blobs] });
-    await privateStore.write(recordsOf([alice], 1));
+    await privateStore.write(batchOf([taken(bob, 1)], [...takenSchema.blobs]));
+    await privateStore.write(recordsOf([alice.link], 1));
     expect(await namesByName(privateStore, recordedNames())).toEqual(["Alice"]);
   });
 
   it("reads no object whose record came to the store beside", async () => {
     const { store, privateStore } = sides();
     const mallory = card("Mallory");
-    const { marks, blobs = [] } = recordsOf([mallory], 1);
-    const [sentRecord] = [...marks];
-    if (sentRecord === undefined) throw new Error("no record was made");
-    await store.write({
-      roots: [linkOf(sentRecord.bytes)],
-      blobs: [sentRecord.bytes, mallory.bytes, ...cardSchema.blobs, ...blobs],
-    });
+    const { marks, blobs } = recordsOf([mallory.link], 1);
+    await store.write({ roots: marks, blobs: [mallory.bytes, ...cardSchema.blobs, ...blobs] });
     expect(await namesByName(privateStore, recordedNames())).toEqual([]);
   });
 
@@ -303,11 +318,11 @@ describe("an index over records, scanned on a private store", () => {
       readNames.push(data.name);
       return [{ name: data.name, at: 0 }];
     }).orderedBy("name");
-    await privateStore.write({ marks: [taken(alice, 1)], blobs: [...takenSchema.blobs] });
-    await privateStore.write(recordsOf([bob], 1));
+    await privateStore.write(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
+    await privateStore.write(recordsOf([bob.link], 1));
     expect(await namesByName(privateStore, index)).toEqual(["Bob"]);
-    await privateStore.write({ marks: [taken(bob, 2)] });
-    await privateStore.write(recordsOf([alice], 2));
+    await privateStore.write(batchOf([taken(bob, 2)]));
+    await privateStore.write(recordsOf([alice.link], 2));
     expect(await namesByName(privateStore, index)).toEqual(["Alice", "Bob"]);
     expect(readNames).toEqual(["Bob", "Alice"]);
   });
@@ -321,10 +336,10 @@ describe("an index over records, scanned on a private store", () => {
       readNames.push(data.name);
       return [{ name: data.name, at: 0 }];
     }).orderedBy("name");
-    await privateStore.write(recordsOf([alice], 1));
-    await privateStore.write(recordsOf([alice], 1));
+    await privateStore.write(recordsOf([alice.link], 1));
+    await privateStore.write(recordsOf([alice.link], 1));
     expect(await namesByName(privateStore, index)).toEqual(["Alice"]);
-    await privateStore.write(recordsOf([alice], 2));
+    await privateStore.write(recordsOf([alice.link], 2));
     expect(await namesByName(privateStore, index)).toEqual(["Alice"]);
     expect(readNames).toEqual(["Alice"]);
     const records = objectsOf(recordSchema);
@@ -346,7 +361,7 @@ describe("an index over blobs, scanned on a private store", () => {
       roots: [sentMark.link],
       blobs: [sentMark.bytes, alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs],
     });
-    await privateStore.write({ marks: [taken(alice, 1)] });
+    await privateStore.write(batchOf([taken(alice, 1)]));
     const rows = await listOf((await scan(privateStore, takenBlobs())).range([]));
     expect(rows.map(({ data }) => data.at)).toEqual([0]);
   });

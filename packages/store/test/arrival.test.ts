@@ -40,11 +40,11 @@ function sides() {
     arrivals: () => view(privateStore, arrivalsOfCards),
     async receive(at: number, root: EncodedObject, ...others: readonly EncodedObject[]) {
       now = at;
-      await intake.receive(decodeBundle(encodeBundle(root, blobsWith(...others))));
+      await intake.receive(decodeBundle(encodeBundle(root.link, [root.bytes, ...blobsWith(...others)])));
     },
     async record(at: number, root: EncodedObject, ...others: readonly EncodedObject[]) {
       await store.write({ roots: [root.link], blobs: blobsWith(root, ...others) });
-      await privateStore.write(recordsOf([root], at));
+      await privateStore.write(recordsOf([root.link], at));
     },
   };
 }

@@ -7,16 +7,15 @@ import { type Store, StoreOf } from "./store.ts";
 /** What one write puts in a private store. */
 export interface MarkBatch {
   /**
-   * Marks that the user of the private store writes: objects, of whatever type the caller holds
-   * them as, of which only the bytes are written. The private store lists each as it is, with no
-   * record of it.
+   * The links of the marks that the user of the private store writes: objects, which the private
+   * store lists as they are, with no record of them.
    */
-  readonly marks: Iterable<{ readonly bytes: Bytes<unknown> }>;
+  readonly marks: Iterable<Link<unknown>>;
   /**
-   * Blobs that come with them and are not listed, such as their schemas. Only those in the closure
-   * of a mark are kept.
+   * The blobs of the batch: the marks, and what comes with them and is not listed, such as their
+   * schemas. Only those in the closure of a mark are kept.
    */
-  readonly blobs?: Iterable<Bytes<unknown>>;
+  readonly blobs: Iterable<Bytes<unknown>>;
 }
 
 /**
@@ -77,15 +76,17 @@ export class PrivateStore implements RowKeeper {
    * The other blobs are dropped. A refused batch writes nothing.
    *
    * - What the batch gives of a closure is kept here, whether or not the store beside holds it.
-   * - A blob of a closure that the batch leaves out counts as held when either side holds it.
+   * - The batch gives the blob of each mark, held already or not. Any other blob of a closure
+   *   that it leaves out counts as held when either side holds it.
    * - A mark written again is listed once.
    *
-   * @throws {RefusedBatch} when one of `marks` is not an object.
+   * @throws {RefusedBatch} when the batch does not give the blob of one of `marks`, or it is not
+   *   an object.
    * @throws {RefusedBatch} when a blob in the closure of one of `marks` is neither in the batch,
    *   kept here, nor held by the store beside.
    * @throws the backend's own error when the backend fails.
    */
-  async write({ marks, blobs = [] }: MarkBatch): Promise<void> {
+  async write({ marks, blobs }: MarkBatch): Promise<void> {
     const batch = copiedBatch(marks, blobs, "a mark");
     await this.#backend.put(await leavesFirst(batch.objects, batch.blobs, this.#heldBlobs), batch.objects);
   }

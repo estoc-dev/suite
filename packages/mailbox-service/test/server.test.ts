@@ -85,13 +85,13 @@ const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
 /** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function directAcceptance(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await (await actorOf(by)).sign(offer);
-  return { signature, file: encodeBundle(signature, signature.signedIdentity.blobs) };
+  return { signature, file: encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]) };
 }
 
 /** The bundle that accepts `offer` for the wallet by the device, which an identity of the wallet's lists. */
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
-  return { signature, file: encodeBundle(signature, signature.signedIdentity.blobs) };
+  return { signature, file: encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]) };
 }
 
 /** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet lists. */
@@ -101,7 +101,7 @@ async function acceptanceBy(
   offer: { readonly link: Link<unknown> },
 ) {
   const signature = await signatures.actor(agent, identityVersion).sign(offer);
-  return encodeBundle(signature, signature.signedIdentity.blobs);
+  return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
 }
 
 /** A signer as `signer` that, while `isHolding`, holds each signature back until it is released, the first asked first. */
@@ -166,7 +166,7 @@ describe("a mailbox service", () => {
     const { signature } = await directAcceptance((await rootOf(service)).offer, wallet);
     const { signedIdentity } = signature;
     const read = [signedIdentity.bytes, ...signedIdentity.identity.blobs];
-    expect((await postAcceptance(service, encodeBundle(signature, read))).status).toBe(201);
+    expect((await postAcceptance(service, encodeBundle(signature.link, [signature.bytes, ...read]))).status).toBe(201);
   });
 
   it("answers the same acceptance again with 200 and the acknowledgement it signed for it, and signs no other", async () => {
@@ -320,10 +320,19 @@ describe("a mailbox service", () => {
 
   it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
     ["that is not a bundle", async () => new TextEncoder().encode("hello")],
-    ["whose root is not a signature", async (service) => encodeBundle((await rootOf(service)).offer, [])],
+    [
+      "whose root is not a signature",
+      async (service) => {
+        const { offer } = await rootOf(service);
+        return encodeBundle(offer.link, [offer.bytes]);
+      },
+    ],
     [
       "whose signature comes without its identity",
-      async (service) => encodeBundle((await directAcceptance((await rootOf(service)).offer)).signature, []),
+      async (service) => {
+        const { signature } = await directAcceptance((await rootOf(service)).offer);
+        return encodeBundle(signature.link, [signature.bytes]);
+      },
     ],
     [
       "accepting another service's offer",
@@ -659,7 +668,9 @@ const ciphertextOf = (fill: number, length = 64) => new Uint8Array(length).fill(
 /** The status that `service` answers `actor`'s acceptance of its offer of an account with. */
 async function acceptAccount(service: MailboxService, actor: Actor) {
   const signature = await actor.sign((await rootOf(service)).offer);
-  return (await postAcceptance(service, encodeBundle(signature, signature.signedIdentity.blobs))).status;
+  return (
+    await postAcceptance(service, encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]))
+  ).status;
 }
 
 /** Opens the account of whoever `actor` signs for at `service`, by the actor's acceptance of its offer. */
@@ -670,7 +681,10 @@ const openAccount = async (service: MailboxService, actor: Actor) =>
 async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
   const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(offer.link as Link<never>), key });
   const signature = await actor.sign(request);
-  return { signature, file: encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]) };
+  return {
+    signature,
+    file: encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]),
+  };
 }
 
 const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
@@ -711,7 +725,7 @@ async function pickupRequest(actor: Actor, mailbox: OpenedMailbox, receipts: rea
     receipts: receipts.map((ciphertext) => new LinkValue<Uint8Array>(linkOf(ciphertext))),
   });
   const signature = await actor.sign(request);
-  return encodeBundle(signature, [request.bytes, ...signature.signedIdentity.blobs]);
+  return encodeBundle(signature.link, [signature.bytes, request.bytes, ...signature.signedIdentity.blobs]);
 }
 
 type OpenedMailbox = Awaited<ReturnType<typeof openMailbox>>;
@@ -920,7 +934,7 @@ describe("a mailbox service's offer of mailboxes", () => {
       "that is an acceptance of the offer of mailboxes",
       async (service, actor) => {
         const signature = await actor.sign((await rootOf(service)).mailbox.offer);
-        return encodeBundle(signature, signature.signedIdentity.blobs);
+        return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
       },
     ],
   ])("answers 400 to a request %s, and opens no mailbox", async (_, body) => {
@@ -1127,7 +1141,7 @@ describe("a mailbox that a service opened", () => {
       "that is not a pickup request",
       async (actor, mailbox) => {
         const signature = await actor.sign({ link: mailbox.link });
-        return encodeBundle(signature, signature.signedIdentity.blobs);
+        return encodeBundle(signature.link, [signature.bytes, ...signature.signedIdentity.blobs]);
       },
     ],
     ["that is not a bundle", async () => new TextEncoder().encode("hello")],

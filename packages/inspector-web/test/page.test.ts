@@ -10,11 +10,11 @@ import { type Page, pageOf, readFile } from "../src/page.ts";
 const photo = Uint8Array.of(0, 10, 255);
 const albumSchema = schema("Album", { cover: link() });
 const album = encodeObject(albumSchema, { cover: new LinkValue(linkOf(photo)) });
-const albumFile = new File([encodeBundle(album, [photo])], "album.eof");
+const albumFile = new File([encodeBundle(album.link, [album.bytes, photo])], "album.eof");
 
 const body = markdownBodyOf("## Identity\n");
 const post = encodeObject(postSchema, { title: "Identity", date: "2026-10-20", body: new LinkValue(body.link) });
-const postFile = new File([encodeBundle(post, [body.bytes])], "post.eof");
+const postFile = new File([encodeBundle(post.link, [post.bytes, body.bytes])], "post.eof");
 
 const removal = new Error("the file was removed");
 
@@ -72,8 +72,8 @@ describe("the page of a file", () => {
   });
 
   it("has why the page could not read a body, where the file leaves out the blob of its schema", async () => {
-    const misfit = { bytes: objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 })) };
-    const page = await pageOf(readFile(new File([encodeBundle(misfit, [])], "misfit.eof")), "");
+    const misfit = objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 }));
+    const page = await pageOf(readFile(new File([encodeBundle(linkOf(misfit), [misfit])], "misfit.eof")), "");
     expect(page).toMatchObject({ inspection: { schema: { kind: "absent" } }, reading: { kind: "unread" } });
   });
 

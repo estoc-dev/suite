@@ -83,7 +83,7 @@ await store.write({
   roots: [lineage.head.link],
   blobs: [...lineage.blobs, firstDraft.bytes, secondDraft.bytes, finalDraft.bytes, ...note.blobs],
 });
-await privateStore.write(recordsOf([lineage.head], Date.now()));
+await privateStore.write(recordsOf([lineage.head.link], Date.now()));
 ```
 
 `lineages.selection` is a `SelectionBySchema` of the node schema, as

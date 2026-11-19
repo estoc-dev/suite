@@ -40,11 +40,8 @@ type Stores = ReturnType<typeof newStores>;
 
 async function recordHeads({ store, privateStore }: Stores, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
-  const heads = chains.map(({ head }) => head);
-  await store.write({
-    roots: heads.map(({ link }) => link),
-    blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs],
-  });
+  const heads = chains.map(({ head }) => head.link);
+  await store.write({ roots: heads, blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs] });
   await privateStore.write(recordsOf(heads, Date.now()));
 }
 
@@ -116,7 +113,7 @@ describe("the selection of a schema lineage over a store", () => {
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await stores.privateStore.write(recordsOf([untitled, titledObject], Date.now()));
+    await stores.privateStore.write(recordsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
     const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };

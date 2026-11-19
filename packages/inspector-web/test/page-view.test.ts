@@ -11,7 +11,7 @@ import { pageView } from "../src/page-view.ts";
 const photo = Uint8Array.of(0, 10, 255);
 const albumSchema = schema("Album", { cover: link() });
 const album = encodeObject(albumSchema, { cover: new LinkValue(linkOf(photo)) });
-const albumFile = new File([encodeBundle(album, [photo])], "album.eof");
+const albumFile = new File([encodeBundle(album.link, [album.bytes, photo])], "album.eof");
 
 const viewOf = (page: Page) =>
   h(

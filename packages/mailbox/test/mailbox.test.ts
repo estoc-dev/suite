@@ -1,5 +1,5 @@
 import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, ObjectValue, objectFormat, type Schema, type ValueMap } from "@estoc/object";
+import { encodeObject, linkOf, ObjectValue, objectFormat, type Schema, type ValueMap } from "@estoc/object";
 import { bytes, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxFrom, type Transport, UndeliveredMessage } from "../src/index.ts";
@@ -20,7 +20,11 @@ describe("a mailbox", () => {
     const queue = network.queue();
     // Bob hands the mailbox out as bytes, in a QR code say.
     const mailboxBytes = queue.mailbox(bob.publicKey).bytes;
-    await (await mailboxFrom(mailboxBytes, options)).send(signature, [hello.bytes, ...signature.signedIdentity.blobs]);
+    await (await mailboxFrom(mailboxBytes, options)).send(signature.link, [
+      signature.bytes,
+      hello.bytes,
+      ...signature.signedIdentity.blobs,
+    ]);
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
@@ -32,9 +36,9 @@ describe("a mailbox", () => {
   it("seals bundles whose files have the same sizes to the same length, whatever the files hold", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await mailbox.send(hello, [new Uint8Array(4096)]);
+    await mailbox.send(hello.link, [hello.bytes, new Uint8Array(4096)]);
     const repeating = queue.takeOne();
-    await mailbox.send(hello, [crypto.getRandomValues(new Uint8Array(4096))]);
+    await mailbox.send(hello.link, [hello.bytes, crypto.getRandomValues(new Uint8Array(4096))]);
     const random = queue.takeOne();
     expect(repeating.length).toBe(random.length);
   });
@@ -42,16 +46,15 @@ describe("a mailbox", () => {
   it("refuses to send a root that is not an object, and sends nothing", async () => {
     const queue = network.queue();
     const mailbox = await mailboxFrom(queue.mailbox(bob.publicKey).bytes, options);
-    await expect(mailbox.send({ bytes: new TextEncoder().encode("hello, Bob") }, [])).rejects.toThrow(
-      /the root of a bundle is an object/,
-    );
+    const text = new TextEncoder().encode("hello, Bob");
+    await expect(mailbox.send(linkOf(text), [text])).rejects.toThrow(/the root of a bundle is an object/);
     expect(queue.take()).toEqual([]);
   });
 
   it("rejects a send to a queue that its network does not have, as undelivered to a mailbox that is gone", async () => {
     const elsewhere = new MemoryNetwork();
     const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
-    const sending = mailbox.send(hello, []);
+    const sending = mailbox.send(hello.link, [hello.bytes]);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
     await expect(sending).rejects.toMatchObject({ kind: "gone" });
   });

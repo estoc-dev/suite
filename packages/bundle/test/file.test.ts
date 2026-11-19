@@ -10,17 +10,15 @@ const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 const anything = objectFormat.encode(new ObjectValue(itself, { title: "Anything" }));
 const hello = objectFormat.encode(new ObjectValue(linkOf(anything), { text: "hello" }));
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const root = {
-  bytes: objectFormat.encode(
-    new ObjectValue(linkOf(anything), { links: [new LinkValue(linkOf(hello)), new LinkValue(linkOf(image))] }),
-  ),
-};
-const rootLink = linkOf(root.bytes);
+const root = objectFormat.encode(
+  new ObjectValue(linkOf(anything), { links: [new LinkValue(linkOf(hello)), new LinkValue(linkOf(image))] }),
+);
+const rootLink = linkOf(root);
 const text = new TextEncoder().encode('{"text":"hello"}');
 
 // The files of the tests are written out by hand, in hex, so that they do not
 // turn on the writer they test.
-const rootHex = hexOf(root.bytes);
+const rootHex = hexOf(root);
 const helloHex = `5837${hexOf(hello)}`;
 const imageHex = `48${hexOf(image)}`;
 const rootAsBlobHex = `587d${rootHex}`;
@@ -29,24 +27,24 @@ const decodeHex = (hex: string) => decodeBundle(bytesOf(hex));
 describe("the file of a bundle", () => {
   it("is the bytes of its root, then each blob as a byte string", () => {
     expect(hello).toHaveLength(0x37);
-    expect(root.bytes).toHaveLength(0x7d);
-    expect(hexOf(encodeBundle(root, [hello, image]))).toBe(`${rootHex}${helloHex}${imageHex}`);
+    expect(root).toHaveLength(0x7d);
+    expect(hexOf(encodeBundle(rootLink, [root, hello, image]))).toBe(`${rootHex}${helloHex}${imageHex}`);
   });
 
   it("reads back the same", () => {
-    const bundle = decodeBundle(encodeBundle(root, [hello, image, anything]));
-    expect(bundle.root).toEqual(root.bytes);
+    const bundle = decodeBundle(encodeBundle(rootLink, [root, hello, image, anything]));
+    expect(bundle.root).toEqual(root);
     expect(bundle.link).toBe(rootLink);
     expect(schemaOf(bundle.root)).toBe(linkOf(anything));
-    for (const blob of [root.bytes, hello, image, anything]) expect(bundle.get(linkOf(blob))).toEqual(blob);
-    expect([...bundle.blobs()]).toEqual([root.bytes, hello, image, anything]);
+    for (const blob of [root, hello, image, anything]) expect(bundle.get(linkOf(blob))).toEqual(blob);
+    expect([...bundle.blobs()]).toEqual([root, hello, image, anything]);
   });
 
   it("that carries no blob is the bytes of its root, with its link", () => {
-    const file = encodeBundle(root, []);
-    expect(file).toEqual(root.bytes);
+    const file = encodeBundle(rootLink, [root]);
+    expect(file).toEqual(root);
     expect(linkOf(file)).toBe(decodeBundle(file).link);
-    expect([...decodeBundle(file).blobs()]).toEqual([root.bytes]);
+    expect([...decodeBundle(file).blobs()]).toEqual([root]);
   });
 
   it.each<[number, string]>([
@@ -59,22 +57,43 @@ describe("the file of a bundle", () => {
     [65536, "5a00010000"],
   ])("writes a blob of %i bytes under the shortest head, and reads it back", (length, head) => {
     const blob = new Uint8Array(length).fill(7);
-    const file = encodeBundle(root, [blob]);
-    expect(hexOf(file.subarray(0, root.bytes.length + head.length / 2))).toBe(`${rootHex}${head}`);
-    expect(file).toHaveLength(root.bytes.length + head.length / 2 + length);
+    const file = encodeBundle(rootLink, [root, blob]);
+    expect(hexOf(file.subarray(0, root.length + head.length / 2))).toBe(`${rootHex}${head}`);
+    expect(file).toHaveLength(root.length + head.length / 2 + length);
     expect(decodeBundle(file).get(linkOf(blob))).toEqual(blob);
   });
 
-  it("is written with a blob given twice, or its root given as a blob, once", () => {
-    expect(hexOf(encodeBundle(root, [hello, root.bytes, image, hello.slice()]))).toBe(
+  it("is written with its root first, wherever it is among the blobs", () => {
+    expect(hexOf(encodeBundle(rootLink, [hello, root, image]))).toBe(`${rootHex}${helloHex}${imageHex}`);
+  });
+
+  it("is written with a blob given twice, its root among them, once", () => {
+    expect(hexOf(encodeBundle(rootLink, [root, hello, root, image, hello.slice()]))).toBe(
       `${rootHex}${helloHex}${imageHex}`,
     );
+  });
+
+  it.each<[string, Uint8Array]>([
+    ["a `Uint8Array`", new Uint8Array(root.length)],
+    ["a `Buffer`, whose `slice` does not copy,", Buffer.alloc(root.length)],
+  ])("is written with each blob as it was when given, where %s gives them all in turn", (_, array) => {
+    function* blobsInOneArray() {
+      for (const blob of [hello, root, image]) {
+        array.set(blob);
+        yield array.subarray(0, blob.length);
+      }
+    }
+    expect(hexOf(encodeBundle(rootLink, blobsInOneArray()))).toBe(`${rootHex}${helloHex}${imageHex}`);
+  });
+
+  it("is not written when the blobs do not hold its root", () => {
+    expect(() => encodeBundle(rootLink, [hello, image])).toThrow(`${rootLink} is not among them`);
   });
 
   it("reads with its blobs in any order", () => {
     const bundle = decodeHex(`${rootHex}${imageHex}${helloHex}`);
     expect(bundle.link).toBe(rootLink);
-    expect([...bundle.blobs()]).toEqual([root.bytes, image, hello]);
+    expect([...bundle.blobs()]).toEqual([root, image, hello]);
   });
 
   it("reads without blobs its root links to, which it does not get", () => {
@@ -85,7 +104,7 @@ describe("the file of a bundle", () => {
 
   it("does not read the blobs it carries, so one that is no object is bytes as an image is", () => {
     const cut = hello.slice(0, -1);
-    const bundle = decodeBundle(encodeBundle(root, [text, cut]));
+    const bundle = decodeBundle(encodeBundle(rootLink, [root, text, cut]));
     expect(bundle.get(linkOf(text))).toEqual(text);
     expect(bundle.get(linkOf(cut))).toEqual(cut);
   });
@@ -121,7 +140,7 @@ describe("the file of a bundle", () => {
     ["text", text],
     ["a file that carries a blob", bytesOf(`${rootHex}${imageHex}`)],
   ])("is not written with %s as its root", (_, bytes) => {
-    expect(() => encodeBundle({ bytes }, [hello])).toThrow(/the root of a bundle is an object/);
+    expect(() => encodeBundle(linkOf(bytes), [bytes, hello])).toThrow(/the root of a bundle is an object/);
   });
 
   it.each<[string, (bytes: Uint8Array) => Uint8Array]>([
@@ -129,15 +148,15 @@ describe("the file of a bundle", () => {
     ["Node Buffer", (bytes) => Buffer.from(bytes)],
     ["part of a Node Buffer", (bytes) => Buffer.concat([image, bytes, image]).subarray(8, 8 + bytes.length)],
   ])("keeps the bytes it checked when the given %s changes afterwards", (_, given) => {
-    const file = given(encodeBundle(root, [hello, image]));
+    const file = given(encodeBundle(rootLink, [root, hello, image]));
     const bundle = decodeBundle(file);
     file.fill(0x20);
-    expect(bundle.root).toEqual(root.bytes);
-    expect([...bundle.blobs()]).toEqual([root.bytes, hello, image]);
+    expect(bundle.root).toEqual(root);
+    expect([...bundle.blobs()]).toEqual([root, hello, image]);
   });
 
   it("is written the same from Node Buffers", () => {
-    const file = encodeBundle({ bytes: Buffer.from(root.bytes) }, [Buffer.from(hello), Buffer.from(image)]);
+    const file = encodeBundle(rootLink, [Buffer.from(root), Buffer.from(hello), Buffer.from(image)]);
     expect(hexOf(file)).toBe(`${rootHex}${helloHex}${imageHex}`);
   });
 });

@@ -70,7 +70,7 @@ async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage
 
 describe("an HTTP mailbox", () => {
   it("takes a message to its url in a POST, sealed so that its key opens it", async () => {
-    await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello, []);
+    await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello.link, [hello.bytes]);
     const [request, ...more] = take();
     expect(more).toEqual([]);
     assert.exists(request);
@@ -89,12 +89,12 @@ describe("an HTTP mailbox", () => {
     [413, "refused"],
   ])("rejects a send that the server answers %i as undelivered, %s", async (status, kind) => {
     const mailbox = await mailboxAt(`http://127.0.0.1:${port}/answer/${status}`);
-    expect(await rejectedAs(mailbox.send(hello, []))).toBe(kind);
+    expect(await rejectedAs(mailbox.send(hello.link, [hello.bytes]))).toBe(kind);
   });
 
   it("rejects a send that the server redirects as one to send later, and the message goes no further", async () => {
     const mailbox = await mailboxAt(`http://127.0.0.1:${port}/moved`);
-    expect(await rejectedAs(mailbox.send(hello, []))).toBe("later");
+    expect(await rejectedAs(mailbox.send(hello.link, [hello.bytes]))).toBe("later");
     expect(take().map(({ path }) => path)).toEqual(["/moved"]);
   });
 
@@ -102,7 +102,9 @@ describe("an HTTP mailbox", () => {
     const gone = createServer();
     const closedPort = await listen(gone);
     await close(gone);
-    expect(await rejectedAs((await mailboxAt(`http://127.0.0.1:${closedPort}/inbox`)).send(hello, []))).toBe("later");
+    expect(
+      await rejectedAs((await mailboxAt(`http://127.0.0.1:${closedPort}/inbox`)).send(hello.link, [hello.bytes])),
+    ).toBe("later");
   });
 });
 
@@ -142,7 +144,7 @@ describe("an HTTP mailbox's url", () => {
     "http://[::1]:8080?to=bob",
   ])("may be %s", async (url) => {
     const fetch = mockFetch();
-    await (await mailboxAt(url)).send(hello, []);
+    await (await mailboxAt(url)).send(hello.link, [hello.bytes]);
     expect(fetch.mock.calls.map(([posted]) => posted)).toEqual([url]);
   });
 
@@ -154,7 +156,7 @@ describe("an HTTP mailbox's url", () => {
     ["not a URL", "https://mail example/alice"],
   ])("turns a send back as to a mailbox that is gone when it is %s, and posts nothing", async (_, url) => {
     const fetch = mockFetch();
-    expect(await rejectedAs((await mailboxAt(url)).send(hello, []))).toBe("gone");
+    expect(await rejectedAs((await mailboxAt(url)).send(hello.link, [hello.bytes]))).toBe("gone");
     expect(fetch).not.toHaveBeenCalled();
   });
 });

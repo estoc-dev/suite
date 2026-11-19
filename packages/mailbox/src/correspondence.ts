@@ -106,7 +106,7 @@ export class Correspondence {
         ...current.blobs,
       ],
     });
-    await this.#privateStore.write(recordsOf([signature], at));
+    await this.#privateStore.write(recordsOf([signature.link], at));
     return signature;
   }
 

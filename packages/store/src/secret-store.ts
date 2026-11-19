@@ -7,15 +7,15 @@ import { type Store, StoreOf } from "./store.ts";
 /** What one write puts in a secret store. */
 export interface SecretBatch {
   /**
-   * Secrets that the user of the secret store writes: objects, of whatever type the caller holds
-   * them as, of which only the bytes are written. The secret store lists each as it is.
+   * The links of the secrets that the user of the secret store writes: objects, which the secret
+   * store lists as they are.
    */
-  readonly secrets: Iterable<{ readonly bytes: Bytes<unknown> }>;
+  readonly secrets: Iterable<Link<unknown>>;
   /**
-   * Blobs that come with them and are not listed, such as their schemas. Only those in the closure
-   * of a secret are kept.
+   * The blobs of the batch: the secrets, and what comes with them and is not listed, such as their
+   * schemas. Only those in the closure of a secret are kept.
    */
-  readonly blobs?: Iterable<Bytes<unknown>>;
+  readonly blobs: Iterable<Bytes<unknown>>;
 }
 
 /**
@@ -70,16 +70,19 @@ export class SecretStore implements RowKeeper {
    * Lists each of the batch's `secrets` and keeps it, with the blobs of the batch in its closure.
    * The other blobs are dropped. A refused batch writes nothing.
    *
-   * - A blob that the store beside holds counts as held and is not kept here again, a secret among
-   *   them, which is listed here still.
+   * - The batch gives the blob of each secret, held already or not. Any other blob of a closure
+   *   that it leaves out counts as held when either side holds it.
+   * - A blob that the store beside holds is not kept here again, a secret among them, which is
+   *   listed here still.
    * - A secret written again is listed once.
    *
-   * @throws {RefusedBatch} when one of `secrets` is not an object.
+   * @throws {RefusedBatch} when the batch does not give the blob of one of `secrets`, or it is
+   *   not an object.
    * @throws {RefusedBatch} when a blob in the closure of one of `secrets` is neither in the batch,
    *   kept here, nor held by the store beside.
    * @throws the backend's own error when the backend fails.
    */
-  async write({ secrets, blobs = [] }: SecretBatch): Promise<void> {
+  async write({ secrets, blobs }: SecretBatch): Promise<void> {
     const batch = copiedBatch(secrets, blobs, "a secret");
     await this.#backend.put(await leavesFirst(batch.objects, batch.blobs, this.#backend), batch.objects);
   }

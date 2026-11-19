@@ -121,14 +121,11 @@ async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], 
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
 async function handOver(from: Person, to: Person, root: Link<unknown>) {
-  const closure = await from.store.closure(root);
-  const bytes = closure.get(root);
-  assert.exists(bytes);
-  await to.intake.receive(decodeBundle(encodeBundle({ bytes }, closure.values())));
+  await to.intake.receive(decodeBundle(encodeBundle(root, (await from.store.closure(root)).values())));
 }
 
 const seeIdentityVersion = (someone: Person, identityVersion: SignedIdentityObject) =>
-  someone.intake.receive(decodeBundle(encodeBundle({ bytes: identityVersion.bytes }, identityVersion.blobs)));
+  someone.intake.receive(decodeBundle(encodeBundle(identityVersion.link, identityVersion.blobs)));
 
 // `from` is handed the mailbox `to` receives at, sends what its store holds under `root` there, and `to` collects it.
 async function send(from: Person, to: Person, root: Link<unknown>) {
@@ -265,8 +262,14 @@ describe("the latest grant of one person to another", () => {
 
     const misfit = objectFormat.encode(new ObjectValue(grants.schema.link, { at: 2_000 }));
     const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
-    const blobs = [misfit, ...grants.schema.blobs, ...signatures.schema.blobs, ...misfitSignature.signedIdentity.blobs];
-    await bob.intake.receive(decodeBundle(encodeBundle({ bytes: misfitSignature.bytes }, blobs)));
+    const blobs = [
+      misfitSignature.bytes,
+      misfit,
+      ...grants.schema.blobs,
+      ...signatures.schema.blobs,
+      ...misfitSignature.signedIdentity.blobs,
+    ];
+    await bob.intake.receive(decodeBundle(encodeBundle(misfitSignature.link, blobs)));
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
   });
@@ -330,7 +333,9 @@ describe("a grant by an agent that a later identity version does not list", () =
       signature: new Uint8Array(64),
     });
     const blobs = removalIdentityVersion.blobs.filter((blob) => blob !== removalIdentityVersion.bytes);
-    await bob.intake.receive(decodeBundle(encodeBundle(forgedIdentityVersion, blobs)));
+    await bob.intake.receive(
+      decodeBundle(encodeBundle(forgedIdentityVersion.link, [forgedIdentityVersion.bytes, ...blobs])),
+    );
     expect(await bob.store.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
 
     const signature = await give(former, bob, [former.inbox.mailbox], 2_000);

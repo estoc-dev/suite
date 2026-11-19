@@ -91,9 +91,9 @@ export class Post {
     const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
     if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
     await this.#store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
-    await this.#privateStore.write(recordsOf([mailbox], this.#clock()));
+    await this.#privateStore.write(recordsOf([mailbox.link], this.#clock()));
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
-    await this.#secretStore.write({ secrets: [object], blobs: [...mailboxKeySchema.blobs] });
+    await this.#secretStore.write({ secrets: [object.link], blobs: [object.bytes, ...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -125,7 +125,7 @@ export class Post {
   async #markOutbound(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Delivery> {
     const at = this.#clock();
     const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
-    await this.#privateStore.write({ marks: [mark], blobs: [...outboundSchema.blobs] });
+    await this.#privateStore.write({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
     return { direction: "outbound", bundle, mailbox, at, link: mark.link };
   }
 }
@@ -152,13 +152,7 @@ export class Outbox {
    *   then.
    */
   async send(root: Link<unknown>): Promise<Delivery> {
-    const closure = await this.#store.closure(root);
-    const bytes = closure.get(root);
-    if (bytes === undefined) throw new Error(`the store does not hold ${root}`);
-    await this.#mailbox.send(
-      { bytes },
-      [...closure].filter(([link]) => link !== root).map(([, blob]) => blob),
-    );
+    await this.#mailbox.send(root, (await this.#store.closure(root)).values());
     return this.#mark(root as Link<never>);
   }
 }

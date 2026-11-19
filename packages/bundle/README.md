@@ -16,7 +16,7 @@ da 65 6f 66 21 82 ...   the root: an object, as @estoc/object writes it
 ```ts
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 
-const file = encodeBundle(signature, [message.bytes, ...signature.signedIdentity.blobs]);
+const file = encodeBundle(signature.link, [signature.bytes, message.bytes, ...signature.signedIdentity.blobs]);
 const bundle = decodeBundle(file);
 bundle.link;              // signature.link
 bundle.get(message.link); // message.bytes
@@ -31,10 +31,10 @@ guessing. The file has to start with an object, and bytes that are
 anything else make the whole bundle refused. A signature is an object, so
 it can be the root, with what it is over carried in the bundle. So can a
 schema, which is an object written to its root schema.
-`encodeBundle` takes the root as whatever type the program holds it as,
-such as a signed identity of `@estoc/identity`, and writes its bytes, so
-the root is written as it was signed. It refuses a root that is not an
-object, since no reader would take the bundle.
+`encodeBundle` takes the link of the root, and its bytes among the blobs,
+so the root is written as it was signed. It refuses a root that the blobs
+do not hold, and one that is not an object, since no reader would take
+the bundle.
 
 The file starts with the object itself, not a pointer to it. So nothing in
 a bundle is both unsigned and unaddressed: what the bundle has to say is
@@ -52,8 +52,9 @@ the hash of the file is its link.
 - A blob is any bytes and is not read: an object, a signature, a schema,
   or an image. An object carried in the file is a byte string as an image
   is, and only the root is written bare.
-- The blobs are in any order. `encodeBundle` writes them in the order
-  given, each once, and leaves out the root when it is given among them.
+- The blobs are in any order. `encodeBundle` writes the root first,
+  wherever it is among the blobs given, then the others in the order
+  given, each once.
 - Nothing is compressed, so the blobs come to less than the length of the
   file, and reading has no other limit. The length of the file depends on
   the sizes of the blobs alone, so when a bundle is encrypted on the way,

@@ -48,11 +48,9 @@ function newStores() {
 
 async function record({ store, privateStore }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
   const objects = notes.map((note) => encodeObject(noteSchema, note));
-  await store.write({
-    roots: objects.map(({ link }) => link),
-    blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs],
-  });
-  await privateStore.write(recordsOf(objects, Date.now()));
+  const links = objects.map(({ link }) => link);
+  await store.write({ roots: links, blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs] });
+  await privateStore.write(recordsOf(links, Date.now()));
 }
 
 describe("the value of a view", () => {

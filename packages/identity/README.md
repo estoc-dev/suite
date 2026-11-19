@@ -593,6 +593,6 @@ store:
 
 ```ts
 const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
-await secretStore.write({ secrets: [secretKey], blobs: secretKey.blobs });
+await secretStore.write({ secrets: [secretKey.link], blobs: secretKey.blobs });
 const { signer } = await secretKeys.read(secretKey.link, secretStore);
 ```

@@ -12,7 +12,7 @@ const note = schema("Note", { text: string() });
 const root = encodeObject(note, { text: "hello" });
 const blob = utf8("blob");
 const sealTo = async (key: MailboxKey, plaintext: Uint8Array) => seal(await publicKeyFrom(key.publicKey), plaintext);
-const ciphertext = await sealTo(bob, encodeBundle(root, [blob]));
+const ciphertext = await sealTo(bob, encodeBundle(root.link, [root.bytes, blob]));
 
 describe("a mailbox key", () => {
   it("opens what was sealed to it to the bundle inside, as many times as it arrives", async () => {
@@ -44,9 +44,9 @@ describe("a mailbox key", () => {
     await expect(bob.open(await sealTo(bob, utf8('{"blobs":[],"entry":"ZQ"}')))).rejects.toThrow(
       /the root of a bundle is an object/,
     );
-    const withoutRoot = encodeBundle(root, [blob]).subarray(root.bytes.length);
+    const withoutRoot = encodeBundle(root.link, [root.bytes, blob]).subarray(root.bytes.length);
     await expect(bob.open(await sealTo(bob, withoutRoot))).rejects.toThrow(/the root of a bundle is an object/);
-    const cut = encodeBundle(root, [blob]).subarray(0, -1);
+    const cut = encodeBundle(root.link, [root.bytes, blob]).subarray(0, -1);
     await expect(bob.open(await sealTo(bob, cut))).rejects.toThrow();
   });
 

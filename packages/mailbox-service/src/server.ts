@@ -10,6 +10,7 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
+import { type PeopleView, peopleView } from "@estoc/mailbox";
 import {
   type Bytes,
   type EncodedObject,
@@ -28,7 +29,7 @@ import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgeme
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
-import { checkHonors, type PeopleView, peopleView } from "./people.ts";
+import { checkHonors } from "./people.ts";
 import {
   accountOfferSchema,
   acknowledgementSchema,

@@ -1,5 +1,6 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
+import { peopleView } from "@estoc/mailbox";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
@@ -16,7 +17,6 @@ import {
   pickupRequestSchema,
   serviceSchema,
 } from "../src/index.ts";
-import { peopleView } from "../src/people.ts";
 import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {

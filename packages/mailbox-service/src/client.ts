@@ -8,7 +8,7 @@ import {
   type Signatures,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import type { Arrival, Pickup } from "@estoc/mailbox";
+import { type Arrival, type PeopleView, type Pickup, peopleView } from "@estoc/mailbox";
 import { httpTransport } from "@estoc/mailbox/http";
 import {
   AbsentBlob,
@@ -30,7 +30,7 @@ import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
-import { checkHonors, type PeopleView, peopleView } from "./people.ts";
+import { checkHonors } from "./people.ts";
 import {
   type AccountOfferData,
   accountOfferSchema,

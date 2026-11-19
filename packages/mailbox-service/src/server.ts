@@ -22,7 +22,7 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
-import { checkHonors, type People, type PeopleView, peopleView } from "@estoc/people";
+import { type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -104,6 +104,7 @@ type SignedRequest = {
   readonly signature: Signature;
   readonly bundle: Bundle;
   readonly people: People;
+  readonly receivedAt: number;
 };
 
 class MailboxService {
@@ -188,6 +189,7 @@ class MailboxService {
   async #readSigned(request: Request, limit: number): Promise<SignedRequest | Response> {
     const file = await readBody(request.body, limit);
     if (file === undefined) return answer(413, `a request holds at most ${limit} bytes`);
+    const receivedAt = this.#clock();
     const people = await view(this.#store, this.#people);
     let bundle: Bundle;
     let signature: Signature;
@@ -197,12 +199,14 @@ class MailboxService {
     } catch (error) {
       return answer(400, reasonOf(error));
     }
-    try {
-      await checkHonors(people, signature);
-    } catch (error) {
-      return answer(403, reasonOf(error));
+    if (!(await people.honors(signature))) {
+      const { key, signedIdentity } = signature;
+      return answer(
+        403,
+        `the signature by ${key.link} is not honored by the identity versions of ${signedIdentity.identity.identifier}`,
+      );
     }
-    return { signature, bundle, people };
+    return { signature, bundle, people, receivedAt };
   }
 
   async #readSignedObject<F extends ValueMap>(
@@ -223,11 +227,10 @@ class MailboxService {
   async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
     const signedRequest = await this.#readSigned(request, REQUEST_LIMIT);
     if (signedRequest instanceof Response) return signedRequest;
-    const { signature: acceptance, bundle, people } = signedRequest;
+    const { signature: acceptance, bundle, people, receivedAt: at } = signedRequest;
     if (acceptance.object !== offer) return answer(400, `the acceptance signs ${acceptance.object}, not the offer`);
     if (acceptance.signedIdentity.identity.identifier === this.#actor.identifier)
       return answer(400, "a service opens no account for itself");
-    const at = this.#clock();
     const acknowledgements = await view(this.#privateStore, this.#acknowledgements);
     const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
@@ -247,10 +250,9 @@ class MailboxService {
   async #openMailbox(request: Request, offer: EncodedObject<MailboxOfferData>): Promise<Response> {
     const signedRequest = await this.#readSignedObject(request, REQUEST_LIMIT, mailboxRequestSchema);
     if (signedRequest instanceof Response) return signedRequest;
-    const { signature, object, bundle, people } = signedRequest;
+    const { signature, object, bundle, people, receivedAt: at } = signedRequest;
     if (object.data.offer.link !== offer.link)
       return answer(400, `the request asks for ${object.data.offer.link}, not the offer`);
-    const at = this.#clock();
     const { identifier } = signature.signedIdentity.identity;
     if (!(await this.#accounts.has(identifier))) return answer(403, `${identifier} has no account here`);
     const existingMailbox = await this.#mailboxes.mailboxOpenedBy(signature.link);

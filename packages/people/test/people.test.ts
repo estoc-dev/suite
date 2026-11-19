@@ -1,0 +1,57 @@
+import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { encodeObject, LinkValue } from "@estoc/object";
+import { schema, string } from "@estoc/schema";
+import { MemoryBackend, Store, scan, view } from "@estoc/store";
+import { describe, expect, it } from "vitest";
+import { checkHonors, peopleView } from "../src/index.ts";
+
+const { identityVersions, signatures, signedIdentities, publish } = loadIdentity([ed25519]);
+const note = schema("Note", { text: string() });
+
+describe("the index of the people of a store", () => {
+  it("gives no row of a signed identity that its root did not sign, and lists it among the failures", async () => {
+    const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+    const first = await publish(alice, { at: 1_000 });
+    const second = await publish(alice, { prior: first, at: 2_000 });
+    const forged = encodeObject(signedIdentities.schema, {
+      identity: new LinkValue(second.identity.link),
+      signature: new Uint8Array(64),
+    });
+    const store = new Store(new MemoryBackend());
+    await store.write({ roots: [second.link, forged.link], blobs: [...second.blobs, forged.bytes] });
+
+    const people = peopleView(identityVersions);
+    const rows = await scan(store, people.index);
+    const signedIdentitiesOfRows = [];
+    for await (const { data } of rows.range([])) signedIdentitiesOfRows.push(data.signedIdentity.link);
+    expect(signedIdentitiesOfRows).toEqual([first.link, second.link]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([forged.link]);
+    expect((await (await view(store, people)).current(first)).link).toBe(second.link);
+  });
+});
+
+describe("a signature by an agent, checked against the people of a store", () => {
+  const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+  const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
+
+  it("is honored when the current identity version the store holds lists the agent", async () => {
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
+    const store = new Store(new MemoryBackend());
+    await store.write({ roots: [listing.link], blobs: [...listing.blobs] });
+
+    await expect(checkHonors(await view(store, peopleView(identityVersions)), byAgent)).resolves.toBeUndefined();
+  });
+
+  it("is refused, with its key and the identifier named, when the current identity version the store holds does not list the agent", async () => {
+    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
+    const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
+    const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
+    const store = new Store(new MemoryBackend());
+    await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });
+
+    await expect(checkHonors(await view(store, peopleView(identityVersions)), byAgent)).rejects.toThrow(
+      `the signature by ${byAgent.key.link} is not honored by the identity versions of ${listing.identity.identifier}`,
+    );
+  });
+});

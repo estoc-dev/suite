@@ -2,10 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
-  type IdentityVersionData,
-  type IdentityVersionOrder,
   loadIdentity,
-  type People,
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
@@ -19,18 +16,8 @@ import {
   ObjectValue,
   objectFormat,
 } from "@estoc/object";
-import {
-  arrivalsView,
-  Intake,
-  indexOver,
-  MemoryBackend,
-  PrivateStore,
-  SecretStore,
-  Store,
-  selectedBlobs,
-  type View,
-  view,
-} from "@estoc/store";
+import { peopleView } from "@estoc/people";
+import { arrivalsView, Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -44,12 +31,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const grants = new MailboxGrants(identity);
-const seenPeople: View<IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
-    ...identityVersions.order,
-  ),
-  read: (rows, reader) => identityVersions.people(rows, reader),
-};
+const seenPeople = peopleView(identityVersions);
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const network = new MemoryNetwork();
 

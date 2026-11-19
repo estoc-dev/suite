@@ -1,6 +1,7 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -16,7 +17,6 @@ import {
   pickupRequestSchema,
   serviceSchema,
 } from "../src/index.ts";
-import { peopleView } from "../src/people.ts";
 import type { MailboxService } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
@@ -76,19 +76,16 @@ async function rootOf(service: MailboxService) {
 const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
   post(service, (await rootOf(service)).acceptId, body);
 
-/** The bundle that accepts `offer` by `by`'s own signature, with the blobs of its identity. */
 async function directAcceptance(offer: { readonly link: Link<unknown> }, by = alice) {
   const signature = await (await actorOf(by)).sign(offer);
   return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
-/** The bundle that accepts `offer` for the wallet by the device, which an identity of the wallet's lists. */
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   const signature = await signatures.actor(device, await publish(wallet, { agents: [device.key] })).sign(offer);
   return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
-/** The bundle that accepts `offer` by `agent`, which `identityVersion` of the wallet lists. */
 async function acceptanceBy(
   agent: Signer,
   identityVersion: SignedIdentityObject,
@@ -679,7 +676,6 @@ async function acceptAccount(service: MailboxService, actor: Actor) {
 const openAccount = async (service: MailboxService, actor: Actor) =>
   expect(await acceptAccount(service, actor)).toBe(201);
 
-/** The bundle of `actor`'s request for a mailbox sealed to `key`, by `offer`. */
 async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown> }, key = keyOf(0x11)) {
   const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(offer.link as Link<never>), key });
   const signature = await actor.sign(request);

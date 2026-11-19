@@ -1,25 +1,7 @@
-import type {
-  Actor,
-  IdentityKit,
-  IdentityVersionData,
-  IdentityVersionOrder,
-  People,
-  SeenIdentityVersions,
-  Signature,
-  SignedIdentityObject,
-} from "@estoc/identity";
+import type { Actor, IdentityKit, SeenIdentityVersions, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import {
-  type ArrivalsView,
-  arrivalsView,
-  indexOver,
-  type PrivateStore,
-  recordsOf,
-  type Store,
-  selectedBlobs,
-  type View,
-  view,
-} from "@estoc/store";
+import { type PeopleView, peopleView } from "@estoc/people";
+import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -39,7 +21,7 @@ export class Correspondence {
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
-  readonly #seenPeople: View<IdentityVersionData, IdentityVersionOrder, People>;
+  readonly #seenPeople: PeopleView;
   readonly #arrivals: ArrivalsView;
 
   constructor(
@@ -58,14 +40,7 @@ export class Correspondence {
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
-    this.#seenPeople = {
-      index: indexOver(
-        selectedBlobs(identityVersions.selection),
-        identityVersions.schema,
-        identityVersions.rows,
-      ).orderedBy(...identityVersions.order),
-      read: (rows, reader) => identityVersions.people(rows, reader),
-    };
+    this.#seenPeople = peopleView(identityVersions);
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 

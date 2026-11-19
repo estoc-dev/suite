@@ -6,6 +6,11 @@ import { bodies, markdownBodyOf, markdownBodySchema, postSchema } from "../src/i
 const byLink = (blobs: readonly Uint8Array[]) =>
   new Map<Link<unknown>, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
+async function htmlOf(text: string): Promise<string> {
+  const { link, bytes } = markdownBodyOf(text);
+  return (await bodies.read(link, byLink([bytes]))).html;
+}
+
 describe("a post", () => {
   it("links to its body, which is read by the schema the body names", async () => {
     const body = markdownBodyOf("Most of our online identities depend on platforms.\n");
@@ -18,8 +23,10 @@ describe("a post", () => {
 
     const { data } = await readObject(reader, post.link, postSchema);
     const readBody = await bodies.read(data.body.link, reader);
-    expect(readBody.link).toBe(body.link);
-    expect(readBody.html).toBe("<p>Most of our online identities depend on platforms.</p>\n");
+    expect(readBody).toEqual({
+      link: body.link,
+      html: "<p>Most of our online identities depend on platforms.</p>\n",
+    });
   });
 });
 
@@ -30,17 +37,17 @@ describe("a Markdown body", () => {
     expect(body.data).toEqual({ text: "## Identity\n" });
   });
 
-  it("renders headings, lists, links and code as HTML", () => {
-    expect(markdownBodyOf("## Identity\n\n- `sign` is the [holder](https://estoc.dev)'s.\n").html).toBe(
+  it("reads as headings, lists, links and code in HTML", async () => {
+    expect(await htmlOf("## Identity\n\n- `sign` is the [holder](https://estoc.dev)'s.\n")).toBe(
       '<h2>Identity</h2>\n<ul>\n<li><code>sign</code> is the <a href="https://estoc.dev">holder</a>\'s.</li>\n</ul>\n',
     );
-    expect(markdownBodyOf("```ts\nconst a = 1 < 2;\n```\n").html).toBe(
+    expect(await htmlOf("```ts\nconst a = 1 < 2;\n```\n")).toBe(
       '<pre><code class="language-ts">const a = 1 &lt; 2;\n</code></pre>\n',
     );
   });
 
-  it("renders HTML written in its text as text", () => {
-    expect(markdownBodyOf("<script>alert(1)</script>\n").html).toBe("&lt;script&gt;alert(1)&lt;/script&gt;\n");
+  it("reads HTML written in its text as text", async () => {
+    expect(await htmlOf("<script>alert(1)</script>\n")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;\n");
   });
 });
 

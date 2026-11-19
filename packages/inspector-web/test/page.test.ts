@@ -65,7 +65,10 @@ describe("the page of a file", () => {
 
   it("has the body the page reads an object as, at the link of the object", async () => {
     const page = await pageOf(readFile(postFile), fragmentOf(body.link));
-    expect(page).toMatchObject({ inspection: { link: body.link }, reading: { kind: "read", value: body } });
+    expect(page).toMatchObject({
+      inspection: { link: body.link },
+      reading: { kind: "read", value: { link: body.link, html: "<h2>Identity</h2>\n" } },
+    });
   });
 
   it("has why the page could not read a body, where the file leaves out the blob of its schema", async () => {

@@ -30,6 +30,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const grants = new MailboxGrants(identity);
 const seenPeople = peopleView(identityVersions);
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
@@ -76,10 +77,7 @@ async function person(
 // The agent signs by `identityVersion` whatever the store holds, as a device its root removed still can.
 const personSigningAs = (someone: Person, agent: Signer, identityVersion: SignedIdentityObject): Person => ({
   ...someone,
-  actor: {
-    identifier: identityVersion.identity.identifier,
-    sign: (object) => signatures.sign(agent, identityVersion, object),
-  },
+  actor: signatures.actor(agent, identityVersion, peopleHavingSeenNothing),
   signedIdentity: identityVersion,
   identifier: identityVersion.identity.identifier,
 });

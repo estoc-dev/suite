@@ -149,6 +149,7 @@ const texts: View<Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> =
 };
 
 const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
@@ -185,7 +186,7 @@ describe("a view of a staged batch", () => {
     const store = newStore();
     const hello = object({ text: "hello" });
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.sign(agent, listing, hello);
+    const byAgent = await signatures.actor(agent, listing, peopleHavingSeenNothing).sign(hello);
     const stagedStore = await store.stage({
       roots: [byAgent.link],
       blobs: [...byAgent.blobs, hello.bytes, ...anything.blobs],
@@ -194,7 +195,9 @@ describe("a view of a staged batch", () => {
     expect(await before.honors(byAgent)).toBe(true);
 
     const agentsOut = object({ text: "agents out" });
-    const byRoot = await signatures.sign(root, await publish(root, { prior: listing, at: 2_000 }), agentsOut);
+    const byRoot = await signatures
+      .actor(root, await publish(root, { prior: listing, at: 2_000 }), peopleHavingSeenNothing)
+      .sign(agentsOut);
     await store.write({
       roots: [byRoot.link],
       blobs: [...byRoot.blobs, agentsOut.bytes, ...anything.blobs],

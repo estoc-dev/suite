@@ -104,21 +104,6 @@ export class Signatures {
     });
   }
 
-  async sign(
-    signer: Signer,
-    signedIdentity: SignedIdentityObject,
-    object: { readonly link: Link<unknown> },
-  ): Promise<Signature> {
-    const sign = signingFunction(signedIdentity.identity, signer);
-    if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);
-    const data = {
-      signedIdentity: new LinkValue(signedIdentity.link),
-      object: new LinkValue(object.link as Link<never>),
-      signature: await sign(digestOf(object.link), digestOf(signedIdentity.link)),
-    };
-    return this.#signatureOf(encodeObject(this.schema, data), signedIdentity);
-  }
-
   /**
    * `people` gives those of the time of each signature, since a reader takes in identity versions
    * after the actor is made, and a signature carries the one that is current then. `signedIdentity`
@@ -127,7 +112,17 @@ export class Signatures {
   actor(signer: Signer, signedIdentity: SignedIdentityObject, people: () => Promise<Pick<People, "current">>): Actor {
     return {
       identifier: signedIdentity.identity.identifier,
-      sign: async (object) => this.sign(signer, await (await people()).current(signedIdentity), object),
+      sign: async (object) => {
+        const current = await (await people()).current(signedIdentity);
+        const sign = signingFunction(current.identity, signer);
+        if (sign === undefined) throw new Error(`the signer's key does not sign for ${current.identity.link}`);
+        const data = {
+          signedIdentity: new LinkValue(current.link),
+          object: new LinkValue(object.link as Link<never>),
+          signature: await sign(digestOf(object.link), digestOf(current.link)),
+        };
+        return this.#signatureOf(encodeObject(this.schema, data), current);
+      },
     };
   }
 

@@ -35,12 +35,13 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const seenPeople = peopleView(identity.identityVersions);
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareSigner) => {
-  const signature = await signatures.sign(by, await publish(by, { at: 0 }), object);
+  const signature = await signatures.actor(by, await publish(by, { at: 0 }), peopleHavingSeenNothing).sign(object);
   await mailbox.send(signature.link, [...signature.blobs, object.bytes]);
   return signature;
 };

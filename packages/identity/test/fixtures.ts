@@ -11,6 +11,8 @@ import {
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
+/** Their current identity version is the one in hand, so an actor that asks them signs by the one it is made with. */
+export const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 
 /** A link with blobs that hold what it names, as a key or a signature read from an object has. */
 interface LinkWithBlobs {

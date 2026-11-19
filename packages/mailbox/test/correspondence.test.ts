@@ -31,6 +31,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const grants = new MailboxGrants(identity);
 const note = schema("Note", { text: string() });
 const network = new MemoryNetwork();
@@ -444,10 +445,9 @@ describe("what came in at a mailbox", () => {
     const backends = newBackends();
     const [formerBob, currentBob, alice] = await Promise.all([
       // A device that takes in no identity version signs by the one it has, whatever the store it shares holds.
-      personActingAs(formerAgent, listingIdentityVersion, backends, () => ({
-        identifier: listingIdentityVersion.identity.identifier,
-        sign: (object) => signatures.sign(formerAgent, listingIdentityVersion, object),
-      })),
+      personActingAs(formerAgent, listingIdentityVersion, backends, () =>
+        signatures.actor(formerAgent, listingIdentityVersion, peopleHavingSeenNothing),
+      ),
       personActingAs(currentAgent, removalIdentityVersion, backends),
       person(1),
     ]);

@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  type Actor,
   type CurveScheme,
   ed25519,
   eip191,
@@ -57,14 +56,12 @@ export async function makeTemporaryPath(): Promise<string> {
 
 export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = loadIdentity(schemes);
 
-/** Signs by `signedIdentity` whatever a store holds, as the tests say which identity version each signature carries. */
-export interface ActorSigningByOne extends Actor {
-  readonly signedIdentity: SignedIdentityObject;
-}
-export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject): ActorSigningByOne => ({
-  identifier: signedIdentity.identity.identifier,
+/** Their current identity version is the one in hand, so an actor that asks them signs by the one it is made with. */
+export const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+/** An actor that signs by `signedIdentity` whatever a store holds, with the signed identity for the tests to read. */
+export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject) => ({
+  ...signatures.actor(by, signedIdentity, peopleHavingSeenNothing),
   signedIdentity,
-  sign: (object) => signatures.sign(by, signedIdentity, object),
 });
 export const actorOf = async (by: Signer) => actorSigningBy(by, await publish(by, { at: 0 }));
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };

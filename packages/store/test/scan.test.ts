@@ -227,6 +227,7 @@ describe("an index scanned from a private store", () => {
 
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
     const { signatures, publish } = loadIdentity([ed25519]);
+    const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
     const signed = schema("Signed", { signer: link(), object: link() });
     const bySigner = indexOver(selectedRecords(objectsOf(signatures.schema)), signed, async function* (object, reader) {
       const signature = await signatures.verify(object, reader);
@@ -238,7 +239,9 @@ describe("an index scanned from a private store", () => {
     const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
     const hello = encodeObject(note, {});
     const helloSignatures = await Promise.all(
-      signers.map(async (by) => signatures.sign(by, await publish(by, { at: 0 }), hello)),
+      signers.map(async (by) =>
+        signatures.actor(by, await publish(by, { at: 0 }), peopleHavingSeenNothing).sign(hello),
+      ),
     );
     const stores = newStores();
     const batch = {

@@ -14,6 +14,7 @@ const anything = schema("Anything", {
   attachments: optional(array(link())),
 });
 const { signatures, publish } = loadIdentity([ed25519]);
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
 const signatureSchemas = [signatures.schema, identitySchema].map(({ bytes }) => bytes);
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -286,7 +287,9 @@ describe("a signature read from a store", () => {
   it("verifies with the blobs of its signed identity, which the store holds", async () => {
     const store = newStore();
     const note = object({ text: "hello" });
-    const signature = await signatures.sign(signer, await publish(signer, { at: 0 }), note);
+    const signature = await signatures
+      .actor(signer, await publish(signer, { at: 0 }), peopleHavingSeenNothing)
+      .sign(note);
     await store.write({
       roots: [note.link, signature.link],
       blobs: [note.bytes, ...signature.blobs, ...anything.blobs],

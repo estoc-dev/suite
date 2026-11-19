@@ -29,10 +29,11 @@ import {
 // read by following links from that mark.
 
 const { identities, signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.sign(by, await publish(by, { at: 0 }), object);
+  signatures.actor(by, await publish(by, { at: 0 }), peopleHavingSeenNothing).sign(object);
 
 const noteSchema = schema("Note", { text: string() });
 const receivedSchema = schema("Received", { bundle: link<never>() });

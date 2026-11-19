@@ -36,10 +36,11 @@ const readBody = { link: body.link, html: "<h2>Identity</h2>\n" };
 
 const schemes = [ed25519, eip191, solanaOffchain];
 const { keys, publish, signatures } = loadIdentity(schemes);
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
-const signature = await signatures.sign(agent, signedIdentity, body);
+const signature = await signatures.actor(agent, signedIdentity, peopleHavingSeenNothing).sign(body);
 
 describe("the reading of what a link reads as", () => {
   it("is the body that a Markdown body reads as", async () => {
@@ -82,7 +83,7 @@ describe("the reading of what a link reads as", () => {
       const root = SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(1));
       const agent = SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(2));
       const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
-      const signature = await signatures.sign(agent, signedIdentity, body);
+      const signature = await signatures.actor(agent, signedIdentity, peopleHavingSeenNothing).sign(body);
       expect(await readingAt(bytesOf(signature), signedIdentity.blobs)).toMatchObject({
         kind: "read",
         as: signatureReading,

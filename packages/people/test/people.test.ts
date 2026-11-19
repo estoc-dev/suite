@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkHonors, peopleView } from "../src/index.ts";
 
 const { identityVersions, signatures, signedIdentities, publish } = loadIdentity([ed25519]);
+const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const note = schema("Note", { text: string() });
 
 describe("the index of the people of a store", () => {
@@ -36,7 +37,9 @@ describe("a signature by an agent, checked against the people of a store", () =>
 
   it("is honored when the current identity version the store holds lists the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.sign(agent, listing, encodeObject(note, { text: "hello" }));
+    const byAgent = await signatures
+      .actor(agent, listing, peopleHavingSeenNothing)
+      .sign(encodeObject(note, { text: "hello" }));
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [listing.link], blobs: [...listing.blobs] });
 
@@ -45,7 +48,9 @@ describe("a signature by an agent, checked against the people of a store", () =>
 
   it("is refused, with its key and the identifier named, when the current identity version the store holds does not list the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.sign(agent, listing, encodeObject(note, { text: "hello" }));
+    const byAgent = await signatures
+      .actor(agent, listing, peopleHavingSeenNothing)
+      .sign(encodeObject(note, { text: "hello" }));
     const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });

@@ -9,7 +9,7 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "../src/index.ts";
-import { byLink, rowsOf, schemes } from "./fixtures.ts";
+import { byLink, peopleHavingSeenNothing, rowsOf, schemes } from "./fixtures.ts";
 
 const { signatures, identityVersions, publish } = loadIdentity(schemes);
 
@@ -101,8 +101,14 @@ describe("a person", () => {
     const published = await publish(wallet, { at: 1_000 });
     const identityVersion = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });
     const person = peopleHavingSeen().personOf(published);
-    expect(person.hasSigned(await signatures.sign(wallet, published, hello))).toBe(true);
-    expect(person.hasSigned(await signatures.sign(laptop, identityVersion, hello))).toBe(true);
-    expect(person.hasSigned(await signatures.sign(laptop, await publish(laptop, { at: 1_000 }), hello))).toBe(false);
+    expect(person.hasSigned(await signatures.actor(wallet, published, peopleHavingSeenNothing).sign(hello))).toBe(true);
+    expect(person.hasSigned(await signatures.actor(laptop, identityVersion, peopleHavingSeenNothing).sign(hello))).toBe(
+      true,
+    );
+    expect(
+      person.hasSigned(
+        await signatures.actor(laptop, await publish(laptop, { at: 1_000 }), peopleHavingSeenNothing).sign(hello),
+      ),
+    ).toBe(false);
   });
 });

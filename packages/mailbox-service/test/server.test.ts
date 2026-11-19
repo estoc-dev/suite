@@ -29,6 +29,7 @@ import {
   makeTemporaryPath,
   memoryService,
   memoryStore,
+  peopleHavingSeenNothing,
   privateStoreBeside,
   publish,
   recordedObjectsIn,
@@ -83,7 +84,9 @@ async function directAcceptance(offer: { readonly link: Link<unknown> }, by = al
 }
 
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
-  const signature = await signatures.sign(device, await publish(wallet, { agents: [device.key] }), offer);
+  const signature = await signatures
+    .actor(device, await publish(wallet, { agents: [device.key] }), peopleHavingSeenNothing)
+    .sign(offer);
   return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
 
@@ -92,7 +95,7 @@ async function acceptanceBy(
   identityVersion: SignedIdentityObject,
   offer: { readonly link: Link<unknown> },
 ) {
-  const signature = await signatures.sign(agent, identityVersion, offer);
+  const signature = await signatures.actor(agent, identityVersion, peopleHavingSeenNothing).sign(offer);
   return encodeBundle(signature.link, signature.blobs);
 }
 
@@ -499,7 +502,7 @@ describe("a mailbox service first started on a store that holds identity version
     const { signature, offer } = await rootOf(service);
     expect(signature.signedIdentity.link).toBe(listing.link);
     const people = await view(store, peopleView(identityVersions));
-    expect(await people.honors(await signatures.sign(agent, listing, offer))).toBe(true);
+    expect(await people.honors(await signatures.actor(agent, listing, peopleHavingSeenNothing).sign(offer))).toBe(true);
   });
 
   it("signs as the crisis among them, and answers with the Service it signed", async () => {

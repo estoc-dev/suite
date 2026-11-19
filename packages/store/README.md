@@ -568,7 +568,9 @@ its program gives it, and is a mark because the private store lists it:
   beside holds the same bytes, which anyone can send it. So what the store
   comes to hold changes neither what is listed here nor where it is kept.
 - What a batch gives of the closure of a mark, such as its schema, is kept
-  here too. A blob of the closure that the batch leaves out counts as held
+  here too. The batch gives the bytes of each mark, held already or not,
+  and one that leaves them out is refused again whatever either side comes
+  to hold. Any other blob of the closure that it leaves out counts as held
   when either side holds it, so a mark can link to what the store holds.
 - Marks are not signed. That a mark is the user's own rests on what is handed
   the private store: what takes in bundles is handed the store and writes
@@ -684,11 +686,13 @@ given to what gathers bundles, nor to what keeps marks. Being secret is
 where bytes are kept, not a mark on them: bytes that are also written to the
 store are the store's as well.
 
-A write keeps each secret with the blobs of the batch in its closure, and
-what the store beside holds counts as held: a blob that either side holds
-need not come in the batch, and one that the store holds already is not kept
-again. A secret that the store beside holds is listed here still. `scan` and
-`view` take a secret store:
+A write keeps each secret with the blobs of the batch in its closure. The
+batch gives the bytes of each secret, held already or not, and one that
+leaves them out is refused again whatever either side comes to hold. For the
+rest of a closure, what the store beside holds counts as held: a blob that
+either side holds need not come in the batch, and one that the store holds
+already is not kept again. A secret that the store beside holds is listed
+here still. `scan` and `view` take a secret store:
 
 - An index over `selectedSecrets` reads its secrets, each as the object it
   is, and reads nothing from a store or a private store.

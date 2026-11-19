@@ -72,11 +72,8 @@ describe("the page of a file", () => {
   });
 
   it("has why the page could not read a body, where the file leaves out the blob of its schema", async () => {
-    const misfit = { bytes: objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 })) };
-    const page = await pageOf(
-      readFile(new File([encodeBundle(linkOf(misfit.bytes), [misfit.bytes])], "misfit.eof")),
-      "",
-    );
+    const misfit = objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 }));
+    const page = await pageOf(readFile(new File([encodeBundle(linkOf(misfit), [misfit])], "misfit.eof")), "");
     expect(page).toMatchObject({ inspection: { schema: { kind: "absent" } }, reading: { kind: "unread" } });
   });
 

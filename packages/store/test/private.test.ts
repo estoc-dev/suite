@@ -26,7 +26,6 @@ const card = (name: string) => encodeObject(cardSchema, { name });
 const taken = (of: { readonly link: Link<unknown> }, at: number) =>
   encodeObject(takenSchema, { card: new LinkValue(of.link), at });
 const utf8 = (text: string) => new TextEncoder().encode(text);
-// The batch that writes `marks`, each with its bytes, and `blobs` with them.
 const batchOf = (marks: readonly EncodedObject[], blobs: readonly Uint8Array[] = []) => ({
   marks: marks.map(({ link }) => link),
   blobs: [...marks.map(({ bytes }) => bytes), ...blobs],

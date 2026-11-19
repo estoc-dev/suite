@@ -24,7 +24,6 @@ const anything = schema("Anything", {
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
-// The batch that writes `secrets`, each with its bytes, and `blobs` with them.
 const batchOf = (secrets: readonly EncodedObject[], blobs: readonly Uint8Array[] = []) => ({
   secrets: secrets.map(({ link }) => link),
   blobs: [...secrets.map(({ bytes }) => bytes), ...blobs],

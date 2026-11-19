@@ -76,7 +76,8 @@ export class PrivateStore implements RowKeeper {
    * The other blobs are dropped. A refused batch writes nothing.
    *
    * - What the batch gives of a closure is kept here, whether or not the store beside holds it.
-   * - A blob of a closure that the batch leaves out counts as held when either side holds it.
+   * - The batch gives the blob of each mark, held already or not. Any other blob of a closure
+   *   that it leaves out counts as held when either side holds it.
    * - A mark written again is listed once.
    *
    * @throws {RefusedBatch} when the batch does not give the blob of one of `marks`, or it is not

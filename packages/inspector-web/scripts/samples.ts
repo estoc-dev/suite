@@ -34,24 +34,20 @@ const note = encodeObject(noteSchema, {
   replies: [new LinkValue(reply.link)],
   more: { tags: ["first", "second"], files: [{ name: "photo.jpg", photo: new LinkValue(linkOf(photo)) }], empty: {} },
 });
-const misfit = {
-  bytes: objectFormat.encode(
-    new ObjectValue(noteSchema.link, {
-      text: 7,
-      replies: [new LinkValue(reply.link), "a reply", [new LinkValue(reply.link)]],
-      title: "Hello",
-    }),
-  ),
-};
+const misfit = objectFormat.encode(
+  new ObjectValue(noteSchema.link, {
+    text: 7,
+    replies: [new LinkValue(reply.link), "a reply", [new LinkValue(reply.link)]],
+    title: "Hello",
+  }),
+);
 const pathSchema = schema("Paths", { a: any(), "a/0": string(), label: string(), "label: detail": string() });
-const unplacedExample = {
-  bytes: objectFormat.encode(
-    new ObjectValue(pathSchema.link, { a: ["a string"], "a/0": 7, label: "a string", "label: detail": 8 }),
-  ),
-};
-const writtenToNote = {
-  bytes: objectFormat.encode(new ObjectValue(note.link, { text: "written to a note, which is not a schema" })),
-};
+const unplacedExample = objectFormat.encode(
+  new ObjectValue(pathSchema.link, { a: ["a string"], "a/0": 7, label: "a string", "label: detail": 8 }),
+);
+const writtenToNote = objectFormat.encode(
+  new ObjectValue(note.link, { text: "written to a note, which is not a schema" }),
+);
 const body = markdownBodyOf(
   [
     "## A heading",
@@ -69,7 +65,7 @@ const body = markdownBodyOf(
     "",
   ].join("\n"),
 );
-const misfitBody = { bytes: objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 })) };
+const misfitBody = objectFormat.encode(new ObjectValue(markdownBodySchema.link, { text: 7 }));
 const post = encodeObject(postSchema, {
   title: "A post",
   description: "What a post links to.",
@@ -97,8 +93,8 @@ const unverifiedSignature = encodeObject(signatures.schema, {
 const files: { readonly [name: string]: Uint8Array } = {
   "note.eof": encodeBundle(note.link, [note.bytes, reply.bytes, photo, ...noteSchema.blobs]),
   "post.eof": encodeBundle(post.link, [post.bytes, body.bytes, ...postSchema.blobs, ...markdownBodySchema.blobs]),
-  "body-misfit.eof": encodeBundle(linkOf(misfitBody.bytes), [misfitBody.bytes, ...markdownBodySchema.blobs]),
-  "body-misfit-schema-absent.eof": encodeBundle(linkOf(misfitBody.bytes), [misfitBody.bytes]),
+  "body-misfit.eof": encodeBundle(linkOf(misfitBody), [misfitBody, ...markdownBodySchema.blobs]),
+  "body-misfit-schema-absent.eof": encodeBundle(linkOf(misfitBody), [misfitBody]),
   "signature.eof": encodeBundle(signature.link, [signature.bytes, ...signedIdentity.blobs, ...signedPost]),
   "signature-identity-absent.eof": encodeBundle(signature.link, [signature.bytes, ...signedPost]),
   "signature-unverified.eof": encodeBundle(unverifiedSignature.link, [
@@ -106,16 +102,16 @@ const files: { readonly [name: string]: Uint8Array } = {
     ...signedIdentity.blobs,
     ...signedPost,
   ]),
-  "misfit.eof": encodeBundle(linkOf(misfit.bytes), [misfit.bytes, reply.bytes, ...noteSchema.blobs]),
-  "unplaced.eof": encodeBundle(linkOf(unplacedExample.bytes), [unplacedExample.bytes, ...pathSchema.blobs]),
+  "misfit.eof": encodeBundle(linkOf(misfit), [misfit, reply.bytes, ...noteSchema.blobs]),
+  "unplaced.eof": encodeBundle(linkOf(unplacedExample), [unplacedExample, ...pathSchema.blobs]),
   "left-out.eof": encodeBundle(note.link, [
     note.bytes,
     ...noteSchema.blobs,
-    misfit.bytes,
+    misfit,
     new TextEncoder().encode("a stray blob"),
   ]),
   "schema-absent.eof": encodeBundle(note.link, [note.bytes]),
-  "schema-refused.eof": encodeBundle(linkOf(writtenToNote.bytes), [writtenToNote.bytes, note.bytes]),
+  "schema-refused.eof": encodeBundle(linkOf(writtenToNote), [writtenToNote, note.bytes]),
   "note-schema.eof": encodeBundle(noteSchema.link, noteSchema.blobs),
   "root-schema.eof": encodeBundle(rootSchema.link, [rootSchema.bytes]),
   "not-a-bundle.eof": photo,

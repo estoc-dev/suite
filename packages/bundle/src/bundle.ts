@@ -82,21 +82,26 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
  * - `blobs` hold the root, which is written first wherever it is among them.
  * - With no other blob the file is the bytes of the root, and the hash of the file is its link.
  * - The other blobs are written in the order given. A blob given twice is written once.
+ * - Each blob is taken as it is when given, so what gives the blobs can fill one array again for
+ *   the next.
  *
  * @throws when `blobs` do not hold the root.
  * @throws when the root is not an object, since no reader would take the file.
  */
 export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Uint8Array {
-  const blobsByLink = new Map<Link<unknown>, Uint8Array>();
+  const givenLinks = new Set<Link<unknown>>();
+  const otherBlobs: Uint8Array[] = [];
+  let rootBytes: Uint8Array | undefined;
   for (const blob of blobs) {
     const link = linkOf(blob);
-    if (!blobsByLink.has(link)) blobsByLink.set(link, blob);
+    if (givenLinks.has(link)) continue;
+    givenLinks.add(link);
+    if (link === root) rootBytes = blob.slice();
+    else otherBlobs.push(encode(blob));
   }
-  const rootBytes = blobsByLink.get(root);
   if (rootBytes === undefined) throw new Error(`the blobs of a bundle hold its root, and ${root} is not among them`);
   checkRoot(rootBytes);
-  blobsByLink.delete(root);
-  return joined([rootBytes, ...Array.from(blobsByLink.values(), (blob) => encode(blob))]);
+  return joined([rootBytes, ...otherBlobs]);
 }
 
 /**

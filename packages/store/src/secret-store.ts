@@ -70,8 +70,10 @@ export class SecretStore implements RowKeeper {
    * Lists each of the batch's `secrets` and keeps it, with the blobs of the batch in its closure.
    * The other blobs are dropped. A refused batch writes nothing.
    *
-   * - A blob that the store beside holds counts as held and is not kept here again, a secret among
-   *   them, which is listed here still.
+   * - The batch gives the blob of each secret, held already or not. Any other blob of a closure
+   *   that it leaves out counts as held when either side holds it.
+   * - A blob that the store beside holds is not kept here again, a secret among them, which is
+   *   listed here still.
    * - A secret written again is listed once.
    *
    * @throws {RefusedBatch} when the batch does not give the blob of one of `secrets`, or it is

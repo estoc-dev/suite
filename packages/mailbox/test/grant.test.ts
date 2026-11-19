@@ -16,9 +16,10 @@ import {
   ObjectValue,
   objectFormat,
 } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { arrivalsView, Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
-import { type Inbox, MailboxGrants, Post, peopleView } from "../src/index.ts";
+import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever

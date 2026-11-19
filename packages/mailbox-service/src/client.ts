@@ -8,7 +8,7 @@ import {
   type Signatures,
   type SignedIdentityObject,
 } from "@estoc/identity";
-import { type Arrival, type PeopleView, type Pickup, peopleView } from "@estoc/mailbox";
+import type { Arrival, Pickup } from "@estoc/mailbox";
 import { httpTransport } from "@estoc/mailbox/http";
 import {
   AbsentBlob,
@@ -24,6 +24,7 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
+import { type PeopleView, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
 import { Intake, type PrivateStore, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";

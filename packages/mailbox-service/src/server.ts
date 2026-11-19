@@ -10,7 +10,6 @@ import {
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
-import { type PeopleView, peopleView } from "@estoc/mailbox";
 import {
   type Bytes,
   type EncodedObject,
@@ -22,6 +21,7 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
+import { type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";

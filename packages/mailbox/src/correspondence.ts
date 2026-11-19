@@ -1,9 +1,9 @@
 import type { Actor, IdentityKit, SeenIdentityVersions, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
+import { type PeopleView, peopleView } from "@estoc/people";
 import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
-import { type PeopleView, peopleView } from "./people.ts";
 import type { Delivery, Post } from "./post.ts";
 
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities" | "identityVersions">;

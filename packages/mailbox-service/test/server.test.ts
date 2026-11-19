@@ -1,7 +1,7 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
-import { peopleView } from "@estoc/mailbox";
 import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
+import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";

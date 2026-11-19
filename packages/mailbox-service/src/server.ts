@@ -18,7 +18,9 @@ import {
   linkOf,
   objectsOf,
   readObject,
+  type Schema,
   schemaOf,
+  type ValueMap,
 } from "@estoc/object";
 import { checkHonors, type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
@@ -98,6 +100,12 @@ export interface ServiceOptions {
   readonly clock?: () => number;
 }
 
+type SignedRequest = {
+  readonly signature: Signature;
+  readonly bundle: Bundle;
+  readonly people: People;
+};
+
 class MailboxService {
   readonly #actor: Actor;
   readonly #locations: LocationsView;
@@ -173,28 +181,53 @@ class MailboxService {
   }
 
   /**
-   * Whether the acceptance is honored is asked of the identity versions the service holds once the
+   * Whether the signature is honored is asked of the identity versions the service holds once the
    * whole body has come in, however long the sender took to send it. So an agent its root removed
-   * is refused even when they have an account, and even for an acceptance that was acknowledged
-   * before.
+   * is refused even when they have an account, and even for a request that was acknowledged before.
    */
-  async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
-    const file = await readBody(request.body, REQUEST_LIMIT);
-    if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
-    const at = this.#clock();
+  async #readSigned(request: Request, limit: number): Promise<SignedRequest | Response> {
+    const file = await readBody(request.body, limit);
+    if (file === undefined) return answer(413, `a request holds at most ${limit} bytes`);
     const people = await view(this.#store, this.#people);
     let bundle: Bundle;
-    let acceptance: Signature;
+    let signature: Signature;
     try {
       bundle = decodeBundle(file);
-      acceptance = await this.#signatures.read(bundle.link, bundle);
-      await checkHonors(people, acceptance);
-      if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (acceptance.signedIdentity.identity.identifier === this.#actor.identifier)
-        throw new Error("a service opens no account for itself");
+      signature = await this.#signatures.read(bundle.link, bundle);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
+    try {
+      await checkHonors(people, signature);
+    } catch (error) {
+      return answer(403, reasonOf(error));
+    }
+    return { signature, bundle, people };
+  }
+
+  async #readSignedObject<F extends ValueMap>(
+    request: Request,
+    limit: number,
+    schema: Schema<F>,
+  ): Promise<(SignedRequest & { readonly object: EncodedObject<F> }) | Response> {
+    const signedRequest = await this.#readSigned(request, limit);
+    if (signedRequest instanceof Response) return signedRequest;
+    const { signature, bundle } = signedRequest;
+    try {
+      return { ...signedRequest, object: await readObject(bundle, signature.object, schema) };
+    } catch (error) {
+      return answer(400, reasonOf(error));
+    }
+  }
+
+  async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
+    const signedRequest = await this.#readSigned(request, REQUEST_LIMIT);
+    if (signedRequest instanceof Response) return signedRequest;
+    const { signature: acceptance, bundle, people } = signedRequest;
+    if (acceptance.object !== offer) return answer(400, `the acceptance signs ${acceptance.object}, not the offer`);
+    if (acceptance.signedIdentity.identity.identifier === this.#actor.identifier)
+      return answer(400, "a service opens no account for itself");
+    const at = this.#clock();
     const acknowledgements = await view(this.#privateStore, this.#acknowledgements);
     const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
@@ -212,21 +245,12 @@ class MailboxService {
   }
 
   async #openMailbox(request: Request, offer: EncodedObject<MailboxOfferData>): Promise<Response> {
-    const file = await readBody(request.body, REQUEST_LIMIT);
-    if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
+    const signedRequest = await this.#readSignedObject(request, REQUEST_LIMIT, mailboxRequestSchema);
+    if (signedRequest instanceof Response) return signedRequest;
+    const { signature, object, bundle, people } = signedRequest;
+    if (object.data.offer.link !== offer.link)
+      return answer(400, `the request asks for ${object.data.offer.link}, not the offer`);
     const at = this.#clock();
-    const people = await view(this.#store, this.#people);
-    let bundle: Bundle;
-    let signature: Signature;
-    try {
-      bundle = decodeBundle(file);
-      signature = await this.#signatures.read(bundle.link, bundle);
-      await checkHonors(people, signature);
-      const { data } = await readObject(bundle, signature.object, mailboxRequestSchema);
-      if (data.offer.link !== offer.link) throw new Error(`the request asks for ${data.offer.link}, not the offer`);
-    } catch (error) {
-      return answer(400, reasonOf(error));
-    }
     const { identifier } = signature.signedIdentity.identity;
     if (!(await this.#accounts.has(identifier))) return answer(403, `${identifier} has no account here`);
     const existingMailbox = await this.#mailboxes.mailboxOpenedBy(signature.link);
@@ -307,29 +331,14 @@ class MailboxService {
   }
 
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
-    const file = await readBody(request.body, PICKUP_LIMIT);
-    if (file === undefined) return answer(413, `a pickup request holds at most ${PICKUP_LIMIT} bytes`);
-    const people = await view(this.#store, this.#people);
-    let signature: Signature;
-    let receipts: Link<Uint8Array>[];
-    try {
-      const bundle = decodeBundle(file);
-      signature = await this.#signatures.read(bundle.link, bundle);
-      const { data } = await readObject(bundle, signature.object, pickupRequestSchema);
-      if (data.mailbox.link !== mailbox.request)
-        throw new Error(`the request picks up at ${data.mailbox.link}, not at this mailbox`);
-      receipts = data.receipts.map(({ link }) => link);
-    } catch (error) {
-      return answer(400, reasonOf(error));
-    }
-    const { signedIdentity, key } = signature;
-    if (signedIdentity.identity.identifier !== mailbox.identifier)
+    const signedRequest = await this.#readSignedObject(request, PICKUP_LIMIT, pickupRequestSchema);
+    if (signedRequest instanceof Response) return signedRequest;
+    const { signature, object } = signedRequest;
+    if (object.data.mailbox.link !== mailbox.request)
+      return answer(400, `the request picks up at ${object.data.mailbox.link}, not at this mailbox`);
+    if (signature.signedIdentity.identity.identifier !== mailbox.identifier)
       return answer(403, "the request is signed for another identifier than the mailbox's account");
-    if (!(await people.honors(signature)))
-      return answer(
-        403,
-        `the signature by ${key.link} is not honored by the identity versions of ${mailbox.identifier}`,
-      );
+    const receipts = object.data.receipts.map(({ link }) => link);
     const at = this.#clock();
     await this.#mailboxes.drop(mailbox.sendId, receipts);
     const ciphertexts = await batchOf(this.#mailboxes.queue(mailbox.sendId, at - mailbox.terms.retention));

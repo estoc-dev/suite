@@ -201,9 +201,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   blobs: readonly Bytes<unknown>[],
   { intake, origin, signatures, people }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
-  const body = encodeBundle(signature.link, [...signature.blobs, ...blobs]);
-  const request = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body };
-  const answer = await bundleIn(await fetch(to.url, request), [200, 201]);
+  const answer = await postSigned(to.url, signature, blobs, { statuses: [200, 201] });
   const stagedStore = await intake.stage(answer, origin);
   const stagedPeople = await view(stagedStore, people);
   const acknowledgement = await signatures.read(answer.link, stagedStore);
@@ -272,9 +270,11 @@ class ServicePickup implements Pickup {
       receipts: receipts.map((receipt) => new LinkValue(receipt)),
     });
     const signature = await this.#actor.sign(request);
-    const body = encodeBundle(signature.link, [...signature.blobs, request.bytes]);
-    const init = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body, signal: signal ?? null };
-    const answer = await bundleIn(await fetch(this.#url, init), [200], this.#limit);
+    const answer = await postSigned(this.#url, signature, [request.bytes], {
+      statuses: [200],
+      limit: this.#limit,
+      signal,
+    });
     const { ciphertexts } = decodeObject(answer.root, pickupAnswerSchema).data;
     return ciphertexts.map(({ link }) => {
       const bytes = answer.get(link);
@@ -403,6 +403,21 @@ function checkOrigin(origin: string): void {
   if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.has(url.hostname))) {
     throw new Error(`a service is reached over https, or over http on this machine, not at ${origin}`);
   }
+}
+
+async function postSigned(
+  url: URL,
+  signature: Signature,
+  blobs: readonly Bytes<unknown>[],
+  {
+    statuses,
+    limit,
+    signal,
+  }: { readonly statuses: readonly number[]; readonly limit?: number; readonly signal?: AbortSignal | undefined },
+): Promise<Bundle> {
+  const body = encodeBundle(signature.link, [...signature.blobs, ...blobs]);
+  const init = { ...REQUEST, method: "POST", headers: { "content-type": BUNDLE_TYPE }, body, signal: signal ?? null };
+  return bundleIn(await fetch(url, init), statuses, limit);
 }
 
 async function bundleIn(response: Response, statuses: readonly number[], limit = ANSWER_LIMIT): Promise<Bundle> {

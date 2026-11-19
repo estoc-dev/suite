@@ -201,7 +201,7 @@ describe("a mailbox service", () => {
     expect((await acknowledgementIn(response)).acknowledgement.data.acceptance.link).toBe(again.signature.link);
   });
 
-  it("answers 400 to an agent that a later identity version of its root removed, though its identifier has an account", async () => {
+  it("answers 403 to an agent that a later identity version of its root removed, though its identifier has an account", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     const first = await publish(wallet, { agents: [device.key, phone.key], at: 1_000 });
@@ -209,12 +209,12 @@ describe("a mailbox service", () => {
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(201);
     const recordsBefore = await recordedObjectsOf(store);
     const response = await postAcceptance(service, await acceptanceBy(device, first, offer));
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/is not honored/);
     expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
-  it("answers 400 to an agent that a later identity version removed, though the agent opened the account before it came", async () => {
+  it("answers 403 to an agent that a later identity version removed, though the agent opened the account before it came", async () => {
     const { service, store } = await memoryService();
     const { offer } = await rootOf(service);
     const removed = await publish(wallet, { agents: [device.key], at: 1_000 });
@@ -222,12 +222,12 @@ describe("a mailbox service", () => {
     expect((await postAcceptance(service, removedAcceptance)).status).toBe(201);
     const second = await publish(wallet, { prior: removed, agents: [phone.key], at: 2_000 });
     expect((await postAcceptance(service, await acceptanceBy(phone, second, offer))).status).toBe(200);
-    expect((await postAcceptance(service, removedAcceptance)).status).toBe(400);
+    expect((await postAcceptance(service, removedAcceptance)).status).toBe(403);
     const { service: again } = await memoryService({ store });
-    expect((await postAcceptance(again, removedAcceptance)).status).toBe(400);
+    expect((await postAcceptance(again, removedAcceptance)).status).toBe(403);
   });
 
-  it("answers 400 to an agent whose body comes in only after a later identity version removed it, and signs nothing for it", async () => {
+  it("answers 403 to an agent whose body comes in only after a later identity version removed it, and signs nothing for it", async () => {
     const { service, store } = await memoryService();
     const { offer, acceptId } = await rootOf(service);
     const removed = await publish(wallet, { agents: [device.key], at: 1_000 });
@@ -256,7 +256,7 @@ describe("a mailbox service", () => {
     const recordsBefore = await recordedObjectsOf(store);
     release();
     const response = await pendingResponse;
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/is not honored/);
     expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
@@ -286,7 +286,7 @@ describe("a mailbox service", () => {
       const { acknowledgement } = await acknowledgementIn(response);
       expect(acknowledgement.data.acceptance.link).toBe(decodeBundle(file).link);
     }
-    expect((await postAcceptance(service, earlier)).status).toBe(400);
+    expect((await postAcceptance(service, earlier)).status).toBe(403);
   });
 
   it("answers one acceptance posted twice at once with 201 and 200, each acknowledging it, and later with the acknowledgement whose signature has the least link", async () => {
@@ -952,7 +952,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(await recordedObjectsOf(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
-  it("answers 400 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {
+  it("answers 403 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {
     const { service } = await memoryService();
     const { mailbox } = await rootOf(service);
     const removedAgent = actorSigningBy(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
@@ -967,7 +967,7 @@ describe("a mailbox service's offer of mailboxes", () => {
       ),
     ).toBe(200);
     const response = await postMailboxRequest(service, (await mailboxRequest(removedAgent, mailbox.offer)).file);
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/is not honored/);
   });
 
@@ -1182,6 +1182,22 @@ describe("a mailbox that a service opened", () => {
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/is not honored/);
     expect(await queueAt(service, mailbox, listedAgent)).toEqual([]);
+  });
+
+  it("answers 403 to a pickup that names another mailbox when an agent that a later identity version takes out signs it", async () => {
+    const { service } = await memoryService();
+    const removedAgent = actorSigningBy(device, await publish(wallet, { agents: [device.key], at: 1_000 }));
+    await openAccount(service, removedAgent);
+    const mailbox = await openMailbox(service, removedAgent);
+    const other = await openMailbox(service, removedAgent, keyOf(0x22));
+    const listedAgent = actorSigningBy(
+      phone,
+      await publish(wallet, { prior: removedAgent.signedIdentity, agents: [phone.key], at: 2_000 }),
+    );
+    expect(await acceptAccount(service, listedAgent)).toBe(200);
+    const response = await post(service, mailbox.pickupId, await pickupRequest(removedAgent, other));
+    expect(response.status).toBe(403);
+    expect(await response.text()).toMatch(/is not honored/);
   });
 
   it.each<[string, (actor: Actor, mailbox: OpenedMailbox, other: OpenedMailbox) => Promise<Uint8Array>]>([

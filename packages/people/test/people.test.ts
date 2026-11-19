@@ -4,9 +4,9 @@ import { schema, string } from "@estoc/schema";
 import { MemoryBackend, Store, scan, view } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { checkHonors, peopleView } from "../src/index.ts";
+import { identityVersionInHand } from "./fixtures.ts";
 
-const { identityVersions, signatures, signedIdentities, publish } = loadIdentity([ed25519]);
-const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+const { signatures, signedIdentities, publish } = loadIdentity([ed25519]);
 const note = schema("Note", { text: string() });
 
 describe("the index of the people of a store", () => {
@@ -21,7 +21,7 @@ describe("the index of the people of a store", () => {
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [second.link, forged.link], blobs: [...second.blobs, forged.bytes] });
 
-    const people = peopleView({ identityVersions, signedIdentities });
+    const people = peopleView({ signedIdentities });
     const rows = await scan(store, people.index);
     const signedIdentitiesOfRows = [];
     for await (const { data } of rows.range([])) signedIdentitiesOfRows.push(data.signedIdentity.link);
@@ -40,7 +40,7 @@ describe("a person of a store, found by their identifier", () => {
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [later.link], blobs: [...later.blobs] });
 
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     const person = await people.personIdentifiedBy(published.identity.identifier);
     expect(person?.identifier).toBe(published.identity.identifier);
     expect((await person?.identityVersions())?.map(({ link }) => link)).toEqual([published.link, later.link]);
@@ -53,7 +53,7 @@ describe("a person of a store, found by their identifier", () => {
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [crisis.link], blobs: [...crisis.blobs] });
 
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     expect((await (await people.personIdentifiedBy(published.identity.identifier))?.current())?.link).toBe(crisis.link);
   });
 
@@ -64,7 +64,7 @@ describe("a person of a store, found by their identifier", () => {
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [ofOther.link], blobs: [...ofOther.blobs] });
 
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     expect(await people.personIdentifiedBy(published.identity.identifier)).toBeUndefined();
   });
 });
@@ -76,28 +76,24 @@ describe("a signature by an agent, checked against the people of a store", () =>
   it("is honored when the current identity version the store holds lists the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const byAgent = await signatures
-      .actor(agent, listing, peopleHavingSeenNothing)
+      .actor(agent, listing, identityVersionInHand)
       .sign(encodeObject(note, { text: "hello" }));
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [listing.link], blobs: [...listing.blobs] });
 
-    await expect(
-      checkHonors(await view(store, peopleView({ identityVersions, signedIdentities })), byAgent),
-    ).resolves.toBeUndefined();
+    await expect(checkHonors(await view(store, peopleView({ signedIdentities })), byAgent)).resolves.toBeUndefined();
   });
 
   it("is refused, with its key and the identifier named, when the current identity version the store holds does not list the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const byAgent = await signatures
-      .actor(agent, listing, peopleHavingSeenNothing)
+      .actor(agent, listing, identityVersionInHand)
       .sign(encodeObject(note, { text: "hello" }));
     const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });
 
-    await expect(
-      checkHonors(await view(store, peopleView({ identityVersions, signedIdentities })), byAgent),
-    ).rejects.toThrow(
+    await expect(checkHonors(await view(store, peopleView({ signedIdentities })), byAgent)).rejects.toThrow(
       `the signature by ${byAgent.key.link} is not honored by the identity versions of ${listing.identity.identifier}`,
     );
   });
@@ -111,20 +107,22 @@ describe("an actor that asks the people of a store", () => {
   it("signs by an identity version the store takes in after the actor is made", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const store = new Store(new MemoryBackend());
-    const seenPeople = peopleView({ identityVersions, signedIdentities });
-    const actor = signatures.actor(agent, listing, () => view(store, seenPeople));
+    const seenPeople = peopleView({ signedIdentities });
+    const actor = signatures.actor(agent, listing, async (inHand) => (await view(store, seenPeople)).current(inHand));
     expect((await actor.sign(hello)).signedIdentity.link).toBe(listing.link);
 
     const later = await publish(root, { prior: listing, agents: [agent.key], at: 2_000 });
     await store.write({ roots: [later.link], blobs: [...later.blobs] });
-    expect((await actor.sign(hello)).signedIdentity.link).toBe(later.link);
+    const signature = await actor.sign(hello);
+    expect(signature.signedIdentity.link).toBe(later.link);
+    expect(await (await view(store, seenPeople)).honors(signature)).toBe(true);
   });
 
   it("signs nothing once the store takes in an identity version that does not list its key", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const store = new Store(new MemoryBackend());
-    const seenPeople = peopleView({ identityVersions, signedIdentities });
-    const actor = signatures.actor(agent, listing, () => view(store, seenPeople));
+    const seenPeople = peopleView({ signedIdentities });
+    const actor = signatures.actor(agent, listing, async (inHand) => (await view(store, seenPeople)).current(inHand));
     const withoutAgent = await publish(root, { prior: listing, at: 2_000 });
     await store.write({ roots: [withoutAgent.link], blobs: [...withoutAgent.blobs] });
 

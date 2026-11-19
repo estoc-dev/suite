@@ -1,14 +1,11 @@
-import type {
-  IdentityKit,
-  IdentityVersionData,
-  IdentityVersionOrder,
-  People,
-  Person,
-  SeenIdentityVersions,
-  Signature,
-} from "@estoc/identity";
+import type { IdentityKit, Signature } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
+import { type IdentityVersionData, type IdentityVersionOrder, IdentityVersions } from "./identity-versions.ts";
+import type { People, Person, SeenIdentityVersions } from "./person.ts";
+
+export type { IdentityVersionData, IdentityVersionOrder } from "./identity-versions.ts";
+export type { People, Person, SeenIdentityVersions } from "./person.ts";
 
 export interface StorePeople extends People {
   personIdentifiedBy(identifier: Link<unknown>): Promise<Person | undefined>;
@@ -20,10 +17,8 @@ export type PeopleView = View<IdentityVersionData, IdentityVersionOrder, StorePe
  * A store takes in identity versions from anyone it corresponds with. One that its root signed
  * gives a row whether or not a signature that carries it is honored.
  */
-export function peopleView({
-  identityVersions,
-  signedIdentities,
-}: Pick<IdentityKit, "identityVersions" | "signedIdentities">): PeopleView {
+export function peopleView({ signedIdentities }: Pick<IdentityKit, "signedIdentities">): PeopleView {
+  const identityVersions = new IdentityVersions(signedIdentities);
   return {
     index: indexOver(
       selectedBlobs(identityVersions.selection),

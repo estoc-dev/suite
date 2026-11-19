@@ -1,11 +1,6 @@
-import type {
-  IdentityKit,
-  SeenIdentityVersions,
-  Signature,
-  SignatureOver,
-  SignedIdentityObject,
-} from "@estoc/identity";
+import type { IdentityKit, Signature, SignatureOver, SignedIdentityObject } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
+import type { SeenIdentityVersions } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";

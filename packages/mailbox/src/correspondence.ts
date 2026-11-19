@@ -1,12 +1,12 @@
-import type { Actor, IdentityKit, SeenIdentityVersions, Signature, SignedIdentityObject } from "@estoc/identity";
+import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { type PeopleView, peopleView } from "@estoc/people";
+import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
 
-export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities" | "identityVersions">;
+export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
 /**
  * The indexes it reads through are made once, with the correspondence, so a store keeps their rows
@@ -30,7 +30,7 @@ export class Correspondence {
     actor: Actor,
     clock: () => number,
     grants: MailboxGrants,
-    { signatures, signedIdentities, identityVersions }: CorrespondenceIdentity,
+    { signatures, signedIdentities }: CorrespondenceIdentity,
   ) {
     this.#store = store;
     this.#privateStore = privateStore;
@@ -40,7 +40,7 @@ export class Correspondence {
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
-    this.#seenPeople = peopleView({ identityVersions, signedIdentities });
+    this.#seenPeople = peopleView({ signedIdentities });
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 

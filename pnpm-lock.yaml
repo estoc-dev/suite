@@ -272,13 +272,13 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@estoc/store':
         specifier: workspace:*
         version: link:../store
     devDependencies:
-      '@estoc/schema':
-        specifier: workspace:*
-        version: link:../schema
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.5

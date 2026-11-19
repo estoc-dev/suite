@@ -1,9 +1,14 @@
+import {
+  hasSigner,
+  type Signature,
+  type SignedIdentities,
+  type SignedIdentityData,
+  type SignedIdentityObject,
+} from "@estoc/identity";
 import { type Link, LinkValue, type Reader, SelectionBySchema } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { hasSigner } from "./identity.ts";
+import type { Arrivals } from "@estoc/store";
 import type { People, Person } from "./person.ts";
-import type { Signature } from "./signature.ts";
-import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
  * A root that signs one identity twice with a signer that signs with randomness makes two identity
@@ -22,10 +27,6 @@ export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity
 
 export interface IdentityVersionRows {
   range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
-}
-
-export interface Arrivals {
-  atOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
 }
 
 export class IdentityVersions {

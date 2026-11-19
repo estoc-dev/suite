@@ -6,14 +6,6 @@ export {
   type IdentityObject,
   identitySchema,
 } from "./identity.ts";
-export {
-  type Arrivals,
-  type IdentityVersionData,
-  type IdentityVersionOrder,
-  type IdentityVersionRows,
-  type IdentityVersions,
-  identityVersionSchema,
-} from "./identity-versions.ts";
 export { type Curve, type CurveScheme, curveScheme, ed25519Curve, secp256k1Curve } from "./key/curves.ts";
 export { ed25519 } from "./key/ed25519.ts";
 export { eip191 } from "./key/eip191.ts";
@@ -28,11 +20,9 @@ export {
 export type { Keys } from "./key/keys.ts";
 export { solanaOffchain } from "./key/solana-offchain.ts";
 export { type IdentityKit, loadIdentity } from "./load.ts";
-export type { People, Person } from "./person.ts";
 export { type SecretKeyData, type SecretKeyObject, type SecretKeys, secretKeySchema } from "./secret-key.ts";
 export {
   type Actor,
-  type SeenIdentityVersions,
   type Signature,
   type SignatureData,
   type SignatureOver,

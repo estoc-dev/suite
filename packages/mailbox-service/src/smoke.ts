@@ -20,11 +20,13 @@ export interface TestMailbox {
  * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
-  const { signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
+  const { signatures, signedIdentities, publish } = loadIdentity([ed25519]);
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
   const store = new Store(new MemoryBackend());
-  const seenPeople = peopleView({ identityVersions, signedIdentities });
-  const actor = signatures.actor(signer, await publish(signer, { at: 0 }), () => view(store, seenPeople));
+  const seenPeople = peopleView({ signedIdentities });
+  const actor = signatures.actor(signer, await publish(signer, { at: 0 }), async (inHand) =>
+    (await view(store, seenPeople)).current(inHand),
+  );
   const services = loadServices(store, new PrivateStore(store, new MemoryBackend()), { schemes: [ed25519] });
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);

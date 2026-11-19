@@ -74,11 +74,11 @@ const post = encodeObject(postSchema, {
 });
 
 const { publish, signatures } = loadIdentity([ed25519]);
-const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+const identityVersionInHand = async <T>(inHand: T) => inHand;
 const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const signedIdentity = await publish(root, { agents: [agent.key], at: 1763078400000 });
-const signature = await signatures.actor(agent, signedIdentity, peopleHavingSeenNothing).sign(post);
+const signature = await signatures.actor(agent, signedIdentity, identityVersionInHand).sign(post);
 const signedPost = [
   ...signatures.schema.blobs,
   post.bytes,

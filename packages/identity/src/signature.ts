@@ -16,7 +16,6 @@ import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
-import type { People } from "./person.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 
@@ -46,16 +45,6 @@ export interface Signature {
   readonly blobs: readonly Uint8Array[];
 }
 
-export interface SeenIdentityVersions {
-  /**
-   * A root signs a crisis when it no longer relies on what it signed before, so the signatures by
-   * an identity version before it are not honored, the root's own among them. The one a signature
-   * carries counts, as a device a wallet has just listed signs by an identity version the reader
-   * has not seen yet.
-   */
-  honors(signature: Signature): Promise<boolean>;
-}
-
 export interface SignatureOver<F extends ValueMap> {
   readonly signature: Signature;
   readonly object: EncodedObject<F>;
@@ -68,8 +57,8 @@ export interface Actor {
 
 /**
  * A signature is verified by the identity version it carries alone, so what is read depends on the
- * signature and its closure, and an index can read by it. Whether the signature is still honored is
- * for a reader's `SeenIdentityVersions` to say.
+ * signature and its closure, and an index can read by it. Whether the signature is still honored
+ * depends on the identity versions a reader has seen, which are not read here.
  */
 export class Signatures {
   readonly schema = signatureSchema;
@@ -103,15 +92,19 @@ export class Signatures {
   }
 
   /**
-   * `people` gives those of the time of each signature, since a reader takes in identity versions
-   * after the actor is made, and a signature carries the one that is current then. `signedIdentity`
-   * is the one in hand to start from, since a reader holds no identity version just published.
+   * `currentOf` is asked at each signature, since a reader takes in identity versions after the
+   * actor is made, and a signature carries the one that is current then. It is given
+   * `signedIdentity` as the one in hand, since a reader holds no identity version just published.
    */
-  actor(signer: Signer, signedIdentity: SignedIdentityObject, people: () => Promise<Pick<People, "current">>): Actor {
+  actor(
+    signer: Signer,
+    signedIdentity: SignedIdentityObject,
+    currentOf: (inHand: SignedIdentityObject) => Promise<SignedIdentityObject>,
+  ): Actor {
     return {
       identifier: signedIdentity.identity.identifier,
       sign: async (object) => {
-        const current = await (await people()).current(signedIdentity);
+        const current = await currentOf(signedIdentity);
         const sign = signingFunction(current.identity, signer);
         if (sign === undefined) throw new Error(`the signer's key does not sign for ${current.identity.link}`);
         const data = {

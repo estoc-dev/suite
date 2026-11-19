@@ -3,7 +3,6 @@ import {
   type Actor,
   type IdentityKit,
   loadIdentity,
-  type People,
   type Scheme,
   type Signature,
   type Signatures,
@@ -21,7 +20,7 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
+import { checkHonors, type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -414,7 +413,9 @@ export async function loadMailboxService(
   const at = clock();
   const signedIdentity =
     (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
-  const actor = signatures.actor(signer, signedIdentity, () => view(store, seenPeople));
+  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
+    (await view(store, seenPeople)).current(inHand),
+  );
   const serviceSignatures = await locations.servicesOf(identifier, people);
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;

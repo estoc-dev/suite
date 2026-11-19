@@ -54,13 +54,13 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = loadIdentity(schemes);
+export const { keys, identities, signedIdentities, signatures, publish } = loadIdentity(schemes);
 
-/** Their current identity version is the one in hand, so an actor that asks them signs by the one it is made with. */
-export const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+/** Given to an actor as what is current, so that it signs by the identity version it is made with. */
+export const identityVersionInHand = async <T>(inHand: T) => inHand;
 /** An actor that signs by `signedIdentity` whatever a store holds, with the signed identity for the tests to read. */
 export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject) => ({
-  ...signatures.actor(by, signedIdentity, peopleHavingSeenNothing),
+  ...signatures.actor(by, signedIdentity, identityVersionInHand),
   signedIdentity,
 });
 export const actorOf = async (by: Signer) => actorSigningBy(by, await publish(by, { at: 0 }));

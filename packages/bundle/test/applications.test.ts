@@ -12,9 +12,9 @@ const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const handOver = (root: Link<unknown>, blobs: Uint8Array[]) => decodeBundle(encodeBundle(root, blobs));
 const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
-const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+const identityVersionInHand = async <T>(inHand: T) => inHand;
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) =>
-  signatures.actor(by, await publish(by, { at: 0 }), peopleHavingSeenNothing).sign(object);
+  signatures.actor(by, await publish(by, { at: 0 }), identityVersionInHand).sign(object);
 
 const card = schema("Card", { mailbox: link(), name: link() });
 const contact = schema("Contact", { displayName: link(), inbox: link() });
@@ -136,7 +136,7 @@ describe("a chat message", () => {
     const device = signer(ed25519, 2);
     const message = encodeObject(chat, { text: "See you at noon." });
     const signature = await signatures
-      .actor(device, await publish(wallet, { agents: [device.key] }), peopleHavingSeenNothing)
+      .actor(device, await publish(wallet, { agents: [device.key] }), identityVersionInHand)
       .sign(message);
     const bundle = handOver(signature.link, [...signature.blobs, message.bytes]);
     expect(await readMessage(bundle)).toEqual({

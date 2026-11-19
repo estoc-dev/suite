@@ -31,7 +31,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
-const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);
 const note = schema("Note", { text: string() });
 const network = new MemoryNetwork();
@@ -73,7 +73,8 @@ async function personActingAs(
   signer: Signer,
   signedIdentity: SignedIdentityObject,
   backends = newBackends(),
-  actorOver = (store: Store) => signatures.actor(signer, signedIdentity, () => view(store, seenPeople)),
+  actorOver = (store: Store) =>
+    signatures.actor(signer, signedIdentity, async (inHand) => (await view(store, seenPeople)).current(inHand)),
 ): Promise<Person> {
   const store = new Store(backends.store);
   const privateStore = new PrivateStore(store, backends.privateStore);
@@ -446,7 +447,7 @@ describe("what came in at a mailbox", () => {
     const [formerBob, currentBob, alice] = await Promise.all([
       // A device that takes in no identity version signs by the one it has, whatever the store it shares holds.
       personActingAs(formerAgent, listingIdentityVersion, backends, () =>
-        signatures.actor(formerAgent, listingIdentityVersion, peopleHavingSeenNothing),
+        signatures.actor(formerAgent, listingIdentityVersion, identityVersionInHand),
       ),
       personActingAs(currentAgent, removalIdentityVersion, backends),
       person(1),

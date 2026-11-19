@@ -16,7 +16,7 @@ import { assert, describe, expect, it } from "vitest";
 import { decodeBundle, encodeBundle } from "../src/index.ts";
 
 const { identities, signedIdentities, signatures, publish } = loadIdentity([ed25519, eip191]);
-const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
+const identityVersionInHand = async <T>(inHand: T) => inHand;
 
 const rewritten = (bytes: Uint8Array, change: (data: ValueMap) => ValueMap) => {
   const { data, schema } = objectFormat.decode(bytes);
@@ -33,7 +33,7 @@ const note = schema("Note", { text: string() });
 const links = schema("Links", { links: array(link()) });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const hello = encodeObject(note, { text: "hello" });
-const signature = await signatures.actor(alice, await publish(alice, { at: 0 }), peopleHavingSeenNothing).sign(hello);
+const signature = await signatures.actor(alice, await publish(alice, { at: 0 }), identityVersionInHand).sign(hello);
 const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const root = encodeObject(links, {
   links: [new LinkValue(signature.link), new LinkValue(hello.link), new LinkValue(linkOf(image))],

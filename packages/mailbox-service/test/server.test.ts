@@ -24,12 +24,11 @@ import {
   actorSigningBy,
   bytesOf,
   identities,
-  identityVersions,
+  identityVersionInHand,
   keys,
   makeTemporaryPath,
   memoryService,
   memoryStore,
-  peopleHavingSeenNothing,
   privateStoreBeside,
   publish,
   recordedObjectsIn,
@@ -86,7 +85,7 @@ async function directAcceptance(offer: { readonly link: Link<unknown> }, by = al
 
 async function delegatedAcceptance(offer: { readonly link: Link<unknown> }) {
   const signature = await signatures
-    .actor(device, await publish(wallet, { agents: [device.key] }), peopleHavingSeenNothing)
+    .actor(device, await publish(wallet, { agents: [device.key] }), identityVersionInHand)
     .sign(offer);
   return { signature, file: encodeBundle(signature.link, signature.blobs) };
 }
@@ -96,7 +95,7 @@ async function acceptanceBy(
   identityVersion: SignedIdentityObject,
   offer: { readonly link: Link<unknown> },
 ) {
-  const signature = await signatures.actor(agent, identityVersion, peopleHavingSeenNothing).sign(offer);
+  const signature = await signatures.actor(agent, identityVersion, identityVersionInHand).sign(offer);
   return encodeBundle(signature.link, signature.blobs);
 }
 
@@ -434,7 +433,7 @@ describe("a mailbox service", () => {
     expect(acceptanceResponse.status).toBe(201);
     const { signature } = await acknowledgementIn(acceptanceResponse);
     const mailbox = await openMailbox(service, actor);
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     for (const link of [signature.link, mailbox.link]) {
       const read = await signatures.read(link, store);
       expect(read.signedIdentity.link).toBe(crisis.link);
@@ -502,8 +501,8 @@ describe("a mailbox service first started on a store that holds identity version
     const { service } = await memoryService({ store });
     const { signature, offer } = await rootOf(service);
     expect(signature.signedIdentity.link).toBe(listing.link);
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
-    expect(await people.honors(await signatures.actor(agent, listing, peopleHavingSeenNothing).sign(offer))).toBe(true);
+    const people = await view(store, peopleView({ signedIdentities }));
+    expect(await people.honors(await signatures.actor(agent, listing, identityVersionInHand).sign(offer))).toBe(true);
   });
 
   it("signs as the crisis among them, and answers with the Service it signed", async () => {
@@ -560,7 +559,7 @@ describe("a mailbox service started again", () => {
     const after = await rootOf(again);
     expect(after.signature.signedIdentity.link).toBe(crisis.link);
     expect(after.acceptId).toBe(before.acceptId);
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     for (const signature of [after.signature, after.offerSignature, after.mailbox.offerSignature]) {
       expect(signature.signedIdentity.link).toBe(crisis.link);
       expect(await people.honors(signature)).toBe(true);
@@ -589,7 +588,7 @@ describe("a mailbox service started again", () => {
     const repeatedRequestResponse = await postMailboxRequest(again, file);
     expect(repeatedRequestResponse.status).toBe(200);
     const renewedMailboxAcknowledgement = await mailboxAcknowledgementIn(repeatedRequestResponse);
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     for (const [renewal, first] of [
       [renewedAccountAcknowledgement, firstAccountAcknowledgement],
       [renewedMailboxAcknowledgement, firstMailboxAcknowledgement],
@@ -912,7 +911,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     const [first, second] = await Promise.all([openerAnswer, racerAnswer].map(mailboxAcknowledgementIn));
     expect(second?.signature.object).toBe(first?.signature.object);
-    const people = await view(store, peopleView({ identityVersions, signedIdentities }));
+    const people = await view(store, peopleView({ signedIdentities }));
     assert.exists(second);
     expect(second.signature.signedIdentity.link).toBe(crisis.link);
     expect(await people.honors(second.signature)).toBe(true);

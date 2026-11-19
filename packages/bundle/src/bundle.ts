@@ -80,7 +80,7 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
 }
 
 /**
- * Nothing in the file is compressed, so the blobs come to less than its length, and reading has no
+ * Nothing in the file is compressed, so its length bounds what reading it takes, and there is no
  * other limit.
  */
 export function decodeBundle(file: Uint8Array): Bundle {

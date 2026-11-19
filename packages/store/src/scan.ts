@@ -20,10 +20,8 @@ import type { StagedStore, Store } from "./store.ts";
  *   so a later scan reads only what was listed or put since.
  * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
  *   the `failures` of the rows, and is not read again.
- * - A scan of an index that reads only recorded objects, marks and secrets throws when there are
- *   failures: what it reads is what its user wrote, so a failure is a mistake to be seen. A scan of
- *   one that reads blobs gives the rows with their failures, as anyone can send a blob that it
- *   fails on.
+ * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
+ *   it fails on, and that would otherwise stop the other rows from being read.
  * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
  *   selection or its rows catch it, and nothing is kept of what it read.
  */

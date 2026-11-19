@@ -24,8 +24,6 @@ export interface Arrivals {
 export type ArrivalsView = View<ArrivalData, ArrivalOrder, Arrivals>;
 
 /**
- * - A mark says when each object of `schema` in the closure of its root came, and no other blob, so
- *   an object that came inside what someone else signed has no time of its own.
  * - Where a store keeps a blob says nothing here, so the same bytes sent by someone else change no
  *   time unless they are marked as coming in.
  * - The closure of each root is read once for its mark, so blobs that many closures share are read

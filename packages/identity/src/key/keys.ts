@@ -16,10 +16,8 @@ interface KeyImplementation extends Implementation<KeyObject, KeyData> {
 }
 
 /**
- * - Where two schemes take keys of one shape, as ed25519 and solana-offchain do, the title of each
- *   scheme's schema, its name, is all that sets one public key's objects in them apart.
- * - A schema does not say how long its bytes are, so a public key of another length than its
- *   scheme's is refused here.
+ * Where two schemes take keys of one shape, as ed25519 and solana-offchain do, the title of each
+ * scheme's schema, its name, is all that sets one public key's objects in them apart.
  */
 export class Keys {
   readonly #implementations: Implementations<KeyObject, KeyImplementation>;

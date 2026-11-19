@@ -8,7 +8,8 @@ export interface Pickup {
   readonly mailbox: Link<EncodedObject>;
   /**
    * Ends once `signal` aborts, and, unless the transport waits for more to come, once nothing more
-   * waits.
+   * waits. An arrival handed out stays until it is dropped, so one that the receiver fails to keep
+   * comes again on a later call.
    */
   arrivals(signal?: AbortSignal): AsyncIterable<Arrival>;
 }

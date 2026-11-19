@@ -56,8 +56,6 @@ export interface SeenIdentityVersions {
   honors(signature: Signature): Promise<boolean>;
 }
 
-export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
-
 export interface SignatureOver<F extends ValueMap> {
   readonly signature: Signature;
   readonly object: EncodedObject<F>;

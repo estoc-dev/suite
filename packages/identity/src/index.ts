@@ -32,7 +32,6 @@ export type { People, Person } from "./person.ts";
 export { type SecretKeyData, type SecretKeyObject, type SecretKeys, secretKeySchema } from "./secret-key.ts";
 export {
   type Actor,
-  noIdentityVersions,
   type SeenIdentityVersions,
   type Signature,
   type SignatureData,

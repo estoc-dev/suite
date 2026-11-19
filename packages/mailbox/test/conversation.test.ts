@@ -37,7 +37,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = loadIdentity([ed25519]);
 const { signatures, publish } = identity;
-const seenPeople = peopleView(identity.identityVersions);
+const seenPeople = peopleView(identity);
 const line = schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 

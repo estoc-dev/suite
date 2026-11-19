@@ -40,7 +40,7 @@ export class Correspondence {
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
-    this.#seenPeople = peopleView(identityVersions);
+    this.#seenPeople = peopleView({ identityVersions, signedIdentities });
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 

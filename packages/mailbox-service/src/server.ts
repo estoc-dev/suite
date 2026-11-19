@@ -408,7 +408,7 @@ export async function loadMailboxService(
     encodeObject(mailboxOfferSchema, { identity, ...terms }),
   ];
 
-  const seenPeople = peopleView(kit.identityVersions);
+  const seenPeople = peopleView(kit);
   const people = await view(store, seenPeople);
   const locations = await view(store, locationsView(signatures));
   const at = clock();

@@ -292,7 +292,7 @@ export class Services {
     this.#signatures = kit.signatures;
     this.#locations = locationsView(kit.signatures);
     this.#mailboxes = openedMailboxesView();
-    this.#people = peopleView(kit.identityVersions);
+    this.#people = peopleView(kit);
   }
 
   /**

@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@estoc/identity": "workspace:*",
+    "@estoc/object": "workspace:*",
     "@estoc/store": "workspace:*"
   },
   "devDependencies": {
-    "@estoc/object": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@types/node": "^26.6.2",
     "typescript": "~5.8.0",

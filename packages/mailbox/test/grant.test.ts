@@ -32,7 +32,7 @@ const identity = loadIdentity([ed25519]);
 const { signatures, signedIdentities, identityVersions, publish } = identity;
 const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
 const grants = new MailboxGrants(identity);
-const seenPeople = peopleView(identityVersions);
+const seenPeople = peopleView({ identityVersions, signedIdentities });
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const network = new MemoryNetwork();
 

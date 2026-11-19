@@ -66,7 +66,7 @@ const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uin
 // Those given the same backends are one person's devices as one: they share the blobs and the marks.
 const newBackends = () => ({ store: new MemoryBackend(), privateStore: new MemoryBackend() });
 
-const seenPeople = peopleView(identity.identityVersions);
+const seenPeople = peopleView(identity);
 
 /** Unless `actorOver` gives another, the person's actor asks their own store which identity version is current. */
 async function personActingAs(

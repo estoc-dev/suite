@@ -20,10 +20,10 @@ export interface TestMailbox {
  * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
-  const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
+  const { signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
   const store = new Store(new MemoryBackend());
-  const seenPeople = peopleView(identityVersions);
+  const seenPeople = peopleView({ identityVersions, signedIdentities });
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }), () => view(store, seenPeople));
   const services = loadServices(store, new PrivateStore(store, new MemoryBackend()), { schemes: [ed25519] });
   const { account, mailbox: offer } = await services.fetch(origin);

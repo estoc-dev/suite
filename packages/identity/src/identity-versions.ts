@@ -60,14 +60,15 @@ export class IdentityVersions {
    */
   people(rows: IdentityVersionRows, reader: Reader): People {
     const read = (link: Link<unknown>) => this.#signedIdentities.read(link, reader);
-    const versionsOf = async (identifier: Link<unknown>, signedIdentity?: SignedIdentityObject) => {
+    const versionsOf = async (signedIdentity: SignedIdentityObject) => {
       const inHand = new Map<Link<unknown>, SignedIdentityObject>(
-        (signedIdentity === undefined ? [] : [...chainOf(signedIdentity)]).map((each) => [each.link, each] as const),
+        [...chainOf(signedIdentity)].map((each) => [each.link, each] as const),
       );
       const seen = new Map<Link<unknown>, IdentityVersionData>(
         [...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const),
       );
-      for await (const { data } of rows.range([new LinkValue(identifier)])) seen.set(data.signedIdentity.link, data);
+      for await (const { data } of rows.range([new LinkValue(signedIdentity.identity.identifier)]))
+        seen.set(data.signedIdentity.link, data);
       const signedIdentityOf = async (link: Link<unknown>) => inHand.get(link) ?? read(link);
       return {
         inHand,
@@ -78,23 +79,24 @@ export class IdentityVersions {
           signedIdentityOf(countingVersions.at(-1)!),
       };
     };
-    const personIdentifiedBy = (identifier: Link<unknown>, signedIdentity?: SignedIdentityObject): Person => ({
-      identifier,
-      identityVersions: async () => {
-        const { seen, signedIdentityOf } = await versionsOf(identifier, signedIdentity);
-        return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
-      },
-      current: async () => {
-        const { seen, currentAmong } = await versionsOf(identifier, signedIdentity);
-        return currentAmong(countingVersionsAmong(seen));
-      },
-      hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
-    });
-    const personOf = (signedIdentity: SignedIdentityObject) =>
-      personIdentifiedBy(signedIdentity.identity.identifier, signedIdentity);
+    const personOf = (signedIdentity: SignedIdentityObject): Person => {
+      const { identifier } = signedIdentity.identity;
+      return {
+        identifier,
+        identityVersions: async () => {
+          const { seen, signedIdentityOf } = await versionsOf(signedIdentity);
+          return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
+        },
+        current: async () => {
+          const { seen, currentAmong } = await versionsOf(signedIdentity);
+          return currentAmong(countingVersionsAmong(seen));
+        },
+        hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
+      };
+    };
     const honors = async (signature: Signature, arrivals?: Arrivals) => {
       const { signedIdentity, key } = signature;
-      const { inHand, seen, currentAmong } = await versionsOf(signedIdentity.identity.identifier, signedIdentity);
+      const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
       const countingVersions = countingVersionsAmong(seen);
       let countingVersionsThen = countingVersions;
       const at = await arrivals?.atOf(signature.link);
@@ -114,8 +116,6 @@ export class IdentityVersions {
     };
     return {
       personOf,
-      personIdentifiedBy: async (identifier) =>
-        (await versionsOf(identifier)).seen.length === 0 ? undefined : personIdentifiedBy(identifier),
       current: (signedIdentity) => personOf(signedIdentity).current(),
       honors: (signature) => honors(signature),
       asOfArrival: (arrivals) => ({ honors: (signature) => honors(signature, arrivals) }),

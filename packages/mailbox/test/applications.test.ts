@@ -36,7 +36,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 const identity = loadIdentity([ed25519, eip191, solanaOffchain]);
 const { keys, identities, signatures, signedIdentities, publish } = identity;
 const peopleHavingSeenNothing = async () => ({ current: async <T>(inHand: T) => inHand });
-const seenPeople = peopleView(identity.identityVersions);
+const seenPeople = peopleView(identity);
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));

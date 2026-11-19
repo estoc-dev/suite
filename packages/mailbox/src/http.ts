@@ -9,16 +9,8 @@ import { mailboxSchema } from "./schema.ts";
 const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?([/?#]|$))/;
 
 /**
- * The transport of HTTP mailboxes, whose data is `{"key", "url"}`. It posts the ciphertext to the
- * mailbox's url.
- *
- * - The url is https, or http to this machine. A mailbox at any other rejects as `gone`, and
- *   nothing is posted.
- * - A 2xx response means the ciphertext was handed on.
- * - 404 and 410 reject as `gone`, 408, 429 and 5xx as `later`, and any other response as `refused`.
- * - No response rejects as `later`, and so does a redirect.
- * - The body goes as `application/octet-stream`, so a server that browsers post to answers their
- *   CORS preflight for it.
+ * The body goes as `application/octet-stream`, so a server that browsers post to answers their CORS
+ * preflight for it.
  */
 export const httpTransport = {
   schema: mailboxSchema("HTTP mailbox", { url: string() }),

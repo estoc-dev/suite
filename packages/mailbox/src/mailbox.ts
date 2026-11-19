@@ -11,26 +11,20 @@ import {
 import { publicKeyFrom, seal } from "./key.ts";
 
 /**
- * One way of carrying ciphertexts to a mailbox, with the schema of its mailboxes. It carries
- * ciphertexts even where it encrypts on its own: a message is kept, passed on and can arrive late,
- * so the layer from end to end is the same whatever carries it.
+ * A transport carries ciphertexts even where it encrypts on its own: a message is kept, passed on
+ * and can arrive late, so the layer from end to end is the same whatever carries it.
  */
 export interface Transport {
-  /** The schema of this transport's mailboxes, made with `mailboxSchema`. */
   readonly schema: Schema;
   /**
-   * Hands `ciphertext` on toward a mailbox whose data fits `schema`. Resolving says only that it
-   * was handed on: nothing confirms that a message arrived, and none is sent again.
-   *
-   * @throws {UndeliveredMessage} when the ciphertext cannot be handed on.
+   * Resolving says only that the ciphertext was handed on: nothing confirms that a message arrived,
+   * and none is sent again. It rejects with `UndeliveredMessage` when the ciphertext cannot be
+   * handed on.
    */
   deliver(mailbox: ValueMap, ciphertext: Uint8Array): Promise<void>;
 }
 
 /**
- * A ciphertext that a transport could not hand on toward a mailbox, with what the sender can do
- * about it.
- *
  * - `later`: the same can be sent again later, as when the network is down or the mailbox is full.
  * - `gone`: the mailbox takes nothing more, and another is needed.
  * - `refused`: the mailbox takes others but not this one, as when it is too large.
@@ -46,14 +40,9 @@ export class UndeliveredMessage extends Error {
 }
 
 export interface Options {
-  /** The transports whose mailboxes can be read; a mailbox of any other is refused. */
   readonly transports: readonly Transport[];
 }
 
-/**
- * A mailbox that has been read, bound to its key and its transport. It
- * shows neither, only lets a message be sent there.
- */
 export class Mailbox {
   readonly #data: ValueMap;
   readonly #key: CryptoKey;
@@ -65,31 +54,16 @@ export class Mailbox {
     this.#transport = transport;
   }
 
-  /**
-   * Sends the bundle of the blob that `root` names and the rest of `blobs`, as `encodeBundle` writes
-   * it, sealed to the mailbox's key and handed to the transport.
-   *
-   * @throws when `blobs` do not hold the root, or it is not an object.
-   * @throws {UndeliveredMessage} when the transport cannot hand the ciphertext on.
-   */
   async send(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Promise<void> {
     await this.#transport.deliver(this.#data, await seal(this.#key, encodeBundle(root, blobs)));
   }
 }
 
-/**
- * Reads the bytes of a mailbox with the transport whose schema it is written to, and binds it once
- * to its key and that transport.
- *
- * @throws when no transport given takes the mailbox's schema, or its data does not fit that schema
- *   or holds no x25519 public key as `key`.
- */
 export async function mailboxFrom(bytes: Bytes<EncodedObject>, { transports }: Options): Promise<Mailbox> {
   const { data, transport } = readMailbox(bytes, transports);
   return new Mailbox(data, await publicKeyFrom(data.key), transport);
 }
 
-/** A mailbox, its data with the key checked, and the transport whose schema it is written to. */
 export function readMailbox(
   bytes: Bytes<EncodedObject>,
   transports: readonly Transport[],

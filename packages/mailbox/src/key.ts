@@ -2,22 +2,17 @@ import { type Bundle, decodeBundle } from "@estoc/bundle";
 import { Aes128Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { base64urlnopad } from "@scure/base";
 
-// HPKE (RFC 9180) in base mode, which seals to the receiver's key alone and
-// so does not say who sealed. An authenticated mode would say it of the
-// ciphertext, which a store does not keep once it is opened, so a reader goes
-// by the signatures in the bundle.
+// HPKE (RFC 9180) in base mode, which seals to the receiver's key alone and so does not say who
+// sealed. An authenticated mode would say it of the ciphertext, which a store does not keep once it
+// is opened.
 const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes128Gcm() });
 const info = new TextEncoder().encode("Estoc Message");
 
-/** Reads a mailbox's `key` as a key to seal to; any 32 bytes are an x25519 public key. */
+/** Any 32 bytes are an x25519 public key. */
 export function publicKeyFrom(bytes: Uint8Array): Promise<CryptoKey> {
   return suite.kem.deserializePublicKey(bytes);
 }
 
-/**
- * Seals `plaintext` to `publicKey`, giving the encapsulated key, `enc`, followed by HPKE's own
- * ciphertext.
- */
 export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array> {
   const { enc, ct } = await suite.seal({ recipientPublicKey: publicKey, info }, plaintext);
   const ciphertext = new Uint8Array(enc.byteLength + ct.byteLength);
@@ -27,9 +22,8 @@ export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise
 }
 
 /**
- * The x25519 key pair of whoever receives at a mailbox. `publicKey` is what
- * the mailbox's `key` holds. The holder keeps the 32 secret bytes, as for
- * a signer, so the same key opens messages after a restart.
+ * The holder keeps the 32 secret bytes, as for a signer, so the same key opens messages after a
+ * restart.
  */
 export class MailboxKey {
   readonly #keys: CryptoKeyPair;
@@ -54,16 +48,10 @@ export class MailboxKey {
     return this.#publicKey.slice();
   }
 
-  /** Whether `publicKey`, as a mailbox's `key` holds one, is the public key of this pair. */
   hasPublicKey(publicKey: Uint8Array): boolean {
     return publicKey.length === this.#publicKey.length && this.#publicKey.every((byte, at) => byte === publicKey[at]);
   }
 
-  /**
-   * Opens `ciphertext` to the bundle inside.
-   *
-   * @throws when the ciphertext does not open with this key, or opens to bytes that are not a bundle.
-   */
   async open(ciphertext: Uint8Array): Promise<Bundle> {
     const { encSize } = suite.kem;
     let plaintext: ArrayBuffer;

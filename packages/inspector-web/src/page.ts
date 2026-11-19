@@ -12,7 +12,6 @@ export interface ReadFailure {
   readonly error: unknown;
 }
 
-/** A file whose bytes are not a bundle. */
 export interface Refusal {
   readonly kind: "refused";
   readonly name: string;
@@ -27,17 +26,11 @@ export interface OpenFile {
   readonly blobs: readonly ListedBlob[];
 }
 
-/**
- * A file, and what the link being shown reads as through its bundle. Where that is an object of a
- * schema the page reads, `reading` is what the page reads it as, or why it could not.
- */
 export type ShownFile = OpenFile & { readonly inspection: Inspection; readonly reading: Reading | undefined };
 
 export type Page = { readonly kind: "closed" } | ReadFailure | Refusal | ShownFile;
 
 /**
- * Reads a chosen file as a bundle.
- *
  * What stops the reading is given and not thrown, so that it is the page of that file as an open
  * bundle is, and takes the place of the file before it.
  */
@@ -58,7 +51,6 @@ export async function readFile(file: Pick<File, "name" | "arrayBuffer">): Promis
   return { kind: "open", name, bytes, bundle, blobs: await blobListOf(bundle) };
 }
 
-/** The page of a file at the link that `fragment` names, or at its root when the fragment names none. */
 export async function pageOf(fileTask: ReturnType<typeof readFile> | undefined, fragment: string): Promise<Page> {
   const file = await fileTask;
   if (file === undefined) return { kind: "closed" };

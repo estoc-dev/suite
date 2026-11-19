@@ -1,34 +1,23 @@
 import { type Link, linkOf } from "@estoc/object";
 import type { MailboxTerms } from "./schemas.ts";
 
-/** A mailbox that a service opened under an account. */
 export interface OpenMailbox {
-  /** The link of the signature over the request that opened it. */
   readonly request: Link<unknown>;
-  /** The link of the service's original signature over the acknowledgement of the request. */
   readonly acknowledgement: Link<unknown>;
-  /** The identifier of the account it is opened under, whose identities pick up there. */
   readonly identifier: Link<unknown>;
-  /** The id that senders post to. */
   readonly sendId: string;
-  /** The id that the account picks up at. */
   readonly pickupId: string;
-  /** The terms of the offer that opened it. */
   readonly terms: MailboxTerms;
 }
 
 /**
- * The mailboxes that a service opened, and the ciphertexts that wait at
- * each, by its send id. When the service receives them, and which of them
- * still count, is the service's to say: what was received before `since`
- * no longer waits.
+ * When the service receives the ciphertexts, and which of them still count, is the service's to
+ * say: what was received before `since` no longer waits.
  */
 export interface Mailboxes {
   /** Keeps `mailbox` unless one is kept for its request, in one step, and resolves to the one kept. */
   open(mailbox: OpenMailbox): Promise<OpenMailbox>;
-  /** The mailbox that the request `request` opened, or `undefined` when none is kept. */
   mailboxOpenedBy(request: Link<unknown>): Promise<OpenMailbox | undefined>;
-  /** The mailbox whose send id or pickup id is `id`, or `undefined` when none is kept. */
   mailboxNamed(id: string): Promise<OpenMailbox | undefined>;
   /**
    * Keeps `ciphertext`, received `at`, waiting at the mailbox `sendId`,
@@ -41,15 +30,12 @@ export interface Mailboxes {
     ciphertext: Uint8Array,
     limits: { readonly at: number; readonly since: number; readonly quota: number },
   ): Promise<boolean>;
-  /** Lets the ciphertexts that `receipts` names no longer wait at the mailbox `sendId`. */
   drop(sendId: string, receipts: readonly Link<Uint8Array>[]): Promise<void>;
-  /** The ciphertexts that wait at the mailbox `sendId`, the earliest first. */
   queue(sendId: string, since: number): AsyncIterable<Uint8Array>;
 }
 
 type HeldMessage = { readonly ciphertext: Uint8Array; readonly at: number };
 
-/** Keeps mailboxes in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryMailboxes implements Mailboxes {
   readonly #byRequest = new Map<Link<unknown>, OpenMailbox>();
   readonly #byId = new Map<string, OpenMailbox>();

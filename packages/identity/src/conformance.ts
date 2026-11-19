@@ -10,16 +10,6 @@ const otherDigest = Uint8Array.of(...new Uint8Array(31).fill(1), 2);
 const signedIdentity = new Uint8Array(32).fill(3);
 const otherSignedIdentity = Uint8Array.of(...new Uint8Array(31).fill(3), 4);
 
-/**
- * The rules for a scheme that `scheme` breaks, verifying what `signer`
- * signs, for a plugin to run in its tests; none when it keeps them.
- *
- * - What `signer` signs verifies, alone and by a signed identity.
- * - It does not verify for another digest, by another signed identity, by
- *   none in place of one, or by one in place of none.
- * - `reencoded` gives another encoding of a signature, one that a verifier
- *   that is not strict would take; what it gives does not verify.
- */
 export async function checkScheme(
   scheme: Scheme,
   signer: Signer,

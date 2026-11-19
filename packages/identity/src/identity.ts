@@ -8,22 +8,9 @@ import type { SignedIdentityObject } from "./signed-identity.ts";
 import type { Signer } from "./signer.ts";
 
 /**
- * The schema of an Identity, whatever the scheme of its keys: a root, the
- * keys it lists to sign for it, its agents, and `at`.
- *
- * - `prior` names the signed identity it follows, and one without it starts a
- *   chain.
- * - `crisis` marks it as a crisis, after which no identity version before it
- *   counts. An identity that is no crisis leaves it out, so that it has one
- *   object.
- * - A signature for it is the index of the key that signs, one byte, followed
- *   by that key's signature. The root is 0 and the agents follow in the order
- *   the root lists them, so it lists at most 255.
- * - It lists each agent once and not its root, or one signature would verify
- *   under two indexes, as two signatures with two links.
- * - The schema says the fields and their types. The rest is checked where
- *   `identities` reads or writes an identity, and not by a reader that reads
- *   one as an object of this schema alone.
+ * - `crisis` is left out of an identity that is no crisis, so that it has one object.
+ * - It lists each agent once and not its root, or one signature would verify under two indexes, as
+ *   two signatures with two links.
  */
 export const identitySchema = schema("Identity", {
   prior: optional(link()),
@@ -35,24 +22,7 @@ export const identitySchema = schema("Identity", {
 
 export type IdentityData = DataOf<typeof identitySchema>;
 
-/**
- * Someone who signs, as others see them: an identity read from its object
- * with its root, its agents and the signed identity it follows.
- *
- * - Someone is their `identifier`, the link of their root: two identities
- *   are of the same someone when their identifiers are the same. An object
- *   that names someone names them by their identifier, while a signature
- *   names a signed identity of the identity it is made for.
- * - Its root signs for it, and so do its agents.
- * - `at` is when the root signs it, in milliseconds since the Unix epoch by
- *   the root's clock. Each identity a root signs is an identity version.
- * - `isCrisis` says that no identity version before it counts.
- * - `prior` is of the same root, and earlier.
- * - `link` is that of its object.
- * - `blobs` are the identity's closure, each blob once: the bytes of its
- *   object and of the keys it names, the schemas they are written to, and
- *   the blobs of `prior`.
- */
+/** `at` is when the root signs it, in milliseconds since the Unix epoch by the root's clock. */
 export interface IdentityObject {
   readonly link: Link<unknown>;
   readonly identifier: Link<unknown>;
@@ -64,19 +34,15 @@ export interface IdentityObject {
   readonly blobs: readonly Uint8Array[];
 }
 
-/** What a root says in an identity besides itself, by the keys and the signed identity it names. */
 export interface IdentityContent {
   readonly prior?: SignedIdentityObject;
   readonly agents?: readonly Key[];
   readonly isCrisis?: boolean;
-  /** Now, when it is not given. */
   readonly at?: number;
 }
 
-/** Signs the digest of an object by the digest of a signed identity, giving the bytes of a signature for its identity. */
 export type SigningFunction = (object: Uint8Array, signedIdentity: Uint8Array) => Promise<Uint8Array>;
 
-/** Identities, written to `identitySchema` and read with the keys they name and the signed identity they follow. */
 export class Identities {
   readonly schema = identitySchema;
   readonly #keys: Keys;
@@ -85,13 +51,6 @@ export class Identities {
     this.#keys = keys;
   }
 
-  /**
-   * The identity of `root` that `content` says.
-   *
-   * @throws when `prior` is of another root, or is not earlier.
-   * @throws when the agents list `root` or one of them twice, or are more
-   *   than 255.
-   */
   encode(root: Key, { prior, agents = [], isCrisis = false, at = Date.now() }: IdentityContent = {}): IdentityObject {
     const rootKey = this.#keys.encode(root);
     const agentKeys = agents.map((agent) => this.#keys.encode(agent));
@@ -105,16 +64,6 @@ export class Identities {
     return identityOf(encodeObject(this.schema, data), prior, rootKey, agentKeys);
   }
 
-  /**
-   * Reads `object` with the keys it names from `reader`, as following
-   * `prior`, which the caller reads.
-   *
-   * @throws when `prior` is not the signed identity that `object` names as
-   *   its prior, is of another root, or is not earlier.
-   * @throws when its agents list its root or one of them twice, or are more
-   *   than 255.
-   * @throws when it writes `crisis` as anything but `true`.
-   */
   async read(
     object: EncodedObject<IdentityData>,
     prior: SignedIdentityObject | undefined,
@@ -126,7 +75,6 @@ export class Identities {
   }
 }
 
-/** The key that signs for `identity` and made `signature`, signing the digest `object` by the digest `signedIdentity`; undefined when none did. */
 export function signerOf(
   identity: IdentityObject,
   object: Uint8Array,
@@ -138,7 +86,6 @@ export function signerOf(
   return key !== undefined && verify(key, object, signature.subarray(1), signedIdentity) ? key : undefined;
 }
 
-/** How `signer` signs for `identity`; undefined when its key does not. */
 export function signingFunction(identity: IdentityObject, signer: Signer): SigningFunction | undefined {
   const index = signersOf(identity).findIndex((key) => isSameKey(key, signer.key));
   if (index < 0) return undefined;
@@ -149,7 +96,6 @@ export function hasSigner(identity: IdentityObject, key: KeyObject): boolean {
   return signersOf(identity).some(({ link }) => link === key.link);
 }
 
-/** The keys that sign for `identity`, by the index a signature names them by. */
 function signersOf({ root, agents }: IdentityObject): readonly KeyObject[] {
   return [root, ...agents];
 }

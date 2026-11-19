@@ -64,11 +64,6 @@ function fileView({ bundle, blobs, inspection, reading }: ShownFile): HTMLElemen
   );
 }
 
-/**
- * What the page holds: its header, then the file being shown or the place to choose one.
- *
- * A file that could not be read, or is not a bundle, leaves nothing of the file before it to follow.
- */
 export function pageView(page: Page, open: Open): HTMLElement[] {
   const isOpen = page.kind === "open";
   return [

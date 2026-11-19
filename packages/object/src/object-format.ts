@@ -22,30 +22,20 @@ class UntypedLinkValue {
 }
 
 /**
- * A link in data. CBOR marks a link with a tag, so in memory it is a value of
- * its own, and a string or bytes are what they are whatever they hold. `T` is
- * what the blob it names decodes to, as in a `Link<T>`.
+ * CBOR marks a link with a tag, so in memory it is a value of its own, and a string or bytes are
+ * what they are whatever they hold.
  */
 // `T` is kept out of the class, which TypeScript would resolve when it checks that data holding
 // the link is data of the format: two schemas whose objects link to each other would then refer to
 // themselves.
 export type LinkValue<T> = UntypedLinkValue & { readonly link: Link<T> };
 
-/** @throws when `link` is not a link. */
 export const LinkValue = UntypedLinkValue as new <T>(link: Link<T>) => LinkValue<T>;
 
-/**
- * What an object written to itself names as its schema. A blob cannot hold
- * its own hash, so the object format writes `"self"` in place of the link,
- * and the string is read as the link of the blob it is in.
- */
+/** A blob cannot hold its own hash, so the object format writes `"self"` in place of the link. */
 export const itself: unique symbol = Symbol("itself");
 export type Itself = typeof itself;
 
-/**
- * An object as a blob holds it: the schema its data is written to, and the
- * fields of its data. It is a blob as a whole, and is not a value in data.
- */
 export class ObjectValue {
   readonly schema: Link<unknown> | Itself;
   readonly data: ValueMap;
@@ -56,15 +46,10 @@ export class ObjectValue {
   }
 }
 
-/** A map by string keys, such as the data of an object: its fields, each a value by name. */
 export interface ValueMap {
   readonly [key: string]: Value;
 }
 
-/**
- * A value in data: an integer, bytes, a string, a boolean, an array, a map
- * by string keys or a link.
- */
 export type Value = boolean | number | string | Uint8Array | readonly Value[] | ValueMap | UntypedLinkValue;
 
 function isMap(value: object): value is ValueMap {
@@ -152,38 +137,17 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * The Estoc Object Format: objects written in deterministic CBOR
- * ([RFC 8949 section 4.2.1](https://www.rfc-editor.org/rfc/rfc8949#section-4.2.1)).
- *
- * - A blob of the format is one object: a tag of the format around an array of two, the schema
- *   of the object and the map of its fields. Any other bytes are refused, and are a blob of bytes
- *   that links to nothing.
- * - A value in data is an integer of magnitude up to 2^53 - 1, bytes, a string, a boolean, an
- *   array, a map by string keys or a link. Floats, null, other tags and an object inside data are
- *   refused.
- * - A link is tag 18540, the SHA-256 hash value, around the 32 bytes of the hash. A hash that
- *   names no blob to follow is written as bytes.
- * - An object names its schema by link, or by the string `"self"` when it is written to itself.
- * - Bytes that are anything but what `encode` writes for the object they hold are refused, not
- *   normalized: heads longer than the shortest, keys out of order or repeated, indefinite
- *   lengths, invalid UTF-8, and bytes after the object.
- * - A blob does not say which version of the format it is in. Another format is written under
- *   another tag, and its objects are other blobs, with other links.
+ * ([RFC 8949 section 4.2.1](https://www.rfc-editor.org/rfc/rfc8949#section-4.2.1)). Bytes that are
+ * anything but what `encode` writes for the object they hold are refused, not normalized, so that an
+ * object has one encoding and one link.
  */
 export const objectFormat = {
-  /** @throws when a value in the data of `object` is not one of the format. */
   encode(object: ObjectValue): Uint8Array {
     const schema = object.schema === itself ? itselfText : cborValueOf(new LinkValue(object.schema));
     const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(object.data)]), rfc8949EncodeOptions);
     // In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.
     return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   },
-  /**
-   * Reads the object that `bytes` hold. It needs nothing but the bytes, so the
-   * schema an object names can be read before the schema is.
-   *
-   * @throws when the bytes are not exactly what `encode` writes for an
-   * object, so that an object has one encoding and one link.
-   */
   decode(bytes: Uint8Array): ObjectValue {
     const value = objectValueOf(
       decode(bytes, {
@@ -200,12 +164,8 @@ export const objectFormat = {
     return value;
   },
   /**
-   * The links in `object`, its schema included, so that a blob's closure can
-   * be gathered without reading it through a schema.
-   *
-   * - An object written to itself names its schema by no link, and does not link to itself.
-   * - It may give more than the readers of the object follow, but leaves none out: a reader checks
-   *   each blob it follows, and a blob left out would be missing when it is followed.
+   * It may give more than the readers of the object follow, but leaves none out: a reader checks
+   * each blob it follows, and a blob left out would be missing when it is followed.
    */
   *links(object: ObjectValue): Iterable<Link<unknown>> {
     if (object.schema !== itself) yield object.schema;

@@ -4,12 +4,9 @@ import type { Field } from "@estoc/schema";
 
 export type InspectedObject = Extract<Inspection, { readonly kind: "object" }>;
 
-/** A place in the data of an object: what is there, and what the validator of its schema says of it. */
 export interface Place {
-  /** Nothing where the data leaves out a field of the schema. */
   readonly value: Value | undefined;
   readonly problems: readonly string[];
-  /** The items of an array by index and the members of a map by name, as the data orders them. */
   readonly parts: readonly Part[];
 }
 
@@ -20,26 +17,19 @@ export interface Part {
 
 export interface FieldRow {
   readonly name: string;
-  /** What the schema says of the field. Nothing when it has no such field, or could not be read. */
   readonly field: Field | undefined;
   readonly place: Place;
 }
 
 export interface FieldTable {
   readonly rows: readonly FieldRow[];
-  /** The problems that no row holds, as the validator words them. */
   readonly unplacedProblems: readonly string[];
 }
 
 /**
- * The field table of an object.
- *
- * - The rows are the members of the data as the data orders them, then the fields of the schema
- *   that the data leaves out, as the schema orders them.
- * - A problem is held at the place the validator names. The validator names a place as text, and
- *   a name that holds `/` or `: ` can spell the place of another value as well as its own.
- * - A problem that reads as that of more than one place is held at none of them, and is left
- *   unplaced.
+ * The validator names a place as text, and a name that holds `/` or `: ` can spell the place of
+ * another value as well as its own, so a problem that reads as that of more than one place is held
+ * at none of them.
  */
 export function fieldTableOf({ data, schema }: InspectedObject): FieldTable {
   const fields = schema.kind === "schema" ? schema.document.fields : {};
@@ -78,7 +68,6 @@ export function fieldTableOf({ data, schema }: InspectedObject): FieldTable {
   return { rows, unplacedProblems };
 }
 
-/** The ways to read a problem as a place and what is said of it: one for each `: ` it holds. */
 function* readingsOf(problem: string): Generator<{ readonly path: string; readonly message: string }> {
   for (let end = problem.indexOf(": "); end !== -1; end = problem.indexOf(": ", end + 1))
     yield { path: problem.slice(0, end), message: problem.slice(end + 2) };

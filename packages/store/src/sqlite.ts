@@ -3,8 +3,6 @@ import type { EncodedObject, Link } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 
 /**
- * Keeps a store in one SQLite file, writing each batch that is put as one transaction.
- *
  * - The file is not encrypted, so the file of a secret store goes where only its user can read it.
  * - Stores are joined by writing bundles from one to another, not by copying their files. A file
  *   copied while it is open, as by a tool that syncs a folder, can come out damaged.
@@ -13,11 +11,6 @@ export class SqliteBackend implements Backend {
   readonly #database: DatabaseSync;
   readonly #sql: SQLTagStore;
 
-  /**
-   * Opens the file at `path`, making it when it is missing.
-   *
-   * @throws when the folder of `path` is missing, or the file is not a database.
-   */
   constructor(path: string) {
     this.#database = new DatabaseSync(path);
     // FULL, the default, leaves the journal's removal unsynced, so a write
@@ -62,7 +55,6 @@ export class SqliteBackend implements Backend {
     for (const { link } of rows) yield link as Link<unknown>;
   }
 
-  /** Closes the file, after which every call rejects. */
   close(): void {
     this.#database.close();
   }

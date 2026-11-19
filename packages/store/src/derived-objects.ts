@@ -3,23 +3,12 @@ import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
 import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
 
-/**
- * The rows that an index gives of what a store lists, each once, in the order it first gave them.
- * They are kept beside the store, which does not hold them: an index over this one reads them from
- * here, by link as it reads any blob, with the closure of the schema they are written to, which the
- * store need not hold either, and whatever else it reads from the store.
- */
 export class DerivedObjects<F extends ValueMap> implements Listing {
   readonly objects: readonly EncodedObject<F>[];
   readonly links: readonly Link<unknown>[];
-  /**
-   * What the index failed on, and what the indexes it reads failed on: these rows are short of
-   * whatever those would have come to.
-   */
   readonly failures: readonly ItemFailure[];
   readonly #derivation: Derivation<F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>>;
-  /** What each origin of the index listed, all of which these rows are of. */
   readonly #listings: ReadonlyMap<Origin, Listing>;
   readonly #ownFailures: readonly ItemFailure[];
 
@@ -39,17 +28,6 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
     this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
 
-  /**
-   * These rows, then those that the index gives of what each of its origins lists in `rows` beyond
-   * what these are of, each read from `store`.
-   *
-   * - What a source of the index or its `rows` throw on, or give a row of that does not fit the
-   *   schema, gives no rows of that source. The other sources that read it give theirs still.
-   * - It is among the failures from then on, and is not read again.
-   *
-   * @throws when `store` throws, or gives no blob, for a link that is read. Nothing is added then,
-   *   as it may give the blob later.
-   */
   async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
     const objectsByLink = new Map(this.#objectsByLink);

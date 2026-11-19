@@ -25,20 +25,11 @@ import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
 
-/** What of `@estoc/identity` a correspondence reads and signs with. */
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities" | "identityVersions">;
 
 /**
- * Sending and reading as one actor, by the Mailbox Grants and the identity versions a store holds,
- * and the marks of the private store beside it.
- *
- * - The store's grants and identity versions and the private store's marks are read anew at each
- *   call, so each call reads what came in since.
- * - A signature is honored as of when it came to the user's devices, by the identity versions that
- *   had come by then, so a key that a later identity version takes out leaves what it signed
- *   before standing, until a crisis. When each came is what the inbound marks and records say.
- * - The indexes they are read through are made once, with the correspondence, so a store keeps
- *   their rows between scans.
+ * The indexes it reads through are made once, with the correspondence, so a store keeps their rows
+ * between scans.
  */
 export class Correspondence {
   readonly #store: Store;
@@ -52,7 +43,6 @@ export class Correspondence {
   readonly #seenPeople: View<IdentityVersionData, IdentityVersionOrder, People>;
   readonly #arrivals: ArrivalsView;
 
-  /** `privateStore` is the one kept beside `store`. */
   constructor(
     { store, privateStore }: { readonly store: Store; readonly privateStore: PrivateStore },
     post: Pick<Post, "outbox">,
@@ -80,16 +70,6 @@ export class Correspondence {
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
-  /**
-   * Signs a grant of `mailboxes` to `to`, and writes the signature to the store with its closure
-   * and then a record of it to the private store.
-   *
-   * - The grant is to the current identity version of `to` that the store holds, `to` itself when
-   *   none is later.
-   * - Who the grant reaches, and how, is the caller's to choose.
-   *
-   * @throws {RefusedBatch} when the store does not hold one of `mailboxes`; nothing is written then.
-   */
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject>[]): Promise<Signature> {
     const current = await (await view(this.#store, this.#seenPeople)).current(to);
     const at = this.#clock();
@@ -103,21 +83,6 @@ export class Correspondence {
     return signature;
   }
 
-  /**
-   * Sends `root` and its closure in the store to each mailbox of the latest grant of the person of
-   * `to` to the actor, and writes a mark for each mailbox that takes it.
-   *
-   * - `to` takes messages at each of those mailboxes, so the message has gone once one takes it. A
-   *   mailbox that turns it back leaves no mark and does not stop the others.
-   * - Sending a root again sends the same bundle and writes other marks.
-   *
-   * @throws {UndeliveredMessage} of kind `gone` when the latest grant names no mailbox, or the store
-   *   holds no grant that is honored.
-   * @throws {UndeliveredMessage} when every mailbox turned it back: one of kind `later` if there is
-   *   one, as the same can be sent again later.
-   * @throws when the post has no transport for one of the mailboxes; nothing is sent then.
-   * @throws when the store does not hold `root` or a blob of its closure.
-   */
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
     const from = to.identity.identifier;
     const series = await view(this.#store, this.#grants.series);
@@ -140,16 +105,8 @@ export class Correspondence {
   }
 
   /**
-   * The signature at the root of `bundle`, which came in at `mailbox`, when it is honored as a
-   * message from whoever signed it.
-   *
-   * - It is honored as of when the bundle came in.
-   * - `mailbox` is in a grant of the actor to the signer that is honored as of when the user
-   *   recorded it. An earlier grant is honored as the latest is, so what came in before a move
-   *   still reads as theirs.
-   * - Anything else gives `undefined`, since anyone can send anything to a mailbox.
-   *
-   * @throws when the store fails to give a blob.
+   * A message counts when its mailbox is in any grant of the actor to the signer that is honored,
+   * not only the latest, so what came in before a move still reads as theirs.
    */
   async messageAt(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Signature | undefined> {
     const signature = await this.#signatureAtRootOf(bundle);

@@ -12,17 +12,6 @@ import {
 import { type DataOf, link, optional, schema } from "@estoc/schema";
 import { SchemaLineage } from "./schema-lineage.ts";
 
-/**
- * The schema every lineage node is written to. A node carries one item, the
- * link of a version, and names the node before it as `previous`, which the
- * first node of a lineage does not have.
- *
- * - An item is the same blob on a lineage as off it, so one item can be on
- *   several lineages, or twice on one, each time in a node of its own.
- * - The first node is fixed by its item alone, so the lineages that start
- *   with one item share it, and it names their series.
- * - A node names one node before it, so lineages fork and do not merge.
- */
 export const lineageNodeSchema = schema("Lineage Node", {
   previous: optional(link<LineageNodeObject>()),
   item: link(),
@@ -32,60 +21,30 @@ export type LineageNodeData = DataOf<typeof lineageNodeSchema>;
 
 export interface LineageNodeObject extends EncodedObject<LineageNodeData> {}
 
-/**
- * A lineage read or built by `Lineages`, from its first node to its head.
- *
- * - Each node is an object of the lineage node schema, and each but the
- *   first names the one before it as `previous`.
- * - `items` are the links the nodes carry, in their order, one for each
- *   node, so an item carried twice is there twice.
- * - `blobs` are the bytes of the nodes and the closure of the node schema:
- *   the closure of `head` but for the closures of the items, which the caller
- *   holds.
- */
 export interface Lineage {
   readonly first: LineageNodeObject;
   readonly head: LineageNodeObject;
   readonly nodes: readonly LineageNodeObject[];
   readonly items: readonly Link<unknown>[];
   readonly blobs: readonly Uint8Array[];
-  /** The lineage with one node more, which carries `item` and names `head` as `previous`. It writes nothing. */
   appending(item: { readonly link: Link<unknown> }): Lineage;
 }
 
 /**
- * Lineages, read and built with the lineage node schema.
- *
- * - Anyone builds a lineage, of their own items or anyone's, and nothing in
- *   it says who may append to it or which head is current: which head to
- *   take is the program's to choose.
- * - An identity stands behind a head by signing it, as it signs any object,
- *   and so behind the nodes and items before it.
+ * Anyone builds a lineage, of their own items or anyone's, and nothing in it says who may append to
+ * it or which head is current: which head to take is the program's to choose.
  */
 export class Lineages {
   readonly schema = lineageNodeSchema;
-  /**
-   * The selection of every lineage node, each as the lineage it is the head
-   * of, read back to its first node.
-   *
-   * @throws where `read` does, when it reads a node.
-   */
   readonly selection: SelectionBySchema<Lineage, LineageNodeData> = new SelectionBySchema(
     lineageNodeSchema,
     (head, reader) => this.#readLineageEndingIn(head, reader),
   );
 
-  /** The lineage of one node, which carries `item`. It writes nothing. */
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
     return lineageOf([], encodeObject(lineageNodeSchema, { item: new LinkValue(item.link) }));
   }
 
-  /**
-   * The schema lineage of `versions`, in their order: the lineage of their
-   * schemas, with each version read by its implementation. It writes nothing.
-   *
-   * @throws when two versions are of one schema.
-   */
   schemaLineageOf<T>(versions: readonly [Implementation<T>, ...Implementation<T>[]]): SchemaLineage<T> {
     const [first, ...later] = versions;
     return new SchemaLineage(
@@ -95,13 +54,6 @@ export class Lineages {
     );
   }
 
-  /**
-   * The lineage whose head `link` names, read back to its first node from
-   * `reader`. It reads the nodes and not the items.
-   *
-   * @throws when `reader` gives no blob for a node on the way, and where
-   *   `readObject` throws for one that is not a lineage node.
-   */
   async read(link: Link<LineageNodeObject>, reader: Reader): Promise<Lineage> {
     return this.#readLineageEndingIn(await readObject(reader, link, this.schema), reader);
   }
@@ -133,5 +85,4 @@ function lineageOf(before: readonly LineageNodeObject[], head: LineageNodeObject
   };
 }
 
-/** What reads and builds lineages. */
 export const lineages = new Lineages();

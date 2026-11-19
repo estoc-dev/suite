@@ -8,13 +8,8 @@ import {
   type ValueMap,
 } from "@estoc/object";
 
-/**
- * A recorded object, another blob a store holds, or a row of another index, as the parts of an
- * index read it, so that what they share is done once.
- */
 export class ScannedBlob {
   readonly link: Link<unknown>;
-  /** The blobs of its closure, each read from the store once. */
   readonly reader: { get(link: Link<unknown>): Promise<Uint8Array> };
   #namedSchema: { readonly link: Link<unknown> | undefined } | undefined;
   readonly #objects = new Map<object, unknown>();
@@ -36,18 +31,10 @@ export class ScannedBlob {
     });
   }
 
-  /** The first error that reading a blob of its closure threw, whether or not what read it caught it. */
   get readFailure(): { readonly error: unknown } | undefined {
     return this.#readFailure;
   }
 
-  /**
-   * The object read with `schema`, or `undefined` when it is not an object, as an attachment is
-   * not, or is written to another schema. The schema it names is read once, and the object once for
-   * each schema.
-   *
-   * @throws where `decodeObject` throws, as when it names `schema` and does not fit it.
-   */
   async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {
     if (!this.#objects.has(schema)) {
       const bytes = await this.reader.get(this.link);
@@ -59,7 +46,6 @@ export class ScannedBlob {
   }
 }
 
-/** The schema that `bytes` name as an object, or `undefined` when they are not one. */
 export function namedSchemaOf(bytes: Uint8Array): Link<unknown> | undefined {
   try {
     return schemaOf(bytes);
@@ -68,7 +54,6 @@ export function namedSchemaOf(bytes: Uint8Array): Link<unknown> | undefined {
   }
 }
 
-/** A reader that gets each blob with `get` once and keeps it: a link names one blob. */
 function readerOnce(get: (link: Link<unknown>) => Promise<Uint8Array>): {
   get(link: Link<unknown>): Promise<Uint8Array>;
 } {

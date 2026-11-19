@@ -13,21 +13,11 @@ import {
 } from "@estoc/object";
 import { rootSchema, type SchemaDocument, schemaLanguage, schemaValidator } from "@estoc/schema";
 
-/** A link in the data of an object. */
 export interface DataLink {
-  /** Where in the data the link is, spelled as the validator spells the place of a problem: `#/replies/0`. */
   readonly path: string;
   readonly link: Link<unknown>;
 }
 
-/**
- * The schema an object names, as far as it could be read.
- *
- * - `absent`: the reader gives no blob for it.
- * - `refused`: the blob it names is not a schema of Estoc Schema, and `error` says why.
- * - `schema`: its document, and what in the data of the object does not fit it, each with its place.
- *   No problems means the data fits.
- */
 export type NamedSchema =
   | { readonly kind: "absent"; readonly link: Link<unknown> }
   | { readonly kind: "refused"; readonly link: Link<unknown>; readonly error: unknown }
@@ -39,13 +29,8 @@ export type NamedSchema =
     };
 
 /**
- * What a link reads as from one reader, by what the blob says of itself.
- *
- * - `absent`: the reader gives no blob for the link.
- * - `bytes`: the blob is not an object of the object format, and links to nothing.
- * - `object`: its data, each link in its data with its place, and the schema it names. The links
- *   come as walking `data` meets them, and the schema is not among them. That is not always the
- *   order of the bytes: JavaScript lists a member named `10` before one named `a`.
+ * The links of an object come as walking `data` meets them, which is not always the order of the
+ * bytes: JavaScript lists a member named `10` before one named `a`.
  */
 export type Inspection =
   | { readonly kind: "absent"; readonly link: Link<unknown> }
@@ -60,18 +45,9 @@ export type Inspection =
     };
 
 /**
- * Reads the blob that `link` names from `reader`, by the schema the blob itself names.
- *
- * - A program that reads an object names the schema it expects, as `readObject` does. This reads
- *   whatever is there, so all it gives is what the blob says of itself: a title is the one its
- *   schema gave itself, and data that fits says only that its shape is right. Whose the object is,
- *   and whether a signature verifies, is for the program to say.
- * - Each step stops on its own, and what was read before it is still given. The fields of an object
- *   are read without its schema, since the object format marks the type of every value.
- * - Following a link of the object is inspecting it through the same reader.
- *
- * @throws what `reader` throws when it cannot give the blob of `link`, or of the schema the object
- * names. `absent` says the reader has no blob, and not that reading one failed.
+ * This reads whatever is there, by the schema the blob names, so a title is the one its schema gave
+ * itself and data that fits says only that its shape is right. Whose the object is, and whether a
+ * signature verifies, is for the program to say.
  */
 export async function inspect(link: Link<unknown>, reader: Reader): Promise<Inspection> {
   const bytes = await reader.get(link);

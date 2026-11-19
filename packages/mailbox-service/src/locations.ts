@@ -4,10 +4,6 @@ import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
 
-/**
- * The schema of a signed Service as a row of an index: the identifier of the
- * identity that signed it, its `at`, and the signature.
- */
 const locationSchema = schema("Location", {
   identifier: link(),
   at: integer(),
@@ -22,17 +18,10 @@ const locationSchema = schema("Location", {
 type LocationOrder = readonly ["identifier", "at", "service"];
 
 /**
- * The Services that the signatures a store holds sign, however they came,
- * by the identifier of the identity that signed each. A Service carries its authority
- * in the signature, so one that came in at a mailbox is honored as one
- * fetched.
+ * A Service carries its authority in the signature, so one that came in at a mailbox is honored as
+ * one fetched.
  */
 export interface Locations {
-  /**
-   * The links of the signatures over the Services of `identifier` that
-   * `seenIdentityVersions` honor, from the latest back. One by a key that a
-   * later identity version takes out is not honored, whatever its `at`.
-   */
   servicesOf(identifier: Link<unknown>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<unknown>[]>;
 }
 

@@ -1,15 +1,14 @@
-import type { Identifier, Signature } from "@estoc/identity";
 import { type Link, linkOf } from "@estoc/object";
 import type { MailboxTerms } from "./schemas.ts";
 
 /** A mailbox that a service opened under an account. */
 export interface OpenMailbox {
   /** The link of the signature over the request that opened it. */
-  readonly request: Link<Signature>;
+  readonly request: Link<unknown>;
   /** The link of the service's original signature over the acknowledgement of the request. */
-  readonly acknowledgement: Link<Signature>;
+  readonly acknowledgement: Link<unknown>;
   /** The identifier of the account it is opened under, whose identities pick up there. */
-  readonly identifier: Identifier;
+  readonly identifier: Link<unknown>;
   /** The id that senders post to. */
   readonly sendId: string;
   /** The id that the account picks up at. */
@@ -28,7 +27,7 @@ export interface Mailboxes {
   /** Keeps `mailbox` unless one is kept for its request, in one step, and resolves to the one kept. */
   open(mailbox: OpenMailbox): Promise<OpenMailbox>;
   /** The mailbox that the request `request` opened, or `undefined` when none is kept. */
-  mailboxOpenedBy(request: Link<Signature>): Promise<OpenMailbox | undefined>;
+  mailboxOpenedBy(request: Link<unknown>): Promise<OpenMailbox | undefined>;
   /** The mailbox whose send id or pickup id is `id`, or `undefined` when none is kept. */
   mailboxNamed(id: string): Promise<OpenMailbox | undefined>;
   /**
@@ -52,7 +51,7 @@ type HeldMessage = { readonly ciphertext: Uint8Array; readonly at: number };
 
 /** Keeps mailboxes in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryMailboxes implements Mailboxes {
-  readonly #byRequest = new Map<Link<Signature>, OpenMailbox>();
+  readonly #byRequest = new Map<Link<unknown>, OpenMailbox>();
   readonly #byId = new Map<string, OpenMailbox>();
   readonly #queues = new Map<string, Map<Link<Uint8Array>, HeldMessage>>();
 
@@ -65,7 +64,7 @@ export class MemoryMailboxes implements Mailboxes {
     return mailbox;
   }
 
-  async mailboxOpenedBy(request: Link<Signature>): Promise<OpenMailbox | undefined> {
+  async mailboxOpenedBy(request: Link<unknown>): Promise<OpenMailbox | undefined> {
     return this.#byRequest.get(request);
   }
 

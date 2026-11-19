@@ -12,7 +12,7 @@ import type { Keys } from "./key/keys.ts";
  * - Which wallet holds the key, the program finds by the public key the
  *   wallet gives.
  */
-export const walletKeySchema = schema("Wallet Key", { key: link<KeyObject>() });
+export const walletKeySchema = schema("Wallet Key", { key: link() });
 
 export type WalletKeyData = DataOf<typeof walletKeySchema>;
 
@@ -21,7 +21,6 @@ export type WalletKeyData = DataOf<typeof walletKeySchema>;
  * as a Secret Key's are.
  */
 export interface WalletKeyObject extends EncodedObject<WalletKeyData> {
-  readonly link: Link<WalletKeyObject>;
   readonly key: KeyObject;
   readonly blobs: readonly Uint8Array[];
 }
@@ -42,12 +41,12 @@ export class WalletKeys {
   }
 
   /** Reads the Wallet Key that `link` names from `reader`, with its key. */
-  async read(link: Link<WalletKeyObject>, reader: Reader): Promise<WalletKeyObject> {
+  async read(link: Link<unknown>, reader: Reader): Promise<WalletKeyObject> {
     const object = await readObject(reader, link, this.schema);
     return walletKeyOf(object, await this.#keys.read(object.data.key.link, reader));
   }
 }
 
 function walletKeyOf(object: EncodedObject<WalletKeyData>, key: KeyObject): WalletKeyObject {
-  return { ...object, link: object.link as Link<WalletKeyObject>, key, blobs: blobsOf([object, key]) };
+  return { ...object, key, blobs: blobsOf([object, key]) };
 }

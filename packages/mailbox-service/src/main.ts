@@ -110,10 +110,10 @@ async function makeSecretStore(path: string): Promise<void> {
 async function secretKeyIn(secretStore: SecretStore, path: string): Promise<SecretKeyObject> {
   const { secretKeys } = loadIdentity(schemes);
   const selection = objectsOf(secretKeys.schema);
-  const links: Link<SecretKeyObject>[] = [];
+  const links: Link<unknown>[] = [];
   for await (const secret of secretStore.secrets()) {
     const secretKey = await selection.read(secret, secretStore);
-    if (secretKey !== undefined) links.push(secretKey.link as Link<SecretKeyObject>);
+    if (secretKey !== undefined) links.push(secretKey.link);
   }
   const [link, ...others] = links;
   if (link === undefined || others.length > 0)

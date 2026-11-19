@@ -11,7 +11,7 @@ import { type Signer, SoftwareSigner } from "./signer.ts";
  * the device signs with by a secret in memory. With the Wallet Keys there,
  * the secret store lists the keys the device signs with.
  */
-export const secretKeySchema = schema("Secret Key", { key: link<KeyObject>(), secret: bytes() });
+export const secretKeySchema = schema("Secret Key", { key: link(), secret: bytes() });
 
 export type SecretKeyData = DataOf<typeof secretKeySchema>;
 
@@ -22,7 +22,6 @@ export type SecretKeyData = DataOf<typeof secretKeySchema>;
  * empty store.
  */
 export interface SecretKeyObject extends EncodedObject<SecretKeyData> {
-  readonly link: Link<SecretKeyObject>;
   readonly key: KeyObject;
   readonly signer: Signer;
   readonly blobs: readonly Uint8Array[];
@@ -52,7 +51,7 @@ export class SecretKeys {
    * memory signs with a curve.
    * @throws when the secret is not that of the key.
    */
-  async read(link: Link<SecretKeyObject>, reader: Reader): Promise<SecretKeyObject> {
+  async read(link: Link<unknown>, reader: Reader): Promise<SecretKeyObject> {
     const object = await readObject(reader, link, this.schema);
     const key = await this.#keys.read(object.data.key.link, reader);
     const { scheme } = key;
@@ -64,5 +63,5 @@ export class SecretKeys {
 }
 
 function secretKeyOf(object: EncodedObject<SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
-  return { ...object, link: object.link as Link<SecretKeyObject>, key, signer, blobs: blobsOf([object, key]) };
+  return { ...object, key, signer, blobs: blobsOf([object, key]) };
 }

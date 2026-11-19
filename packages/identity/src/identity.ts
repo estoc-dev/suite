@@ -23,26 +23,23 @@ import type { Signer } from "./signer.ts";
  *   under two indexes, as two signatures with two links.
  */
 export const identitySchema = schema("Identity", {
-  prior: optional(link<SignedIdentityObject>()),
-  root: link<KeyObject>(),
-  agents: array(link<KeyObject>()),
+  prior: optional(link()),
+  root: link(),
+  agents: array(link()),
   crisis: optional(boolean()),
   at: integer(),
 });
 
 export type IdentityData = DataOf<typeof identitySchema>;
 
-/** What names someone across their identity versions: the link of their root. */
-export type Identifier = Link<KeyObject>;
-
 /**
  * Someone who signs, as others see them: an identity read from its object
  * with its root, its agents and the signed identity it follows.
  *
- * - Someone is their `identifier`: two identities are of the same someone
- *   when their identifiers are the same. An object that names someone names
- *   them by their identifier, while a signature names a signed identity of
- *   the identity it is made for.
+ * - Someone is their `identifier`, the link of their root: two identities
+ *   are of the same someone when their identifiers are the same. An object
+ *   that names someone names them by their identifier, while a signature
+ *   names a signed identity of the identity it is made for.
  * - Its root signs for it, and so do its agents.
  * - `at` is when the root signs it, in milliseconds since the Unix epoch by
  *   the root's clock. Each identity a root signs is an identity version.
@@ -52,8 +49,7 @@ export type Identifier = Link<KeyObject>;
  *   the blobs of `prior`.
  */
 export interface IdentityObject extends EncodedObject<IdentityData> {
-  readonly link: Link<IdentityObject>;
-  readonly identifier: Identifier;
+  readonly identifier: Link<unknown>;
   readonly prior: SignedIdentityObject | undefined;
   readonly root: KeyObject;
   readonly agents: readonly KeyObject[];
@@ -117,7 +113,7 @@ export class Identities {
     reader: Reader,
   ): Promise<IdentityObject> {
     if (object.data.prior?.link !== prior?.link) throw new Error(`${object.link} does not follow ${prior?.link}`);
-    const read = (key: LinkValue<KeyObject>) => this.#keys.read(key.link, reader);
+    const read = (key: LinkValue<unknown>) => this.#keys.read(key.link, reader);
     return identityOf(object, prior, await read(object.data.root), await Promise.all(object.data.agents.map(read)));
   }
 }
@@ -170,7 +166,6 @@ function identityOf(
   if (object.data.crisis === false) throw new Error(`${object.link} marks a crisis with true, or not at all`);
   return {
     ...object,
-    link: object.link as Link<IdentityObject>,
     identifier: root.link,
     prior,
     root,

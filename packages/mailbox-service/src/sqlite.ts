@@ -1,5 +1,4 @@
 import { DatabaseSync, type SQLTagStore } from "node:sqlite";
-import type { Identifier, Signature } from "@estoc/identity";
 import { type Link, linkOf } from "@estoc/object";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import type { Accounts } from "./server.ts";
@@ -22,11 +21,11 @@ export class SqliteAccounts implements Accounts {
     this.#sql = this.#database.createTagStore();
   }
 
-  async add(identifier: Identifier, acknowledgement: Link<Signature>): Promise<boolean> {
+  async add(identifier: Link<unknown>, acknowledgement: Link<unknown>): Promise<boolean> {
     return this.#sql.run`INSERT OR IGNORE INTO accounts VALUES (${identifier}, ${acknowledgement})`.changes === 1;
   }
 
-  async has(identifier: Identifier): Promise<boolean> {
+  async has(identifier: Link<unknown>): Promise<boolean> {
     return this.#sql.get`SELECT 1 FROM accounts WHERE identifier = ${identifier}` !== undefined;
   }
 
@@ -83,7 +82,7 @@ export class SqliteMailboxes implements Mailboxes {
     return mailboxOf(this.#sql.get`SELECT * FROM mailboxes WHERE request = ${request}` as MailboxRow);
   }
 
-  async mailboxOpenedBy(request: Link<Signature>): Promise<OpenMailbox | undefined> {
+  async mailboxOpenedBy(request: Link<unknown>): Promise<OpenMailbox | undefined> {
     const row = this.#sql.get`SELECT * FROM mailboxes WHERE request = ${request}` as MailboxRow | undefined;
     return row && mailboxOf(row);
   }
@@ -150,9 +149,9 @@ export class SqliteMailboxes implements Mailboxes {
 }
 
 type MailboxRow = {
-  readonly request: Link<Signature>;
-  readonly acknowledgement: Link<Signature>;
-  readonly identifier: Identifier;
+  readonly request: Link<unknown>;
+  readonly acknowledgement: Link<unknown>;
+  readonly identifier: Link<unknown>;
   readonly send_id: string;
   readonly pickup_id: string;
   readonly retention: number;

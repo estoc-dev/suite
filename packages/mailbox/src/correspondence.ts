@@ -1,6 +1,5 @@
 import {
   type Actor,
-  type Identifier,
   type IdentityKit,
   type IdentityVersionData,
   type IdentityVersionOrder,
@@ -46,7 +45,7 @@ export class Correspondence {
   readonly #privateStore: PrivateStore;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
-  readonly #identifier: Identifier;
+  readonly #identifier: Link<unknown>;
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];

@@ -121,10 +121,10 @@ import { LinkValue, encodeObject } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 
 const identitySchema = schema("Identity", {
-  root: link<KeyObject>(),
-  agents: array(link<KeyObject>()),
+  root: link(),
+  agents: array(link()),
   at: integer(),
-  prior: optional(link<SignedIdentityObject>()),
+  prior: optional(link()),
   crisis: optional(boolean()),
 });
 type IdentityData = DataOf<typeof identitySchema>;
@@ -134,9 +134,10 @@ const identity = encodeObject(identitySchema, { root: new LinkValue(rootKey.link
 
 - `array`, `link`, `bytes`, `integer`, `string`, `boolean` and `any` give
   the seven types, and `optional` marks a field.
-- `link<T>()` reads as a `LinkValue<T>`. `T` is what the program reads the
-  linked blob as, a label the schema does not hold: it says a field is a
-  link, and not what the link names.
+- `link<T>()` reads as a `LinkValue<T>`. `T` is what the linked blob decodes
+  to, a label the schema does not hold: it says a field is a link, and not
+  what the link names. `link()` leaves it unsaid, as for a link that an
+  implementation reads.
 - `bytes` reads as a `Uint8Array`, `integer` as a `number`, `any` as a
   `Value`, and an optional field as a member that may be absent.
 

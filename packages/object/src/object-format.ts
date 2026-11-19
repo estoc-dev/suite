@@ -24,7 +24,7 @@ class UntypedLinkValue {
 /**
  * A link in data. CBOR marks a link with a tag, so in memory it is a value of
  * its own, and a string or bytes are what they are whatever they hold. `T` is
- * what the blob it names is read as, as in a `Link<T>`.
+ * what the blob it names decodes to, as in a `Link<T>`.
  */
 // `T` is kept out of the class, which TypeScript would resolve when it checks that data holding
 // the link is data of the format: two schemas whose objects link to each other would then refer to

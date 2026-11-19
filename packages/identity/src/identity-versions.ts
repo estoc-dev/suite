@@ -1,7 +1,6 @@
 import { type Link, LinkValue, type Reader, SelectionBySchema } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { hasSigner } from "./identity.ts";
-import type { KeyObject } from "./key/interface.ts";
 import type { People, Person } from "./person.ts";
 import type { Signature } from "./signature.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
@@ -18,10 +17,10 @@ import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from 
  *   is a crisis.
  */
 export const identityVersionSchema = schema("Identity Version", {
-  identifier: link<KeyObject>(),
+  identifier: link(),
   at: integer(),
-  signedIdentity: link<SignedIdentityObject>(),
-  lastCrisis: optional(link<SignedIdentityObject>()),
+  signedIdentity: link(),
+  lastCrisis: optional(link()),
 });
 
 export type IdentityVersionData = DataOf<typeof identityVersionSchema>;
@@ -32,7 +31,7 @@ export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity
 /** The rows of an index of identity versions, as `people` reads them. */
 export interface IdentityVersionRows {
   /** The rows of the identity versions of `identifier`. */
-  range(prefix: readonly [identifier: LinkValue<KeyObject>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
+  range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
 /**
@@ -100,18 +99,22 @@ export class IdentityVersions {
    * signed identity whose closure it lacks does not read.
    */
   people(rows: IdentityVersionRows, reader: Reader): People {
-    const read = (link: Link<SignedIdentityObject>) => this.#signedIdentities.read(link, reader);
+    const read = (link: Link<unknown>) => this.#signedIdentities.read(link, reader);
     const versionsOf = async (signedIdentity: SignedIdentityObject) => {
-      const inHand = new Map([...chainOf(signedIdentity)].map((each) => [each.link, each] as const));
-      const seen = new Map([...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const));
+      const inHand = new Map<Link<unknown>, SignedIdentityObject>(
+        [...chainOf(signedIdentity)].map((each) => [each.link, each] as const),
+      );
+      const seen = new Map<Link<unknown>, IdentityVersionData>(
+        [...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const),
+      );
       for await (const { data } of rows.range([new LinkValue(signedIdentity.identity.identifier)]))
         seen.set(data.signedIdentity.link, data);
-      const signedIdentityOf = async (link: Link<SignedIdentityObject>) => inHand.get(link) ?? read(link);
+      const signedIdentityOf = async (link: Link<unknown>) => inHand.get(link) ?? read(link);
       return {
         inHand,
         seen: [...seen.values()].sort(compareIdentityVersions),
         signedIdentityOf,
-        currentAmong: (countingVersions: readonly Link<SignedIdentityObject>[]) =>
+        currentAmong: (countingVersions: readonly Link<unknown>[]) =>
           // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
           signedIdentityOf(countingVersions.at(-1)!),
       };
@@ -168,7 +171,7 @@ function* chainOf(signedIdentity: SignedIdentityObject): Iterable<SignedIdentity
 }
 
 /** The link of the latest crisis among `signedIdentity` and those it follows, as each is later than the one it follows. */
-function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentityObject> | undefined {
+function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<unknown> | undefined {
   for (const each of chainOf(signedIdentity)) if (each.identity.data.crisis) return each.link;
   return undefined;
 }
@@ -179,9 +182,9 @@ function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<SignedIdentity
  * all of them when none is a crisis. Those that follow a crisis come after
  * it, so each crisis met starts them over.
  */
-function countingVersionsAmong(ordered: readonly IdentityVersionData[]): Link<SignedIdentityObject>[] {
-  let countingVersions: Link<SignedIdentityObject>[] = [];
-  let cut: Link<SignedIdentityObject> | undefined;
+function countingVersionsAmong(ordered: readonly IdentityVersionData[]): Link<unknown>[] {
+  let countingVersions: Link<unknown>[] = [];
+  let cut: Link<unknown> | undefined;
   for (const { signedIdentity, lastCrisis } of ordered) {
     const link = signedIdentity.link;
     if (link === lastCrisis?.link) [cut, countingVersions] = [link, [link]];

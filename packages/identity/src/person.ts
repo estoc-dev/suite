@@ -1,4 +1,4 @@
-import type { Identifier } from "./identity.ts";
+import type { Link } from "@estoc/object";
 import type { Arrivals } from "./identity-versions.ts";
 import type { SeenIdentityVersions, Signature } from "./signature.ts";
 import type { SignedIdentityObject } from "./signed-identity.ts";
@@ -12,7 +12,7 @@ import type { SignedIdentityObject } from "./signed-identity.ts";
  * names them, but what they hold changes as more is seen.
  */
 export interface Person {
-  readonly identifier: Identifier;
+  readonly identifier: Link<unknown>;
   /**
    * The person's identity versions that count, each signed by its root, in
    * the order of their `at` and then of their links.

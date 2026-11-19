@@ -2,7 +2,6 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
-  type Identifier,
   type IdentityVersionData,
   type IdentityVersionOrder,
   loadIdentity,
@@ -61,7 +60,7 @@ const clock = () => ++now;
 
 interface Person {
   readonly actor: Actor;
-  readonly identifier: Identifier;
+  readonly identifier: Link<unknown>;
   readonly store: Store;
   readonly privateStore: PrivateStore;
   readonly post: Post;

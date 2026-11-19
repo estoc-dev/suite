@@ -1,12 +1,4 @@
-import {
-  type CurveScheme,
-  ed25519,
-  eip191,
-  loadIdentity,
-  noIdentityVersions,
-  type Signature,
-  SoftwareSigner,
-} from "@estoc/identity";
+import { type CurveScheme, ed25519, eip191, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -23,15 +15,15 @@ const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]
 const actorOf = async (by: SoftwareSigner) => signatures.actor(by, await publish(by, { at: 0 }));
 const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) => (await actorOf(by)).sign(object);
 
-const card = schema("Card", { mailbox: link<Signature>(), name: link<Signature>() });
-const contact = schema("Contact", { displayName: link<Signature>(), inbox: link<Signature>() });
+const card = schema("Card", { mailbox: link(), name: link() });
+const contact = schema("Contact", { displayName: link(), inbox: link() });
 const mailbox = schema("Mailbox", { url: string() });
 const name = schema("Name", { name: string() });
 
 // A card lists the signatures of the one identity it is for: over a mailbox
 // that reaches it, and over the name it goes by. Another application writes
 // the same to a schema of its own, a contact, which reads as a card too.
-type Card = { readonly mailbox: Link<Signature>; readonly name: Link<Signature> };
+type Card = { readonly mailbox: Link<unknown>; readonly name: Link<unknown> };
 
 function cardOf(root: Uint8Array): Card {
   switch (schemaOf(root)) {

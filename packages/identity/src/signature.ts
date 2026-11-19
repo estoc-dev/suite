@@ -52,7 +52,7 @@ export type SignatureData = DataOf<typeof signatureSchema>;
  * - `link` is that of the signature's own object.
  * - `blobs` are what it takes to read it again, each blob once: the bytes of
  *   its object, the closure of its schema, and the `blobs` of its signed
- *   identity. The object it signs is not among them.
+ *   identity.
  */
 export interface Signature {
   readonly link: Link<unknown>;

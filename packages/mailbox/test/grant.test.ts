@@ -6,7 +6,6 @@ import {
   type IdentityVersionOrder,
   loadIdentity,
   type People,
-  type Signature,
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
@@ -103,19 +102,17 @@ async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
   return mailbox.link;
 }
 
-// The blobs a store that holds the mailboxes of `grant` takes to write `signature` over it, to `to`.
-const blobsOf = (grant: EncodedObject, signature: Signature, to: Person) => [
+// The blobs a store that holds the mailboxes of `grant` takes to write it, to `to`, beside those of a signature over it.
+const blobsOf = (grant: EncodedObject, to: Person) => [
   grant.bytes,
   ...grants.schema.blobs,
-  ...signatures.schema.blobs,
-  ...signature.signedIdentity.blobs,
   ...to.actor.signedIdentity.blobs,
 ];
 
 async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
   const grant = grants.encode(to.actor.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
-  await from.store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobsOf(grant, signature, to)] });
+  await from.store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobsOf(grant, to)] });
   return signature;
 }
 
@@ -252,7 +249,12 @@ describe("the latest grant of one person to another", () => {
     });
     await mallory.store.write({
       roots: [forgedSignature.link],
-      blobs: [forgedSignature.bytes, ...blobsOf(grant, signature, bob)],
+      blobs: [
+        forgedSignature.bytes,
+        ...signatures.schema.blobs,
+        ...signature.signedIdentity.blobs,
+        ...blobsOf(grant, bob),
+      ],
     });
     await send(mallory, bob, forgedSignature.link);
 

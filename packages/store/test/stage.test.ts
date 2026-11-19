@@ -205,7 +205,8 @@ describe("a view of a staged batch", () => {
     expect((await signatures.read(byAgent.link, stagedStore, before)).object).toBe(hello.link);
 
     await stagedStore.commit();
-    expect(byAgent.blobs).toContainEqual(await store.get(byAgent.link));
+    const kept = await store.get(byAgent.link);
+    expect(kept && linkOf(kept)).toBe(byAgent.link);
     expect(await store.get(hello.link)).toEqual(hello.bytes);
   });
 });

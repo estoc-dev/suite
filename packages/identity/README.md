@@ -473,10 +473,9 @@ signed, since the digest it signs is in the link. It gives the signature
 with the signed identity it read as `signedIdentity`, the key that signed
 as `key`, the link of what it is over as `object`, and the signature as
 bytes. Its `blobs` are the bytes of its object, the closure of the
-signature schema and the `blobs` of its signed identity, and not the object
-signed. Reading a signature with `decodeObject` and the signature schema
-alone, as a viewer of arbitrary objects would, reads its fields without
-verifying it.
+signature schema and the `blobs` of its signed identity. Reading a
+signature with `decodeObject` and the signature schema alone, as a viewer
+of arbitrary objects would, reads its fields without verifying it.
 
 `signatures.implementation` is the signature schema as an `Implementation`
 of `@estoc/object`. Its `read` takes the signature as an object and a

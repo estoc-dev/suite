@@ -105,7 +105,7 @@ describe("a signature", () => {
     ]);
   });
 
-  it("reads back from its blobs alone, which do not hold the object it signs", async () => {
+  it("over a note reads back from its blobs alone, which do not hold the note", async () => {
     const signature = await sign(hello, signer(eip191));
     expect(await signatures.read(signature.link, blobsByLink(signature.blobs), noIdentityVersions)).toEqual(signature);
     expect(linksOf(signature.blobs)).not.toContain(hello.link);

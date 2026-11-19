@@ -12,24 +12,23 @@ import {
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
-/** What is read from an object and carries the blobs to read it again, as a key or a signature is. */
-interface Carrying {
+/** A link with blobs that hold what it names, as a key or a signature read from an object has. */
+interface LinkWithBlobs {
   readonly link: Link<unknown>;
   readonly blobs: readonly Uint8Array[];
 }
 
-/** The bytes of the object that `read` is read from, which its blobs hold. */
-export function bytesOf({ link, blobs }: Carrying): Uint8Array {
+export function bytesOf({ link, blobs }: LinkWithBlobs): Uint8Array {
   const bytes = blobs.find((each) => linkOf(each) === link);
   if (bytes === undefined) throw new Error(`the blobs of ${link} do not hold it`);
   return bytes;
 }
 
 /** The data of the object that `read` is read from, as the object format decodes it. */
-export const dataOf = (read: Carrying): ValueMap => objectFormat.decode(bytesOf(read)).data;
+export const dataOf = (read: LinkWithBlobs): ValueMap => objectFormat.decode(bytesOf(read)).data;
 
 /** The link of the schema that the object `read` is read from is written to. */
-export function schemaLinkOf(read: Carrying): Link<unknown> {
+export function schemaLinkOf(read: LinkWithBlobs): Link<unknown> {
   const { schema } = objectFormat.decode(bytesOf(read));
   return typeof schema === "string" ? schema : read.link;
 }

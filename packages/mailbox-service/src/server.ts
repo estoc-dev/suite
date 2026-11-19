@@ -28,7 +28,7 @@ import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgeme
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
-import { type PeopleView, peopleView } from "./people.ts";
+import { checkHonors, type PeopleView, peopleView } from "./people.ts";
 import {
   accountOfferSchema,
   acknowledgementSchema,
@@ -150,7 +150,7 @@ class MailboxService {
     const people = await view(this.#store, this.#people);
     const [latest, ...earlier] = await locations.servicesOf(this.#identifier, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
-    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest, 200));
+    if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest.link, 200));
     const id = pathname.slice(1);
     if (MAILBOX_ID.test(id)) {
       const mailbox = await this.#mailboxes.mailboxNamed(id);
@@ -160,14 +160,13 @@ class MailboxService {
       );
     }
     if (!ID.test(id)) return answer(404);
-    if (await this.#serviceListsOffer(latest, id, people))
+    if (await this.#serviceListsOffer(latest, id))
       return answerTo(request, "POST", () => this.#acceptOffer(request, id));
-    for (const link of earlier) if (await this.#serviceListsOffer(link, id, people)) return answer(410);
+    for (const service of earlier) if (await this.#serviceListsOffer(service, id)) return answer(410);
     return answer(404);
   }
 
-  async #serviceListsOffer(link: Link<unknown>, id: string, people: People): Promise<boolean> {
-    const { object } = await this.#signatures.read(link, this.#store, people);
+  async #serviceListsOffer({ object }: Signature, id: string): Promise<boolean> {
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
     // The store's own signatures say which offer each is over, and are read
     // for that alone.
@@ -187,9 +186,10 @@ class MailboxService {
   }
 
   /**
-   * The signature is verified against the identity versions the service holds once the whole body
-   * has come in, however long the sender took to send it. So an agent its root removed is refused
-   * even when they have an account, and even for an acceptance that was acknowledged before.
+   * Whether the acceptance is honored is asked of the identity versions the service holds once the
+   * whole body has come in, however long the sender took to send it. So an agent its root removed
+   * is refused even when they have an account, and even for an acceptance that was acknowledged
+   * before.
    */
   async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
@@ -200,7 +200,8 @@ class MailboxService {
     let acceptance: Signature;
     try {
       bundle = decodeBundle(file);
-      acceptance = await this.#signatures.read(bundle.link, bundle, people);
+      acceptance = await this.#signatures.read(bundle.link, bundle);
+      await checkHonors(people, acceptance);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
       if (people.personOf(this.#signedIdentity).hasSigned(acceptance))
         throw new Error("a service opens no account for itself");
@@ -233,7 +234,8 @@ class MailboxService {
     let signature: Signature;
     try {
       bundle = decodeBundle(file);
-      signature = await this.#signatures.read(bundle.link, bundle, people);
+      signature = await this.#signatures.read(bundle.link, bundle);
+      await checkHonors(people, signature);
       const { data } = await readObject(bundle, signature.object, mailboxRequestSchema);
       if (data.offer.link !== offer.link) throw new Error(`the request asks for ${data.offer.link}, not the offer`);
     } catch (error) {
@@ -291,12 +293,12 @@ class MailboxService {
   }
 
   async #renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
-    const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
+    const signature = await this.#signatures.read(link, this.#store);
     if (await people.honors(signature)) return link;
     const recordedSignatures = await view(this.#privateStore, this.#recordedSignatures);
     for (const recordedLink of await recordedSignatures.signaturesOver(signature.object)) {
       if (recordedLink === link) continue;
-      const recordedSignature = await this.#signatures.read(recordedLink, this.#store, noIdentityVersions);
+      const recordedSignature = await this.#signatures.read(recordedLink, this.#store);
       if (await people.honors(recordedSignature)) return recordedLink;
     }
     const renewedSignature = await this.#sign({ link: signature.object }, people);
@@ -332,7 +334,7 @@ class MailboxService {
     let receipts: Link<Uint8Array>[];
     try {
       const bundle = decodeBundle(file);
-      signature = await this.#signatures.read(bundle.link, bundle, noIdentityVersions);
+      signature = await this.#signatures.read(bundle.link, bundle);
       const { data } = await readObject(bundle, signature.object, pickupRequestSchema);
       if (data.mailbox.link !== mailbox.request)
         throw new Error(`the request picks up at ${data.mailbox.link}, not at this mailbox`);
@@ -425,13 +427,9 @@ export async function loadMailboxService(
   const at = clock();
   const [signedBefore] = await locations.servicesOf(identifier, noIdentityVersions);
   const signedIdentity =
-    signedBefore === undefined
-      ? await publish(signer, { at })
-      : await people.current((await signatures.read(signedBefore, store, noIdentityVersions)).signedIdentity);
+    signedBefore === undefined ? await publish(signer, { at }) : await people.current(signedBefore.signedIdentity);
   const actor = signatures.actor(signer, signedIdentity);
-  const serviceSignatures = await Promise.all(
-    (await locations.servicesOf(identifier, people)).map((link) => signatures.read(link, store, people)),
-  );
+  const serviceSignatures = await locations.servicesOf(identifier, people);
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject, Signature])[] = [];
@@ -503,7 +501,8 @@ async function signatureListedIn(
 ): Promise<Signature | undefined> {
   for (const { data } of services) {
     for (const { link } of data.offers) {
-      const signature = await signatures.read(link, store, people);
+      const signature = await signatures.read(link, store);
+      await checkHonors(people, signature);
       if (signature.object === offer) return signature;
     }
   }

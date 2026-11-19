@@ -1,12 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import {
-  type Actor,
-  ed25519,
-  loadIdentity,
-  noIdentityVersions,
-  type SignedIdentityObject,
-  SoftwareSigner,
-} from "@estoc/identity";
+import { type Actor, ed25519, loadIdentity, type SignedIdentityObject, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store } from "@estoc/store";
@@ -149,7 +142,7 @@ describe("a grant", () => {
     const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
 
     expect(await listedIn(alice.privateStore)).toContain(signature.link);
-    const readSignature = await signatures.read(signature.link, alice.store, noIdentityVersions);
+    const readSignature = await signatures.read(signature.link, alice.store);
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
     const { data } = await readObject(alice.store, readSignature.object, grants.schema);
     expect(data).toEqual({

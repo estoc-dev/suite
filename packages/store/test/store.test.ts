@@ -1,4 +1,4 @@
-import { ed25519, identitySchema, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identitySchema, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -291,7 +291,7 @@ describe("a signature read from a store", () => {
       roots: [note.link, signature.link],
       blobs: [note.bytes, ...signature.blobs, ...anything.blobs],
     });
-    const readSignature = await signatures.read(signature.link, store, noIdentityVersions);
+    const readSignature = await signatures.read(signature.link, store);
     expect(readSignature.object).toBe(note.link);
     expect(readSignature.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
   });
@@ -300,12 +300,12 @@ describe("a signature read from a store", () => {
     const store = newStore();
     const note = object({ text: "hello" });
     await store.write(batchOf([note], anything.blobs));
-    await expect(signatures.read(note.link, store, noIdentityVersions)).rejects.toThrow(/is written to/);
+    await expect(signatures.read(note.link, store)).rejects.toThrow(/is written to/);
   });
 
   it("fails to read when the store does not hold it", async () => {
     const store = newStore();
     const link = linkOf(utf8("absent"));
-    await expect(signatures.read(link, store, noIdentityVersions)).rejects.toThrow(`no blob is given for ${link}`);
+    await expect(signatures.read(link, store)).rejects.toThrow(`no blob is given for ${link}`);
   });
 });

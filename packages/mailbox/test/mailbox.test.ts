@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, linkOf, ObjectValue, objectFormat, type Schema, type ValueMap } from "@estoc/object";
 import { bytes, integer, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ describe("a mailbox", () => {
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle, noIdentityVersions)).signedIdentity.identity).toEqual(
+    expect((await signatures.read(bundle.link, bundle)).signedIdentity.identity).toEqual(
       identities.encode(alice.key, { at: 0 }),
     );
   });

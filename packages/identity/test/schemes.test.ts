@@ -14,7 +14,6 @@ import {
   eip191,
   isSameKey,
   loadIdentity,
-  noIdentityVersions,
   type Scheme,
   type Signer,
   SoftwareSigner,
@@ -122,7 +121,7 @@ describe("a scheme given as a Scheme alone", () => {
     const signature = await signatures
       .actor(p256Signer, await publish(p256Signer))
       .sign(encodeObject(note, { text: "hello" }));
-    const read = await signatures.read(signature.link, byLink(signature.blobs), noIdentityVersions);
+    const read = await signatures.read(signature.link, byLink(signature.blobs));
     expect(isSameKey(read.key, p256Signer.key)).toBe(true);
     expect(read.signature.length).not.toBe(64);
   });

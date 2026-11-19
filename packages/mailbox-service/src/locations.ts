@@ -1,4 +1,4 @@
-import { noIdentityVersions, type SeenIdentityVersions, type Signatures } from "@estoc/identity";
+import type { SeenIdentityVersions, Signature, Signatures } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
@@ -22,7 +22,7 @@ type LocationOrder = readonly ["identifier", "at", "service"];
  * one fetched.
  */
 export interface Locations {
-  servicesOf(identifier: Link<unknown>, seenIdentityVersions: SeenIdentityVersions): Promise<Link<unknown>[]>;
+  servicesOf(identifier: Link<unknown>, seenIdentityVersions: SeenIdentityVersions): Promise<Signature[]>;
 }
 
 export type LocationsView = View<DataOf<typeof locationSchema>, LocationOrder, Locations>;
@@ -42,12 +42,12 @@ export function locationsView(signatures: Signatures): LocationsView {
     ).orderedBy("identifier", "at", "service"),
     read: (rows, reader) => ({
       async servicesOf(identifier, seenIdentityVersions) {
-        const links: Link<unknown>[] = [];
+        const services: Signature[] = [];
         for await (const { data } of rows.range([new LinkValue(identifier)])) {
-          const signature = await signatures.read(data.service.link, reader, noIdentityVersions);
-          if (await seenIdentityVersions.honors(signature)) links.unshift(data.service.link);
+          const signature = await signatures.read(data.service.link, reader);
+          if (await seenIdentityVersions.honors(signature)) services.unshift(signature);
         }
-        return links;
+        return services;
       },
     }),
   };

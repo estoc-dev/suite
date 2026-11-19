@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, noIdentityVersions, SoftwareSigner } from "@estoc/identity";
+import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -229,7 +229,7 @@ describe("an index scanned from a private store", () => {
     const { signatures, publish } = loadIdentity([ed25519]);
     const signed = schema("Signed", { signer: link(), object: link() });
     const bySigner = indexOver(selectedRecords(objectsOf(signatures.schema)), signed, async function* (object, reader) {
-      const signature = await signatures.verify(object, reader, noIdentityVersions);
+      const signature = await signatures.verify(object, reader);
       yield {
         signer: new LinkValue(signature.signedIdentity.identity.identifier),
         object: new LinkValue(signature.object),

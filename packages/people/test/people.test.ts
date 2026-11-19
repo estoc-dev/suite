@@ -34,7 +34,7 @@ describe("a signature by an agent, checked against the people of a store", () =>
   const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
   const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 
-  it("passes while the store has seen no identity version without the agent", async () => {
+  it("is honored when the current identity version the store holds lists the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
     const store = new Store(new MemoryBackend());
@@ -43,7 +43,7 @@ describe("a signature by an agent, checked against the people of a store", () =>
     await expect(checkHonors(await view(store, peopleView(identityVersions)), byAgent)).resolves.toBeUndefined();
   });
 
-  it("is refused, by its key and the identifier, once the store has seen the root take the agent out", async () => {
+  it("is refused, with its key and the identifier named, when the current identity version the store holds does not list the agent", async () => {
     const listing = await publish(root, { agents: [agent.key], at: 1_000 });
     const byAgent = await signatures.actor(agent, listing).sign(encodeObject(note, { text: "hello" }));
     const withoutAgent = await publish(root, { prior: listing, at: 2_000 });

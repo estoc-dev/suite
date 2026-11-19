@@ -14,7 +14,7 @@ import {
 } from "@estoc/object";
 import { rootSchema, schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import {
   type CurveScheme,
   ed25519,
@@ -368,6 +368,15 @@ describe("an identity actor", () => {
     const removal = await publish(root, { prior: listing, at: 2_000 });
     const actor = signatures.actor(agent, listing, async () => removal);
     await expect(actor.sign(hello)).rejects.toThrow(/does not sign for/);
+  });
+
+  it("signs nothing by an identity version of another identifier, though it lists its key", async () => {
+    const signedIdentity = await publish(root, { agents: [agent.key], at: 1_000 });
+    const other = await publish(signer(ed25519, 3), { agents: [agent.key], at: 1_000 });
+    const sign = vi.fn((digest: Uint8Array, by?: Uint8Array) => agent.sign(digest, by));
+    const actor = signatures.actor({ key: agent.key, sign }, signedIdentity, async () => other);
+    await expect(actor.sign(hello)).rejects.toThrow(/the actor signs for/);
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it("signs once a later identity version lists its key, when the one it is made with does not", async () => {

@@ -68,7 +68,6 @@ const newBackends = () => ({ store: new MemoryBackend(), privateStore: new Memor
 
 const seenPeople = peopleView(identity);
 
-/** Unless `actorOver` gives another, the person's actor asks their own store which identity version is current. */
 async function personActingAs(
   signer: Signer,
   signedIdentity: SignedIdentityObject,

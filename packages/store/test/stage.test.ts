@@ -140,7 +140,7 @@ const texts: View<Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> =
   },
 };
 
-/** Reads its rows when asked, as a view that gives an object with methods does. */
+/** Stands for a view that gives an object with methods, whose rows are read after `view` has returned. */
 const textsWhenAsked: View<Tagged, TaggedOrder, () => Promise<[tag: string, text: string][]>> = {
   index: byTag,
   read: (rows, reader) => () => texts.read(rows, reader),

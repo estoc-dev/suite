@@ -3,7 +3,6 @@ import { type CurveScheme, ed25519, eip191, solanaOffchain } from "../src/index.
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
-/** Given to an actor as what is current, so that it signs by the identity version it is made with. */
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 
 /** A link with blobs that hold what it names, as a key or a signature read from an object has. */

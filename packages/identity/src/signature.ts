@@ -101,10 +101,15 @@ export class Signatures {
     signedIdentity: SignedIdentityObject,
     currentOf: (inHand: SignedIdentityObject) => Promise<SignedIdentityObject>,
   ): Actor {
+    const { identifier } = signedIdentity.identity;
     return {
-      identifier: signedIdentity.identity.identifier,
+      identifier,
       sign: async (object) => {
         const current = await currentOf(signedIdentity);
+        if (current.identity.identifier !== identifier)
+          throw new Error(
+            `${current.link} is an identity version of ${current.identity.identifier}, and the actor signs for ${identifier}`,
+          );
         const sign = signingFunction(current.identity, signer);
         if (sign === undefined) throw new Error(`the signer's key does not sign for ${current.identity.link}`);
         const data = {

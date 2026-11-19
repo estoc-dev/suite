@@ -514,6 +514,35 @@ describe("a mailbox service first started on a store that holds identity version
     expect((await getRoot(service)).status).toBe(200);
     expect((await rootOf(service)).signature.signedIdentity.link).toBe(crisis.link);
   });
+
+  it("signs its Service and the offers it lists as the identity version it started with, though its store takes in a crisis of its root while it signs them, and signs them as the crisis once started again", async () => {
+    const store = memoryStore();
+    const first = await publish(serviceSigner, { at: 500 });
+    await store.write({ roots: [first.link], blobs: first.blobs });
+    const crisis = await publish(serviceSigner, { prior: first, isCrisis: true, at: 600 });
+    const holder = heldSigner(serviceSigner);
+    holder.isHolding = true;
+    const starting = memoryService({ store, by: holder.signer });
+    await vi.waitFor(() => expect(holder.pending).toHaveLength(1));
+    await store.write({ roots: [crisis.link], blobs: crisis.blobs });
+    holder.isHolding = false;
+    holder.release();
+    await starting;
+    const [recorded] = await recordedObjectsOf(store);
+    assert.exists(recorded);
+    const signature = await signatures.read(recorded, store);
+    const { data } = await readObject(store, signature.object, serviceSchema);
+    const offerSignatures = await Promise.all(data.offers.map(({ link }) => signatures.read(link, store)));
+    for (const { signedIdentity } of [signature, ...offerSignatures]) expect(signedIdentity.link).toBe(first.link);
+
+    const { service: again } = await memoryService({ store, start: 3_000 });
+    const after = await rootOf(again);
+    const people = await view(store, peopleView({ signedIdentities }));
+    for (const signature of [after.signature, after.offerSignature, after.mailbox.offerSignature]) {
+      expect(signature.signedIdentity.link).toBe(crisis.link);
+      expect(await people.honors(signature)).toBe(true);
+    }
+  });
 });
 
 describe("a mailbox service started again", () => {

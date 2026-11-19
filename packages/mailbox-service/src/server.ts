@@ -413,16 +413,18 @@ export async function loadMailboxService(
   const at = clock();
   const signedIdentity =
     (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
-  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
-    (await view(store, seenPeople)).current(inHand),
-  );
+  // A Service and the offers it lists are signed by the identity version that `people` gives, as
+  // `people` also says which signatures of an earlier Service are kept. Were each signature to ask
+  // the store, a crisis that the store takes in between two of them would leave the Service
+  // listing an offer signed before the crisis.
+  const actorAtStart = signatures.actor(signer, signedIdentity, async (inHand) => inHand);
   const serviceSignatures = await locations.servicesOf(identifier, people);
   const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
   const [previous] = services;
   const signedOffers: (readonly [EncodedObject, Signature])[] = [];
   for (const offer of offers) {
     const signature =
-      (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
+      (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actorAtStart.sign(offer));
     signedOffers.push([offer, signature]);
   }
   const next: ServiceData = {
@@ -437,12 +439,12 @@ export async function loadMailboxService(
       ...serviceSchema.blobs,
       ...signedOffers.flatMap(([offer, signature]) => [...signature.blobs, offer.bytes, ...offer.schema.blobs]),
     ];
-    await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
+    await writeSigned(await actorAtStart.sign(object), blobs, at, { store, privateStore });
   }
-  return new MailboxService(actor, kit, seenPeople, {
-    ...options,
-    clock,
-  });
+  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
+    (await view(store, seenPeople)).current(inHand),
+  );
+  return new MailboxService(actor, kit, seenPeople, { ...options, clock });
 }
 
 async function writeSigned(

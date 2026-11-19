@@ -18,7 +18,6 @@ export const signer = (scheme: CurveScheme, fill = 1) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 export const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
-/** Given to an actor as what is current, so that it signs by the identity version it is made with. */
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 
 export function bytesOf({ link, blobs }: SignedIdentityObject): Uint8Array {

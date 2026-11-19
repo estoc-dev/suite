@@ -56,7 +56,6 @@ export async function makeTemporaryPath(): Promise<string> {
 
 export const { keys, identities, signedIdentities, signatures, publish } = loadIdentity(schemes);
 
-/** Given to an actor as what is current, so that it signs by the identity version it is made with. */
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 /** An actor that signs by `signedIdentity` whatever a store holds, with the signed identity for the tests to read. */
 export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject) => ({

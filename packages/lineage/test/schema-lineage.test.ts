@@ -24,7 +24,6 @@ const notes = lineages.schemaLineageOf([v1, v2]);
 
 const untitledNote = encodeObject(noteV1, { text: "hello" });
 const titledNote = encodeObject(noteV2, { title: "Greeting", body: "hello" });
-const noteAt = ({ link }: { readonly link: Link<unknown> }) => link as Link<Note>;
 const byLink = (blobs: readonly Uint8Array[]) =>
   new Map<Link<unknown>, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
 
@@ -62,8 +61,8 @@ describe("the schema lineage of versions", () => {
 describe("reading with a schema lineage", () => {
   it("reads an object of each version with that version", async () => {
     const reader = byLink([untitledNote.bytes, titledNote.bytes]);
-    await expect(notes.read(noteAt(untitledNote), reader)).resolves.toEqual({ text: "hello" });
-    await expect(notes.read(noteAt(titledNote), reader)).resolves.toEqual({ title: "Greeting", text: "hello" });
+    await expect(notes.read(untitledNote.link, reader)).resolves.toEqual({ text: "hello" });
+    await expect(notes.read(titledNote.link, reader)).resolves.toEqual({ title: "Greeting", text: "hello" });
   });
 
   it("reads as the shape its versions give, with no type named for it", () => {
@@ -72,7 +71,7 @@ describe("reading with a schema lineage", () => {
 
   it("refuses an object of the schema of no version", async () => {
     const object = encodeObject(other, { text: "hello" });
-    await expect(notes.read(noteAt(object), byLink([object.bytes]))).rejects.toThrow(
+    await expect(notes.read(object.link, byLink([object.bytes]))).rejects.toThrow(
       `${other.link} is not a schema read here`,
     );
   });

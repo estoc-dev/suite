@@ -20,9 +20,7 @@ interface Text {
 }
 
 type PlainData = { readonly text: string };
-type QuoteData = { readonly quotes: LinkValue<Text> };
-
-const textAt = ({ link }: { readonly link: Link<unknown> }) => link as Link<Text>;
+type QuoteData = { readonly quotes: LinkValue<unknown> };
 
 const plain: Schema<PlainData> = encodeSchema({ fields: ["text"] }, fieldNames);
 const quote: Schema<QuoteData> = encodeSchema({ fields: ["quotes"] }, fieldNames);
@@ -42,15 +40,15 @@ const quotedText: Implementation<Text, QuoteData> = {
 const texts = new Implementations([plainText, quotedText]);
 
 const hello = encodeObject(plain, { text: "hello" });
-const echo = encodeObject(quote, { quotes: new LinkValue(textAt(hello)) });
+const echo = encodeObject(quote, { quotes: new LinkValue(hello.link) });
 const blobs = (...objects: { bytes: Uint8Array; link: Link<unknown> }[]) =>
   new Map(objects.map(({ bytes, link }) => [link, bytes]));
 
 describe("implementations", () => {
   it("read each object with the implementation of the schema it names", async () => {
     const reader = blobs(hello, echo);
-    await expect(texts.read(textAt(hello), reader)).resolves.toEqual({ link: hello.link, text: "hello" });
-    await expect(texts.read(textAt(echo), reader)).resolves.toEqual({ link: echo.link, text: '"hello"' });
+    await expect(texts.read(hello.link, reader)).resolves.toEqual({ link: hello.link, text: "hello" });
+    await expect(texts.read(echo.link, reader)).resolves.toEqual({ link: echo.link, text: '"hello"' });
   });
 
   it("read as the shape their implementations give, with no type named for it", () => {
@@ -68,7 +66,7 @@ describe("implementations", () => {
 
   it("refuse an object written to a schema that is not one of theirs", async () => {
     const object = encodeObject(other, { text: "hello" });
-    await expect(texts.read(textAt(object), blobs(object))).rejects.toThrow(`${other.link} is not a schema read here`);
+    await expect(texts.read(object.link, blobs(object))).rejects.toThrow(`${other.link} is not a schema read here`);
   });
 
   it("refuse an object whose data does not fit its schema", async () => {
@@ -79,13 +77,13 @@ describe("implementations", () => {
   });
 
   it("refuse an object that links to one the reader gives no blob for, by an error that has that link", async () => {
-    const reading = texts.read(textAt(echo), blobs(echo));
+    const reading = texts.read(echo.link, blobs(echo));
     await expect(reading).rejects.toBeInstanceOf(AbsentBlob);
     await expect(reading).rejects.toMatchObject({ link: hello.link });
   });
 
   it("refuse a blob given for a link other than its own", async () => {
-    await expect(texts.read(textAt(hello), new Map([[hello.link, echo.bytes]]))).rejects.toThrow(
+    await expect(texts.read(hello.link, new Map([[hello.link, echo.bytes]]))).rejects.toThrow(
       `the blob given for ${hello.link} is another blob`,
     );
   });

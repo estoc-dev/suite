@@ -58,7 +58,11 @@ describe("the view of an object", () => {
     const view = await viewOf(
       markdownBodySchema,
       { text: "a *word*" },
-      { kind: "read", as: bodyReading, value: markdownBodyOf("a *word*") },
+      {
+        kind: "read",
+        as: bodyReading,
+        value: { link: markdownBodyOf("a *word*").link, html: "<p>a <em>word</em></p>" },
+      },
     );
     expect(textsOf(view, ".reading .band")).toEqual(["Read by this page as the body of a post"]);
     expect(textsOf(view, ".rendered em")).toEqual(["word"]);

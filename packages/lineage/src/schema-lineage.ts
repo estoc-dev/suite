@@ -36,7 +36,7 @@ export class SchemaLineage<T> {
    *
    * @throws when the object is of the schema of no version, and where `Implementations.read` throws.
    */
-  read(link: Link<T>, reader: Reader): Promise<T> {
+  read(link: Link<unknown>, reader: Reader): Promise<T> {
     return this.#implementations.read(link, reader);
   }
 
@@ -82,6 +82,6 @@ export class SelectionBySchemaLineage<T, V> implements Selection<T> {
     const bytes = await reader.get(record);
     // A record the reader does not give is left to `read`, which refuses it.
     if (bytes !== undefined && !this.schemaLineage.hasSchemaNamedBy(bytes)) return undefined;
-    return this.#itemOf(await this.schemaLineage.read(record as Link<V>, reader), reader);
+    return this.#itemOf(await this.schemaLineage.read(record, reader), reader);
   }
 }

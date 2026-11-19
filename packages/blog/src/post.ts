@@ -1,5 +1,4 @@
 import { type DataOf, link, optional, schema, string } from "@estoc/schema";
-import type { Body } from "./body.ts";
 
 /**
  * The schema of a post: what is said of it, and the link of its body.
@@ -12,7 +11,7 @@ export const postSchema = schema("Post", {
   title: string(),
   description: optional(string()),
   date: string(),
-  body: link<Body>(),
+  body: link(),
 });
 
 export type PostData = DataOf<typeof postSchema>;

@@ -46,8 +46,9 @@ const { data } = await readObject(reader, post.link, postSchema);
 (await bodies.read(data.body.link, reader)).html; // "<p>Most of our online identities depend on platforms.</p>\n"
 ```
 
-- A `Body` is its object with `html` beside, so what writes one holds the
-  bytes to keep and the link for a post to name.
+- A `Body` is the link of its object with `html`. `markdownBodyOf` gives
+  the object, which has the bytes to keep and the link for a post to
+  name, and `bodies` reads that link as a `Body`.
 - A Markdown body is read as CommonMark. HTML written in its text is
   rendered as text and not as markup, so the body of a post written by
   anyone can be put on a page.

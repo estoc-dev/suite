@@ -18,6 +18,7 @@ async function readingAt(bytes: Uint8Array, others: readonly Uint8Array[] = []) 
 }
 
 const body = markdownBodyOf("## Identity\n");
+const readBody = { link: body.link, html: "<h2>Identity</h2>\n" };
 
 const schemes = [ed25519, eip191, solanaOffchain];
 const { keys, publish, signatures } = loadIdentity(schemes);
@@ -31,12 +32,12 @@ describe("the reading of what a link reads as", () => {
     expect(await readingAt(body.bytes, markdownBodySchema.blobs)).toEqual({
       kind: "read",
       as: bodyReading,
-      value: body,
+      value: readBody,
     });
   });
 
   it("is the body where the reader has no blob for the schema of the body", async () => {
-    expect(await readingAt(body.bytes)).toEqual({ kind: "read", as: bodyReading, value: body });
+    expect(await readingAt(body.bytes)).toEqual({ kind: "read", as: bodyReading, value: readBody });
   });
 
   it("is nothing for an object of a schema of the same title that has another field", async () => {

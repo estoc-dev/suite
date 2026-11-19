@@ -1,4 +1,3 @@
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import {
   type EncodedObject,
   encodeObject,
@@ -25,7 +24,7 @@ import {
   schemaValidator,
   string,
 } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type Backend,
   type Batch,
@@ -226,33 +225,19 @@ describe("an index scanned from a private store", () => {
   });
 
   it("gives rows that depend on an object's closure, read from the store as they are needed", async () => {
-    const { signatures, publish } = loadIdentity([ed25519]);
-    const identityVersionInHand = async <T>(inHand: T) => inHand;
-    const signed = schema("Signed", { signer: link(), object: link() });
-    const bySigner = indexOver(selectedRecords(objectsOf(signatures.schema)), signed, async function* (object, reader) {
-      const signature = await signatures.verify(object, reader);
-      yield {
-        signer: new LinkValue(signature.signedIdentity.identity.identifier),
-        object: new LinkValue(signature.object),
-      };
-    }).orderedBy("signer");
-    const signers = [1, 2].map((fill) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill)));
-    const hello = encodeObject(note, {});
-    const helloSignatures = await Promise.all(
-      signers.map(async (by) => signatures.actor(by, await publish(by, { at: 0 }), identityVersionInHand).sign(hello)),
-    );
+    const byCardName = indexOver(selectedRecords(objectsOf(note)), named, async function* ({ data }, reader) {
+      if (data.card === undefined) return;
+      const { name } = (await readObject(reader, data.card.link, tag)).data;
+      if (name !== undefined) yield { name };
+    }).orderedBy("name");
+    const cards = ["Bob", "Alice"].map((name) => encodeObject(tag, { name }));
     const stores = newStores();
-    const batch = {
-      roots: [hello.link, ...helloSignatures.map(({ link }) => link)],
-      blobs: [hello.bytes, ...helloSignatures.flatMap(({ blobs }) => blobs), ...schemas],
-    };
-    await stores.store.write(batch);
-    await stores.privateStore.write(recordsOf(batch.roots, Date.now()));
-    const expectedRows = helloSignatures
-      .map(({ signedIdentity }) => signedIdentity.identity.identifier)
-      .sort()
-      .map((signer) => ({ signer: new LinkValue(signer), object: new LinkValue(hello.link) }));
-    expect(await rowDataOf((await scan(stores.privateStore, bySigner)).range([]))).toEqual(expectedRows);
+    await recordIn(
+      stores,
+      cards.map(({ link }) => encodeObject(note, { card: new LinkValue(link) })),
+      [...cards.map(({ bytes }) => bytes), ...schemas],
+    );
+    expect(await namesOf(await scan(stores.privateStore, byCardName))).toEqual(["Alice", "Bob"]);
   });
 
   it("holds the rows of each index that it is a union of, each row once", async () => {
@@ -814,6 +799,15 @@ describe("an index over blobs", () => {
       batchOf([encodeObject(note, {})], [encodeObject(tag, { names: ["outside the closure"] }).bytes, ...schemas]),
     );
     expect(await namesOf(await scan(store, byTagName))).toEqual([]);
+  });
+
+  it("validates a blob of its schema once", async () => {
+    const store = new Store(new MemoryBackend());
+    await store.write(batchOf([encodeObject(tag, { names: ["a"] })], schemas));
+    const validate = vi.spyOn(tag, "validate");
+    expect(await namesOf(await scan(store, byTagName))).toEqual(["a"]);
+    expect(validate).toHaveBeenCalledTimes(1);
+    validate.mockRestore();
   });
 
   it("holds no rows of what its selection leaves out", async () => {

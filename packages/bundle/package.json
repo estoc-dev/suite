@@ -14,7 +14,6 @@
     "cborg": "^6.2.1"
   },
   "devDependencies": {
-    "@estoc/identity": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@types/node": "^26.6.2",
     "typescript": "~5.8.0",

@@ -1,12 +1,12 @@
-import type { Actor, IdentityKit, SeenIdentityVersions, Signature, SignedIdentityObject } from "@estoc/identity";
+import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { type PeopleView, peopleView } from "@estoc/people";
+import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Store, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
 
-export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities" | "identityVersions">;
+export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
 /**
  * The indexes it reads through are made once, with the correspondence, so a store keeps their rows
@@ -17,7 +17,6 @@ export class Correspondence {
   readonly #privateStore: PrivateStore;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
-  readonly #identifier: Link<unknown>;
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
@@ -30,17 +29,16 @@ export class Correspondence {
     actor: Actor,
     clock: () => number,
     grants: MailboxGrants,
-    { signatures, signedIdentities, identityVersions }: CorrespondenceIdentity,
+    { signatures, signedIdentities }: CorrespondenceIdentity,
   ) {
     this.#store = store;
     this.#privateStore = privateStore;
     this.#post = post;
     this.#actor = actor;
-    this.#identifier = actor.signedIdentity.identity.identifier;
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
-    this.#seenPeople = peopleView(identityVersions);
+    this.#seenPeople = peopleView({ signedIdentities });
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
@@ -60,9 +58,10 @@ export class Correspondence {
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
     const from = to.identity.identifier;
     const series = await view(this.#store, this.#grants.series);
-    const grant = await series.grantFrom(from, this.#identifier, await this.#peopleAsOfArrival());
+    const grant = await series.grantFrom(from, this.#actor.identifier, await this.#peopleAsOfArrival());
     const mailboxes = grant?.object.data.mailboxes ?? [];
-    if (mailboxes.length === 0) throw new UndeliveredMessage("gone", `${from} grants ${this.#identifier} no mailbox`);
+    if (mailboxes.length === 0)
+      throw new UndeliveredMessage("gone", `${from} grants ${this.#actor.identifier} no mailbox`);
     const outboxes = await Promise.all(mailboxes.map(({ link }) => this.#post.outbox(link)));
     const deliveries: Delivery[] = [];
     const turnedBack: UndeliveredMessage[] = [];
@@ -89,7 +88,7 @@ export class Correspondence {
     if (!(await peopleAsOfArrival.honors(signature))) return undefined;
     const series = await view(this.#store, this.#grants.series);
     const signer = signature.signedIdentity.identity.identifier;
-    for await (const { object } of series.grantsFrom(this.#identifier, signer, peopleAsOfArrival)) {
+    for await (const { object } of series.grantsFrom(this.#actor.identifier, signer, peopleAsOfArrival)) {
       if (object.data.mailboxes.some(({ link }) => link === mailbox)) return signature;
     }
     return undefined;

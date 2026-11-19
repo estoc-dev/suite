@@ -8,6 +8,7 @@ import {
   objectsOf,
   readObject,
   type Schema,
+  SelectionBySchema,
   type ValueMap,
 } from "@estoc/object";
 import { array, link, schema, string } from "@estoc/schema";
@@ -28,11 +29,12 @@ import {
 // other is kept in the store, with a mark in the private store that says it was received, and is
 // read by following links from that mark.
 
-const { identities, signatures, signedIdentities, identityVersions, publish } = loadIdentity([ed25519]);
+const { identities, signatures, signedIdentities, publish } = loadIdentity([ed25519]);
+const identityVersionInHand = async <T>(inHand: T) => inHand;
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const mallory = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
 const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
-  signatures.actor(by, await publish(by, { at: 0 })).sign(object);
+  signatures.actor(by, await publish(by, { at: 0 }), identityVersionInHand).sign(object);
 
 const noteSchema = schema("Note", { text: string() });
 const receivedSchema = schema("Received", { bundle: link<never>() });
@@ -139,11 +141,17 @@ describe("an object slipped into a bundle", () => {
 });
 
 describe("a signed identity that comes in a bundle", () => {
-  const identityVersionsHeld = indexOver(
-    selectedBlobs(identityVersions.selection),
-    identityVersions.schema,
-    identityVersions.rows,
-  ).orderedBy(...identityVersions.order);
+  const heldSchema = schema("Held Signed Identity", { identifier: link(), signedIdentity: link() });
+  const signedIdentitiesHeld = () =>
+    indexOver(
+      selectedBlobs(
+        new SelectionBySchema(signedIdentities.schema, (object, reader) =>
+          signedIdentities.implementation.read(object, reader),
+        ),
+      ),
+      heldSchema,
+      ({ identity, link }) => [{ identifier: new LinkValue(identity.identifier), signedIdentity: new LinkValue(link) }],
+    ).orderedBy("identifier", "signedIdentity");
 
   it("is read by its schema wherever it sits in the closure of the bundle's root, and is among the failures when its root did not sign it", async () => {
     const aliceIdentityVersion = await publish(alice, { at: 5 });
@@ -167,11 +175,14 @@ describe("a signed identity that comes in a bundle", () => {
     );
     expect(await bob.store.get(forgedIdentityVersion.link)).toEqual(forgedIdentityVersion.bytes);
 
-    const scannedRows = await scan(bob.store, identityVersionsHeld);
+    const scannedRows = await scan(bob.store, signedIdentitiesHeld());
     const rows = [];
     for await (const { data } of scannedRows.range([])) rows.push(data);
     const expectedRows = [aliceIdentityVersion, signature.signedIdentity]
-      .map((signedIdentity) => identityVersions.identityVersionOf(signedIdentity))
+      .map(({ identity, link }) => ({
+        identifier: new LinkValue(identity.identifier),
+        signedIdentity: new LinkValue(link),
+      }))
       .sort((a, b) => (a.identifier.link < b.identifier.link ? -1 : 1));
     expect(rows).toEqual(expectedRows);
     expect(scannedRows.failures.map(({ item }) => item)).toEqual([forgedIdentityVersion.link]);
@@ -184,12 +195,7 @@ describe("a signed identity that comes in a bundle", () => {
     await store.write({ roots: [identityVersion.link], blobs: identityVersion.blobs });
 
     validate.mockClear();
-    await scan(
-      store,
-      indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
-        ...identityVersions.order,
-      ),
-    );
+    await scan(store, signedIdentitiesHeld());
     expect(validate).toHaveBeenCalledTimes(1);
     validate.mockRestore();
   });

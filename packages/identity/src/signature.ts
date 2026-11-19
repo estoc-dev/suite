@@ -45,32 +45,20 @@ export interface Signature {
   readonly blobs: readonly Uint8Array[];
 }
 
-export interface SeenIdentityVersions {
-  /**
-   * A root signs a crisis when it no longer relies on what it signed before, so the signatures by
-   * an identity version before it are not honored, the root's own among them. The one a signature
-   * carries counts, as a device a wallet has just listed signs by an identity version the reader
-   * has not seen yet.
-   */
-  honors(signature: Signature): Promise<boolean>;
-}
-
-export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
-
 export interface SignatureOver<F extends ValueMap> {
   readonly signature: Signature;
   readonly object: EncodedObject<F>;
 }
 
 export interface Actor {
-  readonly signedIdentity: SignedIdentityObject;
+  readonly identifier: Link<unknown>;
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
 }
 
 /**
  * A signature is verified by the identity version it carries alone, so what is read depends on the
- * signature and its closure, and an index can read by it. Whether the signature is still honored is
- * for a reader's `SeenIdentityVersions` to say.
+ * signature and its closure, and an index can read by it. Whether the signature is still honored
+ * depends on the identity versions a reader has seen, which are not read here.
  */
 export class Signatures {
   readonly schema = signatureSchema;
@@ -103,19 +91,33 @@ export class Signatures {
     });
   }
 
-  actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
-    const sign = signingFunction(signedIdentity.identity, signer);
-    if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);
-    const by = digestOf(signedIdentity.link);
+  /**
+   * `currentOf` is asked at each signature, since a reader takes in identity versions after the
+   * actor is made, and a signature carries the one that is current then. It is given
+   * `signedIdentity` as the one in hand, since a reader holds no identity version just published.
+   */
+  actor(
+    signer: Signer,
+    signedIdentity: SignedIdentityObject,
+    currentOf: (inHand: SignedIdentityObject) => Promise<SignedIdentityObject>,
+  ): Actor {
+    const { identifier } = signedIdentity.identity;
     return {
-      signedIdentity,
+      identifier,
       sign: async (object) => {
+        const current = await currentOf(signedIdentity);
+        if (current.identity.identifier !== identifier)
+          throw new Error(
+            `${current.link} is an identity version of ${current.identity.identifier}, and the actor signs for ${identifier}`,
+          );
+        const sign = signingFunction(current.identity, signer);
+        if (sign === undefined) throw new Error(`the signer's key does not sign for ${current.identity.link}`);
         const data = {
-          signedIdentity: new LinkValue(signedIdentity.link),
+          signedIdentity: new LinkValue(current.link),
           object: new LinkValue(object.link as Link<never>),
-          signature: await sign(digestOf(object.link), by),
+          signature: await sign(digestOf(object.link), digestOf(current.link)),
         };
-        return this.#signatureOf(encodeObject(this.schema, data), signedIdentity);
+        return this.#signatureOf(encodeObject(this.schema, data), current);
       },
     };
   }

@@ -1,11 +1,3 @@
-import {
-  ed25519,
-  type IdentityVersionData,
-  type IdentityVersionOrder,
-  loadIdentity,
-  type People,
-  SoftwareSigner,
-} from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -148,15 +140,10 @@ const texts: View<Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> =
   },
 };
 
-const { signatures, identityVersions, publish } = loadIdentity([ed25519]);
-const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
-const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
-
-const people: View<IdentityVersionData, IdentityVersionOrder, People> = {
-  index: indexOver(selectedBlobs(identityVersions.selection), identityVersions.schema, identityVersions.rows).orderedBy(
-    ...identityVersions.order,
-  ),
-  read: (rows, reader) => identityVersions.people(rows, reader),
+/** Stands for a view that gives an object with methods, whose rows are read after `view` has returned. */
+const textsWhenAsked: View<Tagged, TaggedOrder, () => Promise<[tag: string, text: string][]>> = {
+  index: byTag,
+  read: (rows, reader) => () => texts.read(rows, reader),
 };
 
 describe("a view of a staged batch", () => {
@@ -183,28 +170,20 @@ describe("a view of a staged batch", () => {
 
   it("takes in, when viewed again, what is written to the store after the batch was staged, and the batch is still committed", async () => {
     const store = newStore();
-    const hello = object({ text: "hello" });
-    const listing = await publish(root, { agents: [agent.key], at: 1_000 });
-    const byAgent = await signatures.actor(agent, listing).sign(hello);
-    const stagedStore = await store.stage({
-      roots: [byAgent.link],
-      blobs: [...byAgent.blobs, hello.bytes, ...anything.blobs],
-    });
-    const before = await view(stagedStore, people);
-    expect(await before.honors(byAgent)).toBe(true);
+    const salad = note({ text: "salad", tags: ["lunch"], at: 1 });
+    const stagedStore = await store.stage({ roots: [salad.link], blobs: [salad.bytes, ...noteSchema.blobs] });
+    const textsBefore = await view(stagedStore, textsWhenAsked);
+    expect(await textsBefore()).toEqual([["lunch", "salad"]]);
 
-    const agentsOut = object({ text: "agents out" });
-    const byRoot = await signatures.actor(root, await publish(root, { prior: listing, at: 2_000 })).sign(agentsOut);
-    await store.write({
-      roots: [byRoot.link],
-      blobs: [...byRoot.blobs, agentsOut.bytes, ...anything.blobs],
-    });
-    expect(await (await view(stagedStore, people)).honors(byAgent)).toBe(false);
-    expect(await before.honors(byAgent)).toBe(true);
+    const soup = note({ text: "soup", tags: ["lunch"], at: 2 });
+    await store.write({ roots: [soup.link], blobs: [soup.bytes, ...noteSchema.blobs] });
+    expect(await (await view(stagedStore, textsWhenAsked))()).toEqual([
+      ["lunch", "salad"],
+      ["lunch", "soup"],
+    ]);
+    expect(await textsBefore()).toEqual([["lunch", "salad"]]);
 
     await stagedStore.commit();
-    const kept = await store.get(byAgent.link);
-    expect(kept && linkOf(kept)).toBe(byAgent.link);
-    expect(await store.get(hello.link)).toEqual(hello.bytes);
+    expect(await store.get(salad.link)).toEqual(salad.bytes);
   });
 });

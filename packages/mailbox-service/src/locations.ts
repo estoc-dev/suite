@@ -1,5 +1,6 @@
-import type { SeenIdentityVersions, Signature, Signatures } from "@estoc/identity";
+import type { Signature, Signatures } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
+import type { SeenIdentityVersions } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";

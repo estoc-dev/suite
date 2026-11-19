@@ -1,5 +1,4 @@
 import { Identities, type IdentityContent } from "./identity.ts";
-import { IdentityVersions } from "./identity-versions.ts";
 import type { Scheme } from "./key/interface.ts";
 import { Keys } from "./key/keys.ts";
 import { SecretKeys } from "./secret-key.ts";
@@ -13,7 +12,6 @@ export interface IdentityKit {
   readonly identities: Identities;
   readonly signedIdentities: SignedIdentities;
   readonly signatures: Signatures;
-  readonly identityVersions: IdentityVersions;
   readonly secretKeys: SecretKeys;
   readonly walletKeys: WalletKeys;
   publish(root: Signer, content?: IdentityContent): Promise<SignedIdentityObject>;
@@ -28,7 +26,6 @@ export function loadIdentity(schemes: readonly Scheme[]): IdentityKit {
     identities,
     signedIdentities,
     signatures: new Signatures(signedIdentities),
-    identityVersions: new IdentityVersions(signedIdentities),
     secretKeys: new SecretKeys(keys),
     walletKeys: new WalletKeys(keys),
     publish: async (root, content) => signedIdentities.sign(root, identities.encode(root.key, content)),

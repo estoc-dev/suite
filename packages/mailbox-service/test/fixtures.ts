@@ -6,6 +6,7 @@ import {
   ed25519,
   eip191,
   loadIdentity,
+  type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
   solanaOffchain,
@@ -53,8 +54,15 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, identityVersions, signatures, publish } = loadIdentity(schemes);
-export const actorOf = async (by: Signer) => signatures.actor(by, await publish(by, { at: 0 }));
+export const { keys, identities, signedIdentities, signatures, publish } = loadIdentity(schemes);
+
+export const identityVersionInHand = async <T>(inHand: T) => inHand;
+/** An actor that signs by `signedIdentity` whatever a store holds, with the signed identity for the tests to read. */
+export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject) => ({
+  ...signatures.actor(by, signedIdentity, identityVersionInHand),
+  signedIdentity,
+});
+export const actorOf = async (by: Signer) => actorSigningBy(by, await publish(by, { at: 0 }));
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 
 export const serviceSigner = signer(ed25519, 9);
@@ -63,7 +71,7 @@ export const serviceRoot = keys.encode(serviceSigner.key);
 export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, { at: start });
 /** An actor for that Identity, which signs as the service does. */
 export const serviceActor = async (start: number) =>
-  signatures.actor(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));
+  actorSigningBy(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a

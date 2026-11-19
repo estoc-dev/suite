@@ -1,9 +1,8 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
+  type Actor,
   type IdentityKit,
   loadIdentity,
-  noIdentityVersions,
-  type People,
   type Scheme,
   type Signature,
   type Signatures,
@@ -21,7 +20,7 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
+import { checkHonors, type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -100,9 +99,7 @@ export interface ServiceOptions {
 }
 
 class MailboxService {
-  readonly #signer: Signer;
-  readonly #signedIdentity: SignedIdentityObject;
-  readonly #identifier: Link<unknown>;
+  readonly #actor: Actor;
   readonly #locations: LocationsView;
   readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
@@ -115,9 +112,7 @@ class MailboxService {
   readonly #clock: () => number;
 
   constructor(
-    signer: Signer,
-    signedIdentity: SignedIdentityObject,
-    identifier: Link<unknown>,
+    actor: Actor,
     kit: IdentityKit,
     people: PeopleView,
     {
@@ -128,9 +123,7 @@ class MailboxService {
       clock,
     }: Required<Pick<ServiceOptions, "store" | "privateStore" | "accounts" | "mailboxes" | "clock">>,
   ) {
-    this.#signer = signer;
-    this.#signedIdentity = signedIdentity;
-    this.#identifier = identifier;
+    this.#actor = actor;
     this.#locations = locationsView(kit.signatures);
     this.#people = people;
     this.#acknowledgements = acknowledgementsView(kit.signatures);
@@ -148,7 +141,7 @@ class MailboxService {
     const { pathname } = new URL(request.url);
     const locations = await view(this.#store, this.#locations);
     const people = await view(this.#store, this.#people);
-    const [latest, ...earlier] = await locations.servicesOf(this.#identifier, people);
+    const [latest, ...earlier] = await locations.servicesOf(this.#actor.identifier, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest.link, 200));
     const id = pathname.slice(1);
@@ -168,13 +161,7 @@ class MailboxService {
 
   async #serviceListsOffer({ object }: Signature, id: string): Promise<boolean> {
     const { offers } = (await readObject(this.#store, object, serviceSchema)).data;
-    // The store's own signatures say which offer each is over, and are read
-    // for that alone.
-    for (const { link } of offers) {
-      const signature = await readObject(this.#store, link, this.#signatures.schema);
-      if (signature.data.object.link === id) return true;
-    }
-    return false;
+    return offers.some(({ link }) => link === id);
   }
 
   async #acceptOffer(request: Request, id: string): Promise<Response> {
@@ -203,7 +190,7 @@ class MailboxService {
       acceptance = await this.#signatures.read(bundle.link, bundle);
       await checkHonors(people, acceptance);
       if (acceptance.object !== offer) throw new Error(`the acceptance signs ${acceptance.object}, not the offer`);
-      if (people.personOf(this.#signedIdentity).hasSigned(acceptance))
+      if (acceptance.signedIdentity.identity.identifier === this.#actor.identifier)
         throw new Error("a service opens no account for itself");
     } catch (error) {
       return answer(400, reasonOf(error));
@@ -215,7 +202,6 @@ class MailboxService {
         ? (
             await this.#acknowledge(
               encodeObject(acknowledgementSchema, { acceptance: new LinkValue(acceptance.link), at }),
-              people,
               bundle,
               acceptance.signedIdentity,
             )
@@ -254,7 +240,6 @@ class MailboxService {
         sendId: hex.decode(sendId),
         pickupId: hex.decode(pickupId),
       }),
-      people,
       bundle,
       signature.signedIdentity,
       [...mailboxRequestSchema.blobs],
@@ -277,12 +262,11 @@ class MailboxService {
 
   async #acknowledge(
     acknowledgement: EncodedObject,
-    people: People,
     bundle: Bundle,
     signedIdentity: SignedIdentityObject,
     blobs: readonly Bytes<unknown>[] = [],
   ): Promise<Signature> {
-    const signature = await this.#sign(acknowledgement, people);
+    const signature = await this.#actor.sign(acknowledgement);
     // Reading what is acknowledged takes none of the schemas in its signed
     // identity's closure, so the bundle need not hold them, and the store
     // takes a blob in only with its whole closure.
@@ -301,17 +285,13 @@ class MailboxService {
       const recordedSignature = await this.#signatures.read(recordedLink, this.#store);
       if (await people.honors(recordedSignature)) return recordedLink;
     }
-    const renewedSignature = await this.#sign({ link: signature.object }, people);
+    const renewedSignature = await this.#actor.sign({ link: signature.object });
     await this.#write(renewedSignature);
     return renewedSignature.link;
   }
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
     await writeSigned(signature, blobs, this.#clock(), { store: this.#store, privateStore: this.#privateStore });
-  }
-
-  async #sign(object: { readonly link: Link<unknown> }, people: People): Promise<Signature> {
-    return this.#signatures.actor(this.#signer, await people.current(this.#signedIdentity)).sign(object);
   }
 
   async #receive(request: Request, { sendId, terms }: OpenMailbox): Promise<Response> {
@@ -421,41 +401,31 @@ export async function loadMailboxService(
     encodeObject(mailboxOfferSchema, { identity, ...terms }),
   ];
 
-  const seenPeople = peopleView(kit.identityVersions);
-  const people = await view(store, seenPeople);
+  const seenPeople = peopleView(kit);
+  // A store only gains blobs, and holds each Service with the identity version its signature
+  // carries, so people read after the locations have seen that of every Service that the locations
+  // give.
   const locations = await view(store, locationsView(signatures));
+  const people = await view(store, seenPeople);
   const at = clock();
-  const [signedBefore] = await locations.servicesOf(identifier, noIdentityVersions);
   const signedIdentity =
-    signedBefore === undefined ? await publish(signer, { at }) : await people.current(signedBefore.signedIdentity);
-  const actor = signatures.actor(signer, signedIdentity);
-  const serviceSignatures = await locations.servicesOf(identifier, people);
-  const services = await Promise.all(serviceSignatures.map(({ object }) => readObject(store, object, serviceSchema)));
-  const [previous] = services;
-  const signedOffers: (readonly [EncodedObject, Signature])[] = [];
-  for (const offer of offers) {
-    const signature =
-      (await signatureListedIn(services, offer.link, signatures, store, people)) ?? (await actor.sign(offer));
-    signedOffers.push([offer, signature]);
-  }
-  const next: ServiceData = {
-    origin,
-    at,
-    offers: signedOffers.map(([, signature]) => new LinkValue(signature.link)),
-  };
-  if (previous === undefined || formOf(previous.data) !== formOf(next)) {
+    (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
+  const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
+    (await view(store, seenPeople)).current(inHand),
+  );
+  const [latest] = await locations.servicesOf(identifier, people);
+  const previous = latest === undefined ? undefined : (await readObject(store, latest.object, serviceSchema)).data;
+  const next: ServiceData = { origin, at, offers: offers.map(({ link }) => new LinkValue(link)) };
+  if (previous === undefined || formOf(previous) !== formOf(next)) {
     const object = encodeObject(serviceSchema, next);
     const blobs = [
       object.bytes,
       ...serviceSchema.blobs,
-      ...signedOffers.flatMap(([offer, signature]) => [...signature.blobs, offer.bytes, ...offer.schema.blobs]),
+      ...offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
     ];
     await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
-  return new MailboxService(signer, actor.signedIdentity, identifier, kit, seenPeople, {
-    ...options,
-    clock,
-  });
+  return new MailboxService(actor, kit, seenPeople, { ...options, clock });
 }
 
 async function writeSigned(
@@ -490,21 +460,4 @@ function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView 
       },
     }),
   };
-}
-
-async function signatureListedIn(
-  services: readonly EncodedObject<ServiceData>[],
-  offer: Link<unknown>,
-  signatures: Signatures,
-  store: Store,
-  people: People,
-): Promise<Signature | undefined> {
-  for (const { data } of services) {
-    for (const { link } of data.offers) {
-      const signature = await signatures.read(link, store);
-      await checkHonors(people, signature);
-      if (signature.object === offer) return signature;
-    }
-  }
-  return undefined;
 }

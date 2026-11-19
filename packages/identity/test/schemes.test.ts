@@ -21,7 +21,7 @@ import {
   signingText,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, schemaLinkOf, schemes } from "./fixtures.ts";
+import { byLink, identityVersionInHand, schemaLinkOf, schemes } from "./fixtures.ts";
 
 const secretKey = new Uint8Array(32).fill(1);
 
@@ -119,7 +119,7 @@ describe("a scheme given as a Scheme alone", () => {
     const { signatures, publish } = loadIdentity([ed25519, p256Der]);
     const note = schema("Note", { text: string() });
     const signature = await signatures
-      .actor(p256Signer, await publish(p256Signer))
+      .actor(p256Signer, await publish(p256Signer), identityVersionInHand)
       .sign(encodeObject(note, { text: "hello" }));
     const read = await signatures.read(signature.link, byLink(signature.blobs));
     expect(isSameKey(read.key, p256Signer.key)).toBe(true);

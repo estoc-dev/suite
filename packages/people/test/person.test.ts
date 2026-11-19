@@ -1,22 +1,9 @@
+import { ed25519, eip191, type SignedIdentityObject } from "@estoc/identity";
 import { encodeObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import {
-  type CurveScheme,
-  ed25519,
-  eip191,
-  loadIdentity,
-  type SignedIdentityObject,
-  SoftwareSigner,
-} from "../src/index.ts";
-import { byLink, rowsOf, schemes } from "./fixtures.ts";
+import { identityVersionInHand, key, peopleHavingSeen, publish, signatures, signer } from "./fixtures.ts";
 
-const { signatures, identityVersions, publish } = loadIdentity(schemes);
-
-const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
-const peopleHavingSeen = (...versions: SignedIdentityObject[]) =>
-  identityVersions.people(rowsOf(identityVersions, ...versions), byLink(versions.flatMap(({ blobs }) => blobs)));
 const linksOf = (versions: readonly SignedIdentityObject[]) => versions.map(({ link }) => link);
 
 const note = schema("Note", { text: string() });
@@ -86,10 +73,14 @@ describe("a person", () => {
     const published = await publish(wallet, { at: 1_000 });
     const identityVersion = await publish(wallet, { prior: published, agents: [laptop.key], at: 2_000 });
     const person = peopleHavingSeen().personOf(published);
-    expect(person.hasSigned(await signatures.actor(wallet, published).sign(hello))).toBe(true);
-    expect(person.hasSigned(await signatures.actor(laptop, identityVersion).sign(hello))).toBe(true);
-    expect(person.hasSigned(await signatures.actor(laptop, await publish(laptop, { at: 1_000 })).sign(hello))).toBe(
-      false,
+    expect(person.hasSigned(await signatures.actor(wallet, published, identityVersionInHand).sign(hello))).toBe(true);
+    expect(person.hasSigned(await signatures.actor(laptop, identityVersion, identityVersionInHand).sign(hello))).toBe(
+      true,
     );
+    expect(
+      person.hasSigned(
+        await signatures.actor(laptop, await publish(laptop, { at: 1_000 }), identityVersionInHand).sign(hello),
+      ),
+    ).toBe(false);
   });
 });

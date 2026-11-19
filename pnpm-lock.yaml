@@ -269,16 +269,16 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
-      '@estoc/store':
-        specifier: workspace:*
-        version: link:../store
-    devDependencies:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
       '@estoc/schema':
         specifier: workspace:*
         version: link:../schema
+      '@estoc/store':
+        specifier: workspace:*
+        version: link:../store
+    devDependencies:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.5

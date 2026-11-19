@@ -6,14 +6,11 @@ export interface Curve {
   readonly publicKeyLength: number;
   publicKeyOf(secretKey: Uint8Array): Uint8Array;
   sign(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
-  /** Takes a 64-byte signature and a key of `publicKeyLength` bytes. */
   verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
 }
 
-/** A scheme in which a curve signs the text in a framing, as a software key or a wallet does. */
 export interface CurveScheme extends Scheme {
   readonly curve: Curve;
-  /** What `curve` signs for `text`: the framed text, or its hash for a curve that signs a hash. */
   message(text: string, publicKey: Uint8Array): Uint8Array;
 }
 
@@ -21,7 +18,6 @@ export function isCurveScheme(scheme: Scheme): scheme is CurveScheme {
   return "curve" in scheme;
 }
 
-/** The scheme named `name` in which `curve` signs `message(text, publicKey)`, one signature of 64 bytes. */
 export function curveScheme(
   name: string,
   curve: Curve,

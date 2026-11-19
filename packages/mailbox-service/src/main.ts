@@ -19,14 +19,6 @@ else {
   process.exitCode = 1;
 }
 
-/**
- * Serves the mailbox service that the environment sets up, until the
- * process is asked to stop.
- *
- * @throws when a setting without a default is not set, or the file of the
- *   secret store is missing.
- * @throws when the secret store holds no Secret Key or more than one.
- */
 async function start(): Promise<void> {
   const origin = settingNamed("MAILBOX_ORIGIN");
   const secretStorePath = settingNamed("MAILBOX_SECRET_STORE");
@@ -80,13 +72,6 @@ async function start(): Promise<void> {
   console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
 }
 
-/**
- * Makes a secret store at `path` that its owner alone reads, holding a new
- * Ed25519 Secret Key for the service's identity, and prints the link of its
- * key.
- *
- * @throws when a file is at `path`.
- */
 async function makeSecretStore(path: string): Promise<void> {
   // SQLite gives the files it makes beside a database the database's mode.
   await (await open(path, "wx", 0o600)).close();
@@ -102,11 +87,6 @@ async function makeSecretStore(path: string): Promise<void> {
   }
 }
 
-/**
- * The one Secret Key in `secretStore`, kept at `path`.
- *
- * @throws when `secretStore` holds no Secret Key or more than one.
- */
 async function secretKeyIn(secretStore: SecretStore, path: string): Promise<SecretKeyObject> {
   const { secretKeys } = loadIdentity(schemes);
   const selection = objectsOf(secretKeys.schema);

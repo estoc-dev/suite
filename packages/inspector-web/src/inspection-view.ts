@@ -4,7 +4,6 @@ import { objectView } from "./object-view.ts";
 import type { Reading } from "./reading.ts";
 import { hexOf, sizeOf } from "./text.ts";
 
-/** What a link reads as. A link in it is followed through the reader the inspection came from. */
 export function inspectionView(inspection: Inspection, reading?: Reading): HTMLElement {
   if (inspection.kind === "object") return objectView(inspection, reading);
   const link = [h("dt", null, "Link"), h("dd", null, mono(inspection.link))];

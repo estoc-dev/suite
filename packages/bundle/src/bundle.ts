@@ -2,34 +2,21 @@ import { type Bytes, type Link, linkOf, schemaOf } from "@estoc/object";
 import { encode, Tokenizer, Type } from "cborg";
 
 /**
- * An object, the root, and blobs carried with it, held by link. Holding one means that the file it
- * was read from was checked:
- *
- * - The root is an object.
- * - Every blob is held by the link of its bytes.
- *
- * Nothing else about the blobs is read, signatures included.
+ * Reading one checks that the root is an object and that each blob is held by the link of its
+ * bytes, and nothing more, signatures included.
  */
 export class Bundle {
-  /**
-   * An object of any schema, a signature included, so neither its bytes nor its link name a type,
-   * and they can be read as either.
-   */
+  /** Any object, a signature included, so neither its bytes nor its link name a type. */
   readonly root: Uint8Array;
   readonly link: Link<never>;
   readonly #blobs: Map<string, Uint8Array>;
 
-  /**
-   * Takes what `decodeBundle` has checked and keeps as its own: the root, which is an object and
-   * has `link`, and each blob by its link, the root among them or not.
-   */
   constructor(root: Uint8Array, link: Link<never>, blobs: ReadonlyMap<Link<unknown>, Uint8Array>) {
     this.root = root;
     this.link = link;
     this.#blobs = new Map([[link, root], ...blobs]);
   }
 
-  /** The root, or a blob carried with it, by its link. */
   get<T>(link: Link<T>): Bytes<T> | undefined;
   // For links of several kinds at once, as in an array of the links of objects
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
@@ -38,7 +25,6 @@ export class Bundle {
     return this.#blobs.get(link);
   }
 
-  /** The root and the blobs carried with it, each once, as a store takes them in. */
   blobs(): Iterable<Bytes<unknown>> {
     return this.#blobs.values();
   }
@@ -75,19 +61,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
   return bytes;
 }
 
-/**
- * The file of the bundle of the blob that `root` names and the rest of `blobs`: the bytes of the
- * root, then each other blob as a CBOR byte string.
- *
- * - `blobs` hold the root, which is written first wherever it is among them.
- * - With no other blob the file is the bytes of the root, and the hash of the file is its link.
- * - The other blobs are written in the order given. A blob given twice is written once.
- * - Each blob is taken as it is when given, so what gives the blobs can fill one array again for
- *   the next.
- *
- * @throws when `blobs` do not hold the root.
- * @throws when the root is not an object, since no reader would take the file.
- */
+/** The file takes the extension `.eof`. */
 export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Uint8Array {
   const givenLinks = new Set<Link<unknown>>();
   const otherBlobs: Uint8Array[] = [];
@@ -106,18 +80,8 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
 }
 
 /**
- * Reads a bundle from its file: an object, the root, then each blob it carries as a CBOR
- * byte string.
- *
- * - A blob is any bytes and is not read, so an object carried in the file is a byte string as an
- *   image is.
- * - Nothing in the file is compressed, so the blobs come to less than its length, and reading has
- *   no other limit.
- *
- * @throws when the file does not start with an object.
- * @throws when what follows the root is not byte strings, each of a definite length under the
- *   shortest head, the last ending where the file does.
- * @throws when the file holds a blob twice, the root included.
+ * Nothing in the file is compressed, so its length bounds what reading it takes, and there is no
+ * other limit.
  */
 export function decodeBundle(file: Uint8Array): Bundle {
   // The root and each blob are copied out of the file before they are hashed,

@@ -16,21 +16,13 @@ interface KeyImplementation extends Implementation<KeyObject, KeyData> {
 }
 
 /**
- * Reads keys written to the schemas of the schemes it is given, and refuses
- * a key written to any other schema.
- *
- * - The schema of a scheme has the scheme's name as its title and takes a public key alone, so
- *   each key has one object and one link. Where two schemes take keys of one shape, as ed25519
- *   and solana-offchain do, the name is all that sets their schemas, and so one public key's
- *   objects in them, apart.
- * - A schema does not say how long its bytes are, so a public key of another length than its
- *   scheme's is refused here.
+ * Where two schemes take keys of one shape, as ed25519 and solana-offchain do, the title of each
+ * scheme's schema, its name, is all that sets one public key's objects in them apart.
  */
 export class Keys {
   readonly #implementations: Implementations<KeyObject, KeyImplementation>;
   readonly #byScheme: ReadonlyMap<Scheme, KeyImplementation>;
 
-  /** @throws when two of `schemes` have one name. */
   constructor(schemes: readonly Scheme[]) {
     const implementations = schemes.map(
       (scheme): KeyImplementation => ({
@@ -57,12 +49,10 @@ export class Keys {
     return implementation.read(object);
   }
 
-  /** Reads the key that `link` names from `reader`, with the schema of the scheme it is written to. */
   read(link: Link<unknown>, reader: Reader): Promise<KeyObject> {
     return this.#implementations.read(link, reader);
   }
 
-  /** Writes a key as its object, to the schema of its scheme. */
   encode({ scheme, publicKey }: Key): KeyObject {
     const implementation = this.#byScheme.get(scheme);
     if (implementation === undefined) throw new Error(`the ${scheme.name} scheme is not one written here`);

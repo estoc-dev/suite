@@ -56,11 +56,6 @@ const REQUEST_LIMIT = 64 * 1024;
 // 128 bytes.
 const PICKUP_LIMIT = REQUEST_LIMIT + PICKUP.count * 128;
 
-/**
- * The accounts of a service, one for each identifier, as the link of the
- * service's signature over the acknowledgement of the acceptance that opened
- * it.
- */
 export interface Accounts {
   /**
    * Keeps `acknowledgement` as the account of `identifier` unless it has one,
@@ -70,7 +65,6 @@ export interface Accounts {
   has(identifier: Link<unknown>): Promise<boolean>;
 }
 
-/** Keeps accounts in memory, for tests and for a service that keeps nothing once it ends. */
 export class MemoryAccounts implements Accounts {
   readonly #accounts = new Map<Link<unknown>, Link<unknown>>();
 
@@ -86,50 +80,25 @@ export class MemoryAccounts implements Accounts {
 }
 
 export interface ServiceOptions {
-  /**
-   * The origin the service is reached at, such as `https://mail.example`,
-   * which it signs into its Service. It is set here rather than read from a
-   * request, whose host is the requester's to choose.
-   */
+  /** Set here rather than read from a request, whose host is the requester's to choose. */
   readonly origin: string;
-  /**
-   * Where the service writes what it signs, with its closure: its Services,
-   * which say what ids it gave out, and the acknowledgements.
-   */
   readonly store: Store;
   /**
-   * The private store beside `store`, where the service writes a record of
-   * each thing it signs. It answers by the acknowledgements recorded there,
-   * so one that came to the store another way opens nothing.
+   * The service answers by the acknowledgements recorded here, so one that came to the store
+   * another way opens nothing.
    */
   readonly privateStore: PrivateStore;
   readonly accounts: Accounts;
   readonly mailboxes: Mailboxes;
   /**
-   * The terms that the service signs into its offer of mailboxes.
-   *
-   * - Other terms are another offer, which a new Service lists.
-   * - A mailbox opens on the terms of the offer that the latest Service lists,
-   *   which another start on the same store may have signed, and keeps them.
+   * A mailbox opens on the terms of the offer that the latest Service lists, which another start on
+   * the same store may have signed, and keeps them.
    */
   readonly terms: MailboxTerms;
-  /** The schemes of the keys the service reads, its own and those of whoever signs to it. */
   readonly schemes: readonly Scheme[];
-  /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
   readonly clock?: () => number;
 }
 
-/**
- * A mailbox service, as a handler of HTTP requests.
- *
- * - `GET /` answers the service's signed Service.
- * - A `POST` to the id of the offer of an account, which is the offer's
- *   link, opens one for whoever signed the offer.
- * - A `POST` to the id of the offer of mailboxes opens a mailbox under that
- *   account.
- * - A `POST` to a mailbox's send id leaves a ciphertext there, and to its
- *   pickup id picks up what waits.
- */
 class MailboxService {
   readonly #signer: Signer;
   readonly #signedIdentity: SignedIdentityObject;
@@ -174,12 +143,7 @@ class MailboxService {
     this.#clock = clock;
   }
 
-  /**
-   * Answers a request by the service's Services that the store holds now.
-   * It answers any origin, since no request carries credentials.
-   *
-   * @throws when the store holds no Service of the service's.
-   */
+  /** It answers any origin, since no request carries credentials. */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
     const locations = await view(this.#store, this.#locations);
@@ -214,13 +178,6 @@ class MailboxService {
     return false;
   }
 
-  /**
-   * Takes what is posted to the id of an offer that the latest Service lists.
-   * The id is the offer's link, so the offer is read from the store,
-   * whichever start of the service signed it.
-   *
-   * @throws when the store does not hold the offer.
-   */
   async #acceptOffer(request: Request, id: string): Promise<Response> {
     const offer = id as Link<EncodedObject>;
     const bytes = await this.#store.get(offer);
@@ -230,15 +187,9 @@ class MailboxService {
   }
 
   /**
-   * Acknowledges the posted signature over `offer`, and opens an account for
-   * whoever signed it unless they have one.
-   *
-   * - Either way the answer is an acknowledgement of this acceptance, one that
-   *   the store holds or a new one.
-   * - The signature is verified against the identity versions the service
-   *   holds once the whole body has come in, however long the sender took to
-   *   send it. So an agent its root removed is refused even when they have an
-   *   account, and even for an acceptance that was acknowledged before.
+   * The signature is verified against the identity versions the service holds once the whole body
+   * has come in, however long the sender took to send it. So an agent its root removed is refused
+   * even when they have an account, and even for an acceptance that was acknowledged before.
    */
   async #openAccount(request: Request, offer: Link<EncodedObject>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
@@ -273,14 +224,6 @@ class MailboxService {
     return this.#answerWith(acknowledgement, isNewAccount ? 201 : 200);
   }
 
-  /**
-   * Opens a mailbox on `offer`'s terms, under the account of whoever signed
-   * the posted request for it, unless that request opened one before.
-   *
-   * - Either way the answer is the acknowledgement of the request.
-   * - The signature is verified as an acceptance of the offer of an account
-   *   is, and refused when they have no account.
-   */
   async #openMailbox(request: Request, offer: EncodedObject<MailboxOfferData>): Promise<Response> {
     const file = await readBody(request.body, REQUEST_LIMIT);
     if (file === undefined) return answer(413, `a request holds at most ${REQUEST_LIMIT} bytes`);
@@ -330,12 +273,6 @@ class MailboxService {
     return this.#answerWith(await this.#renew(keptMailbox.acknowledgement, people), 200);
   }
 
-  /**
-   * Signs `acknowledgement` of what `bundle` holds at its root, and writes
-   * the signature to the store, with `blobs` from the closure of what it
-   * acknowledges, and then a record of it to the private store. From then on
-   * the service holds the identity version that signed what it acknowledges.
-   */
   async #acknowledge(
     acknowledgement: EncodedObject,
     people: People,
@@ -353,17 +290,6 @@ class MailboxService {
     return signature;
   }
 
-  /**
-   * The service's signature at `link` over an acknowledgement while `people`
-   * honor it.
-   *
-   * - Once a crisis of the service's root cuts it, the answer is the recorded
-   *   signature over the same acknowledgement that `people` honor, the one of
-   *   the least link when there is more than one.
-   * - When there is none, the service signs the acknowledgement as its
-   *   current identity version, and writes that signature to the store and a
-   *   record of it to the private store.
-   */
   async #renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
     const signature = await this.#signatures.read(link, this.#store, noIdentityVersions);
     if (await people.honors(signature)) return link;
@@ -382,20 +308,10 @@ class MailboxService {
     await writeSigned(signature, blobs, this.#clock(), { store: this.#store, privateStore: this.#privateStore });
   }
 
-  /**
-   * Signs `object` as the current identity version of the service by
-   * `people`, which a crisis that the store comes to hold changes while the
-   * service runs.
-   */
   async #sign(object: { readonly link: Link<unknown> }, people: People): Promise<Signature> {
     return this.#signatures.actor(this.#signer, await people.current(this.#signedIdentity)).sign(object);
   }
 
-  /**
-   * Keeps the ciphertext posted to a mailbox's send id waiting there,
-   * unless it is over its size or would take what waits over its quota.
-   * Anyone can post there, as to any HTTP mailbox.
-   */
   async #receive(request: Request, { sendId, terms }: OpenMailbox): Promise<Response> {
     const ciphertext = await readBody(request.body, terms.size);
     if (ciphertext === undefined) return answer(413, `a message to this mailbox holds at most ${terms.size} bytes`);
@@ -408,14 +324,6 @@ class MailboxService {
     return waits ? answer(204) : answer(429, `this mailbox holds at most ${terms.quota} bytes that wait`);
   }
 
-  /**
-   * Lets the ciphertexts that the posted pickup request has receipts for
-   * wait no more, and answers with what waits then.
-   *
-   * The request is verified as signed for the mailbox's account, and as
-   * honored by the identity versions the store holds. When it is not, it is
-   * refused with 403, though it reads.
-   */
   async #pickUp(request: Request, mailbox: OpenMailbox): Promise<Response> {
     const file = await readBody(request.body, PICKUP_LIMIT);
     if (file === undefined) return answer(413, `a pickup request holds at most ${PICKUP_LIMIT} bytes`);
@@ -449,12 +357,6 @@ class MailboxService {
     return bundleAnswer(200, encodeBundle(pickupAnswer.link, [pickupAnswer.bytes, ...ciphertexts]));
   }
 
-  /**
-   * Answers with the bundle of one of the service's signatures and its
-   * closure in the store.
-   *
-   * @throws when the store does not hold `link` or a blob of its closure.
-   */
   async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
     return bundleAnswer(status, encodeBundle(link, (await this.#store.closure(link)).values()));
   }
@@ -466,7 +368,6 @@ const newId = () => hex.encode(crypto.getRandomValues(new Uint8Array(16)));
 
 const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** As much of `queue` as one pickup answers with, from the earliest. */
 async function batchOf(queue: AsyncIterable<Uint8Array>): Promise<Uint8Array[]> {
   const batch: Uint8Array[] = [];
   let bytes = 0;
@@ -502,23 +403,6 @@ function bundleAnswer(status: number, file: Uint8Array): Response {
   return new Response(file, { status, headers: { "access-control-allow-origin": "*", "content-type": BUNDLE_TYPE } });
 }
 
-/**
- * Makes the service of `signer`'s identity at `origin`.
- *
- * - The store holds the Services the service signed before, and the latest
- *   of them that is honored says where it was and what it offered there.
- * - When the service says the same now, that Service stays the latest, and
- *   else the service signs a new one, as it does when none is honored once
- *   its root signed a crisis.
- * - Either way the latest lists the offer of an account and the offer of
- *   mailboxes on `terms`, each as the service's signature over it from the
- *   latest Service that lists it.
- * - The service signs as its current identity version, by the identity
- *   versions the store holds, and publishes its identity only when the store
- *   holds no Service of it.
- *
- * @throws when `origin` is not an origin: a scheme, a host and a port alone.
- */
 export async function loadMailboxService(
   signer: Signer,
   { origin, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
@@ -576,11 +460,6 @@ export async function loadMailboxService(
   });
 }
 
-/**
- * Writes `signature`, which the service signed, to the store with those of
- * `blobs` in its closure, and then a record of it at `at` to the private
- * store.
- */
 async function writeSigned(
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
@@ -599,12 +478,7 @@ type RecordedSignaturesView = View<
   { signaturesOver(object: Link<unknown>): Promise<Link<unknown>[]> }
 >;
 
-/**
- * The signatures that the records of a private store link to, by the object
- * each signs and then by their links, viewed on that private store. A
- * signature that the store holds may have no record, as when a write stopped
- * between the two.
- */
+/** A signature that the store holds may have no record, as when a write stopped between the two. */
 function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
   return {
     index: indexOver(selectedRecords(objectsOf(signatures.schema)), recordedSignatureSchema, ({ link, data }) => [
@@ -620,7 +494,6 @@ function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView 
   };
 }
 
-/** The service's signature over `offer` from the first of `services` that lists it, or `undefined` when none does. */
 async function signatureListedIn(
   services: readonly EncodedObject<ServiceData>[],
   offer: Link<unknown>,

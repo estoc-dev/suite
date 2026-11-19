@@ -9,17 +9,13 @@ const IDENTITY_KEY = new Uint8Array(32).fill(1);
 const MAILBOX_KEY = new Uint8Array(32).fill(2);
 
 export interface TestMailbox {
-  /** Where senders post. */
   readonly url: string;
-  /** Picks up what waits, each ciphertext once, and drops it. */
   pickUp(): Promise<Uint8Array[]>;
 }
 
 /**
- * A mailbox at the service at `origin`, which the account of a fixed
- * identity opens to a fixed key. The identity is published at time 0, so each
- * run signs the same acceptance and reaches the same account. While the
- * service offers mailboxes on the same terms, each run signs the same request
+ * The identity is published at time 0, so each run signs the same acceptance and reaches the same
+ * account. While the service offers mailboxes on the same terms, each run signs the same request
  * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
@@ -45,12 +41,6 @@ export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   };
 }
 
-/**
- * Opens the test mailbox at the service at `origin`, sends it a message,
- * and picks it up.
- *
- * @throws when a step fails, or the pickup does not bring the message.
- */
 export async function smoke(origin: string): Promise<void> {
   const mailbox = await openTestMailbox(origin);
   const message = new TextEncoder().encode(`smoke test at ${new Date().toISOString()}`);

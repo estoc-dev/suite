@@ -29,12 +29,8 @@ function* problemsIn(value: Value, field: Field | Item, path: string): Generator
 }
 
 /**
- * The validator of the language. The language says what fits a schema, with
- * nothing left to a validator, so another would give the same answers.
- *
- * - Data fits when its members are the fields of the schema, none but the optional ones left
- *   out, and each is a value of its field's type.
- * - Each problem names where in the data it is, as `#/agents/0: not a link`.
+ * The language says what fits a schema, with nothing left to a validator, so another would give the
+ * same answers.
  */
 export const schemaValidator: SchemaValidator<SchemaDocument> = {
   language: schemaLanguage,
@@ -53,8 +49,4 @@ export const schemaValidator: SchemaValidator<SchemaDocument> = {
   },
 };
 
-/**
- * The root schema of the language, which every schema of it is written to, itself included. It
- * is in the closure of every object of the language, so it goes where they go.
- */
 export const rootSchema = rootSchemaOf(schemaValidator);

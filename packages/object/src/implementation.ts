@@ -3,21 +3,11 @@ import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } f
 import type { ValueMap } from "./object-format.ts";
 import type { Schema } from "./schema.ts";
 
-/**
- * A concrete schema that a program reads as an interface, with how an
- * object written to it becomes the interface's shape `T`.
- */
 export interface Implementation<T, F extends ValueMap = ValueMap> {
   readonly schema: Schema<F>;
-  /** Takes an object already read with `schema`, and reads what it links to from `reader`. */
   read(object: EncodedObject<F>, reader: Reader): T | Promise<T>;
 }
 
-/**
- * The concrete schemas a program reads as one interface, each with its
- * implementation, picked by the schema an object names. Which schemas these
- * are is the program's to say, and an object of any other is refused.
- */
 export class Implementations<T, I extends Implementation<T> = Implementation<T>> {
   readonly #implementations: ReadonlyMap<Link<Schema>, I>;
 
@@ -32,21 +22,10 @@ export class Implementations<T, I extends Implementation<T> = Implementation<T>>
     this.#implementations = byLink;
   }
 
-  /**
-   * The implementation of `schema`, for what a program does with objects of it beyond reading
-   * them. Nothing when `schema` is not one of these, so a program that takes objects of other
-   * schemas as well can ask before it reads.
-   */
   implementationOf(schema: Link<Schema>): I | undefined {
     return this.#implementations.get(schema);
   }
 
-  /**
-   * Reads the object that `link` names from `reader` with the implementation of the schema it names.
-   *
-   * @throws {AbsentBlob} when the reader gives no blob for `link`.
-   * @throws when the schema it names is not one of these.
-   */
   async read(link: Link<unknown>, reader: Reader): Promise<T> {
     const bytes = await readBlob(reader, link);
     const schema = schemaOf(bytes);

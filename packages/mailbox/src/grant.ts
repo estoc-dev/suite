@@ -12,12 +12,8 @@ import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
- * The schema of a Mailbox Grant as a row of an index: the identifier of whoever signed it, the
- * identifier of the signed identity it is to, its `at`, and the signature.
- *
- * - The grants of someone to someone else are a series, whose rows are in the order of their `at`.
- * - Two grants of a series at one `at` are told apart by the links of their signatures, as two
- *   identity versions are.
+ * Two grants of a series at one `at` are told apart by the links of their signatures, as two
+ * identity versions are.
  */
 export const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
   from: link(),
@@ -30,25 +26,18 @@ export type MailboxGrantRow = DataOf<typeof mailboxGrantRowSchema>;
 
 type MailboxGrantOrder = readonly ["from", "to", "at", "signature"];
 
-/** A Mailbox Grant read from a store, with the signature over it, verified, and the signed identity it is to. */
 export interface MailboxGrant {
   readonly object: EncodedObject<MailboxGrantData>;
   readonly signature: Signature;
   readonly to: SignedIdentityObject;
 }
 
-/** The Mailbox Grants of each series that a store holds. */
 export interface GrantSeries {
-  /**
-   * The grants that `from` signed to `to`, by their identifiers, that
-   * `seenIdentityVersions` honor, in the order of the series.
-   */
   grantsFrom(
     from: Link<unknown>,
     to: Link<unknown>,
     seenIdentityVersions: SeenIdentityVersions,
   ): AsyncIterable<MailboxGrant>;
-  /** The last of `grantsFrom`, which is the latest grant, or `undefined` when there is none. */
   grantFrom(
     from: Link<unknown>,
     to: Link<unknown>,
@@ -58,25 +47,12 @@ export interface GrantSeries {
 
 type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
-/**
- * Mailbox Grants: writing one for a signer to sign, and reading each series from a store.
- *
- * - A grant reaches `series` as a signature over it that the store holds, whichever way it came and
- *   wherever it sits in a closure, as a signature carries its authority in itself.
- * - Each signature is verified by the signed identity it carries, as by `noIdentityVersions`.
- *   `grantsFrom` and `grantFrom` read the grants whose signatures `seenIdentityVersions` honor.
- * - A signature that does not verify, or that is over an object that does not read as a grant,
- *   gives no row, since anyone can send a bundle to a mailbox.
- * - The scan still fails when the store fails to give a blob, so a later scan of the index reads it
- *   again.
- */
 export class MailboxGrants {
   readonly schema = mailboxGrantSchema;
-  /** The grants of each series. Its index is made once, with the grants, so a store keeps its rows between scans. */
+  /** Made once, with the grants, so a store keeps the rows of its index between scans. */
   readonly series: View<MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
   readonly #identity: SignatureReading;
 
-  /** The signatures over grants and the signed identities they name are read with `identity`. */
   constructor(identity: SignatureReading) {
     this.#identity = identity;
     this.series = {
@@ -89,7 +65,6 @@ export class MailboxGrants {
     };
   }
 
-  /** The grant of `mailboxes` to `to`, at `at`, for whoever gives it to sign. */
   encode(
     to: SignedIdentityObject,
     mailboxes: readonly Link<EncodedObject>[],

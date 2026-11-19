@@ -6,15 +6,8 @@ import type { Signature } from "./signature.ts";
 import type { SignedIdentities, SignedIdentityData, SignedIdentityObject } from "./signed-identity.ts";
 
 /**
- * The schema of an identity version as a row of an index: its identifier,
- * its `at`, its signed identity, and the last crisis of its chain.
- *
- * - A root that signs one identity twice with a signer that signs with
- *   randomness makes two identity versions at one `at`, told apart by the
- *   links of their signed identities.
- * - `lastCrisis` is the signed identity of the latest crisis among it and
- *   those it follows, itself when it is one. A row has none when none of them
- *   is a crisis.
+ * A root that signs one identity twice with a signer that signs with randomness makes two identity
+ * versions at one `at`, told apart by the links of their signed identities.
  */
 export const identityVersionSchema = schema("Identity Version", {
   identifier: link(),
@@ -25,47 +18,19 @@ export const identityVersionSchema = schema("Identity Version", {
 
 export type IdentityVersionData = DataOf<typeof identityVersionSchema>;
 
-/** The fields that order the rows of identity versions: those of someone come together, in the order of their `at`. */
 export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity"];
 
-/** The rows of an index of identity versions, as `people` reads them. */
 export interface IdentityVersionRows {
-  /** The rows of the identity versions of `identifier`. */
   range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
-/**
- * When blobs came to the reader's devices, as `arrivalsView` of
- * `@estoc/store` says for the signed identity schema, by the marks of a
- * private store.
- */
 export interface Arrivals {
-  /** When the blob of `link` came, or `undefined` when nothing says when. */
   atOf(link: Link<unknown>): number | undefined | Promise<number | undefined>;
 }
 
-/** Identity versions, as the rows of an index that signed identities give, and as the people of those a reader has seen. */
 export class IdentityVersions {
-  /** The schema of the rows of an index of identity versions, for whoever makes the index. */
   readonly schema = identityVersionSchema;
-  /** The fields to order that index by, for `people` to read its rows. */
   readonly order: IdentityVersionOrder = ["identifier", "at", "signedIdentity"];
-  /**
-   * The selection of signed identities, each read as
-   * `SignedIdentities.implementation` reads it.
-   *
-   * Anyone can send a signed identity, so one whose identity does not read,
-   * or whose root did not sign it, is refused. An index over the selection
-   * fails on it, as `@estoc/store` has an index fail.
-   *
-   * @throws {AbsentBlob} from `read`, when the reader gives no blob for the
-   *   record, or for one that verifying it reads. The error has the link of
-   *   that blob.
-   * @throws from `read`, what the reader throws.
-   * @throws from `read`, where `decodeObject` throws for an object of the
-   *   signed identity schema, and where `SignedIdentities.implementation`
-   *   throws for it.
-   */
   readonly selection: SelectionBySchema<SignedIdentityObject, SignedIdentityData>;
   readonly rows = (signedIdentity: SignedIdentityObject): readonly [IdentityVersionData] => [
     this.identityVersionOf(signedIdentity),
@@ -90,13 +55,8 @@ export class IdentityVersions {
   }
 
   /**
-   * The people of the identity versions a store holds, from `rows`, the rows
-   * of its index of those identity versions, each as `identityVersionOf`
-   * gives it. An identity version a row names is read from `reader`.
-   *
-   * The rows hold those that each identity version follows, as an index over
-   * the blobs of a store does: the store holds the closure of each, and a
-   * signed identity whose closure it lacks does not read.
+   * `rows` hold those that each identity version follows, as an index over the blobs of a store
+   * does, since the store holds the closure of each.
    */
   people(rows: IdentityVersionRows, reader: Reader): People {
     const read = (link: Link<unknown>) => this.#signedIdentities.read(link, reader);
@@ -163,25 +123,17 @@ export class IdentityVersions {
   }
 }
 
-/** `signedIdentity` and those it follows, from it back. */
 function* chainOf(signedIdentity: SignedIdentityObject): Iterable<SignedIdentityObject> {
   for (let each: SignedIdentityObject | undefined = signedIdentity; each !== undefined; each = each.identity.prior) {
     yield each;
   }
 }
 
-/** The link of the latest crisis among `signedIdentity` and those it follows, as each is later than the one it follows. */
 function lastCrisisOf(signedIdentity: SignedIdentityObject): Link<unknown> | undefined {
   for (const each of chainOf(signedIdentity)) if (each.identity.isCrisis) return each.link;
   return undefined;
 }
 
-/**
- * The links of the identity versions of `ordered`, rows of one identifier in
- * their order, that count: the latest crisis and those that follow it, or
- * all of them when none is a crisis. Those that follow a crisis come after
- * it, so each crisis met starts them over.
- */
 function countingVersionsAmong(ordered: readonly IdentityVersionData[]): Link<unknown>[] {
   let countingVersions: Link<unknown>[] = [];
   let cut: Link<unknown> | undefined;

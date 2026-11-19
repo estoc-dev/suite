@@ -14,7 +14,6 @@ import type { Identities, IdentityObject } from "./identity.ts";
 import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
 
-/** The schema every signed identity is written to, whatever the scheme of its root. */
 export const signedIdentitySchema = schema("Signed Identity", {
   identity: link(),
   signature: bytes(),
@@ -22,18 +21,6 @@ export const signedIdentitySchema = schema("Signed Identity", {
 
 export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
 
-/**
- * An identity as its root publishes it: an object written to
- * `signedIdentitySchema`, read with the identity and verified.
- *
- * - `signature` holds the root's signature over the identity's link.
- * - `link` is that of the object. What the root publishes is that object as
- *   it is, so a signature names the identity it is made for by this link.
- * - Two signers are the same someone when the roots of their identities are
- *   the same, whichever signed identities they sign by.
- * - `blobs` are what it takes to read it again, each blob once: the bytes of
- *   its object, the closure of its schema, and the identity's `blobs`.
- */
 export interface SignedIdentityObject {
   readonly link: Link<unknown>;
   readonly identity: IdentityObject;
@@ -41,16 +28,8 @@ export interface SignedIdentityObject {
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Signed identities, with the identities they sign. */
 export class SignedIdentities {
   readonly schema = signedIdentitySchema;
-  /**
-   * The signed identity schema read as a signed identity, verified as
-   * `verify` does.
-   *
-   * For the schemes given to `loadIdentity`, what it reads depends on the
-   * signed identity and its closure alone, so an index can read by it.
-   */
   readonly implementation: Implementation<SignedIdentityObject, SignedIdentityData> = {
     schema: signedIdentitySchema,
     read: (object, reader) => this.verify(object, reader),
@@ -61,17 +40,6 @@ export class SignedIdentities {
     this.#identities = identities;
   }
 
-  /**
-   * Verifies `object`, giving it with its identity, the keys it names and the
-   * signed identities it follows, each verified, all read from `reader`. An
-   * identity stands for someone only as its root signed it, which reading its
-   * object and keys alone does not verify.
-   *
-   * @throws when `object` is not written to the signed identity schema.
-   * @throws when the identity's root did not sign it.
-   * @throws when the identity follows a signed identity of another root, or
-   *   one that is not earlier.
-   */
   async verify(object: EncodedObject<SignedIdentityData>, reader: Reader): Promise<SignedIdentityObject> {
     if (object.schema.link !== this.schema.link) throw new Error(`a signed identity is written to ${this.schema.link}`);
     const identity = await readObject(reader, object.data.identity.link, this.#identities.schema);
@@ -79,15 +47,13 @@ export class SignedIdentities {
     return signedIdentityOf(object, await this.#identities.read(identity, prior, reader));
   }
 
-  /** Reads the signed identity that `link` names from `reader`, and verifies it. */
   async read(link: Link<unknown>, reader: Reader): Promise<SignedIdentityObject> {
     return this.verify(await readObject(reader, link, this.schema), reader);
   }
 
   /**
-   * Has `root` sign `identity`, giving the signed identity. The identity is
-   * written before its root is asked to sign, so a root is not asked to sign
-   * an identity that would not read.
+   * The identity is written before its root is asked to sign, so a root is not asked to sign an
+   * identity that would not read.
    */
   async sign(root: Signer, identity: IdentityObject): Promise<SignedIdentityObject> {
     const signature = await root.sign(digestOf(identity.link));

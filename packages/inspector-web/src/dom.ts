@@ -2,12 +2,9 @@ export type Child = Node | string | false | undefined | readonly Child[];
 type Attribute = string | boolean | undefined | ((event: Event) => void);
 
 /**
- * An element with attributes, `on…` listeners and children.
- *
  * - A string child is text, so what a file holds is shown and not read as markup.
- * - A false or missing child or attribute is left out.
- * - An array child gives its children in turn. A list as long as a file makes it is passed as an
- *   array, since an engine takes only so many arguments in one call.
+ * - A list as long as a file makes it is passed as an array, since an engine takes only so many
+ *   arguments in one call.
  */
 export function h(tag: string, attributes: Record<string, Attribute> | null = null, ...children: Child[]): HTMLElement {
   const node = document.createElement(tag);
@@ -21,10 +18,8 @@ export function h(tag: string, attributes: Record<string, Attribute> | null = nu
 }
 
 /**
- * An element whose children are `html`, read as markup.
- *
- * It is for markup the page wrote itself, as it does to render a body. What a file holds goes
- * through `h`, which shows it as text.
+ * For markup the page wrote itself, as it does to render a body. What a file holds goes through
+ * `h`, which shows it as text.
  */
 export function markup(tag: string, attributes: Record<string, Attribute> | null, html: string): HTMLElement {
   const node = h(tag, attributes);

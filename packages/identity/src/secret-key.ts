@@ -6,21 +6,10 @@ import { isSameKey, type KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 import { type Signer, SoftwareSigner } from "./signer.ts";
 
-/**
- * The schema of a Secret Key, kept in a device's secret store for each key
- * the device signs with by a secret in memory. With the Wallet Keys there,
- * the secret store lists the keys the device signs with.
- */
 export const secretKeySchema = schema("Secret Key", { key: link(), secret: bytes() });
 
 export type SecretKeyData = DataOf<typeof secretKeySchema>;
 
-/**
- * A Secret Key read from its object, which `link` names, with its key and
- * `signer`, which signs with the secret. `blobs` are its closure: the bytes
- * of its object and of its key, and the schemas they are written to, so one
- * write puts it in an empty store.
- */
 export interface SecretKeyObject {
   readonly link: Link<unknown>;
   readonly key: KeyObject;
@@ -28,7 +17,6 @@ export interface SecretKeyObject {
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Secret Keys, written to `secretKeySchema` and read with the keys they name. */
 export class SecretKeys {
   readonly schema = secretKeySchema;
   readonly #keys: Keys;
@@ -37,7 +25,6 @@ export class SecretKeys {
     this.#keys = keys;
   }
 
-  /** Writes the Secret Key of `secret`'s key in `scheme`. */
   encode(scheme: CurveScheme, secret: Uint8Array): SecretKeyObject {
     const signer = SoftwareSigner.fromSecretKey(scheme, secret);
     const key = this.#keys.encode(signer.key);
@@ -45,13 +32,6 @@ export class SecretKeys {
     return secretKeyOf(object, key, signer);
   }
 
-  /**
-   * Reads the Secret Key that `link` names from `reader`, with its key.
-   *
-   * @throws when the key is in a scheme no curve signs in, since a secret in
-   * memory signs with a curve.
-   * @throws when the secret is not that of the key.
-   */
   async read(link: Link<unknown>, reader: Reader): Promise<SecretKeyObject> {
     const object = await readObject(reader, link, this.schema);
     const key = await this.#keys.read(object.data.key.link, reader);

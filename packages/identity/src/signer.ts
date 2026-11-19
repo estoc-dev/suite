@@ -3,17 +3,14 @@ import type { Key } from "./key/interface.ts";
 import { signingText } from "./signing-text.ts";
 
 /**
- * The private side of a key, as the capability to sign with it. A wallet
- * stands behind one the same way a key in memory does, which is why signing
- * is asynchronous. It signs `signingText(digest, signedIdentity)` in its
- * key's scheme.
+ * A wallet stands behind a signer the same way a key in memory does, which is why signing is
+ * asynchronous.
  */
 export interface Signer {
   readonly key: Key;
   sign(digest: Uint8Array, signedIdentity?: Uint8Array): Promise<Uint8Array>;
 }
 
-/** A signer over a secret key held in memory. */
 export class SoftwareSigner implements Signer {
   readonly #scheme: CurveScheme;
   readonly #publicKey: Uint8Array;

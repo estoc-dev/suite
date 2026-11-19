@@ -5,28 +5,19 @@ import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 
 /**
- * The schema of a Wallet Key, kept in a device's secret store for each key
- * the device signs with through a wallet.
- *
- * - It is kept private as it means something to that device alone.
- * - Which wallet holds the key, the program finds by the public key the
- *   wallet gives.
+ * It is kept private, as it means something to that device alone, and does not say which wallet
+ * holds the key: the program finds that by the public key the wallet gives.
  */
 export const walletKeySchema = schema("Wallet Key", { key: link() });
 
 export type WalletKeyData = DataOf<typeof walletKeySchema>;
 
-/**
- * A Wallet Key read from its object, which `link` names, with its key.
- * `blobs` are its closure, as a Secret Key's are.
- */
 export interface WalletKeyObject {
   readonly link: Link<unknown>;
   readonly key: KeyObject;
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Wallet Keys, written to `walletKeySchema` and read with the keys they name. */
 export class WalletKeys {
   readonly schema = walletKeySchema;
   readonly #keys: Keys;
@@ -35,13 +26,11 @@ export class WalletKeys {
     this.#keys = keys;
   }
 
-  /** Writes the Wallet Key of `key`. */
   encode(key: Key): WalletKeyObject {
     const object = this.#keys.encode(key);
     return walletKeyOf(encodeObject(this.schema, { key: new LinkValue(object.link) }), object);
   }
 
-  /** Reads the Wallet Key that `link` names from `reader`, with its key. */
   async read(link: Link<unknown>, reader: Reader): Promise<WalletKeyObject> {
     const object = await readObject(reader, link, this.schema);
     return walletKeyOf(object, await this.#keys.read(object.data.key.link, reader));

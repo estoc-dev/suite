@@ -20,15 +20,9 @@ import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.t
 import type { Signer } from "./signer.ts";
 
 /**
- * The schema every signature is written to, whatever the scheme of the key
- * that signs. A reader that reads a signature as an object of this schema,
- * such as a viewer, reads its fields without verifying it.
- *
- * `signature` holds bytes, and the schema says no more of them. The
- * schema of the identity the signature is made for says which key signs and
- * how the bytes are laid out, and that key's scheme how its signature in them
- * reads. However they are laid out, they stay bytes, so this schema and those
- * who read signatures by it do not change for a scheme added later.
+ * `signature` holds bytes, and the schema says no more of them: the schema of the identity says
+ * which key signs and how the bytes are laid out, so this schema does not change for a scheme added
+ * later.
  */
 export const signatureSchema = schema("Signature", {
   signedIdentity: link(),
@@ -39,20 +33,8 @@ export const signatureSchema = schema("Signature", {
 export type SignatureData = DataOf<typeof signatureSchema>;
 
 /**
- * An identity standing behind an object, as an object written to
- * `signatureSchema`, read and verified, with `key`, the key that signed for
- * the identity.
- *
- * - That is all it says: who has to sign, in what role and by when are for
- *   the application that reads the object to decide.
- * - It names the object by link, so it verifies without the object, but not
- *   without the blobs of its signed identity.
- * - It travels apart from other signatures over the same object.
- * - It does not say what the object is, so its link reads as any.
- * - `link` is that of the signature's own object.
- * - `blobs` are what it takes to read it again, each blob once: the bytes of
- *   its object, the closure of its schema, and the `blobs` of its signed
- *   identity.
+ * Who has to sign, in what role and by when are for the application that reads the object to
+ * decide.
  */
 export interface Signature {
   readonly link: Link<unknown>;
@@ -63,68 +45,34 @@ export interface Signature {
   readonly blobs: readonly Uint8Array[];
 }
 
-/** Whether a reader honors a signature, by the identity versions it has seen. */
 export interface SeenIdentityVersions {
   /**
-   * Whether the reader honors `signature`, by the identity versions of
-   * whoever signed it that the reader has seen, and the one it carries with
-   * those it follows.
-   *
-   * - Of those, the latest crisis and the ones that follow it count, or all
-   *   of them when none is a crisis. A root signs a crisis when it no longer
-   *   relies on what it signed before, so the signatures by an identity
-   *   version before it are not honored, the root's own among them.
-   * - The identity version it carries counts.
-   * - The key that made it signs for the current identity version, the
-   *   latest that counts. The one it carries is among them, as a device a
-   *   wallet has just listed signs by an identity version the reader has not
-   *   seen yet.
+   * A root signs a crisis when it no longer relies on what it signed before, so the signatures by
+   * an identity version before it are not honored, the root's own among them. The one a signature
+   * carries counts, as a device a wallet has just listed signs by an identity version the reader
+   * has not seen yet.
    */
   honors(signature: Signature): Promise<boolean>;
 }
 
-/**
- * A reader that has seen no identity versions, so a signature is honored by
- * the identity version it carries and those it follows alone. No crisis comes
- * after the one it carries among them, so it is honored once it verifies.
- */
 export const noIdentityVersions: SeenIdentityVersions = { honors: async () => true };
 
-/**
- * A signature, verified as `Signatures.implementation` reads it, with the
- * object it signs, read with the schema it is written to.
- */
 export interface SignatureOver<F extends ValueMap> {
   readonly signature: Signature;
   readonly object: EncodedObject<F>;
 }
 
-/**
- * A signer acting for an identity it signs for, as one signed identity of
- * it, which every signature it makes names.
- */
 export interface Actor {
   readonly signedIdentity: SignedIdentityObject;
-  /**
-   * Signs the link of an object, and so the object, whatever it is read as.
-   *
-   * @throws when the signer's signature does not verify.
-   */
   sign(object: { readonly link: Link<unknown> }): Promise<Signature>;
 }
 
-/** Signatures, verified and made with their schema and the signed identities they name. */
 export class Signatures {
   readonly schema = signatureSchema;
   /**
-   * The signature schema read as a signature, verified as `verify` does by
-   * `noIdentityVersions`: by the identity version it carries and those it
-   * follows alone.
-   *
-   * For the schemes given to `loadIdentity`, what it reads depends on the
-   * signature and its closure alone, so an index can read by it. Whether the
-   * signature is still honored is then for a reader's `SeenIdentityVersions`
-   * to say.
+   * It verifies by the identity version a signature carries alone, so what it reads depends on the
+   * signature and its closure, and an index can read by it. Whether the signature is still honored
+   * is for a reader's `SeenIdentityVersions` to say.
    */
   readonly implementation: Implementation<Signature, SignatureData> = {
     schema: signatureSchema,
@@ -136,20 +84,6 @@ export class Signatures {
     this.#signedIdentities = signedIdentities;
   }
 
-  /**
-   * Verifies `signature`, giving it with its signed identity and the key that
-   * made it.
-   *
-   * - The signed identity, its identity and the keys it names are read from
-   *   `reader`.
-   * - The identity's schema says which key made the signature and how its
-   *   bytes are laid out, and the key's scheme how its signature is read.
-   *
-   * @throws when `signature` is not written to the signature schema.
-   * @throws when no key that signs for the identity signed the object it
-   *   names by that signed identity.
-   * @throws when `seenIdentityVersions` do not honor it.
-   */
   async verify(
     signature: EncodedObject<SignatureData>,
     reader: Reader,
@@ -166,27 +100,10 @@ export class Signatures {
     return verifiedSignature;
   }
 
-  /** Reads the signature that `link` names from `reader`, and verifies it by `seenIdentityVersions`. */
   async read(link: Link<unknown>, reader: Reader, seenIdentityVersions: SeenIdentityVersions): Promise<Signature> {
     return this.verify(await readObject(reader, link, this.schema), reader, seenIdentityVersions);
   }
 
-  /**
-   * The selection of the signatures over objects of `schema`, each read as
-   * `implementation` reads it, with the object it signs.
-   *
-   * - A signature over an object of another schema is left out, and is not
-   *   verified.
-   * - What it takes depends on the signature and its closure alone, as a
-   *   selection has to. Whether a signature is still honored depends on the
-   *   identity versions a reader has seen, so it is for what reads the
-   *   signatures it takes to ask.
-   *
-   * @throws {AbsentBlob} from `read`, when the reader gives no blob for the
-   *   object.
-   * @throws from `read`, where `decodeObject` throws for an object of
-   *   `schema`, and where `implementation` throws for the signature.
-   */
   selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {
     const objects = objectsOf(schema);
     return new SelectionBySchema(this.schema, async (signature, reader) => {
@@ -196,11 +113,6 @@ export class Signatures {
     });
   }
 
-  /**
-   * An actor for `signedIdentity`.
-   *
-   * @throws when `signer`'s key does not sign for its identity.
-   */
   actor(signer: Signer, signedIdentity: SignedIdentityObject): Actor {
     const sign = signingFunction(signedIdentity.identity, signer);
     if (sign === undefined) throw new Error(`the signer's key does not sign for ${signedIdentity.identity.link}`);

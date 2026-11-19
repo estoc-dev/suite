@@ -39,7 +39,6 @@ function blobView({ bytes, inspection, isRoot, isReachedFromRoot }: ListedBlob, 
   );
 }
 
-/** The blobs of a file, each with what it reads as. The one that `shownLink` names is marked as shown. */
 export function blobListView(blobs: readonly ListedBlob[], shownLink: Link<unknown>): HTMLElement {
   return h(
     "section",

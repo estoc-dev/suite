@@ -20,7 +20,7 @@ object and the objects it links to, and gives a value, such as a
 `Signature`, that only it can make.
 
 What one program asks of another, and what the other answers, is a
-bundle: an object as the root, with the blobs in its closure. Who asks is
+bundle: an object as the root, and blobs carried with it. Who asks is
 whoever stands behind the root, read with the same verifiers as any
 object, so neither side rests on a connection, a session or a credential.
 The same bundle can go over HTTP, through a mailbox, or as a file.
@@ -78,6 +78,8 @@ semantics written elsewhere could not.
 ## Development
 
 One pnpm workspace; packages go under `packages/` as they are written.
+What a package does is said by its code and shown in its tests. A comment
+says only what the code cannot, such as why a choice was made.
 
 ```bash
 pnpm install

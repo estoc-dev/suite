@@ -27,8 +27,8 @@ export class RefusedBatch extends Error {
 }
 
 /**
- * The blobs of a batch under their links. Each is copied before it is hashed, so that what is kept
- * is what was hashed, whatever happens to the given arrays afterwards.
+ * Each is copied before it is hashed, so that what is kept is what was hashed, whatever happens to
+ * the given arrays afterwards.
  */
 export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>, Uint8Array> {
   const batchBlobs = new Map<Link<unknown>, Uint8Array>();
@@ -39,13 +39,6 @@ export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   return batchBlobs;
 }
 
-/**
- * The blobs of a batch under their links, each copied as `copiedBlobs` copies it, and `links` as
- * the links of objects, which the batch is to list.
- *
- * @throws {RefusedBatch} when `blobs` do not hold the blob of one of `links`, or it is not an
- *   object, saying what the batch gave it to be `listedAs`.
- */
 export function copiedBatch(
   links: Iterable<Link<unknown>>,
   blobs: Iterable<Bytes<unknown>>,
@@ -68,7 +61,6 @@ export function copiedBatch(
   return { blobs: batchBlobs, objects: objectLinks };
 }
 
-/** The links an object holds. Any other blob is bytes and links to nothing. */
 export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
   let object: ObjectValue;
   try {
@@ -79,11 +71,6 @@ export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
   return objectFormat.links(object);
 }
 
-/**
- * The closure of the blob that `link` names, each blob of it as `reader` gives it.
- *
- * @throws when `reader` gives no blob of the closure, the one `link` names among them.
- */
 export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Map<Link<unknown>, Uint8Array>> {
   const closureBlobs = new Map<Link<unknown>, Uint8Array>();
   const seenLinks = new Set([link]);
@@ -102,12 +89,8 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
 }
 
 /**
- * The blobs of `blobs` in the closures of `roots`, each after the blobs it links to. A blob that
- * `backend` holds comes with its closure, so its links are not followed, apart from a root that
- * `blobs` gives as well.
- *
- * @throws {RefusedBatch} when one of `roots`, or a blob in the closure of one, is neither in
- *   `blobs` nor held by `backend`.
+ * A blob that `backend` holds comes with its closure, so its links are not followed, apart from a
+ * root that `blobs` gives as well.
  */
 export async function leavesFirst(
   roots: Iterable<Link<unknown>>,

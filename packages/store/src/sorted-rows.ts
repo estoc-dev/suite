@@ -10,12 +10,7 @@ import {
   type Prefix,
 } from "./source.ts";
 
-/** The rows of an ordered index, each once however many of what the index reads give it. */
 export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
-  /**
-   * The rows that hold `prefix` in the first fields of the order, one value for each, in the order of
-   * the index.
-   */
   range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>>;
   /**
    * What the index, and each index it reads, failed on. These rows are short of whatever those
@@ -24,7 +19,6 @@ export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
   readonly failures: readonly ItemFailure[];
 }
 
-/** What a row holds in a field of the order, as rows are compared by it. */
 type KeyPart = number | string | Uint8Array | undefined;
 
 interface KeyedRow<F extends ValueMap> {
@@ -33,7 +27,6 @@ interface KeyedRow<F extends ValueMap> {
 }
 
 // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
-/** The rows of an ordered index in its order. */
 export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements Rows<F, By> {
   readonly #index: OrderedIndex<F, By>;
   readonly #derivedObjects: DerivedObjects<F>;
@@ -53,7 +46,6 @@ export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements
     return this.#derivedObjects.failures;
   }
 
-  /** The rows of `derivedObjects` in the order: those these are of, then any the index gave after them. */
   including(derivedObjects: DerivedObjects<F>): SortedRows<F, By> {
     if (derivedObjects === this.#derivedObjects) return this;
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
@@ -97,7 +89,6 @@ function keyPartOf(name: string, value: Value | undefined, { link }: Schema): Ke
   return objectFormat.encode(new ObjectValue(link, { [name]: value }));
 }
 
-/** A key comes before every longer key that starts with it. */
 function compareKeys(a: readonly KeyPart[], b: readonly KeyPart[]): number {
   for (let i = 0; i < a.length && i < b.length; i++) {
     const order = compareParts(a[i], b[i]);

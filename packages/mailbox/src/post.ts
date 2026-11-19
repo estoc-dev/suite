@@ -10,37 +10,19 @@ import type { Pickup } from "./pickup.ts";
 import { type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
-  /** The time in milliseconds since the Unix epoch, `Date.now` unless given. */
   readonly clock?: () => number;
 }
 
-/** A mark, written to a private store, that a bundle came in at a mailbox or went out to one. */
 export interface Delivery {
   readonly direction: "inbound" | "outbound";
-  /** The link of the bundle's root. */
   readonly bundle: Link<never>;
   readonly mailbox: Link<EncodedObject>;
-  /** When, in milliseconds since the Unix epoch, by the clock of the device that wrote the mark. */
   readonly at: number;
-  /** The link of the mark. */
   readonly link: Link<EncodedObject>;
 }
 
 type MailboxBytes = { readonly bytes: Bytes<EncodedObject> };
 
-/**
- * Sending and receiving with a store, through transports, with a private store and a secret store
- * beside the store.
- *
- * - What is sent is taken from the store, and what arrives is kept in it.
- * - Each is marked in the private store as a delivery, an object of `outboundSchema` or of
- *   `inboundSchema` in `@estoc/store`, listed with the private store's other marks for the
- *   application to read into its indexes. No bundle gathered from the store carries one.
- * - A mailbox that the user opens and a grant that the user signs are in the store, each with a
- *   record of it in the private store.
- * - The keys that open what arrives are objects of `mailboxKeySchema` in the secret store, so no
- *   bundle gathered from the store carries one either.
- */
 export class Post {
   readonly #store: Store;
   readonly #privateStore: PrivateStore;
@@ -49,7 +31,6 @@ export class Post {
   readonly #clock: () => number;
   readonly #intake: Intake;
 
-  /** `privateStore` and `secretStore` are each kept beside `store`. */
   constructor(
     store: Store,
     privateStore: PrivateStore,
@@ -64,26 +45,19 @@ export class Post {
     this.#intake = new Intake(store, privateStore, clock);
   }
 
-  /** Sending and reading as `actor`, by the Mailbox Grants and the identity versions the store holds. */
   correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Correspondence {
     const stores = { store: this.#store, privateStore: this.#privateStore };
     return new Correspondence(stores, this, actor, this.#clock, new MailboxGrants(identity), identity);
   }
 
-  /** A mailbox that the store holds, to send what the store holds to. */
   async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, (bundle) => this.#markOutbound(mailbox, bundle));
   }
 
   /**
-   * Opens a mailbox of the user's with a new key, to receive at. `makeMailbox` is given the public
-   * key and gives back a mailbox sealed to it, as the transport makes one. The mailbox is written
-   * to the store, then a record of it to the private store, and then its key to the secret store,
-   * so a stop in between leaves at most a mailbox that nobody receives at.
-   *
-   * @throws when the mailbox is of a transport the post was not given, or names another key;
-   *   nothing is written then.
+   * The mailbox is written to the store, then a record of it to the private store, and then its key
+   * to the secret store, so a stop in between leaves at most a mailbox that nobody receives at.
    */
   async openInbox(makeMailbox: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
     const secret = crypto.getRandomValues(new Uint8Array(32));
@@ -97,13 +71,6 @@ export class Post {
     return this.#inbox(mailbox, object.link, key);
   }
 
-  /**
-   * The inbox of a key that the secret store keeps, at the mailbox the key names, which the store
-   * holds.
-   *
-   * @throws when the key's secret is not of the public key the mailbox names: what it opens was
-   *   sealed to another mailbox.
-   */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#secretStore, key, mailboxKeySchema);
     const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
@@ -130,7 +97,6 @@ export class Post {
   }
 }
 
-/** A mailbox bound to a store, to send what the store holds to. */
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
@@ -142,27 +108,13 @@ export class Outbox {
     this.#mark = mark;
   }
 
-  /**
-   * Sends `root` and its closure in the store as a bundle, whoever wrote it, and once the transport
-   * takes the bundle, marks that it went out. Sending a root again sends the same bundle and
-   * writes another mark.
-   *
-   * @throws when the store does not hold `root` or a blob of its closure; nothing is sent then.
-   * @throws {UndeliveredMessage} when the transport cannot hand the bundle on; nothing is written
-   *   then.
-   */
   async send(root: Link<unknown>): Promise<Delivery> {
     await this.#mailbox.send(root, (await this.#store.closure(root)).values());
     return this.#mark(root as Link<never>);
   }
 }
 
-/** A mailbox of the user's bound to its key and a store, to keep what arrives there. */
 export class Inbox {
-  /**
-   * The link of the mailbox's key, which the secret store keeps, for `Post.inbox` to make this
-   * inbox again.
-   */
   readonly key: Link<EncodedObject<MailboxKeyData>>;
   readonly #mailbox: EncodedObject;
   readonly #opener: MailboxKey;
@@ -175,33 +127,17 @@ export class Inbox {
     this.#intake = intake;
   }
 
-  /** The link of the mailbox, which the store holds. */
   get mailbox(): Link<EncodedObject> {
     return this.#mailbox.link;
   }
 
-  /**
-   * Opens a ciphertext that arrived at the mailbox, and keeps the bundle inside with a mark that it
-   * came in. What arrives twice is marked twice, once for each time it came in.
-   *
-   * @throws when the ciphertext does not open with the mailbox's key; nothing is kept then.
-   * @throws {RefusedBatch} when the bundle leaves out a blob in its root's closure that the store
-   *   does not hold; nothing is kept then.
-   */
   async receive(ciphertext: Uint8Array): Promise<Delivery> {
     return this.#keep(await this.#opener.open(ciphertext));
   }
 
   /**
-   * Receives what waits at the mailbox, one arrival at a time, and gives back the marks it wrote.
-   *
-   * - It is done with each arrival once it is kept.
-   * - What does not open, and a bundle that the store refuses, are done with too and leave no
-   *   mark, rather than wait for the blobs a bundle leaves out to reach the store.
-   *
-   * @throws when `pickup` is of another mailbox; nothing is done with then.
-   * @throws when the store or the private store fails to write; that arrival is not done with, and
-   *   waits to be collected again.
+   * What does not open, and a bundle that the store refuses, are done with and leave no mark,
+   * rather than wait for the blobs a bundle leaves out to reach the store.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
     if (pickup.mailbox !== this.mailbox)

@@ -1,7 +1,6 @@
 import type { EncodedObject, Link } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 
-/** Keeps a store in memory, for tests and for a program that keeps nothing once it ends. */
 export class MemoryBackend implements Backend {
   readonly #blobs = new Map<Link<unknown>, Uint8Array>();
   readonly #listedLinks = new Set<Link<EncodedObject>>();

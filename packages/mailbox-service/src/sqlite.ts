@@ -3,16 +3,10 @@ import { type Link, linkOf } from "@estoc/object";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import type { Accounts } from "./server.ts";
 
-/** Keeps accounts in a SQLite file. */
 export class SqliteAccounts implements Accounts {
   readonly #database: DatabaseSync;
   readonly #sql: SQLTagStore;
 
-  /**
-   * Opens the file at `path`, making it when it is missing.
-   *
-   * @throws when the folder of `path` is missing, or the file is not a database.
-   */
   constructor(path: string) {
     this.#database = openDatabase(
       path,
@@ -29,22 +23,15 @@ export class SqliteAccounts implements Accounts {
     return this.#sql.get`SELECT 1 FROM accounts WHERE identifier = ${identifier}` !== undefined;
   }
 
-  /** Closes the file, after which every call rejects. */
   close(): void {
     this.#database.close();
   }
 }
 
-/** Keeps mailboxes, and the ciphertexts that wait at each, in a SQLite file. */
 export class SqliteMailboxes implements Mailboxes {
   readonly #database: DatabaseSync;
   readonly #sql: SQLTagStore;
 
-  /**
-   * Opens the file at `path`, making it when it is missing.
-   *
-   * @throws when the folder of `path` is missing, or the file is not a database.
-   */
   constructor(path: string) {
     this.#database = openDatabase(
       path,
@@ -125,7 +112,6 @@ export class SqliteMailboxes implements Mailboxes {
     for (const { ciphertext } of rows) yield ciphertext as Uint8Array;
   }
 
-  /** Closes the file, after which every call rejects. */
   close(): void {
     this.#database.close();
   }

@@ -47,14 +47,6 @@ describe("a mailbox", () => {
     await expect(mailbox.send(linkOf(text), [text])).rejects.toThrow(/the root of a bundle is an object/);
     expect(queue.take()).toEqual([]);
   });
-
-  it("rejects a send to a queue that its network does not have, as undelivered to a mailbox that is gone", async () => {
-    const elsewhere = new MemoryNetwork();
-    const mailbox = await mailboxFrom(elsewhere.queue().mailbox(bob.publicKey).bytes, options);
-    const sending = mailbox.send(hello.link, [hello.bytes]);
-    await expect(sending).rejects.toThrow(UndeliveredMessage);
-    await expect(sending).rejects.toMatchObject({ kind: "gone" });
-  });
 });
 
 // Mailboxes of transports that wrote their schemas by hand, each with a key that is not one.
@@ -82,10 +74,17 @@ describe("a mailbox from bytes", () => {
     await expect(mailboxFrom(mailbox, { transports: [] })).rejects.toThrow(/no transport takes/);
   });
 
+  it("is refused as undelivered to a mailbox that is gone when its transport has no route to it", async () => {
+    const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey).bytes;
+    const making = mailboxFrom(elsewhere, options);
+    await expect(making).rejects.toThrow(UndeliveredMessage);
+    await expect(making).rejects.toMatchObject({ kind: "gone" });
+  });
+
   it.each(looseMailboxes)(
     "is refused when it %s, where its transport's schema let it through",
     async (_, loose, data) => {
-      const transport: Transport = { schema: loose, deliver: async () => undefined };
+      const transport: Transport = { schema: loose, routeTo: () => ({ deliver: async () => undefined }) };
       const mailbox = objectFormat.encode(new ObjectValue(loose.link, loose.validate(data)));
       await expect(mailboxFrom(mailbox, { transports: [transport] })).rejects.toThrow(/a mailbox/);
     },

@@ -154,9 +154,7 @@ describe("an HTTP mailbox's url", () => {
     ["to a host whose name only starts as this machine's", "http://localhost.mail.example/inbox"],
     ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
     ["not a URL", "https://mail example/alice"],
-  ])("turns a send back as to a mailbox that is gone when it is %s, and posts nothing", async (_, url) => {
-    const fetch = mockFetch();
-    expect(await rejectedAs((await mailboxAt(url)).send(hello.link, [hello.bytes]))).toBe("gone");
-    expect(fetch).not.toHaveBeenCalled();
+  ])("turns the mailbox back as one that is gone when it is %s", async (_, url) => {
+    expect(await rejectedAs(mailboxAt(url))).toBe("gone");
   });
 });

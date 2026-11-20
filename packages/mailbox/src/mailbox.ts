@@ -14,14 +14,22 @@ import { publicKeyFrom, seal } from "./key.ts";
  * A transport carries ciphertexts even where it encrypts on its own: a message is kept, passed on
  * and can arrive late, so the layer from end to end is the same whatever carries it.
  */
-export interface Transport {
-  readonly schema: Schema;
+export interface Transport<F extends ValueMap = ValueMap> {
+  readonly schema: Schema<F>;
+  /**
+   * Throws `UndeliveredMessage` when the mailbox names a place that no route reaches, so that a
+   * sender turns back that mailbox alone.
+   */
+  routeTo(mailbox: F): Route;
+}
+
+export interface Route {
   /**
    * Resolving says only that the ciphertext was handed on: nothing confirms that a message arrived,
    * and none is sent again. It rejects with `UndeliveredMessage` when the ciphertext cannot be
    * handed on.
    */
-  deliver(mailbox: ValueMap, ciphertext: Uint8Array): Promise<void>;
+  deliver(ciphertext: Uint8Array): Promise<void>;
 }
 
 /**
@@ -44,24 +52,24 @@ export interface Options {
 }
 
 export class Mailbox {
-  readonly #data: ValueMap;
+  readonly link: Link<EncodedObject>;
   readonly #key: CryptoKey;
-  readonly #transport: Transport;
+  readonly #route: Route;
 
-  constructor(data: ValueMap, key: CryptoKey, transport: Transport) {
-    this.#data = data;
+  constructor(link: Link<EncodedObject>, key: CryptoKey, route: Route) {
+    this.link = link;
     this.#key = key;
-    this.#transport = transport;
+    this.#route = route;
   }
 
   async send(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Promise<void> {
-    await this.#transport.deliver(this.#data, await seal(this.#key, encodeBundle(root, blobs)));
+    await this.#route.deliver(await seal(this.#key, encodeBundle(root, blobs)));
   }
 }
 
 export async function mailboxFrom(bytes: Bytes<EncodedObject>, { transports }: Options): Promise<Mailbox> {
-  const { data, transport } = readMailbox(bytes, transports);
-  return new Mailbox(data, await publicKeyFrom(data.key), transport);
+  const { mailbox, data, transport } = readMailbox(bytes, transports);
+  return new Mailbox(mailbox.link, await publicKeyFrom(data.key), transport.routeTo(data));
 }
 
 export function readMailbox(

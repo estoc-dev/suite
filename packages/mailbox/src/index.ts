@@ -7,7 +7,7 @@ export {
   mailboxGrantRowSchema,
 } from "./grant.ts";
 export { MailboxKey } from "./key.ts";
-export { type Mailbox, mailboxFrom, type Options, type Transport, UndeliveredMessage } from "./mailbox.ts";
+export { type Mailbox, mailboxFrom, type Options, type Route, type Transport, UndeliveredMessage } from "./mailbox.ts";
 export type { Arrival, Pickup } from "./pickup.ts";
 export { type Delivery, type Inbox, type Outbox, Post, type PostOptions } from "./post.ts";
 export {

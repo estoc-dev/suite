@@ -52,7 +52,7 @@ export class Post {
 
   async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
     const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
-    return new Outbox(boundMailbox, this.#store, (bundle) => this.#markOutbound(mailbox, bundle));
+    return new Outbox(boundMailbox, this.#store, this.#privateStore, this.#clock);
   }
 
   /**
@@ -88,29 +88,33 @@ export class Post {
     if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
     return bytes;
   }
-
-  async #markOutbound(mailbox: Link<EncodedObject>, bundle: Link<never>): Promise<Delivery> {
-    const at = this.#clock();
-    const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
-    await this.#privateStore.write({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
-    return { direction: "outbound", bundle, mailbox, at, link: mark.link };
-  }
 }
 
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
-  readonly #mark: (bundle: Link<never>) => Promise<Delivery>;
+  readonly #privateStore: PrivateStore;
+  readonly #clock: () => number;
 
-  constructor(mailbox: Mailbox, store: Store, mark: (bundle: Link<never>) => Promise<Delivery>) {
+  constructor(mailbox: Mailbox, store: Store, privateStore: PrivateStore, clock: () => number) {
     this.#mailbox = mailbox;
     this.#store = store;
-    this.#mark = mark;
+    this.#privateStore = privateStore;
+    this.#clock = clock;
+  }
+
+  get mailbox(): Link<EncodedObject> {
+    return this.#mailbox.link;
   }
 
   async send(root: Link<unknown>): Promise<Delivery> {
     await this.#mailbox.send(root, (await this.#store.closure(root)).values());
-    return this.#mark(root as Link<never>);
+    const { mailbox } = this;
+    const bundle = root as Link<never>;
+    const at = this.#clock();
+    const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
+    await this.#privateStore.write({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
+    return { direction: "outbound", bundle, mailbox, at, link: mark.link };
   }
 }
 

@@ -90,7 +90,9 @@ describe("an outbox", () => {
     const { store, privateStore, post, queue, mailbox } = await prepareSender(network);
     await store.write({ roots: [signature.link], blobs: signatureBlobs });
 
-    const delivery = await (await post.outbox(mailbox.link)).send(signature.link);
+    const outbox = await post.outbox(mailbox.link);
+    expect(outbox.mailbox).toBe(mailbox.link);
+    const delivery = await outbox.send(signature.link);
     expect(delivery).toEqual({
       direction: "outbound",
       bundle: signature.link,
@@ -129,17 +131,26 @@ describe("an outbox", () => {
 
   it("marks nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
     const network = new MemoryNetwork();
-    const sender = await prepareSender(network);
-    const { store, privateStore, post } = sender;
+    const { store, privateStore, post, queue, mailbox } = await prepareSender(network);
     await store.write({ roots: [signature.link], blobs: signatureBlobs });
-    const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
-    await handOver(network, sender, elsewhere);
+    queue.turnBack("gone");
     const before = await listedIn(privateStore);
 
-    const sending = (await post.outbox(elsewhere.link)).send(signature.link);
+    const sending = (await post.outbox(mailbox.link)).send(signature.link);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
     await expect(sending).rejects.toMatchObject({ kind: "gone" });
     expect(await listedIn(privateStore)).toEqual(before);
+  });
+
+  it("is not made for a mailbox that the transport has no route to, and rejects as the transport does", async () => {
+    const network = new MemoryNetwork();
+    const sender = await prepareSender(network);
+    const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
+    await handOver(network, sender, elsewhere);
+
+    const making = sender.post.outbox(elsewhere.link);
+    await expect(making).rejects.toThrow(UndeliveredMessage);
+    await expect(making).rejects.toMatchObject({ kind: "gone" });
   });
 
   it("refuses a root that the store does not hold, and sends nothing", async () => {

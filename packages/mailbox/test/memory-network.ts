@@ -1,7 +1,14 @@
-import { type EncodedObject, encodeObject, type Link, type ValueMap } from "@estoc/object";
-import { string } from "@estoc/schema";
+import { type EncodedObject, encodeObject, type Link } from "@estoc/object";
+import { type DataOf, string } from "@estoc/schema";
 import { hex } from "@scure/base";
-import { type Arrival, mailboxSchema, type Pickup, type Transport, UndeliveredMessage } from "../src/index.ts";
+import {
+  type Arrival,
+  mailboxSchema,
+  type Pickup,
+  type Route,
+  type Transport,
+  UndeliveredMessage,
+} from "../src/index.ts";
 
 /** Faults a network puts in the way of every message, as a real channel may. */
 export interface Faults {
@@ -33,9 +40,16 @@ export interface Queue {
   take(): Uint8Array[];
   /** The one ciphertext that waits, which leaves the queue; throws unless exactly one does. */
   takeOne(): Uint8Array;
+  /** From then on, a delivery to this queue is turned back as `kind`. */
+  turnBack(kind: UndeliveredMessage["kind"]): void;
 }
 
 type QueuedMessage = { readonly ciphertext: Uint8Array };
+
+interface QueueState {
+  readonly waiting: QueuedMessage[];
+  turnedBackAs?: UndeliveredMessage["kind"];
+}
 
 const schema = mailboxSchema("Memory mailbox", { name: string() });
 
@@ -46,22 +60,23 @@ const schema = mailboxSchema("Memory mailbox", { name: string() });
  * someone else's.
  */
 export class MemoryNetwork {
-  readonly transport: Transport;
+  readonly transport: Transport<DataOf<typeof schema>>;
   readonly #faults: Faults;
-  readonly #queues = new Map<string, QueuedMessage[]>();
+  readonly #queues = new Map<string, QueueState>();
   #deliveries = 0;
   #dones = 0;
 
   constructor(faults: Faults = {}) {
     this.#faults = faults;
-    this.transport = { schema, deliver: async (mailbox, ciphertext) => this.#deliver(mailbox, ciphertext) };
+    this.transport = { schema, routeTo: ({ name }) => this.#routeTo(name) };
   }
 
   queue(): Queue {
     const name = hex.encode(crypto.getRandomValues(new Uint8Array(16)));
-    const waiting: QueuedMessage[] = [];
+    const state: QueueState = { waiting: [] };
+    const { waiting } = state;
     const mailboxes = new Set<Link<EncodedObject>>();
-    this.#queues.set(name, waiting);
+    this.#queues.set(name, state);
     const take = () => {
       const takenCiphertexts = waiting.splice(0).map(({ ciphertext }) => ciphertext);
       return this.#faults.reversed ? takenCiphertexts.reverse() : takenCiphertexts;
@@ -84,6 +99,9 @@ export class MemoryNetwork {
         if (ciphertext === undefined || takenCiphertexts.length > 1)
           throw new Error(`${takenCiphertexts.length} messages arrived, not one`);
         return ciphertext;
+      },
+      turnBack: (kind) => {
+        state.turnedBackAs = kind;
       },
     };
   }
@@ -108,9 +126,14 @@ export class MemoryNetwork {
     if (at !== -1) waiting.splice(at, 1);
   }
 
-  #deliver({ name }: ValueMap, ciphertext: Uint8Array): void {
-    const waiting = typeof name === "string" ? this.#queues.get(name) : undefined;
-    if (waiting === undefined) throw new UndeliveredMessage("gone", `no queue is named ${String(name)}`);
+  #routeTo(name: string): Route {
+    const state = this.#queues.get(name);
+    if (state === undefined) throw new UndeliveredMessage("gone", `no queue is named ${name}`);
+    return { deliver: async (ciphertext) => this.#deliver(state, ciphertext) };
+  }
+
+  #deliver({ waiting, turnedBackAs }: QueueState, ciphertext: Uint8Array): void {
+    if (turnedBackAs !== undefined) throw new UndeliveredMessage(turnedBackAs, "the queue turns it back");
     if (this.#faults.lost?.(this.#deliveries++)) return;
     // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
     waiting.push({ ciphertext: ciphertext.slice() });

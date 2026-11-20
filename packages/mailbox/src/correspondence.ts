@@ -62,16 +62,13 @@ export class Correspondence {
     const mailboxes = grant?.object.data.mailboxes ?? [];
     if (mailboxes.length === 0)
       throw new UndeliveredMessage("gone", `${from} grants ${this.#actor.identifier} no mailbox`);
-    const outboxes = await Promise.all(mailboxes.map(({ link }) => this.#post.outbox(link)));
+    const outboxes = await Promise.all(mailboxes.map(({ link }) => undeliveredOr(this.#post.outbox(link))));
     const deliveries: Delivery[] = [];
     const turnedBack: UndeliveredMessage[] = [];
     for (const outbox of outboxes) {
-      try {
-        deliveries.push(await outbox.send(root));
-      } catch (error) {
-        if (!(error instanceof UndeliveredMessage)) throw error;
-        turnedBack.push(error);
-      }
+      const sent = outbox instanceof UndeliveredMessage ? outbox : await undeliveredOr(outbox.send(root));
+      if (sent instanceof UndeliveredMessage) turnedBack.push(sent);
+      else deliveries.push(sent);
     }
     if (deliveries.length > 0) return deliveries;
     throw turnedBack.find(({ kind }) => kind === "later") ?? turnedBack[0];
@@ -107,5 +104,14 @@ export class Correspondence {
     } catch {
       return undefined;
     }
+  }
+}
+
+async function undeliveredOr<T>(sending: Promise<T>): Promise<T | UndeliveredMessage> {
+  try {
+    return await sending;
+  } catch (error) {
+    if (error instanceof UndeliveredMessage) return error;
+    throw error;
   }
 }

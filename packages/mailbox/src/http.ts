@@ -1,6 +1,5 @@
-import type { ValueMap } from "@estoc/object";
-import { string } from "@estoc/schema";
-import { type Transport, UndeliveredMessage } from "./mailbox.ts";
+import { type DataOf, string } from "@estoc/schema";
+import { type Route, type Transport, UndeliveredMessage } from "./mailbox.ts";
 import { mailboxSchema } from "./schema.ts";
 
 // Plain http is for the receiver's own machine alone, as in development or
@@ -8,19 +7,21 @@ import { mailboxSchema } from "./schema.ts";
 // see when and how much arrives, and could hold messages back unseen.
 const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?([/?#]|$))/;
 
+const schema = mailboxSchema("HTTP mailbox", { url: string() });
+
 /**
  * The body goes as `application/octet-stream`, so a server that browsers post to answers their CORS
  * preflight for it.
  */
-export const httpTransport = {
-  schema: mailboxSchema("HTTP mailbox", { url: string() }),
-  deliver,
-} satisfies Transport;
+export const httpTransport: Transport<DataOf<typeof schema>> = { schema, routeTo };
 
-async function deliver(mailbox: ValueMap, ciphertext: Uint8Array): Promise<void> {
-  const { url } = mailbox as { readonly url: string };
+function routeTo({ url }: DataOf<typeof schema>): Route {
   if (!allowedUrl.test(url) || !URL.canParse(url))
     throw new UndeliveredMessage("gone", "an HTTP mailbox is at an https url, or an http url of this machine");
+  return { deliver: (ciphertext) => deliverTo(url, ciphertext) };
+}
+
+async function deliverTo(url: string, ciphertext: Uint8Array): Promise<void> {
   let response: Response;
   try {
     response = await fetch(url, {

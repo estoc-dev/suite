@@ -6,9 +6,11 @@ import {
   type Scheme,
   type Signature,
   type Signatures,
+  type SignedIdentities,
   type SignedIdentityObject,
   type Signer,
 } from "@estoc/identity";
+import type { Keyring } from "@estoc/keyring";
 import {
   type Bytes,
   type EncodedObject,
@@ -143,6 +145,10 @@ class MailboxService {
     this.#accounts = accounts;
     this.#mailboxes = mailboxes;
     this.#clock = clock;
+  }
+
+  get identifier(): Link<unknown> {
+    return this.#actor.identifier;
   }
 
   /** It answers any origin, since no request carries credentials. */
@@ -396,16 +402,39 @@ function bundleAnswer(status: number, file: Uint8Array): Response {
   return new Response(file, { status, headers: { "access-control-allow-origin": "*", "content-type": BUNDLE_TYPE } });
 }
 
+/**
+ * Signs the first identity version of `root` unless the store holds one, and records the current
+ * one in the private store, so that a service over that private store signs as that identity.
+ */
+export async function setUpMailboxService(
+  keyring: Pick<Keyring, "signerFor">,
+  root: Link<unknown>,
+  {
+    store,
+    privateStore,
+    schemes,
+    at,
+  }: Pick<ServiceOptions, "store" | "privateStore" | "schemes"> & { readonly at: number },
+): Promise<SignedIdentityObject> {
+  const kit = loadIdentity(schemes);
+  const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
+  const signedIdentity = (await person?.current()) ?? (await kit.publish(await signerAmong(keyring, [root]), { at }));
+  await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
+  await privateStore.write(recordsOf([signedIdentity.link], at));
+  return signedIdentity;
+}
+
 export async function loadMailboxService(
-  signer: Signer,
+  keyring: Pick<Keyring, "signerFor">,
   { origin, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store, privateStore } = options;
   const kit = loadIdentity(schemes);
-  const { keys, signatures, publish } = kit;
-  const identifier: Link<unknown> = keys.encode(signer.key).link;
+  const { signatures } = kit;
+  const recorded = await (await view(privateStore, recordedIdentityView(kit.signedIdentities))).signedIdentity();
+  const { identifier } = recorded.identity;
   const identity = new LinkValue(identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
@@ -419,8 +448,12 @@ export async function loadMailboxService(
   const locations = await view(store, locationsView(signatures));
   const people = await view(store, seenPeople);
   const at = clock();
-  const signedIdentity =
-    (await (await people.personIdentifiedBy(identifier))?.current()) ?? (await publish(signer, { at }));
+  const signedIdentity = await people.current(recorded);
+  const { root, agents } = signedIdentity.identity;
+  const signer = await signerAmong(
+    keyring,
+    [root, ...agents].map(({ link }) => link),
+  );
   const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
     (await view(store, seenPeople)).current(inHand),
   );
@@ -437,6 +470,50 @@ export async function loadMailboxService(
     await writeSigned(await actor.sign(object), blobs, at, { store, privateStore });
   }
   return new MailboxService(actor, kit, seenPeople, { ...options, clock });
+}
+
+async function signerAmong(keyring: Pick<Keyring, "signerFor">, keys: readonly Link<unknown>[]): Promise<Signer> {
+  for (const key of keys) {
+    const signer = await keyring.signerFor(key);
+    if (signer !== undefined) return signer;
+  }
+  throw new Error(`the keyring holds the Secret Key of none of ${keys.join(", ")}`);
+}
+
+const recordedIdentitySchema = schema("Recorded identity version", { identifier: link(), signedIdentity: link() });
+
+type RecordedIdentityView = View<
+  DataOf<typeof recordedIdentitySchema>,
+  readonly ["identifier", "signedIdentity"],
+  { signedIdentity(): Promise<SignedIdentityObject> }
+>;
+
+function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdentityView {
+  return {
+    index: indexOver(
+      selectedRecords(objectsOf(signedIdentities.schema)),
+      recordedIdentitySchema,
+      async function* ({ link }, reader) {
+        const { identifier } = (await signedIdentities.read(link, reader)).identity;
+        yield { identifier: new LinkValue(identifier), signedIdentity: new LinkValue(link) };
+      },
+    ).orderedBy("identifier", "signedIdentity"),
+    read: (rows, reader) => ({
+      async signedIdentity() {
+        const identifiers = new Set<Link<unknown>>();
+        let recorded: Link<unknown> | undefined;
+        for await (const { data } of rows.range([])) {
+          identifiers.add(data.identifier.link);
+          recorded = data.signedIdentity.link;
+        }
+        if (recorded === undefined || identifiers.size > 1)
+          throw new Error(
+            `the private store records identity versions of ${identifiers.size} identities, where a service takes one`,
+          );
+        return signedIdentities.read(recorded, reader);
+      },
+    }),
+  };
 }
 
 async function writeSigned(

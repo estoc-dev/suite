@@ -1,6 +1,15 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, loadIdentity, type SignedIdentityObject, type Signer } from "@estoc/identity";
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, type Reader, readObject } from "@estoc/object";
+import {
+  decodeObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectsOf,
+  type Reader,
+  readObject,
+} from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
@@ -37,6 +46,7 @@ import {
   serviceIdentity,
   serviceRoot,
   serviceSigner,
+  setUpService,
   signatures,
   signedAtOrigins,
   signedIdentities,
@@ -56,6 +66,12 @@ const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
 const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(privateStoreBeside(store))).sort();
+async function recordedSignaturesOf(store: Store) {
+  const links: Link<never>[] = [];
+  for (const link of await recordedObjectsOf(store))
+    if ((await objectsOf(signatures.schema).read(link, store)) !== undefined) links.push(link);
+  return links;
+}
 /** Read by a kit of its own, as a client reads a response, so that what the test signed is read from the bundle. */
 const signatureIn = (bundle: Reader, link: Link<unknown>) => loadIdentity(schemes).signatures.read(link, bundle);
 
@@ -345,7 +361,7 @@ describe("a mailbox service", () => {
     const response = await postAcceptance(service, await body(service));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toBe("");
-    expect(await recordedObjectsOf(store)).toEqual([(await rootOf(service)).signature.link]);
+    expect(await recordedSignaturesOf(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
   it("answers 413 to a body of more than 64 KiB", async () => {
@@ -464,13 +480,14 @@ describe("a mailbox service", () => {
       },
     };
     const store = memoryStore();
+    await setUpService({ store, start: 10_000 });
     const starts = await Promise.all(
       ["https://one.example", "https://two.example"].map((origin) =>
         memoryService({ store, by, origin, start: 10_000 }),
       ),
     );
     const serviceSignatures = await Promise.all(
-      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store)),
+      (await recordedSignaturesOf(store)).map((link) => signatures.read(link, store)),
     );
     const ats = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data.at),
@@ -498,6 +515,19 @@ describe("a mailbox service first started on a store that holds identity version
     expect(await people.honors(await signatures.actor(agent, listing, identityVersionInHand).sign(offer))).toBe(true);
   });
 
+  it("signs by an agent that the current one lists, when its keyring holds the Secret Key of that agent and not of its root", async () => {
+    const store = memoryStore();
+    const agent = signer(ed25519, 21);
+    const listing = await publish(serviceSigner, { agents: [agent.key], at: 500 });
+    await store.write({ roots: [listing.link], blobs: listing.blobs });
+    await setUpService({ store });
+    const { service } = await memoryService({ store, by: agent });
+    const { signature, offer } = await rootOf(service);
+    expect(signature.key.link).toBe(keys.encode(agent.key).link);
+    expect(signature.signedIdentity.link).toBe(listing.link);
+    expect(offer.data).toEqual({ identity: new LinkValue(serviceRoot.link) });
+  });
+
   it("signs as the crisis among them, and answers with the Service it signed", async () => {
     const store = memoryStore();
     const first = await publish(serviceSigner, { at: 500 });
@@ -515,7 +545,7 @@ describe("a mailbox service started again", () => {
     const first = new Uint8Array(await (await getRoot(service)).arrayBuffer());
     const { service: again } = await memoryService({ store, start: 9_000 });
     expect(new Uint8Array(await (await getRoot(again)).arrayBuffer())).toEqual(first);
-    expect(await recordedObjectsOf(store)).toHaveLength(1);
+    expect(await recordedSignaturesOf(store)).toHaveLength(1);
   });
 
   it("at another origin signs a new Service, which lists the offers that the one before lists", async () => {
@@ -524,7 +554,7 @@ describe("a mailbox service started again", () => {
     const { service: moved } = await memoryService({ store, origin: "https://post.example", start: 9_000 });
     const after = await rootOf(moved);
     expect(after.data).toEqual({ ...before.data, origin: "https://post.example", at: 9_000 });
-    expect(await recordedObjectsOf(store)).toEqual([before.signature.link, after.signature.link].sort());
+    expect(await recordedSignaturesOf(store)).toEqual([before.signature.link, after.signature.link].sort());
     expect((await post(moved, after.acceptId, (await directAcceptance(after.offer)).file)).status).toBe(201);
   });
 
@@ -670,7 +700,7 @@ describe("a mailbox service started again", () => {
     const { service: movedService } = await memoryService({ store, origin: "https://post.example", start: 1_000 });
     expect((await rootOf(movedService)).data).toEqual(before.data);
     const serviceSignatures = await Promise.all(
-      (await recordedObjectsOf(store)).map((link) => signatures.read(link, store)),
+      (await recordedSignaturesOf(store)).map((link) => signatures.read(link, store)),
     );
     const services = await Promise.all(
       serviceSignatures.map(async ({ object }) => (await readObject(store, object, serviceSchema)).data),
@@ -1034,7 +1064,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     const response = await postMailboxRequest(service, file);
     expect(response.status).toBe(403);
     expect(await response.text()).toMatch(/has no account here/);
-    expect(await recordedObjectsOf(store)).toEqual([(await rootOf(service)).signature.link]);
+    expect(await recordedSignaturesOf(store)).toEqual([(await rootOf(service)).signature.link]);
   });
 
   it("answers 403 to a request by an agent that a later identity version of its root removed, though its identifier has an account", async () => {

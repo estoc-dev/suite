@@ -843,50 +843,69 @@ class WatchedBackend extends MemoryBackend {
 }
 
 describe("a mailbox service whose store holds a later identity version than a request carries", () => {
+  // The service reads the identity versions its store holds before it reads a request's body, and
+  // keeps one it has read. So the store takes a later version while the body comes in, for the
+  // service to read after it, and `onRead` runs at the first read of that version.
   async function serviceHoldingLaterVersion(options: Parameters<typeof memoryService>[0] = {}) {
     const backend = new WatchedBackend();
     const store = new Store(backend);
     const actor = await actorOf(alice);
-    const laterVersion = await publish(alice, { prior: actor.signedIdentity, at: 2_000 });
-    await store.write({ roots: [laterVersion.link], blobs: laterVersion.blobs });
     const { service } = await memoryService({ ...options, store });
-    const runOnLaterVersionRead = (act: (() => void) | undefined) => {
-      backend.onGet = act && ((link) => link === laterVersion.link && act());
+    let latest = actor.signedIdentity;
+    const postHoldingLaterVersion = (id: string, file: Uint8Array, onRead: () => void) => {
+      const body = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            const laterVersion = await publish(alice, { prior: latest, at: latest.identity.at + 1_000 });
+            latest = laterVersion;
+            await store.write({ roots: [laterVersion.link], blobs: laterVersion.blobs });
+            backend.onGet = (link) => {
+              if (link !== laterVersion.link) return;
+              backend.onGet = undefined;
+              onRead();
+            };
+            controller.enqueue(file);
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      return service.fetch(request(`/${id}`, { method: "POST", body, duplex: "half" } as RequestInit));
     };
-    return { service, actor, runOnLaterVersionRead, root: await rootOf(service) };
+    return { service, actor, postHoldingLaterVersion, root: await rootOf(service) };
   }
 
   it("signs an acknowledgement at when the request came in, however long reading that version takes", async () => {
     const clock = { now: 1_000 };
-    const { service, actor, runOnLaterVersionRead, root } = await serviceHoldingLaterVersion({ clock });
+    const { actor, postHoldingLaterVersion, root } = await serviceHoldingLaterVersion({ clock });
     const acceptance = await actor.sign(root.offer);
+    const acceptanceFile = encodeBundle(acceptance.link, acceptance.blobs);
     const request = await mailboxRequest(actor, root.mailbox.offer);
 
     clock.now = 2_000;
-    runOnLaterVersionRead(() => {
+    const account = await postHoldingLaterVersion(root.acceptId, acceptanceFile, () => {
       clock.now = 5_000;
     });
-    const account = await post(service, root.acceptId, encodeBundle(acceptance.link, acceptance.blobs));
+    expect(clock.now).toBe(5_000);
     expect(account.status).toBe(201);
     expect((await acknowledgementIn(account)).acknowledgement.data.at).toBe(2_000);
 
     clock.now = 6_000;
-    runOnLaterVersionRead(() => {
+    const mailbox = await postHoldingLaterVersion(root.mailbox.acceptId, request.file, () => {
       clock.now = 9_000;
     });
-    const mailbox = await post(service, root.mailbox.acceptId, request.file);
+    expect(clock.now).toBe(9_000);
     expect(mailbox.status).toBe(201);
     expect((await mailboxAcknowledgementIn(mailbox)).acknowledgement.data.at).toBe(6_000);
   });
 
   it("throws when reading that version fails, and answers the same request once it is read", async () => {
-    const { service, actor, runOnLaterVersionRead, root } = await serviceHoldingLaterVersion();
+    const { service, actor, postHoldingLaterVersion, root } = await serviceHoldingLaterVersion();
     async function postAfterFailedRead(id: string, body: Uint8Array) {
-      runOnLaterVersionRead(() => {
+      const failingRead = () => {
         throw new Error("the read failed");
-      });
-      await expect(post(service, id, body)).rejects.toThrow("the read failed");
-      runOnLaterVersionRead(undefined);
+      };
+      await expect(postHoldingLaterVersion(id, body, failingRead)).rejects.toThrow("the read failed");
       return post(service, id, body);
     }
 

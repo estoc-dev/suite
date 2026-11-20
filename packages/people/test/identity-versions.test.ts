@@ -133,6 +133,7 @@ describe("the selection of identity versions", () => {
 
   it("refuses a signed identity whose identity the reader does not give, by the reader's error", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
+    const { selection } = new IdentityVersions(loadIdentity([ed25519]).signedIdentities);
     const failingReader = {
       get: async (link: Link<unknown>) => {
         if (link === signedIdentity.link) return bytesOf(signedIdentity);

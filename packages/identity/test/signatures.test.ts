@@ -14,7 +14,7 @@ import {
 } from "@estoc/object";
 import { rootSchema, schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { describe, expect, it, test, vi } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
 import {
   type CurveScheme,
   ed25519,
@@ -29,7 +29,15 @@ import {
   signatureSchema,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink as blobsByLink, bytesOf, dataOf, identityVersionInHand, schemaLinkOf, schemes } from "./fixtures.ts";
+import {
+  byLink as blobsByLink,
+  bytesOf,
+  dataOf,
+  freshKit,
+  identityVersionInHand,
+  schemaLinkOf,
+  schemes,
+} from "./fixtures.ts";
 
 const { identities, signatures, publish } = loadIdentity(schemes);
 const verifiedBy = async (by: Signatures, bytes: Uint8Array, blobs: Reader = new Map()) =>
@@ -103,7 +111,7 @@ describe("a signature", () => {
 
   it("is refused without the blobs of its identity", async () => {
     const signature = await sign(hello, signer(ed25519));
-    await expect(verified(bytesOf(signature))).rejects.toThrow(/no blob is given/);
+    await expect(verifiedBy(freshKit().signatures, bytesOf(signature))).rejects.toThrow(/no blob is given/);
   });
 
   it.each<[string, (fields: ValueMap) => ValueMap]>([
@@ -150,6 +158,42 @@ describe("a signature", () => {
     const unverified = rewritten(signature, { object: new LinkValue(goodbye.link) });
     expect(decodeObject(unverified, signatureSchema).data).toMatchObject({ object: new LinkValue(goodbye.link) });
     await expect(verified(unverified, identityOf(signature))).rejects.toThrow(/does not verify/);
+  });
+});
+
+describe("signatures", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("give a signature they have read again, without asking the reader or verifying it again", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const { signatures } = freshKit();
+    const read = await signatures.read(signature.link, blobsByLink(signature.blobs));
+    const verify = vi.spyOn(ed25519, "verify");
+    expect(await signatures.read(signature.link, new Map())).toEqual(read);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("give a signature their actor signed without asking the reader", async () => {
+    const by = signer(ed25519);
+    const { signatures, publish } = freshKit();
+    const signature = await signatures.actor(by, await publish(by), identityVersionInHand).sign(hello);
+    expect(await signatures.read(signature.link, new Map())).toEqual(signature);
+  });
+
+  it("read a signature by a signed identity they have read, verifying the signature alone", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const { signatures, signedIdentities } = freshKit();
+    await signedIdentities.read(signature.signedIdentity.link, identityOf(signature));
+    const verify = vi.spyOn(ed25519, "verify");
+    expect(await signatures.read(signature.link, blobsByLink([bytesOf(signature)]))).toEqual(signature);
+    expect(verify).toHaveBeenCalledOnce();
+  });
+
+  it("read a signature they were refused for a blob the reader did not give, once a reader gives it", async () => {
+    const signature = await sign(hello, signer(ed25519));
+    const { signatures } = freshKit();
+    await expect(signatures.read(signature.link, blobsByLink([bytesOf(signature)]))).rejects.toThrow(AbsentBlob);
+    expect(await signatures.read(signature.link, blobsByLink(signature.blobs))).toEqual(signature);
   });
 });
 
@@ -241,8 +285,8 @@ describe("what a signature signs", () => {
 
 describe("the implementation of the signature schema", () => {
   const { implementation } = signatures;
-  const read = async (bytes: Uint8Array, blobs: Reader = new Map()) =>
-    implementation.read(decodeObject(bytes, implementation.schema), blobs);
+  const read = async (bytes: Uint8Array, blobs: Reader = new Map(), by = implementation) =>
+    by.read(decodeObject(bytes, by.schema), blobs);
 
   it("reads a signature as verifying it does", async () => {
     const signature = await sign(hello, signer(ed25519));
@@ -266,7 +310,9 @@ describe("the implementation of the signature schema", () => {
 
   it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
     const signature = await sign(hello, signer(ed25519));
-    const error = await read(bytesOf(signature)).catch((error: unknown) => error);
+    const error = await read(bytesOf(signature), new Map(), freshKit().signatures.implementation).catch(
+      (error: unknown) => error,
+    );
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });
@@ -303,7 +349,10 @@ describe("the selection of the signatures over objects of a schema", () => {
   it("refuses a signature without the blob of its signed identity, by an error that has its link", async () => {
     const signature = await sign(hello, signer(ed25519));
     const reader = readerOf(bytesOf(signature), hello.bytes);
-    const error = await notes.read(signature.link, reader).catch((error: unknown) => error);
+    const error = await freshKit()
+      .signatures.selectionOver(note)
+      .read(signature.link, reader)
+      .catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signature.signedIdentity.link);
   });

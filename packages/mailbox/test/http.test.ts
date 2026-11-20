@@ -63,6 +63,10 @@ const mailboxTo = (url: string) => {
   return mailboxAt(mailbox.link, mailbox, options);
 };
 const take = () => requests.splice(0);
+const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
+const postedBy = (fetch: ReturnType<typeof mockFetch>) =>
+  fetch.mock.calls.map((call) => new globalThis.Request(...call));
+afterEach(() => vi.restoreAllMocks());
 
 async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage["kind"]> {
   const error = await sending.then(
@@ -81,6 +85,15 @@ describe("an HTTP mailbox", () => {
     assert.exists(request);
     expect(request).toMatchObject({ method: "POST", path: "/inbox", type: "application/octet-stream" });
     expect((await bob.open(request.body)).root).toEqual(hello.bytes);
+  });
+
+  it("sends each message with no referrer and no credentials", async () => {
+    const fetch = mockFetch();
+    const mailbox = await mailboxTo("https://mail.example/alice");
+    await mailbox.send(hello.link, [hello.bytes]);
+    await mailbox.send(hello.link, [hello.bytes]);
+    const sent = { referrerPolicy: "no-referrer", credentials: "omit" };
+    expect(postedBy(fetch)).toMatchObject([sent, sent]);
   });
 
   it.each<[number, UndeliveredMessage["kind"]]>([
@@ -136,9 +149,6 @@ describe("an HTTP outbox", () => {
 });
 
 describe("an HTTP transport's url", () => {
-  const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
-  afterEach(() => vi.restoreAllMocks());
-
   it.each([
     "https://mail.example/alice",
     "http://localhost:8080/inbox",
@@ -147,7 +157,7 @@ describe("an HTTP transport's url", () => {
   ])("may be %s", async (url) => {
     const fetch = mockFetch();
     await (await mailboxTo(url)).send(hello.link, [hello.bytes]);
-    expect(fetch.mock.calls.map(([posted]) => (posted as globalThis.Request).url)).toEqual([new URL(url).href]);
+    expect(postedBy(fetch).map(({ url }) => url)).toEqual([new URL(url).href]);
   });
 
   it.each([

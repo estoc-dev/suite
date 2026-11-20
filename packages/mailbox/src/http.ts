@@ -8,6 +8,17 @@ const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9
 
 const transportSchema = schema("HTTP transport", { url: string() });
 
+const post: RequestInit = {
+  method: "POST",
+  headers: { "content-type": "application/octet-stream" },
+  // A redirect would take the bytes to a url that the mailbox does not
+  // name, and that need not be one a mailbox may name. A browser does
+  // not tell it from no answer, so it rejects as one.
+  redirect: "error",
+  credentials: "omit",
+  referrerPolicy: "no-referrer",
+};
+
 /**
  * The body goes as `application/octet-stream`, so a server that browsers post to answers their CORS
  * preflight for it.
@@ -15,36 +26,28 @@ const transportSchema = schema("HTTP transport", { url: string() });
 export const httpTransport: Transport<DataOf<typeof transportSchema>> = { schema: transportSchema, routeTo };
 
 function routeTo({ url }: DataOf<typeof transportSchema>): Route {
-  const request = allowedUrl.test(url) ? requestTo(url) : undefined;
-  if (request === undefined)
+  if (!allowedUrl.test(url) || !fetchAccepts(url))
     throw new UndeliveredMessage("gone", "an HTTP transport names an https url, or an http url of this machine");
-  return { deliver: (ciphertext) => deliverWith(request, ciphertext) };
+  return { deliver: (ciphertext) => deliverTo(url, ciphertext) };
 }
 
-// Fetch refuses some urls that parse, as one with a user name, so the request
-// is made with the route, and such a url is turned back as gone rather than
-// at each send as one to send later.
-function requestTo(url: string): Request | undefined {
+// Fetch refuses some urls that parse, as one with a user name, so such a url
+// is turned back as gone with the route rather than at each send as one to
+// send later. The request made here is not kept for the sends, since fetch
+// resets the referrer policy of a request it is given with options.
+function fetchAccepts(url: string): boolean {
   try {
-    return new Request(url, {
-      method: "POST",
-      headers: { "content-type": "application/octet-stream" },
-      // A redirect would take the bytes to a url that the mailbox does not
-      // name, and that need not be one a mailbox may name. A browser does
-      // not tell it from no answer, so it rejects as one.
-      redirect: "error",
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-    });
+    new Request(url, post);
+    return true;
   } catch {
-    return undefined;
+    return false;
   }
 }
 
-async function deliverWith(request: Request, ciphertext: Uint8Array): Promise<void> {
+async function deliverTo(url: string, ciphertext: Uint8Array): Promise<void> {
   let response: Response;
   try {
-    response = await fetch(request, { body: ciphertext });
+    response = await fetch(url, { ...post, body: ciphertext });
   } catch (error) {
     throw new UndeliveredMessage("later", "the mailbox's server did not answer", { cause: error });
   }

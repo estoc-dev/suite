@@ -131,12 +131,12 @@ async function writeMailbox(store: Store, url: string) {
     roots: [mailbox.link],
     blobs: [mailbox.bytes, ...mailboxSchema.blobs, transport.bytes, ...http.schema.blobs],
   });
-  return { mailbox, transport };
+  return mailbox;
 }
 
 /** Keeps `bundle` in `store` as come in at a mailbox elsewhere. */
 async function receiveAtMailbox(store: Store, bundle: Bundle) {
-  const { mailbox } = await writeMailbox(store, `https://elsewhere.example/${"1".repeat(32)}`);
+  const mailbox = await writeMailbox(store, `https://elsewhere.example/${"1".repeat(32)}`);
   await new Intake(store, privateStoreBeside(store)).receive(bundle, mailbox);
 }
 
@@ -763,7 +763,7 @@ describe("a mailbox that a service opened", () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const { mailbox } = await writeMailbox(store, `${origin}/${"0".repeat(32)}`);
+    const mailbox = await writeMailbox(store, `${origin}/${"0".repeat(32)}`);
     await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/lists no mark of opening/);
   });
 });
@@ -810,7 +810,7 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const { mailbox } = await writeMailbox(store, `${origin}/${sendId}`);
+    const mailbox = await writeMailbox(store, `${origin}/${sendId}`);
     await new Intake(store, privateStoreBeside(store)).receive(acknowledgement, mailbox);
     return { services, mailbox };
   }

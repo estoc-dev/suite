@@ -66,6 +66,17 @@ test.each([
   expect(await checkScheme(scheme, SoftwareSigner.fromSecretKey(scheme, secretKey), reencoded)).toEqual([]);
 });
 
+test.each([
+  { name: "Ed25519", curve: ed25519Curve },
+  { name: "secp256k1", curve: secp256k1Curve },
+])("the $name curve draws another secret key each time, and signs with each", ({ curve }) => {
+  const drawn = [curve.randomSecretKey(), curve.randomSecretKey()];
+  expect(drawn[0]).not.toEqual(drawn[1]);
+  const message = new Uint8Array(32).fill(9);
+  for (const secret of drawn)
+    expect(curve.verify(curve.sign(message, secret), message, curve.publicKeyOf(secret))).toBe(true);
+});
+
 describe("a scheme", () => {
   it("that takes high s breaks the rule of one encoding for each signature", async () => {
     const lax = curveScheme(

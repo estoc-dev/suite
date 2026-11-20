@@ -4,6 +4,7 @@ import type { Scheme } from "./interface.ts";
 
 export interface Curve {
   readonly publicKeyLength: number;
+  randomSecretKey(): Uint8Array;
   publicKeyOf(secretKey: Uint8Array): Uint8Array;
   sign(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
   verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
@@ -40,6 +41,7 @@ export function curveScheme(
 // messages, so their holder could later deny which one was signed.
 export const ed25519Curve: Curve = {
   publicKeyLength: 32,
+  randomSecretKey: () => ed25519.utils.randomSecretKey(),
   publicKeyOf: (secretKey) => ed25519.getPublicKey(secretKey),
   sign: (message, secretKey) => ed25519.sign(message, secretKey),
   verify: (signature, message, publicKey) => ed25519.verify(signature, message, publicKey, { zip215: false }),
@@ -56,6 +58,7 @@ export const ed25519Curve: Curve = {
  */
 export const secp256k1Curve: Curve = {
   publicKeyLength: 33,
+  randomSecretKey: () => secp256k1.utils.randomSecretKey(),
   publicKeyOf: (secretKey) => secp256k1.getPublicKey(secretKey, true),
   sign: (hash, secretKey) => secp256k1.sign(hash, secretKey, { prehash: false }),
   verify: (signature, hash, publicKey) => secp256k1.verify(signature, hash, publicKey, { prehash: false, lowS: true }),

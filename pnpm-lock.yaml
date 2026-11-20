@@ -149,6 +149,31 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@26.6.5)(happy-dom@21.0.4)
 
+  packages/keyring:
+    dependencies:
+      '@estoc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@estoc/object':
+        specifier: workspace:*
+        version: link:../object
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@estoc/store':
+        specifier: workspace:*
+        version: link:../store
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.5
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@26.6.5)(happy-dom@21.0.4)
+
   packages/lineage:
     dependencies:
       '@estoc/object':
@@ -216,6 +241,9 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@estoc/keyring':
+        specifier: workspace:*
+        version: link:../keyring
       '@estoc/mailbox':
         specifier: workspace:*
         version: link:../mailbox

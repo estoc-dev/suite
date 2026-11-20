@@ -517,17 +517,15 @@ describe("a mailbox service first started on a store that holds identity version
     expect(await people.honors(await signatures.actor(agent, listing, identityVersionInHand).sign(offer))).toBe(true);
   });
 
-  it("signs by an agent that the current one lists, when its keyring holds the Secret Key of that agent and not of its root", async () => {
+  it("refuses to start when its keyring holds the Secret Key of an agent that the current one lists and not of its root", async () => {
     const store = memoryStore();
     const agent = signer(ed25519, 21);
     const listing = await publish(serviceSigner, { agents: [agent.key], at: 500 });
     await store.write({ roots: [listing.link], blobs: listing.blobs });
     await setUpService({ store });
-    const { service } = await memoryService({ store, by: agent });
-    const { signature, offer } = await rootOf(service);
-    expect(signature.key.link).toBe(keys.encode(agent.key).link);
-    expect(signature.signedIdentity.link).toBe(listing.link);
-    expect(offer.data).toEqual({ identity: new LinkValue(serviceRoot.link) });
+    await expect(memoryService({ store, by: agent })).rejects.toThrow(
+      `the keyring does not hold the Secret Key of ${serviceRoot.link}`,
+    );
   });
 
   it("signs as the crisis among them, and answers with the Service it signed", async () => {

@@ -21,8 +21,10 @@ node packages/mailbox-service/src/main.ts setup
 
 `main.ts setup` makes the three files that the environment names, each a
 SQLite file that its owner alone reads, and refuses where any of them is
-there, making none. The secret store holds a new Ed25519 Secret Key of
-`@estoc/identity`, the root of the service's identity. The database holds
+there, making none. A setup that fails once it has made them leaves them,
+so remove the three files before running it again. The secret store holds a
+new Ed25519 Secret Key of `@estoc/identity`, the root of the service's
+identity. The database holds
 the first identity version, which the root signs, and the private store
 records it, so the service signs as that identity from then on. It prints
 the identifier of the identity. The service is named by that identifier, so
@@ -45,13 +47,12 @@ on its own, when it changes, and those two often.
 | `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
 | `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
 
-It signs as the identity whose versions its private store records, by the
-first key of the current version whose Secret Key the secret store holds,
-the root before the agents. It refuses to start without its three files, or
+It signs as the identity whose versions its private store records, by its
+root, which each version lists. It refuses to start without its three files,
 when the private store records versions of no identity or of more than one,
-or when the secret store holds the Secret Key of no key that the current
-version lists. Once it serves, it writes a line with its origin, where it
-listens and the identifier of its identity. It speaks plain
+or when the secret store does not hold the Secret Key of the root. Once it
+serves, it writes a line with its origin, where it listens and the
+identifier of its identity. It speaks plain
 HTTP, for a proxy in front of it that holds the TLS certificate. It writes a line
 for each request, with its method, its status and how long it took. On
 SIGTERM it takes no more requests, answers those it took, and closes the
@@ -107,8 +108,8 @@ store, so a copy of the database holds all that
 an earlier copy of the private store records. Restore the two together, from
 one such pair, with the service stopped. A private store that is later than
 the database beside it can record a signature that the database does not
-hold, and the service then fails each request to open an account. An
-account that the database holds with no record of its acknowledgement gets
+hold, and the service then fails to start. An account that the database
+holds with no record of its acknowledgement gets
 a new acknowledgement when its acceptance is posted again.
 
 `src/smoke.ts` checks a running service:

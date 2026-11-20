@@ -140,13 +140,13 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(stderr).toContain("the private store records identity versions of 0 identities");
   });
 
-  it("refuses to start with a secret store that holds the Secret Key of none of the keys its identity version lists", async () => {
+  it("refuses to start with a secret store that does not hold the Secret Key of its root", async () => {
     const settings = await settingsAtFreePort();
-    await run(main, ["setup"], settings);
+    const { stdout } = await run(main, ["setup"], settings);
     await replaceWithEmptyDatabase(settings.MAILBOX_SECRET_STORE);
     const { code, stderr } = await run(main, [], settings);
     expect(code).toBe(1);
-    expect(stderr).toContain("the keyring holds the Secret Key of none of");
+    expect(stderr).toContain(`the keyring does not hold the Secret Key of ${stdout.trim()}`);
   });
 });
 

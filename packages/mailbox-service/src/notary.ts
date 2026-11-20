@@ -79,7 +79,7 @@ export async function setUpNotary(
   { kit, store, privateStore, at }: NotaryOptions & { readonly at: number },
 ): Promise<SignedIdentityObject> {
   const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
-  const signedIdentity = (await person?.current()) ?? (await kit.publish(await signerAmong(keyring, [root]), { at }));
+  const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
   await privateStore.write(recordsOf([signedIdentity.link], at));
   return signedIdentity;
@@ -92,21 +92,18 @@ export async function loadNotary(
   const { kit, store, privateStore } = options;
   const recorded = await (await view(privateStore, recordedIdentityView(kit.signedIdentities))).signedIdentity();
   const currentOf = async (inHand: SignedIdentityObject) => (await view(store, people)).current(inHand);
-  const signedIdentity = await currentOf(recorded);
-  const { root, agents } = signedIdentity.identity;
-  const signer = await signerAmong(
-    keyring,
-    [root, ...agents].map(({ link }) => link),
-  );
-  return new Notary(kit.signatures.actor(signer, signedIdentity, currentOf), { ...options, clock });
+  const signer = await rootSigner(keyring, recorded.identity.root.link);
+  return new Notary(kit.signatures.actor(signer, recorded, currentOf), { ...options, clock });
 }
 
-async function signerAmong(keyring: Pick<Keyring, "signerFor">, keys: readonly Link<unknown>[]): Promise<Signer> {
-  for (const key of keys) {
-    const signer = await keyring.signerFor(key);
-    if (signer !== undefined) return signer;
-  }
-  throw new Error(`the keyring holds the Secret Key of none of ${keys.join(", ")}`);
+/**
+ * The root is the one key that each identity version lists, so a version that the store takes in
+ * while the service runs still lists the key that a notary signs by.
+ */
+async function rootSigner(keyring: Pick<Keyring, "signerFor">, root: Link<unknown>): Promise<Signer> {
+  const signer = await keyring.signerFor(root);
+  if (signer === undefined) throw new Error(`the keyring does not hold the Secret Key of ${root}`);
+  return signer;
 }
 
 const recordedIdentitySchema = schema("Recorded identity version", { identifier: link(), signedIdentity: link() });
@@ -122,9 +119,9 @@ function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdent
     index: indexOver(
       selectedRecords(objectsOf(signedIdentities.schema)),
       recordedIdentitySchema,
-      async function* ({ link }, reader) {
-        const { identifier } = (await signedIdentities.read(link, reader)).identity;
-        yield { identifier: new LinkValue(identifier), signedIdentity: new LinkValue(link) };
+      async function* (object, reader) {
+        const { identifier } = (await signedIdentities.verify(object, reader)).identity;
+        yield { identifier: new LinkValue(identifier), signedIdentity: new LinkValue(object.link) };
       },
     ).orderedBy("identifier", "signedIdentity"),
     read: (rows, reader) => ({

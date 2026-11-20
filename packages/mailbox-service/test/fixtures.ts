@@ -77,13 +77,12 @@ export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 
 
 export const serviceSigner = signer(ed25519, 9);
 export const serviceRoot = keys.encode(serviceSigner.key);
-/** The Identity a service by `serviceSigner` signs when it first starts, at `start`. */
+/** The Identity that a service by `serviceSigner` signs when it is set up at `start`. */
 export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, { at: start });
 /** An actor for that Identity, which signs as the service does. */
 export const serviceActor = async (start: number) =>
   actorSigningBy(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));
 
-/** Sets up the service of `by`, as `main.ts setup` does, at `start`. */
 export async function setUpService({
   start = 1_000,
   by = serviceSigner,

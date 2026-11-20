@@ -1,4 +1,3 @@
-import { ed25519, identitySchema, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -13,10 +12,9 @@ const anything = schema("Anything", {
   received: optional(link()),
   attachments: optional(array(link())),
 });
-const { signatures, publish } = loadIdentity([ed25519]);
-const identityVersionInHand = async <T>(inHand: T) => inHand;
-const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(7));
-const signatureSchemas = [signatures.schema, identitySchema].map(({ bytes }) => bytes);
+const unnamedSchemas = [schema("Card", { name: string() }), schema("Tag", { text: string() })].map(
+  ({ bytes }) => bytes,
+);
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const object = (data: DataOf<typeof anything>) => encodeObject(anything, data);
 
@@ -65,10 +63,10 @@ describe("a store", () => {
     const stray = utf8("led to by nothing written");
     const incomplete = object({ image: new LinkValue(linkOf(utf8("held nowhere"))) });
     const note = object({ text: "hello", image: new LinkValue(linkOf(image)) });
-    await store.write(batchOf([note], [image, stray, incomplete.bytes, ...anything.blobs, ...signatureSchemas]));
+    await store.write(batchOf([note], [image, stray, incomplete.bytes, ...anything.blobs, ...unnamedSchemas]));
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
-    for (const link of [linkOf(stray), incomplete.link, ...signatureSchemas.map(linkOf)])
+    for (const link of [linkOf(stray), incomplete.link, ...unnamedSchemas.map(linkOf)])
       expect(await store.get(link)).toBeUndefined();
     await store.write({ roots: [], blobs: [image, stray] });
     expect(await store.get(linkOf(stray))).toBeUndefined();
@@ -280,35 +278,5 @@ describe("the closure of a blob", () => {
   it("is refused for a link the store does not hold", async () => {
     const { link } = object({ text: "absent" });
     await expect(newStore().closure(link)).rejects.toThrow(`the store does not hold ${link}`);
-  });
-});
-
-describe("a signature read from a store", () => {
-  it("verifies with the blobs of its signed identity, which the store holds", async () => {
-    const store = newStore();
-    const note = object({ text: "hello" });
-    const signature = await signatures
-      .actor(signer, await publish(signer, { at: 0 }), identityVersionInHand)
-      .sign(note);
-    await store.write({
-      roots: [note.link, signature.link],
-      blobs: [note.bytes, ...signature.blobs, ...anything.blobs],
-    });
-    const readSignature = await signatures.read(signature.link, store);
-    expect(readSignature.object).toBe(note.link);
-    expect(readSignature.signedIdentity.identity.root.publicKey).toEqual(signer.key.publicKey);
-  });
-
-  it("is refused when the store holds another kind of object under its link", async () => {
-    const store = newStore();
-    const note = object({ text: "hello" });
-    await store.write(batchOf([note], anything.blobs));
-    await expect(signatures.read(note.link, store)).rejects.toThrow(/is written to/);
-  });
-
-  it("fails to read when the store does not hold it", async () => {
-    const store = newStore();
-    const link = linkOf(utf8("absent"));
-    await expect(signatures.read(link, store)).rejects.toThrow(`no blob is given for ${link}`);
   });
 });

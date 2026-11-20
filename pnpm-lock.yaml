@@ -52,9 +52,6 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1
     devDependencies:
-      '@estoc/identity':
-        specifier: workspace:*
-        version: link:../identity
       '@estoc/schema':
         specifier: workspace:*
         version: link:../schema
@@ -317,9 +314,6 @@ importers:
       '@estoc/bundle':
         specifier: workspace:*
         version: link:../bundle
-      '@estoc/identity':
-        specifier: workspace:*
-        version: link:../identity
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.5

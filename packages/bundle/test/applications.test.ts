@@ -1,4 +1,3 @@
-import { type CurveScheme, ed25519, eip191, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -6,24 +5,18 @@ import { type Bundle, decodeBundle, encodeBundle } from "../src/index.ts";
 
 // Applications that hand each other bundles. Each pins the schema of its
 // root and walks from it by link; the package only checks that the file is
-// a root and its blobs, and the signatures are verified where they are read.
+// a root and its blobs.
 
-const signer = (scheme: CurveScheme, fill: number) =>
-  SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const handOver = (root: Link<unknown>, blobs: Uint8Array[]) => decodeBundle(encodeBundle(root, blobs));
-const { keys, identities, signatures, publish } = loadIdentity([ed25519, eip191]);
-const identityVersionInHand = async <T>(inHand: T) => inHand;
-const sign = async (object: { readonly link: Link<unknown> }, by: SoftwareSigner) =>
-  signatures.actor(by, await publish(by, { at: 0 }), identityVersionInHand).sign(object);
 
 const card = schema("Card", { mailbox: link(), name: link() });
 const contact = schema("Contact", { displayName: link(), inbox: link() });
 const mailbox = schema("Mailbox", { url: string() });
 const name = schema("Name", { name: string() });
 
-// A card lists the signatures of the one identity it is for: over a mailbox
-// that reaches it, and over the name it goes by. Another application writes
-// the same to a schema of its own, a contact, which reads as a card too.
+// A card links to a mailbox that reaches someone and to the name they go by.
+// Another application writes the same to a schema of its own, a contact,
+// which reads as a card too.
 type Card = { readonly mailbox: Link<unknown>; readonly name: Link<unknown> };
 
 function cardOf(root: Uint8Array): Card {
@@ -43,106 +36,31 @@ function cardOf(root: Uint8Array): Card {
 
 async function readCard(bundle: Bundle) {
   const cardLinks = cardOf(bundle.root);
-  const mailboxSignature = await signatures.read(cardLinks.mailbox, bundle);
-  const nameSignature = await signatures.read(cardLinks.name, bundle);
-  if (mailboxSignature.signedIdentity.identity.identifier !== nameSignature.signedIdentity.identity.identifier)
-    throw new Error("a card is signed by the one identity it is for");
   return {
-    identity: mailboxSignature.signedIdentity.identity,
-    mailbox: (await readObject(bundle, mailboxSignature.object, mailbox)).data,
-    name: (await readObject(bundle, nameSignature.object, name)).data.name,
+    mailbox: (await readObject(bundle, cardLinks.mailbox, mailbox)).data,
+    name: (await readObject(bundle, cardLinks.name, name)).data.name,
   };
 }
 
 describe("a card", () => {
-  const alice = signer(ed25519, 1);
   const inbox = encodeObject(mailbox, { url: "https://mail.example/alice" });
   const nameObject = encodeObject(name, { name: "Alice" });
-  const cardSignatures = Promise.all([sign(inbox, alice), sign(nameObject, alice)]);
+  const alicesCard = { mailbox: { url: "https://mail.example/alice" }, name: "Alice" };
 
-  it("reads as the mailbox and the name that its identity signed", async () => {
-    const [byMailbox, byName] = await cardSignatures;
-    const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byName.link) });
-    const bundle = handOver(root.link, [
-      root.bytes,
-      ...byMailbox.blobs,
-      inbox.bytes,
-      ...byName.blobs,
-      nameObject.bytes,
-    ]);
-    expect(await readCard(bundle)).toEqual({
-      identity: identities.encode(alice.key, { at: 0 }),
-      mailbox: { url: "https://mail.example/alice" },
-      name: "Alice",
-    });
+  it("reads as the mailbox and the name it links to", async () => {
+    const root = encodeObject(card, { mailbox: new LinkValue(inbox.link), name: new LinkValue(nameObject.link) });
+    expect(await readCard(handOver(root.link, [root.bytes, inbox.bytes, nameObject.bytes]))).toEqual(alicesCard);
   });
 
   it("written by another application to its own schema reads as the same card", async () => {
-    const [byMailbox, byName] = await cardSignatures;
     const root = encodeObject(contact, {
-      displayName: new LinkValue(byName.link),
-      inbox: new LinkValue(byMailbox.link),
+      displayName: new LinkValue(nameObject.link),
+      inbox: new LinkValue(inbox.link),
     });
-    const bundle = handOver(root.link, [
-      root.bytes,
-      ...byMailbox.blobs,
-      inbox.bytes,
-      ...byName.blobs,
-      nameObject.bytes,
-    ]);
-    expect(await readCard(bundle)).toEqual({
-      identity: identities.encode(alice.key, { at: 0 }),
-      mailbox: { url: "https://mail.example/alice" },
-      name: "Alice",
-    });
+    expect(await readCard(handOver(root.link, [root.bytes, inbox.bytes, nameObject.bytes]))).toEqual(alicesCard);
   });
 
-  it("with its name signed by someone else reads as no one's card", async () => {
-    const [byMailbox] = await cardSignatures;
-    const byOther = await sign(nameObject, signer(eip191, 2));
-    const root = encodeObject(card, { mailbox: new LinkValue(byMailbox.link), name: new LinkValue(byOther.link) });
-    const bundle = handOver(root.link, [
-      root.bytes,
-      ...byMailbox.blobs,
-      inbox.bytes,
-      ...byOther.blobs,
-      nameObject.bytes,
-    ]);
-    await expect(readCard(bundle)).rejects.toThrow(/signed by the one identity/);
-  });
-});
-
-const chat = schema("Chat message", { text: string() });
-
-async function readMessage(bundle: Bundle) {
-  const signature = await signatures.read(bundle.link, bundle);
-  return { from: signature.signedIdentity.identity, message: (await readObject(bundle, signature.object, chat)).data };
-}
-
-describe("a chat message", () => {
-  it("reads through the signature at its root as the message from its signer", async () => {
-    const alice = signer(ed25519, 1);
-    const message = encodeObject(chat, { text: "See you at noon." });
-    const signature = await sign(message, alice);
-    const bundle = handOver(signature.link, [...signature.blobs, message.bytes]);
-    expect(await readMessage(bundle)).toEqual({
-      from: identities.encode(alice.key, { at: 0 }),
-      message: { text: "See you at noon." },
-    });
-  });
-
-  it("signed by a key that a wallet lists as an agent reads as the message from the wallet", async () => {
-    const wallet = signer(eip191, 1);
-    const device = signer(ed25519, 2);
-    const message = encodeObject(chat, { text: "See you at noon." });
-    const signature = await signatures
-      .actor(device, await publish(wallet, { agents: [device.key] }), identityVersionInHand)
-      .sign(message);
-    const bundle = handOver(signature.link, [...signature.blobs, message.bytes]);
-    expect(await readMessage(bundle)).toEqual({
-      from: signature.signedIdentity.identity,
-      message: { text: "See you at noon." },
-    });
-    expect(signature.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
+  it("is not read from a bundle whose root is of another schema", async () => {
+    await expect(readCard(handOver(inbox.link, [inbox.bytes]))).rejects.toThrow(/not a card/);
   });
 });

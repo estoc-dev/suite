@@ -1,13 +1,4 @@
-import {
-  ed25519,
-  eip191,
-  isSameKey,
-  type KeyObject,
-  loadIdentity,
-  SoftwareSigner,
-  solanaOffchain,
-  verify,
-} from "@estoc/identity";
+import { ed25519, eip191, isSameKey, loadIdentity, SoftwareSigner, solanaOffchain, verify } from "@estoc/identity";
 import type { Link } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
@@ -21,9 +12,9 @@ function keyringOver(backend = new MemoryBackend(), store = new Store(new Memory
   return new Keyring(store, backend, secretKeys);
 }
 
-async function linksOf(keys: AsyncIterable<KeyObject>): Promise<Link<unknown>[]> {
+async function linksOf(keys: AsyncIterable<Link<unknown>>): Promise<Link<unknown>[]> {
   const links = [];
-  for await (const { link } of keys) links.push(link);
+  for await (const link of keys) links.push(link);
   return links;
 }
 
@@ -38,8 +29,10 @@ describe("a keyring", () => {
   });
 
   it("gives no signer for a key it does not hold", async () => {
+    const keyring = keyringOver();
+    await keyring.generate(ed25519);
     const other = keys.encode(SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1)).key);
-    expect(await keyringOver().signerFor(other.link)).toBeUndefined();
+    expect(await keyring.signerFor(other.link)).toBeUndefined();
   });
 
   it("lists each key it generates", async () => {
@@ -50,12 +43,17 @@ describe("a keyring", () => {
     expect(new Set(await linksOf(keyring.keys()))).toEqual(new Set([first.link, second.link]));
   });
 
-  it("holds its keys in the backend it is given, so a keyring made again over it signs with them", async () => {
+  it("holds its keys in the backend it is given, so a keyring made again over it signs with each", async () => {
     const backend = new MemoryBackend();
-    const key = await keyringOver(backend).generate(ed25519);
+    const keyring = keyringOver(backend);
+    const held = [await keyring.generate(ed25519), await keyring.generate(ed25519)];
     const again = keyringOver(backend);
-    expect(await linksOf(again.keys())).toEqual([key.link]);
-    expect(await again.signerFor(key.link)).toBeDefined();
+    expect(new Set(await linksOf(again.keys()))).toEqual(new Set(held.map(({ link }) => link)));
+    for (const key of held) {
+      const signer = await again.signerFor(key.link);
+      assert.exists(signer);
+      expect(verify(key, digest, await signer.sign(digest))).toBe(true);
+    }
   });
 
   it("writes nothing to the store beside it", async () => {

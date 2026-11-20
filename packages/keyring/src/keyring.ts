@@ -9,10 +9,7 @@ const byKey = indexOver(selectedSecrets(objectsOf(secretKeySchema)), heldKeySche
   { key: data.key, secretKey: new LinkValue(link) },
 ]).orderedBy("key");
 
-/**
- * Its secrets leave it as signers alone. The backend is the keyring's: code given the backend, or a
- * secret store over it, reads the secrets.
- */
+/** Give it a backend of its own: code given that backend, or a secret store over it, reads the secrets. */
 export class Keyring {
   readonly #secretStore: SecretStore;
   readonly #secretKeys: SecretKeys;
@@ -28,9 +25,8 @@ export class Keyring {
     return secretKey.key;
   }
 
-  async *keys(): AsyncIterable<KeyObject> {
-    for await (const { data } of (await scan(this.#secretStore, byKey)).range([]))
-      yield (await this.#secretKeys.read(data.secretKey.link, this.#secretStore)).key;
+  async *keys(): AsyncIterable<Link<unknown>> {
+    for await (const { data } of (await scan(this.#secretStore, byKey)).range([])) yield data.key.link;
   }
 
   async signerFor(key: Link<unknown>): Promise<Signer | undefined> {

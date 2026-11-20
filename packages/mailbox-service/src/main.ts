@@ -90,7 +90,7 @@ async function makeSecretStore(path: string): Promise<void> {
 
 async function keyIn(keyring: Keyring, path: string): Promise<Link<unknown>> {
   const keys: Link<unknown>[] = [];
-  for await (const { link } of keyring.keys()) keys.push(link);
+  for await (const link of keyring.keys()) keys.push(link);
   const [key, ...others] = keys;
   if (key === undefined || others.length > 0)
     throw new Error(`${path} holds ${keys.length} Secret Keys, where the service takes one`);

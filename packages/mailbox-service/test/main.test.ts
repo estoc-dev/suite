@@ -15,7 +15,6 @@ import { makeTemporaryPath } from "./fixtures.ts";
 const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const smoke = fileURLToPath(new URL("../src/smoke.ts", import.meta.url));
 
-/** Runs `script` with `args`, and the environment with `settings`, to its end. */
 async function run(script: string, args: readonly string[], settings: Readonly<Record<string, string>> = {}) {
   const child = spawn(process.execPath, [script, ...args], { env: { ...process.env, ...settings } });
   let stdout = "";
@@ -30,7 +29,6 @@ async function run(script: string, args: readonly string[], settings: Readonly<R
   return { code, stdout, stderr };
 }
 
-/** Settings for a service at a free port of 127.0.0.1, which keeps its stores and its database in a folder of its own. */
 async function settingsAtFreePort() {
   const database = await makeTemporaryPath();
   const probe = createServer().listen(0, "127.0.0.1");
@@ -60,7 +58,6 @@ async function start(settings: Readonly<Record<string, string>>) {
   child.stdout.resume();
   return {
     line,
-    /** Asks it to stop, resolving to its exit code once it has. */
     async stop() {
       child.kill("SIGTERM");
       const [code] = await once(child, "exit");
@@ -75,7 +72,7 @@ async function keysAt(path: string) {
   onTestFinished(() => backend.close());
   const keyring = new Keyring(new Store(new MemoryBackend()), backend, secretKeys);
   const keys = [];
-  for await (const { link } of keyring.keys()) keys.push(link);
+  for await (const link of keyring.keys()) keys.push(link);
   return keys;
 }
 

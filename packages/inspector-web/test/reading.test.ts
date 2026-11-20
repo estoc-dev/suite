@@ -13,7 +13,7 @@ import { AbsentBlob, encodeObject, type Link, LinkValue, linkOf, ObjectValue, ob
 import { schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { bodyReading } from "../src/body-reading.ts";
-import { readingOf } from "../src/reading.ts";
+import { fileReadingsOf, readingOf } from "../src/reading.ts";
 import { readings } from "../src/readings.ts";
 import { signatureReading } from "../src/signature-reading.ts";
 
@@ -22,7 +22,7 @@ const readerOf = (blobs: readonly Uint8Array[]) =>
 
 async function readingAt(bytes: Uint8Array, others: readonly Uint8Array[] = []) {
   const reader = readerOf([bytes, ...others]);
-  return readingOf(await inspect(linkOf(bytes), reader), reader, readings);
+  return readingOf(await inspect(linkOf(bytes), reader), reader, fileReadingsOf(readings));
 }
 
 function bytesOf({ link, blobs }: Signature): Uint8Array {
@@ -74,7 +74,8 @@ describe("the reading of what a link reads as", () => {
 
   it("is nothing for bytes that are not an object, and for a link with no blob", async () => {
     expect(await readingAt(Uint8Array.of(0, 10, 255))).toBeUndefined();
-    expect(await readingOf(await inspect(body.link, readerOf([])), readerOf([]), readings)).toBeUndefined();
+    const reader = readerOf([]);
+    expect(await readingOf(await inspect(body.link, reader), reader, fileReadingsOf(readings))).toBeUndefined();
   });
 
   it.each(schemes)(

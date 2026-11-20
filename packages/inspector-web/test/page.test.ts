@@ -1,8 +1,9 @@
 import { markdownBodyOf, markdownBodySchema, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
+import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import { fragmentOf } from "../src/address.ts";
 import { latestOnly } from "../src/latest.ts";
 import { type Page, pageOf, readFile } from "../src/page.ts";
@@ -15,6 +16,13 @@ const albumFile = new File([encodeBundle(album.link, [album.bytes, photo])], "al
 const body = markdownBodyOf("## Identity\n");
 const post = encodeObject(postSchema, { title: "Identity", date: "2026-10-20", body: new LinkValue(body.link) });
 const postFile = new File([encodeBundle(post.link, [post.bytes, body.bytes])], "post.eof");
+
+const { publish, signatures } = loadIdentity([ed25519]);
+const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+const signature = await signatures.actor(root, await publish(root, { at: 0 }), async (inHand) => inHand).sign(body);
+const signatureBytes = signature.blobs.find((blob) => linkOf(blob) === signature.link);
+assert.exists(signatureBytes);
+const signatureFile = new File([encodeBundle(signature.link, [...signature.blobs, body.bytes])], "signature.eof");
 
 const removal = new Error("the file was removed");
 
@@ -80,6 +88,24 @@ describe("the page of a file", () => {
   it("has no more than the fields of an object of a schema the page does not read", async () => {
     const page = await pageOf(readFile(postFile), "");
     expect(page).toMatchObject({ inspection: { link: post.link }, reading: undefined });
+  });
+
+  it("has a signature it has read in its file again, without verifying it again", async () => {
+    const fileTask = readFile(signatureFile);
+    expect(await pageOf(fileTask, "")).toMatchObject({ reading: { kind: "read", value: { link: signature.link } } });
+    await pageOf(fileTask, fragmentOf(body.link));
+    const verify = vi.spyOn(ed25519, "verify");
+    onTestFinished(() => verify.mockRestore());
+    expect(await pageOf(fileTask, "")).toMatchObject({ reading: { kind: "read", value: { link: signature.link } } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("is read from its file alone, though a file opened before gives what it lacks", async () => {
+    await pageOf(readFile(signatureFile), "");
+    const alone = new File([encodeBundle(signature.link, [signatureBytes])], "signature-alone.eof");
+    expect(await pageOf(readFile(alone), "")).toMatchObject({
+      reading: { kind: "unread", error: { link: signature.signedIdentity.link } },
+    });
   });
 
   it("is the failure of a file that could not be read, at any fragment", async () => {

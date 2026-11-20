@@ -1,6 +1,6 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
+import { type Actor, ed25519, eip191, loadIdentity, type SignedIdentityObject, type Signer } from "@estoc/identity";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, type Reader, readObject } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
@@ -32,6 +32,7 @@ import {
   privateStoreBeside,
   publish,
   recordedObjectsIn,
+  schemes,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -55,10 +56,12 @@ const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
 const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(privateStoreBeside(store))).sort();
+/** Read by a kit of its own, as a client reads a response, so that what the test signed is read from the bundle. */
+const signatureIn = (bundle: Reader, link: Link<unknown>) => loadIdentity(schemes).signatures.read(link, bundle);
 
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   const { data } = await readObject(bundle, signature.object, serviceSchema);
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
@@ -118,7 +121,7 @@ function heldSigner(signer: Signer) {
 
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchema) };
 }
 
@@ -148,7 +151,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 5_001 });
-    const read = await signatures.read(acceptance.signature.link, bundle);
+    const read = await signatureIn(bundle, acceptance.signature.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
   });
@@ -181,7 +184,7 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { acceptance: link } = acknowledgement.data;
     expect(link.link).toBe(acceptance.signature.link);
-    const read = await signatures.read(link.link, bundle);
+    const read = await signatureIn(bundle, link.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
     expect(read.key.link).toBe(keys.encode(device.key).link);
@@ -740,7 +743,7 @@ const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
 
 async function mailboxAcknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   return {
     bundle,
     signature,
@@ -937,7 +940,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);
-    const read = await signatures.read(signature.link, bundle);
+    const read = await signatureIn(bundle, signature.link);
     const request = await readObject(bundle, read.object, mailboxRequestSchema);
     expect(request.data).toEqual({ offer: new LinkValue(mailbox.offer.link), key: keyOf(0x11) });
     expect((await readObject(bundle, request.data.offer.link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);

@@ -82,7 +82,7 @@ describe("an identity", () => {
 
   it("has its root and its agents sign for it, and no other key, as it is read", async () => {
     const signedIdentity = await publish(signer(ed25519), { agents: [key(ed25519, 2)] });
-    const { identity } = await signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
+    const { identity } = await freshKit().signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
     expect(hasSigner(identity, identity.root)).toBe(true);
     expect(hasSigner(identity, keys.encode(key(ed25519, 2)))).toBe(true);
     expect(hasSigner(identity, keys.encode(key(ed25519, 3)))).toBe(false);
@@ -178,7 +178,7 @@ describe("a signed identity", () => {
 
   it.each(schemes)("published by a $name root reads back from its blobs with its identity", async (scheme) => {
     const signedIdentity = await publish(signer(scheme), { at: 1_000 });
-    const read = await signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
+    const read = await freshKit().signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
     expect(read.link).toBe(signedIdentity.link);
     expect(read.identity).toEqual(identities.encode(key(scheme), { at: 1_000 }));
     expect(isSameKey(read.identity.root, key(scheme))).toBe(true);
@@ -257,7 +257,7 @@ describe("the agents of an identity", () => {
   it("read back from its blobs in the order its root lists them", async () => {
     const agents = [key(ed25519, 3), key(solanaOffchain, 2), key(eip191, 4)];
     const signedIdentity = await publish(signer(eip191), { agents });
-    const read = await signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
+    const read = await freshKit().signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
     expect(read.identity).toEqual(signedIdentity.identity);
     expect(isSameKey(read.identity.root, key(eip191))).toBe(true);
     expect(read.identity.agents.map(({ link }) => link)).toEqual(agents.map((agent) => keys.encode(agent).link));
@@ -330,7 +330,7 @@ describe("the agents of an identity", () => {
 
   it("can be none", async () => {
     const signedIdentity = await publish(signer(ed25519), { agents: [] });
-    const read = await signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
+    const read = await freshKit().signedIdentities.read(signedIdentity.link, byLink(signedIdentity.blobs));
     expect(read.identity.agents).toEqual([]);
   });
 
@@ -357,7 +357,7 @@ describe("an identity that follows another", () => {
     const first = await publish(root, { at: 1_000 });
     const second = await publish(root, { prior: first, agents: [key(ed25519, 2)], at: 2_000 });
     expect(dataOf(second.identity).prior).toEqual(new LinkValue(first.link));
-    const read = await signedIdentities.read(second.link, byLink(second.blobs));
+    const read = await freshKit().signedIdentities.read(second.link, byLink(second.blobs));
     expect(read.identity.prior?.link).toBe(first.link);
     expect(read.identity.prior?.identity).toEqual(first.identity);
   });
@@ -426,10 +426,9 @@ describe("an identity that follows another", () => {
 });
 
 describe("the implementation of the signed identity schema", () => {
-  const { implementation } = signedIdentities;
   const root = signer(ed25519, 4);
-  const read = async (bytes: Uint8Array, blobs: readonly Uint8Array[], by = implementation) =>
-    by.read(decodeObject(bytes, by.schema), byLink(blobs));
+  const read = async (bytes: Uint8Array, blobs: readonly Uint8Array[]) =>
+    freshKit().signedIdentities.implementation.read(decodeObject(bytes, signedIdentitySchema), byLink(blobs));
 
   it("reads a signed identity as verifying it does", async () => {
     const signedIdentity = await publish(root, { prior: await publish(root, { at: 500 }), at: 1_000 });
@@ -450,9 +449,7 @@ describe("the implementation of the signed identity schema", () => {
 
   it("refuses a signed identity without the blob of its identity, by an error that has its link", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
-    const error = await read(bytesOf(signedIdentity), [], freshKit().signedIdentities.implementation).catch(
-      (error: unknown) => error,
-    );
+    const error = await read(bytesOf(signedIdentity), []).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(AbsentBlob);
     expect(error).toHaveProperty("link", signedIdentity.identity.link);
   });

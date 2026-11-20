@@ -59,8 +59,9 @@ export interface Actor {
 /**
  * A signature is verified by the identity version it carries alone, so what is read depends on the
  * signature and its closure, and an index can read by it. A signature that has read is kept by its
- * link and given again without asking the reader: its closure is in `blobs`. Whether the signature
- * is still honored depends on the identity versions a reader has seen, which are not read here.
+ * link and given again without asking the reader: what it is read from is in `blobs`, which leaves
+ * out the object it signs. Whether the signature is still honored depends on the identity versions
+ * a reader has seen, which are not read here.
  */
 export class Signatures {
   readonly schema = signatureSchema;
@@ -70,8 +71,8 @@ export class Signatures {
   };
   readonly #signedIdentities: SignedIdentities;
   /**
-   * Apart from the signed identities kept, which every signature reads, so that signatures read
-   * once, as most requests to a server are, do not push them out.
+   * Apart from the signed identities kept, so that signatures read once, as requests to a server
+   * mostly are, do not push out the signed identities every signature reads.
    */
   readonly #cache = new LRUCache<Link<unknown>, Signature>({ max: 10_000 });
 

@@ -2,7 +2,6 @@ import { type Link, linkOf, type ObjectValue, objectFormat, type ValueMap } from
 import { type CurveScheme, ed25519, eip191, loadIdentity, solanaOffchain } from "../src/index.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
-/** A kit that has read nothing, as one in another program than the one that signs: a kit keeps what it signs and reads. */
 export const freshKit = () => loadIdentity(schemes);
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 export const identityVersionInHand = async <T>(inHand: T) => inHand;

@@ -1,7 +1,7 @@
 import { DatabaseSync, type SQLTagStore } from "node:sqlite";
 import { type Link, linkOf } from "@estoc/object";
+import type { Accounts } from "./accounts.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
-import type { Accounts } from "./server.ts";
 
 export class SqliteAccounts implements Accounts {
   readonly #database: DatabaseSync;

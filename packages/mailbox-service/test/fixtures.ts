@@ -11,11 +11,15 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "@estoc/identity";
+import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
+import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
-import { type Accounts, loadMailboxService, type Mailboxes, MemoryAccounts, MemoryMailboxes } from "../src/server.ts";
+import { type Mailboxes, MemoryMailboxes } from "../src/mailboxes.ts";
+import { setUpNotary } from "../src/notary.ts";
+import { loadMailboxService } from "../src/server.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const signer = (scheme: CurveScheme, fill: number) =>
@@ -54,7 +58,13 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, signatures, publish } = loadIdentity(schemes);
+const kit = loadIdentity(schemes);
+export const { keys, identities, signedIdentities, signatures, publish } = kit;
+
+/** A keyring that holds the Secret Key of `by` alone. */
+export const keyringOf = (by: Signer): Pick<Keyring, "signerFor"> => ({
+  signerFor: async (key) => (key === keys.encode(by.key).link ? by : undefined),
+});
 
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 /** An actor that signs by `signedIdentity` whatever a store holds, with the signed identity for the tests to read. */
@@ -67,18 +77,40 @@ export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 
 
 export const serviceSigner = signer(ed25519, 9);
 export const serviceRoot = keys.encode(serviceSigner.key);
-/** The Identity a service by `serviceSigner` signs when it first starts, at `start`. */
+/** The Identity that a service by `serviceSigner` signs when it is set up at `start`. */
 export const serviceIdentity = (start: number) => identities.encode(serviceSigner.key, { at: start });
 /** An actor for that Identity, which signs as the service does. */
 export const serviceActor = async (start: number) =>
   actorSigningBy(serviceSigner, await signedIdentities.sign(serviceSigner, serviceIdentity(start)));
+
+export async function setUpService({
+  start = 1_000,
+  by = serviceSigner,
+  store,
+  privateStore = privateStoreBeside(store),
+}: {
+  readonly start?: number;
+  readonly by?: Signer;
+  readonly store: Store;
+  readonly privateStore?: PrivateStore;
+}) {
+  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, privateStore, at: start });
+}
+
+async function recordsIdentityVersion(privateStore: PrivateStore): Promise<boolean> {
+  for (const link of await recordedObjectsIn(privateStore))
+    if ((await objectsOf(signedIdentities.schema).read(link, privateStore)) !== undefined) return true;
+  return false;
+}
 
 /**
  * A service that keeps everything in memory, and whose clock counts up a
  * millisecond a reading from `start`, or stands at `clock.now` when it is
  * given, which a test moves. Given the store of another, with its accounts
  * and its mailboxes, it is that service started again. Its private store is
- * the one the tests keep beside the store, unless it is given another.
+ * the one the tests keep beside the store, unless it is given another. It is
+ * set up as `setUpService` does unless its private store records an identity
+ * version.
  */
 export async function memoryService({
   start = 1_000,
@@ -101,8 +133,9 @@ export async function memoryService({
   readonly accounts?: Accounts;
   readonly mailboxes?: Mailboxes;
 } = {}) {
+  if (!(await recordsIdentityVersion(privateStore))) await setUpService({ start, by, store, privateStore });
   let now = start;
-  const service = await loadMailboxService(by, {
+  const service = await loadMailboxService(keyringOf(by), {
     origin,
     store,
     privateStore,

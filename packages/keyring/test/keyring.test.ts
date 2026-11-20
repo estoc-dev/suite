@@ -9,7 +9,6 @@ import {
   solanaOffchain,
   verify,
 } from "@estoc/identity";
-import type { Link } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { Keyring } from "../src/index.ts";
@@ -20,12 +19,6 @@ const digest = new Uint8Array(32).fill(7);
 
 function keyringOver(backend = new MemoryBackend(), store = new Store(new MemoryBackend())): Keyring {
   return new Keyring(store, backend, secretKeys);
-}
-
-async function linksOf(keys: AsyncIterable<Link<unknown>>): Promise<Link<unknown>[]> {
-  const links = [];
-  for await (const link of keys) links.push(link);
-  return links;
 }
 
 describe("a keyring", () => {
@@ -61,20 +54,11 @@ describe("a keyring", () => {
     expect(await keyring.signerFor(other.link)).toBeUndefined();
   });
 
-  it("lists each key it generates", async () => {
-    const keyring = keyringOver();
-    const first = await keyring.generate(ed25519);
-    const second = await keyring.generate(ed25519);
-    expect(first.link).not.toBe(second.link);
-    expect(new Set(await linksOf(keyring.keys()))).toEqual(new Set([first.link, second.link]));
-  });
-
   it("holds its keys in the backend it is given, so a keyring made again over it signs with each", async () => {
     const backend = new MemoryBackend();
     const keyring = keyringOver(backend);
     const held = [await keyring.generate(ed25519), await keyring.generate(ed25519)];
     const again = keyringOver(backend);
-    expect(new Set(await linksOf(again.keys()))).toEqual(new Set(held.map(({ link }) => link)));
     for (const key of held) {
       const signer = await again.signerFor(key.link);
       assert.exists(signer);

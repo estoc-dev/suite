@@ -25,10 +25,6 @@ export class Keyring {
     return secretKey.key;
   }
 
-  async *keys(): AsyncIterable<Link<unknown>> {
-    for await (const { data } of (await scan(this.#secretStore, byKey)).range([])) yield data.key.link;
-  }
-
   async signerFor(key: Link<unknown>): Promise<Signer | undefined> {
     for await (const { data } of (await scan(this.#secretStore, byKey)).range([new LinkValue(key)]))
       return (await this.#secretKeys.read(data.secretKey.link, this.#secretStore)).signer;

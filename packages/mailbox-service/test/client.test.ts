@@ -246,12 +246,12 @@ describe("a service found by its identifier", () => {
     const first = await startService();
     const { services } = client();
     const { signedIdentity } = await services.fetch(first.origin);
-    const movedService = await startService({ store: first.store, start: 5_000 });
+    const movedService = await startService({ store: first.store, clock: { now: 5_000 } });
     await services.fetch(movedService.origin);
     await first.close();
     const account = (await services.latestOf(signedIdentity))?.account;
     assert.exists(account);
-    expect((await account.accept(await actorOf(alice))).at).toBe(5_001);
+    expect((await account.accept(await actorOf(alice))).at).toBe(5_000);
   });
 
   it("is, of two Services at the same at, the one whose signature has the greater link, whichever the store took first", async () => {
@@ -320,16 +320,18 @@ describe("a service found by its identifier", () => {
 
 describe("an account offer", () => {
   it("accepted by an identity opens its account, and the store keeps the service's signature over the acknowledgement", async () => {
-    const { origin } = await startService({ start: 7_000 });
+    const clock = { now: 7_000 };
+    const { origin } = await startService({ start: 7_000, clock });
     const { store, services } = client();
     const service = await services.fetch(origin);
     assert.exists(service.account);
     const actor = await actorOf(alice);
+    clock.now = 8_000;
     const account = await service.account.accept(actor);
     expect(account).toEqual({
       signedIdentity: actor.signedIdentity,
       service: service.signedIdentity,
-      at: 7_001,
+      at: 8_000,
       link: account.link,
     });
     expect(await inboundRowsOf(store)).toEqual([service.link, account.link].sort().map((link) => [link, origin]));

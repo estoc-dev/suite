@@ -1,6 +1,6 @@
 import { type Link, linkOf } from "@estoc/object";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { type Accounts, MemoryAccounts } from "../src/server.ts";
+import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { SqliteAccounts } from "../src/sqlite.ts";
 import { makeTemporaryPath } from "./fixtures.ts";
 

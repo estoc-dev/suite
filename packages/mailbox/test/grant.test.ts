@@ -19,7 +19,7 @@ import {
 import { peopleView } from "@estoc/people";
 import { arrivalsView, Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
-import { type Inbox, MailboxGrants, Post } from "../src/index.ts";
+import { type Inbox, type MailboxData, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
@@ -70,7 +70,7 @@ async function person(
   const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
   const intake = new Intake(store, privateStore, clock);
   const queue = network.queue();
-  const inbox = await post.openInbox(queue.mailbox);
+  const inbox = await post.openInbox(() => queue.transport);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
   const { identifier } = actor;
   return { actor, signedIdentity, identifier, store, privateStore, post, intake, inbox, collect };
@@ -85,16 +85,16 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 });
 
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
-async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
+async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject<MailboxData>>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
-  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...network.transport.schema.blobs] });
+  await store.write({ roots: [mailbox.link], blobs: [...mailbox.blobs()] });
   return mailbox.link;
 }
 
 // The blobs a store that holds the mailboxes of `grant` takes to write it, to `to`, beside those of a signature over it.
 const blobsOf = (grant: EncodedObject, to: Person) => [grant.bytes, ...grants.schema.blobs, ...to.signedIdentity.blobs];
 
-async function give(from: Person, to: Person, mailboxes: Link<EncodedObject>[], at: number) {
+async function give(from: Person, to: Person, mailboxes: Link<EncodedObject<MailboxData>>[], at: number) {
   const grant = grants.encode(to.signedIdentity, mailboxes, at);
   const signature = await from.actor.sign(grant);
   await from.store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobsOf(grant, to)] });

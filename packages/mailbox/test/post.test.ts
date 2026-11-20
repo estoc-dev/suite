@@ -1,4 +1,4 @@
-import { decodeBundle, encodeBundle } from "@estoc/bundle";
+import type { Bundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
@@ -13,8 +13,17 @@ import {
   scan,
   selectedSecrets,
 } from "@estoc/store";
-import { assert, describe, expect, it } from "vitest";
-import { MailboxKey, mailboxFrom, mailboxKeySchema, outboundSchema, Post, UndeliveredMessage } from "../src/index.ts";
+import { describe, expect, it } from "vitest";
+import {
+  type MailboxData,
+  MailboxKey,
+  mailboxAt,
+  mailboxKeySchema,
+  mailboxSchema,
+  outboundSchema,
+  Post,
+  UndeliveredMessage,
+} from "../src/index.ts";
 import { listedIn } from "./listed.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -56,17 +65,16 @@ async function postAt(network: MemoryNetwork, stores = storesBeside()) {
 }
 
 // The store keeps a mailbox that was handed over out of band, with a mark that it came in.
-async function handOver(network: MemoryNetwork, { store, privateStore }: Stores, mailbox: EncodedObject) {
-  const intake = new Intake(store, privateStore);
-  await intake.receive(decodeBundle(encodeBundle(mailbox.link, [mailbox.bytes, ...network.transport.schema.blobs])));
+async function handOver({ store, privateStore }: Stores, mailbox: Bundle) {
+  await new Intake(store, privateStore).receive(mailbox);
 }
 
-// A post whose store holds the mailbox of a new queue sealed to Bob, handed over.
+// A post whose store holds the mailbox of a new queue for Bob's key, handed over.
 async function prepareSender(network: MemoryNetwork, store?: Store) {
   const at = await postAt(network, storesBeside(store));
   const queue = network.queue();
   const mailbox = queue.mailbox(bob.publicKey);
-  await handOver(network, at, mailbox);
+  await handOver(at, mailbox);
   return { ...at, queue, mailbox };
 }
 
@@ -74,14 +82,17 @@ async function prepareSender(network: MemoryNetwork, store?: Store) {
 async function openReceiver(network: MemoryNetwork, store?: Store) {
   const at = await postAt(network, storesBeside(store));
   const queue = network.queue();
-  const inbox = await at.post.openInbox(queue.mailbox);
+  const inbox = await at.post.openInbox(() => queue.transport);
   return { ...at, queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
-async function sendTo(network: MemoryNetwork, store: Store, mailbox: Link<EncodedObject>, blobs: Uint8Array[]) {
-  const bytes = await store.get(mailbox);
-  assert.exists(bytes);
-  await (await mailboxFrom(bytes, { transports: [network.transport] })).send(signature.link, blobs);
+async function sendTo(
+  network: MemoryNetwork,
+  store: Store,
+  mailbox: Link<EncodedObject<MailboxData>>,
+  blobs: Uint8Array[],
+) {
+  await (await mailboxAt(mailbox, store, { transports: [network.transport] })).send(signature.link, blobs);
 }
 
 describe("an outbox", () => {
@@ -90,7 +101,9 @@ describe("an outbox", () => {
     const { store, privateStore, post, queue, mailbox } = await prepareSender(network);
     await store.write({ roots: [signature.link], blobs: signatureBlobs });
 
-    const delivery = await (await post.outbox(mailbox.link)).send(signature.link);
+    const outbox = await post.outbox(mailbox.link);
+    expect(outbox.mailbox).toBe(mailbox.link);
+    const delivery = await outbox.send(signature.link);
     expect(delivery).toEqual({
       direction: "outbound",
       bundle: signature.link,
@@ -120,7 +133,7 @@ describe("an outbox", () => {
     const carol = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(3));
     const queue = network.queue();
     const atCarol = queue.mailbox(carol.publicKey);
-    await handOver(network, atBob, atCarol);
+    await handOver(atBob, atCarol);
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
@@ -129,17 +142,26 @@ describe("an outbox", () => {
 
   it("marks nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
     const network = new MemoryNetwork();
-    const sender = await prepareSender(network);
-    const { store, privateStore, post } = sender;
+    const { store, privateStore, post, queue, mailbox } = await prepareSender(network);
     await store.write({ roots: [signature.link], blobs: signatureBlobs });
-    const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
-    await handOver(network, sender, elsewhere);
+    queue.turnBack("gone");
     const before = await listedIn(privateStore);
 
-    const sending = (await post.outbox(elsewhere.link)).send(signature.link);
+    const sending = (await post.outbox(mailbox.link)).send(signature.link);
     await expect(sending).rejects.toThrow(UndeliveredMessage);
     await expect(sending).rejects.toMatchObject({ kind: "gone" });
     expect(await listedIn(privateStore)).toEqual(before);
+  });
+
+  it("is not made for a mailbox that the transport has no route to, and rejects as the transport does", async () => {
+    const network = new MemoryNetwork();
+    const sender = await prepareSender(network);
+    const elsewhere = new MemoryNetwork().queue().mailbox(bob.publicKey);
+    await handOver(sender, elsewhere);
+
+    const making = sender.post.outbox(elsewhere.link);
+    await expect(making).rejects.toThrow(UndeliveredMessage);
+    await expect(making).rejects.toMatchObject({ kind: "gone" });
   });
 
   it("refuses a root that the store does not hold, and sends nothing", async () => {
@@ -174,23 +196,24 @@ describe("an outbox", () => {
     const network = new MemoryNetwork();
     const { post } = await prepareSender(network);
     const unheldMailbox = network.queue().mailbox(bob.publicKey);
-    await expect(post.outbox(unheldMailbox.link)).rejects.toThrow(`the store does not hold ${unheldMailbox.link}`);
+    await expect(post.outbox(unheldMailbox.link)).rejects.toThrow(`no blob is given for ${unheldMailbox.link}`);
   });
 });
 
 describe("an inbox", () => {
-  it("is opened at a mailbox that the store holds and the private store records, with its key kept in the secret store alone", async () => {
+  it("is opened at a mailbox of its key and the transport object given, which the store holds and the private store records, with its key kept in the secret store alone", async () => {
     const network = new MemoryNetwork();
-    const { store, privateStore, secretStore, inbox } = await openReceiver(network);
+    const { store, privateStore, secretStore, queue, inbox } = await openReceiver(network);
     expect(await listedIn(privateStore)).toEqual([inbox.mailbox]);
     expect(await secretsOf(secretStore)).toEqual([inbox.key]);
     expect(await store.get(inbox.key)).toBeUndefined();
 
     const { data } = await readObject(secretStore, inbox.key, mailboxKeySchema);
     expect(data.mailbox.link).toBe(inbox.mailbox);
-    const mailbox = await readObject(store, inbox.mailbox, network.transport.schema);
+    const mailbox = await readObject(store, inbox.mailbox, mailboxSchema);
     const key = await MailboxKey.fromSecretKey(data.secret);
-    expect(mailbox.data.key).toEqual(key.publicKey);
+    expect(mailbox.data).toEqual({ key: key.publicKey, transport: new LinkValue(queue.transport.link) });
+    expect(await store.get(queue.transport.link)).toEqual(queue.transport.bytes);
   });
 
   it("is made again from its key, found by an index of the keys that the secret store keeps", async () => {
@@ -244,7 +267,7 @@ describe("an inbox", () => {
     const network = new MemoryNetwork();
     const { store, privateStore, queue, inbox, pickup } = await openReceiver(network);
     const sealedToBob = queue.mailbox(bob.publicKey);
-    await (await mailboxFrom(sealedToBob.bytes, { transports: [network.transport] })).send(
+    await (await mailboxAt(sealedToBob.link, sealedToBob, { transports: [network.transport] })).send(
       signature.link,
       signatureBlobs,
     );
@@ -284,16 +307,16 @@ describe("an inbox", () => {
     expect(await inbox.collect(pickup)).toHaveLength(1);
   });
 
-  it("refuses a pickup of another mailbox, and is done with nothing", async () => {
+  it("refuses a pickup of another mailbox at its transport object, and is done with nothing", async () => {
     const network = new MemoryNetwork();
-    const { inbox } = await openReceiver(network);
-    const other = await openReceiver(network);
-    await sendTo(network, other.store, other.inbox.mailbox, signatureBlobs);
+    const { post, store, queue, inbox, pickup } = await openReceiver(network);
+    const other = await post.openInbox(() => queue.transport);
+    await sendTo(network, store, inbox.mailbox, signatureBlobs);
 
-    await expect(inbox.collect(other.pickup)).rejects.toThrow(
-      `a pickup of ${other.inbox.mailbox} is not collected at ${inbox.mailbox}`,
+    await expect(other.collect(pickup)).rejects.toThrow(
+      `a pickup of ${inbox.mailbox} is not collected at ${other.mailbox}`,
     );
-    expect(await other.inbox.collect(other.pickup)).toHaveLength(1);
+    expect(await inbox.collect(pickup)).toHaveLength(1);
   });
 
   it("keeps nothing of a bundle that leaves out a blob in its root's closure", async () => {
@@ -316,13 +339,13 @@ describe("an inbox", () => {
     expect(await listedIn(privateStore)).toEqual([inbox.mailbox]);
   });
 
-  it("is not opened at a mailbox that names another key than the one given, and writes nothing", async () => {
+  it("is not opened at a transport object that no transport given takes, and writes nothing", async () => {
     const network = new MemoryNetwork();
     const { store, privateStore, secretStore, post } = await postAt(network);
-    const queue = network.queue();
-    const mailbox = queue.mailbox(bob.publicKey);
-    await expect(post.openInbox(() => mailbox)).rejects.toThrow(/names another key/);
-    expect(await store.get(mailbox.link)).toBeUndefined();
+    const placeSchema = schema("Other transport", { place: string() });
+    const transport = encodeObject(placeSchema, { place: "elsewhere" });
+    await expect(post.openInbox(() => transport)).rejects.toThrow(`no transport takes ${placeSchema.link}`);
+    expect(await store.get(transport.link)).toBeUndefined();
     expect(await listedIn(privateStore)).toEqual([]);
     expect(await secretsOf(secretStore)).toEqual([]);
   });

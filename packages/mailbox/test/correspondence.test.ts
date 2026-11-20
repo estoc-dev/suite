@@ -12,18 +12,10 @@ import { peopleView } from "@estoc/people";
 import { schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import {
-  type Correspondence,
-  type Inbox,
-  MailboxGrants,
-  mailboxSchema,
-  type Pickup,
-  Post,
-  type Transport,
-  UndeliveredMessage,
-} from "../src/index.ts";
+import { type Correspondence, type Inbox, MailboxGrants, type Pickup, Post, UndeliveredMessage } from "../src/index.ts";
 import { listedIn } from "./listed.ts";
-import { MemoryNetwork } from "./memory-network.ts";
+import { mailboxBundle } from "./mailbox-bundle.ts";
+import { MemoryNetwork, type Queue } from "./memory-network.ts";
 
 // People who each keep a store and correspond as one actor: each gives the
 // other a grant of a mailbox, sends by the grant they were given, and reads
@@ -35,17 +27,6 @@ const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);
 const note = schema("Note", { text: string() });
 const network = new MemoryNetwork();
-
-// The kinds that the mailboxes at some queues turn a message back with.
-const undeliveredKindByQueue = new Map<unknown, UndeliveredMessage["kind"]>();
-const transport: Transport = {
-  schema: network.transport.schema,
-  deliver: async (mailbox, ciphertext) => {
-    const kind = undeliveredKindByQueue.get(mailbox.name);
-    if (kind !== undefined) throw new UndeliveredMessage(kind, "this queue turns it back");
-    await network.transport.deliver(mailbox, ciphertext);
-  },
-};
 
 // One clock for everyone, so that what is done later has the greater `at`.
 let now = 0;
@@ -78,7 +59,7 @@ async function personActingAs(
   const store = new Store(backends.store);
   const privateStore = new PrivateStore(store, backends.privateStore);
   const secretStore = new SecretStore(store, new MemoryBackend());
-  const post = new Post(store, privateStore, secretStore, { transports: [transport], clock });
+  const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
   const intake = new Intake(store, privateStore, clock);
   const actor = actorOver(store);
   const correspondence = post.correspondenceAs(actor, identity);
@@ -91,15 +72,15 @@ async function person(fill: number): Promise<Person> {
 }
 
 interface OpenedInbox {
-  readonly name: string;
+  readonly queue: Queue;
   readonly inbox: Inbox;
   readonly pickup: Pickup;
 }
 
-async function openInbox({ post }: Person): Promise<OpenedInbox> {
-  const queue = network.queue();
-  const inbox = await post.openInbox(queue.mailbox);
-  return { name: queue.name, inbox, pickup: queue.pickup(inbox.mailbox) };
+async function openInbox({ post }: Person, on = network): Promise<OpenedInbox> {
+  const queue = on.queue();
+  const inbox = await post.openInbox(() => queue.transport);
+  return { queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
@@ -257,8 +238,19 @@ describe("sending to someone", () => {
   it("has gone once one mailbox takes it, though another turned it back", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const [turningBackInbox, takingInbox] = [await openInbox(bob), await openInbox(bob)];
-    undeliveredKindByQueue.set(turningBackInbox.name, "gone");
+    turningBackInbox.queue.turnBack("gone");
     await grantMailboxes(bob, alice, [turningBackInbox, takingInbox]);
+
+    const signature = await writeNote(alice, "hi Bob");
+    const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([takingInbox.inbox.mailbox]);
+    expect(await takingInbox.inbox.collect(takingInbox.pickup)).toHaveLength(1);
+  });
+
+  it("has gone once one mailbox takes it, though the transport has no route to another", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const [unreachedInbox, takingInbox] = [await openInbox(bob, new MemoryNetwork()), await openInbox(bob)];
+    await grantMailboxes(bob, alice, [unreachedInbox, takingInbox]);
 
     const signature = await writeNote(alice, "hi Bob");
     const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
@@ -269,8 +261,8 @@ describe("sending to someone", () => {
   it("is turned back as later when every mailbox turned it back and one can take it later", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const [gone, busy] = [await openInbox(bob), await openInbox(bob)];
-    undeliveredKindByQueue.set(gone.name, "gone");
-    undeliveredKindByQueue.set(busy.name, "later");
+    gone.queue.turnBack("gone");
+    busy.queue.turnBack("later");
     await grantMailboxes(bob, alice, [gone, busy]);
 
     const signature = await writeNote(alice, "hi Bob");
@@ -281,18 +273,19 @@ describe("sending to someone", () => {
     expect(await listedIn(alice.privateStore)).toEqual(before);
   });
 
-  it("sends nothing when the post has no transport for a mailbox of the grant", async () => {
+  it("has gone once one mailbox takes it, though no transport given takes the transport object of another", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const placeSchema = schema("Other transport", { place: string() });
+    const other = mailboxBundle(new Uint8Array(32), encodeObject(placeSchema, { place: "elsewhere" }));
+    await bob.intake.receive(other);
     const { inbox, pickup } = await openInbox(bob);
-    const otherSchema = mailboxSchema("Other mailbox", { place: string() });
-    const other = encodeObject(otherSchema, { key: new Uint8Array(32), place: "elsewhere" });
-    await bob.store.write({ roots: [other.link], blobs: [other.bytes, ...otherSchema.blobs] });
-    const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
+    const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [other.link, inbox.mailbox]);
     await handOver(bob, alice, givenGrant.link);
 
     const signature = await writeNote(alice, "hi Bob");
-    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toThrow(/no transport/);
-    expect(await inbox.collect(pickup)).toEqual([]);
+    const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([inbox.mailbox]);
+    expect(await inbox.collect(pickup)).toHaveLength(1);
   });
 });
 

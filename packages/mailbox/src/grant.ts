@@ -3,7 +3,7 @@ import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, re
 import type { SeenIdentityVersions } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
-import { type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
+import { type MailboxData, type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 /**
  * Two grants of a series at one `at` are told apart by the links of their signatures, as two
@@ -61,7 +61,7 @@ export class MailboxGrants {
 
   encode(
     to: SignedIdentityObject,
-    mailboxes: readonly Link<EncodedObject>[],
+    mailboxes: readonly Link<EncodedObject<MailboxData>>[],
     at: number,
   ): EncodedObject<MailboxGrantData> {
     return encodeObject(this.schema, {

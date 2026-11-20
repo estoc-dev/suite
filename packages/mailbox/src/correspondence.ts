@@ -5,6 +5,7 @@ import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Sto
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
+import type { MailboxData } from "./schema.ts";
 
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
@@ -42,7 +43,7 @@ export class Correspondence {
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
-  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject>[]): Promise<Signature> {
+  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
     const current = await (await view(this.#store, this.#seenPeople)).current(to);
     const at = this.#clock();
     const grant = this.#grants.encode(current, mailboxes, at);
@@ -62,12 +63,11 @@ export class Correspondence {
     const mailboxes = grant?.object.data.mailboxes ?? [];
     if (mailboxes.length === 0)
       throw new UndeliveredMessage("gone", `${from} grants ${this.#actor.identifier} no mailbox`);
-    const outboxes = await Promise.all(mailboxes.map(({ link }) => this.#post.outbox(link)));
     const deliveries: Delivery[] = [];
     const turnedBack: UndeliveredMessage[] = [];
-    for (const outbox of outboxes) {
+    for (const { link } of mailboxes) {
       try {
-        deliveries.push(await outbox.send(root));
+        deliveries.push(await (await this.#post.outbox(link)).send(root));
       } catch (error) {
         if (!(error instanceof UndeliveredMessage)) throw error;
         turnedBack.push(error);

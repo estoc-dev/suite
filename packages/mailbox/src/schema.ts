@@ -1,16 +1,16 @@
 import type { EncodedObject } from "@estoc/object";
-import { array, bytes, type DataOf, type ItemOf, integer, link, schema } from "@estoc/schema";
+import { array, bytes, type DataOf, integer, link, schema } from "@estoc/schema";
 
-export function mailboxSchema<F extends Parameters<typeof schema>[1]>(
-  title: string,
-  fields: F,
-): ReturnType<typeof schema<F & { readonly key: ItemOf<Uint8Array> }>> {
-  if (Object.hasOwn(fields, "key")) throw new Error("key is a field of every mailbox");
-  return schema(title, { ...fields, key: bytes() });
-}
+/** `key` is an x25519 public key, 32 bytes. */
+export const mailboxSchema = schema("Mailbox", {
+  key: bytes(),
+  transport: link<EncodedObject>(),
+});
+
+export type MailboxData = DataOf<typeof mailboxSchema>;
 
 export const mailboxKeySchema = schema("Mailbox Key", {
-  mailbox: link<EncodedObject>(),
+  mailbox: link<EncodedObject<MailboxData>>(),
   secret: bytes(),
 });
 
@@ -19,7 +19,7 @@ export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
 /** `at` is in milliseconds since the Unix epoch, by the clock of the device that wrote the mark. */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
-  mailbox: link<EncodedObject>(),
+  mailbox: link<EncodedObject<MailboxData>>(),
   at: integer(),
 });
 
@@ -31,7 +31,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  */
 export const mailboxGrantSchema = schema("Mailbox Grant", {
   to: link(),
-  mailboxes: array(link<EncodedObject>()),
+  mailboxes: array(link<EncodedObject<MailboxData>>()),
   at: integer(),
 });
 

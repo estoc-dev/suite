@@ -89,7 +89,7 @@ export const mailboxAcknowledgementSchema = schema("Mailbox acknowledgement", {
 export type MailboxAcknowledgementData = DataOf<typeof mailboxAcknowledgementSchema>;
 
 export const openedMailboxSchema = schema("Opened mailbox", {
-  mailbox: link<EncodedObject>(),
+  transport: link<EncodedObject>(),
   acknowledgement: link(),
 });
 

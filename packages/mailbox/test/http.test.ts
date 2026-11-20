@@ -5,8 +5,9 @@ import { schema, string } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
-import { MailboxKey, mailboxFrom, Post, UndeliveredMessage } from "../src/index.ts";
+import { MailboxKey, mailboxAt, Post, UndeliveredMessage } from "../src/index.ts";
 import { listedIn } from "./listed.ts";
+import { mailboxBundle } from "./mailbox-bundle.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -56,8 +57,16 @@ const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 const key = bob.publicKey;
 const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
-const mailboxAt = (url: string) => mailboxFrom(encodeObject(http.schema, { key, url }).bytes, options);
+const mailboxBundleAt = (url: string) => mailboxBundle(key, encodeObject(http.schema, { url }));
+const mailboxTo = (url: string) => {
+  const mailbox = mailboxBundleAt(url);
+  return mailboxAt(mailbox.link, mailbox, options);
+};
 const take = () => requests.splice(0);
+const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
+const postedBy = (fetch: ReturnType<typeof mockFetch>) =>
+  fetch.mock.calls.map((call) => new globalThis.Request(...call));
+afterEach(() => vi.restoreAllMocks());
 
 async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage["kind"]> {
   const error = await sending.then(
@@ -70,12 +79,21 @@ async function rejectedAs(sending: Promise<unknown>): Promise<UndeliveredMessage
 
 describe("an HTTP mailbox", () => {
   it("takes a message to its url in a POST, sealed so that its key opens it", async () => {
-    await (await mailboxAt(`http://127.0.0.1:${port}/inbox`)).send(hello.link, [hello.bytes]);
+    await (await mailboxTo(`http://127.0.0.1:${port}/inbox`)).send(hello.link, [hello.bytes]);
     const [request, ...more] = take();
     expect(more).toEqual([]);
     assert.exists(request);
     expect(request).toMatchObject({ method: "POST", path: "/inbox", type: "application/octet-stream" });
     expect((await bob.open(request.body)).root).toEqual(hello.bytes);
+  });
+
+  it("sends each message with no referrer and no credentials", async () => {
+    const fetch = mockFetch();
+    const mailbox = await mailboxTo("https://mail.example/alice");
+    await mailbox.send(hello.link, [hello.bytes]);
+    await mailbox.send(hello.link, [hello.bytes]);
+    const sent = { referrerPolicy: "no-referrer", credentials: "omit" };
+    expect(postedBy(fetch)).toMatchObject([sent, sent]);
   });
 
   it.each<[number, UndeliveredMessage["kind"]]>([
@@ -88,12 +106,12 @@ describe("an HTTP mailbox", () => {
     [400, "refused"],
     [413, "refused"],
   ])("rejects a send that the server answers %i as undelivered, %s", async (status, kind) => {
-    const mailbox = await mailboxAt(`http://127.0.0.1:${port}/answer/${status}`);
+    const mailbox = await mailboxTo(`http://127.0.0.1:${port}/answer/${status}`);
     expect(await rejectedAs(mailbox.send(hello.link, [hello.bytes]))).toBe(kind);
   });
 
   it("rejects a send that the server redirects as one to send later, and the message goes no further", async () => {
-    const mailbox = await mailboxAt(`http://127.0.0.1:${port}/moved`);
+    const mailbox = await mailboxTo(`http://127.0.0.1:${port}/moved`);
     expect(await rejectedAs(mailbox.send(hello.link, [hello.bytes]))).toBe("later");
     expect(take().map(({ path }) => path)).toEqual(["/moved"]);
   });
@@ -103,7 +121,7 @@ describe("an HTTP mailbox", () => {
     const closedPort = await listen(gone);
     await close(gone);
     expect(
-      await rejectedAs((await mailboxAt(`http://127.0.0.1:${closedPort}/inbox`)).send(hello.link, [hello.bytes])),
+      await rejectedAs((await mailboxTo(`http://127.0.0.1:${closedPort}/inbox`)).send(hello.link, [hello.bytes])),
     ).toBe("later");
   });
 });
@@ -114,11 +132,8 @@ describe("an HTTP outbox", () => {
     const privateStore = new PrivateStore(store, new MemoryBackend());
     const secretStore = new SecretStore(store, new MemoryBackend());
     const post = new Post(store, privateStore, secretStore, options);
-    const mailbox = encodeObject(http.schema, { key, url: `http://127.0.0.1:${port}/late-once` });
-    await store.write({
-      roots: [mailbox.link, hello.link],
-      blobs: [mailbox.bytes, hello.bytes, ...http.schema.blobs, ...note.blobs],
-    });
+    const mailbox = mailboxBundleAt(`http://127.0.0.1:${port}/late-once`);
+    await store.write({ roots: [mailbox.link, hello.link], blobs: [...mailbox.blobs(), hello.bytes, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
     expect(await listedIn(privateStore)).toEqual([]);
@@ -133,10 +148,7 @@ describe("an HTTP outbox", () => {
   });
 });
 
-describe("an HTTP mailbox's url", () => {
-  const mockFetch = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 202 }));
-  afterEach(() => vi.restoreAllMocks());
-
+describe("an HTTP transport's url", () => {
   it.each([
     "https://mail.example/alice",
     "http://localhost:8080/inbox",
@@ -144,8 +156,8 @@ describe("an HTTP mailbox's url", () => {
     "http://[::1]:8080?to=bob",
   ])("may be %s", async (url) => {
     const fetch = mockFetch();
-    await (await mailboxAt(url)).send(hello.link, [hello.bytes]);
-    expect(fetch.mock.calls.map(([posted]) => posted)).toEqual([url]);
+    await (await mailboxTo(url)).send(hello.link, [hello.bytes]);
+    expect(postedBy(fetch).map(({ url }) => url)).toEqual([new URL(url).href]);
   });
 
   it.each([
@@ -153,10 +165,9 @@ describe("an HTTP mailbox's url", () => {
     ["of another scheme", "ftp://mail.example/alice"],
     ["to a host whose name only starts as this machine's", "http://localhost.mail.example/inbox"],
     ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
+    ["one with a user name, which fetch refuses", "https://bob@mail.example/inbox"],
     ["not a URL", "https://mail example/alice"],
-  ])("turns a send back as to a mailbox that is gone when it is %s, and posts nothing", async (_, url) => {
-    const fetch = mockFetch();
-    expect(await rejectedAs((await mailboxAt(url)).send(hello.link, [hello.bytes]))).toBe("gone");
-    expect(fetch).not.toHaveBeenCalled();
+  ])("turns the mailbox back as one that is gone when it is %s", async (_, url) => {
+    expect(await rejectedAs(mailboxTo(url))).toBe("gone");
   });
 });

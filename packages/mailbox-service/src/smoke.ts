@@ -1,4 +1,6 @@
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { mailboxSchema } from "@estoc/mailbox";
+import { encodeObject, LinkValue } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
 import { loadServices } from "./client.ts";
@@ -31,9 +33,11 @@ export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);
   await account.accept(actor);
-  const mailbox = await offer.open(actor, MAILBOX_KEY);
+  const transport = await offer.open(actor, MAILBOX_KEY);
+  const mailbox = encodeObject(mailboxSchema, { key: MAILBOX_KEY, transport: new LinkValue(transport.link) });
+  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailboxSchema.blobs] });
   return {
-    url: mailbox.data.url,
+    url: transport.data.url,
     async pickUp() {
       const ciphertexts: Uint8Array[] = [];
       for await (const arrival of (await services.pickup(mailbox.link, actor)).arrivals()) {

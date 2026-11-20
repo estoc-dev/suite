@@ -59,9 +59,9 @@ export interface Actor {
 /**
  * A signature is verified by the identity version it carries alone, so what is read depends on the
  * signature and its closure, and an index can read by it. A signature that has read is kept by its
- * link and given again without asking the reader: what it is read from is in `blobs`, which leaves
- * out the object it signs. Whether the signature is still honored depends on the identity versions
- * a reader has seen, which are not read here.
+ * link and given again without asking the reader: what it is read from is in `blobs`, and reading
+ * it does not need the object it signs. Whether the signature is still honored depends on the
+ * identity versions a reader has seen, which are not read here.
  */
 export class Signatures {
   readonly schema = signatureSchema;

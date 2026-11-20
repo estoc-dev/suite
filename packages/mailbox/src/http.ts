@@ -1,23 +1,22 @@
-import { type DataOf, string } from "@estoc/schema";
+import { type DataOf, schema, string } from "@estoc/schema";
 import { type Route, type Transport, UndeliveredMessage } from "./mailbox.ts";
-import { mailboxSchema } from "./schema.ts";
 
 // Plain http is for the receiver's own machine alone, as in development or
 // for a daemon beside the sender. Anywhere else, whoever is on the way would
 // see when and how much arrives, and could hold messages back unseen.
 const allowedUrl = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?([/?#]|$))/;
 
-const schema = mailboxSchema("HTTP mailbox", { url: string() });
+const transportSchema = schema("HTTP transport", { url: string() });
 
 /**
  * The body goes as `application/octet-stream`, so a server that browsers post to answers their CORS
  * preflight for it.
  */
-export const httpTransport: Transport<DataOf<typeof schema>> = { schema, routeTo };
+export const httpTransport: Transport<DataOf<typeof transportSchema>> = { schema: transportSchema, routeTo };
 
-function routeTo({ url }: DataOf<typeof schema>): Route {
+function routeTo({ url }: DataOf<typeof transportSchema>): Route {
   if (!allowedUrl.test(url) || !URL.canParse(url))
-    throw new UndeliveredMessage("gone", "an HTTP mailbox is at an https url, or an http url of this machine");
+    throw new UndeliveredMessage("gone", "an HTTP transport names an https url, or an http url of this machine");
   return { deliver: (ciphertext) => deliverTo(url, ciphertext) };
 }
 

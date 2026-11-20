@@ -31,12 +31,12 @@ export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);
   await account.accept(actor);
-  const mailbox = await offer.open(actor, MAILBOX_KEY);
+  const transport = await offer.open(actor, MAILBOX_KEY);
   return {
-    url: mailbox.data.url,
+    url: transport.data.url,
     async pickUp() {
       const ciphertexts: Uint8Array[] = [];
-      for await (const arrival of (await services.pickup(mailbox.link, actor)).arrivals()) {
+      for await (const arrival of (await services.pickup(transport.link, actor)).arrivals()) {
         ciphertexts.push(arrival.ciphertext);
         await arrival.drop();
       }

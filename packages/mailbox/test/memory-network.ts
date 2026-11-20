@@ -1,14 +1,9 @@
-import { type EncodedObject, encodeObject, type Link } from "@estoc/object";
-import { type DataOf, string } from "@estoc/schema";
+import type { Bundle } from "@estoc/bundle";
+import { type EncodedObject, encodeObject } from "@estoc/object";
+import { type DataOf, schema, string } from "@estoc/schema";
 import { hex } from "@scure/base";
-import {
-  type Arrival,
-  mailboxSchema,
-  type Pickup,
-  type Route,
-  type Transport,
-  UndeliveredMessage,
-} from "../src/index.ts";
+import { type Arrival, type Pickup, type Route, type Transport, UndeliveredMessage } from "../src/index.ts";
+import { mailboxBundle } from "./mailbox-bundle.ts";
 
 /** Faults a network puts in the way of every message, as a real channel may. */
 export interface Faults {
@@ -29,13 +24,11 @@ export interface Faults {
 /** A queue on a memory network, under a name the network made up. */
 export interface Queue {
   readonly name: string;
-  /** A mailbox at this queue, sealed to `key`. */
-  mailbox(key: Uint8Array): EncodedObject;
-  /**
-   * What waits at this queue, for a mailbox of it, until a receiver is done
-   * with it. Refuses a mailbox that is not at this queue.
-   */
-  pickup(mailbox: Link<EncodedObject>): Pickup;
+  readonly transport: EncodedObject;
+  /** A mailbox at this queue sealed to `key`, as it is handed out on its own. */
+  mailbox(key: Uint8Array): Bundle;
+  /** What waits at this queue, until a receiver is done with it. */
+  pickup(): Pickup;
   /** The ciphertexts that wait, which leave the queue. */
   take(): Uint8Array[];
   /** The one ciphertext that waits, which leaves the queue; throws unless exactly one does. */
@@ -51,7 +44,7 @@ interface QueueState {
   turnedBackAs?: UndeliveredMessage["kind"];
 }
 
-const schema = mailboxSchema("Memory mailbox", { name: string() });
+const transportSchema = schema("Memory transport", { name: string() });
 
 /**
  * A post office in one process: senders and receivers that share it reach
@@ -60,7 +53,7 @@ const schema = mailboxSchema("Memory mailbox", { name: string() });
  * someone else's.
  */
 export class MemoryNetwork {
-  readonly transport: Transport<DataOf<typeof schema>>;
+  readonly transport: Transport<DataOf<typeof transportSchema>>;
   readonly #faults: Faults;
   readonly #queues = new Map<string, QueueState>();
   #deliveries = 0;
@@ -68,14 +61,14 @@ export class MemoryNetwork {
 
   constructor(faults: Faults = {}) {
     this.#faults = faults;
-    this.transport = { schema, routeTo: ({ name }) => this.#routeTo(name) };
+    this.transport = { schema: transportSchema, routeTo: ({ name }) => this.#routeTo(name) };
   }
 
   queue(): Queue {
     const name = hex.encode(crypto.getRandomValues(new Uint8Array(16)));
     const state: QueueState = { waiting: [] };
     const { waiting } = state;
-    const mailboxes = new Set<Link<EncodedObject>>();
+    const transport = encodeObject(transportSchema, { name });
     this.#queues.set(name, state);
     const take = () => {
       const takenCiphertexts = waiting.splice(0).map(({ ciphertext }) => ciphertext);
@@ -83,15 +76,9 @@ export class MemoryNetwork {
     };
     return {
       name,
-      mailbox: (key) => {
-        const mailbox = encodeObject(schema, { key, name });
-        mailboxes.add(mailbox.link);
-        return mailbox;
-      },
-      pickup: (mailbox) => {
-        if (!mailboxes.has(mailbox)) throw new Error(`${mailbox} is not a mailbox at ${name}`);
-        return { mailbox, arrivals: (signal) => this.#arrivals(waiting, signal) };
-      },
+      transport,
+      mailbox: (key) => mailboxBundle(key, transport),
+      pickup: () => ({ transport: transport.link, arrivals: (signal) => this.#arrivals(waiting, signal) }),
       take,
       takeOne: () => {
         const takenCiphertexts = take();

@@ -44,11 +44,11 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
 }
 
 const openedMailboxRowSchema = schema("Opened mailbox row", {
-  mailbox: link<EncodedObject>(),
+  transport: link<EncodedObject>(),
   acknowledgement: link(),
 });
 
-type OpenedMailboxOrder = readonly ["mailbox", "acknowledgement"];
+type OpenedMailboxOrder = readonly ["transport", "acknowledgement"];
 
 /**
  * An acknowledgement that the store came to hold another way, such as at a mailbox, opens none: a
@@ -57,7 +57,7 @@ type OpenedMailboxOrder = readonly ["mailbox", "acknowledgement"];
  * listed from one sent after.
  */
 export interface OpenedMailboxes {
-  acknowledgementOf(mailbox: Link<EncodedObject>): Promise<Link<unknown> | undefined>;
+  acknowledgementOf(transport: Link<EncodedObject>): Promise<Link<unknown> | undefined>;
 }
 
 export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, OpenedMailboxOrder, OpenedMailboxes>;
@@ -65,11 +65,11 @@ export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, Op
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
     index: indexOver(selectedMarks(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
-      { mailbox: data.mailbox, acknowledgement: data.acknowledgement },
-    ]).orderedBy("mailbox", "acknowledgement"),
+      { transport: data.transport, acknowledgement: data.acknowledgement },
+    ]).orderedBy("transport", "acknowledgement"),
     read: (rows) => ({
-      async acknowledgementOf(mailbox) {
-        for await (const { data } of rows.range([new LinkValue(mailbox)])) return data.acknowledgement.link;
+      async acknowledgementOf(transport) {
+        for await (const { data } of rows.range([new LinkValue(transport)])) return data.acknowledgement.link;
         return undefined;
       },
     }),

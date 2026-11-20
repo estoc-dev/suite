@@ -12,16 +12,9 @@ import { peopleView } from "@estoc/people";
 import { schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import {
-  type Correspondence,
-  type Inbox,
-  MailboxGrants,
-  mailboxSchema,
-  type Pickup,
-  Post,
-  UndeliveredMessage,
-} from "../src/index.ts";
+import { type Correspondence, type Inbox, MailboxGrants, type Pickup, Post, UndeliveredMessage } from "../src/index.ts";
 import { listedIn } from "./listed.ts";
+import { mailboxBundle } from "./mailbox-bundle.ts";
 import { MemoryNetwork, type Queue } from "./memory-network.ts";
 
 // People who each keep a store and correspond as one actor: each gives the
@@ -86,8 +79,8 @@ interface OpenedInbox {
 
 async function openInbox({ post }: Person, on = network): Promise<OpenedInbox> {
   const queue = on.queue();
-  const inbox = await post.openInbox(queue.mailbox);
-  return { queue, inbox, pickup: queue.pickup(inbox.mailbox) };
+  const inbox = await post.openInbox(() => queue.transport);
+  return { queue, inbox, pickup: queue.pickup() };
 }
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
@@ -280,18 +273,19 @@ describe("sending to someone", () => {
     expect(await listedIn(alice.privateStore)).toEqual(before);
   });
 
-  it("sends nothing when the post has no transport for a mailbox of the grant", async () => {
+  it("has gone once one mailbox takes it, though no transport given takes the transport object of another", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const placeSchema = schema("Other transport", { place: string() });
+    const other = mailboxBundle(new Uint8Array(32), encodeObject(placeSchema, { place: "elsewhere" }));
+    await bob.intake.receive(other);
     const { inbox, pickup } = await openInbox(bob);
-    const otherSchema = mailboxSchema("Other mailbox", { place: string() });
-    const other = encodeObject(otherSchema, { key: new Uint8Array(32), place: "elsewhere" });
-    await bob.store.write({ roots: [other.link], blobs: [other.bytes, ...otherSchema.blobs] });
-    const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [inbox.mailbox, other.link]);
+    const givenGrant = await bob.correspondence.grant(alice.signedIdentity, [other.link, inbox.mailbox]);
     await handOver(bob, alice, givenGrant.link);
 
     const signature = await writeNote(alice, "hi Bob");
-    await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toThrow(/no transport/);
-    expect(await inbox.collect(pickup)).toEqual([]);
+    const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
+    expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([inbox.mailbox]);
+    expect(await inbox.collect(pickup)).toHaveLength(1);
   });
 });
 

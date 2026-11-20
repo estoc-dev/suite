@@ -70,8 +70,8 @@ async function person(
   const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
   const intake = new Intake(store, privateStore, clock);
   const queue = network.queue();
-  const inbox = await post.openInbox(queue.mailbox);
-  const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
+  const inbox = await post.openInbox(() => queue.transport);
+  const collect = () => inbox.collect(queue.pickup());
   const { identifier } = actor;
   return { actor, signedIdentity, identifier, store, privateStore, post, intake, inbox, collect };
 }
@@ -87,7 +87,7 @@ const personSigningAs = (someone: Person, agent: Signer, identityVersion: Signed
 // A mailbox at a queue of its own, which no one receives at, in `person`'s store.
 async function writeMailboxIn({ store }: Person): Promise<Link<EncodedObject>> {
   const mailbox = network.queue().mailbox(new Uint8Array(32).fill(7));
-  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...network.transport.schema.blobs] });
+  await store.write({ roots: [mailbox.link], blobs: [...mailbox.blobs()] });
   return mailbox.link;
 }
 

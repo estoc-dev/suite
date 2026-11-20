@@ -139,10 +139,10 @@ async function chat(faults: Faults = {}) {
   // came in, to send to it.
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
-    const inbox = await owner.post.openInbox(queue.mailbox);
+    const inbox = await owner.post.openInbox(() => queue.transport);
     const grant = await owner.correspondence.grant(peer.signedIdentity, [inbox.mailbox]);
     await handOver(owner, peer, grant.link);
-    return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup(inbox.mailbox) };
+    return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup() };
   };
   const atAlice = await mailboxFor(alice, bob);
   const atBob = await mailboxFor(bob, alice);

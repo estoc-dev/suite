@@ -62,7 +62,7 @@ const REQUEST = {
   referrerPolicy: "no-referrer",
 } as const satisfies RequestInit;
 
-type HttpMailboxData = DataOf<typeof httpTransport.schema>;
+type HttpTransportData = DataOf<typeof httpTransport.schema>;
 
 /**
  * `origin` is where the offer was taken, which a Service that the service signs later at another
@@ -162,7 +162,7 @@ export class MailboxOffer {
     this.#posting = posting;
   }
 
-  async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<HttpMailboxData>> {
+  async open(actor: Actor, key: Uint8Array): Promise<EncodedObject<HttpTransportData>> {
     const request = encodeObject(mailboxRequestSchema, { offer: new LinkValue(this.link), key });
     // The service holds the offer and the schemas, so they are left out.
     const signature = await actor.sign(request);
@@ -172,21 +172,20 @@ export class MailboxOffer {
       [request.bytes],
       this.#posting,
     );
-    const mailbox = encodeObject(httpTransport.schema, {
-      key,
+    const transport = encodeObject(httpTransport.schema, {
       url: new URL(`/${hex.encode(data.sendId)}`, this.#url.origin).href,
     });
     const openedMailbox = encodeObject(openedMailboxSchema, {
-      mailbox: new LinkValue(mailbox.link),
+      transport: new LinkValue(transport.link),
       acknowledgement: new LinkValue(acknowledgement.link),
     });
     const { store, privateStore } = this.#posting;
-    await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
+    await store.write({ roots: [transport.link], blobs: [transport.bytes, ...transport.schema.blobs] });
     await privateStore.write({
       marks: [openedMailbox.link],
       blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs],
     });
-    return mailbox;
+    return transport;
   }
 }
 
@@ -218,7 +217,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
 }
 
 class ServicePickup implements Pickup {
-  readonly mailbox: Link<EncodedObject>;
+  readonly transport: Link<EncodedObject>;
   readonly #request: Link<unknown>;
   readonly #url: URL;
   readonly #actor: Actor;
@@ -226,14 +225,14 @@ class ServicePickup implements Pickup {
 
   constructor(
     target: {
-      readonly mailbox: Link<EncodedObject>;
+      readonly transport: Link<EncodedObject>;
       readonly request: Link<unknown>;
       readonly url: URL;
       readonly size: number;
     },
     actor: Actor,
   ) {
-    this.mailbox = target.mailbox;
+    this.transport = target.transport;
     this.#request = target.request;
     this.#url = target.url;
     this.#actor = actor;
@@ -333,9 +332,9 @@ export class Services {
    * A later identity version of the account that takes out the key that signed the request does not
    * change it, so the mailbox stays the account's.
    */
-  async pickup(mailbox: Link<EncodedObject>, actor: Actor): Promise<Pickup> {
-    const link = await (await view(this.#privateStore, this.#mailboxes)).acknowledgementOf(mailbox);
-    if (link === undefined) throw new Error(`the private store lists no mark of opening ${mailbox}`);
+  async pickup(transport: Link<EncodedObject>, actor: Actor): Promise<Pickup> {
+    const link = await (await view(this.#privateStore, this.#mailboxes)).acknowledgementOf(transport);
+    if (link === undefined) throw new Error(`the private store lists no mark of opening a mailbox at ${transport}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store);
@@ -345,7 +344,8 @@ export class Services {
     const { size } = (await readObject(this.#store, offer.link, mailboxOfferSchema)).data;
     const service = await this.latestOf(signedIdentity);
     if (service === undefined) throw new Error(`the store holds no Service of ${signedIdentity.identity.identifier}`);
-    const target = { mailbox, request: request.link, url: new URL(`/${hex.encode(pickupId)}`, service.origin), size };
+    const url = new URL(`/${hex.encode(pickupId)}`, service.origin);
+    const target = { transport, request: request.link, url, size };
     return new ServicePickup(target, actor);
   }
 

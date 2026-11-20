@@ -1,13 +1,22 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
+import {
+  type Bytes,
+  decodeObject,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  readObject,
+  schemaOf,
+} from "@estoc/object";
 import { Intake, type PrivateStore, RefusedBatch, recordsOf, type SecretStore, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
-import { type Mailbox, mailboxFrom, type Options, readMailbox, type Transport } from "./mailbox.ts";
+import { type Mailbox, mailboxAt, type Options, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
-import { type MailboxKeyData, mailboxKeySchema, outboundSchema } from "./schema.ts";
+import { type MailboxData, type MailboxKeyData, mailboxKeySchema, mailboxSchema, outboundSchema } from "./schema.ts";
 
 export interface PostOptions extends Options {
   readonly clock?: () => number;
@@ -21,7 +30,7 @@ export interface Delivery {
   readonly link: Link<EncodedObject>;
 }
 
-type MailboxBytes = { readonly bytes: Bytes<EncodedObject> };
+type TransportBytes = { readonly bytes: Bytes<EncodedObject> };
 
 export class Post {
   readonly #store: Store;
@@ -51,7 +60,7 @@ export class Post {
   }
 
   async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
-    const boundMailbox = await mailboxFrom(await this.#bytesAt(mailbox), { transports: this.#transports });
+    const boundMailbox = await mailboxAt(mailbox, this.#store, { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, this.#privateStore, this.#clock);
   }
 
@@ -59,12 +68,22 @@ export class Post {
    * The mailbox is written to the store, then a record of it to the private store, and then its key
    * to the secret store, so a stop in between leaves at most a mailbox that nobody receives at.
    */
-  async openInbox(makeMailbox: (publicKey: Uint8Array) => MailboxBytes | Promise<MailboxBytes>): Promise<Inbox> {
+  async openInbox(makeTransport: (publicKey: Uint8Array) => TransportBytes | Promise<TransportBytes>): Promise<Inbox> {
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const key = await MailboxKey.fromSecretKey(secret);
-    const { mailbox, data } = readMailbox((await makeMailbox(key.publicKey)).bytes, this.#transports);
-    if (!key.hasPublicKey(data.key)) throw new Error("the mailbox made names another key than the one given");
-    await this.#store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailbox.schema.blobs] });
+    const { bytes } = await makeTransport(key.publicKey);
+    const named = schemaOf(bytes);
+    const transport = this.#transports.find(({ schema }) => schema.link === named);
+    if (transport === undefined) throw new Error(`no transport takes ${named}`);
+    const transportObject = decodeObject(bytes, transport.schema);
+    const mailbox = encodeObject(mailboxSchema, {
+      key: key.publicKey,
+      transport: new LinkValue(transportObject.link),
+    });
+    await this.#store.write({
+      roots: [mailbox.link],
+      blobs: [mailbox.bytes, ...mailboxSchema.blobs, transportObject.bytes, ...transport.schema.blobs],
+    });
     await this.#privateStore.write(recordsOf([mailbox.link], this.#clock()));
     const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
     await this.#secretStore.write({ secrets: [object.link], blobs: [object.bytes, ...mailboxKeySchema.blobs] });
@@ -73,20 +92,14 @@ export class Post {
 
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
     const { data } = await readObject(this.#secretStore, key, mailboxKeySchema);
-    const { mailbox, data: mailboxData } = readMailbox(await this.#bytesAt(data.mailbox.link), this.#transports);
+    const mailbox = await readObject(this.#store, data.mailbox.link, mailboxSchema);
     const opener = await MailboxKey.fromSecretKey(data.secret);
-    if (!opener.hasPublicKey(mailboxData.key)) throw new Error(`${mailbox.link} names another key than ${key} holds`);
+    if (!opener.hasPublicKey(mailbox.data.key)) throw new Error(`${mailbox.link} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
   }
 
-  #inbox(mailbox: EncodedObject, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey) {
+  #inbox(mailbox: EncodedObject<MailboxData>, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey) {
     return new Inbox(mailbox, key, opener, this.#intake);
-  }
-
-  async #bytesAt(link: Link<unknown>): Promise<Uint8Array> {
-    const bytes = await this.#store.get(link);
-    if (bytes === undefined) throw new Error(`the store does not hold ${link}`);
-    return bytes;
   }
 }
 
@@ -120,11 +133,16 @@ export class Outbox {
 
 export class Inbox {
   readonly key: Link<EncodedObject<MailboxKeyData>>;
-  readonly #mailbox: EncodedObject;
+  readonly #mailbox: EncodedObject<MailboxData>;
   readonly #opener: MailboxKey;
   readonly #intake: Intake;
 
-  constructor(mailbox: EncodedObject, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey, intake: Intake) {
+  constructor(
+    mailbox: EncodedObject<MailboxData>,
+    key: Link<EncodedObject<MailboxKeyData>>,
+    opener: MailboxKey,
+    intake: Intake,
+  ) {
     this.#mailbox = mailbox;
     this.key = key;
     this.#opener = opener;
@@ -133,6 +151,10 @@ export class Inbox {
 
   get mailbox(): Link<EncodedObject> {
     return this.#mailbox.link;
+  }
+
+  get transport(): Link<EncodedObject> {
+    return this.#mailbox.data.transport.link;
   }
 
   async receive(ciphertext: Uint8Array): Promise<Delivery> {
@@ -144,8 +166,10 @@ export class Inbox {
    * rather than wait for the blobs a bundle leaves out to reach the store.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
-    if (pickup.mailbox !== this.mailbox)
-      throw new Error(`a pickup of ${pickup.mailbox} is not collected at ${this.mailbox}`);
+    if (pickup.transport !== this.transport)
+      throw new Error(
+        `a pickup at ${pickup.transport} is not collected at ${this.mailbox}, which is at ${this.transport}`,
+      );
     const deliveries: Delivery[] = [];
     for await (const arrival of pickup.arrivals(signal)) {
       const delivery = await this.#tryReceive(arrival.ciphertext);

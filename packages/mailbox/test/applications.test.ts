@@ -14,7 +14,6 @@ import {
   encodeObject,
   type Link,
   LinkValue,
-  linkOf,
   objectsOf,
   readObject,
   type Schema,
@@ -24,7 +23,7 @@ import { peopleView } from "@estoc/people";
 import { link, optional, schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Delivery, type Mailbox, MailboxKey, mailboxFrom, Post } from "../src/index.ts";
+import { type Delivery, type Mailbox, MailboxKey, mailboxAt, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes, each as a bundle
@@ -59,7 +58,7 @@ async function receiver(network: MemoryNetwork, fill: number) {
   const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(fill));
   const queue = network.queue();
   return {
-    mailbox: queue.mailbox(key.publicKey).bytes,
+    mailbox: queue.mailbox(key.publicKey),
     take: () => Promise.all(queue.take().map((ciphertext) => key.open(ciphertext))),
   };
 }
@@ -83,7 +82,7 @@ describe("a chat line", () => {
     const network = new MemoryNetwork();
     const [atBob, atCarol] = await Promise.all([receiver(network, 12), receiver(network, 13)]);
     const sentSignature = await sendSigned(
-      await mailboxFrom(atBob.mailbox, { transports: [network.transport] }),
+      await mailboxAt(atBob.mailbox.link, atBob.mailbox, { transports: [network.transport] }),
       line,
       alice,
     );
@@ -91,10 +90,8 @@ describe("a chat line", () => {
     assert.exists(receivedBundle);
     // Bob passes on what he read: the signature, with the line and the signed identity it names.
     const signedLine = await readSigned(receivedBundle, chat);
-    await (await mailboxFrom(atCarol.mailbox, { transports: [network.transport] })).send(signedLine.signature.link, [
-      ...signedLine.signature.blobs,
-      signedLine.object.bytes,
-    ]);
+    const carolsMailbox = await mailboxAt(atCarol.mailbox.link, atCarol.mailbox, { transports: [network.transport] });
+    await carolsMailbox.send(signedLine.signature.link, [...signedLine.signature.blobs, signedLine.object.bytes]);
     const [passedBundle] = await atCarol.take();
     assert.exists(passedBundle);
     return { sentSignature, receivedBundle, passedBundle };
@@ -130,9 +127,9 @@ describe("a one-time invitation", () => {
   const invite = async () => {
     const network = new MemoryNetwork();
     const inviter = await receiver(network, 14);
-    const link = linkOf(inviter.mailbox);
+    const { link } = inviter.mailbox;
     const answer = async (guest: SoftwareSigner) => {
-      const mailbox = await mailboxFrom(inviter.mailbox, { transports: [network.transport] });
+      const mailbox = await mailboxAt(link, inviter.mailbox, { transports: [network.transport] });
       await sendSigned(mailbox, encodeObject(join, { invitation: new LinkValue(link) }), guest);
     };
     let isUsed = false;
@@ -205,7 +202,7 @@ describe("a sale sent to a registry", () => {
   const withRegistry = async (faults: Faults) => {
     const network = new MemoryNetwork(faults);
     const registry = await receiver(network, 15);
-    const mailbox = await mailboxFrom(registry.mailbox, { transports: [network.transport] });
+    const mailbox = await mailboxAt(registry.mailbox.link, registry.mailbox, { transports: [network.transport] });
     return { send: (party: SoftwareSigner) => sendSigned(mailbox, terms, party), take: registry.take };
   };
 
@@ -258,8 +255,8 @@ describe("two people who meet", () => {
       const correspondence = post.correspondenceAs(actor, identity);
       const openInbox = async () => {
         const queue = network.queue();
-        const inbox = await post.openInbox(queue.mailbox);
-        const pickup = queue.pickup(inbox.mailbox);
+        const inbox = await post.openInbox(() => queue.transport);
+        const pickup = queue.pickup();
         return { mailbox: inbox.mailbox, collect: () => inbox.collect(pickup) };
       };
       const say = async (to: SignedIdentityObject, text: string) => {

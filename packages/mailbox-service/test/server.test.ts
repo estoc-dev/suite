@@ -159,14 +159,16 @@ describe("a mailbox service", () => {
   });
 
   it("opens an account for the identity that signs its offer, and answers 201 with its signature over an acknowledgement", async () => {
-    const { service } = await memoryService({ start: 5_000 });
+    const clock = { now: 5_000 };
+    const { service } = await memoryService({ start: 5_000, clock });
     const { offer, acceptId } = await rootOf(service);
     const acceptance = await directAcceptance(offer);
+    clock.now = 6_000;
     const response = await post(service, acceptId, acceptance.file);
     expect(response.status).toBe(201);
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
-    expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 5_001 });
+    expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 6_000 });
     const read = await signatureIn(bundle, acceptance.signature.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
@@ -956,17 +958,19 @@ describe("a mailbox service whose store holds a later identity version than a re
 
 describe("a mailbox service's offer of mailboxes", () => {
   it("opens a mailbox under the account of whoever signs a request for one, and answers 201 with its signature over an acknowledgement", async () => {
-    const { service } = await memoryService({ start: 5_000 });
+    const clock = { now: 5_000 };
+    const { service } = await memoryService({ start: 5_000, clock });
     const actor = await actorOf(alice);
     await openAccount(service, actor);
     const { mailbox } = await rootOf(service);
     const { signature, file } = await mailboxRequest(actor, mailbox.offer);
+    clock.now = 6_000;
     const response = await postMailboxRequest(service, file);
     expect(response.status).toBe(201);
     const { bundle, signature: acknowledgementSignature, acknowledgement } = await mailboxAcknowledgementIn(response);
     expect(acknowledgementSignature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     const { sendId, pickupId } = acknowledgement.data;
-    expect(acknowledgement.data).toEqual({ request: new LinkValue(signature.link), at: 5_003, sendId, pickupId });
+    expect(acknowledgement.data).toEqual({ request: new LinkValue(signature.link), at: 6_000, sendId, pickupId });
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);

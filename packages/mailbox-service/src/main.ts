@@ -4,7 +4,8 @@ import { Keyring } from "@estoc/keyring";
 import { PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
-import { loadMailboxService, setUpMailboxService } from "./server.ts";
+import { setUpNotary } from "./notary.ts";
+import { loadMailboxService } from "./server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "./sqlite.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -77,16 +78,12 @@ async function setUp(): Promise<void> {
   const privateBackend = new SqliteBackend(paths.privateStore);
   const backend = new SqliteBackend(paths.database);
   try {
+    const kit = loadIdentity(schemes);
     const store = new Store(backend);
-    const keyring = new Keyring(store, secretBackend, loadIdentity(schemes).secretKeys);
+    const keyring = new Keyring(store, secretBackend, kit.secretKeys);
     const root = await keyring.generate(ed25519);
     const privateStore = new PrivateStore(store, privateBackend);
-    const signedIdentity = await setUpMailboxService(keyring, root.link, {
-      store,
-      privateStore,
-      schemes,
-      at: Date.now(),
-    });
+    const signedIdentity = await setUpNotary(keyring, root.link, { kit, store, privateStore, at: Date.now() });
     console.log(signedIdentity.identity.identifier);
   } finally {
     for (const file of [secretBackend, privateBackend, backend]) file.close();

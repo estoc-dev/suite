@@ -15,15 +15,11 @@ import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
 import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
+import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
-import {
-  type Accounts,
-  loadMailboxService,
-  type Mailboxes,
-  MemoryAccounts,
-  MemoryMailboxes,
-  setUpMailboxService,
-} from "../src/server.ts";
+import { type Mailboxes, MemoryMailboxes } from "../src/mailboxes.ts";
+import { setUpNotary } from "../src/notary.ts";
+import { loadMailboxService } from "../src/server.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const signer = (scheme: CurveScheme, fill: number) =>
@@ -62,7 +58,8 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
-export const { keys, identities, signedIdentities, signatures, publish } = loadIdentity(schemes);
+const kit = loadIdentity(schemes);
+export const { keys, identities, signedIdentities, signatures, publish } = kit;
 
 /** A keyring that holds the Secret Key of `by` alone. */
 export const keyringOf = (by: Signer): Pick<Keyring, "signerFor"> => ({
@@ -98,7 +95,7 @@ export async function setUpService({
   readonly store: Store;
   readonly privateStore?: PrivateStore;
 }) {
-  return setUpMailboxService(keyringOf(by), keys.encode(by.key).link, { store, privateStore, schemes, at: start });
+  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, privateStore, at: start });
 }
 
 async function recordsIdentityVersion(privateStore: PrivateStore): Promise<boolean> {

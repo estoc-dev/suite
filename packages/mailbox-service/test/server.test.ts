@@ -1,6 +1,6 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, eip191, type SignedIdentityObject, type Signer } from "@estoc/identity";
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
+import { type Actor, ed25519, eip191, loadIdentity, type SignedIdentityObject, type Signer } from "@estoc/identity";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, type Reader, readObject } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
 import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
@@ -32,6 +32,7 @@ import {
   privateStoreBeside,
   publish,
   recordedObjectsIn,
+  schemes,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -55,10 +56,12 @@ const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
 const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(privateStoreBeside(store))).sort();
+/** Read by a kit of its own, as a client reads a response, so that what the test signed is read from the bundle. */
+const signatureIn = (bundle: Reader, link: Link<unknown>) => loadIdentity(schemes).signatures.read(link, bundle);
 
 async function rootOf(service: MailboxService) {
   const bundle = await bundleOf(await getRoot(service));
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   const { data } = await readObject(bundle, signature.object, serviceSchema);
   const [listedAccount, listedMailbox] = data.offers;
   assert.exists(listedAccount);
@@ -118,7 +121,7 @@ function heldSigner(signer: Signer) {
 
 async function acknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   return { bundle, signature, acknowledgement: await readObject(bundle, signature.object, acknowledgementSchema) };
 }
 
@@ -148,7 +151,7 @@ describe("a mailbox service", () => {
     const { bundle, signature, acknowledgement } = await acknowledgementIn(response);
     expect(signature.signedIdentity.identity.link).toBe(serviceIdentity(5_000).link);
     expect(acknowledgement.data).toEqual({ acceptance: new LinkValue(acceptance.signature.link), at: 5_001 });
-    const read = await signatures.read(acceptance.signature.link, bundle);
+    const read = await signatureIn(bundle, acceptance.signature.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
   });
@@ -181,7 +184,7 @@ describe("a mailbox service", () => {
     const { bundle, acknowledgement } = await acknowledgementIn(response);
     const { acceptance: link } = acknowledgement.data;
     expect(link.link).toBe(acceptance.signature.link);
-    const read = await signatures.read(link.link, bundle);
+    const read = await signatureIn(bundle, link.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity.root.link).toBe(keys.encode(wallet.key).link);
     expect(read.key.link).toBe(keys.encode(device.key).link);
@@ -740,7 +743,7 @@ const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
 
 async function mailboxAcknowledgementIn(response: Response) {
   const bundle = await bundleOf(response);
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await signatureIn(bundle, bundle.link);
   return {
     bundle,
     signature,
@@ -843,50 +846,69 @@ class WatchedBackend extends MemoryBackend {
 }
 
 describe("a mailbox service whose store holds a later identity version than a request carries", () => {
+  // The service reads the identity versions its store holds before it reads a request's body, and
+  // keeps one it has read. So the store takes a later version while the body comes in, for the
+  // service to read after it, and `onRead` runs at the first read of that version.
   async function serviceHoldingLaterVersion(options: Parameters<typeof memoryService>[0] = {}) {
     const backend = new WatchedBackend();
     const store = new Store(backend);
     const actor = await actorOf(alice);
-    const laterVersion = await publish(alice, { prior: actor.signedIdentity, at: 2_000 });
-    await store.write({ roots: [laterVersion.link], blobs: laterVersion.blobs });
     const { service } = await memoryService({ ...options, store });
-    const runOnLaterVersionRead = (act: (() => void) | undefined) => {
-      backend.onGet = act && ((link) => link === laterVersion.link && act());
+    let latest = actor.signedIdentity;
+    const postHoldingLaterVersion = (id: string, file: Uint8Array, onRead: () => void) => {
+      const body = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            const laterVersion = await publish(alice, { prior: latest, at: latest.identity.at + 1_000 });
+            latest = laterVersion;
+            await store.write({ roots: [laterVersion.link], blobs: laterVersion.blobs });
+            backend.onGet = (link) => {
+              if (link !== laterVersion.link) return;
+              backend.onGet = undefined;
+              onRead();
+            };
+            controller.enqueue(file);
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      return service.fetch(request(`/${id}`, { method: "POST", body, duplex: "half" } as RequestInit));
     };
-    return { service, actor, runOnLaterVersionRead, root: await rootOf(service) };
+    return { service, actor, postHoldingLaterVersion, root: await rootOf(service) };
   }
 
   it("signs an acknowledgement at when the request came in, however long reading that version takes", async () => {
     const clock = { now: 1_000 };
-    const { service, actor, runOnLaterVersionRead, root } = await serviceHoldingLaterVersion({ clock });
+    const { actor, postHoldingLaterVersion, root } = await serviceHoldingLaterVersion({ clock });
     const acceptance = await actor.sign(root.offer);
+    const acceptanceFile = encodeBundle(acceptance.link, acceptance.blobs);
     const request = await mailboxRequest(actor, root.mailbox.offer);
 
     clock.now = 2_000;
-    runOnLaterVersionRead(() => {
+    const account = await postHoldingLaterVersion(root.acceptId, acceptanceFile, () => {
       clock.now = 5_000;
     });
-    const account = await post(service, root.acceptId, encodeBundle(acceptance.link, acceptance.blobs));
+    expect(clock.now).toBe(5_000);
     expect(account.status).toBe(201);
     expect((await acknowledgementIn(account)).acknowledgement.data.at).toBe(2_000);
 
     clock.now = 6_000;
-    runOnLaterVersionRead(() => {
+    const mailbox = await postHoldingLaterVersion(root.mailbox.acceptId, request.file, () => {
       clock.now = 9_000;
     });
-    const mailbox = await post(service, root.mailbox.acceptId, request.file);
+    expect(clock.now).toBe(9_000);
     expect(mailbox.status).toBe(201);
     expect((await mailboxAcknowledgementIn(mailbox)).acknowledgement.data.at).toBe(6_000);
   });
 
   it("throws when reading that version fails, and answers the same request once it is read", async () => {
-    const { service, actor, runOnLaterVersionRead, root } = await serviceHoldingLaterVersion();
+    const { service, actor, postHoldingLaterVersion, root } = await serviceHoldingLaterVersion();
     async function postAfterFailedRead(id: string, body: Uint8Array) {
-      runOnLaterVersionRead(() => {
+      const failingRead = () => {
         throw new Error("the read failed");
-      });
-      await expect(post(service, id, body)).rejects.toThrow("the read failed");
-      runOnLaterVersionRead(undefined);
+      };
+      await expect(postHoldingLaterVersion(id, body, failingRead)).rejects.toThrow("the read failed");
       return post(service, id, body);
     }
 
@@ -918,7 +940,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(sendId).toHaveLength(16);
     expect(pickupId).toHaveLength(16);
     expect(sendId).not.toEqual(pickupId);
-    const read = await signatures.read(signature.link, bundle);
+    const read = await signatureIn(bundle, signature.link);
     const request = await readObject(bundle, read.object, mailboxRequestSchema);
     expect(request.data).toEqual({ offer: new LinkValue(mailbox.offer.link), key: keyOf(0x11) });
     expect((await readObject(bundle, request.data.offer.link, mailboxOfferSchema)).data).toEqual(mailbox.offer.data);

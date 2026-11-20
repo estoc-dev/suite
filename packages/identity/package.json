@@ -14,7 +14,8 @@
     "@estoc/object": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@noble/curves": "^2.4.0",
-    "@noble/hashes": "^2.4.0"
+    "@noble/hashes": "^2.4.0",
+    "lru-cache": "^11.5.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

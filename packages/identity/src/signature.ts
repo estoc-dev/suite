@@ -13,6 +13,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
+import { LRUCache } from "lru-cache";
 import { blobsOf } from "./blobs.ts";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
@@ -57,8 +58,10 @@ export interface Actor {
 
 /**
  * A signature is verified by the identity version it carries alone, so what is read depends on the
- * signature and its closure, and an index can read by it. Whether the signature is still honored
- * depends on the identity versions a reader has seen, which are not read here.
+ * signature and its closure, and an index can read by it. A signature that has read is kept by its
+ * link and given again without asking the reader: what it is read from is in `blobs`, and reading
+ * it does not need the object it signs. Whether the signature is still honored depends on the
+ * identity versions a reader has seen, which are not read here.
  */
 export class Signatures {
   readonly schema = signatureSchema;
@@ -67,19 +70,26 @@ export class Signatures {
     read: (signature, reader) => this.verify(signature, reader),
   };
   readonly #signedIdentities: SignedIdentities;
+  /**
+   * Apart from the signed identities kept, so that signatures read once, as requests to a server
+   * mostly are, do not push out the signed identities every signature reads.
+   */
+  readonly #cache = new LRUCache<Link<unknown>, Signature>({ max: 10_000 });
 
   constructor(signedIdentities: SignedIdentities) {
     this.#signedIdentities = signedIdentities;
   }
 
   async verify(signature: EncodedObject<SignatureData>, reader: Reader): Promise<Signature> {
+    const kept = this.#cache.get(signature.link);
+    if (kept !== undefined) return kept;
     if (signature.schema.link !== this.schema.link) throw new Error(`a signature is written to ${this.schema.link}`);
     const signedIdentity = await this.#signedIdentities.read(signature.data.signedIdentity.link, reader);
     return this.#signatureOf(signature, signedIdentity);
   }
 
   async read(link: Link<unknown>, reader: Reader): Promise<Signature> {
-    return this.verify(await readObject(reader, link, this.schema), reader);
+    return this.#cache.get(link) ?? this.verify(await readObject(reader, link, this.schema), reader);
   }
 
   selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {
@@ -127,7 +137,7 @@ export class Signatures {
     const value = signature.data.signature;
     const key = signerOf(signedIdentity.identity, digestOf(object), value, digestOf(signedIdentity.link));
     if (key === undefined) throw new Error(`the signature does not verify for ${object}`);
-    return {
+    const verifiedSignature = {
       link: signature.link,
       signedIdentity,
       key,
@@ -135,5 +145,7 @@ export class Signatures {
       signature: value,
       blobs: blobsOf(signature, signedIdentity.blobs),
     };
+    this.#cache.set(signature.link, verifiedSignature);
+    return verifiedSignature;
   }
 }

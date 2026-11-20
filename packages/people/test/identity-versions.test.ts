@@ -75,6 +75,7 @@ describe("the rows of a signed identity", () => {
 
 describe("the selection of identity versions", () => {
   const { selection } = identityVersions;
+  const freshSelection = () => new IdentityVersions(loadIdentity([ed25519]).signedIdentities).selection;
   const root = signer(ed25519, 4);
 
   it.each([
@@ -85,7 +86,7 @@ describe("the selection of identity versions", () => {
     const signedIdentity = await signIdentity();
     const reader = byLink(signedIdentity.blobs);
     const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
-    expect(await selection.read(signedIdentity.link, reader)).toEqual(
+    expect(await freshSelection().read(signedIdentity.link, reader)).toEqual(
       await signedIdentities.implementation.read(object, reader),
     );
   });
@@ -94,7 +95,7 @@ describe("the selection of identity versions", () => {
     const signedIdentity = await publish(root, { at: 1_000 });
     const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
     const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
-    expect((await selection.itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
+    expect((await freshSelection().itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
   });
 
   it("refuses a signed identity that another key signed", async () => {
@@ -133,6 +134,7 @@ describe("the selection of identity versions", () => {
 
   it("refuses a signed identity whose identity the reader does not give, by the reader's error", async () => {
     const signedIdentity = await publish(root, { at: 1_000 });
+    const selection = freshSelection();
     const failingReader = {
       get: async (link: Link<unknown>) => {
         if (link === signedIdentity.link) return bytesOf(signedIdentity);

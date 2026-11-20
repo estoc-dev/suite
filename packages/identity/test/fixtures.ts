@@ -1,7 +1,8 @@
 import { type Link, linkOf, type ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
-import { type CurveScheme, ed25519, eip191, solanaOffchain } from "../src/index.ts";
+import { type CurveScheme, ed25519, eip191, loadIdentity, solanaOffchain } from "../src/index.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
+export const freshKit = () => loadIdentity(schemes);
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 

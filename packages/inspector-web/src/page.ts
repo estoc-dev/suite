@@ -2,7 +2,7 @@ import { type Bundle, decodeBundle } from "@estoc/bundle";
 import { type Inspection, inspect } from "@estoc/inspector";
 import { linkIn } from "./address.ts";
 import { blobListOf, type ListedBlob } from "./blob-list.ts";
-import { type Reading, readingOf } from "./reading.ts";
+import { type FileReading, fileReadingsOf, type Reading, readingOf } from "./reading.ts";
 import { readings } from "./readings.ts";
 
 /** A file that gave no bytes, as one does that is removed after it is chosen. */
@@ -24,6 +24,7 @@ export interface OpenFile {
   readonly bytes: Uint8Array;
   readonly bundle: Bundle;
   readonly blobs: readonly ListedBlob[];
+  readonly readings: readonly FileReading[];
 }
 
 export type ShownFile = OpenFile & { readonly inspection: Inspection; readonly reading: Reading | undefined };
@@ -48,7 +49,7 @@ export async function readFile(file: Pick<File, "name" | "arrayBuffer">): Promis
   } catch (error) {
     return { kind: "refused", name, error };
   }
-  return { kind: "open", name, bytes, bundle, blobs: await blobListOf(bundle) };
+  return { kind: "open", name, bytes, bundle, blobs: await blobListOf(bundle), readings: fileReadingsOf(readings) };
 }
 
 export async function pageOf(fileTask: ReturnType<typeof readFile> | undefined, fragment: string): Promise<Page> {
@@ -56,5 +57,5 @@ export async function pageOf(fileTask: ReturnType<typeof readFile> | undefined, 
   if (file === undefined) return { kind: "closed" };
   if (file.kind !== "open") return file;
   const inspection = await inspect(linkIn(fragment) ?? file.bundle.link, file.bundle);
-  return { ...file, inspection, reading: await readingOf(inspection, file.bundle, readings) };
+  return { ...file, inspection, reading: await readingOf(inspection, file.bundle, file.readings) };
 }

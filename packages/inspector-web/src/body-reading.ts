@@ -4,6 +4,6 @@ import type { ReadingAs } from "./reading.ts";
 
 export const bodyReading: ReadingAs<Body> = {
   name: "the body of a post",
-  implementations: bodies,
+  implementations: () => bodies,
   viewOf: ({ html }) => markup("div", { class: "rendered" }, html),
 };

@@ -4,7 +4,7 @@ import { type Child, h } from "./dom.ts";
 import { linkView } from "./link-view.ts";
 import type { ReadingAs } from "./reading.ts";
 
-const { signatures } = loadIdentity([ed25519, eip191, solanaOffchain]);
+const schemes = [ed25519, eip191, solanaOffchain];
 
 // The page verifies each signature by itself. It gathers no identity versions, from the file or from
 // one file to the next, so a signature it shows as read is honored by those it carries alone, where
@@ -31,6 +31,6 @@ function signatureView({ signedIdentity, key, object }: Signature): Child {
 
 export const signatureReading: ReadingAs<Signature> = {
   name: "a signature",
-  implementations: new Implementations([signatures.implementation]),
+  implementations: () => new Implementations([loadIdentity(schemes).signatures.implementation]),
   viewOf: signatureView,
 };

@@ -4,9 +4,21 @@ import type { Child } from "./dom.ts";
 
 export interface ReadingAs<T> {
   readonly name: string;
-  readonly implementations: Implementations<T>;
+  /**
+   * Asked once for each file opened. Implementations that keep what they read are made anew, so
+   * that a file is read from itself alone and not from a file opened before.
+   */
+  implementations(): Implementations<T>;
   viewOf(value: T): Child;
 }
+
+export interface FileReading<T = unknown> {
+  readonly as: ReadingAs<T>;
+  readonly implementations: Implementations<T>;
+}
+
+export const fileReadingsOf = (readings: readonly ReadingAs<unknown>[]): readonly FileReading[] =>
+  readings.map((as) => ({ as, implementations: as.implementations() }));
 
 export type Reading<T = unknown> =
   | { readonly kind: "read"; readonly as: ReadingAs<T>; readonly value: T }
@@ -19,11 +31,11 @@ export type Reading<T = unknown> =
 export async function readingOf(
   inspection: Inspection,
   reader: Reader,
-  readings: readonly ReadingAs<unknown>[],
+  readings: readonly FileReading[],
 ): Promise<Reading | undefined> {
   if (inspection.kind !== "object") return undefined;
-  for (const as of readings) {
-    const implementation = as.implementations.implementationOf(inspection.schema.link as Link<Schema>);
+  for (const { as, implementations } of readings) {
+    const implementation = implementations.implementationOf(inspection.schema.link as Link<Schema>);
     if (implementation === undefined) continue;
     try {
       const object = decodeObject(inspection.bytes, implementation.schema);

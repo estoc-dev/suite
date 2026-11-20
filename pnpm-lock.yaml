@@ -79,6 +79,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
+      lru-cache:
+        specifier: ^11.5.3
+        version: 11.5.3
     devDependencies:
       '@types/node':
         specifier: ^26.6.2
@@ -846,6 +849,10 @@ packages:
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
 
+  lru-cache@11.5.3:
+    resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
+    engines: {node: 20 || >=22}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -1467,6 +1474,8 @@ snapshots:
   js-tokens@9.0.1: {}
 
   loupe@3.2.1: {}
+
+  lru-cache@11.5.3: {}
 
   magic-string@0.30.21:
     dependencies:

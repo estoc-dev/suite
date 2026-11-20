@@ -1,7 +1,8 @@
 import { access, open } from "node:fs/promises";
-import { ed25519, eip191, loadIdentity, type SecretKeyObject, solanaOffchain } from "@estoc/identity";
-import { type Link, objectsOf } from "@estoc/object";
-import { MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
+import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
+import { Keyring } from "@estoc/keyring";
+import type { Link } from "@estoc/object";
+import { MemoryBackend, PrivateStore, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { loadMailboxService } from "./server.ts";
@@ -38,8 +39,11 @@ async function start(): Promise<void> {
   const accounts = new SqliteAccounts(database);
   const mailboxes = new SqliteMailboxes(database);
   const store = new Store(backend);
-  const secretKey = await secretKeyIn(new SecretStore(store, secretBackend), secretStorePath);
-  const service = await loadMailboxService(secretKey.signer, {
+  const keyring = new Keyring(store, secretBackend, loadIdentity(schemes).secretKeys);
+  const key = await keyIn(keyring, secretStorePath);
+  const signer = await keyring.signerFor(key);
+  if (signer === undefined) throw new Error(`${secretStorePath} lists ${key} and gives no signer for it`);
+  const service = await loadMailboxService(signer, {
     origin,
     store,
     privateStore: new PrivateStore(store, privateBackend),
@@ -69,7 +73,7 @@ async function start(): Promise<void> {
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
   // Whoever waits for this line can ask it to stop from then on.
-  console.log(`${origin} is served at ${server.origin} as ${secretKey.key.link}`);
+  console.log(`${origin} is served at ${server.origin} as ${key}`);
 }
 
 async function makeSecretStore(path: string): Promise<void> {
@@ -77,28 +81,20 @@ async function makeSecretStore(path: string): Promise<void> {
   await (await open(path, "wx", 0o600)).close();
   const backend = new SqliteBackend(path);
   try {
-    const { secretKeys } = loadIdentity(schemes);
-    const secretKey = secretKeys.encode(ed25519, crypto.getRandomValues(new Uint8Array(32)));
-    const secretStore = new SecretStore(new Store(new MemoryBackend()), backend);
-    await secretStore.write({ secrets: [secretKey.link], blobs: secretKey.blobs });
-    console.log(secretKey.key.link);
+    const keyring = new Keyring(new Store(new MemoryBackend()), backend, loadIdentity(schemes).secretKeys);
+    console.log((await keyring.generate(ed25519)).link);
   } finally {
     backend.close();
   }
 }
 
-async function secretKeyIn(secretStore: SecretStore, path: string): Promise<SecretKeyObject> {
-  const { secretKeys } = loadIdentity(schemes);
-  const selection = objectsOf(secretKeys.schema);
-  const links: Link<unknown>[] = [];
-  for await (const secret of secretStore.secrets()) {
-    const secretKey = await selection.read(secret, secretStore);
-    if (secretKey !== undefined) links.push(secretKey.link);
-  }
-  const [link, ...others] = links;
-  if (link === undefined || others.length > 0)
-    throw new Error(`${path} holds ${links.length} Secret Keys, where the service takes one`);
-  return secretKeys.read(link, secretStore);
+async function keyIn(keyring: Keyring, path: string): Promise<Link<unknown>> {
+  const keys: Link<unknown>[] = [];
+  for await (const { link } of keyring.keys()) keys.push(link);
+  const [key, ...others] = keys;
+  if (key === undefined || others.length > 0)
+    throw new Error(`${path} holds ${keys.length} Secret Keys, where the service takes one`);
+  return key;
 }
 
 function settingNamed(name: string): string {

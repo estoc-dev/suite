@@ -5,8 +5,8 @@ import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
-import { objectsOf } from "@estoc/object";
-import { MemoryBackend, SecretStore, Store } from "@estoc/store";
+import { Keyring } from "@estoc/keyring";
+import { MemoryBackend, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
@@ -69,18 +69,14 @@ async function start(settings: Readonly<Record<string, string>>) {
   };
 }
 
-async function secretKeysAt(path: string) {
+async function keysAt(path: string) {
   const { secretKeys } = loadIdentity([ed25519, eip191, solanaOffchain]);
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
-  const secretStore = new SecretStore(new Store(new MemoryBackend()), backend);
-  const selection = objectsOf(secretKeys.schema);
-  const secretKeyObjects = [];
-  for await (const secret of secretStore.secrets()) {
-    const secretKey = await selection.read(secret, secretStore);
-    if (secretKey !== undefined) secretKeyObjects.push(secretKey);
-  }
-  return secretKeyObjects;
+  const keyring = new Keyring(new Store(new MemoryBackend()), backend, secretKeys);
+  const keys = [];
+  for await (const { link } of keyring.keys()) keys.push(link);
+  return keys;
 }
 
 describe("main.ts", { timeout: 20_000 }, () => {
@@ -140,9 +136,9 @@ describe("main.ts key", { timeout: 20_000 }, () => {
     const { code, stdout } = await run(main, ["key", path]);
     expect(code).toBe(0);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
-    const [secretKey, ...others] = await secretKeysAt(path);
+    const [key, ...others] = await keysAt(path);
     expect(others).toEqual([]);
-    expect(stdout).toBe(`${secretKey?.data.key.link}\n`);
+    expect(stdout).toBe(`${key}\n`);
   });
 
   it("refuses to write over a file that is there", async () => {

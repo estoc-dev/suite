@@ -20,7 +20,7 @@ export class Keyring {
   }
 
   async generate(scheme: CurveScheme): Promise<KeyObject> {
-    const secretKey = this.#secretKeys.encode(scheme, crypto.getRandomValues(new Uint8Array(32)));
+    const secretKey = this.#secretKeys.encode(scheme, scheme.curve.randomSecretKey());
     await this.#secretStore.write({ secrets: [secretKey.link], blobs: secretKey.blobs });
     return secretKey.key;
   }

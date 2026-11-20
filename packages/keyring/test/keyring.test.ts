@@ -1,4 +1,14 @@
-import { ed25519, eip191, isSameKey, loadIdentity, SoftwareSigner, solanaOffchain, verify } from "@estoc/identity";
+import {
+  curveScheme,
+  ed25519,
+  ed25519Curve,
+  eip191,
+  isSameKey,
+  loadIdentity,
+  SoftwareSigner,
+  solanaOffchain,
+  verify,
+} from "@estoc/identity";
 import type { Link } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
@@ -25,6 +35,22 @@ describe("a keyring", () => {
     const signer = await keyring.signerFor(key.link);
     assert.exists(signer);
     expect(isSameKey(signer.key, key)).toBe(true);
+    expect(verify(key, digest, await signer.sign(digest))).toBe(true);
+  });
+
+  it("generates the secret key that the curve of the scheme draws", async () => {
+    const secret = new Uint8Array(32).fill(3);
+    const drawing = curveScheme(
+      "ed25519-drawing",
+      { ...ed25519Curve, randomSecretKey: () => secret.slice() },
+      ed25519.message,
+    );
+    const { secretKeys: drawingSecretKeys } = loadIdentity([drawing]);
+    const backend = new MemoryBackend();
+    const key = await new Keyring(new Store(new MemoryBackend()), backend, drawingSecretKeys).generate(drawing);
+    expect(isSameKey(key, SoftwareSigner.fromSecretKey(drawing, secret).key)).toBe(true);
+    const signer = await new Keyring(new Store(new MemoryBackend()), backend, drawingSecretKeys).signerFor(key.link);
+    assert.exists(signer);
     expect(verify(key, digest, await signer.sign(digest))).toBe(true);
   });
 

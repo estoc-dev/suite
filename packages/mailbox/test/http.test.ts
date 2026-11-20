@@ -147,7 +147,7 @@ describe("an HTTP transport's url", () => {
   ])("may be %s", async (url) => {
     const fetch = mockFetch();
     await (await mailboxTo(url)).send(hello.link, [hello.bytes]);
-    expect(fetch.mock.calls.map(([posted]) => posted)).toEqual([url]);
+    expect(fetch.mock.calls.map(([posted]) => (posted as globalThis.Request).url)).toEqual([new URL(url).href]);
   });
 
   it.each([
@@ -155,6 +155,7 @@ describe("an HTTP transport's url", () => {
     ["of another scheme", "ftp://mail.example/alice"],
     ["to a host whose name only starts as this machine's", "http://localhost.mail.example/inbox"],
     ["to another host, with this machine's address as the user", "http://127.0.0.1@mail.example/inbox"],
+    ["one with a user name, which fetch refuses", "https://bob@mail.example/inbox"],
     ["not a URL", "https://mail example/alice"],
   ])("turns the mailbox back as one that is gone when it is %s", async (_, url) => {
     expect(await rejectedAs(mailboxTo(url))).toBe("gone");

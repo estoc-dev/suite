@@ -53,7 +53,6 @@ describe("a mailbox", () => {
   });
 });
 
-// A reader that holds `blobs` alone.
 const readerOf = (...blobs: Uint8Array[]) => {
   const byLink = new Map<Link<unknown>, Uint8Array>(blobs.map((blob) => [linkOf(blob), blob]));
   return { get: (link: Link<unknown>) => byLink.get(link) };
@@ -68,7 +67,7 @@ describe("a mailbox at a link", () => {
   });
 
   it("is refused when it is not a Mailbox", async () => {
-    await expect(mailboxAt(hello.link, readerOf(hello.bytes), options)).rejects.toThrow(/is written to/);
+    await expect(mailboxAt(hello.link as Link<never>, readerOf(hello.bytes), options)).rejects.toThrow(/is written to/);
   });
 
   it.each([31, 33])("is refused when its key is %i bytes", async (length) => {

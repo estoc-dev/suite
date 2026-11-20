@@ -25,7 +25,7 @@ export interface PostOptions extends Options {
 export interface Delivery {
   readonly direction: "inbound" | "outbound";
   readonly bundle: Link<never>;
-  readonly mailbox: Link<EncodedObject>;
+  readonly mailbox: Link<EncodedObject<MailboxData>>;
   readonly at: number;
   readonly link: Link<EncodedObject>;
 }
@@ -59,7 +59,7 @@ export class Post {
     return new Correspondence(stores, this, actor, this.#clock, new MailboxGrants(identity), identity);
   }
 
-  async outbox(mailbox: Link<EncodedObject>): Promise<Outbox> {
+  async outbox(mailbox: Link<EncodedObject<MailboxData>>): Promise<Outbox> {
     const boundMailbox = await mailboxAt(mailbox, this.#store, { transports: this.#transports });
     return new Outbox(boundMailbox, this.#store, this.#privateStore, this.#clock);
   }
@@ -116,7 +116,7 @@ export class Outbox {
     this.#clock = clock;
   }
 
-  get mailbox(): Link<EncodedObject> {
+  get mailbox(): Link<EncodedObject<MailboxData>> {
     return this.#mailbox.link;
   }
 
@@ -149,12 +149,8 @@ export class Inbox {
     this.#intake = intake;
   }
 
-  get mailbox(): Link<EncodedObject> {
+  get mailbox(): Link<EncodedObject<MailboxData>> {
     return this.#mailbox.link;
-  }
-
-  get transport(): Link<EncodedObject> {
-    return this.#mailbox.data.transport.link;
   }
 
   async receive(ciphertext: Uint8Array): Promise<Delivery> {
@@ -166,10 +162,8 @@ export class Inbox {
    * rather than wait for the blobs a bundle leaves out to reach the store.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {
-    if (pickup.transport !== this.transport)
-      throw new Error(
-        `a pickup at ${pickup.transport} is not collected at ${this.mailbox}, which is at ${this.transport}`,
-      );
+    if (pickup.mailbox !== this.mailbox)
+      throw new Error(`a pickup of ${pickup.mailbox} is not collected at ${this.mailbox}`);
     const deliveries: Delivery[] = [];
     for await (const arrival of pickup.arrivals(signal)) {
       const delivery = await this.#tryReceive(arrival.ciphertext);

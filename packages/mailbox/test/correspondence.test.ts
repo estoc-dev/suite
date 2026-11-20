@@ -80,7 +80,7 @@ interface OpenedInbox {
 async function openInbox({ post }: Person, on = network): Promise<OpenedInbox> {
   const queue = on.queue();
   const inbox = await post.openInbox(() => queue.transport);
-  return { queue, inbox, pickup: queue.pickup() };
+  return { queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.

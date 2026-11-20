@@ -1,6 +1,6 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, type Signer, solanaOffchain } from "@estoc/identity";
-import { mailboxSchema, type Pickup, Post } from "@estoc/mailbox";
+import { mailboxAt, mailboxSchema, type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
@@ -123,7 +123,7 @@ async function signedService(origin: string, offers: readonly EncodedObject[], b
   return encodeBundle(signature.link, [...signature.blobs, ...blobs]);
 }
 
-/** Writes to `store` a mailbox sealed to `keyOf(7)` at an HTTP transport object at `url`. */
+/** Writes to `store` a mailbox whose messages are sealed to `keyOf(7)`, at an HTTP transport object at `url`. */
 async function writeMailbox(store: Store, url: string) {
   const transport = encodeObject(http.schema, { url });
   const mailbox = encodeObject(mailboxSchema, { key: keyOf(7), transport: new LinkValue(transport.link) });
@@ -452,8 +452,16 @@ async function withAccount(actor: Actor, options: Parameters<typeof startService
   return { run, store, services, offer: mailbox };
 }
 
-/** The transport object of a mailbox for `key` that `actor` opens by `offer`. */
-const openMailbox = (offer: MailboxOffer, actor: Actor, key = keyOf(7)) => offer.open(actor, key);
+/**
+ * A mailbox for `key` at the HTTP transport object that `actor` opens by `offer`, both of which
+ * `store` holds.
+ */
+async function openMailbox(store: Store, offer: MailboxOffer, actor: Actor, key = keyOf(7)) {
+  const transport = await offer.open(actor, key);
+  const mailbox = encodeObject(mailboxSchema, { key, transport: new LinkValue(transport.link) });
+  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailboxSchema.blobs] });
+  return { transport, mailbox: mailbox.link };
+}
 
 /** The ciphertexts that `pickup` hands out, each dropped once it is. */
 async function pickUpAll(pickup: Pickup, signal?: AbortSignal) {
@@ -532,28 +540,50 @@ describe("a mailbox that a service opened", () => {
     );
     const outbox = await senderPost.outbox(inbox.mailbox);
     await outbox.send(note.link);
-    const [delivery, ...more] = await inbox.collect(await services.pickup(inbox.transport, actor));
+    const [delivery, ...more] = await inbox.collect(await services.pickup(inbox.mailbox, actor));
     expect(more).toEqual([]);
     expect(delivery).toMatchObject({ direction: "inbound", bundle: note.link, mailbox: inbox.mailbox });
     expect(await store.get(note.link)).toEqual(note.bytes);
-    expect(await inbox.collect(await services.pickup(inbox.transport, actor))).toEqual([]);
+    expect(await inbox.collect(await services.pickup(inbox.mailbox, actor))).toEqual([]);
+  });
+
+  it("is collected by its own inbox alone, though another inbox is opened at its transport object", async () => {
+    const actor = await actorOf(alice);
+    const { store, services, offer } = await withAccount(actor);
+    const options = { transports: [http] };
+    const post = new Post(store, privateStoreBeside(store), new SecretStore(store, new MemoryBackend()), options);
+    const inbox = await post.openInbox((publicKey) => offer.open(actor, publicKey));
+    const { transport } = (await readObject(store, inbox.mailbox, mailboxSchema)).data;
+    const other = await post.openInbox(() => readObject(store, transport.link, http.schema));
+    const noteSchema = schema("Note", { text: string() });
+    const note = encodeObject(noteSchema, { text: "hello, Alice" });
+    await (await mailboxAt(inbox.mailbox, store, options)).send(note.link, [note.bytes, ...noteSchema.blobs]);
+
+    await expect(services.pickup(other.mailbox, actor)).rejects.toThrow(
+      `${other.mailbox} names another key than the one its transport was opened for`,
+    );
+    const pickup = await services.pickup(inbox.mailbox, actor);
+    await expect(other.collect(pickup)).rejects.toThrow(
+      `a pickup of ${inbox.mailbox} is not collected at ${other.mailbox}`,
+    );
+    expect((await inbox.collect(pickup)).map(({ bundle }) => bundle)).toEqual([note.link]);
   });
 
   it("is picked up by any agent that the root of its account lists", async () => {
     const signedIdentity = await publish(wallet, { agents: [laptop.key, phone.key] });
     const opener = actorSigningBy(laptop, signedIdentity);
-    const { services, offer } = await withAccount(opener);
-    const transport = await openMailbox(offer, opener);
+    const { store, services, offer } = await withAccount(opener);
+    const { transport, mailbox } = await openMailbox(store, offer, opener);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
-    expect(await pickUpAll(await services.pickup(transport.link, actorSigningBy(phone, signedIdentity)))).toEqual([
+    expect(await pickUpAll(await services.pickup(mailbox, actorSigningBy(phone, signedIdentity)))).toEqual([
       new Uint8Array([1]),
     ]);
   });
 
   it("is picked up where the latest Service that the store holds says, once the service moved", async () => {
     const actor = await actorOf(alice);
-    const { run, services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { run, store, services, offer } = await withAccount(actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
     const movedService = await startService({
       store: run.store,
@@ -563,7 +593,7 @@ describe("a mailbox that a service opened", () => {
     });
     await services.fetch(movedService.origin);
     await run.close();
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([new Uint8Array([1])]);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([new Uint8Array([1])]);
   });
 
   it("is opened again by the same request, and picked up, once the root of its service signed a crisis and the service started again", async () => {
@@ -575,12 +605,12 @@ describe("a mailbox that a service opened", () => {
     const run = await memoryService({ origin: server.origin });
     current = run.service;
     const actor = await actorOf(alice);
-    const { services } = client();
+    const { store, services } = client();
     const before = await services.fetch(server.origin);
     assert.exists(before.account);
     assert.exists(before.mailbox);
     await before.account.accept(actor);
-    const transport = await openMailbox(before.mailbox, actor);
+    const { transport, mailbox } = await openMailbox(store, before.mailbox, actor);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
     const crisis = await publish(serviceSigner, { prior: before.signedIdentity, isCrisis: true, at: 2_000 });
     await run.store.write({ roots: [crisis.link], blobs: crisis.blobs });
@@ -591,19 +621,19 @@ describe("a mailbox that a service opened", () => {
     assert.exists(after.account);
     assert.exists(after.mailbox);
     expect((await after.account.accept(actor)).service.link).toBe(crisis.link);
-    expect((await openMailbox(after.mailbox, actor)).link).toBe(transport.link);
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([new Uint8Array([1])]);
+    expect((await openMailbox(store, after.mailbox, actor)).transport.link).toBe(transport.link);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([new Uint8Array([1])]);
   });
 
   it("is picked up where the service is, however late a Service by a key taken out is", async () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
     const removedActor = await removeAgent(store);
     const lateServiceBundle = await signedService("https://elsewhere.example", [], removedActor, 9_000);
     await receiveAtMailbox(store, decodeBundle(lateServiceBundle));
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([new Uint8Array([1])]);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([new Uint8Array([1])]);
   });
 
   it.each<[string, () => Promise<Actor>]>([
@@ -618,25 +648,25 @@ describe("a mailbox that a service opened", () => {
     ],
   ])("is picked up a batch at a time %s, each request done with the batch before", async (_, actorFor) => {
     const actor = await actorFor();
-    const { run, services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { run, store, services, offer } = await withAccount(actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     const send = new URL(transport.data.url).pathname;
     const ciphertexts = Array.from({ length: 101 }, (_, n) => new Uint8Array([n]));
     for (const ciphertext of ciphertexts) {
       const request = new Request(new URL(send, run.origin), { method: "POST", body: ciphertext });
       expect((await run.service.fetch(request)).status).toBe(204);
     }
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual(ciphertexts);
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([]);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual(ciphertexts);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([]);
   });
 
   it("hands out what waits once in one pickup, though the receiver is not done with it", async () => {
     const actor = await actorOf(alice);
-    const { services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { store, services, offer } = await withAccount(actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     for (const fill of [1, 2]) expect((await postTo(transport.data.url, new Uint8Array([fill]))).status).toBe(204);
     const ciphertexts: Uint8Array[] = [];
-    for await (const arrival of (await services.pickup(transport.link, actor)).arrivals()) {
+    for await (const arrival of (await services.pickup(mailbox, actor)).arrivals()) {
       ciphertexts.push(arrival.ciphertext);
       if (ciphertexts.length > 2) break;
     }
@@ -645,24 +675,24 @@ describe("a mailbox that a service opened", () => {
 
   it("keeps waiting what was done once the last request of a pickup was sent", async () => {
     const actor = await actorOf(alice);
-    const { services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { store, services, offer } = await withAccount(actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
-    for await (const arrival of (await services.pickup(transport.link, actor)).arrivals()) {
+    for await (const arrival of (await services.pickup(mailbox, actor)).arrivals()) {
       await arrival.drop();
       break;
     }
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([new Uint8Array([1])]);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([new Uint8Array([1])]);
   });
 
   it("is picked up until the signal aborts", async () => {
     const actor = await actorOf(alice);
-    const { services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
+    const { store, services, offer } = await withAccount(actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     for (const fill of [1, 2]) expect((await postTo(transport.data.url, new Uint8Array([fill]))).status).toBe(204);
     const controller = new AbortController();
     const ciphertexts: Uint8Array[] = [];
-    for await (const arrival of (await services.pickup(transport.link, actor)).arrivals(controller.signal)) {
+    for await (const arrival of (await services.pickup(mailbox, actor)).arrivals(controller.signal)) {
       ciphertexts.push(arrival.ciphertext);
       controller.abort();
     }
@@ -671,23 +701,23 @@ describe("a mailbox that a service opened", () => {
 
   it("whose service refuses a pickup throws what the service said", async () => {
     const earlier = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
-    const { services, offer } = await withAccount(actorSigningBy(laptop, earlier));
-    const transport = await openMailbox(offer, actorSigningBy(laptop, earlier));
+    const { store, services, offer } = await withAccount(actorSigningBy(laptop, earlier));
+    const { mailbox } = await openMailbox(store, offer, actorSigningBy(laptop, earlier));
     const later = await publish(wallet, { prior: earlier, agents: [laptop.key], at: 2_000 });
-    await openMailbox(offer, actorSigningBy(laptop, later), keyOf(8));
-    await expect(pickUpAll(await services.pickup(transport.link, actorSigningBy(phone, earlier)))).rejects.toThrow(
+    await openMailbox(store, offer, actorSigningBy(laptop, later), keyOf(8));
+    await expect(pickUpAll(await services.pickup(mailbox, actorSigningBy(phone, earlier)))).rejects.toThrow(
       /answered 403: .+is not honored/,
     );
   });
 
   it("is picked up by an agent that the root lists, once a later identity version takes out the key that opened it", async () => {
     const earlier = await publish(wallet, { agents: [laptop.key, phone.key], at: 1_000 });
-    const { services, offer } = await withAccount(actorSigningBy(laptop, earlier));
-    const transport = await openMailbox(offer, actorSigningBy(laptop, earlier));
+    const { store, services, offer } = await withAccount(actorSigningBy(laptop, earlier));
+    const { transport, mailbox } = await openMailbox(store, offer, actorSigningBy(laptop, earlier));
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
     const later = await publish(wallet, { prior: earlier, agents: [phone.key], at: 2_000 });
-    await openMailbox(offer, actorSigningBy(phone, later), keyOf(8));
-    expect(await pickUpAll(await services.pickup(transport.link, actorSigningBy(phone, later)))).toEqual([
+    await openMailbox(store, offer, actorSigningBy(phone, later), keyOf(8));
+    expect(await pickUpAll(await services.pickup(mailbox, actorSigningBy(phone, later)))).toEqual([
       new Uint8Array([1]),
     ]);
   });
@@ -698,7 +728,7 @@ describe("a mailbox that a service opened", () => {
     const actor = actorSigningBy(phone, later);
     const { store, services, offer } = await withAccount(actor);
     const before = await inboundRowsOf(store);
-    const transport = await openMailbox(offer, actor);
+    const { transport, mailbox } = await openMailbox(store, offer, actor);
     expect((await postTo(transport.data.url, new Uint8Array([1]))).status).toBe(204);
     const [[acknowledgement] = []] = (await inboundRowsOf(store)).filter(
       ([link]) => !before.some(([held]) => held === link),
@@ -717,14 +747,14 @@ describe("a mailbox that a service opened", () => {
       );
     } while (other.link >= acknowledgement);
     await receiveAtMailbox(store, other);
-    expect(await pickUpAll(await services.pickup(transport.link, actor))).toEqual([new Uint8Array([1])]);
+    expect(await pickUpAll(await services.pickup(mailbox, actor))).toEqual([new Uint8Array([1])]);
   });
 
   it("is not picked up for another identifier than the one whose request opened it", async () => {
     const actor = await actorOf(alice);
-    const { services, offer } = await withAccount(actor);
-    const transport = await openMailbox(offer, actor);
-    await expect(pickUpAll(await services.pickup(transport.link, await actorOf(bob)))).rejects.toThrow(
+    const { store, services, offer } = await withAccount(actor);
+    const { mailbox } = await openMailbox(store, offer, actor);
+    await expect(pickUpAll(await services.pickup(mailbox, await actorOf(bob)))).rejects.toThrow(
       /answered 403: the request is signed for another identifier/,
     );
   });
@@ -733,15 +763,15 @@ describe("a mailbox that a service opened", () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const { transport } = await writeMailbox(store, `${origin}/${"0".repeat(32)}`);
-    await expect(services.pickup(transport.link, await actorOf(alice))).rejects.toThrow(/lists no mark of opening/);
+    const { mailbox } = await writeMailbox(store, `${origin}/${"0".repeat(32)}`);
+    await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/lists no mark of opening/);
   });
 });
 
 /**
  * The bundle of `by`'s signature over an acknowledgement from `at`, at
- * `sendId`, of `requester`'s request for a mailbox sealed to `keyOf(7)` by an
- * offer that names `offerer` by its identifier, with its closure.
+ * `sendId`, of `requester`'s request for a mailbox for `keyOf(7)` by an offer
+ * that names `offerer` by its identifier, with its closure.
  */
 async function mailboxAcknowledgementBy(by: Actor, requester: Actor, offerer: Signer, sendId: string, at = 1) {
   const root = keys.encode(offerer.key);
@@ -773,16 +803,16 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
 
   /**
    * A client whose store holds the Service of a running service, a mailbox
-   * at `sendId` there sealed to `keyOf(7)`, and `acknowledgement`, which came
-   * in at that mailbox.
+   * at `sendId` there for `keyOf(7)`, and `acknowledgement`, which came in at
+   * that mailbox.
    */
   async function clientHolding(acknowledgement: Bundle) {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
-    const { mailbox, transport } = await writeMailbox(store, `${origin}/${sendId}`);
+    const { mailbox } = await writeMailbox(store, `${origin}/${sendId}`);
     await new Intake(store, privateStoreBeside(store)).receive(acknowledgement, mailbox);
-    return { services, transport };
+    return { services, mailbox };
   }
 
   it.each<[string, (account: Actor, other: Actor) => Promise<readonly [by: Actor, requester: Actor, offerer: Signer]>]>(
@@ -797,7 +827,7 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
   )("does not open the mailbox for the account to pick up, though %s", async (_, partiesOf) => {
     const account = await actorOf(alice);
     const [by, requester, offerer] = await partiesOf(account, await actorOf(mallory));
-    const { services, transport } = await clientHolding(await mailboxAcknowledgementBy(by, requester, offerer, sendId));
-    await expect(services.pickup(transport.link, account)).rejects.toThrow(/lists no mark of opening/);
+    const { services, mailbox } = await clientHolding(await mailboxAcknowledgementBy(by, requester, offerer, sendId));
+    await expect(services.pickup(mailbox.link, account)).rejects.toThrow(/lists no mark of opening/);
   });
 });

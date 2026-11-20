@@ -10,7 +10,7 @@ export const mailboxSchema = schema("Mailbox", {
 export type MailboxData = DataOf<typeof mailboxSchema>;
 
 export const mailboxKeySchema = schema("Mailbox Key", {
-  mailbox: link<EncodedObject>(),
+  mailbox: link<EncodedObject<MailboxData>>(),
   secret: bytes(),
 });
 
@@ -19,7 +19,7 @@ export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
 /** `at` is in milliseconds since the Unix epoch, by the clock of the device that wrote the mark. */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
-  mailbox: link<EncodedObject>(),
+  mailbox: link<EncodedObject<MailboxData>>(),
   at: integer(),
 });
 
@@ -31,7 +31,7 @@ export type OutboundData = DataOf<typeof outboundSchema>;
  */
 export const mailboxGrantSchema = schema("Mailbox Grant", {
   to: link(),
-  mailboxes: array(link<EncodedObject>()),
+  mailboxes: array(link<EncodedObject<MailboxData>>()),
   at: integer(),
 });
 

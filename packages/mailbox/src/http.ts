@@ -15,18 +15,20 @@ const transportSchema = schema("HTTP transport", { url: string() });
 export const httpTransport: Transport<DataOf<typeof transportSchema>> = { schema: transportSchema, routeTo };
 
 function routeTo({ url }: DataOf<typeof transportSchema>): Route {
-  if (!allowedUrl.test(url) || !URL.canParse(url))
+  const request = allowedUrl.test(url) ? requestTo(url) : undefined;
+  if (request === undefined)
     throw new UndeliveredMessage("gone", "an HTTP transport names an https url, or an http url of this machine");
-  return { deliver: (ciphertext) => deliverTo(url, ciphertext) };
+  return { deliver: (ciphertext) => deliverWith(request, ciphertext) };
 }
 
-async function deliverTo(url: string, ciphertext: Uint8Array): Promise<void> {
-  let response: Response;
+// Fetch refuses some urls that parse, as one with a user name, so the request
+// is made with the route, and such a url is turned back as gone rather than
+// at each send as one to send later.
+function requestTo(url: string): Request | undefined {
   try {
-    response = await fetch(url, {
+    return new Request(url, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
-      body: ciphertext,
       // A redirect would take the bytes to a url that the mailbox does not
       // name, and that need not be one a mailbox may name. A browser does
       // not tell it from no answer, so it rejects as one.
@@ -34,6 +36,15 @@ async function deliverTo(url: string, ciphertext: Uint8Array): Promise<void> {
       credentials: "omit",
       referrerPolicy: "no-referrer",
     });
+  } catch {
+    return undefined;
+  }
+}
+
+async function deliverWith(request: Request, ciphertext: Uint8Array): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(request, { body: ciphertext });
   } catch (error) {
     throw new UndeliveredMessage("later", "the mailbox's server did not answer", { cause: error });
   }

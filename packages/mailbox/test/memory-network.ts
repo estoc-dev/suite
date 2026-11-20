@@ -1,8 +1,15 @@
 import type { Bundle } from "@estoc/bundle";
-import { type EncodedObject, encodeObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link } from "@estoc/object";
 import { type DataOf, schema, string } from "@estoc/schema";
 import { hex } from "@scure/base";
-import { type Arrival, type Pickup, type Route, type Transport, UndeliveredMessage } from "../src/index.ts";
+import {
+  type Arrival,
+  type MailboxData,
+  type Pickup,
+  type Route,
+  type Transport,
+  UndeliveredMessage,
+} from "../src/index.ts";
 import { mailboxBundle } from "./mailbox-bundle.ts";
 
 /** Faults a network puts in the way of every message, as a real channel may. */
@@ -25,10 +32,10 @@ export interface Faults {
 export interface Queue {
   readonly name: string;
   readonly transport: EncodedObject;
-  /** A mailbox at this queue sealed to `key`, as it is handed out on its own. */
+  /** A mailbox at this queue whose messages are sealed to `key`, as it is handed out on its own. */
   mailbox(key: Uint8Array): Bundle;
-  /** What waits at this queue, until a receiver is done with it. */
-  pickup(): Pickup;
+  /** What waits at this queue, for `mailbox`, until a receiver is done with it. */
+  pickup(mailbox: Link<EncodedObject<MailboxData>>): Pickup;
   /** The ciphertexts that wait, which leave the queue. */
   take(): Uint8Array[];
   /** The one ciphertext that waits, which leaves the queue; throws unless exactly one does. */
@@ -78,7 +85,7 @@ export class MemoryNetwork {
       name,
       transport,
       mailbox: (key) => mailboxBundle(key, transport),
-      pickup: () => ({ transport: transport.link, arrivals: (signal) => this.#arrivals(waiting, signal) }),
+      pickup: (mailbox) => ({ mailbox, arrivals: (signal) => this.#arrivals(waiting, signal) }),
       take,
       takeOne: () => {
         const takenCiphertexts = take();

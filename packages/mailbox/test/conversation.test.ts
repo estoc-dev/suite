@@ -142,7 +142,7 @@ async function chat(faults: Faults = {}) {
     const inbox = await owner.post.openInbox(() => queue.transport);
     const grant = await owner.correspondence.grant(peer.signedIdentity, [inbox.mailbox]);
     await handOver(owner, peer, grant.link);
-    return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup() };
+    return { mailbox: inbox.mailbox, inbox, pickup: queue.pickup(inbox.mailbox) };
   };
   const atAlice = await mailboxFor(alice, bob);
   const atBob = await mailboxFor(bob, alice);

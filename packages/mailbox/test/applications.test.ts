@@ -23,7 +23,7 @@ import { peopleView } from "@estoc/people";
 import { link, optional, schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Delivery, type Mailbox, MailboxKey, mailboxAt, Post } from "../src/index.ts";
+import { type Delivery, type Mailbox, type MailboxData, MailboxKey, mailboxAt, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // Applications that send signed objects through mailboxes, each as a bundle
@@ -256,7 +256,7 @@ describe("two people who meet", () => {
       const openInbox = async () => {
         const queue = network.queue();
         const inbox = await post.openInbox(() => queue.transport);
-        const pickup = queue.pickup();
+        const pickup = queue.pickup(inbox.mailbox);
         return { mailbox: inbox.mailbox, collect: () => inbox.collect(pickup) };
       };
       const say = async (to: SignedIdentityObject, text: string) => {
@@ -319,7 +319,7 @@ describe("two people who meet", () => {
 
   it("move a mailbox with nothing lost, and what came in at the old one still reads as a message", async () => {
     const { grace, heidi } = await twoPeople();
-    const give = async (mailboxes: readonly Link<EncodedObject>[]) =>
+    const give = async (mailboxes: readonly Link<EncodedObject<MailboxData>>[]) =>
       grace.correspondence.grant(heidi.signedIdentity, mailboxes);
 
     const oldInbox = await grace.openInbox();

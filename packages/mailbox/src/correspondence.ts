@@ -5,6 +5,7 @@ import { type ArrivalsView, arrivalsView, type PrivateStore, recordsOf, type Sto
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
+import type { MailboxData } from "./schema.ts";
 
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
@@ -42,7 +43,7 @@ export class Correspondence {
     this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
-  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject>[]): Promise<Signature> {
+  async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
     const current = await (await view(this.#store, this.#seenPeople)).current(to);
     const at = this.#clock();
     const grant = this.#grants.encode(current, mailboxes, at);

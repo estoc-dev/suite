@@ -12,7 +12,7 @@ import {
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
-import { MemoryBackend, PrivateStore, Store, view } from "@estoc/store";
+import { MemoryBackend, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -38,7 +38,6 @@ import {
   makeTemporaryPath,
   memoryService,
   memoryStore,
-  privateStoreBeside,
   publish,
   recordedObjectsIn,
   schemes,
@@ -65,7 +64,7 @@ const getRoot = (service: MailboxService) => service.fetch(request("/"));
 const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
-const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(privateStoreBeside(store))).sort();
+const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(store)).sort();
 async function recordedSignaturesOf(store: Store) {
   const links: Link<never>[] = [];
   for (const link of await recordedObjectsOf(store))
@@ -590,7 +589,7 @@ describe("a mailbox service started again", () => {
         yield* super.blobs(start);
       }
     }
-    const store = new Store(new HeldBackend());
+    const store = memoryStore(new HeldBackend());
     await store.write({ roots: [first.link], blobs: first.blobs });
     await memoryService({ store, start: 1_000 });
     heldListings = 0;
@@ -728,23 +727,16 @@ describe("a mailbox service started again", () => {
   });
 });
 
-/**
- * The store, the accounts and the mailboxes of a service, all in the SQLite
- * file at `path`, and its private store in a file beside it.
- */
 function sqliteParts(path: string) {
   const backend = new SqliteBackend(path);
-  const privateBackend = new SqliteBackend(`${path}.private`);
   const accounts = new SqliteAccounts(path);
   const mailboxes = new SqliteMailboxes(path);
   const close = () => {
     backend.close();
-    privateBackend.close();
     accounts.close();
     mailboxes.close();
   };
-  const store = new Store(backend);
-  return { store, privateStore: new PrivateStore(store, privateBackend), accounts, mailboxes, close };
+  return { store: new Store(backend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);
@@ -826,24 +818,25 @@ async function queueAt(
   });
 }
 
+/** Fails, once it is interrupted, the next write that lists a mark. */
 class InterruptedBackend extends MemoryBackend {
   isInterrupted = false;
 
-  override async put(...batch: Parameters<MemoryBackend["put"]>): Promise<void> {
-    if (this.isInterrupted) {
+  override async put(...[blobs, listedLinks]: Parameters<MemoryBackend["put"]>): Promise<void> {
+    const marks = [...listedLinks];
+    if (this.isInterrupted && marks.length > 0) {
       this.isInterrupted = false;
       throw new Error("the write was interrupted");
     }
-    await super.put(...batch);
+    await super.put(blobs, marks);
   }
 }
 
-describe("a mailbox service whose private store failed to record an acknowledgement signed again", () => {
+describe("a mailbox service that failed to record an acknowledgement signed again", () => {
   it("records it when the request is posted again, and once however often it is posted after", async () => {
-    const store = memoryStore();
     const backend = new InterruptedBackend();
-    const privateStore = new PrivateStore(store, backend);
-    const { service, accounts, mailboxes } = await memoryService({ store, privateStore });
+    const store = memoryStore(backend);
+    const { service, accounts, mailboxes } = await memoryService({ store });
     const actor = await actorOf(alice);
     const before = await rootOf(service);
     await openAccount(service, actor);
@@ -851,18 +844,18 @@ describe("a mailbox service whose private store failed to record an acknowledgem
     const first = await mailboxAcknowledgementIn(await postMailboxRequest(service, file));
     const crisis = await publish(serviceSigner, { prior: before.signature.signedIdentity, isCrisis: true, at: 2_000 });
     await store.write({ roots: [crisis.link], blobs: crisis.blobs });
-    const { service: again } = await memoryService({ store, privateStore, accounts, mailboxes, start: 3_000 });
+    const { service: again } = await memoryService({ store, accounts, mailboxes, start: 3_000 });
 
     backend.isInterrupted = true;
     await expect(postMailboxRequest(again, file)).rejects.toThrow("the write was interrupted");
     const renewal = await mailboxAcknowledgementIn(await postMailboxRequest(again, file));
     expect(renewal.signature.link).not.toBe(first.signature.link);
-    const records = await recordedObjectsIn(privateStore);
+    const records = await recordedObjectsIn(store);
     expect(records).toContain(renewal.signature.link);
     expect((await mailboxAcknowledgementIn(await postMailboxRequest(again, file))).signature.link).toBe(
       renewal.signature.link,
     );
-    expect(await recordedObjectsIn(privateStore)).toEqual(records);
+    expect(await recordedObjectsIn(store)).toEqual(records);
   });
 });
 
@@ -881,7 +874,7 @@ describe("a mailbox service whose store holds a later identity version than a re
   // service to read after it, and `onRead` runs at the first read of that version.
   async function serviceHoldingLaterVersion(options: Parameters<typeof memoryService>[0] = {}) {
     const backend = new WatchedBackend();
-    const store = new Store(backend);
+    const store = memoryStore(backend);
     const actor = await actorOf(alice);
     const { service } = await memoryService({ ...options, store });
     let latest = actor.signedIdentity;

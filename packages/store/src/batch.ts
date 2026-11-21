@@ -10,14 +10,23 @@ import {
 } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 
+export interface Batch {
+  readonly roots: Iterable<Link<unknown>>;
+  readonly blobs: Iterable<Bytes<unknown>>;
+}
+
+export interface MarkBatch {
+  readonly marks: Iterable<Link<unknown>>;
+  readonly blobs: Iterable<Bytes<unknown>>;
+}
+
 /**
- * A batch that a store, a private store or a secret store refuses for what it is.
+ * A batch that a store refuses for what it is.
  *
- * - One of its `marks` or `secrets` whose blob it does not give, or that is not an object: the
- *   same batch is refused again whatever comes to be held.
- * - One of its `roots`, or a blob in the closure of one of its `roots`, `marks` or `secrets`,
- *   that is neither in the batch nor held already: the same batch is refused again until what
- *   was missing is held.
+ * - One of its `marks` whose blob it does not give, or that is not an object: the same batch is
+ *   refused again whatever comes to be held.
+ * - One of its `roots`, or a blob in the closure of one of its `roots` or `marks`, that is neither
+ *   in the batch nor held already: the same batch is refused again until what was missing is held.
  *
  * A backend that fails rejects with an error of its own, and may write the same batch the next
  * time.
@@ -39,26 +48,25 @@ export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   return batchBlobs;
 }
 
-export function copiedBatch(
+export function copiedMarks(
   links: Iterable<Link<unknown>>,
   blobs: Iterable<Bytes<unknown>>,
-  listedAs: "a mark" | "a secret",
-): { readonly blobs: Map<Link<unknown>, Uint8Array>; readonly objects: Link<EncodedObject>[] } {
+): { readonly blobs: Map<Link<unknown>, Uint8Array>; readonly marks: Link<EncodedObject>[] } {
   const batchBlobs = copiedBlobs(blobs);
-  const objectLinks: Link<EncodedObject>[] = [];
+  const marks: Link<EncodedObject>[] = [];
   for (const link of links) {
     const bytes = batchBlobs.get(link);
     if (bytes === undefined) {
-      throw new RefusedBatch(`${link} is written as ${listedAs} but is not among the blobs of the batch`);
+      throw new RefusedBatch(`${link} is written as a mark but is not among the blobs of the batch`);
     }
     try {
       schemaOf(bytes);
     } catch (cause) {
-      throw new RefusedBatch(`${link} is written as ${listedAs} but is not an object`, { cause });
+      throw new RefusedBatch(`${link} is written as a mark but is not an object`, { cause });
     }
-    objectLinks.push(link as Link<EncodedObject>);
+    marks.push(link as Link<EncodedObject>);
   }
-  return { blobs: batchBlobs, objects: objectLinks };
+  return { blobs: batchBlobs, marks };
 }
 
 export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {

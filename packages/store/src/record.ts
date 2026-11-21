@@ -1,12 +1,11 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import type { MarkBatch } from "./private-store.ts";
+import type { MarkBatch } from "./batch.ts";
 
 /**
  * - `at` is when the user wrote the object, in milliseconds since the Unix epoch, by the clock of
  *   the device that wrote the record.
- * - Anyone can write an object of this schema. It is a record only where it is listed, among the
- *   marks of a private store.
+ * - Anyone can write an object of this schema. It is a record only where a store lists it among its marks.
  */
 export const recordSchema = schema("Record", { object: link(), at: integer() });
 

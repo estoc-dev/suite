@@ -9,9 +9,10 @@ export const mailboxSchema = schema("Mailbox", {
 
 export type MailboxData = DataOf<typeof mailboxSchema>;
 
+/** `secret` is the Secret that holds the x25519 secret key of the mailbox, 32 bytes. */
 export const mailboxKeySchema = schema("Mailbox Key", {
   mailbox: link<EncodedObject<MailboxData>>(),
-  secret: bytes(),
+  secret: link(),
 });
 
 export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;

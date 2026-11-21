@@ -1,8 +1,8 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type EncodedObject, encodeObject, LinkValue } from "@estoc/object";
-import { link, optional, schema, string } from "@estoc/schema";
+import { link, optional, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { arrivalsView, Intake, MemoryBackend, PrivateStore, recordsOf, Store, view } from "../src/index.ts";
+import { arrivalsView, Intake, MemoryBackend, recordsOf, Store, view } from "../src/index.ts";
 
 // A letter names the card of whoever wrote it and may enclose a note, so the closure of a letter
 // holds an object of the schema the view is made for and one of another.
@@ -30,26 +30,25 @@ const blobsWith = (...objects: readonly EncodedObject[]) => [
 const arrivalsOfCards = arrivalsView(cardSchema);
 
 function sides() {
-  const store = new Store(new MemoryBackend());
-  const privateStore = new PrivateStore(store, new MemoryBackend());
+  const backend = new MemoryBackend();
+  const store = new Store(backend);
   let now = 0;
-  const intake = new Intake(store, privateStore, () => now);
+  const intake = new Intake(store, () => now);
   return {
     store,
-    privateStore,
-    arrivals: () => view(privateStore, arrivalsOfCards),
+    arrivals: () => view(store, arrivalsOfCards),
     async receive(at: number, root: EncodedObject, ...others: readonly EncodedObject[]) {
       now = at;
       await intake.receive(decodeBundle(encodeBundle(root.link, [root.bytes, ...blobsWith(...others)])));
     },
     async record(at: number, root: EncodedObject, ...others: readonly EncodedObject[]) {
       await store.write({ roots: [root.link], blobs: blobsWith(root, ...others) });
-      await privateStore.write(recordsOf([root.link], at));
+      await store.writeMarks(recordsOf([root.link], at));
     },
   };
 }
 
-describe("when something came to a user's devices, by the marks of a private store", () => {
+describe("when something came to a user's devices, by the marks of a store", () => {
   it("is when its bundle came in, for the root of a bundle", async () => {
     const { receive, arrivals } = sides();
     const ada = card("Ada");
@@ -77,6 +76,16 @@ describe("when something came to a user's devices, by the marks of a private sto
     const arrivalTimes = await arrivals();
     expect(await arrivalTimes.atOf(ada.link)).toBe(5);
     expect(await arrivalTimes.atOf(ben.link)).toBe(7);
+  });
+
+  it("is that of the root, for an object in a closure that holds a Secret as well", async () => {
+    const { store, record, arrivals } = sides();
+    const ada = card("Ada");
+    const secret = encodeObject(secretSchema, { bytes: Uint8Array.of(7) });
+    await store.write({ roots: [secret.link], blobs: [secret.bytes, ...secretSchema.blobs] });
+    await record(7, letter("the key is enclosed", ada, secret), ada);
+
+    expect(await (await arrivals()).atOf(ada.link)).toBe(7);
   });
 
   it("is the earliest, for what several marks have", async () => {

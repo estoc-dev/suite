@@ -9,6 +9,7 @@ import {
   solanaOffchain,
   verify,
 } from "@estoc/identity";
+import { type Link, readObject } from "@estoc/object";
 import { MemoryBackend, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { Keyring } from "../src/index.ts";
@@ -17,8 +18,8 @@ const schemes = [ed25519, eip191, solanaOffchain];
 const { keys, secretKeys } = loadIdentity(schemes);
 const digest = new Uint8Array(32).fill(7);
 
-function keyringOver(backend = new MemoryBackend(), store = new Store(new MemoryBackend())): Keyring {
-  return new Keyring(store, backend, secretKeys);
+function keyringOver(backend = new MemoryBackend(), kit = secretKeys): Keyring {
+  return new Keyring(new Store(backend), kit);
 }
 
 describe("a keyring", () => {
@@ -40,9 +41,9 @@ describe("a keyring", () => {
     );
     const { secretKeys: drawingSecretKeys } = loadIdentity([drawing]);
     const backend = new MemoryBackend();
-    const key = await new Keyring(new Store(new MemoryBackend()), backend, drawingSecretKeys).generate(drawing);
+    const key = await keyringOver(backend, drawingSecretKeys).generate(drawing);
     expect(isSameKey(key, SoftwareSigner.fromSecretKey(drawing, secret).key)).toBe(true);
-    const signer = await new Keyring(new Store(new MemoryBackend()), backend, drawingSecretKeys).signerFor(key.link);
+    const signer = await keyringOver(backend, drawingSecretKeys).signerFor(key.link);
     assert.exists(signer);
     expect(verify(key, digest, await signer.sign(digest))).toBe(true);
   });
@@ -66,11 +67,22 @@ describe("a keyring", () => {
     }
   });
 
-  it("writes nothing to the store beside it", async () => {
-    const storeBackend = new MemoryBackend();
-    await keyringOver(new MemoryBackend(), new Store(storeBackend)).generate(ed25519);
-    const blobs = [];
-    for await (const blob of storeBackend.blobs()) blobs.push(blob);
-    expect(blobs).toEqual([]);
+  it("marks the Secret Key of each key it generates, and writes the Secret with it", async () => {
+    const backend = new MemoryBackend();
+    const store = new Store(backend);
+    const key = await keyringOver(backend).generate(ed25519);
+    const marks = [];
+    for await (const mark of store.marks()) marks.push(mark);
+    expect(marks).toHaveLength(1);
+    const { data } = await readObject(store, marks[0] as Link<unknown>, secretKeys.schema);
+    expect(data.key.link).toBe(key.link);
+    expect(await store.get(data.secret.link)).toBeDefined();
+  });
+
+  it("gives no signer for a Secret Key that only came to the store, with its Secret", async () => {
+    const backend = new MemoryBackend();
+    const { link, key, blobs } = secretKeys.encode(ed25519, new Uint8Array(32).fill(1));
+    await new Store(backend).write({ roots: [link], blobs });
+    expect(await keyringOver(backend).signerFor(key.link)).toBeUndefined();
   });
 });

@@ -9,8 +9,8 @@ import {
 } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { schema, string } from "@estoc/schema";
-import { Intake, MemoryBackend, PrivateStore, RefusedBatch, recordsOf, SecretStore, Store, view } from "@estoc/store";
+import { link, schema, string } from "@estoc/schema";
+import { Intake, MemoryBackend, RefusedBatch, recordSchema, recordsOf, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Correspondence, type Inbox, MailboxGrants, type Pickup, Post, UndeliveredMessage } from "../src/index.ts";
 import { listedIn } from "./listed.ts";
@@ -36,7 +36,6 @@ interface Person {
   readonly actor: Actor;
   readonly signedIdentity: SignedIdentityObject;
   readonly store: Store;
-  readonly privateStore: PrivateStore;
   readonly post: Post;
   readonly intake: Intake;
   readonly correspondence: Correspondence;
@@ -44,26 +43,22 @@ interface Person {
 
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
-// Those given the same backends are one person's devices as one: they share the blobs and the marks.
-const newBackends = () => ({ store: new MemoryBackend(), privateStore: new MemoryBackend() });
-
 const seenPeople = peopleView(identity);
 
 async function personActingAs(
   signer: Signer,
   signedIdentity: SignedIdentityObject,
-  backends = newBackends(),
+  // Those given the same backend are one person's devices as one: they share the blobs and the marks.
+  backend = new MemoryBackend(),
   actorOver = (store: Store) =>
     signatures.actor(signer, signedIdentity, async (inHand) => (await view(store, seenPeople)).current(inHand)),
 ): Promise<Person> {
-  const store = new Store(backends.store);
-  const privateStore = new PrivateStore(store, backends.privateStore);
-  const secretStore = new SecretStore(store, new MemoryBackend());
-  const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
-  const intake = new Intake(store, privateStore, clock);
+  const store = new Store(backend);
+  const post = new Post(store, { transports: [network.transport], clock });
+  const intake = new Intake(store, clock);
   const actor = actorOver(store);
   const correspondence = post.correspondenceAs(actor, identity);
-  return { actor, signedIdentity, store, privateStore, post, intake, correspondence };
+  return { actor, signedIdentity, store, post, intake, correspondence };
 }
 
 async function person(fill: number): Promise<Person> {
@@ -92,9 +87,9 @@ const seeIdentityVersion = ({ intake }: Person, identityVersion: SignedIdentityO
   intake.receive(decodeBundle(encodeBundle(identityVersion.link, identityVersion.blobs)));
 
 // A person keeps an identity version that their own root signed, as one they wrote.
-async function recordIdentityVersion({ store, privateStore }: Person, identityVersion: SignedIdentityObject) {
+async function recordIdentityVersion({ store }: Person, identityVersion: SignedIdentityObject) {
   await store.write({ roots: [identityVersion.link], blobs: identityVersion.blobs });
-  await privateStore.write(recordsOf([identityVersion.link], clock()));
+  await store.writeMarks(recordsOf([identityVersion.link], clock()));
 }
 
 // `from` gives `to` a grant of `mailboxes` and hands it over out of band.
@@ -134,13 +129,13 @@ const removalIdentityVersion = await publish(wallet, {
 });
 
 describe("a grant", () => {
-  it("is a signature by the actor, of the mailboxes, at the post's clock, which the private store records", async () => {
+  it("is a signature by the actor, of the mailboxes, at the post's clock, which the store records", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { inbox } = await openInbox(alice);
     const before = now;
     const signature = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
 
-    expect(await listedIn(alice.privateStore)).toContain(signature.link);
+    expect(await listedIn(alice.store)).toContain(signature.link);
     const readSignature = await signatures.read(signature.link, alice.store);
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
     const { data } = await readObject(alice.store, readSignature.object, grants.schema);
@@ -167,9 +162,9 @@ describe("a grant", () => {
   it("is refused when the store does not hold a mailbox it names, and nothing is written", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const elsewhere = network.queue().mailbox(new Uint8Array(32).fill(7));
-    const before = await listedIn(alice.privateStore);
+    const before = await listedIn(alice.store);
     await expect(alice.correspondence.grant(bob.signedIdentity, [elsewhere.link])).rejects.toThrow(RefusedBatch);
-    expect(await listedIn(alice.privateStore)).toEqual(before);
+    expect(await listedIn(alice.store)).toEqual(before);
   });
 });
 
@@ -182,7 +177,7 @@ describe("sending to someone", () => {
     const signature = await writeNote(alice, "hi Bob");
     const deliveries = await alice.correspondence.send(bob.signedIdentity, signature.link);
     expect(deliveries.map(({ mailbox }) => mailbox)).toEqual([first.inbox.mailbox, second.inbox.mailbox]);
-    expect(await listedIn(alice.privateStore)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
+    expect(await listedIn(alice.store)).toEqual(expect.arrayContaining(deliveries.map(({ link }) => link)));
     expect(await first.inbox.collect(first.pickup)).toHaveLength(1);
     expect(await second.inbox.collect(second.pickup)).toHaveLength(1);
   });
@@ -266,11 +261,11 @@ describe("sending to someone", () => {
     await grantMailboxes(bob, alice, [gone, busy]);
 
     const signature = await writeNote(alice, "hi Bob");
-    const before = await listedIn(alice.privateStore);
+    const before = await listedIn(alice.store);
     await expect(alice.correspondence.send(bob.signedIdentity, signature.link)).rejects.toMatchObject({
       kind: "later",
     });
-    expect(await listedIn(alice.privateStore)).toEqual(before);
+    expect(await listedIn(alice.store)).toEqual(before);
   });
 
   it("has gone once one mailbox takes it, though no transport given takes the transport object of another", async () => {
@@ -415,11 +410,41 @@ describe("what came in at a mailbox", () => {
     expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
   });
 
+  it("is still a message once the receiver records an object that links to the Mailbox Key of an inbox", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const signature = await writeNote(alice, "hi Bob");
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const { bundle } = await receive();
+
+    const settingSchema = schema("Default inbox", { key: link() });
+    const setting = encodeObject(settingSchema, { key: new LinkValue(inbox.key) });
+    await bob.store.write({ roots: [setting.link], blobs: [setting.bytes, ...settingSchema.blobs] });
+    await bob.store.writeMarks(recordsOf([setting.link], clock()));
+    expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
+  });
+
+  it("is still a message once the receiver marks an object of it as their own", async () => {
+    const { alice, bob, inbox, receive } = await twoPeople();
+    const object = encodeObject(note, { text: "hi Bob" });
+    const record = encodeObject(recordSchema, { object: new LinkValue(object.link), at: 5 });
+    const signature = await alice.actor.sign(record);
+    await alice.store.write({
+      roots: [signature.link],
+      blobs: [...signature.blobs, record.bytes, ...recordSchema.blobs, object.bytes, ...note.blobs],
+    });
+    await alice.correspondence.send(bob.signedIdentity, signature.link);
+    const { bundle } = await receive();
+
+    await bob.store.writeMarks(recordsOf([object.link], 5));
+    expect(await listedIn(bob.store)).toContain(object.link);
+    expect((await bob.correspondence.messageAt(inbox.mailbox, bundle))?.link).toBe(signature.link);
+  });
+
   it("is still a message once the receiver's root has removed the key that signed its grant, as the grant was recorded before the removal was", async () => {
-    const backends = newBackends();
+    const backend = new MemoryBackend();
     const [formerBob, currentBob, alice] = await Promise.all([
-      personActingAs(formerAgent, listingIdentityVersion, backends),
-      personActingAs(currentAgent, removalIdentityVersion, backends),
+      personActingAs(formerAgent, listingIdentityVersion, backend),
+      personActingAs(currentAgent, removalIdentityVersion, backend),
       person(1),
     ]);
     const { inbox, pickup } = await grantInbox(formerBob, alice);
@@ -430,18 +455,18 @@ describe("what came in at a mailbox", () => {
 
     await recordIdentityVersion(currentBob, removalIdentityVersion);
     expect((await currentBob.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
-    const again = await personActingAs(currentAgent, removalIdentityVersion, backends);
+    const again = await personActingAs(currentAgent, removalIdentityVersion, backend);
     expect((await again.correspondence.messageAt(inbox.mailbox, delivery.bundle))?.link).toBe(signature.link);
   });
 
   it("is no message by a grant recorded after the removal of the key that signed it was, until a listed key signs one", async () => {
-    const backends = newBackends();
+    const backend = new MemoryBackend();
     const [formerBob, currentBob, alice] = await Promise.all([
       // A device that takes in no identity version signs by the one it has, whatever the store it shares holds.
-      personActingAs(formerAgent, listingIdentityVersion, backends, () =>
+      personActingAs(formerAgent, listingIdentityVersion, backend, () =>
         signatures.actor(formerAgent, listingIdentityVersion, identityVersionInHand),
       ),
-      personActingAs(currentAgent, removalIdentityVersion, backends),
+      personActingAs(currentAgent, removalIdentityVersion, backend),
       person(1),
     ]);
     await recordIdentityVersion(currentBob, removalIdentityVersion);
@@ -474,10 +499,7 @@ describe("what came in at a mailbox", () => {
     const signer = signerOf(2);
     const [alice, bob] = await Promise.all([
       person(1),
-      personActingAs(signer, await publish(signer, { at: 0 }), {
-        store: backend,
-        privateStore: new MemoryBackend(),
-      }),
+      personActingAs(signer, await publish(signer, { at: 0 }), backend),
     ]);
     const { inbox, pickup } = await grantInbox(bob, alice);
     const signature = await writeNote(alice, "hi Bob");

@@ -5,52 +5,45 @@ are in `src/server.ts` and `src/client.ts`.
 
 ## Running with Node
 
-`src/main.ts` runs a service in Node, with its secret store in one SQLite
-file, its private store in another and all else it keeps in a third.
+`src/main.ts` runs a service in Node, with all it keeps in one SQLite file.
 Node runs the TypeScript sources as they are, so a checkout of the
 repository with its dependencies installed is all it takes:
 
 ```sh
 git clone https://github.com/estoc-dev/suite.git && cd suite
 pnpm install --frozen-lockfile
-export MAILBOX_SECRET_STORE=/var/lib/mailbox/secret.db
-export MAILBOX_PRIVATE_STORE=/var/lib/mailbox/private.db
 export MAILBOX_DATABASE=/var/lib/mailbox/service.db
 node packages/mailbox-service/src/main.ts setup
 ```
 
-`main.ts setup` makes the three files that the environment names, each a
-SQLite file that its owner alone reads, and refuses where any of them is
-there, making none. A setup that fails once it has made them leaves them,
-so remove the three files before running it again. The secret store holds a
-new Ed25519 Secret Key of `@estoc/identity`, the root of the service's
-identity. The database holds
-the first identity version, which the root signs, and the private store
-records it, so the service signs as that identity from then on. It prints
-the identifier of the identity. The service is named by that identifier, so
-a lost key is a lost service: keep a copy of the secret store offline, and
-take a new one whenever it changes. Only `main.ts setup` writes it for now.
-It is apart from the database and the private store so that it is backed up
-on its own, when it changes, and those two often.
+`main.ts setup` makes the file that the environment names, a SQLite file
+that its owner alone reads, and refuses where the file is there. A setup
+that fails once it has made the file leaves it, so remove the file before
+running it again. The database holds a new Ed25519 Secret Key of
+`@estoc/identity`, the root of the service's identity, and the first
+identity version, which the root signs, with a record of it, so the service
+signs as that identity from then on. It prints the identifier of the
+identity. The service is named by that identifier, so a lost key is a lost
+service: keep a copy of the database offline. The key is in the file
+unencrypted, so whoever reads the file or a copy of it can sign as the
+service: keep each where its owner alone reads it.
 
 `main.ts` takes its settings from the environment:
 
 | Variable | Setting |
 |---|---|
 | `MAILBOX_ORIGIN` | the origin the service is reached at, such as `https://mail.example` |
-| `MAILBOX_SECRET_STORE` | the path of the SQLite file that holds the secret store |
-| `MAILBOX_PRIVATE_STORE` | the path of the SQLite file that holds the private store |
-| `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, the accounts and the mailboxes |
+| `MAILBOX_DATABASE` | the path of the SQLite file that holds the store, with the key of the service in it, the accounts and the mailboxes |
 | `MAILBOX_PORT` | the port it listens at |
 | `MAILBOX_HOST` | the address it listens at; 127.0.0.1 unless set |
 | `MAILBOX_RETENTION` | the retention that the offer of mailboxes names, in milliseconds; 30 days unless set |
 | `MAILBOX_QUOTA` | its quota, in bytes; 64 MiB unless set |
 | `MAILBOX_SIZE` | its size, in bytes; 1 MiB unless set |
 
-It signs as the identity whose versions its private store records, by its
-root, which each version lists. It refuses to start without its three files,
-when the private store records versions of no identity or of more than one,
-or when the secret store does not hold the Secret Key of the root. Once it
+It signs as the identity whose versions its database records, by its root,
+which each version lists. It refuses to start without its database, when
+the database records versions of no identity or of more than one, or when
+it does not hold the Secret Key of the root. Once it
 serves, it writes a line with its origin, where it listens and the
 identifier of its identity. It speaks plain
 HTTP, for a proxy in front of it that holds the TLS certificate. It writes a line
@@ -75,8 +68,6 @@ User=mailbox
 WorkingDirectory=/srv/suite
 ExecStart=/usr/bin/node packages/mailbox-service/src/main.ts
 Environment=MAILBOX_ORIGIN=https://mail.example
-Environment=MAILBOX_SECRET_STORE=/var/lib/mailbox/secret.db
-Environment=MAILBOX_PRIVATE_STORE=/var/lib/mailbox/private.db
 Environment=MAILBOX_DATABASE=/var/lib/mailbox/service.db
 Environment=MAILBOX_PORT=8080
 Restart=always
@@ -92,25 +83,24 @@ mail.example {
 }
 ```
 
-The private store and the database are backed up as a pair, and can be
-while the service runs, with SQLite's online backup, the private store
-first:
+The database can be backed up while the service runs, with SQLite's online
+backup. The backup holds the key of the service as the database does, so it
+goes in a folder that its owner alone enters, written as a new file that its
+owner alone reads, which takes the place of the backup before it once
+SQLite has made it:
 
 ```sh
-sqlite3 /var/lib/mailbox/private.db ".backup /var/backups/mailbox-private.db"
-sqlite3 /var/lib/mailbox/service.db ".backup /var/backups/mailbox.db"
+install -d -m 700 /var/backups/mailbox
+(umask 077 && sqlite3 -readonly /var/lib/mailbox/service.db ".backup /var/backups/mailbox/service.db.new") &&
+  mv /var/backups/mailbox/service.db.new /var/backups/mailbox/service.db
 ```
 
-The private store also records the identity version that the service signs
-as, so the service does not start without it. The service writes what it
-signs to the database before it writes the record of it to the private
-store, so a copy of the database holds all that
-an earlier copy of the private store records. Restore the two together, from
-one such pair, with the service stopped. A private store that is later than
-the database beside it can record a signature that the database does not
-hold, and the service then fails to start. An account that the database
-holds with no record of its acknowledgement gets
-a new acknowledgement when its acceptance is posted again.
+SQLite keeps the mode of a file it writes over, so a backup made before in
+a file that others read stays readable to them: remove it.
+
+Restore it with the service stopped. An account that the database holds
+with no record of its acknowledgement gets a new acknowledgement when its
+acceptance is posted again.
 
 `src/smoke.ts` checks a running service:
 
@@ -137,8 +127,8 @@ docker build -f packages/mailbox-service/Dockerfile -t mailbox-service .
 ```
 
 The image runs `main.ts` as the `node` user. It listens at port 8080 of the
-container, for a proxy on the same network, and keeps its secret store,
-its private store and its database in `/data`. The other settings come from the environment
+container, for a proxy on the same network, and keeps its database in
+`/data`. The other settings come from the environment
 as above. Arguments go to `main.ts`, so the service is set up with:
 
 ```sh

@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodeObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { MemoryBackend, PrivateStore, SecretStore, Store } from "@estoc/store";
+import { MemoryBackend, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxAt, Post, UndeliveredMessage } from "../src/index.ts";
@@ -128,18 +128,17 @@ describe("an HTTP mailbox", () => {
 
 describe("an HTTP outbox", () => {
   it("marks nothing of a send that the server timed out on, and marks the same root once sent again", async () => {
-    const store = new Store(new MemoryBackend());
-    const privateStore = new PrivateStore(store, new MemoryBackend());
-    const secretStore = new SecretStore(store, new MemoryBackend());
-    const post = new Post(store, privateStore, secretStore, options);
+    const backend = new MemoryBackend();
+    const store = new Store(backend);
+    const post = new Post(store, options);
     const mailbox = mailboxBundleAt(`http://127.0.0.1:${port}/late-once`);
     await store.write({ roots: [mailbox.link, hello.link], blobs: [...mailbox.blobs(), hello.bytes, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
-    expect(await listedIn(privateStore)).toEqual([]);
+    expect(await listedIn(store)).toEqual([]);
 
     const delivery = await outbox.send(hello.link);
-    expect(await listedIn(privateStore)).toEqual([delivery.link]);
+    expect(await listedIn(store)).toEqual([delivery.link]);
     const sentRequests = take();
     expect(sentRequests.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = sentRequests.at(-1);

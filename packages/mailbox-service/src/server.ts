@@ -21,7 +21,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
-import { type PrivateStore, type Store, view } from "@estoc/store";
+import { blobsWithNoSecret, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { Accounts } from "./accounts.ts";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
@@ -57,12 +57,11 @@ const PICKUP_LIMIT = REQUEST_LIMIT + PICKUP.count * 128;
 export interface ServiceOptions {
   /** Set here rather than read from a request, whose host is the requester's to choose. */
   readonly origin: string;
-  readonly store: Store;
   /**
-   * The service answers by the acknowledgements recorded here, so one that came to the store
-   * another way opens nothing.
+   * The service answers by the acknowledgements among the records of the store, so one that only
+   * came to it opens nothing.
    */
-  readonly privateStore: PrivateStore;
+  readonly store: Store;
   readonly accounts: Accounts;
   readonly mailboxes: Mailboxes;
   /**
@@ -88,7 +87,6 @@ class MailboxService {
   readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
   readonly #accounts: Accounts;
   readonly #mailboxes: Mailboxes;
   readonly #clock: () => number;
@@ -97,13 +95,7 @@ class MailboxService {
     notary: Notary,
     kit: IdentityKit,
     people: PeopleView,
-    {
-      store,
-      privateStore,
-      accounts,
-      mailboxes,
-      clock,
-    }: Required<Pick<ServiceOptions, "store" | "privateStore" | "accounts" | "mailboxes" | "clock">>,
+    { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#notary = notary;
     this.#locations = locationsView(kit.signatures);
@@ -111,7 +103,6 @@ class MailboxService {
     this.#acknowledgements = acknowledgementsView(kit.signatures);
     this.#signatures = kit.signatures;
     this.#store = store;
-    this.#privateStore = privateStore;
     this.#accounts = accounts;
     this.#mailboxes = mailboxes;
     this.#clock = clock;
@@ -207,7 +198,7 @@ class MailboxService {
     if (acceptance.object !== offer) return answer(400, `the acceptance signs ${acceptance.object}, not the offer`);
     if (acceptance.signedIdentity.identity.identifier === this.#notary.identifier)
       return answer(400, "a service opens no account for itself");
-    const acknowledgements = await view(this.#privateStore, this.#acknowledgements);
+    const acknowledgements = await view(this.#store, this.#acknowledgements);
     const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
       heldAcknowledgement === undefined
@@ -305,7 +296,8 @@ class MailboxService {
   }
 
   async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
-    return bundleAnswer(status, encodeBundle(link, (await this.#store.closure(link)).values()));
+    const blobs = (await this.#store.closure(link)).values();
+    return bundleAnswer(status, encodeBundle(link, blobsWithNoSecret(blobs)));
   }
 }
 
@@ -356,10 +348,10 @@ export async function loadMailboxService(
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
-  const { store, privateStore } = options;
+  const { store } = options;
   const kit = loadIdentity(schemes);
   const seenPeople = peopleView(kit);
-  const notary = await loadNotary(keyring, { kit, store, privateStore, people: seenPeople, clock });
+  const notary = await loadNotary(keyring, { kit, store, people: seenPeople, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),

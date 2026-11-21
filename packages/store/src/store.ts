@@ -1,17 +1,18 @@
-import type { Bytes, Link, Reader } from "@estoc/object";
+import type { Bytes, EncodedObject, Link, Reader } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { closureIn, copiedBlobs, leavesFirst } from "./batch.ts";
+import { type Batch, closureIn, copiedBlobs, copiedMarks, leavesFirst, type MarkBatch } from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
-export interface Batch {
-  readonly roots: Iterable<Link<unknown>>;
-  readonly blobs: Iterable<Bytes<unknown>>;
-}
-
 /**
- * - Holding a blob says that it came in, and not whose it is: a mark that came in a bundle is held
- *   here like any blob and marks nothing, and what reads the blobs themselves reads a stranger's
- *   among them.
+ * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
+ *   a stranger's among them. A mark is the user's own because `writeMarks` listed it, and `write`
+ *   and `stage` list nothing, so an object of the schema of a mark that came in a bundle marks
+ *   nothing.
+ * - A store keeps no rule about who reads what. Packages are given the whole of it, Secrets and
+ *   marks as well, and what shows a part of it to an app, or sends a closure to another party,
+ *   leaves out or refuses what is not to go there.
+ * - Marks are not signed, and `writeMarks` writes any mark, so it is no boundary between the
+ *   programs that share a store.
  * - There is no transaction that reads and then writes. Two devices that each find something
  *   missing will both write it, so what has to come out as one is written so that every device
  *   writes the same object, with the same link.
@@ -23,8 +24,11 @@ export interface Store {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   write(batch: Batch): Promise<void>;
   stage(batch: Batch): Promise<StagedStore>;
+  writeMarks(batch: MarkBatch): Promise<void>;
   /** A write cut short can leave a blob here that no root reaches. */
   blobs(): AsyncIterable<Link<unknown>>;
+  /** In the order they were first listed as marks. */
+  marks(): AsyncIterable<Link<EncodedObject>>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
 }
 
@@ -47,7 +51,10 @@ export class StoreOf implements Store, RowKeeper {
 
   constructor(backend: Backend) {
     this.#backend = backend;
-    this[rowsByIndex] = new KeptRows(this, { blobs: (start) => backend.blobs(start) });
+    this[rowsByIndex] = new KeptRows(this, {
+      marks: (start) => backend.listedLinks(start),
+      blobs: (start) => backend.blobs(start),
+    });
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -61,36 +68,20 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    const keptBlobs = await leavesFirst(roots, copiedBlobs(blobs), this.#backend);
-    return new StagedStoreOf(this, this.#backend, keptBlobs);
+    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBlobs(blobs), this.#backend));
+  }
+
+  async writeMarks({ marks, blobs }: MarkBatch): Promise<void> {
+    const batch = copiedMarks(marks, blobs);
+    await this.#backend.put(await leavesFirst(batch.marks, batch.blobs, this.#backend), batch.marks);
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
     return this.#backend.blobs();
   }
 
-  static backendBeside(store: Store, backend: Backend): Backend {
-    const sharedBackend = StoreOf.#backendOf(store);
-    return {
-      get: async (link) => (await backend.get(link)) ?? sharedBackend.get(link),
-      has: async (link) => (await backend.has(link)) || sharedBackend.has(link),
-      put: async (blobs, listedLinks) => {
-        const ownBlobs = new Map<Link<unknown>, Uint8Array>();
-        for (const [link, bytes] of blobs) if (!(await sharedBackend.has(link))) ownBlobs.set(link, bytes);
-        await backend.put(ownBlobs, listedLinks);
-      },
-      listedLinks: (start) => backend.listedLinks(start),
-      blobs: (start) => backend.blobs(start),
-    };
-  }
-
-  static blobsOf(store: Store, start: number): AsyncIterable<Link<unknown>> {
-    return StoreOf.#backendOf(store).blobs(start);
-  }
-
-  static #backendOf(store: Store): Backend {
-    if (!(#backend in store)) throw new TypeError("only a store made by `new Store` has another kept beside it");
-    return store.#backend;
+  marks(): AsyncIterable<Link<EncodedObject>> {
+    return this.#backend.listedLinks();
   }
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {

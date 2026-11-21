@@ -3,7 +3,8 @@ import type { EncodedObject, Link } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 
 /**
- * - The file is not encrypted, so the file of a secret store goes where only its user can read it.
+ * - The file is not encrypted and holds Secrets among its blobs, so it goes where only its user can
+ *   read it.
  * - Stores are joined by writing bundles from one to another, not by copying their files. A file
  *   copied while it is open, as by a tool that syncs a folder, can come out damaged.
  */

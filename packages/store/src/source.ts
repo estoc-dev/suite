@@ -53,11 +53,6 @@ const listedMarks: Origin = {
   listingIn: (rows) => rows.marks(),
 };
 
-const listedSecrets: Origin = {
-  readsBlobs: false,
-  listingIn: (rows) => rows.secrets(),
-};
-
 const heldBlobs: Origin = {
   readsBlobs: true,
   listingIn: (rows) => rows.heldBlobs(),
@@ -111,24 +106,17 @@ export class Source<T> {
   }
 }
 
-/**
- * Only a private store lists records. One that a store holds, as one that came in a bundle, records
- * nothing.
- */
+/** A record is one among the marks of the store. One that only came to it, as in a bundle, records nothing. */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
- * Only a private store lists marks. An object of the schema of a mark that a store holds, as one
- * that came in a bundle, is not one of these.
+ * An object of the schema of a mark that only came to the store, as in a bundle, is not one of
+ * these.
  */
 export function selectedMarks<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: listedMarks, itemOf: (blob) => itemOf(selection, blob) });
-}
-
-export function selectedSecrets<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: listedSecrets, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**

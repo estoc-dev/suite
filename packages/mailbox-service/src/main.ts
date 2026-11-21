@@ -1,7 +1,7 @@
-import { access, open, rm } from "node:fs/promises";
+import { access, open } from "node:fs/promises";
 import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
 import { Keyring } from "@estoc/keyring";
-import { PrivateStore, Store } from "@estoc/store";
+import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { setUpNotary } from "./notary.ts";
@@ -22,7 +22,7 @@ else {
 
 async function start(): Promise<void> {
   const origin = settingNamed("MAILBOX_ORIGIN");
-  const paths = pathsInSettings();
+  const database = settingNamed("MAILBOX_DATABASE");
   const port = Number(settingNamed("MAILBOX_PORT"));
   const terms = {
     retention: Number(process.env.MAILBOX_RETENTION ?? 30 * DAY),
@@ -30,17 +30,15 @@ async function start(): Promise<void> {
     size: Number(process.env.MAILBOX_SIZE ?? MIB),
   };
   // SQLite makes a file that is missing, which would be a service that is not set up.
-  for (const path of Object.values(paths)) await access(path);
-  const secretBackend = new SqliteBackend(paths.secretStore);
-  const privateBackend = new SqliteBackend(paths.privateStore);
-  const backend = new SqliteBackend(paths.database);
-  const accounts = new SqliteAccounts(paths.database);
-  const mailboxes = new SqliteMailboxes(paths.database);
+  await access(database);
+  const backend = new SqliteBackend(database);
+  const accounts = new SqliteAccounts(database);
+  const mailboxes = new SqliteMailboxes(database);
   const store = new Store(backend);
-  const service = await loadMailboxService(new Keyring(store, secretBackend, loadIdentity(schemes).secretKeys), {
+  const keyring = new Keyring(store, loadIdentity(schemes).secretKeys);
+  const service = await loadMailboxService(keyring, {
     origin,
     store,
-    privateStore: new PrivateStore(store, privateBackend),
     accounts,
     mailboxes,
     terms,
@@ -63,7 +61,7 @@ async function start(): Promise<void> {
   );
   const stop = async () => {
     await server.close();
-    for (const file of [secretBackend, privateBackend, backend, accounts, mailboxes]) file.close();
+    for (const file of [backend, accounts, mailboxes]) file.close();
   };
   process.once("SIGTERM", stop).once("SIGINT", stop);
   // Whoever waits for this line can ask it to stop from then on.
@@ -71,44 +69,21 @@ async function start(): Promise<void> {
 }
 
 async function setUp(): Promise<void> {
-  const paths = pathsInSettings();
-  // SQLite gives the files it makes beside a database the database's mode.
-  await makeFiles(Object.values(paths), 0o600);
-  const secretBackend = new SqliteBackend(paths.secretStore);
-  const privateBackend = new SqliteBackend(paths.privateStore);
-  const backend = new SqliteBackend(paths.database);
+  const database = settingNamed("MAILBOX_DATABASE");
+  // The database holds the key of the service. SQLite gives the files it makes beside a database
+  // the database's mode.
+  await (await open(database, "wx", 0o600)).close();
+  const backend = new SqliteBackend(database);
   try {
     const kit = loadIdentity(schemes);
     const store = new Store(backend);
-    const keyring = new Keyring(store, secretBackend, kit.secretKeys);
+    const keyring = new Keyring(store, kit.secretKeys);
     const root = await keyring.generate(ed25519);
-    const privateStore = new PrivateStore(store, privateBackend);
-    const signedIdentity = await setUpNotary(keyring, root.link, { kit, store, privateStore, at: Date.now() });
+    const signedIdentity = await setUpNotary(keyring, root.link, { kit, store, at: Date.now() });
     console.log(signedIdentity.identity.identifier);
   } finally {
-    for (const file of [secretBackend, privateBackend, backend]) file.close();
+    backend.close();
   }
-}
-
-async function makeFiles(paths: readonly string[], mode: number): Promise<void> {
-  const made: string[] = [];
-  try {
-    for (const path of paths) {
-      await (await open(path, "wx", mode)).close();
-      made.push(path);
-    }
-  } catch (error) {
-    await Promise.all(made.map((path) => rm(path)));
-    throw error;
-  }
-}
-
-function pathsInSettings() {
-  return {
-    secretStore: settingNamed("MAILBOX_SECRET_STORE"),
-    privateStore: settingNamed("MAILBOX_PRIVATE_STORE"),
-    database: settingNamed("MAILBOX_DATABASE"),
-  };
 }
 
 function settingNamed(name: string): string {

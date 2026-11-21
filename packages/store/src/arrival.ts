@@ -1,8 +1,7 @@
-import { type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
+import { type Link, LinkValue, namedSchemaOf, objectsOf, type Reader } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { closureIn } from "./batch.ts";
 import { inboundSchema } from "./inbound.ts";
-import { namedSchemaOf } from "./scanned-blob.ts";
 import { indexOver, selectedRecords } from "./source.ts";
 import type { View } from "./view.ts";
 import { writtenObjectSchema } from "./written-object.ts";

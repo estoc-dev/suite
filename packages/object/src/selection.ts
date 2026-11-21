@@ -1,5 +1,5 @@
 import type { Link } from "./link.ts";
-import { decodeObjectAt, type EncodedObject, type Reader, readBlob, schemaOf } from "./object.ts";
+import { decodeObjectAt, type EncodedObject, namedSchemaOf, type Reader, readBlob } from "./object.ts";
 import type { ValueMap } from "./object-format.ts";
 import type { Schema } from "./schema.ts";
 
@@ -29,7 +29,7 @@ export class SelectionBySchema<T, F extends ValueMap = ValueMap> implements Sele
 
   async read(record: Link<unknown>, reader: Reader): Promise<T | undefined> {
     const bytes = await readBlob(reader, record);
-    if (schemaOf(bytes) !== this.schema.link) return undefined;
+    if (namedSchemaOf(bytes) !== this.schema.link) return undefined;
     return this.itemOf(decodeObjectAt(record, bytes, this.schema), reader);
   }
 }

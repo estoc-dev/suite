@@ -66,14 +66,15 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBlobs(blobs), this.#backend));
+    const copiedBatch = { blobs: copiedBlobs(blobs), records: [] };
+    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBatch, this.#backend));
   }
 
   async record(batch: RecordBatch): Promise<void> {
-    const { records, blobs } = recordsOf(batch);
+    const copiedBatch = recordsOf(batch);
     // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
     // a statement the store does not hold whole.
-    await this.#backend.put(await leavesFirst(records, blobs, this.#backend));
+    await this.#backend.put(await leavesFirst(copiedBatch.records, copiedBatch, this.#backend));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {

@@ -1,7 +1,6 @@
-import { linkOf } from "@estoc/object";
+import { linkOf, namedSchemaOf } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
 import { recordSchema } from "./record.ts";
-import { namedSchemaOf } from "./scanned-blob.ts";
 
 /**
  * For blobs on their way to another party.

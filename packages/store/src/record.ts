@@ -1,6 +1,5 @@
-import { decodeObject, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
+import { decodeObject, type EncodedObject, encodeObject, type Link, LinkValue, namedSchemaOf } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { namedSchemaOf } from "./scanned-blob.ts";
 
 /**
  * A Record says that the programs that share the store said the statement it links to. What the

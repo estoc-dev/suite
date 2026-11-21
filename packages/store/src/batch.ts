@@ -8,7 +8,7 @@ import {
   type Reader,
   schemaOf,
 } from "@estoc/object";
-import type { Backend } from "./backend.ts";
+import { type Backend, blobIn } from "./backend.ts";
 import { isRecord, recordOf, recordSchema } from "./record.ts";
 
 export interface Batch {
@@ -53,11 +53,14 @@ export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   return batchBlobs;
 }
 
-export function recordsOf({ statements, blobs }: RecordBatch): {
-  readonly blobs: Map<Link<unknown>, Uint8Array>;
-  readonly records: Link<unknown>[];
-} {
-  const batchBlobs = copiedBlobs(blobs);
+/** The copies of the blobs of a batch, with the links of every Record among them. */
+export interface CopiedBatch {
+  readonly blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
+  readonly records: readonly Link<unknown>[];
+}
+
+export function recordsOf({ statements, blobs }: RecordBatch): CopiedBatch {
+  const batchBlobs = copiedBlobs([...blobs, ...recordSchema.blobs]);
   const records: EncodedObject[] = [];
   for (const statement of statements) {
     const bytes = batchBlobs.get(statement);
@@ -72,7 +75,6 @@ export function recordsOf({ statements, blobs }: RecordBatch): {
     records.push(recordOf(statement as Link<EncodedObject>));
   }
   for (const { link, bytes } of records) batchBlobs.set(link, bytes);
-  for (const bytes of recordSchema.blobs) batchBlobs.set(linkOf(bytes), bytes);
   return { blobs: batchBlobs, records: records.map(({ link }) => link) };
 }
 
@@ -111,12 +113,12 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
  */
 export async function leavesFirst(
   roots: Iterable<Link<unknown>>,
-  blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+  { blobs, records }: CopiedBatch,
   backend: Pick<Backend, "get" | "has">,
 ): Promise<Map<Link<unknown>, Uint8Array>> {
   const orderedBlobs = new Map<Link<unknown>, Uint8Array>();
   const heldLinks = new Set<Link<unknown>>();
-  const recordRoots = new Set<Link<unknown>>();
+  const recordLinks = new Set(records);
   const linkToRecord = (from: Link<unknown>, record: Link<unknown>) =>
     new RefusedBatch(`${from} links to ${record}, which is a Record`);
   const frame = (link: Link<unknown>, bytes: Uint8Array) => ({
@@ -131,7 +133,6 @@ export async function leavesFirst(
       if (await backend.has(root)) continue;
       throw new RefusedBatch(`neither the batch nor the store holds ${root}, which the batch is to keep`);
     }
-    if (isRecord(rootBytes)) recordRoots.add(root);
     // A link is a hash of its blob, so no blob on the path is in the closure of one after it.
     const path = [frame(root, rootBytes)];
     for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
@@ -142,16 +143,19 @@ export async function leavesFirst(
         continue;
       }
       const targetLink = next.value;
-      if (recordRoots.has(targetLink)) throw linkToRecord(top.link, targetLink);
+      if (recordLinks.has(targetLink)) throw linkToRecord(top.link, targetLink);
       if (orderedBlobs.has(targetLink) || heldLinks.has(targetLink)) continue;
       const batchBytes = blobs.get(targetLink);
-      const targetBytes = batchBytes ?? (await backend.get(targetLink));
-      if (targetBytes === undefined) {
+      if (batchBytes !== undefined) {
+        path.push(frame(targetLink, batchBytes));
+        continue;
+      }
+      const heldBytes = await blobIn(backend, targetLink);
+      if (heldBytes === undefined) {
         throw new RefusedBatch(`${top.link} links to ${targetLink}, which neither the batch nor the store holds`);
       }
-      if (isRecord(targetBytes)) throw linkToRecord(top.link, targetLink);
-      if (batchBytes === undefined) heldLinks.add(targetLink);
-      else path.push(frame(targetLink, batchBytes));
+      if (isRecord(heldBytes)) throw linkToRecord(top.link, targetLink);
+      heldLinks.add(targetLink);
     }
   }
   return orderedBlobs;

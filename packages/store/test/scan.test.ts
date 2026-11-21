@@ -102,7 +102,7 @@ const batchOf = (objects: readonly KeptObject[], blobs: Iterable<Uint8Array> = [
   blobs: [...objects.map(({ bytes }) => bytes), ...blobs],
 });
 
-/** A store reads each blob once to list what it recorded, whatever index reads the records after. */
+/** Lists the records first, so that a count taken after it is of what an index reads. */
 async function listRecordsOf(store: Store): Promise<void> {
   for await (const _ of store.records());
 }

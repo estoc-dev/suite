@@ -18,7 +18,6 @@ import {
 } from "../src/index.ts";
 
 const cardSchema = schema("Card", { name: string() });
-// A statement as a program records one: that it took a card, and when.
 const takenSchema = schema("Taken", { card: link(), at: integer() });
 const shownSchema = schema("Shown", { card: link() });
 const card = (name: string) => encodeObject(cardSchema, { name });
@@ -157,6 +156,22 @@ describe("records", () => {
     expect(await listOf(store.records())).toEqual([]);
   });
 
+  it("are kept whatever happens afterwards to the arrays the batch gave", async () => {
+    const { backend, store } = sides();
+    const alice = card("Alice");
+    const givenBlobs = [alice.bytes, ...cardSchema.blobs];
+    const givenContents = givenBlobs.map((bytes) => new Uint8Array(bytes));
+    await store.record({ statements: [alice.link], blobs: givenBlobs });
+    try {
+      for (const bytes of givenBlobs) bytes.fill(0);
+      await store.closure(recordOf(alice).link);
+      expect(await listOf(new Store(backend).records())).toEqual([alice.link]);
+    } finally {
+      // The schemas are shared with every other test, and the root schema with every schema.
+      givenBlobs.forEach((bytes, index) => void bytes.set(givenContents[index] as Uint8Array));
+    }
+  });
+
   it("refuse a statement that is not an object", async () => {
     const { store } = sides();
     const image = utf8("an image");
@@ -180,7 +195,7 @@ describe("records", () => {
   });
 });
 
-describe("a Record that a batch gives", () => {
+describe("a store given a batch with a Record among its blobs", () => {
   const alice = card("Alice");
   const statement = taken(alice, 1);
   const record = recordOf(statement);
@@ -188,7 +203,7 @@ describe("a Record that a batch gives", () => {
   const blobs = [record.bytes, ...recordSchema.blobs, ...closureBlobs];
   const refusal = `${record.link} is a Record, which a batch does not give`;
 
-  it("refuses a batch that is written, and nothing of it is kept", async () => {
+  it("refuses to write it, and keeps nothing of it", async () => {
     const { store } = sides();
     const written = store.write({ roots: [record.link], blobs });
     await expect(written).rejects.toThrow(RefusedBatch);
@@ -196,31 +211,31 @@ describe("a Record that a batch gives", () => {
     expect(await listOf(store.blobs())).toEqual([]);
   });
 
-  it("refuses a batch that no root of reaches it", async () => {
+  it("refuses to write it though no root reaches the Record", async () => {
     const { store } = sides();
     await expect(store.write({ roots: [statement.link], blobs })).rejects.toThrow(refusal);
   });
 
-  it("refuses a batch that is staged", async () => {
+  it("refuses to stage it", async () => {
     const { store } = sides();
     await expect(store.stage({ roots: [record.link], blobs })).rejects.toThrow(refusal);
   });
 
-  it("refuses a batch that is recorded, though the store would write the same Record", async () => {
+  it("refuses to record it, though it would write the same Record", async () => {
     const { store } = sides();
     await expect(store.record({ statements: [statement.link], blobs })).rejects.toThrow(refusal);
     expect(await listOf(store.records())).toEqual([]);
   });
 });
 
-describe("a link to a Record", () => {
+describe("a store given a batch that links to a Record", () => {
   const alice = card("Alice");
   const statement = taken(alice, 1);
   const record = recordOf(statement);
   const shown = encodeObject(shownSchema, { card: new LinkValue(record.link) });
   const statementBlobs = [alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs];
 
-  it("refuses a batch that is written once the store holds the Record", async () => {
+  it("refuses to write it once it holds the Record", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
     const written = store.write({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] });
@@ -229,7 +244,7 @@ describe("a link to a Record", () => {
     expect(await store.get(shown.link)).toBeUndefined();
   });
 
-  it("refuses a batch that is staged once the store holds the Record", async () => {
+  it("refuses to stage it once it holds the Record", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
     await expect(store.stage({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] })).rejects.toThrow(
@@ -237,21 +252,21 @@ describe("a link to a Record", () => {
     );
   });
 
-  it("refuses a batch that is written before the store holds the Record, for a blob it does not hold", async () => {
+  it("refuses to write it before it holds the Record, for a blob it does not hold", async () => {
     const { store } = sides();
     await expect(store.write({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] })).rejects.toThrow(
       `${shown.link} links to ${record.link}, which neither the batch nor the store holds`,
     );
   });
 
-  it("refuses a batch that records the statement and what links to its Record together", async () => {
+  it("refuses to record the statement together with what links to its Record", async () => {
     const { store } = sides();
     const recorded = store.record(batchOf([statement, shown], [...statementBlobs, ...shownSchema.blobs]));
     await expect(recorded).rejects.toThrow(`${shown.link} links to ${record.link}, which is a Record`);
     expect(await listOf(store.blobs())).toEqual([]);
   });
 
-  it("refuses a statement of a Record that the store holds", async () => {
+  it("refuses to record a statement that links to a Record it holds", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
     await expect(store.record(batchOf([shown], [...shownSchema.blobs]))).rejects.toThrow(
@@ -372,6 +387,15 @@ describe("an index over written objects", () => {
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
     await store.record(batchOf([taken(bob, 1)], [...takenSchema.blobs]));
     await store.record(writtenObjectsOf([alice.link], 1));
+    expect(await namesByName(store, writtenNames())).toEqual(["Alice"]);
+  });
+
+  it("reads nothing for a Written Object that links to a blob that is not an object, and reads the others", async () => {
+    const { store } = sides();
+    const alice = card("Alice");
+    const image = utf8("not an object");
+    await store.write({ roots: [alice.link, linkOf(image)], blobs: [alice.bytes, ...cardSchema.blobs, image] });
+    await store.record(writtenObjectsOf([alice.link, linkOf(image)], 1));
     expect(await namesByName(store, writtenNames())).toEqual(["Alice"]);
   });
 

@@ -71,3 +71,11 @@ export function schemaOf(bytes: Bytes<unknown>): Link<Schema> {
   const { schema } = objectFormat.decode(bytes);
   return (schema === itself ? linkOf(bytes) : schema) as Link<Schema>;
 }
+
+export function namedSchemaOf(bytes: Bytes<unknown>): Link<Schema> | undefined {
+  try {
+    return schemaOf(bytes);
+  } catch {
+    return undefined;
+  }
+}

@@ -5,6 +5,7 @@ export {
   decodeObject,
   type EncodedObject,
   encodeObject,
+  namedSchemaOf,
   type Reader,
   readObject,
   schemaOf,

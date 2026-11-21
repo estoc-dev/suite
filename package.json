@@ -1,6 +1,7 @@
 {
   "name": "estoc-suite",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=26"
@@ -16,6 +17,7 @@
     "@biomejs/biome": "2.6.3",
     "@types/node": "^26.6.2",
     "typescript": "~5.8.0",
-    "vitest": "^3.2.7"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }

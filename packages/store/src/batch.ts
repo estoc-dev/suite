@@ -9,7 +9,7 @@ import {
   schemaOf,
 } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { isRecord, recordOf, recordSchema } from "./record.ts";
+import { isRecord, type RecordObject, recordOf, recordSchema } from "./record.ts";
 
 export interface Batch {
   readonly roots: Iterable<Link<unknown>>;
@@ -53,17 +53,19 @@ export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   return batchBlobs;
 }
 
-/** The copies of the blobs of a batch, with the links of every Record among them. */
+/** What a store is to write, in copies of its own, with the links of every Record in it. */
 export interface CopiedBatch {
   readonly blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly records: readonly Link<unknown>[];
 }
 
-export function recordsOf({ statements, blobs }: RecordBatch): CopiedBatch {
-  const batchBlobs = copiedBlobs([...blobs, ...recordSchema.blobs]);
-  const records: EncodedObject[] = [];
+export function recordsOf(
+  statements: Iterable<Link<unknown>>,
+  givenBlobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+): RecordObject[] {
+  const records: RecordObject[] = [];
   for (const statement of statements) {
-    const bytes = batchBlobs.get(statement);
+    const bytes = givenBlobs.get(statement);
     if (bytes === undefined) {
       throw new RefusedBatch(`${statement} is recorded but is not among the blobs of the batch`);
     }
@@ -74,8 +76,16 @@ export function recordsOf({ statements, blobs }: RecordBatch): CopiedBatch {
     }
     records.push(recordOf(statement as Link<EncodedObject>));
   }
-  for (const { link, bytes } of records) batchBlobs.set(link, bytes);
-  return { blobs: batchBlobs, records: records.map(({ link }) => link) };
+  return records;
+}
+
+export function copiedBatchWith(
+  records: readonly RecordObject[],
+  givenBlobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+): CopiedBatch {
+  const blobs = new Map([...givenBlobs, ...copiedBlobs(recordSchema.blobs)]);
+  for (const { link, bytes } of records) blobs.set(link, bytes);
+  return { blobs, records: records.map(({ link }) => link) };
 }
 
 export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {

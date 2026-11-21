@@ -172,6 +172,39 @@ describe("records", () => {
     }
   });
 
+  it("list each statement as it was when given, where one array gives the blobs of the batch in turn", async () => {
+    const { backend, store } = sides();
+    const statements = [card("Alice"), card("Bob")];
+    const givenBlobs = [...statements.map(({ bytes }) => bytes), ...cardSchema.blobs];
+    function* blobsInOneArray() {
+      const array = new Uint8Array(Math.max(...givenBlobs.map(({ length }) => length)));
+      for (const blob of givenBlobs) {
+        array.set(blob);
+        yield array.subarray(0, blob.length);
+      }
+    }
+    await store.record({ statements: statements.map(({ link }) => link), blobs: blobsInOneArray() });
+    expect(await listOf(new Store(backend).records())).toEqual(statements.map(({ link }) => link));
+  });
+
+  it("list the Record schema as any statement, when the batch gives its blob", async () => {
+    const { store } = sides();
+    await store.record({ statements: [recordSchema.link], blobs: recordSchema.blobs });
+    expect(await listOf(store.records())).toEqual([recordSchema.link]);
+  });
+
+  it("refuse a batch that gives another statement and not the blob of the Record schema it records", async () => {
+    const { store } = sides();
+    const alice = card("Alice");
+    const refusal = store.record({
+      statements: [alice.link, recordSchema.link],
+      blobs: [alice.bytes, ...cardSchema.blobs],
+    });
+    await expect(refusal).rejects.toThrow(RefusedBatch);
+    await expect(refusal).rejects.toThrow(`${recordSchema.link} is recorded but is not among the blobs of the batch`);
+    expect(await listOf(store.blobs())).toEqual([]);
+  });
+
   it("refuse a statement that is not an object", async () => {
     const { store } = sides();
     const image = utf8("an image");

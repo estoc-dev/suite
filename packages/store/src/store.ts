@@ -1,6 +1,14 @@
 import type { Bytes, EncodedObject, Link, Reader } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { type Batch, closureIn, copiedBlobs, leavesFirst, type RecordBatch, recordsOf } from "./batch.ts";
+import {
+  type Batch,
+  closureIn,
+  copiedBatchWith,
+  copiedBlobs,
+  leavesFirst,
+  type RecordBatch,
+  recordsOf,
+} from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
@@ -70,8 +78,9 @@ export class StoreOf implements Store, RowKeeper {
     return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBatch, this.#backend));
   }
 
-  async record(batch: RecordBatch): Promise<void> {
-    const copiedBatch = recordsOf(batch);
+  async record({ statements, blobs }: RecordBatch): Promise<void> {
+    const givenBlobs = copiedBlobs(blobs);
+    const copiedBatch = copiedBatchWith(recordsOf(statements, givenBlobs), givenBlobs);
     // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
     // a statement the store does not hold whole.
     await this.#backend.put(await leavesFirst(copiedBatch.records, copiedBatch, this.#backend));

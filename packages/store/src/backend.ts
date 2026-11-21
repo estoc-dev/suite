@@ -1,26 +1,23 @@
-import { type EncodedObject, type Link, linkOf } from "@estoc/object";
+import { type Link, linkOf } from "@estoc/object";
 
 /**
- * A backend keeps bytes and links as it is given them; the store hashes and decodes, and hashes
- * again what it gets back, so a backend that was damaged makes reading fail.
+ * - A backend keeps bytes as it is given them; the store hashes and decodes, and hashes again what
+ *   it gets back, so a backend that was damaged makes reading fail.
+ * - What puts blobs in a backend without a store, as what copies one to another does, is trusted
+ *   with the Records among them.
  */
 export interface Backend {
   /** Gives an array the caller may change without changing what is kept. */
   get(link: Link<unknown>): Promise<Uint8Array | undefined>;
   has(link: Link<unknown>): Promise<boolean>;
   /**
-   * Puts the blobs one after another in the order given, and then lists `listedLinks`, so that a
-   * write cut short lists nothing whose closure was not kept.
+   * Puts the blobs one after another in the order given. The store gives each after the blobs it
+   * links to, so a write cut short keeps none without its closure.
    */
-  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<EncodedObject>>): Promise<void>;
-  /**
-   * The links listed by `put`, each once and in the order they were first listed, leaving out the
-   * first `start`.
-   */
-  listedLinks(start?: number): AsyncIterable<Link<EncodedObject>>;
+  put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Promise<void>;
   /**
    * The links of the blobs put, each once and in the order they were first put, leaving out the
-   * first `start`. A write cut short can leave blobs here that no listed link reaches.
+   * first `start`.
    */
   blobs(start?: number): AsyncIterable<Link<unknown>>;
 }

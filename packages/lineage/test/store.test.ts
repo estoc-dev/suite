@@ -1,6 +1,15 @@
 import { encodeObject, type Implementation, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
-import { indexOver, MemoryBackend, type OrderedIndex, recordsOf, Store, scan, selectedRecords } from "@estoc/store";
+import {
+  indexOver,
+  MemoryBackend,
+  type OrderedIndex,
+  Store,
+  scan,
+  selectedRecords,
+  writtenObjectsOf,
+  writtenObjectsOver,
+} from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
@@ -16,12 +25,20 @@ const other = encodeObject(note, { text: "other" });
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
 type HeadIndex = OrderedIndex<DataOf<typeof headSchema>, readonly ["of", "head"]>;
 
-const bySeries: HeadIndex = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ first, head }) {
-  yield { of: new LinkValue(first.link), head: new LinkValue(head.link) };
-}).orderedBy("of", "head");
-const byItem: HeadIndex = indexOver(selectedRecords(lineages.selection), headSchema, function* ({ items, head }) {
-  for (const item of items) yield { of: new LinkValue(item), head: new LinkValue(head.link) };
-}).orderedBy("of", "head");
+const bySeries: HeadIndex = indexOver(
+  selectedRecords(writtenObjectsOver(lineages.selection)),
+  headSchema,
+  function* ({ first, head }) {
+    yield { of: new LinkValue(first.link), head: new LinkValue(head.link) };
+  },
+).orderedBy("of", "head");
+const byItem: HeadIndex = indexOver(
+  selectedRecords(writtenObjectsOver(lineages.selection)),
+  headSchema,
+  function* ({ items, head }) {
+    for (const item of items) yield { of: new LinkValue(item), head: new LinkValue(head.link) };
+  },
+).orderedBy("of", "head");
 
 const newStore = () => new Store(new MemoryBackend());
 
@@ -29,7 +46,7 @@ async function recordHeads(store: Store, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
   const heads = chains.map(({ head }) => head.link);
   await store.write({ roots: heads, blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs] });
-  await store.writeMarks(recordsOf(heads, Date.now()));
+  await store.record(writtenObjectsOf(heads, Date.now()));
 }
 
 async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
@@ -95,9 +112,9 @@ describe("the selection of a schema lineage over a store", () => {
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await store.writeMarks(recordsOf([untitled.link, titledObject.link], Date.now()));
+    await store.record(writtenObjectsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
-    const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
+    const byText = indexOver(selectedRecords(writtenObjectsOver(notes.selection)), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];

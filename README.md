@@ -46,8 +46,9 @@ gives no meaning and no reader an advantage.
 - `@estoc/bundle`: blobs carried together in one file, with one object as
   the way in, as they travel between programs.
 - `@estoc/store`: the blobs that come to a user and those they write,
-  kept on their device, with the marks and the Secrets they keep to
-  themselves among them; and the indexes an application fills from them.
+  kept on their device, with the Records of what their programs said and
+  the Secrets, which they keep to themselves, among them; and the indexes
+  an application fills from them.
 - `@estoc/inspector`: what a link reads as by what the blob says of
   itself, with no schema in hand: its fields, the schema it names and the
   links in its data.
@@ -72,7 +73,7 @@ semantics written elsewhere could not.
   and bodies written to a schema for each format, such as Markdown, which a
   program reads as HTML by the schema a body names.
 - `@estoc/mailbox`: where messages to someone can be sent, sealed to the
-  receiver's key, and the marks of what came in and went out.
+  receiver's key, and the records of what came in and went out.
 - `@estoc/mailbox-service`: a service that keeps messages for receivers
   who are not online, reached by its identity, and opening an account
   there by signing its offer.

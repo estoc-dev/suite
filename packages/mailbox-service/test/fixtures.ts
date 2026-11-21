@@ -13,7 +13,7 @@ import {
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
-import { type Backend, MemoryBackend, recordSchema, Store } from "@estoc/store";
+import { type Backend, MemoryBackend, Store, writtenObjectSchema } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
@@ -34,12 +34,12 @@ export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonl
   return bytes;
 }
 
-/** The links of the objects that the records among the marks of `store` link to, in the order of the records. */
-export async function recordedObjectsIn(store: Store): Promise<Link<never>[]> {
+/** The links of the objects that the Written Objects among the records of `store` link to, in the order of the records. */
+export async function writtenObjectsIn(store: Store): Promise<Link<never>[]> {
   const links: Link<never>[] = [];
-  for await (const mark of store.marks()) {
-    const record = await objectsOf(recordSchema).read(mark, store);
-    if (record !== undefined) links.push(record.data.object.link as Link<never>);
+  for await (const statement of store.records()) {
+    const writtenObject = await objectsOf(writtenObjectSchema).read(statement, store);
+    if (writtenObject !== undefined) links.push(writtenObject.data.object.link as Link<never>);
   }
   return links;
 }
@@ -89,7 +89,7 @@ export async function setUpService({
 }
 
 async function recordsIdentityVersion(store: Store): Promise<boolean> {
-  for (const link of await recordedObjectsIn(store))
+  for (const link of await writtenObjectsIn(store))
     if ((await objectsOf(signedIdentities.schema).read(link, store)) !== undefined) return true;
   return false;
 }

@@ -9,10 +9,11 @@ import {
   objectsOf,
   type Reader,
   readObject,
+  schemaOf,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
-import { MemoryBackend, Store, view } from "@estoc/store";
+import { MemoryBackend, recordSchema, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -39,7 +40,6 @@ import {
   memoryService,
   memoryStore,
   publish,
-  recordedObjectsIn,
   schemes,
   serviceActor,
   serviceIdentity,
@@ -51,6 +51,7 @@ import {
   signedIdentities,
   signer,
   terms,
+  writtenObjectsIn,
 } from "./fixtures.ts";
 
 const alice = signer(ed25519, 1);
@@ -64,7 +65,7 @@ const getRoot = (service: MailboxService) => service.fetch(request("/"));
 const post = (service: MailboxService, id: string, body: Uint8Array) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
-const recordedObjectsOf = async (store: Store) => (await recordedObjectsIn(store)).sort();
+const recordedObjectsOf = async (store: Store) => (await writtenObjectsIn(store)).sort();
 async function recordedSignaturesOf(store: Store) {
   const links: Link<never>[] = [];
   for (const link of await recordedObjectsOf(store))
@@ -818,17 +819,24 @@ async function queueAt(
   });
 }
 
-/** Fails, once it is interrupted, the next write that lists a mark. */
+/** Fails, once it is interrupted, the next write that holds a Record. */
 class InterruptedBackend extends MemoryBackend {
   isInterrupted = false;
 
-  override async put(...[blobs, listedLinks]: Parameters<MemoryBackend["put"]>): Promise<void> {
-    const marks = [...listedLinks];
-    if (this.isInterrupted && marks.length > 0) {
+  override async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Promise<void> {
+    if (this.isInterrupted && [...blobs.values()].some(isRecord)) {
       this.isInterrupted = false;
       throw new Error("the write was interrupted");
     }
-    await super.put(blobs, marks);
+    await super.put(blobs);
+  }
+}
+
+function isRecord(bytes: Uint8Array): boolean {
+  try {
+    return schemaOf(bytes) === recordSchema.link;
+  } catch {
+    return false;
   }
 }
 
@@ -850,12 +858,12 @@ describe("a mailbox service that failed to record an acknowledgement signed agai
     await expect(postMailboxRequest(again, file)).rejects.toThrow("the write was interrupted");
     const renewal = await mailboxAcknowledgementIn(await postMailboxRequest(again, file));
     expect(renewal.signature.link).not.toBe(first.signature.link);
-    const records = await recordedObjectsIn(store);
+    const records = await writtenObjectsIn(store);
     expect(records).toContain(renewal.signature.link);
     expect((await mailboxAcknowledgementIn(await postMailboxRequest(again, file))).signature.link).toBe(
       renewal.signature.link,
     );
-    expect(await recordedObjectsIn(store)).toEqual(records);
+    expect(await writtenObjectsIn(store)).toEqual(records);
   });
 });
 

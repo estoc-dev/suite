@@ -17,7 +17,7 @@ export const mailboxKeySchema = schema("Mailbox Key", {
 
 export type MailboxKeyData = DataOf<typeof mailboxKeySchema>;
 
-/** `at` is in milliseconds since the Unix epoch, by the clock of the device that wrote the mark. */
+/** `at` is in milliseconds since the Unix epoch, by the clock of the device that recorded it. */
 export const outboundSchema = schema("Outbound", {
   bundle: link<never>(),
   mailbox: link<EncodedObject<MailboxData>>(),

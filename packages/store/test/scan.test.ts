@@ -33,7 +33,6 @@ import {
   indexOver,
   MemoryBackend,
   type Rows,
-  recordsOf,
   Store,
   scan,
   selectedBlobs,
@@ -86,28 +85,30 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
     return backend.get(link);
   },
   has: (link) => backend.has(link),
-  put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
-  listedLinks: (start) => backend.listedLinks(start),
+  put: (blobs) => backend.put(blobs),
   blobs: (start) => backend.blobs(start),
 });
 
 const newStore = (backend: Backend = new MemoryBackend()) => new Store(backend);
 
-interface WrittenObject {
+interface KeptObject {
   readonly link: Link<EncodedObject>;
   readonly bytes: Uint8Array;
 }
 
 /** The batch that keeps `objects`, with those of `blobs` in their closures. */
-const batchOf = (objects: readonly WrittenObject[], blobs: Iterable<Uint8Array> = []): Batch => ({
+const batchOf = (objects: readonly KeptObject[], blobs: Iterable<Uint8Array> = []): Batch => ({
   roots: objects.map(({ link }) => link),
   blobs: [...objects.map(({ bytes }) => bytes), ...blobs],
 });
 
-async function recordIn(store: Store, objects: readonly WrittenObject[], blobs?: Iterable<Uint8Array>): Promise<void> {
-  const batch = batchOf(objects, blobs);
-  await store.write(batch);
-  await store.writeMarks(recordsOf(batch.roots, Date.now()));
+/** Lists the records first, so that a count taken after it is of what an index reads. */
+async function listRecordsOf(store: Store): Promise<void> {
+  for await (const _ of store.records());
+}
+
+async function recordIn(store: Store, objects: readonly KeptObject[], blobs?: Iterable<Uint8Array>): Promise<void> {
+  await store.record({ statements: objects.map(({ link }) => link), blobs: batchOf(objects, blobs).blobs });
 }
 
 describe("an index over records", () => {
@@ -327,6 +328,7 @@ describe("an index over records", () => {
     const card = encodeObject(tag, { name: "Alice" });
     const record = encodeObject(note, { card: new LinkValue(card.link) });
     await recordIn(store, [record], [card.bytes, ...schemas]);
+    await listRecordsOf(store);
     requestedLinks.length = 0;
     const cardName = new SelectionBySchema(note, async ({ data }, reader) => {
       if (data.card === undefined) return undefined;
@@ -360,24 +362,12 @@ describe("an index over records", () => {
       const swappedBackend: Backend = {
         get: (link) => backend.get(link === listedObject.link ? other.link : link),
         has: (link) => backend.has(link),
-        put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
-        listedLinks: (start) => backend.listedLinks(start),
+        put: (blobs) => backend.put(blobs),
         blobs: (start) => backend.blobs(start),
       };
       await expect(scan(newStore(swappedBackend), byName)).rejects.toThrow(`another blob under ${listedObject.link}`);
     },
   );
-
-  it("does not list the store's blobs when it reads only recorded objects", async () => {
-    const store = newStore({
-      ...backendNoting([], new MemoryBackend()),
-      blobs: () => {
-        throw new Error("the blobs are listed");
-      },
-    });
-    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
-    expect(await namesOf(await scan(store, byName))).toEqual(["a"]);
-  });
 });
 
 describe("an index whose rows give none of what does not read as they expect", () => {
@@ -418,9 +408,7 @@ describe("an index whose rows give none of what does not read as they expect", (
 
   it("is not filled when the store does not hold a blob of a recorded object's closure", async () => {
     const store = await storeGiving({ get: async () => undefined });
-    await expect(scan(store, byAbout)).rejects.toThrow(
-      `the store lists ${record.link} but does not hold ${about.link} of its closure`,
-    );
+    await expect(scan(store, byAbout)).rejects.toThrow(`the store lists ${about.link} but does not hold it`);
   });
 });
 
@@ -445,7 +433,7 @@ describe("an index that fails on something it reads", () => {
       .orderedBy("name");
   };
 
-  async function storeRecording(...objects: readonly WrittenObject[]) {
+  async function storeRecording(...objects: readonly KeptObject[]) {
     const store = newStore();
     await recordIn(store, objects, schemas);
     return store;
@@ -644,6 +632,8 @@ describe("an index over records, scanned again", () => {
     const requestedLinks: Link<unknown>[] = [];
     const store = newStore(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(store, [first], schemas);
+    await listRecordsOf(store);
+    requestedLinks.length = 0;
     const scans = await Promise.all([scan(store, byName), scan(store, byName)]);
     for (const rows of scans) expect(await namesOf(rows)).toEqual(["a"]);
     expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
@@ -702,6 +692,8 @@ describe("an index scanned in two orders", () => {
     const requestedLinks: Link<unknown>[] = [];
     const store = newStore(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(store, [first], schemas);
+    await listRecordsOf(store);
+    requestedLinks.length = 0;
     await Promise.all([scan(store, byCountedName), scan(store, byCount)]);
     await scan(store, byCount);
     expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
@@ -891,9 +883,9 @@ describe("an index over blobs", () => {
       get: <T>(link: Link<T>) => store.get(link),
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
-      writeMarks: (batch) => store.writeMarks(batch),
+      record: (batch) => store.record(batch),
       blobs: () => store.blobs(),
-      marks: () => store.marks(),
+      records: () => store.records(),
       closure: (link) => store.closure(link),
     };
     await expect(scan(lookalike, byTagName)).rejects.toThrow(TypeError);
@@ -912,8 +904,7 @@ describe("an index over blobs", () => {
       const store = new Store({
         get: (link) => (failing.isOn && link === failingLink ? give() : backend.get(link)),
         has: (link) => backend.has(link),
-        put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
-        listedLinks: (start) => backend.listedLinks(start),
+        put: (blobs) => backend.put(blobs),
         blobs: (start) => backend.blobs(start),
       });
       await store.write(batchOf([carrier], [attachment, other.bytes, nested.bytes, reaching.bytes, ...schemas]));
@@ -1202,6 +1193,8 @@ describe("an index over another index", () => {
       const requestedLinks: Link<unknown>[] = [];
       const store = newStore(backendNoting(requestedLinks, new MemoryBackend()));
       await recordIn(store, [first], schemas);
+      await listRecordsOf(store);
+      requestedLinks.length = 0;
       await scan(store, byUpperName);
       await scan(store, byName);
       await scan(store, upperNamesNoting([]).orderedBy("name"));

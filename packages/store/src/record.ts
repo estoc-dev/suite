@@ -1,25 +1,27 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
-import { type DataOf, integer, link, schema } from "@estoc/schema";
-import type { MarkBatch } from "./batch.ts";
+import { decodeObject, type EncodedObject, encodeObject, type Link, LinkValue, namedSchemaOf } from "@estoc/object";
+import { type DataOf, link, schema } from "@estoc/schema";
 
 /**
- * - `at` is when the user wrote the object, in milliseconds since the Unix epoch, by the clock of
- *   the device that wrote the record.
- * - Anyone can write an object of this schema. It is a record only where a store lists it among its marks.
+ * A Record says that the programs that share the store said the statement it links to. What the
+ * statement means, and when it was said, are for the schema of the statement to say.
+ *
+ * Anyone can encode an object of this schema, so a Record counts for where it is: a store writes
+ * the Records it encodes itself and refuses every other.
  */
-export const recordSchema = schema("Record", { object: link(), at: integer() });
+export const recordSchema = schema("Record", { object: link<EncodedObject>() });
 
 export type RecordData = DataOf<typeof recordSchema>;
 
 export type RecordObject = EncodedObject<RecordData>;
 
-export function recordsOf(objects: Iterable<Link<unknown>>, at: number): MarkBatch {
-  const marks = Array.from(objects, (object) => encodeObject(recordSchema, { object: new LinkValue(object), at }));
-  return { marks: marks.map(({ link }) => link), blobs: [...marks.map(({ bytes }) => bytes), ...recordSchema.blobs] };
+export function recordOf(statement: Link<EncodedObject>): RecordObject {
+  return encodeObject(recordSchema, { object: new LinkValue(statement) });
 }
 
-const records = objectsOf(recordSchema);
+export function isRecord(bytes: Uint8Array): boolean {
+  return namedSchemaOf(bytes) === recordSchema.link;
+}
 
-export async function objectRecordedAt(listedLink: Link<unknown>, reader: Reader): Promise<Link<unknown> | undefined> {
-  return (await records.read(listedLink, reader))?.data.object.link;
+export function statementRecordedIn(bytes: Uint8Array): Link<EncodedObject> | undefined {
+  return isRecord(bytes) ? decodeObject(bytes, recordSchema).data.object.link : undefined;
 }

@@ -21,7 +21,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
-import { blobsWithNoSecret, type Store, view } from "@estoc/store";
+import { type Store, sendableBlobs, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { Accounts } from "./accounts.ts";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
@@ -297,7 +297,7 @@ class MailboxService {
 
   async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
     const blobs = (await this.#store.closure(link)).values();
-    return bundleAnswer(status, encodeBundle(link, blobsWithNoSecret(blobs)));
+    return bundleAnswer(status, encodeBundle(link, sendableBlobs(blobs)));
   }
 }
 

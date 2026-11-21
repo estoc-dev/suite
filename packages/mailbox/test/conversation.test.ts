@@ -17,9 +17,10 @@ import {
   MemoryBackend,
   type OrderedIndex,
   type Rows,
+  recordSchema,
   Store,
   scan,
-  selectedMarks,
+  selectedRecords,
   view,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
@@ -28,7 +29,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a mailbox for the other and a grant of
 // that mailbox from the other, handed over out of band. The application reads
-// a conversation out of the marks of its store alone, and shows a
+// a conversation out of the records of its store alone, and shows a
 // line as a message from whoever signed it where the reader gave them that
 // mailbox.
 
@@ -49,16 +50,16 @@ const delivery = schema("Delivery", {
 type Delivery = DataOf<typeof delivery>;
 type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 
-// The application's index of the deliveries its user's store marks: a
+// The application's index of the deliveries its user's store records: a
 // row for each, by which way it went, the mailbox, when, and the bundle. What
 // was handed over out of band came in at no mailbox, and gives no row.
 const deliveries: OrderedIndex<Delivery, DeliveryOrder> = indexOver(
-  selectedMarks(objectsOf(inboundSchema)),
+  selectedRecords(objectsOf(inboundSchema)),
   delivery,
   ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
 )
   .union(
-    indexOver(selectedMarks(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
+    indexOver(selectedRecords(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
       { direction: "outbound", mailbox, at, bundle },
     ]),
   )
@@ -130,7 +131,7 @@ async function chat(faults: Faults = {}) {
   const names = new Map([alice, bob].map(({ name, actor }) => [actor.identifier, name]));
 
   // `owner` opens a mailbox for `peer`, signs a grant of it and hands it over
-  // out of band, and the peer keeps it in their store with a mark that it
+  // out of band, and the peer keeps it in their store with a record that it
   // came in, to send to it.
   const mailboxFor = async (owner: Person, peer: Person) => {
     const queue = network.queue();
@@ -176,8 +177,8 @@ async function chat(faults: Faults = {}) {
     );
     return lines.filter((shown) => shown !== undefined);
   };
-  // What the person's store marks as having come in, or gone out, at any mailbox.
-  const marked = async ({ store }: Person, direction: Direction) =>
+  // What the person's store records as having come in, or gone out, at any mailbox.
+  const recorded = async ({ store }: Person, direction: Direction) =>
     all((await scan(store, deliveries)).range([direction]));
 
   // Someone who was given no grant, and was passed the mailbox that Alice gave
@@ -190,7 +191,7 @@ async function chat(faults: Faults = {}) {
       say: (text: string) => say(alice, bob.signedIdentity, text),
       collect: () => collect(atAlice),
       show: () => show(alice, atAlice.mailbox, atBob.mailbox),
-      marked: (direction: Direction) => marked(alice, direction),
+      recorded: (direction: Direction) => recorded(alice, direction),
       resend: (root: Link<unknown>) => alice.correspondence.send(bob.signedIdentity, root),
       store: alice.store,
       conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox, atBob.mailbox),
@@ -199,7 +200,7 @@ async function chat(faults: Faults = {}) {
       say: (text: string) => say(bob, alice.signedIdentity, text),
       collect: () => collect(atBob),
       show: () => show(bob, atBob.mailbox, atAlice.mailbox),
-      marked: (direction: Direction) => marked(bob, direction),
+      recorded: (direction: Direction) => recorded(bob, direction),
     },
     carol: {
       sayToAlice: async (text: string) =>
@@ -209,7 +210,7 @@ async function chat(faults: Faults = {}) {
 }
 
 describe("a conversation", () => {
-  it("reads at each side in the order things happened there, from the marks of what came in and went out", async () => {
+  it("reads at each side in the order things happened there, from the records of what came in and went out", async () => {
     const { alice, bob } = await chat();
     await alice.say("hi Bob");
     await bob.collect();
@@ -230,27 +231,27 @@ describe("a conversation", () => {
     ]);
   });
 
-  it("shows a line that arrived twice once, though each arrival is marked", async () => {
+  it("shows a line that arrived twice once, though each arrival is recorded", async () => {
     const { alice, bob } = await chat({ twice: true });
     await alice.say("hi Bob");
     await alice.say("lunch at noon?");
     await bob.collect();
 
-    expect(await bob.marked("inbound")).toHaveLength(4);
+    expect(await bob.recorded("inbound")).toHaveLength(4);
     expect(await bob.show()).toEqual([
       ["inbound", "Alice", "hi Bob"],
       ["inbound", "Alice", "lunch at noon?"],
     ]);
   });
 
-  it("shows a line once that was collected again because the network was cut before it was done, though each time is marked", async () => {
+  it("shows a line once that was collected again because the network was cut before it was done, though each time is recorded", async () => {
     const { alice, bob } = await chat({ cut: (n) => n === 0 });
     await alice.say("hi Bob");
     await expect(bob.collect()).rejects.toThrow(/cut/);
     expect(await bob.show()).toEqual([["inbound", "Alice", "hi Bob"]]);
 
     await bob.collect();
-    expect(await bob.marked("inbound")).toHaveLength(2);
+    expect(await bob.recorded("inbound")).toHaveLength(2);
     expect(await bob.show()).toEqual([["inbound", "Alice", "hi Bob"]]);
   });
 
@@ -263,7 +264,7 @@ describe("a conversation", () => {
 
     await alice.resend(lostSignature.link);
     await bob.collect();
-    expect(await alice.marked("outbound")).toHaveLength(3);
+    expect(await alice.recorded("outbound")).toHaveLength(3);
     expect(await alice.show()).toEqual([
       ["outbound", "Alice", "hi Bob"],
       ["outbound", "Alice", "lunch at noon?"],
@@ -274,34 +275,40 @@ describe("a conversation", () => {
     ]);
   });
 
-  it("leaves out a line by someone who was given no grant, though its arrival is marked", async () => {
+  it("leaves out a line by someone who was given no grant, though its arrival is recorded", async () => {
     const { alice, bob, carol } = await chat();
     await bob.say("hi Alice");
     await carol.sayToAlice("hi Alice, I am Bob");
     await alice.collect();
 
-    expect(await alice.marked("inbound")).toHaveLength(2);
+    expect(await alice.recorded("inbound")).toHaveLength(2);
     expect(await alice.show()).toEqual([["inbound", "Bob", "hi Alice"]]);
   });
 
-  it("reads the same when the marks are added in another order and more than once", async () => {
+  it("reads the same when the statements are recorded in another order and more than once", async () => {
     const { alice, bob } = await chat({ twice: true, reversed: true });
     await alice.say("hi Bob");
     await bob.collect();
     await bob.say("hi Alice");
     await alice.collect();
 
-    // What Alice's store marks, written again over a copy of what else it holds, last first and
-    // twice.
+    // What Alice's store records, recorded again over a copy of what else it holds, last first
+    // and twice. The copy writes its own Records, so those of Alice's store are left out.
     const copy = new Store(new MemoryBackend());
-    const marks: Link<unknown>[] = await all(alice.store.marks());
-    const heldLinks = (await all(alice.store.blobs())).filter((link) => !marks.includes(link));
+    const statements = await all(alice.store.records());
+    const written = new Set<Link<unknown>>(
+      statements.flatMap((statement) => [
+        statement,
+        encodeObject(recordSchema, { object: new LinkValue(statement) }).link,
+      ]),
+    );
+    const heldLinks = (await all(alice.store.blobs())).filter((link) => !written.has(link));
     const heldBlobs = await Promise.all(heldLinks.map((link) => alice.store.get(link)));
     await copy.write({ roots: heldLinks, blobs: heldBlobs.filter((bytes) => bytes !== undefined) });
-    for (const mark of [...marks, ...marks].reverse()) {
-      const bytes = await alice.store.get(mark);
+    for (const statement of [...statements, ...statements].reverse()) {
+      const bytes = await alice.store.get(statement);
       assert.exists(bytes);
-      await copy.writeMarks({ marks: [mark], blobs: [bytes] });
+      await copy.record({ statements: [statement], blobs: [bytes] });
     }
     expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });

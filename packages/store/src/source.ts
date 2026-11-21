@@ -43,14 +43,9 @@ export interface Listing {
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 
-const recordedObjects: Origin = {
+const recordedStatements: Origin = {
   readsBlobs: false,
-  listingIn: (rows) => rows.recordedObjects(),
-};
-
-const listedMarks: Origin = {
-  readsBlobs: false,
-  listingIn: (rows) => rows.marks(),
+  listingIn: (rows) => rows.records(),
 };
 
 const heldBlobs: Origin = {
@@ -106,17 +101,12 @@ export class Source<T> {
   }
 }
 
-/** A record is one among the marks of the store. One that only came to it, as in a bundle, records nothing. */
-export function selectedRecords<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
-}
-
 /**
- * An object of the schema of a mark that only came to the store, as in a bundle, is not one of
- * these.
+ * The statements the store recorded. One of the same schema that only came to the store, as in a
+ * bundle, is not one of these.
  */
-export function selectedMarks<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: listedMarks, itemOf: (blob) => itemOf(selection, blob) });
+export function selectedRecords<T>(selection: Selection<T>): Source<T> {
+  return new Source({ origin: recordedStatements, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**

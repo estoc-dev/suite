@@ -2,9 +2,9 @@ import {
   decodeObject,
   type EncodedObject,
   type Link,
+  namedSchemaOf,
   type Reader,
   type Schema,
-  schemaOf,
   type ValueMap,
 } from "@estoc/object";
 
@@ -43,14 +43,6 @@ export class ScannedBlob {
       this.#objects.set(schema, isOfSchema ? decodeObject(bytes, schema) : undefined);
     }
     return this.#objects.get(schema) as EncodedObject<F> | undefined;
-  }
-}
-
-export function namedSchemaOf(bytes: Uint8Array): Link<unknown> | undefined {
-  try {
-    return schemaOf(bytes);
-  } catch {
-    return undefined;
   }
 }
 

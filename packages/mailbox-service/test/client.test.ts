@@ -82,13 +82,13 @@ async function startService(
 }
 
 /**
- * What the Inbound marks of `store` say came in, each as the link of its root and the origin it
+ * What the Inbounds among the records of `store` say came in, each as the link of its root and the origin it
  * came from.
  */
 async function inboundRowsOf(store: Store) {
   const rows: (readonly [Link<never>, string])[] = [];
-  for await (const mark of store.marks()) {
-    const inbound = await objectsOf(inboundSchema).read(mark, store);
+  for await (const statement of store.records()) {
+    const inbound = await objectsOf(inboundSchema).read(statement, store);
     if (inbound === undefined) continue;
     const { bundle, via } = inbound.data;
     assert.exists(via);
@@ -472,14 +472,14 @@ async function pickUpAll(pickup: Pickup, signal?: AbortSignal) {
 }
 
 describe("a service's offer of mailboxes", () => {
-  it("opened writes its transport object to the store, with an Opened mailbox mark of it", async () => {
+  it("opened writes its transport object to the store, with a record of an Opened mailbox of it", async () => {
     const actor = await actorOf(alice);
     const { store, offer } = await withAccount(actor);
     const transport = await offer.open(actor, keyOf(7));
     expect(await store.get(transport.link)).toEqual(transport.bytes);
     const openedMailboxes = [];
-    for await (const mark of store.marks()) {
-      const openedMailbox = await objectsOf(openedMailboxSchema).read(mark, store);
+    for await (const statement of store.records()) {
+      const openedMailbox = await objectsOf(openedMailboxSchema).read(statement, store);
       if (openedMailbox !== undefined) openedMailboxes.push(openedMailbox);
     }
     expect(openedMailboxes.map(({ data }) => data.transport.link)).toEqual([transport.link]);
@@ -750,12 +750,12 @@ describe("a mailbox that a service opened", () => {
     );
   });
 
-  it("is not picked up when the store lists no mark of opening it", async () => {
+  it("is not picked up when the store has no record of opening it", async () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
     const mailbox = await writeMailbox(store, `${origin}/${"0".repeat(32)}`);
-    await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/lists no mark of opening/);
+    await expect(services.pickup(mailbox.link, await actorOf(alice))).rejects.toThrow(/has no record of opening/);
   });
 });
 
@@ -819,6 +819,6 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     const account = await actorOf(alice);
     const [by, requester, offerer] = await partiesOf(account, await actorOf(mallory));
     const { services, mailbox } = await clientHolding(await mailboxAcknowledgementBy(by, requester, offerer, sendId));
-    await expect(services.pickup(mailbox.link, account)).rejects.toThrow(/lists no mark of opening/);
+    await expect(services.pickup(mailbox.link, account)).rejects.toThrow(/has no record of opening/);
   });
 });

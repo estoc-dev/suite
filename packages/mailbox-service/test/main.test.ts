@@ -5,11 +5,11 @@ import { type AddressInfo, createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { isSameKey, loadIdentity } from "@estoc/identity";
 import { Keyring } from "@estoc/keyring";
-import { recordsOf, Store } from "@estoc/store";
+import { Store, writtenObjectsOf } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
-import { makeTemporaryPath, recordedObjectsIn, schemes, signedIdentities } from "./fixtures.ts";
+import { makeTemporaryPath, schemes, signedIdentities, writtenObjectsIn } from "./fixtures.ts";
 
 const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const smoke = fileURLToPath(new URL("../src/smoke.ts", import.meta.url));
@@ -122,13 +122,13 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const settings = await settingsAtFreePort();
     const { stdout } = await run(main, ["setup"], settings);
     const setUp = openStores(settings.MAILBOX_DATABASE);
-    const [recorded] = await recordedObjectsIn(setUp.store);
+    const [recorded] = await writtenObjectsIn(setUp.store);
     assert.exists(recorded);
     // The identity version and a record of it, as the database that was set up holds them, without the key.
     const withoutKey = { ...settings, MAILBOX_DATABASE: await makeTemporaryPath() };
     const copy = openStores(withoutKey.MAILBOX_DATABASE);
     await copy.store.write({ roots: [recorded], blobs: (await setUp.store.closure(recorded)).values() });
-    await copy.store.writeMarks(recordsOf([recorded], 0));
+    await copy.store.record(writtenObjectsOf([recorded], 0));
     const { code, stderr } = await run(main, [], withoutKey);
     expect(code).toBe(1);
     expect(stderr).toContain(`the keyring does not hold the Secret Key of ${stdout.trim()}`);
@@ -142,7 +142,7 @@ describe("main.ts setup", { timeout: 20_000 }, () => {
     expect(code).toBe(0);
     expect((await stat(settings.MAILBOX_DATABASE)).mode & 0o777).toBe(0o600);
     const { store, keyring } = openStores(settings.MAILBOX_DATABASE);
-    const [recorded, ...others] = await recordedObjectsIn(store);
+    const [recorded, ...others] = await writtenObjectsIn(store);
     assert.exists(recorded);
     expect(others).toEqual([]);
     const { identity } = await signedIdentities.read(recorded, store);

@@ -8,8 +8,10 @@ import {
   encodeObject,
   encodeSchema,
   LinkValue,
+  linkOf,
   ObjectValue,
   objectFormat,
+  objectsOf,
   readObject,
   schemaOf,
   type ValueMap,
@@ -96,6 +98,19 @@ describe("the schema an object names", () => {
 
   it.each(malformed)("is not read from an object %s", (_, bytes) => {
     expect(() => schemaOf(bytes)).toThrow();
+  });
+});
+
+describe("a selection by schema", () => {
+  it("takes the objects of its schema, and none of another", async () => {
+    const object = encodeObject(login, greeting);
+    const reader = { get: async () => object.bytes };
+    expect(await objectsOf(login).read(object.link, reader)).toEqual(object);
+    expect(await objectsOf(anything).read(object.link, reader)).toBeUndefined();
+  });
+
+  it.each(malformed)("takes no blob %s", async (_, bytes) => {
+    expect(await objectsOf(login).read(linkOf(bytes), { get: async () => bytes })).toBeUndefined();
   });
 });
 

@@ -67,14 +67,14 @@ describe("a keyring", () => {
     }
   });
 
-  it("marks the Secret Key of each key it generates, and writes the Secret with it", async () => {
+  it("records the Secret Key of each key it generates, and writes the Secret with it", async () => {
     const backend = new MemoryBackend();
     const store = new Store(backend);
     const key = await keyringOver(backend).generate(ed25519);
-    const marks = [];
-    for await (const mark of store.marks()) marks.push(mark);
-    expect(marks).toHaveLength(1);
-    const { data } = await readObject(store, marks[0] as Link<unknown>, secretKeys.schema);
+    const statements = [];
+    for await (const statement of store.records()) statements.push(statement);
+    expect(statements).toHaveLength(1);
+    const { data } = await readObject(store, statements[0] as Link<unknown>, secretKeys.schema);
     expect(data.key.link).toBe(key.link);
     expect(await store.get(data.secret.link)).toBeDefined();
   });

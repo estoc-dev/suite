@@ -11,7 +11,15 @@ import type { Keyring } from "@estoc/keyring";
 import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
+import {
+  indexOver,
+  type Store,
+  selectedRecords,
+  type View,
+  view,
+  writtenObjectsOf,
+  writtenObjectsOver,
+} from "@estoc/store";
 
 type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
 
@@ -61,7 +69,7 @@ class Notary {
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
     await this.#store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobs] });
-    await this.#store.writeMarks(recordsOf([signature.link], this.#clock()));
+    await this.#store.record(writtenObjectsOf([signature.link], this.#clock()));
   }
 }
 
@@ -79,7 +87,7 @@ export async function setUpNotary(
   const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
   const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
-  await store.writeMarks(recordsOf([signedIdentity.link], at));
+  await store.record(writtenObjectsOf([signedIdentity.link], at));
   return signedIdentity;
 }
 
@@ -115,7 +123,7 @@ type RecordedIdentityView = View<
 function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdentityView {
   return {
     index: indexOver(
-      selectedRecords(objectsOf(signedIdentities.schema)),
+      selectedRecords(writtenObjectsOver(objectsOf(signedIdentities.schema))),
       recordedIdentitySchema,
       async function* (object, reader) {
         const { identifier } = (await signedIdentities.verify(object, reader)).identity;
@@ -151,9 +159,11 @@ type RecordedSignaturesView = View<
 /** A signature that the store holds may have no record, as when a write stopped between the two. */
 function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
   return {
-    index: indexOver(selectedRecords(objectsOf(signatures.schema)), recordedSignatureSchema, ({ link, data }) => [
-      { object: new LinkValue(data.object.link), signature: new LinkValue(link) },
-    ]).orderedBy("object", "signature"),
+    index: indexOver(
+      selectedRecords(writtenObjectsOver(objectsOf(signatures.schema))),
+      recordedSignatureSchema,
+      ({ link, data }) => [{ object: new LinkValue(data.object.link), signature: new LinkValue(link) }],
+    ).orderedBy("object", "signature"),
     read: (rows) => ({
       async signaturesOver(object) {
         const links: Link<unknown>[] = [];

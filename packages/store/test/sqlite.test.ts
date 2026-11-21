@@ -25,6 +25,22 @@ function open(path: string): SqliteBackend {
   return backend;
 }
 
+/** Gives the blobs in turn, and throws `failure` in place of ending. */
+function cutShort(
+  blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+  failure: Error,
+): ReadonlyMap<Link<unknown>, Uint8Array> {
+  return new Proxy(blobs, {
+    get: (target, property) =>
+      property === Symbol.iterator
+        ? function* () {
+            yield* target;
+            throw failure;
+          }
+        : Reflect.get(target, property, target),
+  });
+}
+
 async function listOf(links: AsyncIterable<Link<unknown>>): Promise<Link<unknown>[]> {
   const list: Link<unknown>[] = [];
   for await (const link of links) list.push(link);
@@ -35,48 +51,38 @@ describe("a SqliteBackend", () => {
   it("reads what was put before, when the file is opened again", async () => {
     const path = await makeTemporaryPath();
     const blobs = blobsOf("one", "two");
-    const listedLinks = [...blobs.keys()];
     const writer = new SqliteBackend(path);
-    await writer.put(blobs, listedLinks);
+    await writer.put(blobs);
     writer.close();
     const reader = open(path);
     for (const [link, bytes] of blobs) expect(await reader.get(link)).toEqual(bytes);
-    expect(await listOf(reader.listedLinks())).toEqual(listedLinks);
+    expect(await listOf(reader.blobs())).toEqual([...blobs.keys()]);
   });
 
   it("reads what another backend open on the same file puts", async () => {
     const path = await makeTemporaryPath();
     const [writer, reader] = [open(path), open(path)];
     const one = utf8("one");
-    await writer.put(new Map([[linkOf(one), one]]), [linkOf(one)]);
+    await writer.put(new Map([[linkOf(one), one]]));
     expect(await reader.get(linkOf(one))).toEqual(one);
-    expect(await listOf(reader.listedLinks())).toEqual([linkOf(one)]);
+    expect(await listOf(reader.blobs())).toEqual([linkOf(one)]);
   });
 
   it("leaves nothing of a put that fails partway", async () => {
     const backend = open(await makeTemporaryPath());
     const blobs = blobsOf("one", "two");
     const failure = new Error("cut short");
-    function* listedLinks() {
-      yield linkOf(utf8("one"));
-      throw failure;
-    }
-    await expect(backend.put(blobs, listedLinks())).rejects.toBe(failure);
+    await expect(backend.put(cutShort(blobs, failure))).rejects.toBe(failure);
     for (const link of blobs.keys()) expect(await backend.has(link)).toBe(false);
-    expect(await listOf(backend.listedLinks())).toEqual([]);
+    expect(await listOf(backend.blobs())).toEqual([]);
   });
 
   it("lists a blob put after a put that fails partway right after those put before", async () => {
     const backend = open(await makeTemporaryPath());
-    await backend.put(blobsOf("zero"), []);
+    await backend.put(blobsOf("zero"));
     const failure = new Error("cut short");
-    const listedLinks = {
-      [Symbol.iterator](): Iterator<Link<never>> {
-        throw failure;
-      },
-    };
-    await expect(backend.put(blobsOf("one", "two"), listedLinks)).rejects.toBe(failure);
-    await backend.put(blobsOf("three"), []);
+    await expect(backend.put(cutShort(blobsOf("one", "two"), failure))).rejects.toBe(failure);
+    await backend.put(blobsOf("three"));
     expect(await listOf(backend.blobs(1))).toEqual([linkOf(utf8("three"))]);
   });
 
@@ -86,8 +92,8 @@ describe("a SqliteBackend", () => {
     const link = linkOf(utf8("one"));
     await expect(backend.get(link)).rejects.toThrow();
     await expect(backend.has(link)).rejects.toThrow();
-    await expect(backend.put(blobsOf("one"), [])).rejects.toThrow();
-    await expect(listOf(backend.listedLinks())).rejects.toThrow();
+    await expect(backend.put(blobsOf("one"))).rejects.toThrow();
+    await expect(listOf(backend.blobs())).rejects.toThrow();
   });
 });
 

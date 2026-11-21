@@ -6,8 +6,8 @@ import { MemoryBackend, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxAt, Post, UndeliveredMessage } from "../src/index.ts";
-import { listedIn } from "./listed.ts";
 import { mailboxBundle } from "./mailbox-bundle.ts";
+import { recordedIn } from "./recorded.ts";
 
 // The receiving side is a server of the test's own, as a receiver would run
 // one: what is posted to it is what goes to MailboxKey.open. A POST to
@@ -127,7 +127,7 @@ describe("an HTTP mailbox", () => {
 });
 
 describe("an HTTP outbox", () => {
-  it("marks nothing of a send that the server timed out on, and marks the same root once sent again", async () => {
+  it("records nothing of a send that the server timed out on, and records the same root once sent again", async () => {
     const backend = new MemoryBackend();
     const store = new Store(backend);
     const post = new Post(store, options);
@@ -135,10 +135,10 @@ describe("an HTTP outbox", () => {
     await store.write({ roots: [mailbox.link, hello.link], blobs: [...mailbox.blobs(), hello.bytes, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);
     expect(await rejectedAs(outbox.send(hello.link))).toBe("later");
-    expect(await listedIn(store)).toEqual([]);
+    expect(await recordedIn(store)).toEqual([]);
 
     const delivery = await outbox.send(hello.link);
-    expect(await listedIn(store)).toEqual([delivery.link]);
+    expect(await recordedIn(store)).toEqual([delivery.link]);
     const sentRequests = take();
     expect(sentRequests.map(({ path }) => path)).toEqual(["/late-once", "/late-once"]);
     const through = sentRequests.at(-1);

@@ -178,8 +178,8 @@ export class MailboxOffer {
       transport: new LinkValue(transport.link),
       acknowledgement: new LinkValue(acknowledgement.link),
     });
-    await this.#posting.store.writeMarks({
-      marks: [openedMailbox.link],
+    await this.#posting.store.record({
+      statements: [openedMailbox.link],
       blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs, transport.bytes, ...transport.schema.blobs],
     });
     return transport;
@@ -330,7 +330,7 @@ export class Services {
   async pickup(mailbox: Link<EncodedObject<MailboxData>>, actor: Actor): Promise<Pickup> {
     const { key, transport } = (await readObject(this.#store, mailbox, mailboxSchema)).data;
     const link = await (await view(this.#store, this.#mailboxes)).acknowledgementOf(transport.link);
-    if (link === undefined) throw new Error(`the store lists no mark of opening a mailbox at ${transport.link}`);
+    if (link === undefined) throw new Error(`the store has no record of opening a mailbox at ${transport.link}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
     const { signedIdentity, object } = await this.#signatures.read(link, this.#store);

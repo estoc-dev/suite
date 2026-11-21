@@ -1,7 +1,7 @@
 import type { Signatures } from "@estoc/identity";
 import { type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, selectedMarks, selectedRecords, type View } from "@estoc/store";
+import { indexOver, selectedRecords, selectedWrittenObjects, type View } from "@estoc/store";
 import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
 
 const acknowledgementRowSchema = schema("Acknowledgement row", {
@@ -28,7 +28,7 @@ export type AcknowledgementsView = View<
 export function acknowledgementsView(signatures: Signatures): AcknowledgementsView {
   return {
     index: indexOver(
-      selectedRecords(signatures.selectionOver(acknowledgementSchema)),
+      selectedWrittenObjects(signatures.selectionOver(acknowledgementSchema)),
       acknowledgementRowSchema,
       ({ signature, object }) => [
         { acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) },
@@ -64,7 +64,7 @@ export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, Op
 
 export function openedMailboxesView(): OpenedMailboxesView {
   return {
-    index: indexOver(selectedMarks(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
+    index: indexOver(selectedRecords(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
       { transport: data.transport, acknowledgement: data.acknowledgement },
     ]).orderedBy("transport", "acknowledgement"),
     read: (rows) => ({

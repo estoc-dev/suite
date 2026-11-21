@@ -36,7 +36,7 @@ const seenPeople = peopleView({ signedIdentities });
 const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const network = new MemoryNetwork();
 
-// One clock for everyone, so that what comes in later is marked with the greater `at`.
+// One clock for everyone, so that what comes in later is recorded with the greater `at`.
 let now = 0;
 const clock = () => ++now;
 

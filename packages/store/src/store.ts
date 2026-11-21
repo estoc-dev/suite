@@ -1,18 +1,19 @@
 import type { Bytes, EncodedObject, Link, Reader } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { type Batch, closureIn, copiedBlobs, copiedMarks, leavesFirst, type MarkBatch } from "./batch.ts";
+import { type Batch, closureIn, copiedBlobs, leavesFirst, type RecordBatch, recordsOf } from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 
 /**
  * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
- *   a stranger's among them. A mark is the user's own because `writeMarks` listed it, and `write`
- *   and `stage` list nothing, so an object of the schema of a mark that came in a bundle marks
- *   nothing.
+ *   a stranger's among them. A statement is the store's own where a Record links to it, and only
+ *   `record` writes a Record: every batch that gives one, or that links to one, is refused, so a
+ *   statement of the same schema that came in a bundle records nothing.
  * - A store keeps no rule about who reads what. Packages are given the whole of it, Secrets and
- *   marks as well, and what shows a part of it to an app, or sends a closure to another party,
+ *   Records as well, and what shows a part of it to an app, or sends a closure to another party,
  *   leaves out or refuses what is not to go there.
- * - Marks are not signed, and `writeMarks` writes any mark, so it is no boundary between the
- *   programs that share a store.
+ * - Records are not signed, and `record` records any statement, so it is no boundary between the
+ *   programs that share a store. A program records what it composed itself, and puts an object
+ *   that came from elsewhere inside a statement of its own; the store does not enforce it.
  * - There is no transaction that reads and then writes. Two devices that each find something
  *   missing will both write it, so what has to come out as one is written so that every device
  *   writes the same object, with the same link.
@@ -24,11 +25,11 @@ export interface Store {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   write(batch: Batch): Promise<void>;
   stage(batch: Batch): Promise<StagedStore>;
-  writeMarks(batch: MarkBatch): Promise<void>;
+  record(batch: RecordBatch): Promise<void>;
   /** A write cut short can leave a blob here that no root reaches. */
   blobs(): AsyncIterable<Link<unknown>>;
-  /** In the order they were first listed as marks. */
-  marks(): AsyncIterable<Link<EncodedObject>>;
+  /** The statements recorded, in the order their Records were first written. It reads every blob held. */
+  records(): AsyncIterable<Link<EncodedObject>>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
 }
 
@@ -51,10 +52,7 @@ export class StoreOf implements Store, RowKeeper {
 
   constructor(backend: Backend) {
     this.#backend = backend;
-    this[rowsByIndex] = new KeptRows(this, {
-      marks: (start) => backend.listedLinks(start),
-      blobs: (start) => backend.blobs(start),
-    });
+    this[rowsByIndex] = new KeptRows(this, (start) => backend.blobs(start));
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -71,17 +69,19 @@ export class StoreOf implements Store, RowKeeper {
     return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBlobs(blobs), this.#backend));
   }
 
-  async writeMarks({ marks, blobs }: MarkBatch): Promise<void> {
-    const batch = copiedMarks(marks, blobs);
-    await this.#backend.put(await leavesFirst(batch.marks, batch.blobs, this.#backend), batch.marks);
+  async record(batch: RecordBatch): Promise<void> {
+    const { records, blobs } = recordsOf(batch);
+    // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
+    // a statement the store does not hold whole.
+    await this.#backend.put(await leavesFirst(records, blobs, this.#backend));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
     return this.#backend.blobs();
   }
 
-  marks(): AsyncIterable<Link<EncodedObject>> {
-    return this.#backend.listedLinks();
+  async *records(): AsyncIterable<Link<EncodedObject>> {
+    yield* (await this[rowsByIndex].records()).links;
   }
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
@@ -112,7 +112,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   }
 
   commit(): Promise<void> {
-    return this.#backend.put(this.#blobs, []);
+    return this.#backend.put(this.#blobs);
   }
 }
 

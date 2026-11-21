@@ -21,7 +21,7 @@ import {
   Store,
   scan,
   selectedBlobs,
-  selectedMarks,
+  selectedRecords,
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
@@ -76,7 +76,7 @@ describe("inboundSchema", () => {
 });
 
 describe("an intake", () => {
-  it("keeps a bundle in the store, and marks that it came in, by its clock", async () => {
+  it("keeps a bundle in the store, and records that it came in, by its clock", async () => {
     const { store, intake } = sides();
     const image = utf8("an image");
     const note = object({ image: new LinkValue(linkOf(image)) });
@@ -84,7 +84,7 @@ describe("an intake", () => {
     expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000 });
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
-    expect(await listOf(store.marks())).toEqual([inbound.link]);
+    expect(await listOf(store.records())).toEqual([inbound.link]);
     expect(await store.get(inbound.link)).toEqual(inbound.bytes);
   });
 
@@ -97,14 +97,14 @@ describe("an intake", () => {
     expect(await store.get(stray.link)).toBeUndefined();
   });
 
-  it("keeps the channel a bundle came in by with the mark, and gives it as via", async () => {
+  it("keeps the channel a bundle came in by with the record, and gives it as via", async () => {
     const { store, intake } = sides();
     const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
     const inbound = await intake.receive(bundleOf(note), mailbox);
     expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000, via: new LinkValue(mailbox.link) });
-    expect(await listOf(store.marks())).toEqual([inbound.link]);
+    expect(await listOf(store.records())).toEqual([inbound.link]);
     expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
     expect(await store.get(channel.link)).toEqual(channel.bytes);
   });
@@ -117,22 +117,22 @@ describe("an intake", () => {
     expect(data.at).toBeLessThanOrEqual(Date.now());
   });
 
-  it("marks a bundle once for each time it comes in", async () => {
+  it("records a bundle once for each time it comes in", async () => {
     const { store, intake } = sides();
     const bundle = bundleOf(object({ text: "hello" }));
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
     expect(second.data.at).toBeGreaterThan(first.data.at);
-    expect(await listOf(store.marks())).toEqual([first.link, second.link]);
+    expect(await listOf(store.records())).toEqual([first.link, second.link]);
   });
 
-  it("marks a bundle once when it comes in twice at the same time by its clock", async () => {
+  it("records a bundle once when it comes in twice at the same time by its clock", async () => {
     const { store, intake } = sides(() => 1000);
     const bundle = bundleOf(object({ text: "hello" }));
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
     expect(second.link).toBe(first.link);
-    expect(await listOf(store.marks())).toEqual([first.link]);
+    expect(await listOf(store.records())).toEqual([first.link]);
   });
 
   it("takes a bundle that leaves out blobs the store holds", async () => {
@@ -149,11 +149,11 @@ describe("an intake", () => {
     const missing = utf8("not in the bundle");
     const note = object({ image: new LinkValue(linkOf(missing)) });
     await expect(intake.receive(bundleOf(note))).rejects.toThrow(RefusedBatch);
-    expect(await listOf(store.marks())).toEqual([]);
+    expect(await listOf(store.records())).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
   });
 
-  it("stages a bundle, and neither keeps it nor marks that it came in until that is committed", async () => {
+  it("stages a bundle, and neither keeps it nor records that it came in until that is committed", async () => {
     const { store, intake } = sides();
     const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
@@ -161,10 +161,10 @@ describe("an intake", () => {
     const stagedStore = await intake.stage(bundleOf(note), mailbox);
     expect(await stagedStore.get(note.link)).toEqual(note.bytes);
     expect(await store.get(note.link)).toBeUndefined();
-    expect(await listOf(store.marks())).toEqual([]);
+    expect(await listOf(store.records())).toEqual([]);
     await stagedStore.commit();
     expect(await store.get(note.link)).toEqual(note.bytes);
-    const [inbound, ...others] = (await listOf(store.marks())) as Link<InboundObject>[];
+    const [inbound, ...others] = (await listOf(store.records())) as Link<InboundObject>[];
     expect(others).toEqual([]);
     expect((await readObject(store, inbound as Link<InboundObject>, inboundSchema)).data).toEqual({
       bundle: new LinkValue(note.link),
@@ -189,19 +189,19 @@ describe("an intake", () => {
     await expect(intake.stage(bundleOf(note))).rejects.toThrow(RefusedBatch);
   });
 
-  it("keeps a bundle with no mark of it when the channel links to a blob that nothing holds", async () => {
+  it("keeps a bundle with no record of it when the channel links to a blob that nothing holds", async () => {
     const { store, intake } = sides();
     const mailbox = object({ name: "a mailbox", icon: new LinkValue(linkOf(utf8("not held"))) });
     const note = object({ text: "hello" });
     await expect(intake.receive(bundleOf(note), mailbox)).rejects.toThrow(RefusedBatch);
     expect(await store.get(note.link)).toEqual(note.bytes);
-    expect(await listOf(store.marks())).toEqual([]);
+    expect(await listOf(store.records())).toEqual([]);
   });
 });
 
-describe("what an intake marks", () => {
+describe("what an intake records", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-  const cameIn = indexOver(selectedMarks(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
+  const cameIn = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
   ]).orderedBy("bundle", "at");
 

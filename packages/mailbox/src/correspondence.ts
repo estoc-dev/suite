@@ -1,7 +1,7 @@
 import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
 import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
-import { type ArrivalsView, arrivalsView, recordsOf, type Store, view } from "@estoc/store";
+import { type ArrivalsView, arrivalsView, type Store, view, writtenObjectsOf } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -50,7 +50,7 @@ export class Correspondence {
       roots: [signature.link],
       blobs: [...signature.blobs, grant.bytes, ...this.#grants.schema.blobs, ...current.blobs],
     });
-    await this.#store.writeMarks(recordsOf([signature.link], at));
+    await this.#store.record(writtenObjectsOf([signature.link], at));
     return signature;
   }
 

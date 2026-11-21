@@ -29,8 +29,7 @@ const newStore = (backend: Backend = new MemoryBackend()) => new Store(backend);
 const backendGiving = (backend: Backend, under: Link<unknown>, other: Link<unknown>): Backend => ({
   get: (link) => backend.get(link === under ? other : link),
   has: (link) => backend.has(link),
-  put: (blobs, listedLinks) => backend.put(blobs, listedLinks),
-  listedLinks: (start) => backend.listedLinks(start),
+  put: (blobs) => backend.put(blobs),
   blobs: (start) => backend.blobs(start),
 });
 
@@ -70,14 +69,6 @@ describe("a store", () => {
       expect(await store.get(link)).toBeUndefined();
     await store.write({ roots: [], blobs: [image, stray] });
     expect(await store.get(linkOf(stray))).toBeUndefined();
-  });
-
-  it("gives its backend no links to list", async () => {
-    const backend = new MemoryBackend();
-    await newStore(backend).write(batchOf([object({ text: "hello" })], anything.blobs));
-    const listedLinks: Link<unknown>[] = [];
-    for await (const link of backend.listedLinks()) listedLinks.push(link);
-    expect(listedLinks).toEqual([]);
   });
 
   it("takes a root that is not an object", async () => {
@@ -132,10 +123,9 @@ describe("a store", () => {
     const diskError = new Error("the disk is gone");
     const backend = new MemoryBackend();
     const failingStore = newStore({
-      get: (link) => backend.get(link),
+      get: () => Promise.reject(diskError),
       has: () => Promise.reject(diskError),
       put: () => Promise.reject(diskError),
-      listedLinks: (start) => backend.listedLinks(start),
       blobs: (start) => backend.blobs(start),
     });
     await expect(failingStore.write(batchOf([note], anything.blobs))).rejects.toBe(diskError);
@@ -165,12 +155,9 @@ describe("a store", () => {
     let order: Link<unknown>[] = [];
     const store = newStore(
       new (class extends MemoryBackend {
-        override async put(
-          blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
-          listedLinks: Iterable<Link<never>>,
-        ): Promise<void> {
+        override async put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>): Promise<void> {
           order = [...blobs.keys()];
-          await super.put(blobs, listedLinks);
+          await super.put(blobs);
         }
       })(),
     );

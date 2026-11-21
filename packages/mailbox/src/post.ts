@@ -12,7 +12,7 @@ import {
   schemaOf,
 } from "@estoc/object";
 import { link, schema, secretSchema } from "@estoc/schema";
-import { Intake, indexOver, RefusedBatch, recordsOf, type Store, scan, selectedMarks } from "@estoc/store";
+import { Intake, indexOver, RefusedBatch, type Store, scan, selectedRecords, writtenObjectsOf } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -40,7 +40,7 @@ const heldKeySchema = schema("Held Mailbox Key", {
   secret: link(),
 });
 
-const byKey = indexOver(selectedMarks(objectsOf(mailboxKeySchema)), heldKeySchema, ({ link, data }) => [
+const byKey = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), heldKeySchema, ({ link, data }) => [
   { key: new LinkValue(link), ...data },
 ]).orderedBy("key");
 
@@ -83,10 +83,10 @@ export class Post {
       mailbox: new LinkValue(mailbox.link),
       secret: new LinkValue(secret.link),
     });
-    // The key is marked first, so that a recorded mailbox has its key marked wherever the writes
-    // are cut short.
-    await this.#store.writeMarks({
-      marks: [object.link],
+    // The key is recorded first, so that a recorded mailbox has its key recorded wherever the
+    // writes are cut short.
+    await this.#store.record({
+      statements: [object.link],
       blobs: [
         object.bytes,
         ...mailboxKeySchema.blobs,
@@ -98,13 +98,13 @@ export class Post {
         ...transport.schema.blobs,
       ],
     });
-    await this.#store.writeMarks(recordsOf([mailbox.link], this.#clock()));
+    await this.#store.record(writtenObjectsOf([mailbox.link], this.#clock()));
     return this.#inbox(mailbox, object.link, key);
   }
 
   /**
    * Anyone can send a Mailbox Key and its Secret in a bundle, so an inbox opens only by a Mailbox
-   * Key among the marks of the store.
+   * Key among the records of the store.
    */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
     for await (const { data } of (await scan(this.#store, byKey)).range([new LinkValue(key)])) {
@@ -115,7 +115,7 @@ export class Post {
         throw new Error(`${mailbox.link} names another key than ${key} holds`);
       return this.#inbox(mailbox, key, opener);
     }
-    throw new Error(`${key} is not a Mailbox Key among the marks of the store`);
+    throw new Error(`${key} is not a Mailbox Key among the records of the store`);
   }
 
   #inbox(mailbox: EncodedObject<MailboxData>, key: Link<EncodedObject<MailboxKeyData>>, opener: MailboxKey) {
@@ -143,9 +143,13 @@ export class Outbox {
     const { mailbox } = this;
     const bundle = root as Link<never>;
     const at = this.#clock();
-    const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
-    await this.#store.writeMarks({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
-    return { direction: "outbound", bundle, mailbox, at, link: mark.link };
+    const outbound = encodeObject(outboundSchema, {
+      bundle: new LinkValue(bundle),
+      mailbox: new LinkValue(mailbox),
+      at,
+    });
+    await this.#store.record({ statements: [outbound.link], blobs: [outbound.bytes, ...outboundSchema.blobs] });
+    return { direction: "outbound", bundle, mailbox, at, link: outbound.link };
   }
 }
 
@@ -176,7 +180,7 @@ export class Inbox {
   }
 
   /**
-   * What does not open, and a bundle that the store refuses, are done with and leave no mark,
+   * What does not open, and a bundle that the store refuses, are done with and leave no record,
    * rather than wait for the blobs a bundle leaves out to reach the store.
    */
   async collect(pickup: Pickup, signal?: AbortSignal): Promise<Delivery[]> {

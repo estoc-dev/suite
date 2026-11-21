@@ -7,7 +7,7 @@ export {
   arrivalsView,
 } from "./arrival.ts";
 export type { Backend } from "./backend.ts";
-export { type Batch, type MarkBatch, RefusedBatch } from "./batch.ts";
+export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
 export {
   type InboundData,
   type InboundObject,
@@ -16,9 +16,9 @@ export {
   type ReceivedBundle,
 } from "./inbound.ts";
 export { MemoryBackend } from "./memory.ts";
-export { type RecordData, type RecordObject, recordSchema, recordsOf } from "./record.ts";
+export { type RecordData, type RecordObject, recordSchema } from "./record.ts";
 export { scan } from "./scan.ts";
-export { blobsWithNoSecret } from "./secret-blob.ts";
+export { sendableBlobs } from "./sendable-blobs.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
@@ -30,8 +30,14 @@ export {
   type Prefix,
   type Source,
   selectedBlobs,
-  selectedMarks,
   selectedRecords,
+  selectedWrittenObjects,
 } from "./source.ts";
 export { type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
+export {
+  type WrittenObject,
+  type WrittenObjectData,
+  writtenObjectSchema,
+  writtenObjectsOf,
+} from "./written-object.ts";

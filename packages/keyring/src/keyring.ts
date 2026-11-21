@@ -1,16 +1,16 @@
 import { type CurveScheme, type KeyObject, type SecretKeys, type Signer, secretKeySchema } from "@estoc/identity";
 import { type Link, LinkValue, objectsOf } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { indexOver, type Store, scan, selectedMarks } from "@estoc/store";
+import { indexOver, type Store, scan, selectedRecords } from "@estoc/store";
 
 const heldKeySchema = schema("Held Key", { key: link(), secretKey: link() });
 
-const byKey = indexOver(selectedMarks(objectsOf(secretKeySchema)), heldKeySchema, ({ link, data }) => [
+const byKey = indexOver(selectedRecords(objectsOf(secretKeySchema)), heldKeySchema, ({ link, data }) => [
   { key: data.key, secretKey: new LinkValue(link) },
 ]).orderedBy("key");
 
 /**
- * - It signs with the Secret Keys among the marks of the store. Anyone can send a Secret Key and
+ * - It signs with the Secret Keys among the records of the store. Anyone can send a Secret Key and
  *   its Secret in a bundle, and one that only came to the store gives no signer.
  * - What is given the store reads the bytes of every key, so the signers this hands out are a
  *   shape for callers to work with and no boundary.
@@ -26,7 +26,7 @@ export class Keyring {
 
   async generate(scheme: CurveScheme): Promise<KeyObject> {
     const { link, key, blobs } = this.#secretKeys.encode(scheme, scheme.curve.randomSecretKey());
-    await this.#store.writeMarks({ marks: [link], blobs });
+    await this.#store.record({ statements: [link], blobs });
     return key;
   }
 

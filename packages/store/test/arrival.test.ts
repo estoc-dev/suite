@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type EncodedObject, encodeObject, LinkValue } from "@estoc/object";
 import { link, optional, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { arrivalsView, Intake, MemoryBackend, recordsOf, Store, view } from "../src/index.ts";
+import { arrivalsView, Intake, MemoryBackend, Store, view, writtenObjectsOf } from "../src/index.ts";
 
 // A letter names the card of whoever wrote it and may enclose a note, so the closure of a letter
 // holds an object of the schema the view is made for and one of another.
@@ -43,12 +43,12 @@ function sides() {
     },
     async record(at: number, root: EncodedObject, ...others: readonly EncodedObject[]) {
       await store.write({ roots: [root.link], blobs: blobsWith(root, ...others) });
-      await store.writeMarks(recordsOf([root.link], at));
+      await store.record(writtenObjectsOf([root.link], at));
     },
   };
 }
 
-describe("when something came to a user's devices, by the marks of a store", () => {
+describe("when something came to a user's devices, by the records of a store", () => {
   it("is when its bundle came in, for the root of a bundle", async () => {
     const { receive, arrivals } = sides();
     const ada = card("Ada");
@@ -88,7 +88,7 @@ describe("when something came to a user's devices, by the marks of a store", () 
     expect(await (await arrivals()).atOf(ada.link)).toBe(7);
   });
 
-  it("is the earliest, for what several marks have", async () => {
+  it("is the earliest, for what several records have", async () => {
     const { receive, record, arrivals } = sides();
     const ada = card("Ada");
     const hello = letter("hello", ada);
@@ -111,7 +111,7 @@ describe("when something came to a user's devices, by the marks of a store", () 
     expect(await arrivalTimes.atOf(letterSchema.link)).toBeUndefined();
   });
 
-  it("is nothing for what the store holds with no mark of it", async () => {
+  it("is nothing for what the store holds with no record of it", async () => {
     const { store, arrivals } = sides();
     const ada = card("Ada");
     await store.write({ roots: [ada.link], blobs: blobsWith(ada) });
@@ -119,7 +119,7 @@ describe("when something came to a user's devices, by the marks of a store", () 
     expect(await (await arrivals()).atOf(ada.link)).toBeUndefined();
   });
 
-  it("takes in what is marked after, when viewed again", async () => {
+  it("takes in what is recorded after, when viewed again", async () => {
     const { receive, arrivals } = sides();
     const [ada, ben] = [card("Ada"), card("Ben")];
     await receive(5, letter("hello", ada), ada);

@@ -1,6 +1,6 @@
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import type { MarkBatch } from "./batch.ts";
+import type { RecordBatch } from "./batch.ts";
 import { type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 import type { StagedStore, Store } from "./store.ts";
 
@@ -24,9 +24,9 @@ export interface ReceivedBundle {
 }
 
 /**
- * - The mark says only that the bundle came in: a reader of it verifies what it reads itself.
- * - The bundle is written first and the mark after, so a stop in between leaves a bundle that the
- *   store holds with no mark of it.
+ * - The Inbound says only that the bundle came in: a reader of it verifies what it reads itself.
+ * - The bundle is written first and the Inbound recorded after, so a stop in between leaves a
+ *   bundle that the store holds with no record of it.
  * - That what comes from elsewhere goes through an intake is a rule for programs, which the store
  *   does not enforce.
  */
@@ -56,21 +56,21 @@ export class Intake {
     const data: InboundData = { bundle: new LinkValue(bundle.link), at: this.#clock() };
     const inbound = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new LinkValue(via.link) });
     const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
-    const mark = { marks: [inbound.link], blobs: [inbound.bytes, ...inboundSchema.blobs, ...viaBlobs] };
+    const record = { statements: [inbound.link], blobs: [inbound.bytes, ...inboundSchema.blobs, ...viaBlobs] };
     const stagedBundle = await this.#store.stage({ roots: [bundle.link], blobs: bundle.blobs() });
-    return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#store, mark) };
+    return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#store, record) };
   }
 }
 
 class StagedArrival implements StagedStore, RowKeeper {
   readonly #stagedBundle: StagedStore;
   readonly #store: Store;
-  readonly #mark: MarkBatch;
+  readonly #record: RecordBatch;
 
-  constructor(stagedBundle: StagedStore, store: Store, mark: MarkBatch) {
+  constructor(stagedBundle: StagedStore, store: Store, record: RecordBatch) {
     this.#stagedBundle = stagedBundle;
     this.#store = store;
-    this.#mark = mark;
+    this.#record = record;
   }
 
   get [rowsByIndex](): RowsByIndex {
@@ -86,6 +86,6 @@ class StagedArrival implements StagedStore, RowKeeper {
 
   async commit(): Promise<void> {
     await this.#stagedBundle.commit();
-    await this.#store.writeMarks(this.#mark);
+    await this.#store.record(this.#record);
   }
 }

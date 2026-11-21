@@ -5,11 +5,11 @@ import {
   indexOver,
   MemoryBackend,
   type OrderedIndex,
-  recordsOf,
   Store,
-  selectedRecords,
+  selectedWrittenObjects,
   type View,
   view,
+  writtenObjectsOf,
 } from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
@@ -20,7 +20,7 @@ type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
 const byTag: OrderedIndex<Tagged, TaggedOrder> = indexOver(
-  selectedRecords(objectsOf(noteSchema)),
+  selectedWrittenObjects(objectsOf(noteSchema)),
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 ).orderedBy("tag", "at");
@@ -46,7 +46,7 @@ async function record(store: Store, ...notes: Note[]): Promise<void> {
   const objects = notes.map((note) => encodeObject(noteSchema, note));
   const links = objects.map(({ link }) => link);
   await store.write({ roots: links, blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs] });
-  await store.writeMarks(recordsOf(links, Date.now()));
+  await store.record(writtenObjectsOf(links, Date.now()));
 }
 
 describe("the value of a view", () => {

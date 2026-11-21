@@ -19,12 +19,6 @@ async function openInTemporaryFolder(): Promise<Backend> {
   return backend;
 }
 
-async function listedLinksOf(backend: Backend, start?: number): Promise<Link<unknown>[]> {
-  const links: Link<unknown>[] = [];
-  for await (const link of backend.listedLinks(start)) links.push(link);
-  return links;
-}
-
 async function blobsIn(backend: Backend, start?: number): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
   for await (const link of backend.blobs(start)) links.push(link);
@@ -38,7 +32,7 @@ describe.each([
   it("gives back the bytes put under a link, and nothing for a link it was not given", async () => {
     const backend = await open();
     const blobs = blobsOf("one", "two");
-    await backend.put(blobs, []);
+    await backend.put(blobs);
     for (const [link, bytes] of blobs) {
       expect(await backend.get(link)).toEqual(bytes);
       expect(await backend.has(link)).toBe(true);
@@ -51,45 +45,24 @@ describe.each([
   it("keeps what was put when the array it gave back is changed", async () => {
     const backend = await open();
     const link = linkOf(utf8("one"));
-    await backend.put(blobsOf("one"), []);
+    await backend.put(blobsOf("one"));
     (await backend.get(link))?.fill(0);
     expect(await backend.get(link)).toEqual(utf8("one"));
   });
 
-  it("lists links in the order they were first listed, each once", async () => {
-    const backend = await open();
-    const a = linkOf(utf8("a"));
-    const b = linkOf(utf8("b"));
-    const c = linkOf(utf8("c"));
-    await backend.put(blobsOf("a", "b"), [a, b]);
-    await backend.put(blobsOf("c"), [c, a]);
-    expect(await listedLinksOf(backend)).toEqual([a, b, c]);
-  });
-
-  it("lists the links after the first `start`, in the order they were first listed", async () => {
-    const backend = await open();
-    const a = linkOf(utf8("a"));
-    const b = linkOf(utf8("b"));
-    const c = linkOf(utf8("c"));
-    await backend.put(blobsOf("a", "b"), [a, b]);
-    await backend.put(blobsOf("c"), [c, a]);
-    expect(await listedLinksOf(backend, 1)).toEqual([b, c]);
-    expect(await listedLinksOf(backend, 3)).toEqual([]);
-  });
-
-  it("lists blobs in the order they were first put, each once, whether or not their links are listed", async () => {
+  it("lists blobs in the order they were first put, each once", async () => {
     const backend = await open();
     const [a, b, c] = [linkOf(utf8("a")), linkOf(utf8("b")), linkOf(utf8("c"))];
-    await backend.put(blobsOf("a", "b"), [a]);
-    await backend.put(blobsOf("c", "a"), [c]);
+    await backend.put(blobsOf("a", "b"));
+    await backend.put(blobsOf("c", "a"));
     expect(await blobsIn(backend)).toEqual([a, b, c]);
   });
 
   it("lists the blobs after the first `start`, in the order they were first put", async () => {
     const backend = await open();
     const [b, c] = [linkOf(utf8("b")), linkOf(utf8("c"))];
-    await backend.put(blobsOf("a", "b"), []);
-    await backend.put(blobsOf("c", "a"), []);
+    await backend.put(blobsOf("a", "b"));
+    await backend.put(blobsOf("c", "a"));
     expect(await blobsIn(backend, 1)).toEqual([b, c]);
     expect(await blobsIn(backend, 3)).toEqual([]);
   });

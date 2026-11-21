@@ -83,8 +83,8 @@ export class Post {
       mailbox: new LinkValue(mailbox.link),
       secret: new LinkValue(secret.link),
     });
-    // The key is marked before the mailbox is recorded, so that a write cut short between the two
-    // leaves no record of a mailbox that no inbox is made at.
+    // The key is marked first, so that a recorded mailbox has its key marked wherever the writes
+    // are cut short.
     await this.#store.writeMarks({
       marks: [object.link],
       blobs: [

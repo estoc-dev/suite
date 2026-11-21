@@ -63,6 +63,27 @@ describe("a mailbox", () => {
     );
     expect(queue.take()).toEqual([]);
   });
+
+  it("carries each blob as it was when given, where a `Buffer` gives them all in turn", async () => {
+    const queue = network.queue();
+    const [first, second] = [Uint8Array.of(1, 2, 3), Uint8Array.of(4, 5, 6)];
+    const attachments = schema("Attachments", { first: link(), second: link() });
+    const root = encodeObject(attachments, {
+      first: new LinkValue(linkOf(first)),
+      second: new LinkValue(linkOf(second)),
+    });
+    function* blobsInOneBuffer() {
+      const buffer = Buffer.alloc(root.bytes.length);
+      for (const blob of [root.bytes, first, second]) {
+        buffer.set(blob);
+        yield buffer.subarray(0, blob.length);
+      }
+    }
+    await (await mailboxIn(queue.mailbox(bob.publicKey))).send(root.link, blobsInOneBuffer());
+    const bundle = await bob.open(queue.takeOne());
+    expect(bundle.get(linkOf(first))).toEqual(first);
+    expect(bundle.get(linkOf(second))).toEqual(second);
+  });
 });
 
 const readerOf = (...blobs: Uint8Array[]) => {

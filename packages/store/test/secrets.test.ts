@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { Intake, indexOver, MemoryBackend, refuseSecrets, Store, scan, selectedMarks } from "../src/index.ts";
+import { blobsWithNoSecret, Intake, indexOver, MemoryBackend, Store, scan, selectedMarks } from "../src/index.ts";
 
 // What names a Secret without being one, as a key that links to its secret bytes.
 const keySchema = schema("Key", { name: string(), secret: link() });
@@ -60,19 +60,20 @@ describe("an intake", () => {
   });
 });
 
-describe("refuseSecrets", () => {
-  it("throws on blobs with a Secret among them, and names it", () => {
+describe("blobsWithNoSecret", () => {
+  it("throws at a Secret among the blobs, and names it", () => {
     const secret = secretOf(7);
     const key = keyTo(secret, "a");
-    expect(() => refuseSecrets([key.bytes, secret.bytes, ...keySchema.blobs])).toThrow(
+    expect(() => [...blobsWithNoSecret([key.bytes, secret.bytes, ...keySchema.blobs])]).toThrow(
       `${secret.link} is a Secret, which is not sent`,
     );
   });
 
-  it("takes an object that links to a Secret, the schema of Secrets, and what is no object", () => {
+  it("gives an object that links to a Secret, the schema of Secrets, and what is no object", () => {
     const key = keyTo(secretOf(7), "a");
     const image = new TextEncoder().encode("an image");
-    expect(() => refuseSecrets([key.bytes, ...keySchema.blobs, ...secretSchema.blobs, image])).not.toThrow();
+    const blobs = [key.bytes, ...keySchema.blobs, ...secretSchema.blobs, image];
+    expect([...blobsWithNoSecret(blobs)]).toEqual(blobs);
     expect(linkOf(image)).not.toBe(secretSchema.link);
   });
 });

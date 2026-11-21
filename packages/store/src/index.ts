@@ -18,7 +18,7 @@ export {
 export { MemoryBackend } from "./memory.ts";
 export { type RecordData, type RecordObject, recordSchema, recordsOf } from "./record.ts";
 export { scan } from "./scan.ts";
-export { refuseSecrets } from "./secret-blob.ts";
+export { blobsWithNoSecret } from "./secret-blob.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,

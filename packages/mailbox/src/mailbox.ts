@@ -11,7 +11,7 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
-import { refuseSecrets } from "@estoc/store";
+import { blobsWithNoSecret } from "@estoc/store";
 import { publicKeyFrom, seal } from "./key.ts";
 import { type MailboxData, mailboxSchema } from "./schema.ts";
 
@@ -68,9 +68,7 @@ export class Mailbox {
   }
 
   async send(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Promise<void> {
-    const sentBlobs = [...blobs];
-    refuseSecrets(sentBlobs);
-    await this.#route.deliver(await seal(this.#key, encodeBundle(root, sentBlobs)));
+    await this.#route.deliver(await seal(this.#key, encodeBundle(root, blobsWithNoSecret(blobs))));
   }
 }
 

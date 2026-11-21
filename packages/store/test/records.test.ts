@@ -10,11 +10,11 @@ import {
   scan,
   selectedBlobs,
   selectedRecords,
-  selectedWrittenObjects,
   sendableBlobs,
   view,
   writtenObjectSchema,
   writtenObjectsOf,
+  writtenObjectsOver,
 } from "../src/index.ts";
 
 const cardSchema = schema("Card", { name: string() });
@@ -360,7 +360,7 @@ describe("an index over records", () => {
 
 describe("an index over written objects", () => {
   const writtenNames = () =>
-    indexOver(selectedWrittenObjects(objectsOf(cardSchema)), namedSchema, ({ data }) => [
+    indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => [
       { name: data.name, at: 0 },
     ]).orderedBy("name");
   const namesByName = async (store: Store, index: ReturnType<typeof writtenNames>) =>
@@ -388,7 +388,7 @@ describe("an index over written objects", () => {
     const [alice, bob] = [card("Alice"), card("Bob")];
     await store.write({ roots: [alice.link, bob.link], blobs: [alice.bytes, bob.bytes, ...cardSchema.blobs] });
     const readNames: string[] = [];
-    const index = indexOver(selectedWrittenObjects(objectsOf(cardSchema)), namedSchema, ({ data }) => {
+    const index = indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => {
       readNames.push(data.name);
       return [{ name: data.name, at: 0 }];
     }).orderedBy("name");
@@ -401,21 +401,18 @@ describe("an index over written objects", () => {
     expect(readNames).toEqual(["Bob", "Alice"]);
   });
 
-  it("reads an object once that was recorded again, which is recorded with the time of each", async () => {
+  it("gives the rows of an object once that was written again, which is recorded with the time of each", async () => {
     const { store } = sides();
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
-    const readNames: string[] = [];
-    const index = indexOver(selectedWrittenObjects(objectsOf(cardSchema)), namedSchema, ({ data }) => {
-      readNames.push(data.name);
-      return [{ name: data.name, at: 0 }];
-    }).orderedBy("name");
+    const index = indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => [
+      { name: data.name, at: 0 },
+    ]).orderedBy("name");
     await store.record(writtenObjectsOf([alice.link], 1));
     await store.record(writtenObjectsOf([alice.link], 1));
     expect(await namesByName(store, index)).toEqual(["Alice"]);
     await store.record(writtenObjectsOf([alice.link], 2));
     expect(await namesByName(store, index)).toEqual(["Alice"]);
-    expect(readNames).toEqual(["Alice"]);
     const writtenObjects = objectsOf(writtenObjectSchema);
     const times: number[] = [];
     for await (const statement of store.records())

@@ -31,7 +31,6 @@ export {
   type Source,
   selectedBlobs,
   selectedRecords,
-  selectedWrittenObjects,
 } from "./source.ts";
 export { type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
@@ -40,4 +39,5 @@ export {
   type WrittenObjectData,
   writtenObjectSchema,
   writtenObjectsOf,
+  writtenObjectsOver,
 } from "./written-object.ts";

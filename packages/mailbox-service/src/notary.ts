@@ -11,7 +11,15 @@ import type { Keyring } from "@estoc/keyring";
 import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, type Store, selectedWrittenObjects, type View, view, writtenObjectsOf } from "@estoc/store";
+import {
+  indexOver,
+  type Store,
+  selectedRecords,
+  type View,
+  view,
+  writtenObjectsOf,
+  writtenObjectsOver,
+} from "@estoc/store";
 
 type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
 
@@ -115,7 +123,7 @@ type RecordedIdentityView = View<
 function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdentityView {
   return {
     index: indexOver(
-      selectedWrittenObjects(objectsOf(signedIdentities.schema)),
+      selectedRecords(writtenObjectsOver(objectsOf(signedIdentities.schema))),
       recordedIdentitySchema,
       async function* (object, reader) {
         const { identifier } = (await signedIdentities.verify(object, reader)).identity;
@@ -152,7 +160,7 @@ type RecordedSignaturesView = View<
 function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
   return {
     index: indexOver(
-      selectedWrittenObjects(objectsOf(signatures.schema)),
+      selectedRecords(writtenObjectsOver(objectsOf(signatures.schema))),
       recordedSignatureSchema,
       ({ link, data }) => [{ object: new LinkValue(data.object.link), signature: new LinkValue(link) }],
     ).orderedBy("object", "signature"),

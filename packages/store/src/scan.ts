@@ -12,7 +12,6 @@ import {
   orderOf,
 } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
-import { objectWrittenIn } from "./written-object.ts";
 
 /**
  * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
@@ -47,7 +46,6 @@ export interface RowKeeper {
 
 export interface RowsByIndex {
   records(): Promise<ListedLinks<EncodedObject>>;
-  writtenObjects(): Promise<ListedLinks>;
   heldBlobs(): Promise<ListedLinks>;
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
   sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>>;
@@ -129,7 +127,6 @@ export class KeptRows implements RowsByIndex {
   readonly #reader: Reader;
   readonly #blobsFrom: (start: number) => AsyncIterable<Link<unknown>>;
   readonly #records = new KeptValue(new LinksRead<EncodedObject>());
-  readonly #writtenObjects = new KeptValue(new LinksRead());
   readonly #blobs = new KeptValue(new ListedLinks());
   readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
   readonly #sortedRowsByIndex = new WeakMap<object, KeptValue<unknown>>();
@@ -146,14 +143,6 @@ export class KeptRows implements RowsByIndex {
         if (bytes === undefined) throw new Error(`the store lists ${blob} but does not hold it`);
         return statementRecordedIn(bytes);
       }),
-    );
-    return read.links;
-  }
-
-  async writtenObjects(): Promise<ListedLinks> {
-    const { links: statements } = await this.records();
-    const read = await this.#writtenObjects.advance((objects) =>
-      objects.adding(statements.slice(objects.readCount), (statement) => objectWrittenIn(statement, this.#reader)),
     );
     return read.links;
   }
@@ -206,10 +195,6 @@ export class AddedRows implements RowsByIndex {
 
   records(): Promise<ListedLinks<EncodedObject>> {
     return this.#rows.records();
-  }
-
-  writtenObjects(): Promise<ListedLinks> {
-    return this.#rows.writtenObjects();
   }
 
   async heldBlobs(): Promise<ListedLinks> {

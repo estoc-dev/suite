@@ -6,10 +6,11 @@ import {
   MemoryBackend,
   type OrderedIndex,
   Store,
-  selectedWrittenObjects,
+  selectedRecords,
   type View,
   view,
   writtenObjectsOf,
+  writtenObjectsOver,
 } from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
@@ -20,7 +21,7 @@ type Tagged = DataOf<typeof taggedSchema>;
 type TaggedOrder = readonly ["tag", "at"];
 
 const byTag: OrderedIndex<Tagged, TaggedOrder> = indexOver(
-  selectedWrittenObjects(objectsOf(noteSchema)),
+  selectedRecords(writtenObjectsOver(objectsOf(noteSchema))),
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 ).orderedBy("tag", "at");

@@ -11,7 +11,15 @@ import {
 } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
-import { indexOver, MemoryBackend, Store, scan, selectedWrittenObjects, writtenObjectsOf } from "../src/index.ts";
+import {
+  indexOver,
+  MemoryBackend,
+  Store,
+  scan,
+  selectedRecords,
+  writtenObjectsOf,
+  writtenObjectsOver,
+} from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes is in their store,
 // with a record that it was written; what comes from the other is kept in the store, with a record
@@ -102,9 +110,11 @@ describe("an object slipped into a bundle", () => {
     await receive(bob, encodeBundle(reply.link, [reply.bytes, slippedContact.bytes]));
 
     expect((await readObject(bob, slippedContact.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
-    const byName = indexOver(selectedWrittenObjects(objectsOf(contactSchema)), contactSchema, ({ data }) => [
-      data,
-    ]).orderedBy("name");
+    const byName = indexOver(
+      selectedRecords(writtenObjectsOver(objectsOf(contactSchema))),
+      contactSchema,
+      ({ data }) => [data],
+    ).orderedBy("name");
     const names: string[] = [];
     for await (const { data } of (await scan(bob, byName)).range([])) names.push(data.name);
     expect(names).toEqual(["Alice"]);

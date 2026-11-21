@@ -1,4 +1,11 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  type Selection,
+  SelectionBySchema,
+} from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
 
@@ -22,8 +29,10 @@ export function writtenObjectsOf(objects: Iterable<Link<unknown>>, at: number): 
   };
 }
 
-const writtenObjects = objectsOf(writtenObjectSchema);
-
-export async function objectWrittenIn(statement: Link<unknown>, reader: Reader): Promise<Link<unknown> | undefined> {
-  return (await writtenObjects.read(statement, reader))?.data.object.link;
+/**
+ * The Written Objects that link to what `selection` takes, each read as `selection` reads the
+ * object it links to.
+ */
+export function writtenObjectsOver<T>(selection: Selection<T>): SelectionBySchema<T, WrittenObjectData> {
+  return new SelectionBySchema(writtenObjectSchema, ({ data }, reader) => selection.read(data.object.link, reader));
 }

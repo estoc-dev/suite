@@ -48,11 +48,6 @@ const recordedStatements: Origin = {
   listingIn: (rows) => rows.records(),
 };
 
-const writtenObjects: Origin = {
-  readsBlobs: false,
-  listingIn: (rows) => rows.writtenObjects(),
-};
-
 const heldBlobs: Origin = {
   readsBlobs: true,
   listingIn: (rows) => rows.heldBlobs(),
@@ -112,11 +107,6 @@ export class Source<T> {
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedStatements, itemOf: (blob) => itemOf(selection, blob) });
-}
-
-/** The objects that the Written Objects among the records of the store link to. */
-export function selectedWrittenObjects<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: writtenObjects, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**

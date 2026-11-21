@@ -3,9 +3,9 @@ import { array, type DataOf, integer, link, schema, string } from "@estoc/schema
 import { describe, expect, it } from "vitest";
 import {
   indexOver,
+  Marks,
   MemoryBackend,
   type OrderedIndex,
-  PrivateStore,
   recordsOf,
   Store,
   selectedRecords,
@@ -42,15 +42,15 @@ const latest: View<Tagged, TaggedOrder, Latest> = {
 };
 
 function newStores() {
-  const store = new Store(new MemoryBackend());
-  return { store, privateStore: new PrivateStore(store, new MemoryBackend()) };
+  const backend = new MemoryBackend();
+  return { store: new Store(backend), marks: new Marks(backend) };
 }
 
-async function record({ store, privateStore }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
+async function record({ store, marks }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
   const objects = notes.map((note) => encodeObject(noteSchema, note));
   const links = objects.map(({ link }) => link);
   await store.write({ roots: links, blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs] });
-  await privateStore.write(recordsOf(links, Date.now()));
+  await marks.write(recordsOf(links, Date.now()));
 }
 
 describe("the value of a view", () => {
@@ -62,7 +62,7 @@ describe("the value of a view", () => {
       { text: "soup", tags: ["lunch"], at: 1 },
       { text: "salad", tags: ["lunch", "dinner"], at: 2 },
     );
-    const notes = await view(stores.privateStore, latest);
+    const notes = await view(stores.store, latest);
     expect(await notes.noteTagged("lunch")).toMatchObject({ text: "salad" });
     expect(await notes.noteTagged("dinner")).toMatchObject({ text: "stew" });
     expect(await notes.noteTagged("breakfast")).toBeUndefined();
@@ -71,10 +71,10 @@ describe("the value of a view", () => {
   it("stays as it was when viewed, and takes in later writes when viewed again", async () => {
     const stores = newStores();
     await record(stores, { text: "soup", tags: ["lunch"], at: 1 });
-    const before = await view(stores.privateStore, latest);
+    const before = await view(stores.store, latest);
     await record(stores, { text: "salad", tags: ["lunch"], at: 2 });
     expect(await before.noteTagged("lunch")).toMatchObject({ text: "soup" });
-    expect(await (await view(stores.privateStore, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
+    expect(await (await view(stores.store, latest)).noteTagged("lunch")).toMatchObject({ text: "salad" });
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
@@ -88,6 +88,6 @@ describe("the value of a view", () => {
     };
     const stores = newStores();
     await record(stores, { text: "soup", tags: ["lunch"], at: 1 }, { text: "salad", tags: ["lunch", "dinner"], at: 2 });
-    expect(await view(stores.privateStore, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
+    expect(await view(stores.store, tags).then((tags) => [...tags])).toEqual(["dinner", "lunch"]);
   });
 });

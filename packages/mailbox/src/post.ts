@@ -10,7 +10,8 @@ import {
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { Intake, type PrivateStore, RefusedBatch, recordsOf, type SecretStore, type Store } from "@estoc/store";
+import { secretSchema } from "@estoc/schema";
+import { Intake, type Marks, RefusedBatch, recordsOf, type Secrets, type Store } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -34,43 +35,38 @@ type TransportBytes = { readonly bytes: Bytes<EncodedObject> };
 
 export class Post {
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
-  readonly #secretStore: SecretStore;
+  readonly #marks: Marks;
+  readonly #secrets: Secrets;
   readonly #transports: readonly Transport[];
   readonly #clock: () => number;
   readonly #intake: Intake;
 
-  constructor(
-    store: Store,
-    privateStore: PrivateStore,
-    secretStore: SecretStore,
-    { transports, clock = Date.now }: PostOptions,
-  ) {
+  constructor(store: Store, marks: Marks, secrets: Secrets, { transports, clock = Date.now }: PostOptions) {
     this.#store = store;
-    this.#privateStore = privateStore;
-    this.#secretStore = secretStore;
+    this.#marks = marks;
+    this.#secrets = secrets;
     this.#transports = transports;
     this.#clock = clock;
-    this.#intake = new Intake(store, privateStore, clock);
+    this.#intake = new Intake(store, marks, clock);
   }
 
   correspondenceAs(actor: Actor, identity: CorrespondenceIdentity): Correspondence {
-    const stores = { store: this.#store, privateStore: this.#privateStore };
+    const stores = { store: this.#store, marks: this.#marks };
     return new Correspondence(stores, this, actor, this.#clock, new MailboxGrants(identity), identity);
   }
 
   async outbox(mailbox: Link<EncodedObject<MailboxData>>): Promise<Outbox> {
     const boundMailbox = await mailboxAt(mailbox, this.#store, { transports: this.#transports });
-    return new Outbox(boundMailbox, this.#store, this.#privateStore, this.#clock);
+    return new Outbox(boundMailbox, this.#store, this.#marks, this.#clock);
   }
 
   /**
-   * The mailbox is written to the store, then a record of it to the private store, and then its key
-   * to the secret store, so a stop in between leaves at most a mailbox that nobody receives at.
+   * The mailbox is written, then a record of it, then the Secret of its key, and then a mark of its
+   * Mailbox Key, so a stop in between leaves at most a mailbox that nobody receives at.
    */
   async openInbox(makeTransport: (publicKey: Uint8Array) => TransportBytes | Promise<TransportBytes>): Promise<Inbox> {
-    const secret = crypto.getRandomValues(new Uint8Array(32));
-    const key = await MailboxKey.fromSecretKey(secret);
+    const secretKey = crypto.getRandomValues(new Uint8Array(32));
+    const key = await MailboxKey.fromSecretKey(secretKey);
     const { bytes } = await makeTransport(key.publicKey);
     const named = schemaOf(bytes);
     const transport = this.#transports.find(({ schema }) => schema.link === named);
@@ -84,16 +80,22 @@ export class Post {
       roots: [mailbox.link],
       blobs: [mailbox.bytes, ...mailboxSchema.blobs, transportObject.bytes, ...transport.schema.blobs],
     });
-    await this.#privateStore.write(recordsOf([mailbox.link], this.#clock()));
-    const object = encodeObject(mailboxKeySchema, { mailbox: new LinkValue(mailbox.link), secret });
-    await this.#secretStore.write({ secrets: [object.link], blobs: [object.bytes, ...mailboxKeySchema.blobs] });
+    await this.#marks.write(recordsOf([mailbox.link], this.#clock()));
+    const secret = encodeObject(secretSchema, { bytes: secretKey });
+    await this.#secrets.write({ roots: [secret.link], blobs: [secret.bytes, ...secretSchema.blobs] });
+    const object = encodeObject(mailboxKeySchema, {
+      mailbox: new LinkValue(mailbox.link),
+      secret: new LinkValue(secret.link),
+    });
+    await this.#marks.write({ marks: [object.link], blobs: [object.bytes, ...mailboxKeySchema.blobs] });
     return this.#inbox(mailbox, object.link, key);
   }
 
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
-    const { data } = await readObject(this.#secretStore, key, mailboxKeySchema);
+    const { data } = await readObject(this.#store, key, mailboxKeySchema);
     const mailbox = await readObject(this.#store, data.mailbox.link, mailboxSchema);
-    const opener = await MailboxKey.fromSecretKey(data.secret);
+    const secret = await readObject(this.#secrets, data.secret.link, secretSchema);
+    const opener = await MailboxKey.fromSecretKey(secret.data.bytes);
     if (!opener.hasPublicKey(mailbox.data.key)) throw new Error(`${mailbox.link} names another key than ${key} holds`);
     return this.#inbox(mailbox, key, opener);
   }
@@ -106,13 +108,13 @@ export class Post {
 export class Outbox {
   readonly #mailbox: Mailbox;
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
+  readonly #marks: Marks;
   readonly #clock: () => number;
 
-  constructor(mailbox: Mailbox, store: Store, privateStore: PrivateStore, clock: () => number) {
+  constructor(mailbox: Mailbox, store: Store, marks: Marks, clock: () => number) {
     this.#mailbox = mailbox;
     this.#store = store;
-    this.#privateStore = privateStore;
+    this.#marks = marks;
     this.#clock = clock;
   }
 
@@ -126,7 +128,7 @@ export class Outbox {
     const bundle = root as Link<never>;
     const at = this.#clock();
     const mark = encodeObject(outboundSchema, { bundle: new LinkValue(bundle), mailbox: new LinkValue(mailbox), at });
-    await this.#privateStore.write({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
+    await this.#marks.write({ marks: [mark.link], blobs: [mark.bytes, ...outboundSchema.blobs] });
     return { direction: "outbound", bundle, mailbox, at, link: mark.link };
   }
 }

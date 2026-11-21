@@ -1,6 +1,6 @@
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import type { MarkBatch, PrivateStore } from "./private-store.ts";
+import type { MarkBatch, Marks } from "./marks.ts";
 import { type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
 import type { StagedStore, Store } from "./store.ts";
 
@@ -25,19 +25,20 @@ export interface ReceivedBundle {
 
 /**
  * - The mark says only that the bundle came in: a reader of it verifies what it reads itself.
- * - The bundle goes in the store first and the mark in the private store after, so a stop in
- *   between leaves a bundle that the store holds with no mark of it.
- * - That what comes from elsewhere goes through an intake is a rule for programs, which the stores
- *   do not enforce.
+ * - The bundle is written first and the mark after, so a stop in between leaves a bundle that the
+ *   store holds with no mark of it.
+ * - A bundle that holds a Secret is refused.
+ * - That what comes from elsewhere goes through an intake is a rule for programs, which the store
+ *   does not enforce.
  */
 export class Intake {
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
+  readonly #marks: Marks;
   readonly #clock: () => number;
 
-  constructor(store: Store, privateStore: PrivateStore, clock: () => number = Date.now) {
+  constructor(store: Store, marks: Marks, clock: () => number = Date.now) {
     this.#store = store;
-    this.#privateStore = privateStore;
+    this.#marks = marks;
     this.#clock = clock;
   }
 
@@ -60,23 +61,23 @@ export class Intake {
     const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
     const mark = { marks: [inbound.link], blobs: [inbound.bytes, ...inboundSchema.blobs, ...viaBlobs] };
     const stagedBundle = await this.#store.stage({ roots: [bundle.link], blobs: bundle.blobs() });
-    return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#privateStore, mark) };
+    return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#marks, mark) };
   }
 }
 
 class StagedArrival implements StagedStore, RowKeeper {
   readonly #stagedBundle: StagedStore;
-  readonly #privateStore: PrivateStore;
+  readonly #marks: Marks;
   readonly #mark: MarkBatch;
 
-  constructor(stagedBundle: StagedStore, privateStore: PrivateStore, mark: MarkBatch) {
+  constructor(stagedBundle: StagedStore, marks: Marks, mark: MarkBatch) {
     this.#stagedBundle = stagedBundle;
-    this.#privateStore = privateStore;
+    this.#marks = marks;
     this.#mark = mark;
   }
 
   get [rowsByIndex](): RowsByIndex {
-    // What a store stages keeps rows, and the private store is beside such a store.
+    // What a store stages keeps rows.
     return (this.#stagedBundle as StagedStore & RowKeeper)[rowsByIndex];
   }
 
@@ -88,6 +89,6 @@ class StagedArrival implements StagedStore, RowKeeper {
 
   async commit(): Promise<void> {
     await this.#stagedBundle.commit();
-    await this.#privateStore.write(this.#mark);
+    await this.#marks.write(this.#mark);
   }
 }

@@ -11,28 +11,28 @@ import type { Keyring } from "@estoc/keyring";
 import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, type PrivateStore, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
+import { indexOver, type Marks, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 
-type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store; readonly privateStore: PrivateStore };
+type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store; readonly marks: Marks };
 
 /**
- * What it signs is recorded in the private store, which is how a service tells its own signatures
- * from ones that came to its store another way.
+ * It records what it signs, which is how a service tells its own signatures from ones that only
+ * came to its store.
  */
 class Notary {
   readonly #actor: Actor;
   readonly #signatures: Signatures;
   readonly #recordedSignatures: RecordedSignaturesView;
   readonly #store: Store;
-  readonly #privateStore: PrivateStore;
+  readonly #marks: Marks;
   readonly #clock: () => number;
 
-  constructor(actor: Actor, { kit, store, privateStore, clock }: NotaryOptions & { readonly clock: () => number }) {
+  constructor(actor: Actor, { kit, store, marks, clock }: NotaryOptions & { readonly clock: () => number }) {
     this.#actor = actor;
     this.#signatures = kit.signatures;
     this.#recordedSignatures = recordedSignaturesView(kit.signatures);
     this.#store = store;
-    this.#privateStore = privateStore;
+    this.#marks = marks;
     this.#clock = clock;
   }
 
@@ -50,7 +50,7 @@ class Notary {
   async renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
     const signature = await this.#signatures.read(link, this.#store);
     if (await people.honors(signature)) return link;
-    const recordedSignatures = await view(this.#privateStore, this.#recordedSignatures);
+    const recordedSignatures = await view(this.#store, this.#recordedSignatures);
     for (const recordedLink of await recordedSignatures.signaturesOver(signature.object)) {
       if (recordedLink === link) continue;
       const recordedSignature = await this.#signatures.read(recordedLink, this.#store);
@@ -63,7 +63,7 @@ class Notary {
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
     await this.#store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobs] });
-    await this.#privateStore.write(recordsOf([signature.link], this.#clock()));
+    await this.#marks.write(recordsOf([signature.link], this.#clock()));
   }
 }
 
@@ -71,17 +71,17 @@ export type { Notary };
 
 /**
  * Signs the first identity version of `root` unless the store holds one, and records the current
- * one in the private store, so that a notary loaded over that private store signs as that identity.
+ * one, so that a notary loaded over that store signs as that identity.
  */
 export async function setUpNotary(
   keyring: Pick<Keyring, "signerFor">,
   root: Link<unknown>,
-  { kit, store, privateStore, at }: NotaryOptions & { readonly at: number },
+  { kit, store, marks, at }: NotaryOptions & { readonly at: number },
 ): Promise<SignedIdentityObject> {
   const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
   const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
-  await privateStore.write(recordsOf([signedIdentity.link], at));
+  await marks.write(recordsOf([signedIdentity.link], at));
   return signedIdentity;
 }
 
@@ -89,8 +89,8 @@ export async function loadNotary(
   keyring: Pick<Keyring, "signerFor">,
   { people, clock, ...options }: NotaryOptions & { readonly people: PeopleView; readonly clock: () => number },
 ): Promise<Notary> {
-  const { kit, store, privateStore } = options;
-  const recorded = await (await view(privateStore, recordedIdentityView(kit.signedIdentities))).signedIdentity();
+  const { kit, store } = options;
+  const recorded = await (await view(store, recordedIdentityView(kit.signedIdentities))).signedIdentity();
   const currentOf = async (inHand: SignedIdentityObject) => (await view(store, people)).current(inHand);
   const signer = await rootSigner(keyring, recorded.identity.root.link);
   return new Notary(kit.signatures.actor(signer, recorded, currentOf), { ...options, clock });
@@ -134,7 +134,7 @@ function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdent
         }
         if (recorded === undefined || identifiers.size > 1)
           throw new Error(
-            `the private store records identity versions of ${identifiers.size} identities, where a service takes one`,
+            `the store records identity versions of ${identifiers.size} identities, where a service takes one`,
           );
         return signedIdentities.read(recorded, reader);
       },

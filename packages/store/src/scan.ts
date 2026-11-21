@@ -1,8 +1,6 @@
 import type { Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
-import type { PrivateStore } from "./private-store.ts";
 import { objectRecordedAt } from "./record.ts";
-import type { SecretStore } from "./secret-store.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
 import {
   type Derivation,
@@ -16,8 +14,8 @@ import {
 import type { StagedStore, Store } from "./store.ts";
 
 /**
- * - A store, a private store and a secret store keep the rows of each index they are scanned for,
- *   so a later scan reads only what was listed or put since.
+ * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
+ *   listed or put since.
  * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
  *   the `failures` of the rows, and is not read again.
  * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
@@ -26,12 +24,12 @@ import type { StagedStore, Store } from "./store.ts";
  *   selection or its rows catch it, and nothing is kept of what it read.
  */
 export async function scan<F extends ValueMap, By extends FieldNames<F>>(
-  store: Store | StagedStore | PrivateStore | SecretStore,
+  store: Store | StagedStore,
   index: OrderedIndex<F, By>,
   { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
 ): Promise<Rows<F, By>> {
   if (!(rowsByIndex in store))
-    throw new TypeError("only a store made by `new Store`, or what is kept beside or staged on one, is scanned");
+    throw new TypeError("only a store made by `new Store`, or what is staged on one, is scanned");
   const { readsBlobs } = derivationOf(orderOf(index).index);
   const rows = await (store as RowKeeper)[rowsByIndex].sortedRowsOf(index);
   const [failure] = rows.failures;
@@ -49,7 +47,6 @@ export interface RowKeeper {
 export interface RowsByIndex {
   recordedObjects(): Promise<ListedLinks>;
   marks(): Promise<ListedLinks>;
-  secrets(): Promise<ListedLinks>;
   heldBlobs(): Promise<ListedLinks>;
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
   sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>>;
@@ -58,9 +55,11 @@ export interface RowsByIndex {
 class ListedLinks implements Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[] = [];
+  readonly #links: ReadonlySet<Link<unknown>>;
 
-  constructor(links: readonly Link<unknown>[] = []) {
-    this.links = links;
+  constructor(links: ReadonlySet<Link<unknown>> = new Set()) {
+    this.#links = links;
+    this.links = [...links];
   }
 
   async adding(links: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>): Promise<ListedLinks> {
@@ -68,7 +67,11 @@ class ListedLinks implements Listing {
     for await (const link of links) addedLinks.push(link);
     if (addedLinks.length === 0) return this;
     const listedLinks = new Set([...this.links, ...addedLinks]);
-    return listedLinks.size === this.links.length ? this : new ListedLinks([...listedLinks]);
+    return listedLinks.size === this.links.length ? this : new ListedLinks(listedLinks);
+  }
+
+  has(link: Link<unknown>): boolean {
+    return this.#links.has(link);
   }
 
   objectOf(): undefined {
@@ -119,8 +122,7 @@ class KeptValue<T> {
 }
 
 export interface StoreLists {
-  marks?(start: number): AsyncIterable<Link<unknown>>;
-  secrets?(start: number): AsyncIterable<Link<unknown>>;
+  marks(start: number): AsyncIterable<Link<unknown>>;
   blobs(start: number): AsyncIterable<Link<unknown>>;
 }
 
@@ -128,7 +130,7 @@ export interface StoreLists {
  * - The rows of what is read depend on it and its closure alone, and a store only grows, so the
  *   rows of what was read before still hold.
  * - The links of the blobs are kept only once an index reads blobs: a store holds many more blobs
- *   than a private store lists marks, and most indexes read none.
+ *   than it lists marks, and most indexes read none.
  * - The rows are kept for as long as the index is, and their order for as long as the ordered index
  *   is, so a program makes each once and keeps it.
  */
@@ -137,7 +139,6 @@ export class KeptRows implements RowsByIndex {
   readonly #lists: StoreLists;
   readonly #recordedObjects = new KeptValue(noRecordedObjects);
   readonly #marks = new KeptValue(new ListedLinks());
-  readonly #secrets = new KeptValue(new ListedLinks());
   readonly #blobs = new KeptValue(new ListedLinks());
   readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
   readonly #sortedRowsByIndex = new WeakMap<object, KeptValue<unknown>>();
@@ -148,19 +149,14 @@ export class KeptRows implements RowsByIndex {
   }
 
   async recordedObjects(): Promise<ListedLinks> {
-    const recorded = await this.#recordedObjects.advance(async (read) => {
-      const marks = this.#lists.marks?.(read.readCount);
-      return marks === undefined ? read : read.adding(marks, this.#reader);
-    });
+    const recorded = await this.#recordedObjects.advance((read) =>
+      read.adding(this.#lists.marks(read.readCount), this.#reader),
+    );
     return recorded.objects;
   }
 
   marks(): Promise<ListedLinks> {
-    return this.#marks.advance((listed) => listed.adding(this.#lists.marks?.(listed.links.length) ?? []));
-  }
-
-  secrets(): Promise<ListedLinks> {
-    return this.#secrets.advance((listed) => listed.adding(this.#lists.secrets?.(listed.links.length) ?? []));
+    return this.#marks.advance((listed) => listed.adding(this.#lists.marks(listed.links.length)));
   }
 
   heldBlobs(): Promise<ListedLinks> {
@@ -214,10 +210,6 @@ export class AddedRows implements RowsByIndex {
 
   marks(): Promise<ListedLinks> {
     return this.#rows.marks();
-  }
-
-  secrets(): Promise<ListedLinks> {
-    return this.#rows.secrets();
   }
 
   async heldBlobs(): Promise<ListedLinks> {

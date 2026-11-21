@@ -7,31 +7,30 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject, schemaOf } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
   Intake,
   inboundSchema,
   indexOver,
+  Marks,
   MemoryBackend,
   type OrderedIndex,
-  PrivateStore,
   type Rows,
-  recordSchema,
-  SecretStore,
+  Secrets,
   Store,
   scan,
   selectedMarks,
   view,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
+import { type Correspondence, type Inbox, mailboxKeySchema, outboundSchema, type Pickup, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a mailbox for the other and a grant of
 // that mailbox from the other, handed over out of band. The application reads
-// a conversation out of the marks of its private store alone, and shows a
+// a conversation out of the marks of its store alone, and shows a
 // line as a message from whoever signed it where the reader gave them that
 // mailbox.
 
@@ -52,7 +51,7 @@ const delivery = schema("Delivery", {
 type Delivery = DataOf<typeof delivery>;
 type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 
-// The application's index of the deliveries its user's private store marks: a
+// The application's index of the deliveries its user's store marks: a
 // row for each, by which way it went, the mailbox, when, and the bundle. What
 // was handed over out of band came in at no mailbox, and gives no row.
 const deliveries: OrderedIndex<Delivery, DeliveryOrder> = indexOver(
@@ -99,7 +98,6 @@ interface Person {
   readonly actor: Actor;
   readonly signedIdentity: SignedIdentityObject;
   readonly store: Store;
-  readonly privateStore: PrivateStore;
   readonly post: Post;
   readonly intake: Intake;
   readonly correspondence: Correspondence;
@@ -119,16 +117,16 @@ async function chat(faults: Faults = {}) {
   const person = async (name: string, fill: number): Promise<Person> => {
     const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
     const signedIdentity = await publish(signer, { at: 0 });
-    const store = new Store(new MemoryBackend());
+    const backend = new MemoryBackend();
+    const store = new Store(backend);
     const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
       (await view(store, seenPeople)).current(inHand),
     );
-    const privateStore = new PrivateStore(store, new MemoryBackend());
-    const secretStore = new SecretStore(store, new MemoryBackend());
-    const post = new Post(store, privateStore, secretStore, { transports, clock });
-    const intake = new Intake(store, privateStore, clock);
+    const marks = new Marks(backend);
+    const post = new Post(store, marks, new Secrets(backend), { transports, clock });
+    const intake = new Intake(store, marks, clock);
     const correspondence = post.correspondenceAs(actor, identity);
-    return { name, actor, signedIdentity, store, privateStore, post, intake, correspondence };
+    return { name, actor, signedIdentity, store, post, intake, correspondence };
   };
   const alice = await person("Alice", 1);
   const bob = await person("Bob", 2);
@@ -167,7 +165,7 @@ async function chat(faults: Faults = {}) {
   // which way it went and who wrote it. What came in and is no message from
   // anyone the person gave that mailbox is left out.
   const show = async (person: Person, mine: Mailbox, theirs: Mailbox) => {
-    const rows = await conversation(await scan(person.privateStore, deliveries), mine, theirs);
+    const rows = await conversation(await scan(person.store, deliveries), mine, theirs);
     const lines = await Promise.all(
       rows.map(async ({ direction, mailbox, bundle }) => {
         const signature: Signature | undefined =
@@ -181,9 +179,9 @@ async function chat(faults: Faults = {}) {
     );
     return lines.filter((shown) => shown !== undefined);
   };
-  // What the person's private store marks as having come in, or gone out, at any mailbox.
-  const marked = async ({ privateStore }: Person, direction: Direction) =>
-    all((await scan(privateStore, deliveries)).range([direction]));
+  // What the person's store marks as having come in, or gone out, at any mailbox.
+  const marked = async ({ store }: Person, direction: Direction) =>
+    all((await scan(store, deliveries)).range([direction]));
 
   // Someone who was given no grant, and was passed the mailbox that Alice gave
   // Bob, sends a line of their own there.
@@ -198,9 +196,7 @@ async function chat(faults: Faults = {}) {
       marked: (direction: Direction) => marked(alice, direction),
       resend: (root: Link<unknown>) => alice.correspondence.send(bob.signedIdentity, root),
       store: alice.store,
-      privateStore: alice.privateStore,
-      conversation: async (privateStore: PrivateStore) =>
-        conversation(await scan(privateStore, deliveries), atAlice.mailbox, atBob.mailbox),
+      conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox, atBob.mailbox),
     },
     bob: {
       say: (text: string) => say(bob, alice.signedIdentity, text),
@@ -298,19 +294,19 @@ describe("a conversation", () => {
     await bob.say("hi Alice");
     await alice.collect();
 
-    // What Alice's private store marks, written again beside a copy of her store, last first and twice.
-    const copy = new Store(new MemoryBackend());
-    const heldLinks = await all(alice.store.blobs());
+    // What Alice's store marks, written again over a copy of what else it holds, last first and
+    // twice. The mark of a Mailbox Key stays behind, with the Secret it links to.
+    const backend = new MemoryBackend();
+    const [copy, copyMarks] = [new Store(backend), new Marks(backend)];
+    const marks: Link<unknown>[] = await all(alice.store.marks());
+    const heldLinks = (await all(alice.store.blobs())).filter((link) => !marks.includes(link));
     const heldBlobs = await Promise.all(heldLinks.map((link) => alice.store.get(link)));
     await copy.write({ roots: heldLinks, blobs: heldBlobs.filter((bytes) => bytes !== undefined) });
-    const privateCopy = new PrivateStore(copy, new MemoryBackend());
-    const markSchemas = [inboundSchema, outboundSchema, recordSchema].flatMap(({ blobs }) => blobs);
-    const marks = await all(alice.privateStore.marks());
     for (const mark of [...marks, ...marks].reverse()) {
-      const bytes = await alice.privateStore.get(mark);
+      const bytes = await alice.store.get(mark);
       assert.exists(bytes);
-      await privateCopy.write({ marks: [mark], blobs: [bytes, ...markSchemas] });
+      if (schemaOf(bytes) !== mailboxKeySchema.link) await copyMarks.write({ marks: [mark], blobs: [bytes] });
     }
-    expect(await alice.conversation(privateCopy)).toEqual(await alice.conversation(alice.privateStore));
+    expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });
 });

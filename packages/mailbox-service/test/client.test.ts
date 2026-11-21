@@ -4,7 +4,7 @@ import { mailboxAt, mailboxSchema, type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
-import { Intake, inboundSchema, MemoryBackend, SecretStore, type Store } from "@estoc/store";
+import { Intake, inboundSchema, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
@@ -26,11 +26,12 @@ import {
   actorOf,
   actorSigningBy,
   keys,
+  marksOf,
   memoryService,
   memoryStore,
-  privateStoreBeside,
   publish,
   schemes,
+  secretsOf,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -83,25 +84,24 @@ async function startService(
 }
 
 /**
- * What the Inbound marks of the private store beside `store` say came in,
- * each as the link of its root and the origin it came from.
+ * What the Inbound marks of `store` say came in, each as the link of its root and the origin it
+ * came from.
  */
 async function inboundRowsOf(store: Store) {
-  const privateStore = privateStoreBeside(store);
   const rows: (readonly [Link<never>, string])[] = [];
-  for await (const mark of privateStore.marks()) {
-    const inbound = await objectsOf(inboundSchema).read(mark, privateStore);
+  for await (const mark of store.marks()) {
+    const inbound = await objectsOf(inboundSchema).read(mark, store);
     if (inbound === undefined) continue;
     const { bundle, via } = inbound.data;
     assert.exists(via);
-    rows.push([bundle.link, (await readObject(privateStore, via.link, originSchema)).data.origin]);
+    rows.push([bundle.link, (await readObject(store, via.link, originSchema)).data.origin]);
   }
   return rows.sort(([a], [b]) => (a < b ? -1 : 1));
 }
 
 function client() {
   const store = memoryStore();
-  return { store, services: loadServices(store, privateStoreBeside(store), { schemes }) };
+  return { store, services: loadServices(store, marksOf(store), { schemes }) };
 }
 
 async function accountAt(services: Services, origin: string) {
@@ -137,7 +137,7 @@ async function writeMailbox(store: Store, url: string) {
 /** Keeps `bundle` in `store` as come in at a mailbox elsewhere. */
 async function receiveAtMailbox(store: Store, bundle: Bundle) {
   const mailbox = await writeMailbox(store, `https://elsewhere.example/${"1".repeat(32)}`);
-  await new Intake(store, privateStoreBeside(store)).receive(bundle, mailbox);
+  await new Intake(store, marksOf(store)).receive(bundle, mailbox);
 }
 
 /**
@@ -474,19 +474,19 @@ async function pickUpAll(pickup: Pickup, signal?: AbortSignal) {
 }
 
 describe("a service's offer of mailboxes", () => {
-  it("opened writes its transport object to the store, and an Opened mailbox mark of it to the private store alone", async () => {
+  it("opened writes its transport object to the store, with an Opened mailbox mark of it", async () => {
     const actor = await actorOf(alice);
     const { store, offer } = await withAccount(actor);
     const transport = await offer.open(actor, keyOf(7));
     expect(await store.get(transport.link)).toEqual(transport.bytes);
-    const privateStore = privateStoreBeside(store);
     const openedMailboxes = [];
-    for await (const mark of privateStore.marks()) {
-      const openedMailbox = await objectsOf(openedMailboxSchema).read(mark, privateStore);
+    for await (const mark of store.marks()) {
+      const openedMailbox = await objectsOf(openedMailboxSchema).read(mark, store);
       if (openedMailbox !== undefined) openedMailboxes.push(openedMailbox);
     }
     expect(openedMailboxes.map(({ data }) => data.transport.link)).toEqual([transport.link]);
-    for (const { link } of openedMailboxes) expect(await store.get(link)).toBeUndefined();
+    for (const { link } of openedMailboxes)
+      await expect(store.closure(link)).rejects.toThrow("a mark, which stays in the store");
   });
 
   it("opened by an identity whose identifier has an account there gives an HTTP transport object at the service's origin, and the store keeps the acknowledgement as come in from there", async () => {
@@ -523,7 +523,7 @@ describe("a mailbox that a service opened", () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
     const options = { transports: [http] };
-    const post = new Post(store, privateStoreBeside(store), new SecretStore(store, new MemoryBackend()), options);
+    const post = new Post(store, marksOf(store), secretsOf(store), options);
     const inbox = await post.openInbox((publicKey) => offer.open(actor, publicKey));
     const sender = memoryStore();
     const noteSchema = schema("Note", { text: string() });
@@ -532,12 +532,7 @@ describe("a mailbox that a service opened", () => {
       roots: [inbox.mailbox, note.link],
       blobs: [...(await store.closure(inbox.mailbox)).values(), note.bytes, ...noteSchema.blobs],
     });
-    const senderPost = new Post(
-      sender,
-      privateStoreBeside(sender),
-      new SecretStore(sender, new MemoryBackend()),
-      options,
-    );
+    const senderPost = new Post(sender, marksOf(sender), secretsOf(sender), options);
     const outbox = await senderPost.outbox(inbox.mailbox);
     await outbox.send(note.link);
     const [delivery, ...more] = await inbox.collect(await services.pickup(inbox.mailbox, actor));
@@ -551,7 +546,7 @@ describe("a mailbox that a service opened", () => {
     const actor = await actorOf(alice);
     const { store, services, offer } = await withAccount(actor);
     const options = { transports: [http] };
-    const post = new Post(store, privateStoreBeside(store), new SecretStore(store, new MemoryBackend()), options);
+    const post = new Post(store, marksOf(store), secretsOf(store), options);
     const inbox = await post.openInbox((publicKey) => offer.open(actor, publicKey));
     const { transport } = (await readObject(store, inbox.mailbox, mailboxSchema)).data;
     const other = await post.openInbox(() => readObject(store, transport.link, http.schema));
@@ -759,7 +754,7 @@ describe("a mailbox that a service opened", () => {
     );
   });
 
-  it("is not picked up when the private store lists no mark of opening it", async () => {
+  it("is not picked up when the store lists no mark of opening it", async () => {
     const { origin } = await startService();
     const { store, services } = client();
     await services.fetch(origin);
@@ -811,7 +806,7 @@ describe("a mailbox acknowledgement that came in at a mailbox", () => {
     const { store, services } = client();
     await services.fetch(origin);
     const mailbox = await writeMailbox(store, `${origin}/${sendId}`);
-    await new Intake(store, privateStoreBeside(store)).receive(acknowledgement, mailbox);
+    await new Intake(store, marksOf(store)).receive(acknowledgement, mailbox);
     return { services, mailbox };
   }
 

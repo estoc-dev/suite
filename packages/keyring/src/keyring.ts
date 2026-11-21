@@ -1,33 +1,46 @@
 import { type CurveScheme, type KeyObject, type SecretKeys, type Signer, secretKeySchema } from "@estoc/identity";
 import { type Link, LinkValue, objectsOf } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { type Backend, indexOver, SecretStore, type Store, scan, selectedSecrets } from "@estoc/store";
+import { indexOver, type Marks, type Secrets, type Store, scan, selectedMarks } from "@estoc/store";
 
 const heldKeySchema = schema("Held Key", { key: link(), secretKey: link() });
 
-const byKey = indexOver(selectedSecrets(objectsOf(secretKeySchema)), heldKeySchema, ({ link, data }) => [
+const byKey = indexOver(selectedMarks(objectsOf(secretKeySchema)), heldKeySchema, ({ link, data }) => [
   { key: data.key, secretKey: new LinkValue(link) },
 ]).orderedBy("key");
 
-/** Give it a backend of its own: code given that backend, or a secret store over it, reads the secrets. */
+/**
+ * - It signs with the Secret Keys it marked, so one that only came to the store gives no signer.
+ * - What is given `secrets` reads the bytes of every key, so a program gives it to the keyring
+ *   and hands the rest the keyring, for the signers.
+ */
 export class Keyring {
-  readonly #secretStore: SecretStore;
+  readonly #store: Store;
+  readonly #marks: Marks;
+  readonly #secrets: Secrets;
   readonly #secretKeys: SecretKeys;
 
-  constructor(store: Store, backend: Backend, secretKeys: SecretKeys) {
-    this.#secretStore = new SecretStore(store, backend);
+  constructor(store: Store, marks: Marks, secrets: Secrets, secretKeys: SecretKeys) {
+    this.#store = store;
+    this.#marks = marks;
+    this.#secrets = secrets;
     this.#secretKeys = secretKeys;
   }
 
+  /**
+   * The Secret is written first and the mark of the Secret Key after, so a stop in between leaves
+   * a Secret that no key reaches.
+   */
   async generate(scheme: CurveScheme): Promise<KeyObject> {
-    const secretKey = this.#secretKeys.encode(scheme, scheme.curve.randomSecretKey());
-    await this.#secretStore.write({ secrets: [secretKey.link], blobs: secretKey.blobs });
-    return secretKey.key;
+    const { link, key, secret, blobs } = this.#secretKeys.encode(scheme, scheme.curve.randomSecretKey());
+    await this.#secrets.write({ roots: [secret.link], blobs: [secret.bytes, ...secret.schema.blobs] });
+    await this.#marks.write({ marks: [link], blobs });
+    return key;
   }
 
   async signerFor(key: Link<unknown>): Promise<Signer | undefined> {
-    for await (const { data } of (await scan(this.#secretStore, byKey)).range([new LinkValue(key)]))
-      return (await this.#secretKeys.read(data.secretKey.link, this.#secretStore)).signer;
+    for await (const { data } of (await scan(this.#store, byKey)).range([new LinkValue(key)]))
+      return (await this.#secretKeys.read(data.secretKey.link, this.#secrets)).signer;
     return undefined;
   }
 }

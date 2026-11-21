@@ -2,9 +2,9 @@ import { encodeObject, type Implementation, type Link, LinkValue } from "@estoc/
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import {
   indexOver,
+  Marks,
   MemoryBackend,
   type OrderedIndex,
-  PrivateStore,
   recordsOf,
   Store,
   scan,
@@ -33,26 +33,21 @@ const byItem: HeadIndex = indexOver(selectedRecords(lineages.selection), headSch
 }).orderedBy("of", "head");
 
 function newStores() {
-  const store = new Store(new MemoryBackend());
-  return { store, privateStore: new PrivateStore(store, new MemoryBackend()) };
+  const backend = new MemoryBackend();
+  return { store: new Store(backend), marks: new Marks(backend) };
 }
 type Stores = ReturnType<typeof newStores>;
 
-async function recordHeads({ store, privateStore }: Stores, ...chains: readonly Lineage[]) {
+async function recordHeads({ store, marks }: Stores, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
   const heads = chains.map(({ head }) => head.link);
   await store.write({ roots: heads, blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs] });
-  await privateStore.write(recordsOf(heads, Date.now()));
+  await marks.write(recordsOf(heads, Date.now()));
 }
 
-async function readHeads(
-  { privateStore }: Stores,
-  index: HeadIndex,
-  key: Link<unknown>,
-): Promise<Link<LineageNodeObject>[]> {
+async function readHeads({ store }: Stores, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
   const heads: Link<LineageNodeObject>[] = [];
-  for await (const { data } of (await scan(privateStore, index)).range([new LinkValue(key)]))
-    heads.push(data.head.link);
+  for await (const { data } of (await scan(store, index)).range([new LinkValue(key)])) heads.push(data.head.link);
   return heads;
 }
 
@@ -113,13 +108,13 @@ describe("the selection of a schema lineage over a store", () => {
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await stores.privateStore.write(recordsOf([untitled.link, titledObject.link], Date.now()));
+    await stores.marks.write(recordsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
     const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];
-    for await (const { data } of (await scan(stores.privateStore, byText)).range([])) rows.push(data);
+    for await (const { data } of (await scan(stores.store, byText)).range([])) rows.push(data);
     expect(rows).toEqual([
       { text: "titled", title: "Greeting" },
       { text: "untitled", title: "" },

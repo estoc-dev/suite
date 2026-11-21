@@ -31,16 +31,14 @@ import {
   type FieldNames,
   type Index,
   indexOver,
+  Marks,
   MemoryBackend,
-  PrivateStore,
   type Rows,
   recordsOf,
-  SecretStore,
   Store,
   scan,
   selectedBlobs,
   selectedRecords,
-  selectedSecrets,
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that a note or a tag holds any of them.
@@ -94,10 +92,9 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
   blobs: (start) => backend.blobs(start),
 });
 
-/** A store, and the private store beside it that lists the records. */
-function newStores(backend: Backend = new MemoryBackend(), privateBackend: Backend = new MemoryBackend()) {
-  const store = new Store(backend);
-  return { store, privateStore: new PrivateStore(store, privateBackend) };
+/** A store, and what writes the records it lists. */
+function newStores(backend: Backend = new MemoryBackend()) {
+  return { store: new Store(backend), marks: new Marks(backend) };
 }
 
 interface WrittenObject {
@@ -111,18 +108,18 @@ const batchOf = (objects: readonly WrittenObject[], blobs: Iterable<Uint8Array> 
   blobs: [...objects.map(({ bytes }) => bytes), ...blobs],
 });
 
-/** Writes `objects` to the store, with those of `blobs` in their closures, and a record of each to the private store. */
+/** Writes `objects` to the store, with those of `blobs` in their closures, and a record of each. */
 async function recordIn(
-  { store, privateStore }: ReturnType<typeof newStores>,
+  { store, marks }: ReturnType<typeof newStores>,
   objects: readonly WrittenObject[],
   blobs?: Iterable<Uint8Array>,
 ): Promise<void> {
   const batch = batchOf(objects, blobs);
   await store.write(batch);
-  await privateStore.write(recordsOf(batch.roots, Date.now()));
+  await marks.write(recordsOf(batch.roots, Date.now()));
 }
 
-describe("an index scanned from a private store", () => {
+describe("an index over records", () => {
   it("holds the rows of the objects that its records link to, of the schemas it reads", async () => {
     const stores = newStores();
     const unlistedNote = encodeObject(note, { names: ["unlisted"] });
@@ -134,13 +131,7 @@ describe("an index scanned from a private store", () => {
       ],
       [unlistedNote.bytes, ...schemas],
     );
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "b"]);
-  });
-
-  it("holds no rows when it is scanned from the store beside, which lists no records", async () => {
-    const stores = newStores();
-    await recordIn(stores, [encodeObject(note, { names: ["a"] })], schemas);
-    expect(await namesOf(await scan(stores.store, byName))).toEqual([]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "b"]);
   });
 
   it("holds a row once, however many objects give it", async () => {
@@ -150,7 +141,7 @@ describe("an index scanned from a private store", () => {
       [encodeObject(note, { names: ["a"], n: 1 }), encodeObject(note, { names: ["a", "a"], n: 2 })],
       schemas,
     );
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a"]);
   });
 
   describe("in the order of some fields of its rows", () => {
@@ -160,10 +151,7 @@ describe("an index scanned from a private store", () => {
     async function rowsOf<const By extends FieldNames<EntryData>>(by: By, entries: readonly EntryData[]) {
       const stores = newStores();
       await recordIn(stores, [encodeObject(note, {})], schemas);
-      return scan(
-        stores.privateStore,
-        indexOver(selectedRecords(objectsOf(note)), entry, () => entries).orderedBy(...by),
-      );
+      return scan(stores.store, indexOver(selectedRecords(objectsOf(note)), entry, () => entries).orderedBy(...by));
     }
 
     it("gives the rows that hold a prefix, a field left out before any value and numbers in their order", async () => {
@@ -205,7 +193,7 @@ describe("an index scanned from a private store", () => {
         await recordIn(stores, [encodeObject(note, {})], schemas);
         const entries = [{ id: "with", [field]: "a" }, { id: "without" }];
         const rows = await scan(
-          stores.privateStore,
+          stores.store,
           indexOver(selectedRecords(objectsOf(note)), labeled, () => entries).orderedBy(field),
         );
         expect((await rowDataOf(rows.range([]))).map(({ id }) => id)).toEqual(["without", "with"]);
@@ -237,7 +225,7 @@ describe("an index scanned from a private store", () => {
       cards.map(({ link }) => encodeObject(note, { card: new LinkValue(link) })),
       [...cards.map(({ bytes }) => bytes), ...schemas],
     );
-    expect(await namesOf(await scan(stores.privateStore, byCardName))).toEqual(["Alice", "Bob"]);
+    expect(await namesOf(await scan(stores.store, byCardName))).toEqual(["Alice", "Bob"]);
   });
 
   it("holds the rows of each index that it is a union of, each row once", async () => {
@@ -248,7 +236,7 @@ describe("an index scanned from a private store", () => {
       schemas,
     );
     const byNoteOrTag = noteNames.union(indexOver(selectedRecords(objectsOf(tag)), named, namedOf)).orderedBy("name");
-    expect(await namesOf(await scan(stores.privateStore, byNoteOrTag))).toEqual(["a", "b", "c"]);
+    expect(await namesOf(await scan(stores.store, byNoteOrTag))).toEqual(["a", "b", "c"]);
   });
 
   it("holds no rows of a recorded object that its selection leaves out", async () => {
@@ -257,10 +245,7 @@ describe("an index scanned from a private store", () => {
     await recordIn(stores, [encodeObject(note, { name: "a" }), encodeObject(note, { names: [] })], schemas);
     expect(
       await namesOf(
-        await scan(
-          stores.privateStore,
-          indexOver(selectedRecords(namedNotes), named, (name) => [{ name }]).orderedBy("name"),
-        ),
+        await scan(stores.store, indexOver(selectedRecords(namedNotes), named, (name) => [{ name }]).orderedBy("name")),
       ),
     ).toEqual(["a"]);
   });
@@ -274,9 +259,7 @@ describe("an index scanned from a private store", () => {
     const stores = newStores();
     await recordIn(stores, [encodeObject(note, { names: ["a"] }), encodeObject(tag, { names: ["b"] })], schemas);
     expect(
-      await namesOf(
-        await scan(stores.privateStore, indexOver(selectedRecords(noteOrTag), named, namedOf).orderedBy("name")),
-      ),
+      await namesOf(await scan(stores.store, indexOver(selectedRecords(noteOrTag), named, namedOf).orderedBy("name"))),
     ).toEqual(["a", "b"]);
   });
 
@@ -290,7 +273,7 @@ describe("an index scanned from a private store", () => {
     const stores = newStores();
     await recordIn(stores, [encodeObject(note, { name: "a", n: 1 })], schemas);
     expect(
-      await rowDataOf((await scan(stores.privateStore, names.union(counts).orderedBy("key", "value"))).range([])),
+      await rowDataOf((await scan(stores.store, names.union(counts).orderedBy("key", "value"))).range([])),
     ).toEqual([
       { key: "n", value: "1" },
       { key: "name", value: "a" },
@@ -308,7 +291,7 @@ describe("an index scanned from a private store", () => {
     );
     const rowsOf = (selections: Selection<string>[]) =>
       scan(
-        stores.privateStore,
+        stores.store,
         selections
           .map((selection) => indexOver(selectedRecords(selection), named, (name) => [{ name }]))
           .reduce((a, b) => a.union(b))
@@ -345,7 +328,7 @@ describe("an index scanned from a private store", () => {
       indexOver(selectedRecords(objectsOf(strict)), named, () => [{ name: "b" }]),
       indexOver(selectedRecords(objectsOf(lax)), named, () => [{ name: "c" }]),
     );
-    expect(await namesOf(await scan(stores.privateStore, index.orderedBy("name")))).toEqual(["a", "b", "c"]);
+    expect(await namesOf(await scan(stores.store, index.orderedBy("name")))).toEqual(["a", "b", "c"]);
     expect(validationNames).toEqual(["strict", "lax"]);
   });
 
@@ -363,7 +346,7 @@ describe("an index scanned from a private store", () => {
     const nameAs = (key: string, selection: Selection<string>) =>
       indexOver(selectedRecords(selection), pair, (value) => [{ key, value }]);
     const rows = await scan(
-      stores.privateStore,
+      stores.store,
       nameAs("a", cardName)
         .union(nameAs("b", cardName), nameAs("b", plainSelectionOf(cardName)))
         .orderedBy("key", "value"),
@@ -380,11 +363,11 @@ describe("an index scanned from a private store", () => {
     ["a schema it reads", note],
     ["a schema it does not read", tag],
   ])(
-    "is not filled when the store beside holds another blob under the link of a recorded object, of %s",
+    "is not filled when the backend holds another blob under the link of a recorded object, of %s",
     async (_, schema) => {
-      const [backend, privateBackend] = [new MemoryBackend(), new MemoryBackend()];
+      const backend = new MemoryBackend();
       const [listedObject, other] = [encodeObject(note, { names: ["a"] }), encodeObject(schema, { names: ["b"] })];
-      await recordIn(newStores(backend, privateBackend), [listedObject, other], schemas);
+      await recordIn(newStores(backend), [listedObject, other], schemas);
       const swappedBackend: Backend = {
         get: (link) => backend.get(link === listedObject.link ? other.link : link),
         has: (link) => backend.has(link),
@@ -392,7 +375,7 @@ describe("an index scanned from a private store", () => {
         listedLinks: (start) => backend.listedLinks(start),
         blobs: (start) => backend.blobs(start),
       };
-      await expect(scan(newStores(swappedBackend, privateBackend).privateStore, byName)).rejects.toThrow(
+      await expect(scan(newStores(swappedBackend).store, byName)).rejects.toThrow(
         `another blob under ${listedObject.link}`,
       );
     },
@@ -406,7 +389,7 @@ describe("an index scanned from a private store", () => {
       },
     });
     await recordIn(stores, [encodeObject(note, { names: ["a"] })], schemas);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a"]);
   });
 });
 
@@ -441,14 +424,14 @@ describe("an index whose rows give none of what does not read as they expect", (
     const readOverride: { get?: () => Promise<Uint8Array | undefined> } = {};
     const stores = await storesGiving(readOverride);
     readOverride.get = () => Promise.reject(readError);
-    await expect(scan(stores.privateStore, byAbout)).rejects.toBe(readError);
+    await expect(scan(stores.store, byAbout)).rejects.toBe(readError);
     delete readOverride.get;
-    expect(await namesOf(await scan(stores.privateStore, byAbout))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byAbout))).toEqual(["a"]);
   });
 
   it("is not filled when the store does not hold a blob of a recorded object's closure", async () => {
     const stores = await storesGiving({ get: async () => undefined });
-    await expect(scan(stores.privateStore, byAbout)).rejects.toThrow(
+    await expect(scan(stores.store, byAbout)).rejects.toThrow(
       `the store lists ${record.link} but does not hold ${about.link} of its closure`,
     );
   });
@@ -482,7 +465,7 @@ describe("an index that fails on something it reads", () => {
   }
 
   it("gives the rows of what else it reads, and lists what it failed on with the error", async () => {
-    const rows = await scan((await storesRecording(unreadable, readable)).privateStore, byReadableName, {
+    const rows = await scan((await storesRecording(unreadable, readable)).store, byReadableName, {
       throwsOnFailure: false,
     });
     expect(await namesOf(rows)).toEqual(["a"]);
@@ -491,9 +474,9 @@ describe("an index that fails on something it reads", () => {
 
   it("makes a scan throw the error of its first failure when it reads only recorded objects, unless the scan is told not to", async () => {
     const stores = await storesRecording(unreadable, readable);
-    await expect(scan(stores.privateStore, byReadableName)).rejects.toBe(readError);
-    await expect(scan(stores.privateStore, byReadableName, { throwsOnFailure: true })).rejects.toBe(readError);
-    expect((await scan(stores.privateStore, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
+    await expect(scan(stores.store, byReadableName)).rejects.toBe(readError);
+    await expect(scan(stores.store, byReadableName, { throwsOnFailure: true })).rejects.toBe(readError);
+    expect((await scan(stores.store, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
   });
 
   it.each<[string, NameIndex, string]>([
@@ -511,8 +494,8 @@ describe("an index that fails on something it reads", () => {
     ],
   ])("fails on a recorded object when %s", async (_, index, message) => {
     const stores = await storesRecording(unreadable, readable);
-    await expect(scan(stores.privateStore, index.orderedBy("name"))).rejects.toThrow(message);
-    const rows = await scan(stores.privateStore, index.orderedBy("name"), { throwsOnFailure: false });
+    await expect(scan(stores.store, index.orderedBy("name"))).rejects.toThrow(message);
+    const rows = await scan(stores.store, index.orderedBy("name"), { throwsOnFailure: false });
     expect(await namesOf(rows)).toEqual(["a"]);
     expect(rows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
   });
@@ -522,7 +505,7 @@ describe("an index that fails on something it reads", () => {
       yield* namedOf(object);
       readableNamedOf(object);
     });
-    const rows = await scan((await storesRecording(unreadable, readable)).privateStore, index.orderedBy("name"), {
+    const rows = await scan((await storesRecording(unreadable, readable)).store, index.orderedBy("name"), {
       throwsOnFailure: false,
     });
     expect(await namesOf(rows)).toEqual(["a"]);
@@ -532,13 +515,13 @@ describe("an index that fails on something it reads", () => {
     const requestedLinks: Link<unknown>[] = [];
     const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(stores, [readable], schemas);
-    expect((await scan(stores.privateStore, byReadableName)).failures).toEqual([]);
+    expect((await scan(stores.store, byReadableName)).failures).toEqual([]);
     await recordIn(stores, [unreadable]);
-    expect((await scan(stores.privateStore, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
+    expect((await scan(stores.store, byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
     requestedLinks.length = 0;
     await recordIn(stores, [encodeObject(note, { names: ["b"] })]);
-    await expect(scan(stores.privateStore, byReadableName)).rejects.toBe(readError);
-    const rows = await scan(stores.privateStore, byReadableName, { throwsOnFailure: false });
+    await expect(scan(stores.store, byReadableName)).rejects.toBe(readError);
+    const rows = await scan(stores.store, byReadableName, { throwsOnFailure: false });
     expect(await namesOf(rows)).toEqual(["a", "b"]);
     expect(rows.failures).toHaveLength(1);
     expect(requestedLinks).not.toContain(unreadable.link);
@@ -559,9 +542,9 @@ describe("an index that fails on something it reads", () => {
     });
     await recordIn(stores, [record], [about.bytes, ...schemas]);
     isGone = true;
-    await expect(scan(stores.privateStore, byAbout, { throwsOnFailure: false })).rejects.toBe(diskError);
+    await expect(scan(stores.store, byAbout, { throwsOnFailure: false })).rejects.toBe(diskError);
     isGone = false;
-    const rows = await scan(stores.privateStore, byAbout);
+    const rows = await scan(stores.store, byAbout);
     expect(await namesOf(rows)).toEqual(["a"]);
     expect(rows.failures).toEqual([]);
   });
@@ -580,15 +563,15 @@ describe("an index that fails on something it reads", () => {
     it("is among the failures of that index, which is scanned as it is", async () => {
       const stores = await storesRecording(unreadable, readable);
       const byUpperName = upperNamesOf(readableNames).orderedBy("name");
-      await expect(scan(stores.privateStore, byUpperName)).rejects.toBe(readError);
-      const rows = await scan(stores.privateStore, byUpperName, { throwsOnFailure: false });
+      await expect(scan(stores.store, byUpperName)).rejects.toBe(readError);
+      const rows = await scan(stores.store, byUpperName, { throwsOnFailure: false });
       expect(await namesOf(rows)).toEqual(["A"]);
       expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
     });
 
     it("is listed once among the failures of an index that reads it by two indexes", async () => {
       const byEitherName = byEitherNameOf(readableNames);
-      const rows = await scan((await storesRecording(unreadable, readable)).privateStore, byEitherName, {
+      const rows = await scan((await storesRecording(unreadable, readable)).store, byEitherName, {
         throwsOnFailure: false,
       });
       expect(await namesOf(rows)).toEqual(["A", "a!"]);
@@ -615,11 +598,11 @@ describe("an index that fails on something it reads", () => {
         if (data.name === "unreadable") throw readError;
         return [data];
       });
-      await expect(scan(stores.privateStore, index.orderedBy("name"))).rejects.toBe(readError);
-      const rows = await scan(stores.privateStore, index.orderedBy("name"), { throwsOnFailure: false });
+      await expect(scan(stores.store, index.orderedBy("name"))).rejects.toBe(readError);
+      const rows = await scan(stores.store, index.orderedBy("name"), { throwsOnFailure: false });
       expect(await namesOf(rows)).toEqual(["a"]);
       expect(rows.failures).toEqual([{ item: encodeObject(named, { name: "unreadable" }).link, error: readError }]);
-      expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "unreadable"]);
+      expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "unreadable"]);
     });
 
     it("leaves a scan of that index to give its rows when this one reads blobs, unless the scan is told to throw", async () => {
@@ -629,25 +612,25 @@ describe("an index that fails on something it reads", () => {
       );
       const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, readableNamedOf);
       const byUpperName = upperNamesOf(tagNames).orderedBy("name");
-      const rows = await scan(stores.privateStore, byUpperName);
+      const rows = await scan(stores.store, byUpperName);
       expect(await namesOf(rows)).toEqual(["A"]);
       expect(rows.failures).toHaveLength(1);
-      await expect(scan(stores.privateStore, byUpperName, { throwsOnFailure: true })).rejects.toBe(readError);
+      await expect(scan(stores.store, byUpperName, { throwsOnFailure: true })).rejects.toBe(readError);
     });
   });
 });
 
-describe("an index scanned again from a private store", () => {
+describe("an index over records, scanned again", () => {
   const [first, second] = [encodeObject(note, { names: ["a"] }), encodeObject(note, { names: ["b"] })];
 
   it("reads only the objects recorded since the last scan", async () => {
     const requestedLinks: Link<unknown>[] = [];
     const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(stores, [first], schemas);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a"]);
     await recordIn(stores, [second]);
     requestedLinks.length = 0;
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "b"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).toContain(second.link);
     expect(requestedLinks).not.toContain(first.link);
   });
@@ -655,28 +638,28 @@ describe("an index scanned again from a private store", () => {
   it("holds the rows of all the recorded objects for another index", async () => {
     const stores = newStores();
     await recordIn(stores, [first, encodeObject(tag, { names: ["t"] })], schemas);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a"]);
     expect(
       await namesOf(
-        await scan(stores.privateStore, indexOver(selectedRecords(objectsOf(tag)), named, namedOf).orderedBy("name")),
+        await scan(stores.store, indexOver(selectedRecords(objectsOf(tag)), named, namedOf).orderedBy("name")),
       ),
     ).toEqual(["t"]);
   });
 
-  it("takes in the objects that another private store on the same backend records", async () => {
-    const [backend, privateBackend] = [new MemoryBackend(), new MemoryBackend()];
-    const [stores, others] = [newStores(backend, privateBackend), newStores(backend, privateBackend)];
+  it("takes in the objects that are recorded through another store on the same backend", async () => {
+    const backend = new MemoryBackend();
+    const [stores, others] = [newStores(backend), newStores(backend)];
     await recordIn(stores, [first], schemas);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a"]);
     await recordIn(others, [second]);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "b"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "b"]);
   });
 
   it("reads each recorded object once for scans that overlap", async () => {
     const requestedLinks: Link<unknown>[] = [];
     const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(stores, [first], schemas);
-    const scans = await Promise.all([scan(stores.privateStore, byName), scan(stores.privateStore, byName)]);
+    const scans = await Promise.all([scan(stores.store, byName), scan(stores.store, byName)]);
     for (const rows of scans) expect(await namesOf(rows)).toEqual(["a"]);
     expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
   });
@@ -691,13 +674,13 @@ describe("an index scanned again from a private store", () => {
       get: (link) => (isGone ? Promise.reject(diskError) : backend.get(link)),
     });
     await recordIn(stores, [first], schemas);
-    await scan(stores.privateStore, byName);
+    await scan(stores.store, byName);
     await recordIn(stores, [second]);
     isGone = true;
-    await expect(scan(stores.privateStore, byName)).rejects.toBe(diskError);
+    await expect(scan(stores.store, byName)).rejects.toBe(diskError);
     isGone = false;
     requestedLinks.length = 0;
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "b"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "b"]);
     expect(requestedLinks).not.toContain(first.link);
   });
 });
@@ -717,41 +700,41 @@ describe("an index scanned in two orders", () => {
   it("gives the same rows in each order", async () => {
     const stores = newStores();
     await recordIn(stores, [first, second, third], schemas);
-    expect(await rowDataOf((await scan(stores.privateStore, byCountedName)).range([]))).toEqual([
+    expect(await rowDataOf((await scan(stores.store, byCountedName)).range([]))).toEqual([
       { name: "a", n: 3 },
       { name: "b", n: 2 },
       { name: "c", n: 1 },
     ]);
-    expect(await rowDataOf((await scan(stores.privateStore, byCount)).range([]))).toEqual([
+    expect(await rowDataOf((await scan(stores.store, byCount)).range([]))).toEqual([
       { name: "c", n: 1 },
       { name: "b", n: 2 },
       { name: "a", n: 3 },
     ]);
-    expect(await rowDataOf((await scan(stores.privateStore, byCount)).range([2]))).toEqual([{ name: "b", n: 2 }]);
+    expect(await rowDataOf((await scan(stores.store, byCount)).range([2]))).toEqual([{ name: "b", n: 2 }]);
   });
 
   it("reads each recorded object once for both orders", async () => {
     const requestedLinks: Link<unknown>[] = [];
     const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
     await recordIn(stores, [first], schemas);
-    await Promise.all([scan(stores.privateStore, byCountedName), scan(stores.privateStore, byCount)]);
-    await scan(stores.privateStore, byCount);
+    await Promise.all([scan(stores.store, byCountedName), scan(stores.store, byCount)]);
+    await scan(stores.store, byCount);
     expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
   });
 
   it("takes into each order the rows given since it was last scanned in that order", async () => {
     const stores = newStores();
     await recordIn(stores, [first], schemas);
-    await scan(stores.privateStore, byCountedName);
+    await scan(stores.store, byCountedName);
     await recordIn(stores, [second]);
-    await scan(stores.privateStore, byCount);
+    await scan(stores.store, byCount);
     await recordIn(stores, [third]);
-    expect(
-      (await rowDataOf((await scan(stores.privateStore, byCountedName)).range([]))).map(({ name }) => name),
-    ).toEqual(["a", "b", "c"]);
-    expect((await rowDataOf((await scan(stores.privateStore, byCount)).range([]))).map(({ n }) => n)).toEqual([
-      1, 2, 3,
+    expect((await rowDataOf((await scan(stores.store, byCountedName)).range([]))).map(({ name }) => name)).toEqual([
+      "a",
+      "b",
+      "c",
     ]);
+    expect((await rowDataOf((await scan(stores.store, byCount)).range([]))).map(({ n }) => n)).toEqual([1, 2, 3]);
   });
 
   it("reads, on a staged batch, the blobs the batch keeps once on top of the rows its store keeps in each order", async () => {
@@ -782,7 +765,7 @@ describe("an index over blobs", () => {
     await recordIn(stores, [carrying(near.bytes)], [deep.bytes, near.bytes, ...schemas]);
     expect(await namesOf(await scan(stores.store, byTagName))).toEqual(["deep", "near"]);
     const byRecordedTagName = indexOver(selectedRecords(objectsOf(tag)), named, namedOf).orderedBy("name");
-    expect(await namesOf(await scan(stores.privateStore, byRecordedTagName))).toEqual([]);
+    expect(await namesOf(await scan(stores.store, byRecordedTagName))).toEqual([]);
   });
 
   it("holds the rows of a root of its schema, and of no blob of another schema", async () => {
@@ -924,6 +907,7 @@ describe("an index over blobs", () => {
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
       blobs: () => store.blobs(),
+      marks: () => store.marks(),
       closure: (link) => store.closure(link),
     };
     await expect(scan(lookalike, byTagName)).rejects.toThrow(TypeError);
@@ -1068,10 +1052,10 @@ describe("an index over blobs", () => {
       const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
       const union = noteNames.union(tagNames).orderedBy("name");
       await recordIn(stores, [first], [firstTag.bytes, ...schemas]);
-      expect(await namesOf(await scan(stores.privateStore, union))).toEqual(["a", "x"]);
+      expect(await namesOf(await scan(stores.store, union))).toEqual(["a", "x"]);
       await recordIn(stores, [second], [secondTag.bytes]);
       requestedLinks.length = 0;
-      expect(await namesOf(await scan(stores.privateStore, union))).toEqual(["a", "b", "x", "y"]);
+      expect(await namesOf(await scan(stores.store, union))).toEqual(["a", "b", "x", "y"]);
       expect(requestedLinks).toContain(second.link);
       expect(requestedLinks).toContain(secondTag.link);
       expect(requestedLinks).not.toContain(first.link);
@@ -1093,16 +1077,6 @@ describe("an index over blobs", () => {
       await stagedStore.commit();
       expect(await namesOf(await scan(store, byTagName))).toEqual(["x", "y"]);
     });
-
-    it("reads, on a secret store, only the blobs kept in it", async () => {
-      const store = new Store(new MemoryBackend());
-      const secretStore = new SecretStore(store, new MemoryBackend());
-      await store.write(batchOf([first], [firstTag.bytes, ...schemas]));
-      const kept = encodeObject(note, { of: new LinkValue(secondTag.link), shared: new LinkValue(firstTag.link) });
-      await secretStore.write({ secrets: [kept.link], blobs: [kept.bytes, secondTag.bytes] });
-      expect(await namesOf(await scan(secretStore, byTagName))).toEqual(["y"]);
-      expect(await namesOf(await scan(store, byTagName))).toEqual(["x"]);
-    });
   });
 });
 
@@ -1114,8 +1088,8 @@ describe("an index over another index", () => {
   it("holds the rows that its rows give of each row of the other index", async () => {
     const stores = newStores();
     await recordIn(stores, [encodeObject(note, { names: ["b", "a"] })], schemas);
-    expect(await namesOf(await scan(stores.privateStore, byUpperName))).toEqual(["A", "B"]);
-    expect(await namesOf(await scan(stores.privateStore, byName))).toEqual(["a", "b"]);
+    expect(await namesOf(await scan(stores.store, byUpperName))).toEqual(["A", "B"]);
+    expect(await namesOf(await scan(stores.store, byName))).toEqual(["a", "b"]);
   });
 
   it("holds no rows of an object of the schema of those rows that the store holds", async () => {
@@ -1126,17 +1100,17 @@ describe("an index over another index", () => {
       [first, listed, encodeObject(note, { of: new LinkValue(unlisted.link) })],
       [unlisted.bytes, named.bytes, ...schemas],
     );
-    expect(await namesOf(await scan(stores.privateStore, byUpperName))).toEqual(["A"]);
+    expect(await namesOf(await scan(stores.store, byUpperName))).toEqual(["A"]);
   });
 
   it("leaves its rows and those it reads out of the store, and out of an index over the blobs of their schema", async () => {
     const stores = newStores();
     await recordIn(stores, [first], [named.bytes, ...schemas]);
-    const rows = [await scan(stores.privateStore, byName), await scan(stores.privateStore, byUpperName)];
+    const rows = [await scan(stores.store, byName), await scan(stores.store, byUpperName)];
     for (const each of rows)
       for await (const { link } of each.range([])) expect(await stores.store.get(link)).toBeUndefined();
     const namedBlobs = indexOver(selectedBlobs(objectsOf(named)), named, ({ data }) => [data]);
-    expect(await namesOf(await scan(stores.privateStore, namedBlobs.orderedBy("name")))).toEqual([]);
+    expect(await namesOf(await scan(stores.store, namedBlobs.orderedBy("name")))).toEqual([]);
   });
 
   it("reads through the indexes it is over: their rows by link, and what those link to from the store", async () => {
@@ -1154,7 +1128,7 @@ describe("an index over another index", () => {
     });
     const stores = newStores();
     await recordIn(stores, [encodeObject(note, { names: ["a", "b"], n: 1 })], schemas);
-    expect(await namesOf(await scan(stores.privateStore, sources.orderedBy("name")))).toEqual([
+    expect(await namesOf(await scan(stores.store, sources.orderedBy("name")))).toEqual([
       "A from a of 1",
       "B from b of 1",
     ]);
@@ -1184,7 +1158,7 @@ describe("an index over another index", () => {
     const retracedRow = encodeObject(retraced, { name: "A", from: new LinkValue(tracedRow.link) });
     const stores = newStores();
     await recordIn(stores, [first], schemas);
-    expect(await namesOf(await scan(stores.privateStore, closures.orderedBy("name")))).toEqual(["A"]);
+    expect(await namesOf(await scan(stores.store, closures.orderedBy("name")))).toEqual(["A"]);
     expect(closure).toEqual(
       new Set([retracedRow.link, retraced.link, tracedRow.link, traced.link, first.link, note.link, rootSchema.link]),
     );
@@ -1212,7 +1186,7 @@ describe("an index over another index", () => {
     const upper: NameIndex = indexOver(names, named, ({ data }) => [{ name: `${data.name}`.toUpperCase() }]);
     const stores = newStores();
     await recordIn(stores, [first], schemas);
-    expect(await namesOf(await scan(stores.privateStore, upper.orderedBy("name")))).toEqual(["A"]);
+    expect(await namesOf(await scan(stores.store, upper.orderedBy("name")))).toEqual(["A"]);
     expect(validationCount).toBe(1);
   });
 
@@ -1220,7 +1194,7 @@ describe("an index over another index", () => {
     const stores = newStores();
     await recordIn(stores, [first, encodeObject(tag, { names: ["t"] })], schemas);
     const union = upperNames.union(indexOver(selectedRecords(objectsOf(tag)), named, namedOf)).orderedBy("name");
-    expect(await namesOf(await scan(stores.privateStore, union))).toEqual(["A", "t"]);
+    expect(await namesOf(await scan(stores.store, union))).toEqual(["A", "t"]);
   });
 
   describe("scanned again", () => {
@@ -1236,9 +1210,9 @@ describe("an index over another index", () => {
       const index = upperNamesNoting(readNames).orderedBy("name");
       const stores = newStores();
       await recordIn(stores, [first], schemas);
-      expect(await namesOf(await scan(stores.privateStore, index))).toEqual(["A"]);
+      expect(await namesOf(await scan(stores.store, index))).toEqual(["A"]);
       await recordIn(stores, [second]);
-      expect(await namesOf(await scan(stores.privateStore, index))).toEqual(["A", "B"]);
+      expect(await namesOf(await scan(stores.store, index))).toEqual(["A", "B"]);
       expect(readNames).toEqual(["a", "b"]);
     });
 
@@ -1246,9 +1220,9 @@ describe("an index over another index", () => {
       const requestedLinks: Link<unknown>[] = [];
       const stores = newStores(backendNoting(requestedLinks, new MemoryBackend()));
       await recordIn(stores, [first], schemas);
-      await scan(stores.privateStore, byUpperName);
-      await scan(stores.privateStore, byName);
-      await scan(stores.privateStore, upperNamesNoting([]).orderedBy("name"));
+      await scan(stores.store, byUpperName);
+      await scan(stores.store, byName);
+      await scan(stores.store, upperNamesNoting([]).orderedBy("name"));
       expect(requestedLinks.filter((link) => link === first.link)).toHaveLength(1);
     });
 
@@ -1266,16 +1240,6 @@ describe("an index over another index", () => {
       expect(await namesOf(await scan(store, index))).toEqual(["A"]);
       await stagedStore.commit();
       expect(await namesOf(await scan(store, index))).toEqual(["A", "B"]);
-    });
-
-    it("reads, on a secret store, the rows that the other index gives of its secrets", async () => {
-      const index = upperNamesNoting([], indexOver(selectedSecrets(objectsOf(note)), named, namedOf)).orderedBy("name");
-      const stores = newStores();
-      const secretStore = new SecretStore(stores.store, new MemoryBackend());
-      await recordIn(stores, [first], schemas);
-      await secretStore.write({ secrets: [second.link], blobs: [second.bytes] });
-      expect(await namesOf(await scan(secretStore, index))).toEqual(["B"]);
-      expect(await namesOf(await scan(stores.privateStore, index))).toEqual([]);
     });
   });
 });

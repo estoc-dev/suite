@@ -1,12 +1,12 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
-import { bytes, type DataOf, link, schema } from "@estoc/schema";
+import { type DataOf, link, type SecretData, schema, secretSchema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
 import { isSameKey, type KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 import { type Signer, SoftwareSigner } from "./signer.ts";
 
-export const secretKeySchema = schema("Secret Key", { key: link(), secret: bytes() });
+export const secretKeySchema = schema("Secret Key", { key: link(), secret: link() });
 
 export type SecretKeyData = DataOf<typeof secretKeySchema>;
 
@@ -14,6 +14,8 @@ export interface SecretKeyObject {
   readonly link: Link<unknown>;
   readonly key: KeyObject;
   readonly signer: Signer;
+  readonly secret: EncodedObject<SecretData>;
+  /** Its closure but for `secret`, which is written apart, by what writes Secrets. */
   readonly blobs: readonly Uint8Array[];
 }
 
@@ -25,11 +27,12 @@ export class SecretKeys {
     this.#keys = keys;
   }
 
-  encode(scheme: CurveScheme, secret: Uint8Array): SecretKeyObject {
-    const signer = SoftwareSigner.fromSecretKey(scheme, secret);
+  encode(scheme: CurveScheme, secretKey: Uint8Array): SecretKeyObject {
+    const signer = SoftwareSigner.fromSecretKey(scheme, secretKey);
     const key = this.#keys.encode(signer.key);
-    const object = encodeObject(this.schema, { key: new LinkValue(key.link), secret });
-    return secretKeyOf(object, key, signer);
+    const secret = encodeObject(secretSchema, { bytes: secretKey });
+    const object = encodeObject(this.schema, { key: new LinkValue(key.link), secret: new LinkValue(secret.link) });
+    return secretKeyOf(object, key, signer, secret);
   }
 
   async read(link: Link<unknown>, reader: Reader): Promise<SecretKeyObject> {
@@ -37,12 +40,18 @@ export class SecretKeys {
     const key = await this.#keys.read(object.data.key.link, reader);
     const { scheme } = key;
     if (!isCurveScheme(scheme)) throw new Error(`the ${scheme.name} scheme is not one a curve signs in`);
-    const signer = SoftwareSigner.fromSecretKey(scheme, object.data.secret);
-    if (!isSameKey(signer.key, key)) throw new Error(`the secret ${link} holds is not that of ${key.link}`);
-    return secretKeyOf(object, key, signer);
+    const secret = await readObject(reader, object.data.secret.link, secretSchema);
+    const signer = SoftwareSigner.fromSecretKey(scheme, secret.data.bytes);
+    if (!isSameKey(signer.key, key)) throw new Error(`the secret ${link} links to is not that of ${key.link}`);
+    return secretKeyOf(object, key, signer, secret);
   }
 }
 
-function secretKeyOf(object: EncodedObject<SecretKeyData>, key: KeyObject, signer: Signer): SecretKeyObject {
-  return { link: object.link, key, signer, blobs: blobsOf(object, key.blobs) };
+function secretKeyOf(
+  object: EncodedObject<SecretKeyData>,
+  key: KeyObject,
+  signer: Signer,
+  secret: EncodedObject<SecretData>,
+): SecretKeyObject {
+  return { link: object.link, key, signer, secret, blobs: blobsOf(object, key.blobs) };
 }

@@ -3,8 +3,8 @@ import { type EncodedObject, type Link, linkOf } from "@estoc/object";
 /**
  * - A backend keeps bytes and links as it is given them; the store hashes and decodes, and hashes
  *   again what it gets back, so a backend that was damaged makes reading fail.
- * - A store and each store kept beside it are given backends over storage of their own, such as a
- *   SQLite file each, or one reads what another holds.
+ * - A store, and the `Marks` and `Secrets` that write what it reads, are given one backend. What
+ *   is given the backend itself reads and writes all of it, Secrets and marks as well.
  */
 export interface Backend {
   /** Gives an array the caller may change without changing what is kept. */
@@ -12,8 +12,7 @@ export interface Backend {
   has(link: Link<unknown>): Promise<boolean>;
   /**
    * Puts the blobs one after another in the order given, and then lists `listedLinks`, so that a
-   * write cut short lists nothing whose closure was not kept. Part of that closure, a listed link's
-   * own blob as well, can be held by a store this backend is kept beside and not given here.
+   * write cut short lists nothing whose closure was not kept.
    */
   put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<EncodedObject>>): Promise<void>;
   /**

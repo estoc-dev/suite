@@ -16,8 +16,8 @@ import {
   Intake,
   inboundSchema,
   indexOver,
+  Marks,
   MemoryBackend,
-  PrivateStore,
   RefusedBatch,
   Store,
   scan,
@@ -44,9 +44,9 @@ const ticking = (start = 1000) => {
 };
 
 function sides(clock = ticking()) {
-  const store = new Store(new MemoryBackend());
-  const privateStore = new PrivateStore(store, new MemoryBackend());
-  return { store, privateStore, intake: new Intake(store, privateStore, clock) };
+  const backend = new MemoryBackend();
+  const store = new Store(backend);
+  return { store, intake: new Intake(store, new Marks(backend), clock) };
 }
 
 async function listOf<T>(links: AsyncIterable<T>): Promise<T[]> {
@@ -78,23 +78,24 @@ describe("inboundSchema", () => {
 });
 
 describe("an intake", () => {
-  it("keeps a bundle in the store, and marks in the private store that it came in, by its clock", async () => {
-    const { store, privateStore, intake } = sides();
+  it("keeps a bundle in the store, and marks that it came in, by its clock", async () => {
+    const { store, intake } = sides();
     const image = utf8("an image");
     const note = object({ image: new LinkValue(linkOf(image)) });
     const inbound = await intake.receive(bundleOf(note, [image, ...anything.blobs]));
     expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000 });
     expect(await store.get(note.link)).toEqual(note.bytes);
     expect(await store.get(linkOf(image))).toEqual(image);
-    expect(await listOf(privateStore.marks())).toEqual([inbound.link]);
-    expect(await privateStore.get(inbound.link)).toEqual(inbound.bytes);
+    expect(await listOf(store.marks())).toEqual([inbound.link]);
+    expect(await store.get(inbound.link)).toEqual(inbound.bytes);
   });
 
-  it("gives the store neither the mark nor its schema", async () => {
+  it("writes a mark that the store refuses the closure of, and leaves the closure of the bundle to give", async () => {
     const { store, intake } = sides();
-    const inbound = await intake.receive(bundleOf(object({ text: "hello" })));
-    expect(await store.get(inbound.link)).toBeUndefined();
-    expect(await store.get(inboundSchema.link)).toBeUndefined();
+    const note = object({ text: "hello" });
+    const inbound = await intake.receive(bundleOf(note));
+    await expect(store.closure(inbound.link)).rejects.toThrow("a mark, which stays in the store");
+    expect([...(await store.closure(note.link)).keys()]).toContain(note.link);
   });
 
   it("drops the blobs of a bundle outside its root's closure, whatever they link to", async () => {
@@ -107,43 +108,42 @@ describe("an intake", () => {
   });
 
   it("keeps the channel a bundle came in by with the mark, and gives it as via", async () => {
-    const { store, privateStore, intake } = sides();
+    const { store, intake } = sides();
     const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
     const inbound = await intake.receive(bundleOf(note), mailbox);
     expect(inbound.data).toEqual({ bundle: new LinkValue(note.link), at: 1000, via: new LinkValue(mailbox.link) });
-    expect(await listOf(privateStore.marks())).toEqual([inbound.link]);
-    expect(await privateStore.get(mailbox.link)).toEqual(mailbox.bytes);
-    expect(await privateStore.get(channel.link)).toEqual(channel.bytes);
-    expect(await store.get(mailbox.link)).toBeUndefined();
+    expect(await listOf(store.marks())).toEqual([inbound.link]);
+    expect(await store.get(mailbox.link)).toEqual(mailbox.bytes);
+    expect(await store.get(channel.link)).toEqual(channel.bytes);
   });
 
   it("takes the time from Date.now unless given a clock", async () => {
     const before = Date.now();
-    const store = new Store(new MemoryBackend());
-    const intake = new Intake(store, new PrivateStore(store, new MemoryBackend()));
+    const backend = new MemoryBackend();
+    const intake = new Intake(new Store(backend), new Marks(backend));
     const { data } = await intake.receive(bundleOf(object({ text: "hello" })));
     expect(data.at).toBeGreaterThanOrEqual(before);
     expect(data.at).toBeLessThanOrEqual(Date.now());
   });
 
   it("marks a bundle once for each time it comes in", async () => {
-    const { privateStore, intake } = sides();
+    const { store, intake } = sides();
     const bundle = bundleOf(object({ text: "hello" }));
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
     expect(second.data.at).toBeGreaterThan(first.data.at);
-    expect(await listOf(privateStore.marks())).toEqual([first.link, second.link]);
+    expect(await listOf(store.marks())).toEqual([first.link, second.link]);
   });
 
   it("marks a bundle once when it comes in twice at the same time by its clock", async () => {
-    const { privateStore, intake } = sides(() => 1000);
+    const { store, intake } = sides(() => 1000);
     const bundle = bundleOf(object({ text: "hello" }));
     const first = await intake.receive(bundle);
     const second = await intake.receive(bundle);
     expect(second.link).toBe(first.link);
-    expect(await listOf(privateStore.marks())).toEqual([first.link]);
+    expect(await listOf(store.marks())).toEqual([first.link]);
   });
 
   it("takes a bundle that leaves out blobs the store holds", async () => {
@@ -156,28 +156,28 @@ describe("an intake", () => {
   });
 
   it("refuses a bundle that leaves out a blob of its root's closure that the store does not hold", async () => {
-    const { store, privateStore, intake } = sides();
+    const { store, intake } = sides();
     const missing = utf8("not in the bundle");
     const note = object({ image: new LinkValue(linkOf(missing)) });
     await expect(intake.receive(bundleOf(note))).rejects.toThrow(RefusedBatch);
-    expect(await listOf(privateStore.marks())).toEqual([]);
+    expect(await listOf(store.marks())).toEqual([]);
     expect(await store.get(note.link)).toBeUndefined();
   });
 
   it("stages a bundle, and neither keeps it nor marks that it came in until that is committed", async () => {
-    const { store, privateStore, intake } = sides();
+    const { store, intake } = sides();
     const channel = schema("Channel", { name: string() });
     const mailbox = encodeObject(channel, { name: "a mailbox" });
     const note = object({ text: "hello" });
     const stagedStore = await intake.stage(bundleOf(note), mailbox);
     expect(await stagedStore.get(note.link)).toEqual(note.bytes);
     expect(await store.get(note.link)).toBeUndefined();
-    expect(await listOf(privateStore.marks())).toEqual([]);
+    expect(await listOf(store.marks())).toEqual([]);
     await stagedStore.commit();
     expect(await store.get(note.link)).toEqual(note.bytes);
-    const [inbound, ...others] = (await listOf(privateStore.marks())) as Link<InboundObject>[];
+    const [inbound, ...others] = (await listOf(store.marks())) as Link<InboundObject>[];
     expect(others).toEqual([]);
-    expect((await readObject(privateStore, inbound as Link<InboundObject>, inboundSchema)).data).toEqual({
+    expect((await readObject(store, inbound as Link<InboundObject>, inboundSchema)).data).toEqual({
       bundle: new LinkValue(note.link),
       at: 1000,
       via: new LinkValue(mailbox.link),
@@ -201,12 +201,12 @@ describe("an intake", () => {
   });
 
   it("keeps a bundle with no mark of it when the channel links to a blob that nothing holds", async () => {
-    const { store, privateStore, intake } = sides();
+    const { store, intake } = sides();
     const mailbox = object({ name: "a mailbox", icon: new LinkValue(linkOf(utf8("not held"))) });
     const note = object({ text: "hello" });
     await expect(intake.receive(bundleOf(note), mailbox)).rejects.toThrow(RefusedBatch);
     expect(await store.get(note.link)).toEqual(note.bytes);
-    expect(await listOf(privateStore.marks())).toEqual([]);
+    expect(await listOf(store.marks())).toEqual([]);
   });
 });
 
@@ -217,21 +217,21 @@ describe("what an intake marks", () => {
   ]).orderedBy("bundle", "at");
 
   it("gives an index when each bundle came in, the earliest first", async () => {
-    const { privateStore, intake } = sides();
+    const { store, intake } = sides();
     const bundle = bundleOf(object({ text: "hello" }));
     await intake.receive(bundle);
     await intake.receive(bundle);
-    const rows = await listOf((await scan(privateStore, cameIn)).range([new LinkValue(bundle.link)]));
+    const rows = await listOf((await scan(store, cameIn)).range([new LinkValue(bundle.link)]));
     expect(rows.map(({ data }) => data.at)).toEqual([1000, 1001]);
   });
 
   it("are the only Inbound an index reads: one that someone sends is a blob of the store", async () => {
-    const { store, privateStore, intake } = sides();
+    const { store, intake } = sides();
     const note = object({ text: "hello" });
     const sentInbound = encodeObject(inboundSchema, { bundle: new LinkValue(note.link as Link<never>), at: 0 });
     await intake.receive(bundleOf(sentInbound, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
     expect(await store.get(sentInbound.link)).toEqual(sentInbound.bytes);
-    const rows = await listOf((await scan(privateStore, cameIn)).range([]));
+    const rows = await listOf((await scan(store, cameIn)).range([]));
     expect(rows.map(({ data }) => data)).toEqual([{ bundle: new LinkValue(sentInbound.link), at: 1000 }]);
   });
 });

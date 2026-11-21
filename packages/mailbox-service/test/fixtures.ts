@@ -13,7 +13,7 @@ import {
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
-import { MemoryBackend, PrivateStore, recordSchema, Store } from "@estoc/store";
+import { type Backend, Marks, MemoryBackend, recordSchema, Secrets, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
@@ -24,7 +24,26 @@ import { loadMailboxService } from "../src/server.ts";
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
-export const memoryStore = () => new Store(new MemoryBackend());
+
+const writersByStore = new WeakMap<Store, { readonly marks: Marks; readonly secrets: Secrets }>();
+/**
+ * A store over `backend`, one in memory unless given, with what writes its marks and its Secrets
+ * kept for `marksOf` and `secretsOf`.
+ */
+export function memoryStore(backend: Backend = new MemoryBackend()): Store {
+  const store = new Store(backend);
+  writersByStore.set(store, { marks: new Marks(backend), secrets: new Secrets(backend) });
+  return store;
+}
+
+function writersOf(store: Store) {
+  const writers = writersByStore.get(store);
+  if (writers === undefined) throw new Error("the store was not made by `memoryStore`");
+  return writers;
+}
+
+export const marksOf = (store: Store): Marks => writersOf(store).marks;
+export const secretsOf = (store: Store): Secrets => writersOf(store).secrets;
 
 /** The bytes of the object that a key, a signed identity or a signature is read from, which its blobs hold. */
 export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonly blobs: readonly Uint8Array[] }) {
@@ -33,19 +52,11 @@ export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonl
   return bytes;
 }
 
-const privateStores = new WeakMap<Store, PrivateStore>();
-/** The private store that a test keeps beside `store`, in memory: the same one each time it is asked for. */
-export function privateStoreBeside(store: Store): PrivateStore {
-  const privateStore = privateStores.get(store) ?? new PrivateStore(store, new MemoryBackend());
-  privateStores.set(store, privateStore);
-  return privateStore;
-}
-
-/** The links of the objects that the records among the marks of `privateStore` link to, in the order of the records. */
-export async function recordedObjectsIn(privateStore: PrivateStore): Promise<Link<never>[]> {
+/** The links of the objects that the records among the marks of `store` link to, in the order of the records. */
+export async function recordedObjectsIn(store: Store): Promise<Link<never>[]> {
   const links: Link<never>[] = [];
-  for await (const mark of privateStore.marks()) {
-    const record = await objectsOf(recordSchema).read(mark, privateStore);
+  for await (const mark of store.marks()) {
+    const record = await objectsOf(recordSchema).read(mark, store);
     if (record !== undefined) links.push(record.data.object.link as Link<never>);
   }
   return links;
@@ -87,19 +98,19 @@ export async function setUpService({
   start = 1_000,
   by = serviceSigner,
   store,
-  privateStore = privateStoreBeside(store),
+  marks = marksOf(store),
 }: {
   readonly start?: number;
   readonly by?: Signer;
   readonly store: Store;
-  readonly privateStore?: PrivateStore;
+  readonly marks?: Marks;
 }) {
-  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, privateStore, at: start });
+  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, marks, at: start });
 }
 
-async function recordsIdentityVersion(privateStore: PrivateStore): Promise<boolean> {
-  for (const link of await recordedObjectsIn(privateStore))
-    if ((await objectsOf(signedIdentities.schema).read(link, privateStore)) !== undefined) return true;
+async function recordsIdentityVersion(store: Store): Promise<boolean> {
+  for (const link of await recordedObjectsIn(store))
+    if ((await objectsOf(signedIdentities.schema).read(link, store)) !== undefined) return true;
   return false;
 }
 
@@ -107,17 +118,16 @@ async function recordsIdentityVersion(privateStore: PrivateStore): Promise<boole
  * A service that keeps everything in memory, and whose clock counts up a
  * millisecond a reading from `start`, or stands at `clock.now` when it is
  * given, which a test moves. Given the store of another, with its accounts
- * and its mailboxes, it is that service started again. Its private store is
- * the one the tests keep beside the store, unless it is given another. It is
- * set up as `setUpService` does unless its private store records an identity
- * version.
+ * and its mailboxes, it is that service started again. Its marks are written
+ * by what `memoryStore` kept for the store, unless it is given `marks`. It is
+ * set up as `setUpService` does unless its store records an identity version.
  */
 export async function memoryService({
   start = 1_000,
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
-  privateStore = privateStoreBeside(store),
+  marks = marksOf(store),
   offeredTerms = terms,
   clock,
   accounts = new MemoryAccounts(),
@@ -127,25 +137,25 @@ export async function memoryService({
   readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
-  readonly privateStore?: PrivateStore;
+  readonly marks?: Marks;
   readonly offeredTerms?: MailboxTerms;
   readonly clock?: { now: number };
   readonly accounts?: Accounts;
   readonly mailboxes?: Mailboxes;
 } = {}) {
-  if (!(await recordsIdentityVersion(privateStore))) await setUpService({ start, by, store, privateStore });
+  if (!(await recordsIdentityVersion(store))) await setUpService({ start, by, store, marks });
   let now = start;
   const service = await loadMailboxService(keyringOf(by), {
     origin,
     store,
-    privateStore,
+    marks,
     accounts,
     mailboxes,
     terms: offeredTerms,
     schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
-  return { service, store, privateStore, accounts, mailboxes };
+  return { service, store, accounts, mailboxes };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
 import type { RowsByIndex } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
+import { UnreadSecret } from "./secret-blob.ts";
 import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
 
 export class DerivedObjects<F extends ValueMap> implements Listing {
@@ -40,19 +41,28 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
       const reader: Reader = { get: (link) => listing.bytesOf(link) ?? store.get(link) };
       for (const link of listing.links.slice(readCount)) {
         const blob = new ScannedBlob(link, reader, listing.objectOf(link));
+        const linkObjects: EncodedObject<F>[] = [];
+        const linkFailures: ItemFailure[] = [];
         for (const part of originParts) {
           const partObjects: EncodedObject<F>[] = [];
           try {
             for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
-            ownFailures.push({ item: link, error });
+            linkFailures.push({ item: link, error });
             continue;
           }
-          for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
+          linkObjects.push(...partObjects);
         }
-        // What a part threw because the store failed is not a failure of the part.
         const readFailure = blob.readFailure;
-        if (readFailure !== undefined) throw readFailure.error;
+        if (readFailure !== undefined) {
+          // A Secret among what is listed gives no rows and is no failure, so that a scan of the
+          // blobs goes on past one.
+          if (readFailure.error instanceof UnreadSecret && readFailure.error.link === link) continue;
+          // What a part threw because the store failed is not a failure of the part.
+          throw readFailure.error;
+        }
+        ownFailures.push(...linkFailures);
+        for (const object of linkObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
       }
     }
     const isSame = [...listings].every(([origin, listing]) => this.#listings.get(origin) === listing);

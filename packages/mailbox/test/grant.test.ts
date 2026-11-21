@@ -17,7 +17,7 @@ import {
   objectFormat,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { arrivalsView, Intake, MemoryBackend, PrivateStore, SecretStore, Store, view } from "@estoc/store";
+import { arrivalsView, Intake, Marks, MemoryBackend, Secrets, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, type MailboxData, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -45,7 +45,6 @@ interface Person {
   readonly signedIdentity: SignedIdentityObject;
   readonly identifier: Link<unknown>;
   readonly store: Store;
-  readonly privateStore: PrivateStore;
   readonly post: Post;
   readonly intake: Intake;
   readonly inbox: Inbox;
@@ -54,26 +53,21 @@ interface Person {
 
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
-async function person(
-  fill: number,
-  backend = new MemoryBackend(),
-  privateBackend = new MemoryBackend(),
-): Promise<Person> {
+async function person(fill: number, backend = new MemoryBackend()): Promise<Person> {
   const signer = signerOf(fill);
   const signedIdentity = await publish(signer, { at: 0 });
   const store = new Store(backend);
   const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
     (await view(store, seenPeople)).current(inHand),
   );
-  const privateStore = new PrivateStore(store, privateBackend);
-  const secretStore = new SecretStore(store, new MemoryBackend());
-  const post = new Post(store, privateStore, secretStore, { transports: [network.transport], clock });
-  const intake = new Intake(store, privateStore, clock);
+  const marks = new Marks(backend);
+  const post = new Post(store, marks, new Secrets(backend), { transports: [network.transport], clock });
+  const intake = new Intake(store, marks, clock);
   const queue = network.queue();
   const inbox = await post.openInbox(() => queue.transport);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));
   const { identifier } = actor;
-  return { actor, signedIdentity, identifier, store, privateStore, post, intake, inbox, collect };
+  return { actor, signedIdentity, identifier, store, post, intake, inbox, collect };
 }
 
 // The agent signs by `identityVersion` whatever the store holds, as a device its root removed still can.
@@ -116,11 +110,11 @@ async function send(from: Person, to: Person, root: Link<unknown>) {
   await to.collect();
 }
 
-const grantFrom = async ({ store, privateStore }: Person, from: Person, to: Person) =>
+const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   (await view(store, grants.series)).grantFrom(
     from.identifier,
     to.identifier,
-    (await view(store, seenPeople)).asOfArrival(await view(privateStore, arrivalsOfIdentityVersions)),
+    (await view(store, seenPeople)).asOfArrival(await view(store, arrivalsOfIdentityVersions)),
   );
 
 describe("the latest grant of one person to another", () => {
@@ -384,9 +378,9 @@ describe("a grant by an agent that a later identity version does not list", () =
     expect(await grantFrom(bob, former, bob)).toBeUndefined();
   });
 
-  it("reads alike from a store and a private store made again on the same backends", async () => {
-    const [backend, privateBackend] = [new MemoryBackend(), new MemoryBackend()];
-    const [alice, bob] = await Promise.all([person(1), person(2, backend, privateBackend)]);
+  it("reads alike from a store made again on the same backend", async () => {
+    const backend = new MemoryBackend();
+    const [alice, bob] = await Promise.all([person(1), person(2, backend)]);
     const [former, current] = [
       personSigningAs(alice, formerAgent, listingIdentityVersion),
       personSigningAs(alice, currentAgent, removalIdentityVersion),
@@ -397,8 +391,7 @@ describe("a grant by an agent that a later identity version does not list", () =
     await handOver(former, bob, (await give(former, bob, [], 9_000)).link);
     const latest = await grantFrom(bob, current, bob);
 
-    const store = new Store(backend);
-    const again = { ...bob, store, privateStore: new PrivateStore(store, privateBackend) };
+    const again = { ...bob, store: new Store(backend) };
     expect(latest?.signature.link).toBe(before.link);
     expect((await grantFrom(again, current, bob))?.signature.link).toBe(before.link);
   });

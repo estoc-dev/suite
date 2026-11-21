@@ -1,16 +1,16 @@
 import { type Link, objectsOf } from "@estoc/object";
-import { type PrivateStore, recordSchema } from "@estoc/store";
+import { recordSchema, type Store } from "@estoc/store";
 
 const records = objectsOf(recordSchema);
 
 /**
- * What `privateStore` lists, in the order it was written: each mark by its link, and a record by
- * the link of the object it records.
+ * The marks `store` lists, in the order they were written: each by its link, and a record by the
+ * link of the object it records.
  */
-export async function listedIn(privateStore: PrivateStore): Promise<Link<unknown>[]> {
+export async function listedIn(store: Store): Promise<Link<unknown>[]> {
   const links: Link<unknown>[] = [];
-  for await (const mark of privateStore.marks()) {
-    links.push((await records.read(mark, privateStore))?.data.object.link ?? mark);
+  for await (const mark of store.marks()) {
+    links.push((await records.read(mark, store))?.data.object.link ?? mark);
   }
   return links;
 }

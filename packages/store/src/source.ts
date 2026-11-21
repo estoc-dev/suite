@@ -53,11 +53,6 @@ const listedMarks: Origin = {
   listingIn: (rows) => rows.marks(),
 };
 
-const listedSecrets: Origin = {
-  readsBlobs: false,
-  listingIn: (rows) => rows.secrets(),
-};
-
 const heldBlobs: Origin = {
   readsBlobs: true,
   listingIn: (rows) => rows.heldBlobs(),
@@ -111,31 +106,25 @@ export class Source<T> {
   }
 }
 
-/**
- * Only a private store lists records. One that a store holds, as one that came in a bundle, records
- * nothing.
- */
+/** A record is one that `Marks` listed. One that only came to the store, as in a bundle, records nothing. */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
- * Only a private store lists marks. An object of the schema of a mark that a store holds, as one
- * that came in a bundle, is not one of these.
+ * A mark is what `Marks` listed. An object of the schema of a mark that only came to the store, as
+ * in a bundle, is not one of these.
  */
 export function selectedMarks<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: listedMarks, itemOf: (blob) => itemOf(selection, blob) });
-}
-
-export function selectedSecrets<T>(selection: Selection<T>): Source<T> {
-  return new Source({ origin: listedSecrets, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A scan reads every blob the store holds, attachments as well, once for each index.
+ * - A scan reads every blob the store holds but the Secrets, attachments as well, once for each
+ *   index.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
   return new Source({ origin: heldBlobs, itemOf: (blob) => itemOf(selection, blob) });

@@ -13,4 +13,5 @@ export {
   schema,
   string,
 } from "./fields.ts";
+export { type SecretData, secretSchema } from "./secret.ts";
 export { rootSchema, schemaValidator } from "./validator.ts";

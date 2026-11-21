@@ -3,7 +3,6 @@ import { array, type DataOf, integer, link, schema, string } from "@estoc/schema
 import { describe, expect, it } from "vitest";
 import {
   indexOver,
-  Marks,
   MemoryBackend,
   type OrderedIndex,
   recordsOf,
@@ -43,14 +42,14 @@ const latest: View<Tagged, TaggedOrder, Latest> = {
 
 function newStores() {
   const backend = new MemoryBackend();
-  return { store: new Store(backend), marks: new Marks(backend) };
+  return { store: new Store(backend) };
 }
 
-async function record({ store, marks }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
+async function record({ store }: ReturnType<typeof newStores>, ...notes: Note[]): Promise<void> {
   const objects = notes.map((note) => encodeObject(noteSchema, note));
   const links = objects.map(({ link }) => link);
   await store.write({ roots: links, blobs: [...objects.map(({ bytes }) => bytes), ...noteSchema.blobs] });
-  await marks.write(recordsOf(links, Date.now()));
+  await store.writeMarks(recordsOf(links, Date.now()));
 }
 
 describe("the value of a view", () => {

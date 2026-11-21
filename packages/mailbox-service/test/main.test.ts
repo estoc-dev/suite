@@ -5,7 +5,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { isSameKey, loadIdentity } from "@estoc/identity";
 import { Keyring } from "@estoc/keyring";
-import { Marks, recordsOf, Secrets, Store } from "@estoc/store";
+import { recordsOf, Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
@@ -66,9 +66,8 @@ async function start(settings: Readonly<Record<string, string>>) {
 function openStores(path: string) {
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
-  const [store, marks] = [new Store(backend), new Marks(backend)];
-  const keyring = new Keyring(store, marks, new Secrets(backend), loadIdentity(schemes).secretKeys);
-  return { store, marks, keyring };
+  const store = new Store(backend);
+  return { store, keyring: new Keyring(store, loadIdentity(schemes).secretKeys) };
 }
 
 describe("main.ts", { timeout: 20_000 }, () => {
@@ -129,7 +128,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const withoutKey = { ...settings, MAILBOX_DATABASE: await makeTemporaryPath() };
     const copy = openStores(withoutKey.MAILBOX_DATABASE);
     await copy.store.write({ roots: [recorded], blobs: (await setUp.store.closure(recorded)).values() });
-    await copy.marks.write(recordsOf([recorded], 0));
+    await copy.store.writeMarks(recordsOf([recorded], 0));
     const { code, stderr } = await run(main, [], withoutKey);
     expect(code).toBe(1);
     expect(stderr).toContain(`the keyring does not hold the Secret Key of ${stdout.trim()}`);

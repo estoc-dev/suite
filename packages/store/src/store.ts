@@ -1,15 +1,18 @@
 import type { Bytes, EncodedObject, Link, Reader } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
-import { type Batch, closureIn, copiedBlobs, leavesFirst, refuseSecrets } from "./batch.ts";
+import { type Batch, closureIn, copiedBlobs, copiedMarks, leavesFirst, type MarkBatch } from "./batch.ts";
 import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
-import { isSecret, UnreadSecret } from "./secret-blob.ts";
 
 /**
- * - Holding a blob says that it came in, and not whose it is: a mark that came in a bundle is held
- *   here like any blob and marks nothing, and what reads the blobs themselves reads a stranger's
- *   among them.
- * - A Secret is neither read, written nor listed among the blobs here, and a closure that reaches
- *   a Secret or a mark is refused, so what sends closures on sends neither.
+ * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
+ *   a stranger's among them. A mark is the user's own because `writeMarks` listed it, and `write`
+ *   and `stage` list nothing, so an object of the schema of a mark that came in a bundle marks
+ *   nothing.
+ * - A store keeps no rule about who reads what. Packages are given the whole of it, Secrets and
+ *   marks as well, and what shows a part of it to an app, or sends a closure to another party,
+ *   leaves out or refuses what is not to go there.
+ * - Marks are not signed, and `writeMarks` writes any mark, so it is no boundary between the
+ *   programs that share a store.
  * - There is no transaction that reads and then writes. Two devices that each find something
  *   missing will both write it, so what has to come out as one is written so that every device
  *   writes the same object, with the same link.
@@ -21,6 +24,7 @@ export interface Store {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   write(batch: Batch): Promise<void>;
   stage(batch: Batch): Promise<StagedStore>;
+  writeMarks(batch: MarkBatch): Promise<void>;
   /** A write cut short can leave a blob here that no root reaches. */
   blobs(): AsyncIterable<Link<unknown>>;
   /** In the order they were first written. */
@@ -55,10 +59,8 @@ export class StoreOf implements Store, RowKeeper {
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
-  async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
-    const bytes = await blobIn(this.#backend, link);
-    if (bytes !== undefined && isSecret(bytes)) throw new UnreadSecret(link);
-    return bytes;
+  get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
+    return blobIn(this.#backend, link);
   }
 
   async write(batch: Batch): Promise<void> {
@@ -66,28 +68,24 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    const keptBlobs = await leavesFirst(roots, copiedBlobs(blobs), this.#backend);
-    refuseSecrets(keptBlobs);
-    return new StagedStoreOf(this, this.#backend, keptBlobs);
+    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBlobs(blobs), this.#backend));
   }
 
-  async *blobs(): AsyncIterable<Link<unknown>> {
-    for await (const link of this.#backend.blobs()) {
-      const bytes = await this.#backend.get(link);
-      if (bytes === undefined || !isSecret(bytes)) yield link;
-    }
+  async writeMarks({ marks, blobs }: MarkBatch): Promise<void> {
+    const batch = copiedMarks(marks, blobs);
+    await this.#backend.put(await leavesFirst(batch.marks, batch.blobs, this.#backend), batch.marks);
+  }
+
+  blobs(): AsyncIterable<Link<unknown>> {
+    return this.#backend.blobs();
   }
 
   marks(): AsyncIterable<Link<EncodedObject>> {
     return this.#backend.listedLinks();
   }
 
-  async closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
-    const closureBlobs = await closureIn(this, link);
-    const marks = await this[rowsByIndex].marks();
-    for (const blob of closureBlobs.keys())
-      if (marks.has(blob)) throw new Error(`the closure of ${link} reaches ${blob}, a mark, which stays in the store`);
-    return closureBlobs;
+  closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
+    return closureIn(this, link);
   }
 }
 

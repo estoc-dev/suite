@@ -55,11 +55,9 @@ export interface RowsByIndex {
 class ListedLinks implements Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[] = [];
-  readonly #links: ReadonlySet<Link<unknown>>;
 
-  constructor(links: ReadonlySet<Link<unknown>> = new Set()) {
-    this.#links = links;
-    this.links = [...links];
+  constructor(links: readonly Link<unknown>[] = []) {
+    this.links = links;
   }
 
   async adding(links: Iterable<Link<unknown>> | AsyncIterable<Link<unknown>>): Promise<ListedLinks> {
@@ -67,11 +65,7 @@ class ListedLinks implements Listing {
     for await (const link of links) addedLinks.push(link);
     if (addedLinks.length === 0) return this;
     const listedLinks = new Set([...this.links, ...addedLinks]);
-    return listedLinks.size === this.links.length ? this : new ListedLinks(listedLinks);
-  }
-
-  has(link: Link<unknown>): boolean {
-    return this.#links.has(link);
+    return listedLinks.size === this.links.length ? this : new ListedLinks([...listedLinks]);
   }
 
   objectOf(): undefined {

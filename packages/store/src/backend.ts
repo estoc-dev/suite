@@ -1,10 +1,8 @@
 import { type EncodedObject, type Link, linkOf } from "@estoc/object";
 
 /**
- * - A backend keeps bytes and links as it is given them; the store hashes and decodes, and hashes
- *   again what it gets back, so a backend that was damaged makes reading fail.
- * - A store, and the `Marks` and `Secrets` that write what it reads, are given one backend. What
- *   is given the backend itself reads and writes all of it, Secrets and marks as well.
+ * A backend keeps bytes and links as it is given them; the store hashes and decodes, and hashes
+ * again what it gets back, so a backend that was damaged makes reading fail.
  */
 export interface Backend {
   /** Gives an array the caller may change without changing what is kept. */

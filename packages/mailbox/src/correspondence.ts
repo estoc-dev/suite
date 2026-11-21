@@ -1,7 +1,7 @@
 import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
 import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
-import { type ArrivalsView, arrivalsView, type Marks, recordsOf, type Store, view } from "@estoc/store";
+import { type ArrivalsView, arrivalsView, recordsOf, type Store, view } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
@@ -15,7 +15,6 @@ export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIde
  */
 export class Correspondence {
   readonly #store: Store;
-  readonly #marks: Marks;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
   readonly #clock: () => number;
@@ -25,7 +24,7 @@ export class Correspondence {
   readonly #arrivals: ArrivalsView;
 
   constructor(
-    { store, marks }: { readonly store: Store; readonly marks: Marks },
+    store: Store,
     post: Pick<Post, "outbox">,
     actor: Actor,
     clock: () => number,
@@ -33,7 +32,6 @@ export class Correspondence {
     { signatures, signedIdentities }: CorrespondenceIdentity,
   ) {
     this.#store = store;
-    this.#marks = marks;
     this.#post = post;
     this.#actor = actor;
     this.#clock = clock;
@@ -52,7 +50,7 @@ export class Correspondence {
       roots: [signature.link],
       blobs: [...signature.blobs, grant.bytes, ...this.#grants.schema.blobs, ...current.blobs],
     });
-    await this.#marks.write(recordsOf([signature.link], at));
+    await this.#store.writeMarks(recordsOf([signature.link], at));
     return signature;
   }
 

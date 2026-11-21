@@ -1,15 +1,6 @@
 import { encodeObject, type Implementation, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
-import {
-  indexOver,
-  Marks,
-  MemoryBackend,
-  type OrderedIndex,
-  recordsOf,
-  Store,
-  scan,
-  selectedRecords,
-} from "@estoc/store";
+import { indexOver, MemoryBackend, type OrderedIndex, recordsOf, Store, scan, selectedRecords } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type Lineage, type LineageNodeObject, lineages } from "../src/index.ts";
 
@@ -33,16 +24,15 @@ const byItem: HeadIndex = indexOver(selectedRecords(lineages.selection), headSch
 }).orderedBy("of", "head");
 
 function newStores() {
-  const backend = new MemoryBackend();
-  return { store: new Store(backend), marks: new Marks(backend) };
+  return { store: new Store(new MemoryBackend()) };
 }
 type Stores = ReturnType<typeof newStores>;
 
-async function recordHeads({ store, marks }: Stores, ...chains: readonly Lineage[]) {
+async function recordHeads({ store }: Stores, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
   const heads = chains.map(({ head }) => head.link);
   await store.write({ roots: heads, blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs] });
-  await marks.write(recordsOf(heads, Date.now()));
+  await store.writeMarks(recordsOf(heads, Date.now()));
 }
 
 async function readHeads({ store }: Stores, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
@@ -108,7 +98,7 @@ describe("the selection of a schema lineage over a store", () => {
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await stores.marks.write(recordsOf([untitled.link, titledObject.link], Date.now()));
+    await stores.store.writeMarks(recordsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
     const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };

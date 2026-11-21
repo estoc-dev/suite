@@ -21,7 +21,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
-import { type Marks, type Store, view } from "@estoc/store";
+import { refuseSecrets, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { Accounts } from "./accounts.ts";
 import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
@@ -57,12 +57,11 @@ const PICKUP_LIMIT = REQUEST_LIMIT + PICKUP.count * 128;
 export interface ServiceOptions {
   /** Set here rather than read from a request, whose host is the requester's to choose. */
   readonly origin: string;
-  readonly store: Store;
   /**
-   * The service answers by the acknowledgements it records through this, so one that only came to
-   * the store opens nothing.
+   * The service answers by the acknowledgements among the records of the store, so one that only
+   * came to it opens nothing.
    */
-  readonly marks: Marks;
+  readonly store: Store;
   readonly accounts: Accounts;
   readonly mailboxes: Mailboxes;
   /**
@@ -297,7 +296,9 @@ class MailboxService {
   }
 
   async #answerWith(link: Link<unknown>, status: number): Promise<Response> {
-    return bundleAnswer(status, encodeBundle(link, (await this.#store.closure(link)).values()));
+    const blobs = [...(await this.#store.closure(link)).values()];
+    refuseSecrets(blobs);
+    return bundleAnswer(status, encodeBundle(link, blobs));
   }
 }
 
@@ -348,10 +349,10 @@ export async function loadMailboxService(
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
-  const { store, marks } = options;
+  const { store } = options;
   const kit = loadIdentity(schemes);
   const seenPeople = peopleView(kit);
-  const notary = await loadNotary(keyring, { kit, store, marks, people: seenPeople, clock });
+  const notary = await loadNotary(keyring, { kit, store, people: seenPeople, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),

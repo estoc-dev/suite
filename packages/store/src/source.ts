@@ -106,14 +106,14 @@ export class Source<T> {
   }
 }
 
-/** A record is one that `Marks` listed. One that only came to the store, as in a bundle, records nothing. */
+/** A record is one among the marks of the store. One that only came to it, as in a bundle, records nothing. */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: recordedObjects, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
- * A mark is what `Marks` listed. An object of the schema of a mark that only came to the store, as
- * in a bundle, is not one of these.
+ * An object of the schema of a mark that only came to the store, as in a bundle, is not one of
+ * these.
  */
 export function selectedMarks<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: listedMarks, itemOf: (blob) => itemOf(selection, blob) });
@@ -123,8 +123,7 @@ export function selectedMarks<T>(selection: Selection<T>): Source<T> {
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A scan reads every blob the store holds but the Secrets, attachments as well, once for each
- *   index.
+ * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
   return new Source({ origin: heldBlobs, itemOf: (blob) => itemOf(selection, blob) });

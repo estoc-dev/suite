@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodeObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { Marks, MemoryBackend, Secrets, Store } from "@estoc/store";
+import { MemoryBackend, Store } from "@estoc/store";
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpTransport as http } from "../src/http.ts";
 import { MailboxKey, mailboxAt, Post, UndeliveredMessage } from "../src/index.ts";
@@ -130,7 +130,7 @@ describe("an HTTP outbox", () => {
   it("marks nothing of a send that the server timed out on, and marks the same root once sent again", async () => {
     const backend = new MemoryBackend();
     const store = new Store(backend);
-    const post = new Post(store, new Marks(backend), new Secrets(backend), options);
+    const post = new Post(store, options);
     const mailbox = mailboxBundleAt(`http://127.0.0.1:${port}/late-once`);
     await store.write({ roots: [mailbox.link, hello.link], blobs: [...mailbox.blobs(), hello.bytes, ...note.blobs] });
     const outbox = await post.outbox(mailbox.link);

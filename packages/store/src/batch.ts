@@ -9,20 +9,22 @@ import {
   schemaOf,
 } from "@estoc/object";
 import type { Backend } from "./backend.ts";
-import { isSecret } from "./secret-blob.ts";
 
 export interface Batch {
   readonly roots: Iterable<Link<unknown>>;
   readonly blobs: Iterable<Bytes<unknown>>;
 }
 
+export interface MarkBatch {
+  readonly marks: Iterable<Link<unknown>>;
+  readonly blobs: Iterable<Bytes<unknown>>;
+}
+
 /**
- * A batch that a store, `Marks` or `Secrets` refuses for what it is.
+ * A batch that a store refuses for what it is.
  *
  * - One of its `marks` whose blob it does not give, or that is not an object: the same batch is
  *   refused again whatever comes to be held.
- * - A Secret among the blobs that a store or `Marks` would keep: the same batch is refused again
- *   whatever comes to be held.
  * - One of its `roots`, or a blob in the closure of one of its `roots` or `marks`, that is neither
  *   in the batch nor held already: the same batch is refused again until what was missing is held.
  *
@@ -65,11 +67,6 @@ export function copiedMarks(
     marks.push(link as Link<EncodedObject>);
   }
   return { blobs: batchBlobs, marks };
-}
-
-export function refuseSecrets(blobs: ReadonlyMap<Link<unknown>, Uint8Array>): void {
-  for (const [link, bytes] of blobs)
-    if (isSecret(bytes)) throw new RefusedBatch(`${link} is a Secret, which only Secrets writes`);
 }
 
 export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {

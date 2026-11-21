@@ -16,7 +16,6 @@ import {
   Intake,
   inboundSchema,
   indexOver,
-  Marks,
   MemoryBackend,
   RefusedBatch,
   Store,
@@ -44,9 +43,8 @@ const ticking = (start = 1000) => {
 };
 
 function sides(clock = ticking()) {
-  const backend = new MemoryBackend();
-  const store = new Store(backend);
-  return { store, intake: new Intake(store, new Marks(backend), clock) };
+  const store = new Store(new MemoryBackend());
+  return { store, intake: new Intake(store, clock) };
 }
 
 async function listOf<T>(links: AsyncIterable<T>): Promise<T[]> {
@@ -90,14 +88,6 @@ describe("an intake", () => {
     expect(await store.get(inbound.link)).toEqual(inbound.bytes);
   });
 
-  it("writes a mark that the store refuses the closure of, and leaves the closure of the bundle to give", async () => {
-    const { store, intake } = sides();
-    const note = object({ text: "hello" });
-    const inbound = await intake.receive(bundleOf(note));
-    await expect(store.closure(inbound.link)).rejects.toThrow("a mark, which stays in the store");
-    expect([...(await store.closure(note.link)).keys()]).toContain(note.link);
-  });
-
   it("drops the blobs of a bundle outside its root's closure, whatever they link to", async () => {
     const { store, intake } = sides();
     const stray = object({ image: new LinkValue(linkOf(utf8("not in the bundle"))) });
@@ -121,8 +111,7 @@ describe("an intake", () => {
 
   it("takes the time from Date.now unless given a clock", async () => {
     const before = Date.now();
-    const backend = new MemoryBackend();
-    const intake = new Intake(new Store(backend), new Marks(backend));
+    const intake = new Intake(new Store(new MemoryBackend()));
     const { data } = await intake.receive(bundleOf(object({ text: "hello" })));
     expect(data.at).toBeGreaterThanOrEqual(before);
     expect(data.at).toBeLessThanOrEqual(Date.now());

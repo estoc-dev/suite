@@ -2,7 +2,7 @@ import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { mailboxSchema } from "@estoc/mailbox";
 import { encodeObject, LinkValue } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { Marks, MemoryBackend, Store, view } from "@estoc/store";
+import { MemoryBackend, Store, view } from "@estoc/store";
 import { loadServices } from "./client.ts";
 
 // Anyone who reads this can sign as the test identity, which is all right
@@ -24,13 +24,12 @@ export interface TestMailbox {
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   const { signatures, signedIdentities, publish } = loadIdentity([ed25519]);
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
-  const backend = new MemoryBackend();
-  const store = new Store(backend);
+  const store = new Store(new MemoryBackend());
   const seenPeople = peopleView({ signedIdentities });
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }), async (inHand) =>
     (await view(store, seenPeople)).current(inHand),
   );
-  const services = loadServices(store, new Marks(backend), { schemes: [ed25519] });
+  const services = loadServices(store, { schemes: [ed25519] });
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);
   await account.accept(actor);

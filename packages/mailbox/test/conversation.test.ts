@@ -7,25 +7,23 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject, schemaOf } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
   Intake,
   inboundSchema,
   indexOver,
-  Marks,
   MemoryBackend,
   type OrderedIndex,
   type Rows,
-  Secrets,
   Store,
   scan,
   selectedMarks,
   view,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Correspondence, type Inbox, mailboxKeySchema, outboundSchema, type Pickup, Post } from "../src/index.ts";
+import { type Correspondence, type Inbox, outboundSchema, type Pickup, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 // A chat between two people, each with a mailbox for the other and a grant of
@@ -122,9 +120,8 @@ async function chat(faults: Faults = {}) {
     const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
       (await view(store, seenPeople)).current(inHand),
     );
-    const marks = new Marks(backend);
-    const post = new Post(store, marks, new Secrets(backend), { transports, clock });
-    const intake = new Intake(store, marks, clock);
+    const post = new Post(store, { transports, clock });
+    const intake = new Intake(store, clock);
     const correspondence = post.correspondenceAs(actor, identity);
     return { name, actor, signedIdentity, store, post, intake, correspondence };
   };
@@ -295,9 +292,8 @@ describe("a conversation", () => {
     await alice.collect();
 
     // What Alice's store marks, written again over a copy of what else it holds, last first and
-    // twice. The mark of a Mailbox Key stays behind, with the Secret it links to.
-    const backend = new MemoryBackend();
-    const [copy, copyMarks] = [new Store(backend), new Marks(backend)];
+    // twice.
+    const copy = new Store(new MemoryBackend());
     const marks: Link<unknown>[] = await all(alice.store.marks());
     const heldLinks = (await all(alice.store.blobs())).filter((link) => !marks.includes(link));
     const heldBlobs = await Promise.all(heldLinks.map((link) => alice.store.get(link)));
@@ -305,7 +301,7 @@ describe("a conversation", () => {
     for (const mark of [...marks, ...marks].reverse()) {
       const bytes = await alice.store.get(mark);
       assert.exists(bytes);
-      if (schemaOf(bytes) !== mailboxKeySchema.link) await copyMarks.write({ marks: [mark], blobs: [bytes] });
+      await copy.writeMarks({ marks: [mark], blobs: [bytes] });
     }
     expect(await alice.conversation(copy)).toEqual(await alice.conversation(alice.store));
   });

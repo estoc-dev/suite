@@ -17,7 +17,7 @@ import {
   objectFormat,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { arrivalsView, Intake, Marks, MemoryBackend, Secrets, Store, view } from "@estoc/store";
+import { arrivalsView, Intake, MemoryBackend, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import { type Inbox, type MailboxData, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
@@ -60,9 +60,8 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
     (await view(store, seenPeople)).current(inHand),
   );
-  const marks = new Marks(backend);
-  const post = new Post(store, marks, new Secrets(backend), { transports: [network.transport], clock });
-  const intake = new Intake(store, marks, clock);
+  const post = new Post(store, { transports: [network.transport], clock });
+  const intake = new Intake(store, clock);
   const queue = network.queue();
   const inbox = await post.openInbox(() => queue.transport);
   const collect = () => inbox.collect(queue.pickup(inbox.mailbox));

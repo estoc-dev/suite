@@ -31,7 +31,6 @@ import {
   type FieldNames,
   type Index,
   indexOver,
-  Marks,
   MemoryBackend,
   type Rows,
   recordsOf,
@@ -92,9 +91,8 @@ const backendNoting = (requestedLinks: Link<unknown>[], backend: Backend): Backe
   blobs: (start) => backend.blobs(start),
 });
 
-/** A store, and what writes the records it lists. */
 function newStores(backend: Backend = new MemoryBackend()) {
-  return { store: new Store(backend), marks: new Marks(backend) };
+  return { store: new Store(backend) };
 }
 
 interface WrittenObject {
@@ -108,15 +106,14 @@ const batchOf = (objects: readonly WrittenObject[], blobs: Iterable<Uint8Array> 
   blobs: [...objects.map(({ bytes }) => bytes), ...blobs],
 });
 
-/** Writes `objects` to the store, with those of `blobs` in their closures, and a record of each. */
 async function recordIn(
-  { store, marks }: ReturnType<typeof newStores>,
+  { store }: ReturnType<typeof newStores>,
   objects: readonly WrittenObject[],
   blobs?: Iterable<Uint8Array>,
 ): Promise<void> {
   const batch = batchOf(objects, blobs);
   await store.write(batch);
-  await marks.write(recordsOf(batch.roots, Date.now()));
+  await store.writeMarks(recordsOf(batch.roots, Date.now()));
 }
 
 describe("an index over records", () => {
@@ -906,6 +903,7 @@ describe("an index over blobs", () => {
       get: <T>(link: Link<T>) => store.get(link),
       write: (batch) => store.write(batch),
       stage: (batch) => store.stage(batch),
+      writeMarks: (batch) => store.writeMarks(batch),
       blobs: () => store.blobs(),
       marks: () => store.marks(),
       closure: (link) => store.closure(link),

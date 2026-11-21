@@ -12,7 +12,7 @@ import {
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
-import { Marks, MemoryBackend, Store, view } from "@estoc/store";
+import { MemoryBackend, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -727,7 +727,7 @@ describe("a mailbox service started again", () => {
   });
 });
 
-/** The store, what writes its marks, the accounts and the mailboxes of a service, all in the SQLite file at `path`. */
+/** The store, the accounts and the mailboxes of a service, all in the SQLite file at `path`. */
 function sqliteParts(path: string) {
   const backend = new SqliteBackend(path);
   const accounts = new SqliteAccounts(path);
@@ -737,7 +737,7 @@ function sqliteParts(path: string) {
     accounts.close();
     mailboxes.close();
   };
-  return { store: new Store(backend), marks: new Marks(backend), accounts, mailboxes, close };
+  return { store: new Store(backend), accounts, mailboxes, close };
 }
 
 const bob = signer(ed25519, 6);

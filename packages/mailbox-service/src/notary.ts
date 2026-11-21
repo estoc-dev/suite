@@ -11,9 +11,9 @@ import type { Keyring } from "@estoc/keyring";
 import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { type People, type PeopleView, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, type Marks, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
+import { indexOver, recordsOf, type Store, selectedRecords, type View, view } from "@estoc/store";
 
-type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store; readonly marks: Marks };
+type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
 
 /**
  * It records what it signs, which is how a service tells its own signatures from ones that only
@@ -24,15 +24,13 @@ class Notary {
   readonly #signatures: Signatures;
   readonly #recordedSignatures: RecordedSignaturesView;
   readonly #store: Store;
-  readonly #marks: Marks;
   readonly #clock: () => number;
 
-  constructor(actor: Actor, { kit, store, marks, clock }: NotaryOptions & { readonly clock: () => number }) {
+  constructor(actor: Actor, { kit, store, clock }: NotaryOptions & { readonly clock: () => number }) {
     this.#actor = actor;
     this.#signatures = kit.signatures;
     this.#recordedSignatures = recordedSignaturesView(kit.signatures);
     this.#store = store;
-    this.#marks = marks;
     this.#clock = clock;
   }
 
@@ -63,7 +61,7 @@ class Notary {
 
   async #write(signature: Signature, blobs: readonly Bytes<unknown>[] = []): Promise<void> {
     await this.#store.write({ roots: [signature.link], blobs: [...signature.blobs, ...blobs] });
-    await this.#marks.write(recordsOf([signature.link], this.#clock()));
+    await this.#store.writeMarks(recordsOf([signature.link], this.#clock()));
   }
 }
 
@@ -76,12 +74,12 @@ export type { Notary };
 export async function setUpNotary(
   keyring: Pick<Keyring, "signerFor">,
   root: Link<unknown>,
-  { kit, store, marks, at }: NotaryOptions & { readonly at: number },
+  { kit, store, at }: NotaryOptions & { readonly at: number },
 ): Promise<SignedIdentityObject> {
   const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
   const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
-  await marks.write(recordsOf([signedIdentity.link], at));
+  await store.writeMarks(recordsOf([signedIdentity.link], at));
   return signedIdentity;
 }
 

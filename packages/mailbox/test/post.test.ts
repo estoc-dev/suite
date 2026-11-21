@@ -2,17 +2,7 @@ import type { Bundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
-import {
-  Intake,
-  inboundSchema,
-  indexOver,
-  Marks,
-  MemoryBackend,
-  Secrets,
-  Store,
-  scan,
-  selectedMarks,
-} from "@estoc/store";
+import { Intake, inboundSchema, indexOver, MemoryBackend, Store, scan, selectedMarks } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import {
   type MailboxData,
@@ -36,32 +26,21 @@ const signature = await signatures.actor(alice, await publish(alice, { at: 0 }),
 const signatureBlobs = [...signature.blobs, hello.bytes, ...note.blobs];
 const bob = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(2));
 
-interface Stores {
-  readonly store: Store;
-  readonly marks: Marks;
-  readonly secrets: Secrets;
-}
-
-function storesOver(backend = new MemoryBackend()): Stores {
-  return { store: new Store(backend), marks: new Marks(backend), secrets: new Secrets(backend) };
-}
-
-// A post on `network` at a store, with what writes its marks and Secrets, over a new backend
-// unless given. Its clock starts at 1000 and moves on a millisecond each time it is read.
-async function postAt(network: MemoryNetwork, stores = storesOver()) {
+// A post on `network` at a store, over a new backend unless given. Its clock starts at 1000 and
+// moves on a millisecond each time it is read.
+async function postAt(network: MemoryNetwork, store = new Store(new MemoryBackend())) {
   let now = 1000;
-  const options = { transports: [network.transport], clock: () => now++ };
-  return { ...stores, post: new Post(stores.store, stores.marks, stores.secrets, options) };
+  return { store, post: new Post(store, { transports: [network.transport], clock: () => now++ }) };
 }
 
 // The store keeps a mailbox that was handed over out of band, with a mark that it came in.
-async function handOver({ store, marks }: Stores, mailbox: Bundle) {
-  await new Intake(store, marks).receive(mailbox);
+async function handOver({ store }: { readonly store: Store }, mailbox: Bundle) {
+  await new Intake(store).receive(mailbox);
 }
 
 // A post whose store holds the mailbox of a new queue for Bob's key, handed over.
-async function prepareSender(network: MemoryNetwork, backend?: MemoryBackend) {
-  const at = await postAt(network, storesOver(backend));
+async function prepareSender(network: MemoryNetwork, backend = new MemoryBackend()) {
+  const at = await postAt(network, new Store(backend));
   const queue = network.queue();
   const mailbox = queue.mailbox(bob.publicKey);
   await handOver(at, mailbox);
@@ -69,8 +48,8 @@ async function prepareSender(network: MemoryNetwork, backend?: MemoryBackend) {
 }
 
 // A post with an inbox at a new queue. The record of its mailbox is at 1000, so the clock reads 1001 next.
-async function openReceiver(network: MemoryNetwork, backend?: MemoryBackend) {
-  const at = await postAt(network, storesOver(backend));
+async function openReceiver(network: MemoryNetwork, backend = new MemoryBackend()) {
+  const at = await postAt(network, new Store(backend));
   const queue = network.queue();
   const inbox = await at.post.openInbox(() => queue.transport);
   return { ...at, queue, inbox, pickup: queue.pickup(inbox.mailbox) };
@@ -102,7 +81,6 @@ describe("an outbox", () => {
       link: delivery.link,
     });
     expect(await listedIn(store)).toContain(delivery.link);
-    await expect(store.closure(delivery.link)).rejects.toThrow("a mark, which stays in the store");
     expect((await readObject(store, delivery.link, outboundSchema)).data).toEqual({
       bundle: new LinkValue(signature.link),
       mailbox: new LinkValue(mailbox.link),
@@ -182,6 +160,24 @@ describe("an outbox", () => {
     expect(await listedIn(store)).toEqual(before);
   });
 
+  it("refuses a root whose closure holds a Secret, and sends and marks nothing", async () => {
+    const network = new MemoryNetwork();
+    const { store, post, queue, mailbox } = await prepareSender(network);
+    const keySchema = schema("Key", { secret: link() });
+    const secret = encodeObject(secretSchema, { bytes: new Uint8Array(32) });
+    const key = encodeObject(keySchema, { secret: new LinkValue(secret.link) });
+    await store.write({
+      roots: [key.link],
+      blobs: [key.bytes, secret.bytes, ...keySchema.blobs, ...secretSchema.blobs],
+    });
+    const outbox = await post.outbox(mailbox.link);
+    const before = await listedIn(store);
+
+    await expect(outbox.send(key.link)).rejects.toThrow(`${secret.link} is a Secret, which is not sent`);
+    expect(queue.take()).toEqual([]);
+    expect(await listedIn(store)).toEqual(before);
+  });
+
   it("is not made for a mailbox that the store does not hold", async () => {
     const network = new MemoryNetwork();
     const { post } = await prepareSender(network);
@@ -191,16 +187,15 @@ describe("an outbox", () => {
 });
 
 describe("an inbox", () => {
-  it("is opened at a mailbox of its key and the transport object given, which the store holds and records, with a mark of its Mailbox Key, whose Secret the store does not read", async () => {
+  it("is opened at a mailbox of its key and the transport object given, which the store holds and records, with a mark of its Mailbox Key and the Secret that links to", async () => {
     const network = new MemoryNetwork();
-    const { store, secrets, queue, inbox } = await openReceiver(network);
+    const { store, queue, inbox } = await openReceiver(network);
     expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key]);
 
     const { data } = await readObject(store, inbox.key, mailboxKeySchema);
     expect(data.mailbox.link).toBe(inbox.mailbox);
-    await expect(store.get(data.secret.link)).rejects.toThrow("is a Secret");
     const mailbox = await readObject(store, inbox.mailbox, mailboxSchema);
-    const key = await MailboxKey.fromSecretKey((await readObject(secrets, data.secret.link, secretSchema)).data.bytes);
+    const key = await MailboxKey.fromSecretKey((await readObject(store, data.secret.link, secretSchema)).data.bytes);
     expect(mailbox.data).toEqual({ key: key.publicKey, transport: new LinkValue(queue.transport.link) });
     expect(await store.get(queue.transport.link)).toEqual(queue.transport.bytes);
   });
@@ -218,7 +213,7 @@ describe("an inbox", () => {
       keys.push(data.key.link);
     expect(keys).toEqual([inbox.key]);
 
-    const again = await (await postAt(network, receiver)).post.inbox(inbox.key);
+    const again = await (await postAt(network, store)).post.inbox(inbox.key);
     await sendTo(network, store, again.mailbox, signatureBlobs);
     expect(await again.receive(queue.takeOne())).toMatchObject({ bundle: signature.link, mailbox: inbox.mailbox });
   });
@@ -244,7 +239,6 @@ describe("an inbox", () => {
     await sendTo(network, store, inbox.mailbox, signatureBlobs);
 
     const delivery = await inbox.receive(queue.takeOne());
-    await expect(store.closure(delivery.link)).rejects.toThrow("a mark, which stays in the store");
     expect((await readObject(store, delivery.link, inboundSchema)).data).toEqual({
       bundle: new LinkValue(signature.link),
       at: 1001,
@@ -340,24 +334,29 @@ describe("an inbox", () => {
 
   it("is not made from a key whose secret is not of the key its mailbox names", async () => {
     const network = new MemoryNetwork();
-    const { marks, secrets, post, inbox } = await openReceiver(network);
+    const { store, post, inbox } = await openReceiver(network);
     const secret = encodeObject(secretSchema, { bytes: new Uint8Array(32) });
-    await secrets.write({ roots: [secret.link], blobs: [secret.bytes] });
     const wrong = encodeObject(mailboxKeySchema, {
       mailbox: new LinkValue(inbox.mailbox),
       secret: new LinkValue(secret.link),
     });
-    await marks.write({ marks: [wrong.link], blobs: [wrong.bytes] });
+    await store.writeMarks({ marks: [wrong.link], blobs: [wrong.bytes, secret.bytes] });
     await expect(post.inbox(wrong.link)).rejects.toThrow(`${inbox.mailbox} names another key than ${wrong.link} holds`);
   });
 
-  it("is not made from a key that the store does not hold", async () => {
+  it("is not made from a Mailbox Key that only came to the store, with its Secret", async () => {
     const network = new MemoryNetwork();
-    const { post, inbox } = await openReceiver(network);
-    const unkeptKey = encodeObject(mailboxKeySchema, {
-      mailbox: new LinkValue(inbox.mailbox),
-      secret: new LinkValue(encodeObject(secretSchema, { bytes: new Uint8Array(32) }).link),
+    const { store, post, queue } = await openReceiver(network);
+    const secret = encodeObject(secretSchema, { bytes: new Uint8Array(32).fill(2) });
+    const mailbox = queue.mailbox(bob.publicKey);
+    const sentKey = encodeObject(mailboxKeySchema, {
+      mailbox: new LinkValue(mailbox.link),
+      secret: new LinkValue(secret.link),
     });
-    await expect(post.inbox(unkeptKey.link)).rejects.toThrow(`no blob is given for ${unkeptKey.link}`);
+    await handOver({ store }, mailbox);
+    await store.write({ roots: [sentKey.link], blobs: [sentKey.bytes, secret.bytes, ...mailboxKeySchema.blobs] });
+    await expect(post.inbox(sentKey.link)).rejects.toThrow(
+      `${sentKey.link} is not a Mailbox Key among the marks of the store`,
+    );
   });
 });

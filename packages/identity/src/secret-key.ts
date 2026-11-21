@@ -1,5 +1,5 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
-import { type DataOf, link, type SecretData, schema, secretSchema } from "@estoc/schema";
+import { type DataOf, link, schema, secretSchema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
 import { isSameKey, type KeyObject } from "./key/interface.ts";
@@ -14,8 +14,6 @@ export interface SecretKeyObject {
   readonly link: Link<unknown>;
   readonly key: KeyObject;
   readonly signer: Signer;
-  readonly secret: EncodedObject<SecretData>;
-  /** Its closure but for `secret`, which is written apart, by what writes Secrets. */
   readonly blobs: readonly Uint8Array[];
 }
 
@@ -51,7 +49,7 @@ function secretKeyOf(
   object: EncodedObject<SecretKeyData>,
   key: KeyObject,
   signer: Signer,
-  secret: EncodedObject<SecretData>,
+  secret: EncodedObject,
 ): SecretKeyObject {
-  return { link: object.link, key, signer, secret, blobs: blobsOf(object, key.blobs) };
+  return { link: object.link, key, signer, blobs: blobsOf(object, [...blobsOf(secret), ...key.blobs]) };
 }

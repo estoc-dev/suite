@@ -10,7 +10,7 @@ import {
   verify,
 } from "@estoc/identity";
 import { type Link, readObject } from "@estoc/object";
-import { Marks, MemoryBackend, Secrets, Store } from "@estoc/store";
+import { MemoryBackend, Store } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { Keyring } from "../src/index.ts";
 
@@ -19,7 +19,7 @@ const { keys, secretKeys } = loadIdentity(schemes);
 const digest = new Uint8Array(32).fill(7);
 
 function keyringOver(backend = new MemoryBackend(), kit = secretKeys): Keyring {
-  return new Keyring(new Store(backend), new Marks(backend), new Secrets(backend), kit);
+  return new Keyring(new Store(backend), kit);
 }
 
 describe("a keyring", () => {
@@ -67,7 +67,7 @@ describe("a keyring", () => {
     }
   });
 
-  it("marks the Secret Key of each key, whose secret the store does not read", async () => {
+  it("marks the Secret Key of each key it generates, and writes the Secret with it", async () => {
     const backend = new MemoryBackend();
     const store = new Store(backend);
     const key = await keyringOver(backend).generate(ed25519);
@@ -76,14 +76,12 @@ describe("a keyring", () => {
     expect(marks).toHaveLength(1);
     const { data } = await readObject(store, marks[0] as Link<unknown>, secretKeys.schema);
     expect(data.key.link).toBe(key.link);
-    await expect(store.get(data.secret.link)).rejects.toThrow("is a Secret");
-    await expect(store.closure(marks[0] as Link<unknown>)).rejects.toThrow("is a Secret");
+    expect(await store.get(data.secret.link)).toBeDefined();
   });
 
-  it("gives no signer for a Secret Key that it did not mark", async () => {
+  it("gives no signer for a Secret Key that only came to the store, with its Secret", async () => {
     const backend = new MemoryBackend();
-    const { link, key, secret, blobs } = secretKeys.encode(ed25519, new Uint8Array(32).fill(1));
-    await new Secrets(backend).write({ roots: [secret.link], blobs: [secret.bytes, ...secret.schema.blobs] });
+    const { link, key, blobs } = secretKeys.encode(ed25519, new Uint8Array(32).fill(1));
     await new Store(backend).write({ roots: [link], blobs });
     expect(await keyringOver(backend).signerFor(key.link)).toBeUndefined();
   });

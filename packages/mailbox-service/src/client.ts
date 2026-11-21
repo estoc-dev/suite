@@ -26,7 +26,7 @@ import {
 } from "@estoc/object";
 import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
-import { Intake, type Marks, type StagedStore, type Store, view } from "@estoc/store";
+import { Intake, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
@@ -70,7 +70,6 @@ type HttpTransportData = DataOf<typeof httpTransport.schema>;
  */
 type Posting = {
   readonly store: Store;
-  readonly marks: Marks;
   readonly intake: Intake;
   readonly origin: EncodedObject<OriginData>;
   readonly signatures: Signatures;
@@ -179,11 +178,9 @@ export class MailboxOffer {
       transport: new LinkValue(transport.link),
       acknowledgement: new LinkValue(acknowledgement.link),
     });
-    const { store, marks } = this.#posting;
-    await store.write({ roots: [transport.link], blobs: [transport.bytes, ...transport.schema.blobs] });
-    await marks.write({
+    await this.#posting.store.writeMarks({
       marks: [openedMailbox.link],
-      blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs],
+      blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs, transport.bytes, ...transport.schema.blobs],
     });
     return transport;
   }
@@ -285,16 +282,14 @@ class ServicePickup implements Pickup {
 
 export class Services {
   readonly #store: Store;
-  readonly #marks: Marks;
   readonly #intake: Intake;
   readonly #signatures: Signatures;
   readonly #locations: LocationsView;
   readonly #mailboxes: OpenedMailboxesView;
   readonly #people: PeopleView;
 
-  constructor(store: Store, marks: Marks, intake: Intake, kit: IdentityKit) {
+  constructor(store: Store, intake: Intake, kit: IdentityKit) {
     this.#store = store;
-    this.#marks = marks;
     this.#intake = intake;
     this.#signatures = kit.signatures;
     this.#locations = locationsView(kit.signatures);
@@ -362,7 +357,6 @@ export class Services {
     checkOrigin(origin);
     const posting = {
       store: this.#store,
-      marks: this.#marks,
       intake: this.#intake,
       origin: this.#originOf(origin),
       signatures: this.#signatures,
@@ -435,8 +429,7 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
 
 export function loadServices(
   store: Store,
-  marks: Marks,
   { schemes, clock = Date.now }: { readonly schemes: readonly Scheme[]; readonly clock?: () => number },
 ): Services {
-  return new Services(store, marks, new Intake(store, marks, clock), loadIdentity(schemes));
+  return new Services(store, new Intake(store, clock), loadIdentity(schemes));
 }

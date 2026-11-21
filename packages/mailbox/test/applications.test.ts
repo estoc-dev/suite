@@ -21,7 +21,7 @@ import {
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, optional, schema, string } from "@estoc/schema";
-import { Intake, Marks, MemoryBackend, Secrets, Store, view } from "@estoc/store";
+import { Intake, MemoryBackend, Store, view } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
 import { type Delivery, type Mailbox, type MailboxData, MailboxKey, mailboxAt, Post } from "../src/index.ts";
 import { type Faults, MemoryNetwork } from "./memory-network.ts";
@@ -248,10 +248,9 @@ describe("two people who meet", () => {
       const actor = signatures.actor(by, signedIdentity, async (inHand) =>
         (await view(store, seenPeople)).current(inHand),
       );
-      const marks = new Marks(backend);
       const options = { transports: [network.transport], clock };
-      const post = new Post(store, marks, new Secrets(backend), options);
-      const intake = new Intake(store, marks, clock);
+      const post = new Post(store, options);
+      const intake = new Intake(store, clock);
       const correspondence = post.correspondenceAs(actor, identity);
       const openInbox = async () => {
         const queue = network.queue();

@@ -13,7 +13,7 @@ import {
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
-import { type Backend, Marks, MemoryBackend, recordSchema, Secrets, Store } from "@estoc/store";
+import { type Backend, MemoryBackend, recordSchema, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
@@ -25,25 +25,7 @@ export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain]
 export const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 
-const writersByStore = new WeakMap<Store, { readonly marks: Marks; readonly secrets: Secrets }>();
-/**
- * A store over `backend`, one in memory unless given, with what writes its marks and its Secrets
- * kept for `marksOf` and `secretsOf`.
- */
-export function memoryStore(backend: Backend = new MemoryBackend()): Store {
-  const store = new Store(backend);
-  writersByStore.set(store, { marks: new Marks(backend), secrets: new Secrets(backend) });
-  return store;
-}
-
-function writersOf(store: Store) {
-  const writers = writersByStore.get(store);
-  if (writers === undefined) throw new Error("the store was not made by `memoryStore`");
-  return writers;
-}
-
-export const marksOf = (store: Store): Marks => writersOf(store).marks;
-export const secretsOf = (store: Store): Secrets => writersOf(store).secrets;
+export const memoryStore = (backend: Backend = new MemoryBackend()): Store => new Store(backend);
 
 /** The bytes of the object that a key, a signed identity or a signature is read from, which its blobs hold. */
 export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonly blobs: readonly Uint8Array[] }) {
@@ -98,14 +80,12 @@ export async function setUpService({
   start = 1_000,
   by = serviceSigner,
   store,
-  marks = marksOf(store),
 }: {
   readonly start?: number;
   readonly by?: Signer;
   readonly store: Store;
-  readonly marks?: Marks;
 }) {
-  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, marks, at: start });
+  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, at: start });
 }
 
 async function recordsIdentityVersion(store: Store): Promise<boolean> {
@@ -118,16 +98,14 @@ async function recordsIdentityVersion(store: Store): Promise<boolean> {
  * A service that keeps everything in memory, and whose clock counts up a
  * millisecond a reading from `start`, or stands at `clock.now` when it is
  * given, which a test moves. Given the store of another, with its accounts
- * and its mailboxes, it is that service started again. Its marks are written
- * by what `memoryStore` kept for the store, unless it is given `marks`. It is
- * set up as `setUpService` does unless its store records an identity version.
+ * and its mailboxes, it is that service started again. It is set up as
+ * `setUpService` does unless its store records an identity version.
  */
 export async function memoryService({
   start = 1_000,
   by = serviceSigner,
   origin = "https://mail.example",
   store = memoryStore(),
-  marks = marksOf(store),
   offeredTerms = terms,
   clock,
   accounts = new MemoryAccounts(),
@@ -137,18 +115,16 @@ export async function memoryService({
   readonly by?: Signer;
   readonly origin?: string;
   readonly store?: Store;
-  readonly marks?: Marks;
   readonly offeredTerms?: MailboxTerms;
   readonly clock?: { now: number };
   readonly accounts?: Accounts;
   readonly mailboxes?: Mailboxes;
 } = {}) {
-  if (!(await recordsIdentityVersion(store))) await setUpService({ start, by, store, marks });
+  if (!(await recordsIdentityVersion(store))) await setUpService({ start, by, store });
   let now = start;
   const service = await loadMailboxService(keyringOf(by), {
     origin,
     store,
-    marks,
     accounts,
     mailboxes,
     terms: offeredTerms,

@@ -11,7 +11,7 @@ import {
 } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
-import { indexOver, Marks, MemoryBackend, recordsOf, Store, scan, selectedRecords } from "../src/index.ts";
+import { indexOver, MemoryBackend, recordsOf, Store, scan, selectedRecords } from "../src/index.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes is in their store,
 // with a record of it; what comes from the other is kept in the store, with a mark that says it
@@ -29,7 +29,7 @@ const newStore = () => new Store(new MemoryBackend());
 
 function newStores() {
   const backend = new MemoryBackend();
-  return { store: new Store(backend), marks: new Marks(backend) };
+  return { store: new Store(backend) };
 }
 type Stores = ReturnType<typeof newStores>;
 
@@ -42,11 +42,11 @@ async function marksOf<F extends ValueMap>({ store }: Stores, schema: Schema<F>)
   return marks;
 }
 
-async function receive({ store, marks }: Stores, file: Uint8Array) {
+async function receive({ store }: Stores, file: Uint8Array) {
   const bundle = decodeBundle(file);
   await store.write({ roots: [bundle.link], blobs: [...schemas, ...bundle.blobs()] });
   const received = encodeObject(receivedSchema, { bundle: new LinkValue(bundle.link) });
-  await marks.write({ marks: [received.link], blobs: [received.bytes, ...receivedSchema.blobs] });
+  await store.writeMarks({ marks: [received.link], blobs: [received.bytes, ...receivedSchema.blobs] });
   return received;
 }
 
@@ -101,7 +101,7 @@ describe("an object slipped into a bundle", () => {
     const bob = newStores();
     const contact = encodeObject(contactSchema, { name: "Alice" });
     await bob.store.write({ roots: [contact.link], blobs: [contact.bytes, ...schemas] });
-    await bob.marks.write(recordsOf([contact.link], Date.now()));
+    await bob.store.writeMarks(recordsOf([contact.link], Date.now()));
 
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const reply = replyTo(slippedContact, "a friend of yours");

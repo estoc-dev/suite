@@ -117,7 +117,7 @@ describe("the file of a bundle", () => {
     ["a root cut short", rootHex.slice(0, -2), /the root of a bundle is an object/],
     [
       "a root with an array of indefinite length",
-      `da656f66219f${rootHex.slice(12)}ff`,
+      `da656f663f9f${rootHex.slice(12)}ff`,
       /the root of a bundle is an object/,
     ],
     ["a blob twice", `${rootHex}${helloHex}${imageHex}${helloHex}`, `holds the blob ${linkOf(hello)} twice`],

@@ -23,7 +23,7 @@ const b = linkOf(new TextEncoder().encode("b"));
 
 // The bytes of the tests are written out by hand, in hex, so that they do not
 // turn on the encoder they test.
-const objectHead = "da656f662182";
+const objectHead = "da656f663f82";
 const itselfHex = "6473656c66";
 const linkHex = (link: Link<unknown>) => `d9486c5820${link.slice("sha256:".length)}`;
 const objectHex = (fields: string, schema = linkHex(anything.link)) => `${objectHead}${schema}${fields}`;
@@ -34,7 +34,7 @@ describe("an object", () => {
   it("is the tag of the format, around its schema and the map of its fields", () => {
     const object = encodeObject(anything, { text: "hello" });
     expect(bytesToHex(object.bytes)).toBe(
-      `da656f662182d9486c5820${anything.link.slice("sha256:".length)}a164746578746568656c6c6f`,
+      `da656f663f82d9486c5820${anything.link.slice("sha256:".length)}a164746578746568656c6c6f`,
     );
     expect(object.bytes).toHaveLength(55);
     expect(object.link).toBe(`sha256:${createHash("sha256").update(object.bytes).digest("hex")}`);
@@ -95,7 +95,7 @@ describe("strict decoding", () => {
   it.each([
     ["an integer in a longer head", objectHexHolding("1801")],
     ["a length in a longer head", objectHexHolding("780161")],
-    ["the tag of the format in a longer head", `db00000000656f662182${linkHex(anything.link)}a0`],
+    ["the tag of the format in a longer head", `db00000000656f663f82${linkHex(anything.link)}a0`],
     ["the tag of a link in a longer head", objectHexHolding(`da0000486c5820${a.slice("sha256:".length)}`)],
     ["keys out of order", objectHex("a2616201616101")],
     ["a longer key before a shorter one", objectHex("a262616101616201")],
@@ -131,8 +131,8 @@ describe("strict decoding", () => {
     ["a map under no tag", "a0"],
     ["a schema and data under no tag", `82${linkHex(anything.link)}a0`],
     ["a link under no tag of the format", linkHex(anything.link)],
-    ["a schema without data", `da656f662181${linkHex(anything.link)}`],
-    ["a third item after its data", `da656f662183${linkHex(anything.link)}a0a0`],
+    ["a schema without data", `da656f663f81${linkHex(anything.link)}`],
+    ["a third item after its data", `da656f663f83${linkHex(anything.link)}a0a0`],
     ["data that is not a map", `${objectHead}${linkHex(anything.link)}80`],
     ["a schema named by a string other than self", objectHex("a0", "64726f6f74")],
     ["a schema named by Self", objectHex("a0", "6453656c66")],

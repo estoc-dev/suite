@@ -2,8 +2,8 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { decode, encode, rfc8949EncodeOptions, Tagged } from "cborg";
 import { digestOf, isLink, type Link } from "./link.ts";
 
-// "eof!" in ASCII, so that the bytes of every object start with the name of the format.
-const objectTag = 0x656f6621;
+// "eof?" in ASCII, so that the bytes of every object start with the name of the format.
+const objectTag = 0x656f663f;
 // Registered with IANA as a SHA-256 hash value.
 const linkTag = 18540;
 const itselfText = "self";

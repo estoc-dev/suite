@@ -27,7 +27,7 @@ export interface Store {
   writeMarks(batch: MarkBatch): Promise<void>;
   /** A write cut short can leave a blob here that no root reaches. */
   blobs(): AsyncIterable<Link<unknown>>;
-  /** In the order they were first written. */
+  /** In the order they were first listed as marks. */
   marks(): AsyncIterable<Link<EncodedObject>>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
 }

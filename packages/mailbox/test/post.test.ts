@@ -190,7 +190,7 @@ describe("an inbox", () => {
   it("is opened at a mailbox of its key and the transport object given, which the store holds and records, with a mark of its Mailbox Key and the Secret that links to", async () => {
     const network = new MemoryNetwork();
     const { store, queue, inbox } = await openReceiver(network);
-    expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key]);
+    expect(await listedIn(store)).toEqual([inbox.key, inbox.mailbox]);
 
     const { data } = await readObject(store, inbox.key, mailboxKeySchema);
     expect(data.mailbox.link).toBe(inbox.mailbox);
@@ -198,6 +198,22 @@ describe("an inbox", () => {
     const key = await MailboxKey.fromSecretKey((await readObject(store, data.secret.link, secretSchema)).data.bytes);
     expect(mailbox.data).toEqual({ key: key.publicKey, transport: new LinkValue(queue.transport.link) });
     expect(await store.get(queue.transport.link)).toEqual(queue.transport.bytes);
+  });
+
+  it("leaves a mark of its Mailbox Key and no record of its mailbox when the store fails to record the mailbox", async () => {
+    const network = new MemoryNetwork();
+    let writesLeft = 1;
+    const backend = new (class extends MemoryBackend {
+      override put(blobs: ReadonlyMap<Link<unknown>, Uint8Array>, listedLinks: Iterable<Link<never>>): Promise<void> {
+        return writesLeft-- > 0 ? super.put(blobs, listedLinks) : Promise.reject(new Error("the disk is full"));
+      }
+    })();
+    const { store, post } = await postAt(network, new Store(backend));
+
+    await expect(post.openInbox(() => network.queue().transport)).rejects.toThrow("the disk is full");
+    const [key, ...others] = await listedIn(store);
+    expect(others).toEqual([]);
+    await readObject(store, key as Link<never>, mailboxKeySchema);
   });
 
   it("is made again from its key, found by an index of the Mailbox Keys that are marked", async () => {
@@ -228,7 +244,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1001 },
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1002 },
     ]);
-    expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key, ...deliveries.map(({ link }) => link)]);
+    expect(await listedIn(store)).toEqual([inbox.key, inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect((await signatures.read(signature.link, store)).object).toBe(hello.link);
     expect(queue.take()).toEqual([]);
   });
@@ -259,7 +275,7 @@ describe("an inbox", () => {
 
     const deliveries = await inbox.collect(pickup);
     expect(deliveries.map(({ bundle }) => bundle)).toEqual([signature.link]);
-    expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key, ...deliveries.map(({ link }) => link)]);
+    expect(await listedIn(store)).toEqual([inbox.key, inbox.mailbox, ...deliveries.map(({ link }) => link)]);
     expect(queue.take()).toEqual([]);
   });
 
@@ -308,7 +324,7 @@ describe("an inbox", () => {
     await sendTo(network, store, inbox.mailbox, [...signature.blobs, ...note.blobs]);
 
     await expect(inbox.receive(queue.takeOne())).rejects.toThrow(`links to ${hello.link}`);
-    expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key]);
+    expect(await listedIn(store)).toEqual([inbox.key, inbox.mailbox]);
     expect(await store.get(signature.link)).toBeUndefined();
   });
 
@@ -319,7 +335,7 @@ describe("an inbox", () => {
     await sendTo(network, other.store, other.inbox.mailbox, signatureBlobs);
 
     await expect(inbox.receive(other.queue.takeOne())).rejects.toThrow(/does not open/);
-    expect(await listedIn(store)).toEqual([inbox.mailbox, inbox.key]);
+    expect(await listedIn(store)).toEqual([inbox.key, inbox.mailbox]);
   });
 
   it("is not opened at a transport object that no transport given takes, and writes nothing", async () => {

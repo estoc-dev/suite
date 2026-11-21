@@ -1,7 +1,7 @@
 import type { Bundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
-import { schema, string } from "@estoc/schema";
+import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxAt, mailboxSchema, UndeliveredMessage } from "../src/index.ts";
 import { mailboxBundle } from "./mailbox-bundle.ts";
@@ -49,6 +49,18 @@ describe("a mailbox", () => {
     const mailbox = await mailboxIn(queue.mailbox(bob.publicKey));
     const text = new TextEncoder().encode("hello, Bob");
     await expect(mailbox.send(linkOf(text), [text])).rejects.toThrow(/the root of a bundle is an object/);
+    expect(queue.take()).toEqual([]);
+  });
+
+  it("refuses to send blobs that hold a Secret, and sends nothing", async () => {
+    const queue = network.queue();
+    const mailbox = await mailboxIn(queue.mailbox(bob.publicKey));
+    const keySchema = schema("Key", { secret: link() });
+    const secret = encodeObject(secretSchema, { bytes: new Uint8Array(32) });
+    const key = encodeObject(keySchema, { secret: new LinkValue(secret.link) });
+    await expect(mailbox.send(key.link, [key.bytes, secret.bytes])).rejects.toThrow(
+      `${secret.link} is a Secret, which is not sent`,
+    );
     expect(queue.take()).toEqual([]);
   });
 });

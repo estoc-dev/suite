@@ -12,16 +12,7 @@ import {
   schemaOf,
 } from "@estoc/object";
 import { link, schema, secretSchema } from "@estoc/schema";
-import {
-  Intake,
-  indexOver,
-  RefusedBatch,
-  recordsOf,
-  refuseSecrets,
-  type Store,
-  scan,
-  selectedMarks,
-} from "@estoc/store";
+import { Intake, indexOver, RefusedBatch, recordsOf, type Store, scan, selectedMarks } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
 import { MailboxKey } from "./key.ts";
@@ -92,11 +83,11 @@ export class Post {
       mailbox: new LinkValue(mailbox.link),
       secret: new LinkValue(secret.link),
     });
-    const record = recordsOf([mailbox.link], this.#clock());
+    // The key is marked before the mailbox is recorded, so that a write cut short between the two
+    // leaves no record of a mailbox that no inbox is made at.
     await this.#store.writeMarks({
-      marks: [...record.marks, object.link],
+      marks: [object.link],
       blobs: [
-        ...record.blobs,
         object.bytes,
         ...mailboxKeySchema.blobs,
         secret.bytes,
@@ -107,6 +98,7 @@ export class Post {
         ...transport.schema.blobs,
       ],
     });
+    await this.#store.writeMarks(recordsOf([mailbox.link], this.#clock()));
     return this.#inbox(mailbox, object.link, key);
   }
 
@@ -147,9 +139,7 @@ export class Outbox {
   }
 
   async send(root: Link<unknown>): Promise<Delivery> {
-    const blobs = [...(await this.#store.closure(root)).values()];
-    refuseSecrets(blobs);
-    await this.#mailbox.send(root, blobs);
+    await this.#mailbox.send(root, (await this.#store.closure(root)).values());
     const { mailbox } = this;
     const bundle = root as Link<never>;
     const at = this.#clock();

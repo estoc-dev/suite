@@ -86,12 +86,13 @@ mail.example {
 The database can be backed up while the service runs, with SQLite's online
 backup. The backup holds the key of the service as the database does, so it
 goes in a folder that its owner alone enters, written as a new file that its
-owner alone reads, which then takes the place of the backup before it:
+owner alone reads, which takes the place of the backup before it once
+SQLite has made it:
 
 ```sh
 install -d -m 700 /var/backups/mailbox
-(umask 077 && sqlite3 /var/lib/mailbox/service.db ".backup /var/backups/mailbox/service.db.new")
-mv /var/backups/mailbox/service.db.new /var/backups/mailbox/service.db
+(umask 077 && sqlite3 -readonly /var/lib/mailbox/service.db ".backup /var/backups/mailbox/service.db.new") &&
+  mv /var/backups/mailbox/service.db.new /var/backups/mailbox/service.db
 ```
 
 SQLite keeps the mode of a file it writes over, so a backup made before in

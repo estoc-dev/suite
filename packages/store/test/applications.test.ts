@@ -27,13 +27,7 @@ const contactSchema = schema("Contact", { name: string() });
 const schemas = [noteSchema, replySchema, receivedSchema, contactSchema].flatMap(({ blobs }) => blobs);
 const newStore = () => new Store(new MemoryBackend());
 
-function newStores() {
-  const backend = new MemoryBackend();
-  return { store: new Store(backend) };
-}
-type Stores = ReturnType<typeof newStores>;
-
-async function marksOf<F extends ValueMap>({ store }: Stores, schema: Schema<F>): Promise<EncodedObject<F>[]> {
+async function marksOf<F extends ValueMap>(store: Store, schema: Schema<F>): Promise<EncodedObject<F>[]> {
   const marks: EncodedObject<F>[] = [];
   for await (const link of store.marks()) {
     const mark = await objectsOf(schema).read(link, store);
@@ -42,7 +36,7 @@ async function marksOf<F extends ValueMap>({ store }: Stores, schema: Schema<F>)
   return marks;
 }
 
-async function receive({ store }: Stores, file: Uint8Array) {
+async function receive(store: Store, file: Uint8Array) {
   const bundle = decodeBundle(file);
   await store.write({ roots: [bundle.link], blobs: [...schemas, ...bundle.blobs()] });
   const received = encodeObject(receivedSchema, { bundle: new LinkValue(bundle.link) });
@@ -61,60 +55,58 @@ describe("a reply", () => {
     await aliceStore.write({ roots: [reply.link], blobs: [note.bytes, reply.bytes, ...schemas] });
     const file = encodeBundle(reply.link, (await aliceStore.closure(reply.link)).values());
 
-    const bob = newStores();
+    const bob = newStore();
     const received = await receive(bob, file);
 
     const [readReceived, ...others] = await marksOf(bob, receivedSchema);
     assert.exists(readReceived);
     expect(readReceived.link).toBe(received.link);
     expect(others).toEqual([]);
-    const readReply = await readObject(bob.store, readReceived.data.bundle.link, replySchema);
+    const readReply = await readObject(bob, readReceived.data.bundle.link, replySchema);
     expect(readReply.data.text).toBe("hello yourself");
-    expect((await readObject(bob.store, readReply.data.inReplyTo.link, noteSchema)).data.text).toBe("hello");
+    expect((await readObject(bob, readReply.data.inReplyTo.link, noteSchema)).data.text).toBe("hello");
   });
 });
 
 describe("a bundle that leaves out a blob in its objects' closures", () => {
   it("is refused, and no mark is written of it", async () => {
-    const bob = newStores();
+    const bob = newStore();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const reply = replyTo(note, "and hi again");
     const file = encodeBundle(reply.link, [reply.bytes]);
     await expect(receive(bob, file)).rejects.toThrow(`${reply.link} links to ${note.link}`);
-    expect(await bob.store.get(reply.link)).toBeUndefined();
+    expect(await bob.get(reply.link)).toBeUndefined();
     expect(await marksOf(bob, receivedSchema)).toEqual([]);
   });
 });
 
 describe("an object slipped into a bundle", () => {
   it("is not kept when it is outside the closure of the bundle's root", async () => {
-    const bob = newStores();
+    const bob = newStore();
     const note = encodeObject(noteSchema, { text: "hi Bob" });
     const reply = replyTo(note, "and hi again");
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     await receive(bob, encodeBundle(reply.link, [reply.bytes, note.bytes, slippedContact.bytes]));
-    expect(await bob.store.get(note.link)).toEqual(note.bytes);
-    expect(await bob.store.get(slippedContact.link)).toBeUndefined();
+    expect(await bob.get(note.link)).toEqual(note.bytes);
+    expect(await bob.get(slippedContact.link)).toBeUndefined();
   });
 
   it("is not among what the receiver recorded when it is in the closure of the bundle's root, though it is of a schema the receiver writes", async () => {
-    const bob = newStores();
+    const bob = newStore();
     const contact = encodeObject(contactSchema, { name: "Alice" });
-    await bob.store.write({ roots: [contact.link], blobs: [contact.bytes, ...schemas] });
-    await bob.store.writeMarks(recordsOf([contact.link], Date.now()));
+    await bob.write({ roots: [contact.link], blobs: [contact.bytes, ...schemas] });
+    await bob.writeMarks(recordsOf([contact.link], Date.now()));
 
     const slippedContact = encodeObject(contactSchema, { name: "Mallory, a friend of Bob's" });
     const reply = replyTo(slippedContact, "a friend of yours");
     await receive(bob, encodeBundle(reply.link, [reply.bytes, slippedContact.bytes]));
 
-    expect((await readObject(bob.store, slippedContact.link, contactSchema)).data.name).toBe(
-      "Mallory, a friend of Bob's",
-    );
+    expect((await readObject(bob, slippedContact.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
     const byName = indexOver(selectedRecords(objectsOf(contactSchema)), contactSchema, ({ data }) => [data]).orderedBy(
       "name",
     );
     const names: string[] = [];
-    for await (const { data } of (await scan(bob.store, byName)).range([])) names.push(data.name);
+    for await (const { data } of (await scan(bob, byName)).range([])) names.push(data.name);
     expect(names).toEqual(["Alice"]);
   });
 });

@@ -727,7 +727,6 @@ describe("a mailbox service started again", () => {
   });
 });
 
-/** The store, the accounts and the mailboxes of a service, all in the SQLite file at `path`. */
 function sqliteParts(path: string) {
   const backend = new SqliteBackend(path);
   const accounts = new SqliteAccounts(path);

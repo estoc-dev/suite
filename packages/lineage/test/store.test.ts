@@ -23,19 +23,16 @@ const byItem: HeadIndex = indexOver(selectedRecords(lineages.selection), headSch
   for (const item of items) yield { of: new LinkValue(item), head: new LinkValue(head.link) };
 }).orderedBy("of", "head");
 
-function newStores() {
-  return { store: new Store(new MemoryBackend()) };
-}
-type Stores = ReturnType<typeof newStores>;
+const newStore = () => new Store(new MemoryBackend());
 
-async function recordHeads({ store }: Stores, ...chains: readonly Lineage[]) {
+async function recordHeads(store: Store, ...chains: readonly Lineage[]) {
   const notes = [first, second, third, other].map(({ bytes }) => bytes);
   const heads = chains.map(({ head }) => head.link);
   await store.write({ roots: heads, blobs: [...chains.flatMap(({ blobs }) => blobs), ...notes, ...note.blobs] });
   await store.writeMarks(recordsOf(heads, Date.now()));
 }
 
-async function readHeads({ store }: Stores, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
+async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
   const heads: Link<LineageNodeObject>[] = [];
   for await (const { data } of (await scan(store, index)).range([new LinkValue(key)])) heads.push(data.head.link);
   return heads;
@@ -43,32 +40,32 @@ async function readHeads({ store }: Stores, index: HeadIndex, key: Link<unknown>
 
 describe("a lineage written to a store", () => {
   it("is read by the selection from its head, back to its first node", async () => {
-    const stores = newStores();
+    const store = newStore();
     const lineage = lineages.startingWith(first).appending(second);
-    await recordHeads(stores, lineage);
-    const loadedLineage = await lineages.selection.read(lineage.head.link, stores.store);
+    await recordHeads(store, lineage);
+    const loadedLineage = await lineages.selection.read(lineage.head.link, store);
     expect(loadedLineage?.first.link).toBe(lineage.first.link);
     expect(loadedLineage?.items).toEqual([first.link, second.link]);
   });
 
   it("goes into an index by series with every head of the series that is recorded", async () => {
-    const stores = newStores();
+    const store = newStore();
     const trunk = lineages.startingWith(first);
     const branch = trunk.appending(second);
     const otherBranch = trunk.appending(third);
-    await recordHeads(stores, trunk);
-    await recordHeads(stores, branch, otherBranch, lineages.startingWith(other));
-    const heads = await readHeads(stores, bySeries, trunk.first.link);
+    await recordHeads(store, trunk);
+    await recordHeads(store, branch, otherBranch, lineages.startingWith(other));
+    const heads = await readHeads(store, bySeries, trunk.first.link);
     expect(heads.sort()).toEqual([trunk.head.link, branch.head.link, otherBranch.head.link].sort());
   });
 
   it("goes into an index by item under each version it holds, those before its head among them", async () => {
-    const stores = newStores();
+    const store = newStore();
     const lineage = lineages.startingWith(first).appending(second).appending(first);
-    await recordHeads(stores, lineage, lineages.startingWith(other));
-    expect(await readHeads(stores, byItem, second.link)).toEqual([lineage.head.link]);
-    expect(await readHeads(stores, byItem, first.link)).toEqual([lineage.head.link]);
-    expect(await readHeads(stores, byItem, third.link)).toEqual([]);
+    await recordHeads(store, lineage, lineages.startingWith(other));
+    expect(await readHeads(store, byItem, second.link)).toEqual([lineage.head.link]);
+    expect(await readHeads(store, byItem, first.link)).toEqual([lineage.head.link]);
+    expect(await readHeads(store, byItem, third.link)).toEqual([]);
   });
 });
 
@@ -90,21 +87,21 @@ const notes = lineages.schemaLineageOf([v1, v2]);
 
 describe("the selection of a schema lineage over a store", () => {
   it("gives the rows of the recorded objects of every version, and none of another schema", async () => {
-    const stores = newStores();
-    await recordHeads(stores, lineages.startingWith(first));
+    const store = newStore();
+    await recordHeads(store, lineages.startingWith(first));
     const untitled = encodeObject(note, { text: "untitled" });
     const titledObject = encodeObject(titledNote, { title: "Greeting", body: "titled" });
-    await stores.store.write({
+    await store.write({
       roots: [untitled.link, titledObject.link],
       blobs: [untitled.bytes, titledObject.bytes, ...notes.blobs],
     });
-    await stores.store.writeMarks(recordsOf([untitled.link, titledObject.link], Date.now()));
+    await store.writeMarks(recordsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
     const byText = indexOver(selectedRecords(notes.selection), titled, function* ({ text, title }) {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];
-    for await (const { data } of (await scan(stores.store, byText)).range([])) rows.push(data);
+    for await (const { data } of (await scan(store, byText)).range([])) rows.push(data);
     expect(rows).toEqual([
       { text: "titled", title: "Greeting" },
       { text: "untitled", title: "" },

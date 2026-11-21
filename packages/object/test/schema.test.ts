@@ -83,7 +83,7 @@ describe("the root schema", () => {
     expect(objectFormat.decode(root.bytes).schema).toBe(itself);
     expect(schemaOf(root.bytes)).toBe(root.link);
     const fieldsText = "666669656c6473";
-    expect(bytesToHex(root.bytes)).toBe(`da656f6621826473656c66a1${fieldsText}81${fieldsText}`);
+    expect(bytesToHex(root.bytes)).toBe(`da656f663f826473656c66a1${fieldsText}81${fieldsText}`);
   });
 
   it("holds data that fits it, and reads as a schema of the language", () => {

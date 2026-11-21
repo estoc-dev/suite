@@ -10,13 +10,13 @@ import { MailboxKey } from "../src/index.ts";
 // KEM, KDF or AEAD does not open it. The root is written to the schema of a
 // note, whose bytes and those of its root schema were written the same way,
 // and the links were checked against Python's hashlib.
-const noteLink = "sha256:304d61c68015b6b5428eb13b0de00bf42912d848daa898df848c366b9dcb7632";
-const root = `da656f662182d9486c5820${noteLink.slice("sha256:".length)}a164746578746568656c6c6f`;
-const rootLink = "sha256:a4dff6076b3e33a6f39bb4a1e57cdefe922d492c93d98f21ff0a66ad2bc86e77";
+const noteLink = "sha256:90efcb1ea7df1a7472978dadfe968d51eccfca2ba23b09f4f71a8650aadd906f";
+const root = `da656f663f82d9486c5820${noteLink.slice("sha256:".length)}a164746578746568656c6c6f`;
+const rootLink = "sha256:ad3418aebeca30a35d5813e55d56efc72556f6373cbae60df25061af877393bd";
 const blob = new Uint8Array([0xfb, 0xff, 0xbf]);
 const ciphertext =
-  "e72a66535dd5e206d0c6d1cd3a7d7be07e3c505a431bf59063d0d68e47e1b3224a1c8e49a8e06fb54eb3417c087331a02f8dfe7ac5f53be3cd2c3fa47df6dd18" +
-  "1c6ff28908e45addc6142adefda1f790772a83fd0b229b776439324b3bb3f1a71dc1e676e4a13b506ffbd5";
+  "e9ca4071bb209099a4de7ebbda8a57068abfa2d4c1821d7891e0de5b027a372b7d1af6c864a925d3dd5a50ee290f5cba6053e6cffdc12396b33c1e61c617d690" +
+  "d85984095410d002537d8ad78d09ab06a79c0aec2f310817b980d35fb8bc952652c5e1d2f6f86cc30a1b44";
 
 const key = await MailboxKey.fromSecretKey(new Uint8Array(32).fill(1));
 

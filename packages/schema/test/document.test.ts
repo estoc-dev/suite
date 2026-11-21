@@ -130,7 +130,7 @@ describe("the root schema", () => {
 
   it("has the link of its bytes as they were written out by hand elsewhere", () => {
     // The CBOR was written by hand in Python and hashed with its hashlib.
-    expect(rootSchema.link).toBe("sha256:ca7c1b8aee79500fa94042b733ba665e400d07b94eb30bdc4d294de50508da66");
+    expect(rootSchema.link).toBe("sha256:0ca86dbda2c90f10b57610d2174c9c1d71169926bbef6522bea63e926d33765b");
   });
 
   it("holds data that fits it, and reads as a schema of the language", () => {

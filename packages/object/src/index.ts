@@ -11,6 +11,8 @@ export {
   schemaOf,
 } from "./object.ts";
 export {
+  decodeData,
+  encodeData,
   type Itself,
   isValueMap,
   itself,

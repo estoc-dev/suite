@@ -131,6 +131,21 @@ function* linksIn(value: Value): Generator<Link<unknown>> {
     for (const member of Object.values(value)) yield* linksIn(member);
 }
 
+// In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.
+function plainBytesOf(bytes: Uint8Array): Uint8Array {
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+const decodeOptions = {
+  strict: true,
+  strictUtf8: true,
+  allowIndefinite: false,
+  allowUndefined: false,
+  rejectDuplicateMapKeys: true,
+  useMaps: true,
+  tags: Tagged.preserve(objectTag, linkTag),
+};
+
 function isSame(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, at) => byte === b[at]);
 }
@@ -144,22 +159,10 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
 export const objectFormat = {
   encode(object: ObjectValue): Uint8Array {
     const schema = object.schema === itself ? itselfText : cborValueOf(new LinkValue(object.schema));
-    const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(object.data)]), rfc8949EncodeOptions);
-    // In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.
-    return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return plainBytesOf(encode(new Tagged(objectTag, [schema, cborMapOf(object.data)]), rfc8949EncodeOptions));
   },
   decode(bytes: Uint8Array): ObjectValue {
-    const value = objectValueOf(
-      decode(bytes, {
-        strict: true,
-        strictUtf8: true,
-        allowIndefinite: false,
-        allowUndefined: false,
-        rejectDuplicateMapKeys: true,
-        useMaps: true,
-        tags: Tagged.preserve(objectTag, linkTag),
-      }),
-    );
+    const value = objectValueOf(decode(bytes, decodeOptions));
     if (!isSame(objectFormat.encode(value), bytes)) throw new Error("not in the deterministic encoding of RFC 8949");
     return value;
   },
@@ -172,3 +175,17 @@ export const objectFormat = {
     for (const field of Object.values(object.data)) yield* linksIn(field);
   },
 };
+
+/**
+ * Data by itself, for a message that is read once and not kept. It names no schema, and nothing
+ * holds it by a link, so bytes other than what `encodeData` writes for it are read as well.
+ */
+export function encodeData(data: ValueMap): Uint8Array {
+  return plainBytesOf(encode(cborMapOf(data), rfc8949EncodeOptions));
+}
+
+export function decodeData(bytes: Uint8Array): ValueMap {
+  const value: unknown = decode(bytes, decodeOptions);
+  if (!(value instanceof Map)) throw new Error("data is a map of its fields");
+  return dataMapOf(value);
+}

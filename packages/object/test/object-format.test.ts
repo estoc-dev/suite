@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
+  decodeData,
   decodeObject,
+  encodeData,
   encodeObject,
   encodeSchema,
   itself,
@@ -165,6 +167,7 @@ describe("encoding", () => {
   ])("refuses %s", (_, value) => {
     expect(() => encodeObject(anything, { v: value as Value })).toThrow();
     expect(() => encodeObject(anything, { v: [{ nested: value as Value }] })).toThrow();
+    expect(() => encodeData({ v: value as Value })).toThrow();
   });
 
   it.each([1, 64, 100, 5000])("gives plain bytes, not a Node Buffer, around %i bytes", (length) => {
@@ -176,6 +179,44 @@ describe("encoding", () => {
   it("refuses a link that is not one", () => {
     expect(() => new LinkValue("sha256:ABC" as Link<never>)).toThrow();
     expect(() => objectFormat.encode(new ObjectValue("note" as Link<never>, {}))).toThrow();
+  });
+});
+
+describe("data by itself", () => {
+  const data = { bytes: Uint8Array.of(1, 2), items: [{ link: new LinkValue(a) }], text: "hello" };
+
+  it("is the map of its fields, under no tag and with no schema", () => {
+    expect(bytesToHex(encodeData({ text: "hello" }))).toBe("a164746578746568656c6c6f");
+    expect(decodeData(encodeData(data))).toEqual(data);
+  });
+
+  it("is read from bytes other than the ones written for it", () => {
+    expect(decodeData(hexToBytes("a2616201616101"))).toEqual({ a: 1, b: 1 });
+  });
+
+  it.each([
+    ["an object", objectHex("a0")],
+    ["an object inside it", `a16176${objectHex("a0")}`],
+    ["an array", "80"],
+    ["a link", linkHex(a)],
+    ["a key that is not a string", "a10101"],
+    ["a repeated key", "a2616101616101"],
+    ["a tag other than that of a link", "a16176d82a4100"],
+    ["a float", "a16176f93e00"],
+    ["2^53", "a161761b0020000000000000"],
+    ["a map of indefinite length", "bf616101ff"],
+    ["an integer in a longer head", "a161761801"],
+    ["a surrogate written in UTF-8", "a1617663eda080"],
+    ["a byte after the map", "a000"],
+    ["no bytes", ""],
+  ])("is not read from %s", (_, hex) => {
+    expect(() => decodeData(hexToBytes(hex))).toThrow();
+  });
+
+  it.each([1, 64, 100, 5000])("is written as plain bytes, not a Node Buffer, around %i bytes", (length) => {
+    const bytes = encodeData({ v: new Uint8Array(length) });
+    expect(Buffer.isBuffer(bytes)).toBe(false);
+    expect(decodeData(bytes)).toEqual({ v: new Uint8Array(length) });
   });
 });
 

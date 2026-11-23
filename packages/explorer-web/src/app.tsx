@@ -11,9 +11,8 @@ const failureView = (error: () => unknown) => (
   </p>
 );
 
-/** Settles once what is beside it is shown: the `Loading` above holds it back while that shows its fallback. */
-function Shown(props: { onShown: () => void }): null {
-  onSettled(() => props.onShown());
+function PlaceReadiness(props: { onReady: () => void }): null {
+  onSettled(() => props.onReady());
   return null;
 }
 
@@ -24,11 +23,10 @@ export function App(props: { source: Source }) {
     showFirstPlace = resolve;
   });
   onSettled(() => {
-    // The browser keeps the scroll of each entry of its history and applies it once the promise of
-    // the handler resolves: an entry gone back to gets the scroll it was left at, and a new one
-    // starts at its top. The place has to be in the document by then, with its height. The views
-    // have no `Loading` of their own, so the page settles only when the place is read and shown.
-    // Before the first place is read it settles on the fallback, so the promise awaits that place too.
+    // The browser applies the scroll of an entry of its history once the promise of the handler
+    // resolves, so the place has to be in the document by then, with its height. The page settles
+    // when a place is read and shown, but before the first one it settles on the fallback: inside
+    // `Loading`, `PlaceReadiness` is held back until that place is shown.
     const show = (event: NavigateEvent) => {
       // Not `hashChange`, which is false of a navigation to the address the page is already at.
       if (!event.destination.sameDocument) return;
@@ -67,7 +65,7 @@ export function App(props: { source: Source }) {
         </main>
       }
     >
-      <Shown onShown={showFirstPlace} />
+      <PlaceReadiness onReady={showFirstPlace} />
       <Errored fallback={failureView}>
         <header>
           <span class="brand">Explorer</span>

@@ -44,17 +44,28 @@ export function portChannel(port: MessagePort): Channel {
 /** What a `WebSocket` of a browser and one of `ws` both are. */
 interface Socket {
   binaryType: string;
+  readonly readyState: number;
   send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
+  addEventListener(type: "open", listener: () => void): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: "close", listener: () => void): void;
 }
 
-/** `socket` is open. */
+/** The `readyState` of a socket that has not opened yet, which throws at what it is given to send. */
+const connecting = 0;
+
 export function socketChannel(socket: Socket): Channel {
   socket.binaryType = "arraybuffer";
+  const waitingMessages: Uint8Array<ArrayBuffer>[] = [];
+  socket.addEventListener("open", () => {
+    for (const message of waitingMessages.splice(0)) socket.send(message);
+  });
   return {
-    send: (message) => socket.send(message),
+    send(message) {
+      if (socket.readyState === connecting) waitingMessages.push(message);
+      else socket.send(message);
+    },
     receive(onMessage, onClose) {
       socket.addEventListener("message", ({ data }) => onMessage(new Uint8Array(data as ArrayBuffer)));
       socket.addEventListener("close", onClose);

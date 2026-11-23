@@ -29,13 +29,12 @@ async function open(fragment: string): Promise<void> {
   await Promise.all(navigate(location.href, true).map((handler) => handler()));
 }
 
-/** What a read waits for in a test, until the test opens it. */
-function gate(): { isOpen: Promise<void>; open: () => void } {
+function gate(): { permissionToRead: Promise<void>; open: () => void } {
   let open = () => {};
-  const isOpen = new Promise<void>((resolve) => {
+  const permissionToRead = new Promise<void>((resolve) => {
     open = resolve;
   });
-  return { isOpen, open };
+  return { permissionToRead, open };
 }
 
 function finishOf(promise: Promise<void>): { promise: Promise<void>; isFinished: boolean } {
@@ -187,7 +186,7 @@ describe("the page", () => {
     const root = show({
       ...source,
       async get(link) {
-        if (link === entry.link) await reading.isOpen;
+        if (link === entry.link) await reading.permissionToRead;
         return source.get(link);
       },
     });
@@ -208,7 +207,7 @@ describe("the page", () => {
     const root = show({
       ...source,
       async get(link) {
-        if (link === entry.link) await reading.isOpen;
+        if (link === entry.link) await reading.permissionToRead;
         return source.get(link);
       },
     });
@@ -231,7 +230,7 @@ describe("the page", () => {
     const root = show({
       ...source,
       async lists() {
-        await reading.isOpen;
+        await reading.permissionToRead;
         return source.lists();
       },
     });
@@ -249,7 +248,7 @@ describe("the page", () => {
     const root = show({
       ...sourceOf(),
       async lists() {
-        await reading.isOpen;
+        await reading.permissionToRead;
         throw new Error("the channel is closed");
       },
     });

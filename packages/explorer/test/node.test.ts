@@ -77,3 +77,18 @@ describe("serve", () => {
     await expect(client.lists()).rejects.toThrow("the channel is closed");
   });
 });
+
+describe("a channel over a socket", () => {
+  it("sends what it is given before the socket opens once it opens", async () => {
+    const { origin } = await startServer();
+    const client = new Client(socketChannel(openSocket(origin, origin)));
+    expect(await client.get(note.link)).toEqual(note.bytes);
+  });
+
+  it("closes when the socket is refused, which fails the calls made before", async () => {
+    const { origin } = await startServer();
+    const socket = openSocket(origin, "http://example.com");
+    socket.on("error", () => {});
+    await expect(new Client(socketChannel(socket)).lists()).rejects.toThrow("the channel closed before the reply");
+  });
+});

@@ -364,7 +364,7 @@ td:nth-child(2) {
   font-weight: 600;
 }
 
-.place {
+.slot {
   display: flex;
   flex-direction: column;
   gap: 6px;

@@ -58,9 +58,11 @@ gives no meaning and no reader an advantage.
   that show it, over a channel that carries calls one way and replies the
   other: the lists it has of what the store holds, a page of one, and a
   blob by its link.
-- `@estoc/explorer-web`: the pages that the explorer gives, which show a
+- `@estoc/explorer-web`: the pages that the explorer gives. One shows a
   list as a table with a column for each field of the schema its rows are
-  written to, a page at a time.
+  written to, a page at a time. The other shows a blob: the schema it
+  names, its fields, what the pages read it as, and a link to follow for
+  each link it holds.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

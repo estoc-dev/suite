@@ -1,5 +1,5 @@
 import { type ListData, listSchema } from "@estoc/explorer";
-import { encodeObject, type Link, LinkValue, linkOf, type Schema, type ValueMap } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, type Reader, type Schema, type ValueMap } from "@estoc/object";
 import { integer, link, optional, schema, string } from "@estoc/schema";
 import type { Source } from "../src/list-page.ts";
 
@@ -7,6 +7,10 @@ export const entrySchema = schema("Entry", { name: string(), count: integer(), t
 
 export const entriesOf = (count: number) =>
   Array.from({ length: count }, (_, index) => ({ name: `entry ${index}`, count: index }));
+
+export function readerOf(...blobs: readonly Uint8Array[]): Reader {
+  return new Map<Link<unknown>, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
+}
 
 export interface GivenList {
   readonly description: ListData;
@@ -25,9 +29,7 @@ export function listOf(
 
 /** Gives the pages of `lists` by the rule of a runtime, reading the rows as they are when it is asked. */
 export function sourceOf(...lists: readonly GivenList[]): Source {
-  const blobs = new Map<Link<unknown>, Uint8Array>(
-    lists.flatMap(({ rowSchema }) => rowSchema.blobs.map((bytes) => [linkOf(bytes), bytes])),
-  );
+  const blobs = readerOf(...lists.flatMap(({ rowSchema }) => rowSchema.blobs));
   return {
     get: async (link) => blobs.get(link),
     lists: async () => lists.map(({ description }) => encodeObject(listSchema, description)),
@@ -45,4 +47,9 @@ export function sourceOf(...lists: readonly GivenList[]): Source {
       };
     },
   };
+}
+
+export function sourceHolding(source: Source, ...blobs: readonly Uint8Array[]): Source {
+  const held = readerOf(...blobs);
+  return { ...source, get: async (link) => (await held.get(link)) ?? source.get(link) };
 }

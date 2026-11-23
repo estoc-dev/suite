@@ -1,10 +1,10 @@
-import { LinkValue, linkOf, type ValueMap } from "@estoc/object";
+import { encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { any, array, boolean, bytes, optional, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { App } from "../src/app.tsx";
 import type { Source } from "../src/list-page.ts";
-import { entriesOf, listOf, sourceOf } from "./fixtures.ts";
+import { entriesOf, entrySchema, listOf, sourceHolding, sourceOf } from "./fixtures.ts";
 
 function show(source: Source): HTMLElement {
   const root = document.createElement("div");
@@ -122,6 +122,54 @@ describe("the page", () => {
     open("#list=Entries");
     await vi.waitFor(() => expect(cellsOf(root)).toEqual([[target, "linked", "1"]]));
     expect(root.querySelector("td [title]")?.getAttribute("title")).toBe(target);
+    expect(hrefsOf(root, "td a")).toEqual([[target, `#${target}`]]);
+  });
+
+  it("shows the blob the fragment names in place of a list, and the list again once the fragment names it", async () => {
+    const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+    open(`#${entry.link}`);
+    const root = show(sourceHolding(sourceOf(listOf("Entries", entriesOf(1))), entry.bytes));
+    await vi.waitFor(() =>
+      expect(textsOf(root, "tbody tr")).toEqual(['name"alone"string', "count7integer", "toleft outlink · optional"]),
+    );
+    expect(textsOf(root, "h1")).toEqual(["Blob"]);
+    expect(textsOf(root, ".head .title")).toEqual(["Entry"]);
+    expect(textsOf(root, "header a")).toEqual(["Entries"]);
+    expect(textsOf(root, "header [aria-current]")).toEqual([]);
+    open("#list=Entries");
+    await vi.waitFor(() => expect(cellsOf(root)).toEqual([["", "entry 0", "0"]]));
+    expect(textsOf(root, "header [aria-current]")).toEqual(["Entries"]);
+  });
+
+  it("shows another blob once the fragment names it", async () => {
+    const [first, second] = [encodeObject(entrySchema, { name: "first", count: 1 }), Uint8Array.of(0, 10, 255)];
+    open(`#${first.link}`);
+    const root = show(sourceHolding(sourceOf(), first.bytes, second));
+    await vi.waitFor(() => expect(textsOf(root, ".head dd")[0]).toBe(first.link));
+    open(`#${linkOf(second)}`);
+    await vi.waitFor(() => expect(textsOf(root, ".head dd")).toEqual([linkOf(second), "3 bytes"]));
+  });
+
+  it("starts at the top of a place the browser has not shown, and leaves the scroll of one it has to the browser", async () => {
+    const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+    const root = show(sourceHolding(sourceOf(listOf("Entries", entriesOf(1))), entry.bytes));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    onTestFinished(() => scrollTo(0, 0));
+    scrollTo(0, 300);
+    history.pushState(null, "", `#${entry.link}`);
+    dispatchEvent(new Event("hashchange"));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Blob"]));
+    expect(scrollY).toBe(0);
+    scrollTo(0, 300);
+    history.back();
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    expect(scrollY).toBe(300);
+  });
+
+  it("shows why a blob was not read", async () => {
+    open(`#${linkOf(Uint8Array.of(1))}`);
+    const root = show({ ...sourceOf(), get: () => Promise.reject(new Error("the channel is closed")) });
+    await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
   });
 
   it("shows nothing where a row leaves out a field, whatever every object inherits under its name", async () => {

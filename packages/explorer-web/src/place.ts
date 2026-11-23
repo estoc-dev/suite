@@ -1,14 +1,24 @@
+import { isLink, type Link } from "@estoc/object";
+
 /**
  * `from` counts the rows of the list before where the page begins. The page goes on from there in
  * the order the list is shown: towards the end of a list shown in its own order, and towards the
  * front of one shown newest first. Left out, the page begins where the list as shown begins.
  */
-export interface Place {
+export interface ListPlace {
   readonly list: string;
   readonly from?: number;
 }
 
-export function fragmentOf({ list, from }: Place): string {
+export interface BlobPlace {
+  readonly blob: Link<unknown>;
+}
+
+export type Place = ListPlace | BlobPlace;
+
+export function fragmentOf(place: Place): string {
+  if ("blob" in place) return `#${place.blob}`;
+  const { list, from } = place;
   return `#${new URLSearchParams({ list, ...(from === undefined ? {} : { from: String(from) }) })}`;
 }
 
@@ -18,7 +28,9 @@ function countIn(text: string | null): number | undefined {
 }
 
 export function placeIn(fragment: string): Place | undefined {
-  const parameters = new URLSearchParams(fragment.slice(1));
+  const text = fragment.slice(1);
+  if (isLink(text)) return { blob: text };
+  const parameters = new URLSearchParams(text);
   const list = parameters.get("list");
   if (list === null) return undefined;
   const from = countIn(parameters.get("from"));

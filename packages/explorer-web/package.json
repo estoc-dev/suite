@@ -9,7 +9,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@estoc/blog": "workspace:*",
     "@estoc/explorer": "workspace:*",
+    "@estoc/identity": "workspace:*",
+    "@estoc/inspector": "workspace:*",
     "@estoc/object": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@solidjs/web": "2.0.3",

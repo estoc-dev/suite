@@ -6,12 +6,12 @@ import {
   linkOf,
   ObjectValue,
   objectFormat,
-  type Reader,
   type ValueMap,
 } from "@estoc/object";
 import { any, array, link, optional, rootSchema, schema, schemaLanguage, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { inspect } from "../src/index.ts";
+import { readerOf } from "./fixtures.ts";
 
 const noteSchema = schema("Note", { text: string(), replies: array(link()), more: optional(any()) });
 const noteDocument = {
@@ -29,10 +29,6 @@ const note = encodeObject(noteSchema, {
   replies: [new LinkValue(reply.link)],
   more: { files: [{ photo: new LinkValue(linkOf(photo)) }] },
 });
-
-function readerOf(...blobs: readonly Uint8Array[]): Reader {
-  return new Map<Link<unknown>, Uint8Array>(blobs.map((bytes) => [linkOf(bytes), bytes]));
-}
 
 function objectOf(schemaLink: Link<unknown> | typeof itself, data: ValueMap): Uint8Array {
   return objectFormat.encode(new ObjectValue(schemaLink, data));

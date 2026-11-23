@@ -1,10 +1,11 @@
-import type { Inspection } from "@estoc/inspector";
 import { isValueMap, type Value } from "@estoc/object";
 import type { Field } from "@estoc/schema";
+import type { Inspection } from "./inspection.ts";
 
 export type InspectedObject = Extract<Inspection, { readonly kind: "object" }>;
 
-export interface Place {
+/** `value` is none for a field that the data leaves out, and `parts` are the items of an array or the members of a map. */
+export interface Slot {
   readonly value: Value | undefined;
   readonly problems: readonly string[];
   readonly parts: readonly Part[];
@@ -12,13 +13,13 @@ export interface Place {
 
 export interface Part {
   readonly key: string;
-  readonly place: Place;
+  readonly slot: Slot;
 }
 
 export interface FieldRow {
   readonly name: string;
   readonly field: Field | undefined;
-  readonly place: Place;
+  readonly slot: Slot;
 }
 
 export interface FieldTable {
@@ -27,14 +28,14 @@ export interface FieldTable {
 }
 
 /**
- * The validator names a place as text, and a name that holds `/` or `: ` can spell the place of
- * another value as well as its own, so a problem that reads as that of more than one place is held
+ * The validator names a slot as text, and a name that holds `/` or `: ` can spell the slot of
+ * another value as well as its own, so a problem that reads as that of more than one slot is held
  * at none of them.
  */
 export function fieldTableOf({ data, schema }: InspectedObject): FieldTable {
   const fields = schema.kind === "schema" ? schema.document.fields : {};
   const problemsAt = new Map<string, string[][]>();
-  const placeAt = (path: string, value: Value | undefined): Place => {
+  const slotAt = (path: string, value: Value | undefined): Slot => {
     const problems: string[] = [];
     const problemLists = problemsAt.get(path);
     if (problemLists === undefined) problemsAt.set(path, [problems]);
@@ -42,13 +43,13 @@ export function fieldTableOf({ data, schema }: InspectedObject): FieldTable {
     return {
       value,
       problems,
-      parts: partsOf(value).map(([key, part]) => ({ key, place: placeAt(`${path}/${key}`, part) })),
+      parts: partsOf(value).map(([key, part]) => ({ key, slot: slotAt(`${path}/${key}`, part) })),
     };
   };
   const rowOf = (name: string, value: Value | undefined): FieldRow => ({
     name,
     field: Object.hasOwn(fields, name) ? fields[name] : undefined,
-    place: placeAt(`#/${name}`, value),
+    slot: slotAt(`#/${name}`, value),
   });
   const rows = [
     ...Object.entries(data).map(([name, value]) => rowOf(name, value)),

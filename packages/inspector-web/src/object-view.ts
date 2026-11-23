@@ -1,7 +1,13 @@
-import type { NamedSchema } from "@estoc/inspector";
+import {
+  type FieldRow,
+  type FieldTable,
+  fieldTableOf,
+  type InspectedObject,
+  type NamedSchema,
+  type Slot,
+} from "@estoc/inspector";
 import { AbsentBlob, isValueMap, LinkValue, type Value } from "@estoc/object";
 import { type Child, h, mono, muted } from "./dom.ts";
-import { type FieldRow, type FieldTable, fieldTableOf, type InspectedObject, type Place } from "./field-table.ts";
 import { linkView } from "./link-view.ts";
 import type { Reading } from "./reading.ts";
 import { hexOf, messageOf, sizeOf, typeNameOf } from "./text.ts";
@@ -18,14 +24,14 @@ function valueView(value: Value, partCount: number): HTMLElement {
 }
 
 // The problems of an array or a map come before what it holds, so that they are not read as those of its last part.
-function placeView({ value, problems, parts }: Place, key?: string): HTMLElement {
+function slotView({ value, problems, parts }: Slot, key?: string): HTMLElement {
   const content = value === undefined ? problems.length === 0 && muted("left out") : valueView(value, parts.length);
   return h(
     "div",
-    { class: key === undefined ? "place" : "place part" },
+    { class: key === undefined ? "slot" : "slot part" },
     content && h("div", { class: "line" }, key !== undefined && mono(key, "key"), content),
     problems.map((problem) => h("p", { class: "problem" }, problem)),
-    parts.map((part) => placeView(part.place, part.key)),
+    parts.map((part) => slotView(part.slot, part.key)),
   );
 }
 
@@ -48,7 +54,7 @@ function fieldTableView({ rows }: FieldTable, isTyped: boolean): HTMLElement {
           "tr",
           null,
           h("td", null, mono(row.name, "name")),
-          h("td", null, placeView(row.place)),
+          h("td", null, slotView(row.slot)),
           isTyped && typeCell(row),
         ),
       ),

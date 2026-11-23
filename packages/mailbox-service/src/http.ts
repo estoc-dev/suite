@@ -2,12 +2,12 @@
 export const BUNDLE_TYPE = "application/octet-stream";
 
 export async function readBody(
-  body: ReadableStream<Uint8Array> | null,
+  body: ReadableStream<Uint8Array<ArrayBuffer>> | null,
   limit: number,
 ): Promise<Uint8Array | undefined> {
   if (body === null) return new Uint8Array();
   const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
   let length = 0;
   for (let read = await reader.read(); !read.done; read = await reader.read()) {
     length += read.value.length;

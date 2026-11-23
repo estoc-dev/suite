@@ -34,7 +34,7 @@ export interface Route {
    * and none is sent again. It rejects with `UndeliveredMessage` when the ciphertext cannot be
    * handed on.
    */
-  deliver(ciphertext: Uint8Array): Promise<void>;
+  deliver(ciphertext: Uint8Array<ArrayBuffer>): Promise<void>;
 }
 
 /**

@@ -434,7 +434,7 @@ describe("accepting an account offer", () => {
 });
 
 const keyOf = (fill: number) => new Uint8Array(32).fill(fill);
-const postTo = (url: string, ciphertext: Uint8Array) => fetch(url, { method: "POST", body: ciphertext });
+const postTo = (url: string, ciphertext: Uint8Array<ArrayBuffer>) => fetch(url, { method: "POST", body: ciphertext });
 
 /**
  * A service running at an origin of 127.0.0.1, and a client whose store

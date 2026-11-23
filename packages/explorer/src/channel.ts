@@ -4,7 +4,7 @@
  * nothing that crosses is kept from either.
  */
 export interface Channel {
-  send(message: Uint8Array): void;
+  send(message: Uint8Array<ArrayBuffer>): void;
   /**
    * Takes the messages that come from then on. A channel has one receiver. `onClose` is called
    * once, when either end closes.
@@ -44,7 +44,7 @@ export function portChannel(port: MessagePort): Channel {
 /** What a `WebSocket` of a browser and one of `ws` both are. */
 interface Socket {
   binaryType: string;
-  send(data: Uint8Array): void;
+  send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: "close", listener: () => void): void;

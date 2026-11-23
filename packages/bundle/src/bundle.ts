@@ -51,7 +51,7 @@ function passValue(tokens: Tokenizer): void {
   for (let item = 0; item < items; item++) passValue(tokens);
 }
 
-function joined(chunks: readonly Uint8Array[]): Uint8Array {
+function joined(chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
   let at = 0;
   for (const chunk of chunks) {
@@ -62,7 +62,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
 }
 
 /** The file takes the extension `.eof`. */
-export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Uint8Array {
+export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>>): Uint8Array<ArrayBuffer> {
   const givenLinks = new Set<Link<unknown>>();
   const otherBlobs: Uint8Array[] = [];
   let rootBytes: Uint8Array | undefined;

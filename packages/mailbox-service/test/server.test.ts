@@ -62,7 +62,7 @@ const otherService = signer(ed25519, 4);
 
 const request = (path: string, init?: RequestInit) => new Request(new URL(path, "https://mail.example"), init);
 const getRoot = (service: MailboxService) => service.fetch(request("/"));
-const post = (service: MailboxService, id: string, body: Uint8Array) =>
+const post = (service: MailboxService, id: string, body: Uint8Array<ArrayBuffer>) =>
   service.fetch(request(`/${id}`, { method: "POST", body }));
 const bundleOf = async (response: Response) => decodeBundle(new Uint8Array(await response.arrayBuffer()));
 const recordedObjectsOf = async (store: Store) => (await writtenObjectsIn(store)).sort();
@@ -93,7 +93,7 @@ async function rootOf(service: MailboxService) {
   };
 }
 
-const postAcceptance = async (service: MailboxService, body: Uint8Array) =>
+const postAcceptance = async (service: MailboxService, body: Uint8Array<ArrayBuffer>) =>
   post(service, (await rootOf(service)).acceptId, body);
 
 async function directAcceptance(offer: { readonly link: Link<unknown> }, by = alice) {
@@ -331,7 +331,7 @@ describe("a mailbox service", () => {
     expect(await recordedObjectsOf(store)).toEqual(recordsBefore);
   });
 
-  it.each<[string, (service: MailboxService) => Promise<Uint8Array>]>([
+  it.each<[string, (service: MailboxService) => Promise<Uint8Array<ArrayBuffer>>]>([
     ["that is not a bundle", async () => new TextEncoder().encode("hello")],
     [
       "whose root is not a signature",
@@ -761,7 +761,7 @@ async function mailboxRequest(actor: Actor, offer: { readonly link: Link<unknown
   };
 }
 
-const postMailboxRequest = async (service: MailboxService, body: Uint8Array) =>
+const postMailboxRequest = async (service: MailboxService, body: Uint8Array<ArrayBuffer>) =>
   post(service, (await rootOf(service)).mailbox.acceptId, body);
 
 async function mailboxAcknowledgementIn(response: Response) {
@@ -935,7 +935,7 @@ describe("a mailbox service whose store holds a later identity version than a re
 
   it("throws when reading that version fails, and answers the same request once it is read", async () => {
     const { service, actor, postHoldingLaterVersion, root } = await serviceHoldingLaterVersion();
-    async function postAfterFailedRead(id: string, body: Uint8Array) {
+    async function postAfterFailedRead(id: string, body: Uint8Array<ArrayBuffer>) {
       const failingRead = () => {
         throw new Error("the read failed");
       };
@@ -1089,7 +1089,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect(await response.text()).toMatch(/is not honored/);
   });
 
-  it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array>]>([
+  it.each<[string, (service: MailboxService, actor: Actor) => Promise<Uint8Array<ArrayBuffer>>]>([
     [
       "for the offer of an account",
       async (service, actor) => (await mailboxRequest(actor, (await rootOf(service)).offer)).file,
@@ -1318,7 +1318,7 @@ describe("a mailbox that a service opened", () => {
     expect(await response.text()).toMatch(/is not honored/);
   });
 
-  it.each<[string, (actor: Actor, mailbox: OpenedMailbox, other: OpenedMailbox) => Promise<Uint8Array>]>([
+  it.each<[string, (actor: Actor, mailbox: OpenedMailbox, other: OpenedMailbox) => Promise<Uint8Array<ArrayBuffer>>]>([
     ["that names another mailbox", (actor, _, other) => pickupRequest(actor, other)],
     [
       "that names the mailbox by its acknowledgement",

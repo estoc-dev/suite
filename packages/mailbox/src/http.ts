@@ -44,7 +44,7 @@ function fetchAccepts(url: string): boolean {
   }
 }
 
-async function deliverTo(url: string, ciphertext: Uint8Array): Promise<void> {
+async function deliverTo(url: string, ciphertext: Uint8Array<ArrayBuffer>): Promise<void> {
   let response: Response;
   try {
     response = await fetch(url, { ...post, body: ciphertext });

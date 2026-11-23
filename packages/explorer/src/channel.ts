@@ -4,6 +4,7 @@
  * nothing that crosses is kept from either.
  */
 export interface Channel {
+  /** The channel may send `message` after this returns, so its bytes are left as they are. */
   send(message: Uint8Array<ArrayBuffer>): void;
   /**
    * Takes the messages that come from then on. A channel has one receiver. `onClose` is called
@@ -45,26 +46,30 @@ export function portChannel(port: MessagePort): Channel {
 interface Socket {
   binaryType: string;
   readonly readyState: number;
+  readonly CONNECTING: number;
   send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
-  addEventListener(type: "open", listener: () => void): void;
+  addEventListener(type: "open" | "error", listener: () => void): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: "close", listener: () => void): void;
 }
 
-/** The `readyState` of a socket that has not opened yet, which throws at what it is given to send. */
-const connecting = 0;
-
 export function socketChannel(socket: Socket): Channel {
   socket.binaryType = "arraybuffer";
-  const waitingMessages: Uint8Array<ArrayBuffer>[] = [];
+  // A socket of `ws` throws an error that no one listens for. It closes next, which the receiver is told.
+  socket.addEventListener("error", () => {});
+  // What is given before the socket opens, until it is sent. The socket is not asked at each `send`
+  // whether it is open: it is before these are sent, and a message sent in between would come out
+  // ahead of them.
+  let waitingMessages: Uint8Array<ArrayBuffer>[] | undefined = socket.readyState === socket.CONNECTING ? [] : undefined;
   socket.addEventListener("open", () => {
-    for (const message of waitingMessages.splice(0)) socket.send(message);
+    for (const message of waitingMessages ?? []) socket.send(message);
+    waitingMessages = undefined;
   });
   return {
     send(message) {
-      if (socket.readyState === connecting) waitingMessages.push(message);
-      else socket.send(message);
+      if (waitingMessages === undefined) socket.send(message);
+      else waitingMessages.push(message);
     },
     receive(onMessage, onClose) {
       socket.addEventListener("message", ({ data }) => onMessage(new Uint8Array(data as ArrayBuffer)));

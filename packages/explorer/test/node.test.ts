@@ -1,8 +1,9 @@
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { Client, socketChannel } from "../src/index.ts";
 import { serve } from "../src/node.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -87,8 +88,21 @@ describe("a channel over a socket", () => {
 
   it("closes when the socket is refused, which fails the calls made before", async () => {
     const { origin } = await startServer();
-    const socket = openSocket(origin, "http://example.com");
-    socket.on("error", () => {});
-    await expect(new Client(socketChannel(socket)).lists()).rejects.toThrow("the channel closed before the reply");
+    const client = new Client(socketChannel(openSocket(origin, "http://example.com")));
+    await expect(client.lists()).rejects.toThrow("the channel closed before the reply");
+  });
+
+  it("sends what it is given as the socket opens after what waited for that", async () => {
+    const sockets = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    onTestFinished(() => sockets.close());
+    await once(sockets, "listening");
+    const received: number[] = [];
+    sockets.on("connection", (peer) => peer.on("message", (data: Buffer) => received.push(...data)));
+    const socket = openSocket(`http://127.0.0.1:${(sockets.address() as AddressInfo).port}`, undefined);
+    // Listens before the channel does: when it runs the socket is open and what waits is not sent yet.
+    socket.addEventListener("open", () => channel.send(Uint8Array.of(2)));
+    const channel = socketChannel(socket);
+    channel.send(Uint8Array.of(1));
+    await expect.poll(() => received).toEqual([1, 2]);
   });
 });

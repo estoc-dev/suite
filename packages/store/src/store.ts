@@ -9,7 +9,7 @@ import {
   type RecordBatch,
   recordsOf,
 } from "./batch.ts";
-import { AddedRows, KeptRows, type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
+import { KeptRows, type RowKeeper, type RowsByIndex, readRows, rowsWithAdded } from "./scan.ts";
 
 /**
  * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
@@ -38,7 +38,18 @@ export interface Store {
   blobs(): AsyncIterable<Link<unknown>>;
   /** The statements recorded, in the order their Records were first written. It reads every blob held. */
   records(): AsyncIterable<Link<EncodedObject>>;
+  recordedStatements(): Promise<RecordedStatements>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
+}
+
+export interface RecordedStatements {
+  /** In the order their Records were first written. */
+  readonly statements: readonly Link<EncodedObject>[];
+  /**
+   * How many blobs the store held when the statements were read. A store only grows and its records
+   * come of the blobs held alone, so the statements read while it holds as many are these.
+   */
+  readonly blobCount: number;
 }
 
 /**
@@ -56,11 +67,15 @@ export interface StagedStore {
 
 export class StoreOf implements Store, RowKeeper {
   readonly #backend: Backend;
-  readonly [rowsByIndex]: RowsByIndex;
+  readonly #keptRows: KeptRows;
 
   constructor(backend: Backend) {
     this.#backend = backend;
-    this[rowsByIndex] = new KeptRows(this, (start) => backend.blobs(start));
+    this.#keptRows = new KeptRows(this, (start) => backend.blobs(start));
+  }
+
+  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
+    return this.#keptRows.read(use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -91,7 +106,11 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   async *records(): AsyncIterable<Link<EncodedObject>> {
-    yield* (await this[rowsByIndex].records()).links;
+    yield* (await this.recordedStatements()).statements;
+  }
+
+  recordedStatements(): Promise<RecordedStatements> {
+    return this[readRows](async (rows) => ({ statements: (await rows.records()).links, blobCount: rows.blobCount }));
   }
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
@@ -110,8 +129,8 @@ class StagedStoreOf implements StagedStore, RowKeeper {
     this.#blobs = blobs;
   }
 
-  get [rowsByIndex](): RowsByIndex {
-    return new AddedRows(this.#store[rowsByIndex], [...this.#blobs.keys()], this);
+  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
+    return this.#store[readRows](async (rows) => use(await rowsWithAdded(rows, [...this.#blobs.keys()], this)));
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;

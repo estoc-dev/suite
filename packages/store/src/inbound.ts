@@ -1,7 +1,7 @@
 import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
-import { type RowKeeper, type RowsByIndex, rowsByIndex } from "./scan.ts";
+import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
 import type { StagedStore, Store } from "./store.ts";
 
 /**
@@ -73,9 +73,9 @@ class StagedArrival implements StagedStore, RowKeeper {
     this.#record = record;
   }
 
-  get [rowsByIndex](): RowsByIndex {
+  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
     // What a store stages keeps rows.
-    return (this.#stagedBundle as StagedStore & RowKeeper)[rowsByIndex];
+    return (this.#stagedBundle as StagedStore & RowKeeper)[readRows](use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;

@@ -111,6 +111,31 @@ describe("records", () => {
     expect(requestedLinks).toContain(second.link);
   });
 
+  it("are listed with how many blobs the store held, as they were then though more are recorded meanwhile", async () => {
+    const { backend, store: writer } = sides();
+    let recordAfterListing: (() => Promise<void>) | undefined;
+    const store = new Store({
+      get: (link) => backend.get(link),
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      async *blobs(start) {
+        yield* backend.blobs(start);
+        const record = recordAfterListing;
+        recordAfterListing = undefined;
+        await record?.();
+      },
+    });
+    const [first, second] = [card("Alice"), card("Bob")];
+    await writer.record(batchOf([first], [...cardSchema.blobs]));
+    const heldCount = (await listOf(writer.blobs())).length;
+    recordAfterListing = () => writer.record(batchOf([second]));
+    expect(await store.recordedStatements()).toEqual({ statements: [first.link], blobCount: heldCount });
+    expect(await store.recordedStatements()).toEqual({
+      statements: [first.link, second.link],
+      blobCount: (await listOf(writer.blobs())).length,
+    });
+  });
+
   it("list a statement that came to the store before it was recorded", async () => {
     const { store } = sides();
     const alice = card("Alice");

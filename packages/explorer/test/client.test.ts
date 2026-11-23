@@ -1,6 +1,6 @@
-import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { link, rootSchema, schema } from "@estoc/schema";
-import { type Backend, MemoryBackend, writtenObjectSchema, writtenObjectsOf } from "@estoc/store";
+import { type Backend, MemoryBackend, Store, writtenObjectSchema, writtenObjectsOf } from "@estoc/store";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { callSchema, replySchema } from "../src/calls.ts";
 import { type Channel, Client } from "../src/index.ts";
@@ -12,7 +12,7 @@ const heldBlobsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeO
 const linkPairsIn = (rows: readonly Uint8Array[]) =>
   rows.map((bytes) => decodeObject(bytes, heldLinkSchema).data).map(({ target, source }) => [target.link, source.link]);
 
-const sortedPairs = (pairs: [string, string][]) => pairs.sort();
+const sortedPairs = (pairs: [string, string][]) => [...pairs].sort();
 
 function answerEach(far: Channel, resultOf: (name: string) => ValueMap): void {
   far.receive(
@@ -104,6 +104,61 @@ describe("a client of a runtime", () => {
         schema: new LinkValue(writtenObjectSchema.link),
       })),
     );
+  });
+
+  it("reads a page of Records as they were at the blobs it counts, though a statement is recorded while it is read", async () => {
+    const backend = new MemoryBackend();
+    const writer = await storeOfNote(backend);
+    await writer.record(writtenObjectsOf([note.link], 1));
+    let recordAfterListing: (() => Promise<void>) | undefined;
+    const client = clientOf(
+      new Store({
+        get: (link) => backend.get(link),
+        has: (link) => backend.has(link),
+        put: (blobs) => backend.put(blobs),
+        async *blobs(start) {
+          yield* backend.blobs(start);
+          const record = recordAfterListing;
+          recordAfterListing = undefined;
+          await record?.();
+        },
+      }),
+    );
+    const earlier = await client.page("Records", -1, 1);
+    const later = writtenObjectsOf([linkOf(image)], 2);
+    recordAfterListing = () => writer.record(later);
+    expect(await client.page("Records", -1, 1)).toEqual(earlier);
+    const page = await client.page("Records", -1, 1);
+    // The later statement and its Record.
+    expect(page).toMatchObject({ start: 1, rowCount: 2, blobCount: earlier.blobCount + 2 });
+    expect(page.rows.map((bytes) => decodeObject(bytes, recordedStatementSchema).data.statement.link)).toEqual(
+      later.statements,
+    );
+  });
+
+  it("reads from the store the statements of a page of Records and no others, once the records were listed", async () => {
+    const backend = new MemoryBackend();
+    const requestedLinks: Link<unknown>[] = [];
+    const store = await storeOfNote({
+      get(link) {
+        requestedLinks.push(link);
+        return backend.get(link);
+      },
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      blobs: (start) => backend.blobs(start),
+    });
+    await store.record(writtenObjectsOf([note.link], 1));
+    const later = writtenObjectsOf([linkOf(image)], 2);
+    await store.record(later);
+    const client = clientOf(store);
+    await client.page("Records", 0, 10);
+    requestedLinks.length = 0;
+    await client.page("Records", -1, 1);
+    expect(requestedLinks).toEqual(later.statements);
+    requestedLinks.length = 0;
+    await client.page("Records", 0, 0);
+    expect(requestedLinks).toEqual([]);
   });
 
   it("reads a page of Schemas as a row for each object, sorted by the schema it names and then by the object", async () => {

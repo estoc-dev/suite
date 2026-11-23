@@ -32,7 +32,7 @@ export {
   selectedBlobs,
   selectedRecords,
 } from "./source.ts";
-export { type StagedStore, Store } from "./store.ts";
+export { type RecordedStatements, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
 export {
   type WrittenObject,

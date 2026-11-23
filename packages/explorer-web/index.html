@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- A rendered body can name an image by its address. The page loads none, so that showing a blob sends no request. -->
+    <meta http-equiv="Content-Security-Policy" content="img-src 'none'" />
     <title>Explorer</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>

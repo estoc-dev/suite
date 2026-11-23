@@ -5,9 +5,6 @@ import { linkView } from "./value-view.tsx";
 
 const schemes = [ed25519, eip191, solanaOffchain];
 
-// The page verifies each signature by itself. It gathers no identity versions from the store, so a
-// signature it shows as read is honored by those it carries alone, where the store can hold a
-// crisis that came after them. The links it shows do not say that, so the view says it.
 const honoredBy =
   "Honored by the identity version it carries and those that version follows alone. The page looks at no others to verify it, a later crisis that the store holds among them.";
 

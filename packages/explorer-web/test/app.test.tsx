@@ -150,6 +150,22 @@ describe("the page", () => {
     await vi.waitFor(() => expect(textsOf(root, ".head dd")).toEqual([linkOf(second), "3 bytes"]));
   });
 
+  it("starts at the top of a place the browser has not shown, and leaves the scroll of one it has to the browser", async () => {
+    const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+    const root = show(sourceHolding(sourceOf(listOf("Entries", entriesOf(1))), entry.bytes));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    onTestFinished(() => scrollTo(0, 0));
+    scrollTo(0, 300);
+    history.pushState(null, "", `#${entry.link}`);
+    dispatchEvent(new Event("hashchange"));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Blob"]));
+    expect(scrollY).toBe(0);
+    scrollTo(0, 300);
+    history.back();
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    expect(scrollY).toBe(300);
+  });
+
   it("shows why a blob was not read", async () => {
     open(`#${linkOf(Uint8Array.of(1))}`);
     const root = show({ ...sourceOf(), get: () => Promise.reject(new Error("the channel is closed")) });

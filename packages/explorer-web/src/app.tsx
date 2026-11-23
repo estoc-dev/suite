@@ -14,7 +14,16 @@ const failureView = (error: () => unknown) => (
 export function App(props: { source: Source }) {
   const [fragment, setFragment] = createSignal(location.hash);
   onSettled(() => {
-    const read = () => setFragment(location.hash);
+    // The browser restores the scroll of an entry of its history that the page has shown, and gives
+    // a new entry the scroll of the one before it. The state marks an entry as shown, so that a new
+    // one starts at its top.
+    const read = () => {
+      setFragment(location.hash);
+      if (history.state !== null) return;
+      history.replaceState(true, "");
+      scrollTo(0, 0);
+    };
+    read();
     addEventListener("hashchange", read);
     return () => removeEventListener("hashchange", read);
   });

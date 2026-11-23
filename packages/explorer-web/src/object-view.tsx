@@ -1,7 +1,13 @@
-import type { NamedSchema } from "@estoc/inspector";
+import {
+  type FieldRow,
+  type FieldTable,
+  fieldTableOf,
+  type InspectedObject,
+  type NamedSchema,
+  type Slot,
+} from "@estoc/inspector";
 import { LinkValue, type Value } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
-import { type FieldRow, type FieldTable, fieldTableOf, type InspectedObject, type Slot } from "./field-table.ts";
 import type { Reading } from "./reading.ts";
 import { messageOf, quantityOf, typeNameOf } from "./text.ts";
 import { linkView, valueView } from "./value-view.tsx";

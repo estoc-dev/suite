@@ -1,6 +1,6 @@
+import type { InspectedObject } from "@estoc/inspector";
 import { decodeObject, type Implementations, type Link, type Reader, type Schema } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
-import type { InspectedObject } from "./field-table.ts";
 
 export interface ReadingAs<T> {
   readonly name: string;

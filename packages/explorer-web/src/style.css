@@ -63,6 +63,13 @@ h1 {
 
 .string {
   color: var(--string);
+}
+
+/* Two names that differ in their spaces alone are shown as two. */
+th,
+.name,
+.key,
+.string {
   white-space: pre-wrap;
 }
 

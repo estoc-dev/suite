@@ -16,7 +16,6 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { BlobView } from "../src/blob-view.tsx";
 import { readerOf } from "./fixtures.ts";
 
-/** The view of the blob at `link`, once it shows what `blobs` give for it. */
 async function viewAt(link: Link<unknown>, ...blobs: readonly Uint8Array[]): Promise<HTMLElement> {
   const reader = readerOf(...blobs);
   const root = document.createElement("div");

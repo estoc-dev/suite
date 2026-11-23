@@ -6,7 +6,6 @@ import { signatureReading } from "./signature-reading.tsx";
 
 const readings: readonly ReadingAs<unknown>[] = [bodyReading, signatureReading];
 
-/** `reading` is what the page reads the blob as, and is none for a blob of a schema it does not read. */
 export interface BlobPage {
   readonly inspection: Inspection;
   readonly reading: Reading | undefined;

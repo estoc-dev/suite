@@ -58,9 +58,7 @@ export function socketChannel(socket: Socket): Channel {
   socket.binaryType = "arraybuffer";
   // A socket of `ws` throws an error that no one listens for. It closes next, which the receiver is told.
   socket.addEventListener("error", () => {});
-  // What is given before the socket opens, until it is sent. The socket is not asked at each `send`
-  // whether it is open: it is before these are sent, and a message sent in between would come out
-  // ahead of them.
+  // An earlier `open` listener can send while this channel still has waiting messages.
   let waitingMessages: Uint8Array<ArrayBuffer>[] | undefined = socket.readyState === socket.CONNECTING ? [] : undefined;
   socket.addEventListener("open", () => {
     for (const message of waitingMessages ?? []) socket.send(message);

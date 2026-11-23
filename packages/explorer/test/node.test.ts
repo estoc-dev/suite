@@ -92,17 +92,16 @@ describe("a channel over a socket", () => {
     await expect(client.lists()).rejects.toThrow("the channel closed before the reply");
   });
 
-  it("sends what it is given as the socket opens after what waited for that", async () => {
+  it("delivers queued messages before messages sent by an earlier open listener", async () => {
     const sockets = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     onTestFinished(() => sockets.close());
     await once(sockets, "listening");
-    const received: number[] = [];
-    sockets.on("connection", (peer) => peer.on("message", (data: Buffer) => received.push(...data)));
+    const receivedBytes: number[] = [];
+    sockets.on("connection", (peer) => peer.on("message", (data: Buffer) => receivedBytes.push(...data)));
     const socket = openSocket(`http://127.0.0.1:${(sockets.address() as AddressInfo).port}`, undefined);
-    // Listens before the channel does: when it runs the socket is open and what waits is not sent yet.
     socket.addEventListener("open", () => channel.send(Uint8Array.of(2)));
     const channel = socketChannel(socket);
     channel.send(Uint8Array.of(1));
-    await expect.poll(() => received).toEqual([1, 2]);
+    await expect.poll(() => receivedBytes).toEqual([1, 2]);
   });
 });

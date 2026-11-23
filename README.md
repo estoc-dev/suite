@@ -54,6 +54,10 @@ gives no meaning and no reader an advantage.
   links in its data.
 - `@estoc/inspector-web`: a page that opens a bundle and shows what the
   inspector reads of its blobs, from the root along the links.
+- `@estoc/explorer`: a program that holds a store and answers the pages
+  that show it, over a channel that carries calls one way and replies the
+  other: the lists it has of what the store holds, a page of one, and a
+  blob by its link.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

@@ -1,4 +1,4 @@
-import { AbsentBlob, linkOf } from "@estoc/object";
+import { AbsentBlob, LinkValue, linkOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { readListPage, readRowSchema } from "../src/list-page.ts";
 import { entriesOf, entrySchema, type GivenList, listOf, sourceOf } from "./fixtures.ts";
@@ -8,10 +8,10 @@ async function pageOf(list: GivenList, from?: number) {
   const { columns, rows, ...rest } = await readListPage(
     source,
     list.description,
-    await readRowSchema(source, entrySchema.link),
+    await readRowSchema(source, list.rowSchema.link),
     from,
   );
-  return { counts: rows.map(({ count }) => count), ...rest };
+  return { counts: rows.map((row) => row[columns.findIndex(({ name }) => name === "count")]), ...rest };
 }
 
 const countsFrom = (first: number, last: number) =>
@@ -33,13 +33,30 @@ describe("the row schema of a list", () => {
   });
 });
 
+describe("a row of a page", () => {
+  it("holds a value for each column, and none where the row leaves the field out", async () => {
+    const target = linkOf(new Uint8Array([1]));
+    const list = listOf("Entries", [
+      { name: "alone", count: 1 },
+      { name: "linked", count: 2, to: new LinkValue(target) },
+    ]);
+    const source = sourceOf(list);
+    const rowSchema = await readRowSchema(source, entrySchema.link);
+    const { rows } = await readListPage(source, list.description, rowSchema, undefined);
+    expect(rows).toEqual([
+      [new LinkValue(target), "linked", 2],
+      [undefined, "alone", 1],
+    ]);
+  });
+});
+
 describe("a page of a list that keeps the order its rows were written in", () => {
   it("holds the rows written last, newest first, where it reads from no place", async () => {
     expect(await pageOf(listOf("Entries", entriesOf(120)))).toEqual({
       counts: countsFrom(119, 70),
       start: 70,
       rowCount: 120,
-      next: { list: "Entries", from: 70 },
+      next: 70,
     });
   });
 
@@ -48,16 +65,23 @@ describe("a page of a list that keeps the order its rows were written in", () =>
       counts: countsFrom(119, 70),
       start: 70,
       rowCount: 200,
-      previous: { list: "Entries", from: 170 },
-      next: { list: "Entries", from: 70 },
+      previous: 170,
+      next: 70,
     });
   });
 
-  it("comes after the page that reads from no place where fewer rows than a page were written after it", async () => {
+  it("comes after a page that reads from the end of the list where fewer rows than a page were written after it", async () => {
     expect(await pageOf(listOf("Entries", entriesOf(120)), 90)).toMatchObject({
       counts: countsFrom(89, 40),
-      previous: { list: "Entries" },
+      previous: 120,
     });
+  });
+
+  it("comes after the same page once more rows are written", async () => {
+    const list = listOf("Entries", entriesOf(120));
+    const { previous } = await pageOf(list, 70);
+    list.rows.push(...entriesOf(180).slice(120));
+    expect(await pageOf(list, previous)).toMatchObject({ counts: countsFrom(119, 70), previous: 170, next: 70 });
   });
 
   it("holds the rows left at the front of the list, with no page after it", async () => {
@@ -65,7 +89,7 @@ describe("a page of a list that keeps the order its rows were written in", () =>
       counts: countsFrom(19, 0),
       start: 0,
       rowCount: 120,
-      previous: { list: "Entries", from: 70 },
+      previous: 70,
     });
   });
 
@@ -80,6 +104,15 @@ describe("a page of a list that keeps the order its rows were written in", () =>
   it("holds no rows and stands beside no page where the list has none", async () => {
     expect(await pageOf(listOf("Entries", []))).toEqual({ counts: [], start: 0, rowCount: 0 });
   });
+
+  it("holds no rows where it reads from the front of the list, and comes after the page that holds the first", async () => {
+    expect(await pageOf(listOf("Entries", entriesOf(120)), 0)).toEqual({
+      counts: [],
+      start: 0,
+      rowCount: 120,
+      previous: 50,
+    });
+  });
 });
 
 describe("a page of a list sorted by its fields", () => {
@@ -90,7 +123,7 @@ describe("a page of a list sorted by its fields", () => {
       counts: countsFrom(0, 49),
       start: 0,
       rowCount: 120,
-      next: { list: "Entries", from: 50 },
+      next: 50,
     });
   });
 
@@ -99,13 +132,13 @@ describe("a page of a list sorted by its fields", () => {
       counts: countsFrom(100, 149),
       start: 100,
       rowCount: 200,
-      previous: { list: "Entries", from: 50 },
-      next: { list: "Entries", from: 150 },
+      previous: 50,
+      next: 150,
     });
   });
 
-  it("comes after the page that reads from no place where it reads from within a page of the front", async () => {
-    expect(await pageOf(sortedList(120), 50)).toMatchObject({ previous: { list: "Entries" } });
+  it("comes after the page at the front of the list where it reads from within a page of the front", async () => {
+    expect(await pageOf(sortedList(120), 30)).toMatchObject({ counts: countsFrom(30, 79), previous: 0 });
   });
 
   it("holds the rows left at the end of the list, with no page after it", async () => {
@@ -113,7 +146,7 @@ describe("a page of a list sorted by its fields", () => {
       counts: countsFrom(100, 119),
       start: 100,
       rowCount: 120,
-      previous: { list: "Entries", from: 50 },
+      previous: 50,
     });
   });
 });

@@ -9,6 +9,7 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  memberOf,
   ObjectValue,
   objectFormat,
   rootSchemaOf,
@@ -225,5 +226,18 @@ describe("the links in an object", () => {
       map: { [a]: 1 },
     });
     expect([...objectFormat.links(value)]).toEqual([anything.link]);
+  });
+});
+
+describe("the member of a map", () => {
+  it.each(["absent", "constructor", "__proto__"])(
+    "is none under %s, where the map holds nothing of its own",
+    (name) => {
+      expect(memberOf({ held: 1 }, name)).toBeUndefined();
+    },
+  );
+
+  it.each(["held", "constructor", "__proto__"])("is what the map holds under %s", (name) => {
+    expect(memberOf(Object.fromEntries([[name, 1]]), name)).toBe(1);
   });
 });

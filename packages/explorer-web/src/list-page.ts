@@ -1,9 +1,7 @@
 import type { Client, ListData } from "@estoc/explorer";
-import { AbsentBlob, decodeObject, decodeSchema, type Link, type Schema, type ValueMap } from "@estoc/object";
+import { AbsentBlob, decodeObject, decodeSchema, type Link, memberOf, type Schema, type Value } from "@estoc/object";
 import { type Field, rootSchema, schemaLanguage, schemaValidator } from "@estoc/schema";
-import type { Place } from "./place.ts";
 
-/** What a page reads of the runtime, which a client gives. */
 export type Source = Pick<Client, "get" | "lists" | "page">;
 
 export const pageSize = 50;
@@ -29,17 +27,18 @@ export async function readRowSchema(source: Source, link: Link<Schema>): Promise
 }
 
 /**
- * - `rows` are in the order shown, and `start` is how many rows the list has before them.
- * - `previous` and `next` are the pages shown before and after this one, each left out where the
- *   list ends.
+ * - `rows` are in the order shown, each with a value for each of `columns` in their order, and none
+ *   where the row leaves the field out. `start` is how many rows the list has before them.
+ * - `previous` and `next` are where the pages shown before and after this one read from, each left
+ *   out where the list as shown ends.
  */
 export interface ListPage {
   readonly columns: readonly Column[];
-  readonly rows: readonly ValueMap[];
+  readonly rows: readonly (readonly (Value | undefined)[])[];
   readonly start: number;
   readonly rowCount: number;
-  readonly previous?: Place;
-  readonly next?: Place;
+  readonly previous?: number;
+  readonly next?: number;
 }
 
 /**
@@ -49,35 +48,37 @@ export interface ListPage {
  */
 export const isShownNewestFirst = ({ order }: ListData) => order.length === 0;
 
+function spanFrom(near: number, step: number): [start: number, limit: number] {
+  const far = Math.max(near + step * pageSize, 0);
+  return [Math.min(near, far), Math.abs(far - near)];
+}
+
 export async function readListPage(
   source: Source,
   list: ListData,
   { schema, columns }: RowSchema,
   from: number | undefined,
 ): Promise<ListPage> {
-  const isNewestFirst = isShownNewestFirst(list);
-  const start = isNewestFirst ? (from === undefined ? -pageSize : Math.max(from - pageSize, 0)) : (from ?? 0);
-  const limit = isNewestFirst && from !== undefined ? from - start : pageSize;
-  const page = await source.page(list.name, start, limit);
-  const rows = page.rows.map((bytes) => decodeObject(bytes, schema).data);
-  const end = page.start + rows.length;
-  const hasRowsBefore = page.start > 0;
-  const hasRowsAfter = end < page.rowCount;
-  const placeFrom = (from?: number): Place => ({ list: list.name, ...(from === undefined ? {} : { from }) });
-  const neighbours = isNewestFirst
-    ? {
-        ...(hasRowsAfter && { previous: placeFrom(end + pageSize < page.rowCount ? end + pageSize : undefined) }),
-        ...(hasRowsBefore && { next: placeFrom(page.start) }),
-      }
-    : {
-        ...(hasRowsBefore && { previous: placeFrom(page.start > pageSize ? page.start - pageSize : undefined) }),
-        ...(hasRowsAfter && { next: placeFrom(end) }),
-      };
+  // By how much the count of the rows before a row changes from a row shown to the one shown after it.
+  const step = isShownNewestFirst(list) ? -1 : 1;
+  const inOrderShown = <T>(front: T, end: T): [T, T] => (step > 0 ? [front, end] : [end, front]);
+  // Where a list shown newest first begins is not known before it is read, and the runtime counts a
+  // negative start from the end of the list.
+  const page = await (from === undefined && step < 0
+    ? source.page(list.name, -pageSize, pageSize)
+    : source.page(list.name, ...spanFrom(from ?? 0, step)));
+  const [near, far] = inOrderShown(page.start, page.start + page.rows.length);
+  const [first, last] = inOrderShown(0, page.rowCount);
+  const rows = page.rows.map((bytes) => {
+    const { data } = decodeObject(bytes, schema);
+    return columns.map(({ name }) => memberOf(data, name));
+  });
   return {
     columns,
-    rows: isNewestFirst ? rows.reverse() : rows,
+    rows: step > 0 ? rows : rows.reverse(),
     start: page.start,
     rowCount: page.rowCount,
-    ...neighbours,
+    ...(near !== first && { previous: Math.min(Math.max(near - step * pageSize, 0), page.rowCount) }),
+    ...(far !== last && { next: far }),
   };
 }

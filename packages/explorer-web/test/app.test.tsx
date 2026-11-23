@@ -1,5 +1,5 @@
-import { LinkValue, linkOf } from "@estoc/object";
-import { any, array, boolean, bytes, schema, string } from "@estoc/schema";
+import { LinkValue, linkOf, type ValueMap } from "@estoc/object";
+import { any, array, boolean, bytes, optional, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { App } from "../src/app.tsx";
@@ -122,6 +122,29 @@ describe("the page", () => {
     open("#list=Entries");
     await vi.waitFor(() => expect(cellsOf(root)).toEqual([[target, "linked", "1"]]));
     expect(root.querySelector("td [title]")?.getAttribute("title")).toBe(target);
+  });
+
+  it("shows nothing where a row leaves out a field, whatever every object inherits under its name", async () => {
+    const vehicleSchema = schema("Vehicle", { name: string(), constructor: optional(string()) });
+    const vehicles: ValueMap[] = [{ name: "One" }, { name: "Two", constructor: "Factory" }];
+    const root = show(sourceOf(listOf("Vehicles", vehicles, ["name"], vehicleSchema)));
+    await vi.waitFor(() =>
+      expect(cellsOf(root)).toEqual([
+        ["One", ""],
+        ["Two", "Factory"],
+      ]),
+    );
+  });
+
+  it("shows the page a link beside a page led to once more rows are written", async () => {
+    const list = listOf("Entries", entriesOf(120));
+    open("#list=Entries&from=70");
+    const root = show(sourceOf(list));
+    await vi.waitFor(() => expect(hrefsOf(root, ".turns a")[0]).toEqual(["Previous", "#list=Entries&from=120"]));
+    list.rows.push(...entriesOf(180).slice(120));
+    open("#list=Entries&from=120");
+    await vi.waitFor(() => expect(textsOf(root, ".turns .muted")).toEqual(["Rows 71 to 120 of 180"]));
+    expect(cellsOf(root)[0]).toEqual(["", "entry 119", "119"]);
   });
 
   it("says that the runtime gives no list of the name the fragment holds", async () => {

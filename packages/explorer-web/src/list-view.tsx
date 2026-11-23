@@ -1,13 +1,15 @@
 import type { ListData } from "@estoc/explorer";
 import { createMemo, For, isPending, Loading, Show } from "solid-js";
 import { isShownNewestFirst, readListPage, readRowSchema, type Source } from "./list-page.ts";
-import { fragmentOf } from "./place.ts";
+import { fragmentOf, type Place } from "./place.ts";
 import { quantityOf } from "./text.ts";
 import { valueView } from "./value-view.tsx";
 
 export function ListView(props: { source: Source; list: ListData; from: number | undefined }) {
   const rowSchema = createMemo(() => readRowSchema(props.source, props.list.rows.link));
   const page = createMemo(() => readListPage(props.source, props.list, rowSchema(), props.from));
+  const placeAt = (from: number | undefined): Place | undefined =>
+    from === undefined ? undefined : { list: props.list.name, from };
   return (
     <>
       <h1>{props.list.name}</h1>
@@ -33,7 +35,7 @@ export function ListView(props: { source: Source; list: ListData; from: number |
                   {(row) => (
                     <tr>
                       <For each={page().columns}>
-                        {(column) => <td data-type={column.field.type}>{valueView(row[column.name])}</td>}
+                        {(column, index) => <td data-type={column.field.type}>{valueView(row[index()])}</td>}
                       </For>
                     </tr>
                   )}
@@ -43,7 +45,7 @@ export function ListView(props: { source: Source; list: ListData; from: number |
           </Show>
         </section>
         <nav class="turns">
-          <Show when={page().previous}>
+          <Show when={placeAt(page().previous)}>
             {(place) => (
               <a class="link" href={fragmentOf(place())}>
                 Previous
@@ -55,7 +57,7 @@ export function ListView(props: { source: Source; list: ListData; from: number |
               Rows {page().start + 1} to {page().start + page().rows.length} of {page().rowCount.toLocaleString("en")}
             </Show>
           </span>
-          <Show when={page().next}>
+          <Show when={placeAt(page().next)}>
             {(place) => (
               <a class="link" href={fragmentOf(place())}>
                 Next

@@ -16,9 +16,8 @@ export default defineConfig({
         target: runtimeOrigin,
         ws: true,
         // The runtime takes a WebSocket from a page of its own origin alone, and a page served from
-        // here is of this origin. So the origin is changed to the runtime's for a page of this
-        // origin and left as it came for any other, which the runtime then refuses as it would
-        // without this server between them.
+        // here is of this origin. A page of any other site is left for the runtime to refuse, as it
+        // would without this server between them.
         configure: (proxy) =>
           proxy.on("proxyReqWs", (outgoing, incoming) => {
             if (incoming.headers.origin === `http://127.0.0.1:${port}`) outgoing.setHeader("origin", runtimeOrigin);

@@ -17,10 +17,16 @@ describe("the place in a fragment", () => {
     expect(placeIn(fragment)).toBeUndefined();
   });
 
-  it.each(["#list=Blobs&from=-1", "#list=Blobs&from=1.5", "#list=Blobs&from=soon", "#list=Blobs&from=1e99"])(
-    "is where the list starts where %j does not count rows",
-    (fragment) => {
-      expect(placeIn(fragment)).toEqual({ list: "Blobs" });
-    },
-  );
+  it.each([
+    "#list=Blobs&from=",
+    "#list=Blobs&from=+",
+    "#list=Blobs&from=-1",
+    "#list=Blobs&from=1.5",
+    "#list=Blobs&from=soon",
+    "#list=Blobs&from=1e2",
+    "#list=Blobs&from=0x10",
+    "#list=Blobs&from=99999999999999999999",
+  ])("is where the list as shown begins where %j does not count rows", (fragment) => {
+    expect(placeIn(fragment)).toEqual({ list: "Blobs" });
+  });
 });

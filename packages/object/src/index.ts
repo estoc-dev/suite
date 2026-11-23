@@ -15,6 +15,7 @@ export {
   isValueMap,
   itself,
   LinkValue,
+  memberOf,
   ObjectValue,
   objectFormat,
   type Value,

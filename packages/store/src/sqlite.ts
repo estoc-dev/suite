@@ -12,14 +12,19 @@ export class SqliteBackend implements Backend {
   readonly #database: DatabaseSync;
   readonly #sql: SQLTagStore;
 
-  constructor(path: string) {
-    this.#database = new DatabaseSync(path);
-    // FULL, the default, leaves the journal's removal unsynced, so a write
-    // followed closely by a power loss can be rolled back.
-    this.#database.exec(`
-      PRAGMA synchronous = EXTRA;
-      CREATE TABLE IF NOT EXISTS blobs (link TEXT PRIMARY KEY, bytes BLOB NOT NULL);
-    `);
+  constructor(path: string, { isReadOnly = false }: { readonly isReadOnly?: boolean } = {}) {
+    this.#database = new DatabaseSync(path, { readOnly: isReadOnly });
+    if (isReadOnly) {
+      // SQLite reads a file at the first statement, so one that holds no blobs of a store is refused here.
+      this.#database.exec("SELECT link, bytes FROM blobs LIMIT 0");
+    } else {
+      // FULL, the default, leaves the journal's removal unsynced, so a write
+      // followed closely by a power loss can be rolled back.
+      this.#database.exec(`
+        PRAGMA synchronous = EXTRA;
+        CREATE TABLE IF NOT EXISTS blobs (link TEXT PRIMARY KEY, bytes BLOB NOT NULL);
+      `);
+    }
     this.#sql = this.#database.createTagStore();
   }
 

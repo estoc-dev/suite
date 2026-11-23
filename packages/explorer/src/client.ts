@@ -25,7 +25,6 @@ import type { Channel } from "./channel.ts";
 
 type Reply = DataOf<typeof replySchema>;
 
-/** What a page reads of the store by, over the channel to the runtime that holds it. */
 export class Client implements Reader {
   readonly #channel: Channel;
   readonly #waitingCalls = new Map<number, { resolve(reply: Reply): void; reject(error: Error): void }>();
@@ -67,9 +66,11 @@ export class Client implements Reader {
     if (this.#isClosed) throw new Error("the channel is closed");
     this.#lastId += 1;
     const id = this.#lastId;
-    const waiting = new Promise<Reply>((resolve, reject) => this.#waitingCalls.set(id, { resolve, reject }));
-    this.#channel.send(encodeObject(callSchema, { id, name: kind.name, parameters }).bytes);
-    const { result, error } = await waiting;
+    const call = encodeObject(callSchema, { id, name: kind.name, parameters }).bytes;
+    const { result, error } = await new Promise<Reply>((resolve, reject) => {
+      this.#waitingCalls.set(id, { resolve, reject });
+      this.#channel.send(call);
+    });
     if (error !== undefined) throw new Error(error);
     if (result === undefined || !isValueMap(result)) throw new Error("the reply holds neither a result nor an error");
     return kind.result.validate(result);

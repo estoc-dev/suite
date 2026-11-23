@@ -1,4 +1,3 @@
-import { access } from "node:fs/promises";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
@@ -9,9 +8,7 @@ if (database === undefined || pages === undefined || rest.length > 0) {
   console.error("Usage: main.ts <database> <folder of the pages> [port]");
   process.exitCode = 1;
 } else {
-  // SQLite makes a file that is missing, which would show a store that holds nothing.
-  await access(database);
-  const backend = new SqliteBackend(database);
+  const backend = new SqliteBackend(database, { isReadOnly: true });
   const server = await serve(new Runtime(new Store(backend)), pages, Number(port));
   const stop = async () => {
     await server.close();

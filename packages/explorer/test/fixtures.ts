@@ -34,7 +34,6 @@ export function clientOf(store: Store): Client {
   return new Client(near);
 }
 
-/** A folder of its own, which is removed once the test finishes. */
 export async function makeTemporaryFolder(): Promise<string> {
   const folder = await mkdtemp(join(tmpdir(), "explorer-"));
   onTestFinished(() => rm(folder, { recursive: true }));

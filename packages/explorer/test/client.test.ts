@@ -1,7 +1,7 @@
 import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { rootSchema } from "@estoc/schema";
 import { type Backend, MemoryBackend } from "@estoc/store";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, onTestFinished } from "vitest";
 import { callSchema, replySchema } from "../src/calls.ts";
 import { type Channel, Client } from "../src/index.ts";
 import { heldBlobSchema, Runtime } from "../src/runtime.ts";
@@ -9,7 +9,6 @@ import { channelEnds, clientOf, image, note, noteBlobs, noteSchema, storeOfNote 
 
 const heldBlobsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, heldBlobSchema).data);
 
-/** The runtime's end of a channel, answering each call with what `resultOf` gives for it. */
 function answerEach(far: Channel, resultOf: (name: string) => ValueMap): void {
   far.receive(
     (message) => {
@@ -87,7 +86,7 @@ describe("a client of a runtime", () => {
     await expect(client.page("Nothing", 0, 1)).rejects.toThrow("there is no list named Nothing");
   });
 
-  it("is answered a call while one made before it still waits", async () => {
+  it("receives a later reply while the first call is still pending", async () => {
     const backend = new MemoryBackend();
     let giveNote = () => {};
     const noteIsGiven = new Promise<void>((resolve) => {
@@ -121,18 +120,35 @@ describe("a client of a runtime", () => {
     await expect(new Client(near).page("Blobs", 0, 1)).rejects.toThrow("#/start: left out");
   });
 
-  it("fails the calls that wait when the channel closes, and those made after", async () => {
+  it.each([
+    ["its own end", 0],
+    ["the far end", 1],
+  ])("fails the calls that wait when %s of the channel closes, and those made after", async (_, closing) => {
+    const ends = channelEnds();
+    const client = new Client(ends[0]);
+    const read = client.get(note.link);
+    ends[closing]?.close();
+    await expect(read).rejects.toThrow("the channel closed before the reply");
+    await expect(client.lists()).rejects.toThrow("the channel is closed");
+  });
+
+  it("fails a call that cannot be written, and leaves nothing of it to fail when the channel closes", async () => {
     const [near, far] = channelEnds();
     const client = new Client(near);
+    const unhandledRejections: unknown[] = [];
+    const keep = (reason: unknown) => unhandledRejections.push(reason);
+    process.on("unhandledRejection", keep);
+    onTestFinished(() => void process.off("unhandledRejection", keep));
+    await expect(client.page("Blobs", 0.5, 1)).rejects.toThrow("a number is an integer");
     const read = client.get(note.link);
     far.close();
     await expect(read).rejects.toThrow("the channel closed before the reply");
-    await expect(client.lists()).rejects.toThrow("the channel is closed");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(unhandledRejections).toEqual([]);
   });
 });
 
 describe("a runtime", () => {
-  /** Sends `call` to a runtime over the store of the note, resolving to the reply. */
   async function replyTo(call: ValueMap) {
     const [near, far] = channelEnds();
     new Runtime(await storeOfNote()).serve(far);

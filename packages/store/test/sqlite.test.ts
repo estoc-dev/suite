@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -94,6 +94,36 @@ describe("a SqliteBackend", () => {
     await expect(backend.has(link)).rejects.toThrow();
     await expect(backend.put(blobsOf("one"))).rejects.toThrow();
     await expect(listOf(backend.blobs())).rejects.toThrow();
+  });
+});
+
+describe("a SqliteBackend that is read only", () => {
+  it("reads what was put before, and refuses a put", async () => {
+    const path = await makeTemporaryPath();
+    const blobs = blobsOf("one", "two");
+    const writer = new SqliteBackend(path);
+    await writer.put(blobs);
+    writer.close();
+    const reader = new SqliteBackend(path, { isReadOnly: true });
+    onTestFinished(() => reader.close());
+    for (const [link, bytes] of blobs) expect(await reader.get(link)).toEqual(bytes);
+    expect(await listOf(reader.blobs())).toEqual([...blobs.keys()]);
+    await expect(reader.put(blobsOf("three"))).rejects.toThrow("readonly database");
+  });
+
+  it("refuses a file that is missing, and does not make it", async () => {
+    const path = await makeTemporaryPath();
+    expect(() => new SqliteBackend(path, { isReadOnly: true })).toThrow("unable to open database file");
+    await expect(access(path)).rejects.toThrow(/ENOENT/);
+  });
+
+  it("refuses a database that holds no blobs of a store, and adds nothing to it", async () => {
+    const path = await makeTemporaryPath();
+    const database = new DatabaseSync(path);
+    onTestFinished(() => database.close());
+    database.exec("CREATE TABLE notes (text TEXT)");
+    expect(() => new SqliteBackend(path, { isReadOnly: true })).toThrow("no such table: blobs");
+    expect(database.prepare("SELECT name FROM sqlite_schema").all()).toEqual([{ name: "notes" }]);
   });
 });
 

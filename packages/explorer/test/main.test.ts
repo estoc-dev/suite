@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { decodeObject, type Link } from "@estoc/object";
 import { Store } from "@estoc/store";
@@ -84,8 +85,19 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const { database, pages } = await makePaths();
     const { code, stderr } = await run(main, [database, pages]);
     expect(code).toBe(1);
-    expect(stderr).toContain(`no such file or directory, access '${database}'`);
+    expect(stderr).toContain("unable to open database file");
     await expect(access(database)).rejects.toThrow(/ENOENT/);
+  });
+
+  it("refuses to start at a database that holds no blobs of a store, and adds nothing to it", async () => {
+    const { database, pages } = await makePaths();
+    const other = new DatabaseSync(database);
+    onTestFinished(() => other.close());
+    other.exec("CREATE TABLE notes (text TEXT)");
+    const { code, stderr } = await run(main, [database, pages]);
+    expect(code).toBe(1);
+    expect(stderr).toContain("no such table: blobs");
+    expect(other.prepare("SELECT name FROM sqlite_schema").all()).toEqual([{ name: "notes" }]);
   });
 
   it("says how it is run when it is given no folder of pages", async () => {

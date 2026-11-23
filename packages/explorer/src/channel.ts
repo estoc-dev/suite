@@ -5,20 +5,39 @@
  */
 export interface Channel {
   send(message: Uint8Array): void;
-  /** Takes the messages that come from then on. A channel has one receiver. */
+  /**
+   * Takes the messages that come from then on. A channel has one receiver. `onClose` is called
+   * once, when either end closes.
+   */
   receive(onMessage: (message: Uint8Array) => void, onClose: () => void): void;
   close(): void;
 }
 
+/**
+ * A browser gives a port no event when either end closes, so the end that closes sends `null`
+ * first, which is not a message. An end that is ended without closing, as by terminating its
+ * worker, sends nothing: whoever ends it closes the other end too.
+ */
 export function portChannel(port: MessagePort): Channel {
+  let isClosed = false;
+  let notifyReceiver = () => {};
+  function finish() {
+    if (isClosed) return;
+    isClosed = true;
+    port.close();
+    notifyReceiver();
+  }
   return {
     send: (message) => port.postMessage(message),
     receive(onMessage, onClose) {
-      port.addEventListener("message", ({ data }) => onMessage(data as Uint8Array));
-      port.addEventListener("close", onClose);
+      notifyReceiver = onClose;
+      port.addEventListener("message", ({ data }) => (data === null ? finish() : onMessage(data as Uint8Array)));
       port.start();
     },
-    close: () => port.close(),
+    close() {
+      if (!isClosed) port.postMessage(null);
+      finish();
+    },
   };
 }
 

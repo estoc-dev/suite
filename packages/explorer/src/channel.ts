@@ -4,6 +4,7 @@
  * nothing that crosses is kept from either.
  */
 export interface Channel {
+  /** The channel may send `message` after this returns, so its bytes are left as they are. */
   send(message: Uint8Array<ArrayBuffer>): void;
   /**
    * Takes the messages that come from then on. A channel has one receiver. `onClose` is called
@@ -44,17 +45,30 @@ export function portChannel(port: MessagePort): Channel {
 /** What a `WebSocket` of a browser and one of `ws` both are. */
 interface Socket {
   binaryType: string;
+  readonly readyState: number;
+  readonly CONNECTING: number;
   send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
+  addEventListener(type: "open" | "error", listener: () => void): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: "close", listener: () => void): void;
 }
 
-/** `socket` is open. */
 export function socketChannel(socket: Socket): Channel {
   socket.binaryType = "arraybuffer";
+  // A socket of `ws` throws an error that no one listens for. It closes next, which the receiver is told.
+  socket.addEventListener("error", () => {});
+  // An earlier `open` listener can send while this channel still has waiting messages.
+  let waitingMessages: Uint8Array<ArrayBuffer>[] | undefined = socket.readyState === socket.CONNECTING ? [] : undefined;
+  socket.addEventListener("open", () => {
+    for (const message of waitingMessages ?? []) socket.send(message);
+    waitingMessages = undefined;
+  });
   return {
-    send: (message) => socket.send(message),
+    send(message) {
+      if (waitingMessages === undefined) socket.send(message);
+      else waitingMessages.push(message);
+    },
     receive(onMessage, onClose) {
       socket.addEventListener("message", ({ data }) => onMessage(new Uint8Array(data as ArrayBuffer)));
       socket.addEventListener("close", onClose);

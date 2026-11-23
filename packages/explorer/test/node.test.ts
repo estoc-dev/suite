@@ -1,8 +1,9 @@
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { Client, socketChannel } from "../src/index.ts";
 import { serve } from "../src/node.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -75,5 +76,32 @@ describe("serve", () => {
     const client = new Client(socketChannel(socket));
     await Promise.all([once(socket, "close"), server.close()]);
     await expect(client.lists()).rejects.toThrow("the channel is closed");
+  });
+});
+
+describe("a channel over a socket", () => {
+  it("sends what it is given before the socket opens once it opens", async () => {
+    const { origin } = await startServer();
+    const client = new Client(socketChannel(openSocket(origin, origin)));
+    expect(await client.get(note.link)).toEqual(note.bytes);
+  });
+
+  it("closes when the socket is refused, which fails the calls made before", async () => {
+    const { origin } = await startServer();
+    const client = new Client(socketChannel(openSocket(origin, "http://example.com")));
+    await expect(client.lists()).rejects.toThrow("the channel closed before the reply");
+  });
+
+  it("delivers queued messages before messages sent by an earlier open listener", async () => {
+    const sockets = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    onTestFinished(() => sockets.close());
+    await once(sockets, "listening");
+    const receivedBytes: number[] = [];
+    sockets.on("connection", (peer) => peer.on("message", (data: Buffer) => receivedBytes.push(...data)));
+    const socket = openSocket(`http://127.0.0.1:${(sockets.address() as AddressInfo).port}`, undefined);
+    socket.addEventListener("open", () => channel.send(Uint8Array.of(2)));
+    const channel = socketChannel(socket);
+    channel.send(Uint8Array.of(1));
+    await expect.poll(() => receivedBytes).toEqual([1, 2]);
   });
 });

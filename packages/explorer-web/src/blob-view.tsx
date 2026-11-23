@@ -1,6 +1,6 @@
 import type { Link, Reader } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
-import { createMemo, isPending, Loading } from "solid-js";
+import { createMemo } from "solid-js";
 import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { objectView } from "./object-view.tsx";
 import { hexOf, quantityOf } from "./text.ts";
@@ -37,9 +37,7 @@ export function BlobView(props: { reader: Reader; link: Link<unknown> }) {
   return (
     <>
       <h1>Blob</h1>
-      <Loading fallback={<p class="note">Reading the blob.</p>}>
-        <section class={["card", { pending: isPending(() => page()) }]}>{pageView(page())}</section>
-      </Loading>
+      <section class="card">{pageView(page())}</section>
     </>
   );
 }

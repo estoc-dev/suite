@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, For, Loading, Match, onSettled, Switch } from "solid-js";
+import { createMemo, createSignal, Errored, For, isPending, Loading, Match, onSettled, Switch } from "solid-js";
 import { BlobView } from "./blob-view.tsx";
 import type { Source } from "./list-page.ts";
 import { ListView } from "./list-view.tsx";
@@ -11,21 +11,35 @@ const failureView = (error: () => unknown) => (
   </p>
 );
 
+function PlaceReadiness(props: { onReady: () => void }): null {
+  onSettled(() => props.onReady());
+  return null;
+}
+
 export function App(props: { source: Source }) {
   const [fragment, setFragment] = createSignal(location.hash);
+  let showFirstPlace = () => {};
+  const firstPlace = new Promise<void>((resolve) => {
+    showFirstPlace = resolve;
+  });
   onSettled(() => {
-    // The browser restores the scroll of an entry of its history that the page has shown, and gives
-    // a new entry the scroll of the one before it. The state marks an entry as shown, so that a new
-    // one starts at its top.
-    const read = () => {
-      setFragment(location.hash);
-      if (history.state !== null) return;
-      history.replaceState(true, "");
-      scrollTo(0, 0);
+    // The browser applies the scroll of an entry of its history once the promise of the handler
+    // resolves, so the place has to be in the document by then, with its height. The page settles
+    // when a place is read and shown, but before the first one it settles on the fallback: inside
+    // `Loading`, `PlaceReadiness` is held back until that place is shown.
+    const show = (event: NavigateEvent) => {
+      // Not `hashChange`, which is false of a navigation to the address the page is already at.
+      if (!event.destination.sameDocument) return;
+      event.intercept({
+        handler: async () => {
+          setFragment(new URL(event.destination.url).hash);
+          await new Promise<void>((resolve) => onSettled(() => resolve()));
+          await firstPlace;
+        },
+      });
     };
-    read();
-    addEventListener("hashchange", read);
-    return () => removeEventListener("hashchange", read);
+    navigation.addEventListener("navigate", show);
+    return () => navigation.removeEventListener("navigate", show);
   });
   const place = createMemo(() => placeIn(fragment()));
   const lists = createMemo(async () => (await props.source.lists()).map(({ data }) => data));
@@ -44,8 +58,15 @@ export function App(props: { source: Source }) {
     return name === undefined ? lists()[0] : lists().find((list) => list.name === name);
   });
   return (
-    <Errored fallback={failureView}>
-      <Loading>
+    <Loading
+      fallback={
+        <main>
+          <p class="note">Reading the store.</p>
+        </main>
+      }
+    >
+      <PlaceReadiness onReady={showFirstPlace} />
+      <Errored fallback={failureView}>
         <header>
           <span class="brand">Explorer</span>
           <nav>
@@ -62,7 +83,7 @@ export function App(props: { source: Source }) {
             </For>
           </nav>
         </header>
-        <main>
+        <main class={{ pending: isPending(() => place()) }}>
           <Errored fallback={failureView}>
             <Switch fallback={<p class="note">The runtime gives no list of that name.</p>}>
               <Match when={shownBlob()}>{(blob) => <BlobView reader={props.source} link={blob()} />}</Match>
@@ -72,7 +93,7 @@ export function App(props: { source: Source }) {
             </Switch>
           </Errored>
         </main>
-      </Loading>
-    </Errored>
+      </Errored>
+    </Loading>
   );
 }

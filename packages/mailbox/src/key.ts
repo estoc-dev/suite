@@ -13,7 +13,7 @@ export function publicKeyFrom(bytes: Uint8Array): Promise<CryptoKey> {
   return suite.kem.deserializePublicKey(bytes);
 }
 
-export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array> {
+export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const { enc, ct } = await suite.seal({ recipientPublicKey: publicKey, info }, plaintext);
   const ciphertext = new Uint8Array(enc.byteLength + ct.byteLength);
   ciphertext.set(new Uint8Array(enc));

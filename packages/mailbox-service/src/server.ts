@@ -338,7 +338,7 @@ function answer(
   return new Response(reason, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 }
 
-function bundleAnswer(status: number, file: Uint8Array): Response {
+function bundleAnswer(status: number, file: Uint8Array<ArrayBuffer>): Response {
   return new Response(file, { status, headers: { "access-control-allow-origin": "*", "content-type": BUNDLE_TYPE } });
 }
 

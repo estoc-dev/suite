@@ -5,7 +5,7 @@ import type { Schema } from "./schema.ts";
 export interface EncodedObject<F extends ValueMap = ValueMap> {
   readonly schema: Schema<F>;
   readonly data: F;
-  readonly bytes: Bytes<EncodedObject<F>>;
+  readonly bytes: Bytes<EncodedObject<F>> & Uint8Array<ArrayBuffer>;
   readonly link: Link<EncodedObject<F>>;
 }
 

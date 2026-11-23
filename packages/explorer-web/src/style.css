@@ -161,7 +161,7 @@ main {
   background: var(--sunk);
 }
 
-/* The rows of the page before stay until those asked for come. */
+/* The place shown before stays until the one asked for is read. */
 .pending {
   opacity: 0.6;
 }

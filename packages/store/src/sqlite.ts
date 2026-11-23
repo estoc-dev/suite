@@ -15,7 +15,7 @@ export class SqliteBackend implements Backend {
   constructor(path: string, { isReadOnly = false }: { readonly isReadOnly?: boolean } = {}) {
     this.#database = new DatabaseSync(path, { readOnly: isReadOnly });
     if (isReadOnly) {
-      // SQLite reads a file at the first statement, so one that holds no blobs of a store is refused here.
+      // SQLite reads a file at the first statement, so one without the blobs table is refused here and not at the first read.
       this.#database.exec("SELECT link, bytes FROM blobs LIMIT 0");
     } else {
       // FULL, the default, leaves the journal's removal unsynced, so a write

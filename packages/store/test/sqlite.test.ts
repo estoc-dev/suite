@@ -117,7 +117,7 @@ describe("a SqliteBackend that is read only", () => {
     await expect(access(path)).rejects.toThrow(/ENOENT/);
   });
 
-  it("refuses a database that holds no blobs of a store, and adds nothing to it", async () => {
+  it("refuses a database without the blobs table and leaves its schema unchanged", async () => {
     const path = await makeTemporaryPath();
     const database = new DatabaseSync(path);
     onTestFinished(() => database.close());

@@ -89,7 +89,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     await expect(access(database)).rejects.toThrow(/ENOENT/);
   });
 
-  it("refuses to start at a database that holds no blobs of a store, and adds nothing to it", async () => {
+  it("refuses to start at a database without the blobs table and leaves its schema unchanged", async () => {
     const { database, pages } = await makePaths();
     const other = new DatabaseSync(database);
     onTestFinished(() => other.close());

@@ -1,0 +1,177 @@
+:root {
+  --ground: #f3f4f1;
+  --surface: #ffffff;
+  --sunk: #fafaf8;
+  --ink: #16191b;
+  --muted: #5a6066;
+  --line: #d9dcd6;
+  --line-faint: #eef0ec;
+  --link: #2d5ba3;
+  --bad: #8c1d16;
+  --byte-ink: #6e3610;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--ground);
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+p,
+ul {
+  margin: 0;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.mono {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.muted,
+.note {
+  color: var(--muted);
+}
+
+.note,
+.problem {
+  font-size: 13px;
+}
+
+.problem,
+.failure {
+  color: var(--bad);
+}
+
+.failure {
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.bytes {
+  color: var(--byte-ink);
+}
+
+.link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 48px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 600;
+}
+
+header nav {
+  display: flex;
+  gap: 16px;
+}
+
+header [aria-current] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.card > .note {
+  padding: 16px;
+}
+
+/* The rows of the page before stay until those asked for come. */
+.pending {
+  opacity: 0.6;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sunk);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line-faint);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-type="integer"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A cell shows where a link starts, and its title the whole of it. */
+td .address {
+  display: block;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.items {
+  padding: 0;
+  list-style: none;
+}
+
+.turns {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+}

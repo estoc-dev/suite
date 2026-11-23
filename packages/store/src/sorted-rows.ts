@@ -1,4 +1,12 @@
-import { type EncodedObject, ObjectValue, objectFormat, type Schema, type Value, type ValueMap } from "@estoc/object";
+import {
+  type EncodedObject,
+  memberOf,
+  ObjectValue,
+  objectFormat,
+  type Schema,
+  type Value,
+  type ValueMap,
+} from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
 import {
   derivationOf,
@@ -52,12 +60,10 @@ export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements
     if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows);
     const { index, by } = orderOf(this.#index);
     const { schema } = derivationOf(index);
-    const keyedRows = newRows.map((row) => {
-      const data: ValueMap = row.data;
-      // A row that leaves a field out does not hold what every object inherits under its name, such as `constructor`.
-      const key = by.map((name) => keyPartOf(name, Object.hasOwn(data, name) ? data[name] : undefined, schema));
-      return { key, row };
-    });
+    const keyedRows = newRows.map((row) => ({
+      key: by.map((name) => keyPartOf(name, memberOf(row.data, name), schema)),
+      row,
+    }));
     return new SortedRows(
       this.#index,
       derivedObjects,

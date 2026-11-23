@@ -61,6 +61,11 @@ export function isValueMap(value: Value): value is ValueMap {
   return typeof value === "object" && isMap(value);
 }
 
+/** A map holds a member under a name of its own alone, and not what every object inherits, such as `constructor`. */
+export function memberOf(map: ValueMap, name: string): Value | undefined {
+  return Object.hasOwn(map, name) ? map[name] : undefined;
+}
+
 function integerOf(value: number | bigint): number {
   if (!Number.isSafeInteger(value)) throw new Error("a number is an integer of magnitude up to 2^53 - 1");
   return value as number;

@@ -1,4 +1,4 @@
-import { LinkValue, rootSchemaOf, type SchemaValidator, type Value } from "@estoc/object";
+import { LinkValue, memberOf, rootSchemaOf, type SchemaValidator, type Value } from "@estoc/object";
 import { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 
 const fits: { readonly [T in Item["type"]]: (value: Value) => boolean } = {
@@ -40,7 +40,7 @@ export const schemaValidator: SchemaValidator<SchemaDocument> = {
         .filter((name) => !Object.hasOwn(fields, name))
         .map((name) => `#/${name}: not a field of the schema`);
       for (const [name, field] of Object.entries(fields)) {
-        const value = Object.hasOwn(data, name) ? data[name] : undefined;
+        const value = memberOf(data, name);
         if (value !== undefined) problems.push(...problemsIn(value, field, `#/${name}`));
         else if (field.optional !== true) problems.push(`#/${name}: left out`);
       }

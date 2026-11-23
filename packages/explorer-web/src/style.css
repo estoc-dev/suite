@@ -161,7 +161,6 @@ main {
   background: var(--sunk);
 }
 
-/* The place shown before stays until the one asked for is read. */
 .pending {
   opacity: 0.6;
 }

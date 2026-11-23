@@ -11,21 +11,33 @@ const failureView = (error: () => unknown) => (
   </p>
 );
 
+/** Settles once what is beside it is shown: the `Loading` above holds it back while that shows its fallback. */
+function Shown(props: { onShown: () => void }): null {
+  onSettled(() => props.onShown());
+  return null;
+}
+
 export function App(props: { source: Source }) {
   const [fragment, setFragment] = createSignal(location.hash);
+  let showFirstPlace = () => {};
+  const firstPlace = new Promise<void>((resolve) => {
+    showFirstPlace = resolve;
+  });
   onSettled(() => {
     // The browser keeps the scroll of each entry of its history and applies it once the promise of
     // the handler resolves: an entry gone back to gets the scroll it was left at, and a new one
-    // starts at its top. The views have no `Loading` of their own, so the page settles, and the
-    // promise resolves, only when the place is read and shown.
+    // starts at its top. The place has to be in the document by then, with its height. The views
+    // have no `Loading` of their own, so the page settles only when the place is read and shown.
+    // Before the first place is read it settles on the fallback, so the promise awaits that place too.
     const show = (event: NavigateEvent) => {
-      if (!event.hashChange) return;
+      // Not `hashChange`, which is false of a navigation to the address the page is already at.
+      if (!event.destination.sameDocument) return;
       event.intercept({
-        handler: () =>
-          new Promise<void>((resolve) => {
-            setFragment(new URL(event.destination.url).hash);
-            onSettled(() => resolve());
-          }),
+        handler: async () => {
+          setFragment(new URL(event.destination.url).hash);
+          await new Promise<void>((resolve) => onSettled(() => resolve()));
+          await firstPlace;
+        },
       });
     };
     navigation.addEventListener("navigate", show);
@@ -48,14 +60,15 @@ export function App(props: { source: Source }) {
     return name === undefined ? lists()[0] : lists().find((list) => list.name === name);
   });
   return (
-    <Errored fallback={failureView}>
-      <Loading
-        fallback={
-          <main>
-            <p class="note">Reading the store.</p>
-          </main>
-        }
-      >
+    <Loading
+      fallback={
+        <main>
+          <p class="note">Reading the store.</p>
+        </main>
+      }
+    >
+      <Shown onShown={showFirstPlace} />
+      <Errored fallback={failureView}>
         <header>
           <span class="brand">Explorer</span>
           <nav>
@@ -82,7 +95,7 @@ export function App(props: { source: Source }) {
             </Switch>
           </Errored>
         </main>
-      </Loading>
-    </Errored>
+      </Errored>
+    </Loading>
   );
 }

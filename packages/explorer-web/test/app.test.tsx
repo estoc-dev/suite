@@ -16,10 +16,10 @@ const navigation = new EventTarget();
 vi.stubGlobal("navigation", navigation);
 
 /** The handlers the page intercepts the navigation with. A browser runs them once it has changed the address. */
-function navigate(url: string, hashChange: boolean): NavigationInterceptHandler[] {
+function navigate(url: string, sameDocument: boolean): NavigationInterceptHandler[] {
   const handlers: NavigationInterceptHandler[] = [];
   const intercept = ({ handler }: NavigationInterceptOptions) => handler && handlers.push(handler);
-  navigation.dispatchEvent(Object.assign(new Event("navigate"), { hashChange, destination: { url }, intercept }));
+  navigation.dispatchEvent(Object.assign(new Event("navigate"), { destination: { url, sameDocument }, intercept }));
   return handlers;
 }
 
@@ -28,6 +28,26 @@ async function open(fragment: string): Promise<void> {
   location.hash = fragment;
   await Promise.all(navigate(location.href, true).map((handler) => handler()));
 }
+
+/** What a read waits for in a test, until the test opens it. */
+function gate(): { isOpen: Promise<void>; open: () => void } {
+  let open = () => {};
+  const isOpen = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { isOpen, open };
+}
+
+function finishOf(promise: Promise<void>): { promise: Promise<void>; isFinished: boolean } {
+  const finish = { promise, isFinished: false };
+  void promise.then(() => {
+    finish.isFinished = true;
+  });
+  return finish;
+}
+
+/** Long enough for the page to settle on what it can show without another read. */
+const turn = () => new Promise((resolve) => setTimeout(resolve));
 
 const textsOf = (root: HTMLElement, selector: string) =>
   Array.from(root.querySelectorAll(selector), (node) => node.textContent);
@@ -163,14 +183,11 @@ describe("the page", () => {
   it("keeps the place it shows, marked as pending, until the place a navigation names is read", async () => {
     const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
     const source = sourceHolding(sourceOf(listOf("Entries", entriesOf(1))), entry.bytes);
-    let finishReading = () => {};
-    const isRead = new Promise<void>((resolve) => {
-      finishReading = resolve;
-    });
+    const reading = gate();
     const root = show({
       ...source,
       async get(link) {
-        if (link === entry.link) await isRead;
+        if (link === entry.link) await reading.isOpen;
         return source.get(link);
       },
     });
@@ -178,10 +195,68 @@ describe("the page", () => {
     const opened = open(`#${entry.link}`);
     await vi.waitFor(() => expect(root.querySelector("main.pending")).not.toBeNull());
     expect(textsOf(root, "h1")).toEqual(["Entries"]);
-    finishReading();
+    reading.open();
     await opened;
     expect(textsOf(root, "h1")).toEqual(["Blob"]);
     expect(root.querySelector("main.pending")).toBeNull();
+  });
+
+  it("finishes a navigation to the place it is reading only when the place is shown", async () => {
+    const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+    const source = sourceHolding(sourceOf(listOf("Entries", entriesOf(1))), entry.bytes);
+    const reading = gate();
+    const root = show({
+      ...source,
+      async get(link) {
+        if (link === entry.link) await reading.isOpen;
+        return source.get(link);
+      },
+    });
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    void open(`#${entry.link}`);
+    await vi.waitFor(() => expect(root.querySelector("main.pending")).not.toBeNull());
+    const again = finishOf(open(`#${entry.link}`));
+    await turn();
+    expect(again.isFinished).toBe(false);
+    reading.open();
+    await again.promise;
+    expect(textsOf(root, "h1")).toEqual(["Blob"]);
+  });
+
+  it("finishes a navigation made before the first place is read only when the place it names is shown", async () => {
+    const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+    const source = sourceHolding(sourceOf(listOf("Entries", entriesOf(3))), entry.bytes);
+    const reading = gate();
+    location.hash = `#${entry.link}`;
+    const root = show({
+      ...source,
+      async lists() {
+        await reading.isOpen;
+        return source.lists();
+      },
+    });
+    const back = finishOf(open(""));
+    await turn();
+    expect(back.isFinished).toBe(false);
+    expect(textsOf(root, "main")).toEqual(["Reading the store."]);
+    reading.open();
+    await back.promise;
+    expect(cellsOf(root)).toHaveLength(3);
+  });
+
+  it("finishes a navigation made before the lists are read once it shows why they were not", async () => {
+    const reading = gate();
+    const root = show({
+      ...sourceOf(),
+      async lists() {
+        await reading.isOpen;
+        throw new Error("the channel is closed");
+      },
+    });
+    const opened = open("#list=Entries");
+    reading.open();
+    await opened;
+    expect(textsOf(root, "[role=alert]")).toEqual(["the channel is closed"]);
   });
 
   it("leaves a navigation to another document to the browser", async () => {

@@ -1,5 +1,5 @@
 export { type Implementation, Implementations } from "./implementation.ts";
-export { type Bytes, digestOf, type Link, linkOf } from "./link.ts";
+export { type Bytes, digestOf, isLink, type Link, linkOf } from "./link.ts";
 export {
   AbsentBlob,
   decodeObject,

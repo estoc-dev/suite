@@ -1,14 +1,14 @@
 import type { ListData } from "@estoc/explorer";
 import { createMemo, For, isPending, Loading, Show } from "solid-js";
 import { isShownNewestFirst, readListPage, readRowSchema, type Source } from "./list-page.ts";
-import { fragmentOf, type Place } from "./place.ts";
+import { fragmentOf, type ListPlace } from "./place.ts";
 import { quantityOf } from "./text.ts";
 import { valueView } from "./value-view.tsx";
 
 export function ListView(props: { source: Source; list: ListData; from: number | undefined }) {
   const rowSchema = createMemo(() => readRowSchema(props.source, props.list.rows.link));
   const page = createMemo(() => readListPage(props.source, props.list, rowSchema(), props.from));
-  const placeAt = (from: number | undefined): Place | undefined =>
+  const placeAt = (from: number | undefined): ListPlace | undefined =>
     from === undefined ? undefined : { list: props.list.name, from };
   return (
     <>

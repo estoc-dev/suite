@@ -5,6 +5,7 @@ import {
   decodeObject,
   encodeObject,
   encodeSchema,
+  isLink,
   itself,
   type Link,
   LinkValue,
@@ -240,4 +241,17 @@ describe("the member of a map", () => {
   it.each(["held", "constructor", "__proto__"])("is what the map holds under %s", (name) => {
     expect(memberOf(Object.fromEntries([[name, 1]]), name)).toBe(1);
   });
+});
+
+describe("a link", () => {
+  it("is sha256: and 64 lowercase hex digits", () => {
+    expect(isLink(a)).toBe(true);
+  });
+
+  it.each([a.toUpperCase(), a.slice(0, -1), `${a}0`, ` ${a}`, a.replace("sha256:", "sha512:"), 7])(
+    "is not %j",
+    (value) => {
+      expect(isLink(value)).toBe(false);
+    },
+  );
 });

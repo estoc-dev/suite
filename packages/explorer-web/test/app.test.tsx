@@ -112,7 +112,7 @@ describe("the page", () => {
     const sorted = { ...listOf("Sorted", entriesOf(2), ["name", "count"]) };
     const read = listOf("Read", []);
     const root = show(sourceOf(sorted, { ...read, description: { ...read.description, readsBlobs: true } }));
-    await vi.waitFor(() => expect(cellsOf(root)[0]).toEqual(["", "entry 0", "0"]));
+    await vi.waitFor(() => expect(cellsOf(root)[0]).toEqual(["entry 0", "0", ""]));
     expect(textsOf(root, "main > .note")).toEqual(["Sorted by name, count. Read from the records of the store."]);
     await open("#list=Read");
     expect(textsOf(root, "main > .note")).toEqual([

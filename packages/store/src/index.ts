@@ -7,7 +7,7 @@ export {
   arrivalsView,
 } from "./arrival.ts";
 export type { Backend } from "./backend.ts";
-export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
+export { type Batch, linksIn, type RecordBatch, RefusedBatch } from "./batch.ts";
 export {
   type InboundData,
   type InboundObject,

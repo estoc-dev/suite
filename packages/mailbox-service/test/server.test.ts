@@ -31,6 +31,7 @@ import {
   acknowledgementSchema,
   acknowledgements,
   locations,
+  type MailboxTerms,
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
@@ -202,6 +203,28 @@ describe("a mailbox service", () => {
     const service = await loadMailboxService(keyringOf(serviceSigner), Object.create(options));
     const { file } = await directAcceptance((await rootOf(service)).offer);
     expect((await postAcceptance(service, file)).status).toBe(201);
+  });
+
+  it("offers mailboxes on the terms it is loaded with, where they inherit some of their fields", async () => {
+    const store = memoryStore();
+    await setUpService({ store });
+    const inheritedTerms: MailboxTerms = Object.assign(Object.create({ retention: 60_000, quota: 4096 }), {
+      size: 512,
+    });
+    const service = await loadMailboxService(keyringOf(serviceSigner), {
+      origin: "https://mail.example",
+      store,
+      accounts: new MemoryAccounts(),
+      mailboxes: new MemoryMailboxes(),
+      terms: inheritedTerms,
+      clock: () => 2_000,
+    });
+    expect((await rootOf(service)).mailbox.offer.data).toEqual({
+      identity: new LinkValue(serviceRoot.link),
+      retention: 60_000,
+      quota: 4096,
+      size: 512,
+    });
   });
 
   it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {

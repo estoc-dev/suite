@@ -327,7 +327,7 @@ function bundleAnswer(status: number, file: Uint8Array<ArrayBuffer>): Response {
 
 export async function loadMailboxService(
   keyring: Pick<Keyring, "signerFor">,
-  { origin, terms, store, accounts, mailboxes, clock = Date.now }: ServiceOptions,
+  { origin, terms: { retention, quota, size }, store, accounts, mailboxes, clock = Date.now }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
@@ -335,7 +335,7 @@ export async function loadMailboxService(
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
-    encodeObject(mailboxOfferSchema, { identity, ...terms }),
+    encodeObject(mailboxOfferSchema, { identity, retention, quota, size }),
   ];
 
   // A store only gains blobs, and holds each Service with the identity version its signature

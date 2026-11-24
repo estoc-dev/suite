@@ -19,10 +19,10 @@ import {
   ed25519,
   eip191,
   hasSigner,
+  identityKit,
   identitySchema,
   isSameKey,
   type Key,
-  loadIdentity,
   type SignedIdentityData,
   SoftwareSigner,
   signedIdentitySchema,
@@ -30,7 +30,7 @@ import {
 } from "../src/index.ts";
 import { byLink, bytesOf, closure, dataOf, freshKit, schemaLinkOf, schemes } from "./fixtures.ts";
 
-const { keys, identities, signedIdentities, publish } = loadIdentity(schemes);
+const { keys, identities, signedIdentities, publish } = identityKit;
 
 const signer = (scheme: CurveScheme, fill = 1) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
 const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;

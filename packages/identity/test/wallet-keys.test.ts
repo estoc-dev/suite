@@ -1,9 +1,17 @@
 import { LinkValue } from "@estoc/object";
 import { describe, expect, it } from "vitest";
-import { type CurveScheme, ed25519, eip191, isSameKey, loadIdentity, SoftwareSigner } from "../src/index.ts";
+import {
+  type CurveScheme,
+  ed25519,
+  eip191,
+  identityKit,
+  isSameKey,
+  loadIdentity,
+  SoftwareSigner,
+} from "../src/index.ts";
 import { byLink, closure, dataOf, schemes } from "./fixtures.ts";
 
-const { keys, secretKeys, walletKeys } = loadIdentity(schemes);
+const { keys, secretKeys, walletKeys } = identityKit;
 const key = (scheme: CurveScheme) => SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(1)).key;
 
 describe("a Wallet Key", () => {

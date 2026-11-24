@@ -6,19 +6,19 @@ import {
   ed25519,
   eip191,
   type IdentityObject,
-  loadIdentity,
+  identityKit,
   type Signature,
   type Signer,
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, identityVersionInHand, schemes } from "./fixtures.ts";
+import { byLink, identityVersionInHand } from "./fixtures.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it
 // pins; the package only reads the blobs.
 
-const { keys, identities, signatures, publish } = loadIdentity(schemes);
+const { keys, identities, signatures, publish } = identityKit;
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));

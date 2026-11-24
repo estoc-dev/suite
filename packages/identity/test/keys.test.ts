@@ -6,14 +6,14 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
+  identityKit,
   isSameKey,
-  loadIdentity,
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
 import { byLink, bytesOf, dataOf, schemaLinkOf, schemes } from "./fixtures.ts";
 
-const { keys } = loadIdentity(schemes);
+const { keys } = identityKit;
 const readKey = (bytes: Uint8Array) => keys.read(linkOf(bytes), new Map([[linkOf(bytes), bytes]]));
 
 const secretKey = new Uint8Array(32).fill(1);

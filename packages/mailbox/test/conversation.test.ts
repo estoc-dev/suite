@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
-  loadIdentity,
+  identityKit,
   type Signature,
   type SignedIdentityObject,
   SoftwareSigner,
@@ -33,7 +33,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // line as a message from whoever signed it where the reader gave them that
 // mailbox.
 
-const identity = loadIdentity([ed25519]);
+const identity = identityKit;
 const { signatures, publish } = identity;
 const seenPeople = peopleView(identity);
 const line = schema("Line", { text: string() });

@@ -3,6 +3,7 @@ import {
   ed25519,
   ed25519Curve,
   eip191,
+  identityKit,
   isSameKey,
   loadIdentity,
   SoftwareSigner,
@@ -15,7 +16,7 @@ import { assert, describe, expect, it } from "vitest";
 import { Keyring } from "../src/index.ts";
 
 const schemes = [ed25519, eip191, solanaOffchain];
-const { keys, secretKeys } = loadIdentity(schemes);
+const { keys, secretKeys } = identityKit;
 const digest = new Uint8Array(32).fill(7);
 
 function keyringOver(backend = new MemoryBackend(), kit = secretKeys): Keyring {

@@ -29,7 +29,6 @@ import {
   memoryService,
   memoryStore,
   publish,
-  schemes,
   serviceActor,
   serviceIdentity,
   serviceRoot,
@@ -99,7 +98,7 @@ async function inboundRowsOf(store: Store) {
 
 function client() {
   const store = memoryStore();
-  return { store, services: loadServices(store, { schemes }) };
+  return { store, services: loadServices(store) };
 }
 
 async function accountAt(services: Services, origin: string) {

@@ -4,7 +4,7 @@ import {
   ed25519,
   eip191,
   type IdentityObject,
-  loadIdentity,
+  identityKit,
   type SignedIdentityObject,
   SoftwareSigner,
   solanaOffchain,
@@ -32,7 +32,7 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // behind what it holds, not who sent it. An application that needs to know
 // whom a message was meant for writes that into the object it signs.
 
-const identity = loadIdentity([ed25519, eip191, solanaOffchain]);
+const identity = identityKit;
 const { keys, identities, signatures, signedIdentities, publish } = identity;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const seenPeople = peopleView(identity);

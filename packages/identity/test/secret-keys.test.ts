@@ -1,10 +1,19 @@
 import { type Link, LinkValue, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { ed25519, eip191, isSameKey, loadIdentity, type Scheme, SoftwareSigner, verify } from "../src/index.ts";
+import {
+  ed25519,
+  eip191,
+  identityKit,
+  isSameKey,
+  loadIdentity,
+  type Scheme,
+  SoftwareSigner,
+  verify,
+} from "../src/index.ts";
 import { byLink, closure, dataOf, schemes } from "./fixtures.ts";
 
-const { keys, secretKeys } = loadIdentity(schemes);
+const { keys, secretKeys } = identityKit;
 const secret = new Uint8Array(32).fill(1);
 const digest = new Uint8Array(32).fill(7);
 const written = (schema: Link<unknown>, data: ValueMap) => objectFormat.encode(new ObjectValue(schema, data));

@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
-  loadIdentity,
+  identityKit,
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
@@ -28,7 +28,7 @@ import { MemoryNetwork } from "./memory-network.ts";
 // it over out of band, and each reads the latest grant of a series from their own
 // store.
 
-const identity = loadIdentity([ed25519]);
+const identity = identityKit;
 const { signatures, signedIdentities, publish } = identity;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);

@@ -1,5 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { MailboxKey, mailboxAt, mailboxSchema, UndeliveredMessage } from "../src
 import { mailboxBundle } from "./mailbox-bundle.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
-const { identities, signatures, publish } = loadIdentity([ed25519]);
+const { identities, signatures, publish } = identityKit;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 
 const network = new MemoryNetwork();

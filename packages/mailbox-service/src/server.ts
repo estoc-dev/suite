@@ -1,8 +1,7 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type IdentityKit,
-  loadIdentity,
-  type Scheme,
+  identityKit,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -69,7 +68,6 @@ export interface ServiceOptions {
    * the same store may have signed, and keeps them.
    */
   readonly terms: MailboxTerms;
-  readonly schemes: readonly Scheme[];
   readonly clock?: () => number;
 }
 
@@ -344,14 +342,13 @@ function bundleAnswer(status: number, file: Uint8Array<ArrayBuffer>): Response {
 
 export async function loadMailboxService(
   keyring: Pick<Keyring, "signerFor">,
-  { origin, schemes, terms, clock = Date.now, ...options }: ServiceOptions,
+  { origin, terms, clock = Date.now, ...options }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const kit = loadIdentity(schemes);
-  const seenPeople = peopleView(kit);
-  const notary = await loadNotary(keyring, { kit, store, people: seenPeople, clock });
+  const seenPeople = peopleView(identityKit);
+  const notary = await loadNotary(keyring, { kit: identityKit, store, people: seenPeople, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
@@ -361,7 +358,7 @@ export async function loadMailboxService(
   // A store only gains blobs, and holds each Service with the identity version its signature
   // carries, so people read after the locations have seen that of every Service that the locations
   // give.
-  const locations = await view(store, locationsView(kit.signatures));
+  const locations = await view(store, locationsView(identityKit.signatures));
   const people = await view(store, seenPeople);
   const at = clock();
   const [latest] = await locations.servicesOf(notary.identifier, people);
@@ -372,5 +369,5 @@ export async function loadMailboxService(
       encodeObject(serviceSchema, next),
       offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
     );
-  return new MailboxService(notary, kit, seenPeople, { ...options, clock });
+  return new MailboxService(notary, identityKit, seenPeople, { ...options, clock });
 }

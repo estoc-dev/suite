@@ -343,7 +343,9 @@ describe("a mailbox service", () => {
     [
       "whose signature comes without its identity",
       async (service) => {
-        const { signature } = await directAcceptance((await rootOf(service)).offer);
+        // By a signer of this test alone: every service here verifies with the kit of the process,
+        // which reads an identity version it has verified before without the bundle.
+        const { signature } = await directAcceptance((await rootOf(service)).offer, signer(ed25519, 30));
         return encodeBundle(signature.link, [bytesOf(signature)]);
       },
     ],

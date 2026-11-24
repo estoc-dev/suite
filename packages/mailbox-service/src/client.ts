@@ -2,8 +2,7 @@ import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   type IdentityKit,
-  loadIdentity,
-  type Scheme,
+  identityKit,
   type Signature,
   type Signatures,
   type SignedIdentityObject,
@@ -427,9 +426,6 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
   return decodeBundle(file);
 }
 
-export function loadServices(
-  store: Store,
-  { schemes, clock = Date.now }: { readonly schemes: readonly Scheme[]; readonly clock?: () => number },
-): Services {
-  return new Services(store, new Intake(store, clock), loadIdentity(schemes));
+export function loadServices(store: Store, { clock = Date.now }: { readonly clock?: () => number } = {}): Services {
+  return new Services(store, new Intake(store, clock), identityKit);
 }

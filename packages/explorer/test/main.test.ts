@@ -4,9 +4,11 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { ed25519, identityKit } from "@estoc/identity";
+import { ed25519, identityKit, signatureSchema } from "@estoc/identity";
 import { heldKeys } from "@estoc/keyring";
-import { decodeObject, type Link, LinkValue } from "@estoc/object";
+import { signedIdentityArrivals } from "@estoc/mailbox";
+import { recordedSignatures } from "@estoc/mailbox-service";
+import { decodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
@@ -91,13 +93,31 @@ describe("main.ts", { timeout: 20_000 }, () => {
     onTestFinished(() => socket.terminate());
     await once(socket, "open");
     const client = new Client(socketChannel(socket));
-    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual(["Held Keys", "Held Mailbox Keys"]);
+    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual([
+      "Held Keys",
+      "Held Mailbox Keys",
+      "Arrivals of Roots and Signed Identities",
+      "Opened Mailboxes",
+      "Recorded Signatures",
+    ]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
     const { rows } = await client.page("Held Keys", 0, 10);
     expect(rows.map((bytes) => decodeObject(bytes, heldKeys.rowSchema).data)).toEqual([
       { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
     ]);
     expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Opened Mailboxes", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    const recorded = await client.page("Recorded Signatures", 0, 10);
+    expect(recorded.rowCount).toBe(1);
+    const [recordedSignature] = recorded.rows.map((bytes) => decodeObject(bytes, recordedSignatures.rowSchema).data);
+    assert.exists(recordedSignature);
+    const signature = await readObject(client, recordedSignature.signature.link, signatureSchema);
+    // A post each day, the photo, the signature over it and the signed identity of that signature.
+    const arrivals = await client.page("Arrivals of Roots and Signed Identities", 0, 200);
+    expect(arrivals.rowCount).toBe(123);
+    expect(
+      arrivals.rows.map((bytes) => decodeObject(bytes, signedIdentityArrivals.rowSchema).data.object.link),
+    ).toContain(signature.data.signedIdentity.link);
   });
 
   it("refuses to start without its database, and does not make it", async () => {

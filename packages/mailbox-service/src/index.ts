@@ -6,6 +6,8 @@ export {
   type Service,
   type Services,
 } from "./client.ts";
+export { openedMailboxes } from "./opened-mailboxes.ts";
+export { recordedSignatures } from "./recorded-signatures.ts";
 export {
   type AccountOfferData,
   type AcknowledgementData,

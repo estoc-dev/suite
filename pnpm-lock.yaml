@@ -82,6 +82,9 @@ importers:
       '@estoc/mailbox':
         specifier: workspace:*
         version: link:../mailbox
+      '@estoc/mailbox-service':
+        specifier: workspace:*
+        version: link:../mailbox-service
       '@estoc/object':
         specifier: workspace:*
         version: link:../object

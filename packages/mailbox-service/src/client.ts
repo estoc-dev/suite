@@ -27,7 +27,7 @@ import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
 import { Intake, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
-import { type OpenedMailboxesView, openedMailboxesView } from "./acknowledgements.ts";
+import { openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
 import { type LocationsView, locationsView } from "./locations.ts";
 import {
@@ -284,7 +284,6 @@ export class Services {
   readonly #intake: Intake;
   readonly #signatures: Signatures;
   readonly #locations: LocationsView;
-  readonly #mailboxes: OpenedMailboxesView;
   readonly #people: PeopleView;
 
   constructor(store: Store, intake: Intake, kit: IdentityKit) {
@@ -292,7 +291,6 @@ export class Services {
     this.#intake = intake;
     this.#signatures = kit.signatures;
     this.#locations = locationsView(kit.signatures);
-    this.#mailboxes = openedMailboxesView();
     this.#people = peopleView(kit);
   }
 
@@ -328,7 +326,7 @@ export class Services {
    */
   async pickup(mailbox: Link<EncodedObject<MailboxData>>, actor: Actor): Promise<Pickup> {
     const { key, transport } = (await readObject(this.#store, mailbox, mailboxSchema)).data;
-    const link = await (await view(this.#store, this.#mailboxes)).acknowledgementOf(transport.link);
+    const link = await (await view(this.#store, openedMailboxesView)).acknowledgementOf(transport.link);
     if (link === undefined) throw new Error(`the store has no record of opening a mailbox at ${transport.link}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.

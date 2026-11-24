@@ -21,3 +21,4 @@ export {
   type OutboundData,
   outboundSchema,
 } from "./schema.ts";
+export { signedIdentityArrivals } from "./signed-identity-arrivals.ts";

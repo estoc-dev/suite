@@ -1,8 +1,9 @@
 import type { Signatures } from "@estoc/identity";
-import { type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
+import { type EncodedObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, selectedRecords, type View, writtenObjectsOver } from "@estoc/store";
-import { acknowledgementSchema, openedMailboxSchema } from "./schemas.ts";
+import { openedMailboxes } from "./opened-mailboxes.ts";
+import { acknowledgementSchema } from "./schemas.ts";
 
 const acknowledgementRowSchema = schema("Acknowledgement row", {
   acceptance: link(),
@@ -43,13 +44,6 @@ export function acknowledgementsView(signatures: Signatures): AcknowledgementsVi
   };
 }
 
-const openedMailboxRowSchema = schema("Opened mailbox row", {
-  transport: link<EncodedObject>(),
-  acknowledgement: link(),
-});
-
-type OpenedMailboxOrder = readonly ["transport", "acknowledgement"];
-
 /**
  * An acknowledgement that the store came to hold another way, such as at a mailbox, opens none: a
  * key that a later identity version of whoever holds the account takes out still signs requests by
@@ -60,18 +54,16 @@ export interface OpenedMailboxes {
   acknowledgementOf(transport: Link<EncodedObject>): Promise<Link<unknown> | undefined>;
 }
 
-export type OpenedMailboxesView = View<DataOf<typeof openedMailboxRowSchema>, OpenedMailboxOrder, OpenedMailboxes>;
-
-export function openedMailboxesView(): OpenedMailboxesView {
-  return {
-    index: indexOver(selectedRecords(objectsOf(openedMailboxSchema)), openedMailboxRowSchema, ({ data }) => [
-      { transport: data.transport, acknowledgement: data.acknowledgement },
-    ]).orderedBy("transport", "acknowledgement"),
-    read: (rows) => ({
-      async acknowledgementOf(transport) {
-        for await (const { data } of rows.range([new LinkValue(transport)])) return data.acknowledgement.link;
-        return undefined;
-      },
-    }),
-  };
-}
+export const openedMailboxesView: View<
+  DataOf<typeof openedMailboxes.rowSchema>,
+  typeof openedMailboxes.order,
+  OpenedMailboxes
+> = {
+  index: openedMailboxes,
+  read: (rows) => ({
+    async acknowledgementOf(transport) {
+      for await (const { data } of rows.range([new LinkValue(transport)])) return data.acknowledgement.link;
+      return undefined;
+    },
+  }),
+};

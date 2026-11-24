@@ -46,8 +46,10 @@ export class Action<Q extends ValueMap, R extends ValueMap, E extends object = o
 /**
  * - `run` answers with the data of the result and does not say what it committed: that is read off
  *   the store it is given.
- * - A batch `run` leaves under way when it answers is waited for. A batch begun on that store after
- *   `run` answered goes through as any other and is not among the commits.
+ * - A batch `run` leaves under way when it answers is waited for, and does not fail the action when
+ *   it is refused: the action fails as `run` throws.
+ * - The store given to `run` takes no batch once the action has answered or thrown. It has answered
+ *   when `run` returned its data, or when `perform` took them from the promise `run` returned.
  */
 export function actionOver<Q extends ValueMap, R extends ValueMap, E extends object = object>(
   requestSchema: Schema<Q>,
@@ -81,36 +83,46 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   environment: object = {},
 ): Promise<ActionOutcome<R>> {
   if (!(readRows in store)) throw new TypeError("an action is performed on a store made by `new Store`");
+  // The type of a request admits what its schema refuses, such as a field the schema does not name.
+  const validRequest = action.requestSchema.validate(request);
   const commitNotes = new CommitNotes();
-  const data = await runOf(action)(
-    // The type of a request admits what its schema refuses, such as a field the schema does not name.
-    action.requestSchema.validate(request),
-    new NotingStore(store as Store & RowKeeper, commitNotes),
-    environment,
-  );
+  let data: R;
+  try {
+    const answer = runOf(action)(validRequest, new NotingStore(store as Store & RowKeeper, commitNotes), environment);
+    // Data are taken as `run` returns, so that no batch begins between its answer and the close.
+    data = answer instanceof Promise ? await answer : answer;
+  } finally {
+    commitNotes.close();
+  }
   return { result: encodeObject(action.resultSchema, data), commits: await commitNotes.settledLinks() };
 }
 
 class CommitNotes {
   readonly #links: Link<unknown>[] = [];
-  readonly #batchesUnderWay = new Set<Promise<void>>();
+  readonly #notedBatches: Promise<void>[] = [];
+  #isClosed = false;
 
-  /** Notes `links` once `batch` goes through. */
-  note(links: readonly Link<unknown>[], batch: Promise<void>): Promise<void> {
-    const noted = batch.then(() => {
+  note(links: readonly Link<unknown>[], putThrough: () => Promise<void>): Promise<void> {
+    if (this.#isClosed) throw new Error("the store given to an action takes no batch after the action answered");
+    const notedBatch = putThrough().then(() => {
       // One at a time, since a batch may give more links than a call takes arguments.
       for (const link of links) this.#links.push(link);
     });
-    const forget = () => void this.#batchesUnderWay.delete(noted);
-    this.#batchesUnderWay.add(noted);
-    noted.then(forget, forget);
-    return noted;
+    this.#notedBatches.push(notedBatch);
+    return notedBatch;
   }
 
-  /** The links noted once no batch is under way. A link noted after that is not among them. */
+  close(): void {
+    this.#isClosed = true;
+  }
+
+  /**
+   * The links of the batches that went through, once each batch begun has ended. After `close`, no
+   * link is noted after these.
+   */
   async settledLinks(): Promise<readonly Link<unknown>[]> {
-    while (this.#batchesUnderWay.size > 0) await Promise.allSettled(this.#batchesUnderWay);
-    return [...this.#links];
+    await Promise.allSettled(this.#notedBatches);
+    return this.#links;
   }
 }
 
@@ -136,7 +148,7 @@ class NotingStore implements Store, RowKeeper {
   async write({ roots, blobs }: Batch): Promise<void> {
     // Read once, since an iterable may give its roots only the first time.
     const writtenRoots = [...roots];
-    await this.#commitNotes.note(writtenRoots, this.#store.write({ roots: writtenRoots, blobs }));
+    await this.#commitNotes.note(writtenRoots, () => this.#store.write({ roots: writtenRoots, blobs }));
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
@@ -148,7 +160,7 @@ class NotingStore implements Store, RowKeeper {
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
     const statementLinks = [...statements];
-    await this.#commitNotes.note(statementLinks, this.#store.record({ statements: statementLinks, blobs }));
+    await this.#commitNotes.note(statementLinks, () => this.#store.record({ statements: statementLinks, blobs }));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
@@ -190,6 +202,6 @@ class NotingStagedStore implements StagedStore, RowKeeper {
   }
 
   async commit(): Promise<void> {
-    await this.#commitNotes.note(this.#roots, this.#stagedStore.commit());
+    await this.#commitNotes.note(this.#roots, () => this.#stagedStore.commit());
   }
 }

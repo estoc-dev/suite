@@ -36,6 +36,8 @@ async function blobsOf(store: Store): Promise<Link<unknown>[]> {
 
 const newStore = () => new Store(new MemoryBackend());
 
+const noBatchAfterAnswer = "the store given to an action takes no batch after the action answered";
+
 const addCard = actionOver(
   schema("Add Card", { name: string() }),
   schema("Added Card", { card: link() }),
@@ -191,19 +193,64 @@ describe("an action performed on a store", () => {
     await Promise.all(batchesUnderWay);
   });
 
-  it("gives no commit of a batch begun after it answered", async () => {
+  it("gives the commits of the batch under way when it answered, and refuses the batch begun when that went through", async () => {
+    const followUps: Promise<unknown>[] = [];
+    const addThenRecord = actionOver(addCard.requestSchema, addCard.resultSchema, ({ name }, store) => {
+      const addedCard = card(name);
+      followUps.push(
+        store
+          .write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] })
+          .then(() => store.record(writtenObjectsOf([addedCard.link], 0)))
+          .catch((error: unknown) => error),
+      );
+      return { card: new LinkValue(addedCard.link) };
+    });
+    const store = newStore();
+    const { commits } = await perform(store, addThenRecord, { name: "ace" });
+    expect(commits).toEqual([card("ace").link]);
+    expect(await Promise.all(followUps)).toEqual([new Error(noBatchAfterAnswer)]);
+    expect(await cardNamesIn(store)).toEqual(["ace"]);
+    expect((await store.recordedStatements()).statements).toEqual([]);
+  });
+
+  it("refuses a batch begun on its store once it answered with its data", async () => {
     const storesGiven: Store[] = [];
     const keepStore = actionOver(schema("Keep Store", {}), schema("Kept Store", {}), (_, store) => {
       storesGiven.push(store);
       return {};
     });
     const store = newStore();
-    const { commits } = await perform(store, keepStore, {});
+    const outcome = perform(store, keepStore, {});
     const [storeGiven] = storesGiven;
     assert.exists(storeGiven);
-    await storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] });
+    await expect(
+      storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] }),
+    ).rejects.toThrow(noBatchAfterAnswer);
+    expect((await outcome).commits).toEqual([]);
+    expect(await blobsOf(store)).toEqual([]);
+  });
+
+  it("refuses a batch begun on its store, and the commit of what it staged, after its promise was fulfilled", async () => {
+    const storesGiven: Store[] = [];
+    const stagedStoresGiven: StagedStore[] = [];
+    const keepStores = actionOver(schema("Keep Stores", {}), schema("Kept Stores", {}), async (_, store) => {
+      storesGiven.push(store);
+      stagedStoresGiven.push(
+        await store.stage({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] }),
+      );
+      return {};
+    });
+    const store = newStore();
+    const { commits } = await perform(store, keepStores, {});
+    const [storeGiven] = storesGiven;
+    const [stagedStoreGiven] = stagedStoresGiven;
+    assert.exists(storeGiven);
+    assert.exists(stagedStoreGiven);
+    await expect(storeGiven.record({ statements: [], blobs: [] })).rejects.toThrow(noBatchAfterAnswer);
+    await expect(stagedStoreGiven.commit()).rejects.toThrow(noBatchAfterAnswer);
+    expect(await cardNamesIn(storeGiven)).toEqual([]);
     expect(commits).toEqual([]);
-    expect(await cardNamesIn(store)).toEqual(["ace"]);
+    expect(await blobsOf(store)).toEqual([]);
   });
 
   it("is not run with a request its request schema refuses", async () => {
@@ -262,6 +309,23 @@ describe("an action performed on a store", () => {
     const store = newStore();
     await expect(perform(store, addThenFail, { name: "ace" })).rejects.toBe(failure);
     expect(await cardNamesIn(store)).toEqual(["ace"]);
+  });
+
+  it("refuses a batch begun on its store after it threw", async () => {
+    const storesGiven: Store[] = [];
+    const failure = new Error("no card is added");
+    const keepStoreAndFail = actionOver(schema("Keep Store And Fail", {}), schema("Kept Store", {}), (_, store) => {
+      storesGiven.push(store);
+      throw failure;
+    });
+    const store = newStore();
+    await expect(perform(store, keepStoreAndFail, {})).rejects.toBe(failure);
+    const [storeGiven] = storesGiven;
+    assert.exists(storeGiven);
+    await expect(
+      storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] }),
+    ).rejects.toThrow(noBatchAfterAnswer);
+    expect(await blobsOf(store)).toEqual([]);
   });
 
   it("is not performed on a store not made by `new Store`", async () => {

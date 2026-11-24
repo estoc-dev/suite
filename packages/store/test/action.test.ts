@@ -406,7 +406,7 @@ describe("an action taking objects of one schema in a field of its request", () 
     expect(addCard.targetSchemas).toEqual({});
   });
 
-  it("leaves the action it is made from saying what that said", () => {
+  it("leaves the target schemas of the action it is made from as they were", () => {
     const dealOfTop = dealOfAnything.taking("top", cardSchema);
     dealOfTop.taking("rest", cardSchema);
     expect(dealOfTop.targetSchemas).toEqual({ top: cardSchema });

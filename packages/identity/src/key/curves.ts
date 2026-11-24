@@ -10,13 +10,35 @@ export interface Curve {
   verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
 }
 
-export interface CurveScheme extends Scheme {
-  readonly curve: Curve;
-  message(text: string, publicKey: Uint8Array): Uint8Array;
+/**
+ * - `curveScheme` alone makes one. A scheme that only verifies may have a member named `curve`
+ *   too, and no curve signs in it.
+ * - Its curve is in a private field, so that TypeScript takes no object of the same members for
+ *   one.
+ */
+export class CurveScheme implements Scheme {
+  readonly name: string;
+  readonly publicKeyLength: number;
+  readonly message: (text: string, publicKey: Uint8Array) => Uint8Array;
+  readonly verify: (signature: Uint8Array, text: string, publicKey: Uint8Array) => boolean;
+  readonly #curve: Curve;
+
+  constructor(name: string, curve: Curve, message: (text: string, publicKey: Uint8Array) => Uint8Array) {
+    this.name = name;
+    this.publicKeyLength = curve.publicKeyLength;
+    this.message = message;
+    this.verify = (signature, text, publicKey) =>
+      signature.length === 64 && curve.verify(signature, message(text, publicKey), publicKey);
+    this.#curve = curve;
+  }
+
+  get curve(): Curve {
+    return this.#curve;
+  }
 }
 
 export function isCurveScheme(scheme: Scheme): scheme is CurveScheme {
-  return "curve" in scheme;
+  return scheme instanceof CurveScheme;
 }
 
 export function curveScheme(
@@ -24,14 +46,7 @@ export function curveScheme(
   curve: Curve,
   message: (text: string, publicKey: Uint8Array) => Uint8Array,
 ): CurveScheme {
-  return {
-    name,
-    publicKeyLength: curve.publicKeyLength,
-    curve,
-    message,
-    verify: (signature, text, publicKey) =>
-      signature.length === 64 && curve.verify(signature, message(text, publicKey), publicKey),
-  };
+  return new CurveScheme(name, curve, message);
 }
 
 // Verification is strict so that one signing act has one valid encoding:

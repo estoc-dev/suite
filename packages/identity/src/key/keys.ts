@@ -22,6 +22,7 @@ interface KeyImplementation extends Implementation<KeyObject, KeyData> {
 export class Keys {
   readonly #implementations: Implementations<KeyObject, KeyImplementation>;
   readonly #byScheme: ReadonlyMap<Scheme, KeyImplementation>;
+  readonly #schemesByName: ReadonlyMap<string, Scheme>;
 
   constructor(schemes: readonly Scheme[]) {
     const implementations = schemes.map(
@@ -40,6 +41,11 @@ export class Keys {
     );
     this.#implementations = new Implementations(implementations);
     this.#byScheme = new Map(implementations.map((implementation) => [implementation.scheme, implementation]));
+    this.#schemesByName = new Map(schemes.map((scheme) => [scheme.name, scheme]));
+  }
+
+  schemeNamed(name: string): Scheme | undefined {
+    return this.#schemesByName.get(name);
   }
 
   verify(object: EncodedObject<KeyData>): KeyObject {

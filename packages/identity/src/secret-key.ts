@@ -2,7 +2,7 @@ import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, re
 import { type DataOf, link, schema, secretSchema } from "@estoc/schema";
 import { blobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
-import { isSameKey, type KeyObject } from "./key/interface.ts";
+import { isSameKey, type KeyObject, type Scheme } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 import { type Signer, SoftwareSigner } from "./signer.ts";
 
@@ -25,7 +25,15 @@ export class SecretKeys {
     this.#keys = keys;
   }
 
+  schemeNamed(name: string): CurveScheme | undefined {
+    const scheme = this.#keys.schemeNamed(name);
+    return scheme !== undefined && isCurveScheme(scheme) ? scheme : undefined;
+  }
+
   encode(scheme: CurveScheme, secretKey: Uint8Array): SecretKeyObject {
+    // `read` refuses a Secret Key in a scheme `curveScheme` did not make, and the type of an argument
+    // does not say what made it.
+    refuseUnlessCurveScheme(scheme);
     const signer = SoftwareSigner.fromSecretKey(scheme, secretKey);
     const key = this.#keys.encode(signer.key);
     const secret = encodeObject(secretSchema, { bytes: secretKey });
@@ -37,12 +45,16 @@ export class SecretKeys {
     const object = await readObject(reader, link, this.schema);
     const key = await this.#keys.read(object.data.key.link, reader);
     const { scheme } = key;
-    if (!isCurveScheme(scheme)) throw new Error(`the ${scheme.name} scheme is not one a curve signs in`);
+    refuseUnlessCurveScheme(scheme);
     const secret = await readObject(reader, object.data.secret.link, secretSchema);
     const signer = SoftwareSigner.fromSecretKey(scheme, secret.data.bytes);
     if (!isSameKey(signer.key, key)) throw new Error(`the secret ${link} links to is not that of ${key.link}`);
     return secretKeyOf(object, key, signer, secret);
   }
+}
+
+function refuseUnlessCurveScheme(scheme: Scheme): asserts scheme is CurveScheme {
+  if (!isCurveScheme(scheme)) throw new Error(`the ${scheme.name} scheme is not one a curve signs in`);
 }
 
 function secretKeyOf(

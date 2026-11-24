@@ -3,17 +3,13 @@ import type { EncodedObject, Link } from "@estoc/object";
 import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type Store, view, writtenObjectsOf } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
-import { identityVersionArrivalsView } from "./identity-version-arrivals.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
 import type { MailboxData } from "./schema.ts";
+import { signedIdentityArrivalsView } from "./signed-identity-arrivals.ts";
 
 export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
 
-/**
- * The indexes it reads through are made once, with the correspondence, so a store keeps their rows
- * between scans.
- */
 export class Correspondence {
   readonly #store: Store;
   readonly #post: Pick<Post, "outbox">;
@@ -93,7 +89,7 @@ export class Correspondence {
 
   async #peopleAsOfArrival(): Promise<SeenIdentityVersions> {
     const people = await view(this.#store, this.#seenPeople);
-    return people.asOfArrival(await view(this.#store, identityVersionArrivalsView));
+    return people.asOfArrival(await view(this.#store, signedIdentityArrivalsView));
   }
 
   // The closure is read first, so that a store that fails is told apart from a bundle that does not read.

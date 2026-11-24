@@ -19,8 +19,8 @@ import {
 import { peopleView } from "@estoc/people";
 import { Intake, MemoryBackend, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
-import { identityVersionArrivalsView } from "../src/identity-version-arrivals.ts";
 import { type Inbox, type MailboxData, MailboxGrants, Post } from "../src/index.ts";
+import { signedIdentityArrivalsView } from "../src/signed-identity-arrivals.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
 // People who each keep a store and receive at a mailbox of their own. Whoever
@@ -113,7 +113,7 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   (await view(store, grants.series)).grantFrom(
     from.identifier,
     to.identifier,
-    (await view(store, seenPeople)).asOfArrival(await view(store, identityVersionArrivalsView)),
+    (await view(store, seenPeople)).asOfArrival(await view(store, signedIdentityArrivalsView)),
   );
 
 describe("the latest grant of one person to another", () => {

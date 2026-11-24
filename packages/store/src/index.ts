@@ -26,6 +26,7 @@ export {
   type ItemFailure,
   indexOver,
   type KeyOf,
+  type NamedIndex,
   type OrderedIndex,
   type Prefix,
   type Source,

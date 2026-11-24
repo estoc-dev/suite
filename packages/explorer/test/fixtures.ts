@@ -6,6 +6,7 @@ import { link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { type Backend, MemoryBackend, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import { type Channel, Client, portChannel } from "../src/index.ts";
+import type { List } from "../src/list.ts";
 import { Runtime } from "../src/runtime.ts";
 
 export const noteSchema = schema("Note", { text: string(), image: optional(link()) });
@@ -28,9 +29,9 @@ export function channelEnds(): [Channel, Channel] {
   return [portChannel(port1), portChannel(port2)];
 }
 
-export function clientOf(store: Store): Client {
+export function clientOf(store: Store, lists: readonly List[] = []): Client {
   const [near, far] = channelEnds();
-  new Runtime(store).serve(far);
+  new Runtime(store, lists).serve(far);
   return new Client(near);
 }
 

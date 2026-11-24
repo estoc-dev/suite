@@ -12,6 +12,8 @@
   "dependencies": {
     "@estoc/blog": "workspace:*",
     "@estoc/identity": "workspace:*",
+    "@estoc/keyring": "workspace:*",
+    "@estoc/mailbox": "workspace:*",
     "@estoc/object": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@estoc/store": "workspace:*",

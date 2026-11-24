@@ -29,8 +29,7 @@ export const listsCall = {
 
 /**
  * - `rows` names the schema that every row of the list is written to.
- * - `order` names the fields the rows are sorted by, and is empty for a list that keeps the order
- *   its rows were written in.
+ * - `order` names the fields the rows are sorted by, and is empty for a list sorted by none.
  * - A list that reads blobs reads every blob the store holds, so a row of it may come of an object
  *   that a stranger sent.
  */

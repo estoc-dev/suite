@@ -2,6 +2,7 @@ import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { serve } from "./node.ts";
 import { Runtime } from "./runtime.ts";
+import { suiteLists } from "./suite-lists.ts";
 
 const [database, pages, port = "0", ...rest] = process.argv.slice(2);
 if (database === undefined || pages === undefined || rest.length > 0) {
@@ -9,7 +10,7 @@ if (database === undefined || pages === undefined || rest.length > 0) {
   process.exitCode = 1;
 } else {
   const backend = new SqliteBackend(database, { isReadOnly: true });
-  const server = await serve(new Runtime(new Store(backend)), pages, Number(port));
+  const server = await serve(new Runtime(new Store(backend), suiteLists), pages, Number(port));
   const stop = async () => {
     await server.close();
     backend.close();

@@ -46,9 +46,12 @@ async function writeSample(store: Store): Promise<void> {
   await store.write({ roots: [photo.link], blobs: [photo.bytes, image, ...photoSchema.blobs] });
   await store.record(writtenObjectsOf([photo.link], firstDay + 120 * DAY));
 
-  const { publish, signatures } = identityKit;
+  const { publish, secretKeys, signatures } = identityKit;
   const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
-  const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
+  // Recorded as a keyring records the key it generates, which is another each run.
+  const agentKey = secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
+  await store.record({ statements: [agentKey.link], blobs: agentKey.blobs });
+  const agent = agentKey.signer;
   const signedIdentity = await publish(root, { agents: [agent.key], at: firstDay });
   const signature = await signatures.actor(agent, signedIdentity, async (inHand) => inHand).sign(photo);
   await store.write({ roots: [signature.link], blobs: signature.blobs });

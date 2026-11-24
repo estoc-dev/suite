@@ -50,8 +50,8 @@ describe("a row of a page", () => {
   });
 });
 
-describe("a page of a list that keeps the order its rows were written in", () => {
-  it("holds the rows written last, newest first, where it reads from no place", async () => {
+describe("a page of a list sorted by no field", () => {
+  it("holds the rows at the end, the last first, where it reads from no place", async () => {
     expect(await pageOf(listOf("Entries", entriesOf(120)))).toEqual({
       counts: countsFrom(119, 70),
       start: 70,
@@ -70,14 +70,14 @@ describe("a page of a list that keeps the order its rows were written in", () =>
     });
   });
 
-  it("comes after a page that reads from the end of the list where fewer rows than a page were written after it", async () => {
+  it("comes after a page that reads from the end of the list where fewer rows than a page come after it", async () => {
     expect(await pageOf(listOf("Entries", entriesOf(120)), 90)).toMatchObject({
       counts: countsFrom(89, 40),
       previous: 120,
     });
   });
 
-  it("comes after the same page once more rows are written", async () => {
+  it("comes after the same page once more rows are added at the end", async () => {
     const list = listOf("Entries", entriesOf(120));
     const { previous } = await pageOf(list, 70);
     list.rows.push(...entriesOf(180).slice(120));
@@ -93,7 +93,7 @@ describe("a page of a list that keeps the order its rows were written in", () =>
     });
   });
 
-  it("holds the same rows once more are written", async () => {
+  it("holds the same rows once more are added at the end", async () => {
     const list = listOf("Entries", entriesOf(120));
     const before = await pageOf(list, 70);
     list.rows.push({ name: "written later", count: 120 });

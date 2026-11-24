@@ -14,29 +14,9 @@ import {
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { linksIn, type Store } from "@estoc/store";
-import {
-  blobCall,
-  type CallKind,
-  callSchema,
-  type ListData,
-  listSchema,
-  listsCall,
-  type Page,
-  pageCall,
-  replySchema,
-} from "./calls.ts";
+import { blobCall, type CallKind, callSchema, listSchema, listsCall, pageCall, replySchema } from "./calls.ts";
 import type { Channel } from "./channel.ts";
-
-interface List {
-  readonly description: EncodedObject<ListData>;
-  readonly rowSchema: Schema;
-  page(start: number, limit: number): Promise<Page>;
-}
-
-function pageIn<T>(rows: readonly T[], start: number, limit: number): { start: number; rows: T[] } {
-  const first = start < 0 ? Math.max(rows.length + start, 0) : Math.min(start, rows.length);
-  return { start: first, rows: rows.slice(first, first + Math.max(limit, 0)) };
-}
+import { type List, pageIn } from "./list.ts";
 
 interface LinksRead<T = unknown> {
   readonly links: readonly Link<T>[];
@@ -55,9 +35,6 @@ async function heldBytesOf(store: Store, blob: Link<unknown>): Promise<Uint8Arra
   return bytes;
 }
 
-const descriptionOf = (name: string, rowSchema: Schema, order: string[], readsBlobs: boolean) =>
-  encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order, readsBlobs });
-
 /**
  * `read` gives links whose order only grows at the end, so a row keeps its place. `rowOf` says what
  * the blob of its link alone tells, so a page reads the blobs of that page and no others.
@@ -66,15 +43,16 @@ function listInWrittenOrder<F extends ValueMap, T>(
   name: string,
   rowSchema: Schema<F>,
   readsBlobs: boolean,
-  store: Store,
-  read: () => Promise<LinksRead<T>>,
+  read: (store: Store) => Promise<LinksRead<T>>,
   rowOf: (link: Link<T>, bytes: Uint8Array) => F,
 ): List {
   return {
-    description: descriptionOf(name, rowSchema, [], readsBlobs),
+    name,
     rowSchema,
-    async page(start, limit) {
-      const { links, blobCount } = await read();
+    order: [],
+    readsBlobs,
+    async page(store, start, limit) {
+      const { links, blobCount } = await read(store);
       const page = pageIn(links, start, limit);
       const rows: Uint8Array[] = [];
       for (const link of page.rows) {
@@ -90,43 +68,31 @@ export const recordedStatementSchema = schema("Recorded Statement", {
   schema: link<Schema>(),
 });
 
-function recordsList(store: Store): List {
-  return listInWrittenOrder(
-    "Records",
-    recordedStatementSchema,
-    false,
-    store,
-    async () => {
-      const { statements, blobCount } = await store.recordedStatements();
-      return { links: statements, blobCount };
-    },
-    (statement, bytes) => ({
-      statement: new LinkValue(statement),
-      schema: new LinkValue(schemaOf(bytes)),
-    }),
-  );
-}
+const recordsList = listInWrittenOrder(
+  "Records",
+  recordedStatementSchema,
+  false,
+  async (store) => {
+    const { statements, blobCount } = await store.recordedStatements();
+    return { links: statements, blobCount };
+  },
+  (statement, bytes) => ({
+    statement: new LinkValue(statement),
+    schema: new LinkValue(schemaOf(bytes)),
+  }),
+);
 
 /** `size` is in bytes, and `schema` is left out for a blob that is not an object. */
 export const heldBlobSchema = schema("Held Blob", { blob: link(), size: integer(), schema: optional(link<Schema>()) });
 
-function blobsList(store: Store): List {
-  return listInWrittenOrder(
-    "Blobs",
-    heldBlobSchema,
-    true,
-    store,
-    () => blobsHeldBy(store),
-    (blob, bytes) => {
-      const schema = namedSchemaOf(bytes);
-      return {
-        blob: new LinkValue(blob),
-        size: bytes.length,
-        ...(schema === undefined ? {} : { schema: new LinkValue(schema) }),
-      };
-    },
-  );
-}
+const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, true, blobsHeldBy, (blob, bytes) => {
+  const schema = namedSchemaOf(bytes);
+  return {
+    blob: new LinkValue(blob),
+    size: bytes.length,
+    ...(schema === undefined ? {} : { schema: new LinkValue(schema) }),
+  };
+});
 
 type LinkPair = readonly [first: Link<unknown>, second: Link<unknown>];
 
@@ -135,14 +101,15 @@ function listOfSortedPairs<F extends ValueMap>(
   name: string,
   rowSchema: Schema<F>,
   order: [keyof F & string, keyof F & string],
-  store: Store,
   pairsIn: (blob: Link<unknown>, bytes: Uint8Array) => Iterable<LinkPair>,
   rowOf: (pair: LinkPair) => F,
 ): List {
   return {
-    description: descriptionOf(name, rowSchema, order, true),
+    name,
     rowSchema,
-    async page(start, limit) {
+    order,
+    readsBlobs: true,
+    async page(store, start, limit) {
       const { links, blobCount } = await blobsHeldBy(store);
       const pairs: LinkPair[] = [];
       for (const blob of links) {
@@ -164,22 +131,19 @@ function listOfSortedPairs<F extends ValueMap>(
 
 export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link<EncodedObject>() });
 
-function schemasList(store: Store): List {
-  return listOfSortedPairs(
-    "Schemas",
-    heldObjectSchema,
-    ["schema", "object"],
-    store,
-    function* (blob, bytes) {
-      const schema = namedSchemaOf(bytes);
-      if (schema !== undefined) yield [schema, blob];
-    },
-    ([schema, object]) => ({
-      schema: new LinkValue(schema as Link<Schema>),
-      object: new LinkValue(object as Link<EncodedObject>),
-    }),
-  );
-}
+const schemasList = listOfSortedPairs(
+  "Schemas",
+  heldObjectSchema,
+  ["schema", "object"],
+  function* (blob, bytes) {
+    const schema = namedSchemaOf(bytes);
+    if (schema !== undefined) yield [schema, blob];
+  },
+  ([schema, object]) => ({
+    schema: new LinkValue(schema as Link<Schema>),
+    object: new LinkValue(object as Link<EncodedObject>),
+  }),
+);
 
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link<EncodedObject>() });
 
@@ -187,16 +151,13 @@ export const heldLinkSchema = schema("Held Link", { target: link(), source: link
  * The rows under a blob are what links to it. A `source` that gives its schema by a link to
  * `target` is a row here as well as in Schemas.
  */
-function linksList(store: Store): List {
-  return listOfSortedPairs(
-    "Links",
-    heldLinkSchema,
-    ["target", "source"],
-    store,
-    (blob, bytes) => Array.from(new Set(linksIn(bytes)), (target): LinkPair => [target, blob]),
-    ([target, source]) => ({ target: new LinkValue(target), source: new LinkValue(source as Link<EncodedObject>) }),
-  );
-}
+const linksList = listOfSortedPairs(
+  "Links",
+  heldLinkSchema,
+  ["target", "source"],
+  (blob, bytes) => Array.from(new Set(linksIn(bytes)), (target): LinkPair => [target, blob]),
+  ([target, source]) => ({ target: new LinkValue(target), source: new LinkValue(source as Link<EncodedObject>) }),
+);
 
 type Answer = (parameters: Value) => Promise<ValueMap>;
 
@@ -220,27 +181,32 @@ function answerTo<P extends ValueMap, R extends ValueMap>(
 export class Runtime {
   readonly #answers: ReadonlyMap<string, Answer>;
 
-  constructor(store: Store) {
-    const lists = new Map(
-      [recordsList(store), blobsList(store), schemasList(store), linksList(store)].map((list) => [
-        list.description.data.name,
-        list,
-      ]),
+  /** `lists` are shown after those of what the store holds, and each has a name of its own. */
+  constructor(store: Store, lists: readonly List[]) {
+    const listsByName = new Map<string, List>();
+    for (const list of [recordsList, blobsList, schemasList, linksList, ...lists]) {
+      if (listsByName.has(list.name)) throw new Error(`two lists are named ${list.name}`);
+      listsByName.set(list.name, list);
+    }
+    const descriptions = Array.from(
+      listsByName.values(),
+      ({ name, rowSchema, order, readsBlobs }) =>
+        encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order: [...order], readsBlobs }).bytes,
     );
     // A row and its schema are not written to the store, and a page reads the schema to show the row.
     const listedBlobs = new Map<Link<unknown>, Uint8Array>(
-      [...lists.values()].flatMap(({ rowSchema }) => rowSchema.blobs.map((bytes) => [linkOf(bytes), bytes])),
+      [...listsByName.values()].flatMap(({ rowSchema }) => rowSchema.blobs.map((bytes) => [linkOf(bytes), bytes])),
     );
     this.#answers = new Map([
       answerTo(blobCall, async ({ link: { link } }) => {
         const bytes = (await store.get(link)) ?? listedBlobs.get(link);
         return bytes === undefined ? {} : { bytes };
       }),
-      answerTo(listsCall, async () => ({ lists: Array.from(lists.values(), ({ description }) => description.bytes) })),
+      answerTo(listsCall, async () => ({ lists: descriptions })),
       answerTo(pageCall, async ({ list: name, start, limit }) => {
-        const list = lists.get(name);
+        const list = listsByName.get(name);
         if (list === undefined) throw new Error(`there is no list named ${name}`);
-        return list.page(start, limit);
+        return list.page(store, start, limit);
       }),
     ]);
   }

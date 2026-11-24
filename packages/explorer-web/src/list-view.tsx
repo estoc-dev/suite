@@ -1,6 +1,6 @@
 import type { ListData } from "@estoc/explorer";
 import { createMemo, For, Show } from "solid-js";
-import { isShownNewestFirst, readListPage, readRowSchema, type Source } from "./list-page.ts";
+import { isShownLastFirst, readListPage, readRowSchema, type Source } from "./list-page.ts";
 import { fragmentOf, type ListPlace } from "./place.ts";
 import { quantityOf } from "./text.ts";
 import { valueView } from "./value-view.tsx";
@@ -14,8 +14,8 @@ export function ListView(props: { source: Source; list: ListData; from: number |
     <>
       <h1>{props.list.name}</h1>
       <p class="note">
-        {isShownNewestFirst(props.list)
-          ? "In the order written, newest first."
+        {isShownLastFirst(props.list)
+          ? "Sorted by no field. The last rows are shown first."
           : `Sorted by ${props.list.order.join(", ")}.`}{" "}
         {props.list.readsBlobs
           ? "Read from every blob the store holds, so a row may come of an object that a stranger sent."

@@ -68,7 +68,7 @@ describe("Send", () => {
     expect(await recordedIn(store)).toEqual(recordedBefore);
   });
 
-  it("takes a Mailbox as its mailbox, and anything as its root", () => {
+  it("says that its mailbox takes a Mailbox, and says no schema for its root", () => {
     expect(send.targetSchemas).toEqual({ mailbox: mailboxSchema });
   });
 

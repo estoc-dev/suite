@@ -374,7 +374,6 @@ describe("an action performed on a store", () => {
 
 type Card = EncodedObject<DataOf<typeof cardSchema>>;
 
-// Records that the top card was written, so that the records of a store show whether it ran.
 const deal = actionOver(
   schema("Deal", { top: link<Card>(), rest: array(link<Card>()), to: link() }),
   schema("Dealt Hand", { size: integer() }),
@@ -452,5 +451,13 @@ describe("an action taking objects of one schema in a field of its request", () 
     deal.taking({ top: writtenObjectSchema });
     // @ts-expect-error The link of `to` is typed to anything, so no one schema is said for it.
     deal.taking({ to: cardSchema });
+  });
+
+  test("`taking` is given no field that the request does not have", () => {
+    // @ts-expect-error The request of `listCards` has no field.
+    listCards.taking({ top: cardSchema });
+    const schemasOfMoreFields = { top: cardSchema, hand: cardSchema };
+    // @ts-expect-error The request of `deal` has no `hand`.
+    deal.taking(schemasOfMoreFields);
   });
 });

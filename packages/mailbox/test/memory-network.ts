@@ -129,8 +129,7 @@ export class MemoryNetwork {
   #deliver({ waiting, turnedBackAs }: QueueState, ciphertext: Uint8Array): void {
     if (turnedBackAs !== undefined) throw new UndeliveredMessage(turnedBackAs, "the queue turns it back");
     if (this.#faults.lost?.(this.#deliveries++)) return;
-    // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
-    waiting.push({ ciphertext: ciphertext.slice() });
-    if (this.#faults.twice) waiting.push({ ciphertext: ciphertext.slice() });
+    waiting.push({ ciphertext });
+    if (this.#faults.twice) waiting.push({ ciphertext });
   }
 }

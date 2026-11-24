@@ -42,14 +42,6 @@ describe.each([
     expect(await backend.has(missingLink)).toBe(false);
   });
 
-  it("keeps what was put when the array it gave back is changed", async () => {
-    const backend = await open();
-    const link = linkOf(utf8("one"));
-    await backend.put(blobsOf("one"));
-    (await backend.get(link))?.fill(0);
-    expect(await backend.get(link)).toEqual(utf8("one"));
-  });
-
   it("lists blobs in the order they were first put, each once", async () => {
     const backend = await open();
     const [a, b, c] = [linkOf(utf8("a")), linkOf(utf8("b")), linkOf(utf8("c"))];

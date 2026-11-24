@@ -38,23 +38,18 @@ export class RefusedBatch extends Error {
   override readonly name = "RefusedBatch";
 }
 
-/**
- * Each is copied before it is hashed, so that what is kept is what was hashed, whatever happens to
- * the given arrays afterwards.
- */
-export function copiedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>, Uint8Array> {
+export function hashedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>, Uint8Array> {
   const batchBlobs = new Map<Link<unknown>, Uint8Array>();
   for (const blob of blobs) {
-    const ownedBytes = new Uint8Array(blob);
-    const link = linkOf(ownedBytes);
-    if (isRecord(ownedBytes)) throw new RefusedBatch(`${link} is a Record, which a batch does not give`);
-    batchBlobs.set(link, ownedBytes);
+    const link = linkOf(blob);
+    if (isRecord(blob)) throw new RefusedBatch(`${link} is a Record, which a batch does not give`);
+    batchBlobs.set(link, blob);
   }
   return batchBlobs;
 }
 
-/** What a store is to write, in copies of its own, with the links of every Record in it. */
-export interface CopiedBatch {
+/** What a store is to write, each blob by its link, with the links of every Record in it. */
+export interface HashedBatch {
   readonly blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
   readonly records: readonly Link<unknown>[];
 }
@@ -79,11 +74,11 @@ export function recordsOf(
   return records;
 }
 
-export function copiedBatchWith(
+export function hashedBatchWith(
   records: readonly RecordObject[],
   givenBlobs: ReadonlyMap<Link<unknown>, Uint8Array>,
-): CopiedBatch {
-  const blobs = new Map([...givenBlobs, ...copiedBlobs(recordSchema.blobs)]);
+): HashedBatch {
+  const blobs = new Map([...givenBlobs, ...hashedBlobs(recordSchema.blobs)]);
   for (const { link, bytes } of records) blobs.set(link, bytes);
   return { blobs, records: records.map(({ link }) => link) };
 }
@@ -123,7 +118,7 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
  */
 export async function leavesFirst(
   roots: Iterable<Link<unknown>>,
-  { blobs, records }: CopiedBatch,
+  { blobs, records }: HashedBatch,
   backend: Pick<Backend, "get" | "has">,
 ): Promise<Map<Link<unknown>, Uint8Array>> {
   const orderedBlobs = new Map<Link<unknown>, Uint8Array>();

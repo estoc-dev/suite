@@ -5,8 +5,7 @@ export class MemoryBackend implements Backend {
   readonly #blobs = new Map<Link<unknown>, Uint8Array>();
 
   async get(link: Link<unknown>): Promise<Uint8Array | undefined> {
-    const bytes = this.#blobs.get(link);
-    return bytes && new Uint8Array(bytes);
+    return this.#blobs.get(link);
   }
 
   async has(link: Link<unknown>): Promise<boolean> {

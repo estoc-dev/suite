@@ -73,19 +73,6 @@ describe("the file of a bundle", () => {
     );
   });
 
-  it.each<[string, Uint8Array]>([
-    ["a `Uint8Array`", new Uint8Array(root.length)],
-    ["a `Buffer`, whose `slice` does not copy,", Buffer.alloc(root.length)],
-  ])("is written with each blob as it was when given, where %s gives them all in turn", (_, array) => {
-    function* blobsInOneArray() {
-      for (const blob of [hello, root, image]) {
-        array.set(blob);
-        yield array.subarray(0, blob.length);
-      }
-    }
-    expect(hexOf(encodeBundle(rootLink, blobsInOneArray()))).toBe(`${rootHex}${helloHex}${imageHex}`);
-  });
-
   it("is not written when the blobs do not hold its root", () => {
     expect(() => encodeBundle(rootLink, [hello, image])).toThrow(`${rootLink} is not among them`);
   });
@@ -141,18 +128,6 @@ describe("the file of a bundle", () => {
     ["a file that carries a blob", bytesOf(`${rootHex}${imageHex}`)],
   ])("is not written with %s as its root", (_, bytes) => {
     expect(() => encodeBundle(linkOf(bytes), [bytes, hello])).toThrow(/the root of a bundle is an object/);
-  });
-
-  it.each<[string, (bytes: Uint8Array) => Uint8Array]>([
-    ["array", (bytes) => bytes.slice()],
-    ["Node Buffer", (bytes) => Buffer.from(bytes)],
-    ["part of a Node Buffer", (bytes) => Buffer.concat([image, bytes, image]).subarray(8, 8 + bytes.length)],
-  ])("keeps the bytes it checked when the given %s changes afterwards", (_, given) => {
-    const file = given(encodeBundle(rootLink, [root, hello, image]));
-    const bundle = decodeBundle(file);
-    file.fill(0x20);
-    expect(bundle.root).toEqual(root);
-    expect([...bundle.blobs()]).toEqual([root, hello, image]);
   });
 
   it("is written the same from Node Buffers", () => {

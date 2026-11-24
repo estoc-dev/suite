@@ -181,37 +181,6 @@ describe("records", () => {
     expect(await listOf(store.records())).toEqual([]);
   });
 
-  it("are kept whatever happens afterwards to the arrays the batch gave", async () => {
-    const { backend, store } = sides();
-    const alice = card("Alice");
-    const givenBlobs = [alice.bytes, ...cardSchema.blobs];
-    const givenContents = givenBlobs.map((bytes) => new Uint8Array(bytes));
-    await store.record({ statements: [alice.link], blobs: givenBlobs });
-    try {
-      for (const bytes of givenBlobs) bytes.fill(0);
-      await store.closure(recordOf(alice).link);
-      expect(await listOf(new Store(backend).records())).toEqual([alice.link]);
-    } finally {
-      // The schemas are shared with every other test, and the root schema with every schema.
-      givenBlobs.forEach((bytes, index) => void bytes.set(givenContents[index] as Uint8Array));
-    }
-  });
-
-  it("list each statement as it was when given, where one array gives the blobs of the batch in turn", async () => {
-    const { backend, store } = sides();
-    const statements = [card("Alice"), card("Bob")];
-    const givenBlobs = [...statements.map(({ bytes }) => bytes), ...cardSchema.blobs];
-    function* blobsInOneArray() {
-      const array = new Uint8Array(Math.max(...givenBlobs.map(({ length }) => length)));
-      for (const blob of givenBlobs) {
-        array.set(blob);
-        yield array.subarray(0, blob.length);
-      }
-    }
-    await store.record({ statements: statements.map(({ link }) => link), blobs: blobsInOneArray() });
-    expect(await listOf(new Store(backend).records())).toEqual(statements.map(({ link }) => link));
-  });
-
   it("list the Record schema as any statement, when the batch gives its blob", async () => {
     const { store } = sides();
     await store.record({ statements: [recordSchema.link], blobs: recordSchema.blobs });

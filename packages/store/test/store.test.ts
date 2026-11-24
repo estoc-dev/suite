@@ -208,17 +208,6 @@ describe("a store", () => {
     await expect(store.write(batchOf([incomplete], [stray]))).rejects.toThrow(RefusedBatch);
     expect(await blobsOf(store)).toEqual([rootSchema.link, anything.link, note.link]);
   });
-
-  it("keeps what was written, whatever happens afterwards to the arrays it was given or gave out", async () => {
-    const store = newStore();
-    const note = object({ text: "hello" });
-    const givenBytes = new Uint8Array(note.bytes);
-    await store.write({ roots: [note.link], blobs: [givenBytes, ...anything.blobs] });
-    givenBytes.fill(0);
-    const gottenBytes = await store.get(note.link);
-    gottenBytes?.fill(0);
-    expect(await store.get(note.link)).toEqual(note.bytes);
-  });
 });
 
 describe("the closure of a blob", () => {

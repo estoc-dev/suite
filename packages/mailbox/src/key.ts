@@ -26,12 +26,12 @@ export async function seal(publicKey: CryptoKey, plaintext: Uint8Array): Promise
  * restart.
  */
 export class MailboxKey {
+  readonly publicKey: Uint8Array;
   readonly #keys: CryptoKeyPair;
-  readonly #publicKey: Uint8Array;
 
   private constructor(keys: CryptoKeyPair, publicKey: Uint8Array) {
     this.#keys = keys;
-    this.#publicKey = publicKey;
+    this.publicKey = publicKey;
   }
 
   static async fromSecretKey(secretKey: Uint8Array): Promise<MailboxKey> {
@@ -44,12 +44,8 @@ export class MailboxKey {
     return new MailboxKey({ privateKey, publicKey: await publicKeyFrom(publicKey) }, publicKey);
   }
 
-  get publicKey(): Uint8Array {
-    return this.#publicKey.slice();
-  }
-
   hasPublicKey(publicKey: Uint8Array): boolean {
-    return publicKey.length === this.#publicKey.length && this.#publicKey.every((byte, at) => byte === publicKey[at]);
+    return publicKey.length === this.publicKey.length && this.publicKey.every((byte, at) => byte === publicKey[at]);
   }
 
   async open(ciphertext: Uint8Array): Promise<Bundle> {

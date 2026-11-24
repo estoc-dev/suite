@@ -5,7 +5,7 @@
  */
 export interface Channel {
   /** The channel may send `message` after this returns, so its bytes are left as they are. */
-  send(message: Uint8Array<ArrayBuffer>): void;
+  send(message: Uint8Array): void;
   /**
    * Takes the messages that come from then on. A channel has one receiver. `onClose` is called
    * once, when either end closes.
@@ -66,8 +66,10 @@ export function socketChannel(socket: Socket): Channel {
   });
   return {
     send(message) {
-      if (waitingMessages === undefined) socket.send(message);
-      else waitingMessages.push(message);
+      // A socket sends an array over an `ArrayBuffer`, which the type of a message does not say it is over.
+      const data = new Uint8Array(message);
+      if (waitingMessages === undefined) socket.send(data);
+      else waitingMessages.push(data);
     },
     receive(onMessage, onClose) {
       socket.addEventListener("message", ({ data }) => onMessage(new Uint8Array(data as ArrayBuffer)));

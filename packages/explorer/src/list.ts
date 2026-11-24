@@ -16,11 +16,10 @@ export function pageIn<T>(rows: readonly T[], start: number, limit: number): { s
   return { start: first, rows: rows.slice(first, first + Math.max(limit, 0)) };
 }
 
-/** The store keeps the rows sorted, so a page reads the blobs written since the last and no others. */
 export function listOfIndex<F extends ValueMap, By extends FieldNames<F>>(index: NamedIndex<F, By>): List {
   return {
     name: index.name,
-    rowSchema: index.schema,
+    rowSchema: index.rowSchema,
     order: index.order,
     readsBlobs: index.readsBlobs,
     async page(store, start, limit) {

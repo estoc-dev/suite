@@ -733,7 +733,7 @@ describe("an ordered index", () => {
   const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
 
   it("says the schema of its rows and the fields they are sorted by", () => {
-    expect(byName.schema).toBe(named);
+    expect(byName.rowSchema).toBe(named);
     expect(byName.order).toEqual(["name"]);
   });
 
@@ -746,7 +746,11 @@ describe("an ordered index", () => {
   it("says the same of itself under a name", () => {
     const names = byName.named("Names");
     expect(names.name).toBe("Names");
-    expect([names.schema, names.order, names.readsBlobs]).toEqual([byName.schema, byName.order, byName.readsBlobs]);
+    expect([names.rowSchema, names.order, names.readsBlobs]).toEqual([
+      byName.rowSchema,
+      byName.order,
+      byName.readsBlobs,
+    ]);
   });
 
   it("has, under a name, the rows that the store keeps of it without one", async () => {

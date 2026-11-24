@@ -3,7 +3,7 @@ import { isLink, type Link } from "@estoc/object";
 /**
  * `from` counts the rows of the list before where the page begins. The page goes on from there in
  * the order the list is shown: towards the end of a list shown in its own order, and towards the
- * front of one shown newest first. Left out, the page begins where the list as shown begins.
+ * front of one shown last row first. Left out, the page begins where the list as shown begins.
  */
 export interface ListPlace {
   readonly list: string;

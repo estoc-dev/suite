@@ -94,7 +94,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual(["Held Keys", "Held Mailbox Keys"]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
     const { rows } = await client.page("Held Keys", 0, 10);
-    expect(rows.map((bytes) => decodeObject(bytes, heldKeys.schema).data)).toEqual([
+    expect(rows.map((bytes) => decodeObject(bytes, heldKeys.rowSchema).data)).toEqual([
       { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
     ]);
     expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });

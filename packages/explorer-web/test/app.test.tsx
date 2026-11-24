@@ -73,7 +73,7 @@ describe("the page", () => {
     expect(textsOf(root, "header [aria-current]")).toEqual(["Entries"]);
   });
 
-  it("shows a column for each field of the row schema and a row for each row of the page, newest first", async () => {
+  it("shows a column for each field of the row schema and a row for each row of the page, the last first", async () => {
     const root = show(sourceOf(listOf("Entries", entriesOf(3))));
     await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(3));
     expect(textsOf(root, "th")).toEqual(["to", "name", "count"]);
@@ -116,7 +116,7 @@ describe("the page", () => {
     expect(textsOf(root, "main > .note")).toEqual(["Sorted by name, count. Read from the records of the store."]);
     await open("#list=Read");
     expect(textsOf(root, "main > .note")).toEqual([
-      "In the order written, newest first. Read from every blob the store holds, so a row may come of an object that a stranger sent.",
+      "Sorted by no field. The last rows are shown first. Read from every blob the store holds, so a row may come of an object that a stranger sent.",
     ]);
     expect(textsOf(root, ".card")).toEqual(["The page has no rows."]);
     expect(textsOf(root, ".turns")).toEqual(["0 rows"]);

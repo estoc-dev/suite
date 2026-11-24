@@ -42,11 +42,12 @@ export interface ListPage {
 }
 
 /**
- * A list that keeps the order its rows were written in is shown newest first, so it is read from
- * its end. A row of it keeps its place, so the page that reads from a place stays the same page
- * while rows are written. Any other list is shown in its own order.
+ * A list sorted by no field is shown last row first, so it is read from its end. Where such a list
+ * adds rows at its end, as one of what a store records does, the newest come first and a row keeps
+ * its place, so the page that reads from a place stays the same page while rows are written. Any
+ * other list is shown in its own order.
  */
-export const isShownNewestFirst = ({ order }: ListData) => order.length === 0;
+export const isShownLastFirst = ({ order }: ListData) => order.length === 0;
 
 function spanFrom(near: number, step: number): [start: number, limit: number] {
   const far = Math.max(near + step * pageSize, 0);
@@ -60,9 +61,9 @@ export async function readListPage(
   from: number | undefined,
 ): Promise<ListPage> {
   // By how much the count of the rows before a row changes from a row shown to the one shown after it.
-  const step = isShownNewestFirst(list) ? -1 : 1;
+  const step = isShownLastFirst(list) ? -1 : 1;
   const inOrderShown = <T>(front: T, end: T): [T, T] => (step > 0 ? [front, end] : [end, front]);
-  // Where a list shown newest first begins is not known before it is read, and the runtime counts a
+  // Where a list shown last row first begins is not known before it is read, and the runtime counts a
   // negative start from the end of the list.
   const page = await (from === undefined && step < 0
     ? source.page(list.name, -pageSize, pageSize)

@@ -159,12 +159,11 @@ export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
     this.#order = order;
   }
 
-  /** The schema that every row is written to. */
-  get schema(): Schema<F> {
+  get rowSchema(): Schema<F> {
     return derivationOf(this.#order.index).schema;
   }
 
-  get order(): By {
+  get order(): Readonly<By> {
     return this.#order.by;
   }
 

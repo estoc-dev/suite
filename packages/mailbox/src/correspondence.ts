@@ -2,10 +2,10 @@ import { type Actor, identityKit, type Signature, type SignedIdentityObject } fr
 import type { EncodedObject, Link } from "@estoc/object";
 import { peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type Store, view, writtenObjectsOf } from "@estoc/store";
-import type { MailboxGrants } from "./grant.ts";
+import { grantSeriesView, mailboxGrantTo } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
-import type { MailboxData } from "./schema.ts";
+import { type MailboxData, mailboxGrantSchema } from "./schema.ts";
 import { signedIdentityArrivalsView } from "./signed-identity-arrivals.ts";
 
 export class Correspondence {
@@ -13,24 +13,22 @@ export class Correspondence {
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
   readonly #clock: () => number;
-  readonly #grants: MailboxGrants;
 
-  constructor(store: Store, post: Pick<Post, "outbox">, actor: Actor, clock: () => number, grants: MailboxGrants) {
+  constructor(store: Store, post: Pick<Post, "outbox">, actor: Actor, clock: () => number) {
     this.#store = store;
     this.#post = post;
     this.#actor = actor;
     this.#clock = clock;
-    this.#grants = grants;
   }
 
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
     const current = await (await view(this.#store, peopleView)).current(to);
     const at = this.#clock();
-    const grant = this.#grants.encode(current, mailboxes, at);
+    const grant = mailboxGrantTo(current, mailboxes, at);
     const signature = await this.#actor.sign(grant);
     await this.#store.write({
       roots: [signature.link],
-      blobs: [...signature.blobs, grant.bytes, ...this.#grants.schema.blobs, ...current.blobs],
+      blobs: [...signature.blobs, grant.bytes, ...mailboxGrantSchema.blobs, ...current.blobs],
     });
     await this.#store.record(writtenObjectsOf([signature.link], at));
     return signature;
@@ -38,7 +36,7 @@ export class Correspondence {
 
   async send(to: SignedIdentityObject, root: Link<unknown>): Promise<Delivery[]> {
     const from = to.identity.identifier;
-    const series = await view(this.#store, this.#grants.series);
+    const series = await view(this.#store, grantSeriesView);
     const grant = await series.grantFrom(from, this.#actor.identifier, await this.#peopleAsOfArrival());
     const mailboxes = grant?.object.data.mailboxes ?? [];
     if (mailboxes.length === 0)
@@ -66,7 +64,7 @@ export class Correspondence {
     if (signature === undefined) return undefined;
     const peopleAsOfArrival = await this.#peopleAsOfArrival();
     if (!(await peopleAsOfArrival.honors(signature))) return undefined;
-    const series = await view(this.#store, this.#grants.series);
+    const series = await view(this.#store, grantSeriesView);
     const signer = signature.signedIdentity.identity.identifier;
     for await (const { object } of series.grantsFrom(this.#actor.identifier, signer, peopleAsOfArrival)) {
       if (object.data.mailboxes.some(({ link }) => link === mailbox)) return signature;

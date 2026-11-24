@@ -1,11 +1,5 @@
 export type { Correspondence } from "./correspondence.ts";
-export {
-  type GrantSeries,
-  type MailboxGrant,
-  type MailboxGrantRow,
-  MailboxGrants,
-  mailboxGrantRowSchema,
-} from "./grant.ts";
+export { type GrantSeries, grantSeriesView, type MailboxGrant, mailboxGrants, mailboxGrantTo } from "./grant.ts";
 export { heldMailboxKeys } from "./held-mailbox-keys.ts";
 export { MailboxKey } from "./key.ts";
 export { type Mailbox, mailboxAt, type Options, type Route, type Transport, UndeliveredMessage } from "./mailbox.ts";

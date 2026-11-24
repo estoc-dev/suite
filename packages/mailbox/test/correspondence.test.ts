@@ -12,7 +12,14 @@ import { peopleView } from "@estoc/people";
 import { link, schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, RefusedBatch, Store, view, writtenObjectSchema, writtenObjectsOf } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
-import { type Correspondence, type Inbox, MailboxGrants, type Pickup, Post, UndeliveredMessage } from "../src/index.ts";
+import {
+  type Correspondence,
+  type Inbox,
+  mailboxGrantSchema,
+  type Pickup,
+  Post,
+  UndeliveredMessage,
+} from "../src/index.ts";
 import { mailboxBundle } from "./mailbox-bundle.ts";
 import { MemoryNetwork, type Queue } from "./memory-network.ts";
 import { recordedIn } from "./recorded.ts";
@@ -21,10 +28,8 @@ import { recordedIn } from "./recorded.ts";
 // other a grant of a mailbox, sends by the grant they were given, and reads
 // what came in by the grants they gave.
 
-const identity = identityKit;
-const { signatures, publish } = identity;
+const { signatures, publish } = identityKit;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
-const grants = new MailboxGrants(identity);
 const note = schema("Note", { text: string() });
 const network = new MemoryNetwork();
 
@@ -136,7 +141,7 @@ describe("a grant", () => {
     expect(await recordedIn(alice.store)).toContain(signature.link);
     const readSignature = await signatures.read(signature.link, alice.store);
     expect(readSignature.signedIdentity.link).toBe(alice.signedIdentity.link);
-    const { data } = await readObject(alice.store, readSignature.object, grants.schema);
+    const { data } = await readObject(alice.store, readSignature.object, mailboxGrantSchema);
     expect(data).toEqual({
       to: new LinkValue(bob.signedIdentity.link),
       mailboxes: [new LinkValue(inbox.mailbox)],
@@ -149,11 +154,11 @@ describe("a grant", () => {
     const { inbox } = await openInbox(alice);
     await seeIdentityVersion(alice, removalIdentityVersion);
     const signature = await alice.correspondence.grant(listingIdentityVersion, [inbox.mailbox]);
-    const { data } = await readObject(alice.store, signature.object, grants.schema);
+    const { data } = await readObject(alice.store, signature.object, mailboxGrantSchema);
     expect(data.to.link).toBe(removalIdentityVersion.link);
 
     const toBob = await alice.correspondence.grant(bob.signedIdentity, [inbox.mailbox]);
-    const { data: dataToBob } = await readObject(alice.store, toBob.object, grants.schema);
+    const { data: dataToBob } = await readObject(alice.store, toBob.object, mailboxGrantSchema);
     expect(dataToBob.to.link).toBe(bob.signedIdentity.link);
   });
 

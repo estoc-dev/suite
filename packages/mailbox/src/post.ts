@@ -1,5 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
-import { type Actor, identityKit } from "@estoc/identity";
+import type { Actor } from "@estoc/identity";
 import {
   type Bytes,
   decodeObject,
@@ -13,7 +13,6 @@ import {
 import { secretSchema } from "@estoc/schema";
 import { Intake, RefusedBatch, type Store, scan, writtenObjectsOf } from "@estoc/store";
 import { Correspondence } from "./correspondence.ts";
-import { MailboxGrants } from "./grant.ts";
 import { heldMailboxKeys } from "./held-mailbox-keys.ts";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxAt, type Options, type Transport } from "./mailbox.ts";
@@ -48,7 +47,7 @@ export class Post {
   }
 
   correspondenceAs(actor: Actor): Correspondence {
-    return new Correspondence(this.#store, this, actor, this.#clock, new MailboxGrants(identityKit));
+    return new Correspondence(this.#store, this, actor, this.#clock);
   }
 
   async outbox(mailbox: Link<EncodedObject<MailboxData>>): Promise<Outbox> {

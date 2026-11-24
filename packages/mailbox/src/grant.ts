@@ -1,24 +1,38 @@
-import type { IdentityKit, Signature, SignatureOver, SignedIdentityObject } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
+import { identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
+import { type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import type { SeenIdentityVersions } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { indexOver, type Rows, selectedBlobs, type View } from "@estoc/store";
+import { indexOver, selectedBlobs, type View } from "@estoc/store";
 import { type MailboxData, type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
+
+const { signatures, signedIdentities } = identityKit;
 
 /**
  * Two grants of a series at one `at` are told apart by the links of their signatures, as two
  * identity versions are.
  */
-export const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
+const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
   from: link(),
   to: link(),
   at: integer(),
   signature: link(),
 });
 
-export type MailboxGrantRow = DataOf<typeof mailboxGrantRowSchema>;
-
-type MailboxGrantOrder = readonly ["from", "to", "at", "signature"];
+export const mailboxGrants = indexOver(
+  selectedBlobs(signatures.selectionOver(mailboxGrantSchema)),
+  mailboxGrantRowSchema,
+  async function* ({ signature, object }, reader) {
+    const to = await signedIdentities.read(object.data.to.link, reader);
+    yield {
+      from: new LinkValue(signature.signedIdentity.identity.identifier),
+      to: new LinkValue(to.identity.identifier),
+      at: object.data.at,
+      signature: new LinkValue(signature.link),
+    };
+  },
+)
+  .orderedBy("from", "to", "at", "signature")
+  .named("Mailbox Grants");
 
 export interface MailboxGrant {
   readonly object: EncodedObject<MailboxGrantData>;
@@ -39,54 +53,25 @@ export interface GrantSeries {
   ): Promise<MailboxGrant | undefined>;
 }
 
-type SignatureReading = Pick<IdentityKit, "signatures" | "signedIdentities">;
+export function mailboxGrantTo(
+  to: SignedIdentityObject,
+  mailboxes: readonly Link<EncodedObject<MailboxData>>[],
+  at: number,
+): EncodedObject<MailboxGrantData> {
+  return encodeObject(mailboxGrantSchema, {
+    to: new LinkValue(to.link),
+    mailboxes: mailboxes.map((mailbox) => new LinkValue(mailbox)),
+    at,
+  });
+}
 
-export class MailboxGrants {
-  readonly schema = mailboxGrantSchema;
-  /** Made once, with the grants, so a store keeps the rows of its index between scans. */
-  readonly series: View<MailboxGrantRow, MailboxGrantOrder, GrantSeries>;
-  readonly #identity: SignatureReading;
-
-  constructor(identity: SignatureReading) {
-    this.#identity = identity;
-    this.series = {
-      index: indexOver(
-        selectedBlobs(identity.signatures.selectionOver(this.schema)),
-        mailboxGrantRowSchema,
-        (grant, reader) => this.#rowsOf(grant, reader),
-      ).orderedBy("from", "to", "at", "signature"),
-      read: (rows, reader) => this.#seriesOf(rows, reader),
+export const grantSeriesView: View<DataOf<typeof mailboxGrants.rowSchema>, typeof mailboxGrants.order, GrantSeries> = {
+  index: mailboxGrants,
+  read: (rows, reader) => {
+    const grantOf = async (signature: Signature): Promise<MailboxGrant> => {
+      const object = await readObject(reader, signature.object, mailboxGrantSchema);
+      return { object, signature, to: await signedIdentities.read(object.data.to.link, reader) };
     };
-  }
-
-  encode(
-    to: SignedIdentityObject,
-    mailboxes: readonly Link<EncodedObject<MailboxData>>[],
-    at: number,
-  ): EncodedObject<MailboxGrantData> {
-    return encodeObject(this.schema, {
-      to: new LinkValue(to.link),
-      mailboxes: mailboxes.map((mailbox) => new LinkValue(mailbox)),
-      at,
-    });
-  }
-
-  async *#rowsOf(
-    { signature, object }: SignatureOver<MailboxGrantData>,
-    reader: Reader,
-  ): AsyncIterable<MailboxGrantRow> {
-    const to = await this.#identity.signedIdentities.read(object.data.to.link, reader);
-    yield {
-      from: new LinkValue(signature.signedIdentity.identity.identifier),
-      to: new LinkValue(to.identity.identifier),
-      at: object.data.at,
-      signature: new LinkValue(signature.link),
-    };
-  }
-
-  #seriesOf(rows: Rows<MailboxGrantRow, MailboxGrantOrder>, reader: Reader): GrantSeries {
-    const { signatures } = this.#identity;
-    const grantOf = (signature: Signature) => this.#grantOf(signature, reader);
     const honoredSignatures = async function* (
       from: Link<unknown>,
       to: Link<unknown>,
@@ -107,10 +92,5 @@ export class MailboxGrants {
         return latest === undefined ? undefined : grantOf(latest);
       },
     };
-  }
-
-  async #grantOf(signature: Signature, reader: Reader): Promise<MailboxGrant> {
-    const object = await readObject(reader, signature.object, this.schema);
-    return { object, signature, to: await this.#identity.signedIdentities.read(object.data.to.link, reader) };
-  }
-}
+  },
+};

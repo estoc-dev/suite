@@ -1,8 +1,12 @@
 import { type Link, LinkValue, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
+import { p256 } from "@noble/curves/nist.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {
+  type CurveScheme,
   ed25519,
+  ed25519Curve,
   eip191,
   identityKit,
   isSameKey,
@@ -19,6 +23,24 @@ const digest = new Uint8Array(32).fill(7);
 const written = (schema: Link<unknown>, data: ValueMap) => objectFormat.encode(new ObjectValue(schema, data));
 const heldSecret = written(secretSchema.link, { bytes: secret });
 const secretBlobs = [heldSecret, ...secretSchema.blobs];
+
+const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
+// A scheme that only verifies, and keeps the curve it verifies with in a member named as that of a
+// scheme a curve signs in.
+const verifyingP256: Scheme & { readonly curve: typeof p256 } = {
+  name: "p256-der",
+  publicKeyLength: 33,
+  curve: p256,
+  verify: (signature, text, publicKey) =>
+    p256.verify(signature, utf8ToBytes(text), publicKey, { format: "der", lowS: true }),
+};
+const writtenByHand = {
+  name: "ed25519-by-hand",
+  publicKeyLength: 32,
+  curve: ed25519Curve,
+  message: ed25519.message,
+  verify: ed25519.verify,
+};
 
 describe("a Secret Key", () => {
   it.each(schemes)("in $name reads back from its blobs with a signer its key verifies", async (scheme) => {
@@ -48,18 +70,20 @@ describe("a Secret Key", () => {
     );
   });
 
-  it("is refused when its key is in a scheme no curve signs in", async () => {
-    const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
-    const kit = loadIdentity([...schemes, plain]);
-    const key = kit.keys.encode({ scheme: plain, publicKey: new Uint8Array(32).fill(3) });
-    const bytes = written(kit.secretKeys.schema.link, {
-      key: new LinkValue(key.link),
-      secret: new LinkValue(linkOf(heldSecret)),
-    });
-    await expect(kit.secretKeys.read(linkOf(bytes), byLink([bytes, ...secretBlobs, ...key.blobs]))).rejects.toThrow(
-      /not one a curve signs in/,
-    );
-  });
+  it.each([plain, verifyingP256, writtenByHand])(
+    "is refused when its key is in $name, which no curve signs in",
+    async (scheme) => {
+      const kit = loadIdentity([...schemes, scheme]);
+      const key = kit.keys.encode({ scheme, publicKey: new Uint8Array(scheme.publicKeyLength).fill(3) });
+      const bytes = written(kit.secretKeys.schema.link, {
+        key: new LinkValue(key.link),
+        secret: new LinkValue(linkOf(heldSecret)),
+      });
+      await expect(kit.secretKeys.read(linkOf(bytes), byLink([bytes, ...secretBlobs, ...key.blobs]))).rejects.toThrow(
+        /not one a curve signs in/,
+      );
+    },
+  );
 
   it("is refused when its key is in a scheme the kit does not read, and not written in one", async () => {
     const kit = loadIdentity([ed25519]);
@@ -76,11 +100,19 @@ describe("the scheme Secret Keys give by a name", () => {
     expect(secretKeys.schemeNamed(scheme.name)).toBe(scheme);
   });
 
-  it("is none for the name of a scheme no curve signs in, or a name no scheme has", () => {
-    const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
-    const kit = loadIdentity([...schemes, plain]);
-    expect(kit.keys.schemeNamed("plain")).toBe(plain);
-    expect(kit.secretKeys.schemeNamed("plain")).toBeUndefined();
-    expect(kit.secretKeys.schemeNamed("ed448")).toBeUndefined();
+  it.each([plain, verifyingP256])("is none for $name, which no curve signs in", (scheme) => {
+    const kit = loadIdentity([...schemes, scheme]);
+    expect(kit.keys.schemeNamed(scheme.name)).toBe(scheme);
+    expect(kit.secretKeys.schemeNamed(scheme.name)).toBeUndefined();
+  });
+
+  it("is none for a scheme written by hand with the members of one a curve signs in", () => {
+    // @ts-expect-error: refused at compile time too
+    const scheme: CurveScheme = writtenByHand;
+    expect(loadIdentity([scheme]).secretKeys.schemeNamed(scheme.name)).toBeUndefined();
+  });
+
+  it("is none for a name no scheme has", () => {
+    expect(secretKeys.schemeNamed("ed448")).toBeUndefined();
   });
 });

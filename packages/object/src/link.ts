@@ -6,9 +6,11 @@ declare const target: unique symbol;
 export type Link<T> = `sha256:${string}` & { readonly [target]?: T };
 
 /**
- * `T` is what the bytes decode to, so that the bytes of one kind of blob are not handed to the
- * reader of another. It is a label, not a check: bytes read from a file or the network pass as any
- * `Bytes<T>`.
+ * - `T` is what the bytes decode to, so that the bytes of one kind of blob are not handed to the
+ *   reader of another. It is a label, not a check: bytes read from a file or the network pass as
+ *   any `Bytes<T>`.
+ * - What is given bytes may keep the array itself, and so may what gave them. Neither changes it
+ *   afterwards.
  */
 export type Bytes<T> = Uint8Array & { readonly [target]?: T };
 

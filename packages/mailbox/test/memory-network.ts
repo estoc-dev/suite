@@ -110,7 +110,7 @@ export class MemoryNetwork {
       const next = this.#faults.reversed ? left.at(-1) : left[0];
       if (next === undefined) return;
       handedArrivals.add(next);
-      yield { ciphertext: next.ciphertext.slice(), drop: async () => this.#drop(waiting, next) };
+      yield { ciphertext: next.ciphertext, drop: async () => this.#drop(waiting, next) };
     }
   }
 
@@ -129,8 +129,7 @@ export class MemoryNetwork {
   #deliver({ waiting, turnedBackAs }: QueueState, ciphertext: Uint8Array): void {
     if (turnedBackAs !== undefined) throw new UndeliveredMessage(turnedBackAs, "the queue turns it back");
     if (this.#faults.lost?.(this.#deliveries++)) return;
-    // Copied, so that what the sender does with its bytes afterwards does not reach the queue.
-    waiting.push({ ciphertext: ciphertext.slice() });
-    if (this.#faults.twice) waiting.push({ ciphertext: ciphertext.slice() });
+    waiting.push({ ciphertext });
+    if (this.#faults.twice) waiting.push({ ciphertext });
   }
 }

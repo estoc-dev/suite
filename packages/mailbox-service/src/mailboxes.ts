@@ -69,7 +69,7 @@ export class MemoryMailboxes implements Mailboxes {
     let bytes = ciphertext.length;
     for (const held of queue.values()) bytes += held.ciphertext.length;
     if (bytes > quota) return false;
-    queue.set(link, { ciphertext: ciphertext.slice(), at });
+    queue.set(link, { ciphertext, at });
     return true;
   }
 
@@ -79,7 +79,7 @@ export class MemoryMailboxes implements Mailboxes {
   }
 
   async *queue(sendId: string, since: number): AsyncIterable<Uint8Array> {
-    for (const { ciphertext } of [...this.#removeExpired(sendId, since).values()]) yield ciphertext.slice();
+    for (const { ciphertext } of [...this.#removeExpired(sendId, since).values()]) yield ciphertext;
   }
 
   #removeExpired(sendId: string, since: number): Map<Link<Uint8Array>, HeldMessage> {

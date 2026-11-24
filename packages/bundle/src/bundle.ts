@@ -70,8 +70,7 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
     const link = linkOf(blob);
     if (givenLinks.has(link)) continue;
     givenLinks.add(link);
-    // Not `blob.slice()`, which for a `Buffer` gives a view of the same memory.
-    if (link === root) rootBytes = new Uint8Array(blob);
+    if (link === root) rootBytes = blob;
     else otherBlobs.push(encode(blob));
   }
   if (rootBytes === undefined) throw new Error(`the blobs of a bundle hold its root, and ${root} is not among them`);
@@ -84,18 +83,13 @@ export function encodeBundle(root: Link<unknown>, blobs: Iterable<Bytes<unknown>
  * other limit.
  */
 export function decodeBundle(file: Uint8Array): Bundle {
-  // The root and each blob are copied out of the file before they are hashed,
-  // so that what was checked is what is kept, whatever happens to the given
-  // array afterwards. A file read in Node is a Buffer, whose `slice` shares
-  // memory instead of copying, so the file is read through a plain view.
-  const bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength);
-  const tokens = new Tokenizer(bytes, { strict: true, allowIndefinite: false });
+  const tokens = new Tokenizer(file, { strict: true, allowIndefinite: false });
   try {
     passValue(tokens);
   } catch (cause) {
     throw new Error("the root of a bundle is an object", { cause });
   }
-  const root = bytes.slice(0, tokens.pos());
+  const root = file.subarray(0, tokens.pos());
   checkRoot(root);
   const link = linkOf(root);
   const blobs = new Map<Link<unknown>, Uint8Array>();

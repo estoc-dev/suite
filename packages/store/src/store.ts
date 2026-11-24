@@ -3,8 +3,8 @@ import { type Backend, blobIn } from "./backend.ts";
 import {
   type Batch,
   closureIn,
-  copiedBatchWith,
-  copiedBlobs,
+  hashedBatchWith,
+  hashedBlobs,
   leavesFirst,
   type RecordBatch,
   recordsOf,
@@ -89,16 +89,16 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    const copiedBatch = { blobs: copiedBlobs(blobs), records: [] };
-    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, copiedBatch, this.#backend));
+    const hashedBatch = { blobs: hashedBlobs(blobs), records: [] };
+    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, hashedBatch, this.#backend));
   }
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
-    const givenBlobs = copiedBlobs(blobs);
-    const copiedBatch = copiedBatchWith(recordsOf(statements, givenBlobs), givenBlobs);
+    const givenBlobs = hashedBlobs(blobs);
+    const hashedBatch = hashedBatchWith(recordsOf(statements, givenBlobs), givenBlobs);
     // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
     // a statement the store does not hold whole.
-    await this.#backend.put(await leavesFirst(copiedBatch.records, copiedBatch, this.#backend));
+    await this.#backend.put(await leavesFirst(hashedBatch.records, hashedBatch, this.#backend));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
@@ -136,8 +136,7 @@ class StagedStoreOf implements StagedStore, RowKeeper {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   async get(link: Link<unknown>): Promise<Bytes<unknown> | undefined> {
-    const bytes = this.#blobs.get(link);
-    return bytes === undefined ? this.#store.get(link) : new Uint8Array(bytes);
+    return this.#blobs.get(link) ?? this.#store.get(link);
   }
 
   commit(): Promise<void> {

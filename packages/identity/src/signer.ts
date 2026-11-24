@@ -12,27 +12,22 @@ export interface Signer {
 }
 
 export class SoftwareSigner implements Signer {
+  readonly key: Key;
   readonly #scheme: CurveScheme;
-  readonly #publicKey: Uint8Array;
   readonly #secretKey: Uint8Array;
 
-  private constructor(scheme: CurveScheme, publicKey: Uint8Array, secretKey: Uint8Array) {
+  private constructor(scheme: CurveScheme, secretKey: Uint8Array) {
+    this.key = { scheme, publicKey: scheme.curve.publicKeyOf(secretKey) };
     this.#scheme = scheme;
-    this.#publicKey = publicKey;
     this.#secretKey = secretKey;
   }
 
   static fromSecretKey(scheme: CurveScheme, secretKey: Uint8Array): SoftwareSigner {
-    const ownedSecretKey = new Uint8Array(secretKey);
-    return new SoftwareSigner(scheme, scheme.curve.publicKeyOf(ownedSecretKey), ownedSecretKey);
-  }
-
-  get key(): Key {
-    return { scheme: this.#scheme, publicKey: this.#publicKey.slice() };
+    return new SoftwareSigner(scheme, secretKey);
   }
 
   async sign(digest: Uint8Array, signedIdentity?: Uint8Array): Promise<Uint8Array> {
     const scheme = this.#scheme;
-    return scheme.curve.sign(scheme.message(signingText(digest, signedIdentity), this.#publicKey), this.#secretKey);
+    return scheme.curve.sign(scheme.message(signingText(digest, signedIdentity), this.key.publicKey), this.#secretKey);
   }
 }

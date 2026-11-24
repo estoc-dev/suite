@@ -1,7 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ed25519, eip191, isSameKey, type Key, SoftwareSigner, solanaOffchain, verify } from "../src/index.ts";
-import { schemes } from "./fixtures.ts";
 
 const digest = Uint8Array.from({ length: 32 }, (_, i) => i);
 const ed25519Signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
@@ -35,23 +34,6 @@ describe("a key whose public key is not in its scheme's form", () => {
     const anyMessage = Uint8Array.of(...neutral, ...new Uint8Array(32));
     expect(verify({ scheme: ed25519, publicKey: neutral }, digest, anyMessage)).toBe(false);
   });
-});
-
-test.each(schemes)(
-  "$name: a signer made from a Buffer keeps signing for its key after the caller clears the Buffer",
-  async (scheme) => {
-    const secretKey = Buffer.from(new Uint8Array(32).fill(1));
-    const signer = SoftwareSigner.fromSecretKey(scheme, secretKey);
-    const key = signer.key;
-    secretKey.fill(0);
-    expect(verify(key, digest, await signer.sign(digest))).toBe(true);
-  },
-);
-
-test("a signer keeps signing for its key after the caller changes the key it handed out", async () => {
-  const handedOut = ed25519Signer.key;
-  handedOut.publicKey.fill(0);
-  expect(verify(ed25519Signer.key, digest, await ed25519Signer.sign(digest))).toBe(true);
 });
 
 describe("isSameKey", () => {

@@ -147,7 +147,7 @@ function isSame(a: Uint8Array, b: Uint8Array): boolean {
  * object has one encoding and one link.
  */
 export const objectFormat = {
-  encode(object: ObjectValue): Uint8Array {
+  encode(object: ObjectValue): Uint8Array<ArrayBuffer> {
     const schema = object.schema === itself ? itselfText : cborValueOf(new LinkValue(object.schema));
     const bytes = encode(new Tagged(objectTag, [schema, cborMapOf(object.data)]), rfc8949EncodeOptions);
     // In Node cborg gives some values as a Buffer, whose `slice` shares memory where that of bytes copies.

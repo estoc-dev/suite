@@ -7,7 +7,6 @@ import { type Link, linkOf } from "@estoc/object";
  *   with the Records among them.
  */
 export interface Backend {
-  /** Gives an array the caller may change without changing what is kept. */
   get(link: Link<unknown>): Promise<Uint8Array | undefined>;
   has(link: Link<unknown>): Promise<boolean>;
   /**

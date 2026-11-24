@@ -5,7 +5,7 @@ import type { Schema } from "./schema.ts";
 export interface EncodedObject<F extends ValueMap = ValueMap> {
   readonly schema: Schema<F>;
   readonly data: F;
-  readonly bytes: Bytes<EncodedObject<F>> & Uint8Array<ArrayBuffer>;
+  readonly bytes: Bytes<EncodedObject<F>>;
   readonly link: Link<EncodedObject<F>>;
 }
 
@@ -20,17 +20,19 @@ export interface Reader {
 }
 
 export function decodeObject<F extends ValueMap>(bytes: Bytes<EncodedObject<F>>, schema: Schema<F>): EncodedObject<F> {
-  // A copy, so that what was read is what is kept, whatever happens to the given array afterwards.
-  const owned = new Uint8Array(bytes);
-  const object = objectFormat.decode(owned);
-  const link = linkOf(owned);
+  const object = objectFormat.decode(bytes);
+  const link = linkOf(bytes);
   const schemaLink = object.schema === itself ? link : object.schema;
   if (schemaLink !== schema.link) throw new Error(`the object is written to ${schemaLink}, not to ${schema.link}`);
-  return { schema, data: schema.validate(object.data), bytes: owned, link };
+  return { schema, data: schema.validate(object.data), bytes, link };
 }
 
-export function encodeObject<F extends ValueMap>(schema: Schema<F>, data: F): EncodedObject<F> {
-  return decodeObject(objectFormat.encode(new ObjectValue(schema.link, data)), schema);
+export function encodeObject<F extends ValueMap>(
+  schema: Schema<F>,
+  data: F,
+): EncodedObject<F> & { readonly bytes: Uint8Array<ArrayBuffer> } {
+  const bytes = objectFormat.encode(new ObjectValue(schema.link, data));
+  return { ...decodeObject(bytes, schema), bytes };
 }
 
 export class AbsentBlob extends Error {

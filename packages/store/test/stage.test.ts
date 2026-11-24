@@ -95,25 +95,6 @@ describe("a staged batch", () => {
     expect(await store.get(other.link)).toEqual(other.bytes);
     expect(await store.get(note.link)).toEqual(note.bytes);
   });
-
-  it("keeps what it will write, whatever happens to the arrays it was given or gave out", async () => {
-    const store = newStore();
-    const image = utf8("an image");
-    const note = object({ image: new LinkValue(linkOf(image)) });
-    const [givenNote, givenImage] = [new Uint8Array(note.bytes), new Uint8Array(image)];
-    const stagedStore = await store.stage({
-      roots: [note.link],
-      blobs: [givenNote, givenImage, ...anything.blobs],
-    });
-    givenNote.fill(0);
-    givenImage.fill(0);
-    (await stagedStore.get(note.link))?.fill(0);
-    (await stagedStore.get(linkOf(image)))?.fill(0);
-    expect(await stagedStore.get(note.link)).toEqual(note.bytes);
-    await stagedStore.commit();
-    expect(await store.get(note.link)).toEqual(note.bytes);
-    expect(await store.get(linkOf(image))).toEqual(image);
-  });
 });
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });

@@ -75,14 +75,14 @@ export function decodeSchema<S, F extends ValueMap = ValueMap>(
   const { language } = validator;
   const root = rootSchemaOf(validator);
   const blob: Uint8Array = bytes;
-  const { bytes: owned, link: objectLink, data } = decodeObject(blob, root);
+  const { link: objectLink, data } = decodeObject(blob, root);
   const link = objectLink as Link<unknown> as Link<Schema>;
   if (link === root.link) return root as Schema<F>;
   for (const linked of objectFormat.links(new ObjectValue(root.link, data))) {
     if (linked !== root.link) throw new Error(`a schema links to its root schema alone, not to ${linked}`);
   }
   const check = validator.compile(language.document(data));
-  return new Schema<F>({ bytes: owned as Uint8Array, link }, check, root);
+  return new Schema<F>({ bytes: blob, link }, check, root);
 }
 
 export function encodeSchema<S, F extends ValueMap = ValueMap>(document: S, validator: SchemaValidator<S>): Schema<F> {

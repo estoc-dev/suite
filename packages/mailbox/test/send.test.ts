@@ -1,4 +1,4 @@
-import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
+import { encodeObject, LinkValue, readObject } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { Intake, MemoryBackend, perform, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
@@ -68,16 +68,19 @@ describe("Send", () => {
     expect(await recordedIn(store)).toEqual(recordedBefore);
   });
 
-  it("fails for a mailbox link to what is not a Mailbox, and sends and records nothing", async () => {
+  it("takes a Mailbox as its mailbox, and anything as its root", () => {
+    expect(send.targetSchemas).toEqual({ mailbox: mailboxSchema });
+  });
+
+  it("fails for a request whose mailbox is not a Mailbox, and sends and records nothing", async () => {
     const { store, queue, environment } = await prepareSender();
     const recordedBefore = await recordedIn(store);
 
-    // A request that code did not write, such as one typed in a form, comes with this link whatever
-    // the type says.
-    const request = { root: new LinkValue(hello.link), mailbox: new LinkValue(hello.link as Link<never>) };
-    await expect(perform(store, send, request, environment)).rejects.toThrow(
-      `the object is written to ${note.link}, not to ${mailboxSchema.link}`,
-    );
+    const request = send.requestSchema.validate({
+      root: new LinkValue(hello.link),
+      mailbox: new LinkValue(hello.link),
+    });
+    await expect(perform(store, send, request, environment)).rejects.toThrow(mailboxSchema.link);
     expect(queue.take()).toEqual([]);
     expect(await recordedIn(store)).toEqual(recordedBefore);
   });

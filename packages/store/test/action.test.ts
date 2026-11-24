@@ -1,7 +1,7 @@
 import { runInNewContext } from "node:vm";
-import { encodeObject, type Link, LinkValue, objectsOf } from "@estoc/object";
-import { array, boolean, link, schema, string } from "@estoc/schema";
-import { assert, describe, expect, it } from "vitest";
+import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf } from "@estoc/object";
+import { array, boolean, type DataOf, integer, link, schema, string } from "@estoc/schema";
+import { assert, describe, expect, it, test } from "vitest";
 import {
   actionOver,
   indexOver,
@@ -369,5 +369,88 @@ describe("an action performed on a store", () => {
     };
     await expect(perform(lookalike, addCard, { name: "ace" })).rejects.toThrow(TypeError);
     expect(await blobsOf(store)).toEqual([]);
+  });
+});
+
+type Card = EncodedObject<DataOf<typeof cardSchema>>;
+
+// Records that the top card was written, so that the records of a store show whether it ran.
+const deal = actionOver(
+  schema("Deal", { top: link<Card>(), rest: array(link<Card>()), to: link() }),
+  schema("Dealt Hand", { size: integer() }),
+  async ({ top, rest }, store) => {
+    await store.record(writtenObjectsOf([top.link], 0));
+    return { size: 1 + rest.length };
+  },
+).taking({ top: cardSchema, rest: cardSchema });
+
+const jokerSchema = schema("Joker", { name: string() });
+const joker = encodeObject(jokerSchema, { name: "joker" });
+const unheldLink = card("unheld").link;
+
+async function storeOfCards(): Promise<Store> {
+  const store = newStore();
+  const cards = [card("ace"), card("king"), card("queen")];
+  await store.write({
+    roots: [...cards.map(({ link }) => link), joker.link],
+    blobs: [...cards.map(({ bytes }) => bytes), ...cardSchema.blobs, joker.bytes, ...jokerSchema.blobs],
+  });
+  return store;
+}
+
+const linkTo = (object: { readonly link: Link<unknown> }) => new LinkValue(object.link);
+
+describe("an action taking objects of one schema in a field of its request", () => {
+  it("says the schema each such field takes, and none for the other fields", () => {
+    expect(deal.targetSchemas).toEqual({ top: cardSchema, rest: cardSchema });
+    expect(addCard.targetSchemas).toEqual({});
+  });
+
+  it("is run with a request that links in those fields to objects of the schema, and in another field to anything", async () => {
+    const store = await storeOfCards();
+    const request = deal.requestSchema.validate({
+      top: linkTo(card("ace")),
+      rest: [linkTo(card("king")), linkTo(card("queen"))],
+      to: new LinkValue(unheldLink),
+    });
+    const { result, commits } = await perform(store, deal, request);
+    expect(result.data).toEqual({ size: 3 });
+    expect(commits).toEqual([writtenAt(card("ace"), 0).link]);
+  });
+
+  it("is not run with a request that links in such a field to an object of another schema", async () => {
+    const store = await storeOfCards();
+    const request = deal.requestSchema.validate({ top: linkTo(joker), rest: [], to: linkTo(joker) });
+    await expect(perform(store, deal, request)).rejects.toThrow(
+      `the object is written to ${jokerSchema.link}, not to ${cardSchema.link}`,
+    );
+    expect((await store.recordedStatements()).statements).toEqual([]);
+  });
+
+  it("is not run with a request one of whose links in such a field is to an object of another schema", async () => {
+    const store = await storeOfCards();
+    const request = deal.requestSchema.validate({
+      top: linkTo(card("ace")),
+      rest: [linkTo(card("king")), linkTo(joker)],
+      to: linkTo(joker),
+    });
+    await expect(perform(store, deal, request)).rejects.toThrow(
+      `the object is written to ${jokerSchema.link}, not to ${cardSchema.link}`,
+    );
+    expect((await store.recordedStatements()).statements).toEqual([]);
+  });
+
+  it("is not run with a request that links in such a field to what the store does not hold", async () => {
+    const store = await storeOfCards();
+    const request = deal.requestSchema.validate({ top: new LinkValue(unheldLink), rest: [], to: linkTo(joker) });
+    await expect(perform(store, deal, request)).rejects.toThrow(`no blob is given for ${unheldLink}`);
+    expect((await store.recordedStatements()).statements).toEqual([]);
+  });
+
+  test("`taking` is given, for a field, no other schema than the one its links are typed to", () => {
+    // @ts-expect-error The links of `top` are typed to a Card.
+    deal.taking({ top: writtenObjectSchema });
+    // @ts-expect-error The link of `to` is typed to anything, so no one schema is said for it.
+    deal.taking({ to: cardSchema });
   });
 });

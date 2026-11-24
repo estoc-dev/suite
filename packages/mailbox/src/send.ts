@@ -2,7 +2,7 @@ import { type EncodedObject, LinkValue } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
 import { actionOver } from "@estoc/store";
 import { Post, type PostOptions } from "./post.ts";
-import type { MailboxData } from "./schema.ts";
+import { type MailboxData, mailboxSchema } from "./schema.ts";
 
 export const send = actionOver(
   schema("Send", { root: link(), mailbox: link<EncodedObject<MailboxData>>() }),
@@ -12,4 +12,4 @@ export const send = actionOver(
     const outbound = await outbox.send(root.link);
     return { outbound: new LinkValue(outbound.link) };
   },
-);
+).taking({ mailbox: mailboxSchema });

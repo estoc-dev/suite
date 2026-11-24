@@ -1,4 +1,14 @@
-import { type Bytes, type EncodedObject, encodeObject, type Link, type Schema, type ValueMap } from "@estoc/object";
+import {
+  type Bytes,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  readObject,
+  type Schema,
+  type Value,
+  type ValueMap,
+} from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
 import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
 import type { RecordedStatements, StagedStore, Store } from "./store.ts";
@@ -20,6 +30,18 @@ type Run<Q extends ValueMap, R extends ValueMap, E extends object> = (
   environment: E,
 ) => R | Promise<R>;
 
+/**
+ * For a field of a request whose links are to objects of one schema, that schema. The schema of a
+ * request does not say it: there a link is to anything.
+ */
+type TargetSchemas<Q extends ValueMap> = {
+  readonly [K in keyof Q]?: Exclude<Q[K], undefined> extends
+    | LinkValue<EncodedObject<infer F>>
+    | readonly LinkValue<EncodedObject<infer F>>[]
+    ? Schema<F>
+    : never;
+};
+
 // `perform` reads what an action runs, which nothing outside this package can.
 let runOf: <Q extends ValueMap, R extends ValueMap, E extends object>(action: Action<Q, R, E>) => Run<Q, R, E>;
 
@@ -30,16 +52,27 @@ let runOf: <Q extends ValueMap, R extends ValueMap, E extends object>(action: Ac
 export class Action<Q extends ValueMap, R extends ValueMap, E extends object = object> {
   readonly requestSchema: Schema<Q>;
   readonly resultSchema: Schema<R>;
+  readonly targetSchemas: TargetSchemas<Q>;
   readonly #run: Run<Q, R, E>;
 
   static {
     runOf = (action) => action.#run;
   }
 
-  constructor(requestSchema: Schema<Q>, resultSchema: Schema<R>, run: Run<Q, R, E>) {
+  constructor(
+    requestSchema: Schema<Q>,
+    resultSchema: Schema<R>,
+    run: Run<Q, R, E>,
+    targetSchemas: TargetSchemas<Q> = {},
+  ) {
     this.requestSchema = requestSchema;
     this.resultSchema = resultSchema;
     this.#run = run;
+    this.targetSchemas = targetSchemas;
+  }
+
+  taking(targetSchemas: TargetSchemas<Q>): Action<Q, R, E> {
+    return new Action(this.requestSchema, this.resultSchema, this.#run, targetSchemas);
   }
 }
 
@@ -85,6 +118,11 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   if (!(readRows in store)) throw new TypeError("an action is performed on a store made by `new Store`");
   // The type of a request admits what its schema refuses, such as a field the schema does not name.
   const validRequest = action.requestSchema.validate(request);
+  const targetSchemas: { readonly [field: string]: Schema | undefined } = action.targetSchemas;
+  for (const [field, schema] of Object.entries(targetSchemas)) {
+    if (schema === undefined) continue;
+    for (const link of linksAt(validRequest[field])) await readObject(store, link, schema);
+  }
   const commitNotes = new CommitNotes();
   let data: R;
   try {
@@ -93,6 +131,11 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
     commitNotes.close();
   }
   return { result: encodeObject(action.resultSchema, data), commits: await commitNotes.settledLinks() };
+}
+
+function linksAt(value: Value | undefined): Link<unknown>[] {
+  const values = Array.isArray(value) ? value : [value];
+  return values.filter((each) => each instanceof LinkValue).map(({ link }) => link);
 }
 
 class CommitNotes {

@@ -277,7 +277,7 @@ describe("the latest grant of one person to another", () => {
     const grant = mailboxGrantTo(bob.signedIdentity, [mallory.inbox.mailbox], 2_000);
     const forgedSignature = encodeObject(signatures.schema, {
       signedIdentity: new LinkValue(signature.signedIdentity.link),
-      object: new LinkValue(grant.link),
+      object: new LinkValue(grant.link as Link<never>),
       signature: signature.signature,
     });
     await mallory.store.write({

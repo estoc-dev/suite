@@ -25,11 +25,13 @@ import { MemoryBackend, recordSchema, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
+import { MemoryAccounts } from "../src/accounts.ts";
 import {
   accountOfferSchema,
   acknowledgementSchema,
   acknowledgements,
   locations,
+  type MailboxTerms,
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
@@ -38,7 +40,8 @@ import {
   recordedIdentityVersions,
   serviceSchema,
 } from "../src/index.ts";
-import type { MailboxService } from "../src/server.ts";
+import { MemoryMailboxes } from "../src/mailboxes.ts";
+import { loadMailboxService, type MailboxService, type ServiceOptions } from "../src/server.ts";
 import { SqliteAccounts, SqliteMailboxes } from "../src/sqlite.ts";
 import {
   actorOf,
@@ -47,6 +50,7 @@ import {
   dataOf,
   identities,
   identityVersionInHand,
+  keyringOf,
   keys,
   makeTemporaryPath,
   memoryService,
@@ -183,6 +187,44 @@ describe("a mailbox service", () => {
     const read = await signatureIn(bundle, acceptance.signature.link);
     expect(read.object).toBe(offer.link);
     expect(read.signedIdentity.identity).toEqual(identities.encode(alice.key, { at: 0 }));
+  });
+
+  it("opens an account when the options it is loaded with inherit their fields", async () => {
+    const store = memoryStore();
+    await setUpService({ store });
+    const options: ServiceOptions = {
+      origin: "https://mail.example",
+      store,
+      accounts: new MemoryAccounts(),
+      mailboxes: new MemoryMailboxes(),
+      terms,
+      clock: () => 2_000,
+    };
+    const service = await loadMailboxService(keyringOf(serviceSigner), Object.create(options));
+    const { file } = await directAcceptance((await rootOf(service)).offer);
+    expect((await postAcceptance(service, file)).status).toBe(201);
+  });
+
+  it("offers mailboxes on the terms it is loaded with, where they inherit some of their fields", async () => {
+    const store = memoryStore();
+    await setUpService({ store });
+    const inheritedTerms: MailboxTerms = Object.assign(Object.create({ retention: 60_000, quota: 4096 }), {
+      size: 512,
+    });
+    const service = await loadMailboxService(keyringOf(serviceSigner), {
+      origin: "https://mail.example",
+      store,
+      accounts: new MemoryAccounts(),
+      mailboxes: new MemoryMailboxes(),
+      terms: inheritedTerms,
+      clock: () => 2_000,
+    });
+    expect((await rootOf(service)).mailbox.offer.data).toEqual({
+      identity: new LinkValue(serviceRoot.link),
+      retention: 60_000,
+      quota: 4096,
+      size: 512,
+    });
   });
 
   it("opens an account for an acceptance that carries only the blobs reading it takes, in a scheme the service does not sign in", async () => {

@@ -252,6 +252,9 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+      '@estoc/people':
+        specifier: workspace:*
+        version: link:../people
       '@estoc/schema':
         specifier: workspace:*
         version: link:../schema
@@ -299,6 +302,9 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@estoc/keyring':
+        specifier: workspace:*
+        version: link:../keyring
       '@estoc/object':
         specifier: workspace:*
         version: link:../object

@@ -1,4 +1,5 @@
 export type { Correspondence } from "./correspondence.ts";
+export { grant, sendTo } from "./correspondence-actions.ts";
 export { type GrantSeries, grantSeriesView, type MailboxGrant, mailboxGrants, mailboxGrantTo } from "./grant.ts";
 export { heldMailboxKeys } from "./held-mailbox-keys.ts";
 export { MailboxKey } from "./key.ts";

@@ -13,6 +13,7 @@
   "dependencies": {
     "@estoc/bundle": "workspace:*",
     "@estoc/identity": "workspace:*",
+    "@estoc/keyring": "workspace:*",
     "@estoc/object": "workspace:*",
     "@estoc/people": "workspace:*",
     "@estoc/schema": "workspace:*",

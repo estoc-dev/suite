@@ -350,7 +350,7 @@ describe("what came in at a mailbox", () => {
     const other = encodeObject(note, { text: "not what was signed" });
     const forged = encodeObject(signatures.schema, {
       signedIdentity: new LinkValue(signature.signedIdentity.link),
-      object: new LinkValue(other.link),
+      object: new LinkValue(other.link as Link<never>),
       signature: signature.signature,
     });
     await alice.store.write({ roots: [forged.link], blobs: [forged.bytes, other.bytes] });

@@ -98,6 +98,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
       "Held Keys",
       "Identity Versions",
       "Held Mailbox Keys",
+      "Mailbox Grants",
       "Arrivals of Roots and Signed Identities",
       "Opened Mailboxes",
       "Recorded Signatures",
@@ -108,6 +109,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
       { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
     ]);
     expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Mailbox Grants", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
     expect(await client.page("Opened Mailboxes", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
     const recorded = await client.page("Recorded Signatures", 0, 10);
     expect(recorded.rowCount).toBe(1);

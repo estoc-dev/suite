@@ -7,6 +7,7 @@ export {
   type Service,
   type Services,
 } from "./client.ts";
+export { acceptAccountOffer, collect, fetchService, openInbox } from "./client-actions.ts";
 export { locations } from "./locations.ts";
 export { openedMailboxes } from "./opened-mailboxes.ts";
 export { recordedIdentityVersions } from "./recorded-identity-versions.ts";

@@ -302,10 +302,19 @@ export class Services {
    * its `at`.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
-    const locations = await view(this.#store, locationsView);
-    const people = await view(this.#store, peopleView);
-    const [latest] = await locations.servicesOf(signedIdentity.identity.identifier, people);
-    return latest === undefined ? undefined : this.#read(latest.link, this.#store);
+    return this.#latestOf(signedIdentity.identity.identifier);
+  }
+
+  /**
+   * An offer is taken up where the latest Service of the identity it names offers it, so one that
+   * the service offers no more is not found.
+   */
+  async accountOffer(link: Link<EncodedObject<AccountOfferData>>): Promise<AccountOffer> {
+    return this.#listedOffer(link, accountOfferSchema, ({ account }) => account);
+  }
+
+  async mailboxOffer(link: Link<EncodedObject<MailboxOfferData>>): Promise<MailboxOffer> {
+    return this.#listedOffer(link, mailboxOfferSchema, ({ mailbox }) => mailbox);
   }
 
   /**
@@ -330,6 +339,26 @@ export class Services {
     const url = new URL(`/${hex.encode(pickupId)}`, service.origin);
     const target = { mailbox, request: request.link, url, size };
     return new ServicePickup(target, actor);
+  }
+
+  async #latestOf(identifier: Link<unknown>): Promise<Service | undefined> {
+    const locations = await view(this.#store, locationsView);
+    const people = await view(this.#store, peopleView);
+    const [latest] = await locations.servicesOf(identifier, people);
+    return latest === undefined ? undefined : this.#read(latest.link, this.#store);
+  }
+
+  async #listedOffer<
+    F extends ValueMap & { readonly identity: LinkValue<unknown> },
+    O extends AccountOffer | MailboxOffer,
+  >(link: Link<EncodedObject<F>>, schema: Schema<F>, offerOf: (service: Service) => O | undefined): Promise<O> {
+    const identifier = (await readObject(this.#store, link, schema)).data.identity.link;
+    const service = await this.#latestOf(identifier);
+    if (service === undefined) throw new Error(`the store holds no Service of ${identifier}`);
+    const offer = offerOf(service);
+    if (offer?.link !== link)
+      throw new Error(`the latest Service of ${identifier} that the store holds does not offer ${link}`);
+    return offer;
   }
 
   async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {

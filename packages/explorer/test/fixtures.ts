@@ -5,6 +5,7 @@ import { encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { type Backend, MemoryBackend, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
+import type { ListedAction } from "../src/action.ts";
 import { type Channel, Client, portChannel } from "../src/index.ts";
 import type { List } from "../src/list.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -29,9 +30,9 @@ export function channelEnds(): [Channel, Channel] {
   return [portChannel(port1), portChannel(port2)];
 }
 
-export function clientOf(store: Store, lists: readonly List[] = []): Client {
+export function clientOf(store: Store, lists: readonly List[] = [], actions: readonly ListedAction[] = []): Client {
   const [near, far] = channelEnds();
-  new Runtime(store, lists).serve(far);
+  new Runtime(store, lists, actions).serve(far);
   return new Client(near);
 }
 

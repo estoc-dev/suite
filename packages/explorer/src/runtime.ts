@@ -14,7 +14,19 @@ import {
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { linksIn, type Store } from "@estoc/store";
-import { blobCall, type CallKind, callSchema, listSchema, listsCall, pageCall, replySchema } from "./calls.ts";
+import type { ListedAction } from "./action.ts";
+import {
+  actionSchema,
+  actionsCall,
+  blobCall,
+  type CallKind,
+  callSchema,
+  listSchema,
+  listsCall,
+  pageCall,
+  performCall,
+  replySchema,
+} from "./calls.ts";
 import type { Channel } from "./channel.ts";
 import { type List, pageIn } from "./list.ts";
 
@@ -174,38 +186,80 @@ function answerTo<P extends ValueMap, R extends ValueMap>(
 }
 
 /**
- * What holds the store, and answers the calls of the pages that show it. A page is given the whole
- * of the store, Secrets as well: its user is inside the boundary that the store is in.
+ * What holds the store, and answers the calls of the pages that show it.
+ *
+ * - A page is given the whole of the store, Secrets as well: its user is inside the boundary that
+ *   the store is in.
+ * - A page has any of the actions performed on any request, so it signs and sends as whoever the
+ *   store records a Secret Key of.
  */
 export class Runtime {
   readonly #answers: ReadonlyMap<string, Answer>;
 
-  /** `lists` are shown after those of what the store holds, and each has a name of its own. */
-  constructor(store: Store, lists: readonly List[]) {
+  /**
+   * - `lists` are shown after those of what the store holds, and each has a name of its own.
+   * - Each of `actions` has a request schema of its own.
+   */
+  constructor(store: Store, lists: readonly List[], actions: readonly ListedAction[]) {
     const listsByName = new Map<string, List>();
     for (const list of [recordsList, blobsList, schemasList, linksList, ...lists]) {
       if (listsByName.has(list.name)) throw new Error(`two lists are named ${list.name}`);
       listsByName.set(list.name, list);
     }
-    const descriptions = Array.from(
+    const listDescriptions = Array.from(
       listsByName.values(),
       ({ name, rowSchema, order, readsBlobs }) =>
         encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order: [...order], readsBlobs }).bytes,
     );
-    // A row and its schema are not written to the store, and a page reads the schema to show the row.
-    const listedBlobs = new Map<Link<unknown>, Uint8Array>(
-      [...listsByName.values()].flatMap(({ rowSchema }) => rowSchema.blobs.map((bytes) => [linkOf(bytes), bytes])),
+    const actionsByRequestSchema = new Map<Link<Schema>, ListedAction>();
+    for (const action of actions) {
+      const { link } = action.requestSchema;
+      if (actionsByRequestSchema.has(link)) throw new Error(`two actions take a request written to ${link}`);
+      actionsByRequestSchema.set(link, action);
+    }
+    const actionDescriptions = actions.map(
+      ({ requestSchema, resultSchema, targetSchemas }) =>
+        encodeObject(actionSchema, {
+          request: new LinkValue(requestSchema.link),
+          result: new LinkValue(resultSchema.link),
+          targetSchemas: Object.fromEntries(
+            Object.entries(targetSchemas).flatMap(([field, schema]) =>
+              schema === undefined ? [] : [[field, new LinkValue(schema.link)]],
+            ),
+          ),
+        }).bytes,
+    );
+    // Rows, requests and results are not written to the store, and a page reads their schemas to
+    // show them, as it reads the schema of what a field takes to say which objects fit.
+    const shownSchemas = [
+      ...Array.from(listsByName.values(), ({ rowSchema }) => rowSchema),
+      ...actions.flatMap(({ requestSchema, resultSchema, targetSchemas }) => [
+        requestSchema,
+        resultSchema,
+        ...Object.values(targetSchemas).filter((schema) => schema !== undefined),
+      ]),
+    ];
+    const schemaBlobs = new Map<Link<unknown>, Uint8Array>(
+      shownSchemas.flatMap(({ blobs }) => blobs.map((bytes) => [linkOf(bytes), bytes])),
     );
     this.#answers = new Map([
       answerTo(blobCall, async ({ link: { link } }) => {
-        const bytes = (await store.get(link)) ?? listedBlobs.get(link);
+        const bytes = (await store.get(link)) ?? schemaBlobs.get(link);
         return bytes === undefined ? {} : { bytes };
       }),
-      answerTo(listsCall, async () => ({ lists: descriptions })),
+      answerTo(listsCall, async () => ({ lists: listDescriptions })),
       answerTo(pageCall, async ({ list: name, start, limit }) => {
         const list = listsByName.get(name);
         if (list === undefined) throw new Error(`there is no list named ${name}`);
         return list.page(store, start, limit);
+      }),
+      answerTo(actionsCall, async () => ({ actions: actionDescriptions })),
+      answerTo(performCall, async ({ request }) => {
+        const schema = schemaOf(request);
+        const action = actionsByRequestSchema.get(schema);
+        if (action === undefined) throw new Error(`no action takes a request written to ${schema}`);
+        const { result, commits } = await action.perform(store, request);
+        return { result: result.bytes, commits: commits.map((link) => new LinkValue(link)) };
       }),
     ]);
   }

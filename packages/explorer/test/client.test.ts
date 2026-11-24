@@ -386,7 +386,7 @@ describe("a client of a runtime that is given the list of an index", () => {
 describe("a runtime", () => {
   async function replyTo(call: ValueMap) {
     const [near, far] = channelEnds();
-    new Runtime(await storeOfNote(), []).serve(far);
+    new Runtime(await storeOfNote(), [], []).serve(far);
     return new Promise<ValueMap>((resolve) => {
       near.receive(
         (message) => resolve(decodeObject(message, replySchema).data),
@@ -413,12 +413,12 @@ describe("a runtime", () => {
     ]).orderedBy("text");
     const store = await storeOfNote();
     const lists = names.map((name) => listOfIndex(texts.named(name)));
-    expect(() => new Runtime(store, lists)).toThrow(`two lists are named ${names[0]}`);
+    expect(() => new Runtime(store, lists, [])).toThrow(`two lists are named ${names[0]}`);
   });
 
   it("closes a channel that brings what is not a call", async () => {
     const [near, far] = channelEnds();
-    new Runtime(await storeOfNote(), []).serve(far);
+    new Runtime(await storeOfNote(), [], []).serve(far);
     const isClosed = new Promise<void>((resolve) => near.receive(() => {}, resolve));
     near.send(note.bytes);
     await isClosed;

@@ -56,8 +56,9 @@ gives no meaning and no reader an advantage.
   inspector reads of its blobs, from the root along the links.
 - `@estoc/explorer`: a program that holds a store and answers the pages
   that show it, over a channel that carries calls one way and replies the
-  other: the lists it has of what the store holds, a page of one, and a
-  blob by its link.
+  other: the lists it has of what the store holds, a page of one, a blob
+  by its link, the actions it performs, and one of them performed on a
+  request.
 - `@estoc/explorer-web`: the pages that the explorer gives. One shows a
   list as a table with a column for each field of the schema its rows are
   written to, a page at a time. The other shows a blob: the schema it

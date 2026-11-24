@@ -18,7 +18,7 @@ async function startServer() {
   await writeFile(join(pages, "assets", "page.js"), "export {};");
   await writeFile(join(pages, "assets", "font.woff2"), "a font");
   await writeFile(join(folder, "beside.txt"), "beside the pages");
-  const server = await serve(new Runtime(await storeOfNote(), []), pages, 0);
+  const server = await serve(new Runtime(await storeOfNote(), [], []), pages, 0);
   onTestFinished(() => server.close());
   return server;
 }

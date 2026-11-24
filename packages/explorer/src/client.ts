@@ -11,6 +11,9 @@ import {
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
 import {
+  type ActionData,
+  actionSchema,
+  actionsCall,
   blobCall,
   type CallKind,
   callSchema,
@@ -19,6 +22,7 @@ import {
   listsCall,
   type Page,
   pageCall,
+  performCall,
   replySchema,
 } from "./calls.ts";
 import type { Channel } from "./channel.ts";
@@ -60,6 +64,17 @@ export class Client implements Reader {
 
   page(list: string, start: number, limit: number): Promise<Page> {
     return this.#call(pageCall, { list, start, limit });
+  }
+
+  async actions(): Promise<EncodedObject<ActionData>[]> {
+    const { actions } = await this.#call(actionsCall, {});
+    return actions.map((bytes) => decodeObject(bytes, actionSchema));
+  }
+
+  /** `request` is the bytes of an object written to the request schema of an action. */
+  async perform(request: Uint8Array): Promise<{ result: Uint8Array; commits: Link<unknown>[] }> {
+    const { result, commits } = await this.#call(performCall, { request });
+    return { result, commits: commits.map(({ link }) => link) };
   }
 
   async #call<P extends ValueMap, R extends ValueMap>(kind: CallKind<P, R>, parameters: P): Promise<R> {

@@ -12,4 +12,4 @@ export const send = actionOver(
     const outbound = await outbox.send(root.link);
     return { outbound: new LinkValue(outbound.link) };
   },
-).taking({ mailbox: mailboxSchema });
+).taking("mailbox", mailboxSchema);

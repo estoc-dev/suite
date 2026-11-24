@@ -374,14 +374,15 @@ describe("an action performed on a store", () => {
 
 type Card = EncodedObject<DataOf<typeof cardSchema>>;
 
-const deal = actionOver(
+const dealOfAnything = actionOver(
   schema("Deal", { top: link<Card>(), rest: array(link<Card>()), to: link() }),
   schema("Dealt Hand", { size: integer() }),
   async ({ top, rest }, store) => {
     await store.record(writtenObjectsOf([top.link], 0));
     return { size: 1 + rest.length };
   },
-).taking({ top: cardSchema, rest: cardSchema });
+);
+const deal = dealOfAnything.taking("top", cardSchema).taking("rest", cardSchema);
 
 const jokerSchema = schema("Joker", { name: string() });
 const joker = encodeObject(jokerSchema, { name: "joker" });
@@ -403,6 +404,13 @@ describe("an action taking objects of one schema in a field of its request", () 
   it("says the schema each such field takes, and none for the other fields", () => {
     expect(deal.targetSchemas).toEqual({ top: cardSchema, rest: cardSchema });
     expect(addCard.targetSchemas).toEqual({});
+  });
+
+  it("leaves the action it is made from saying what that said", () => {
+    const dealOfTop = dealOfAnything.taking("top", cardSchema);
+    dealOfTop.taking("rest", cardSchema);
+    expect(dealOfTop.targetSchemas).toEqual({ top: cardSchema });
+    expect(dealOfAnything.targetSchemas).toEqual({});
   });
 
   it("is run with a request that links in those fields to objects of the schema, and in another field to anything", async () => {
@@ -448,16 +456,17 @@ describe("an action taking objects of one schema in a field of its request", () 
 
   test("`taking` is given, for a field, no other schema than the one its links are typed to", () => {
     // @ts-expect-error The links of `top` are typed to a Card.
-    deal.taking({ top: writtenObjectSchema });
+    deal.taking("top", writtenObjectSchema);
     // @ts-expect-error The link of `to` is typed to anything, so no one schema is said for it.
-    deal.taking({ to: cardSchema });
+    deal.taking("to", cardSchema);
   });
 
   test("`taking` is given no field that the request does not have", () => {
     // @ts-expect-error The request of `listCards` has no field.
-    listCards.taking({ top: cardSchema });
-    const schemasOfMoreFields = { top: cardSchema, hand: cardSchema };
+    listCards.taking("top", cardSchema);
     // @ts-expect-error The request of `deal` has no `hand`.
-    deal.taking(schemasOfMoreFields);
+    deal.taking("hand", cardSchema);
+    // @ts-expect-error One of the two is not a field of the request of `deal`.
+    (field: "top" | "hand") => deal.taking(field, cardSchema);
   });
 });

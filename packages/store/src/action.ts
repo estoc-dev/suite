@@ -71,12 +71,8 @@ export class Action<Q extends ValueMap, R extends ValueMap, E extends object = o
     this.targetSchemas = targetSchemas;
   }
 
-  // `TargetSchemas<Q>` alone admits a field the request does not have: from a variable always, and
-  // from an object literal when the request has no field.
-  taking<T extends TargetSchemas<Q>>(
-    targetSchemas: T & { readonly [K in Exclude<keyof T, keyof Q>]: never },
-  ): Action<Q, R, E> {
-    return new Action(this.requestSchema, this.resultSchema, this.#run, targetSchemas);
+  taking<K extends keyof Q>(field: K, schema: NonNullable<TargetSchemas<Q>[K]>): Action<Q, R, E> {
+    return new Action(this.requestSchema, this.resultSchema, this.#run, { ...this.targetSchemas, [field]: schema });
   }
 }
 

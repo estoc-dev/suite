@@ -48,9 +48,9 @@ export function hashedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   return batchBlobs;
 }
 
-/** What a store is to write, each blob by its link, with the links of every Record in it. */
 export interface HashedBatch {
   readonly blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
+  /** The link of every Record among `blobs`. */
   readonly records: readonly Link<unknown>[];
 }
 

@@ -110,7 +110,7 @@ export class MemoryNetwork {
       const next = this.#faults.reversed ? left.at(-1) : left[0];
       if (next === undefined) return;
       handedArrivals.add(next);
-      yield { ciphertext: next.ciphertext.slice(), drop: async () => this.#drop(waiting, next) };
+      yield { ciphertext: next.ciphertext, drop: async () => this.#drop(waiting, next) };
     }
   }
 

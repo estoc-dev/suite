@@ -45,6 +45,11 @@ describe("an object", () => {
     expect(read.schema).toBe(anything);
   });
 
+  it("is encoded to bytes over an `ArrayBuffer`, which a socket of a browser sends as they are", () => {
+    const bytes: Uint8Array<ArrayBuffer> = encodeObject(anything, greeting).bytes;
+    expect(bytes.buffer).toBeInstanceOf(ArrayBuffer);
+  });
+
   it("is linked by the SHA-256 of its bytes", () => {
     const object = encodeObject(login, greeting);
     expect(object.link).toBe(`sha256:${createHash("sha256").update(object.bytes).digest("hex")}`);

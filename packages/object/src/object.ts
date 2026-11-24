@@ -27,8 +27,12 @@ export function decodeObject<F extends ValueMap>(bytes: Bytes<EncodedObject<F>>,
   return { schema, data: schema.validate(object.data), bytes, link };
 }
 
-export function encodeObject<F extends ValueMap>(schema: Schema<F>, data: F): EncodedObject<F> {
-  return decodeObject(objectFormat.encode(new ObjectValue(schema.link, data)), schema);
+export function encodeObject<F extends ValueMap>(
+  schema: Schema<F>,
+  data: F,
+): EncodedObject<F> & { readonly bytes: Uint8Array<ArrayBuffer> } {
+  const bytes = objectFormat.encode(new ObjectValue(schema.link, data));
+  return { ...decodeObject(bytes, schema), bytes };
 }
 
 export class AbsentBlob extends Error {

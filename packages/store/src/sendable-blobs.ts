@@ -10,8 +10,6 @@ import { recordSchema } from "./record.ts";
  *   the blobs leave.
  * - The store of the other party refuses a bundle with a Record in it, so one is refused here,
  *   where the sender sees it.
- * - Each blob is passed on before the next is asked for, since a source may give them all in turn
- *   in the one array.
  */
 export function* sendableBlobs<Blob extends Uint8Array>(blobs: Iterable<Blob>): Generator<Blob> {
   for (const bytes of blobs) {

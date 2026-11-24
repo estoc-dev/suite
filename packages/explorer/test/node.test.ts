@@ -105,3 +105,20 @@ describe("a channel over a socket", () => {
     await expect.poll(() => receivedBytes).toEqual([1, 2]);
   });
 });
+
+describe("a channel over a socket", () => {
+  it("gives the socket the array it is given to send", () => {
+    const sentMessages: Uint8Array[] = [];
+    const channel = socketChannel({
+      binaryType: "",
+      readyState: 1,
+      CONNECTING: 0,
+      send: (data) => sentMessages.push(data),
+      close() {},
+      addEventListener() {},
+    });
+    const message = Uint8Array.of(1);
+    channel.send(message);
+    expect(sentMessages[0]).toBe(message);
+  });
+});

@@ -122,7 +122,7 @@ async function chat(faults: Faults = {}) {
     );
     const post = new Post(store, { transports, clock });
     const intake = new Intake(store, clock);
-    const correspondence = post.correspondenceAs(actor, identity);
+    const correspondence = post.correspondenceAs(actor);
     return { name, actor, signedIdentity, store, post, intake, correspondence };
   };
   const alice = await person("Alice", 1);

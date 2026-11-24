@@ -254,7 +254,7 @@ describe("two people who meet", () => {
       const options = { transports: [network.transport], clock };
       const post = new Post(store, options);
       const intake = new Intake(store, clock);
-      const correspondence = post.correspondenceAs(actor, identity);
+      const correspondence = post.correspondenceAs(actor);
       const openInbox = async () => {
         const queue = network.queue();
         const inbox = await post.openInbox(() => queue.transport);

@@ -17,11 +17,6 @@ export function bytesOf({ link, blobs }: SignedIdentityObject): Uint8Array {
   return bytes;
 }
 
-/**
- * The rows of the identity versions `signedIdentities` are, and those they
- * follow, in the order of an index of them, as an index of a store that holds them
- * gives them.
- */
 function rowsOf(...signedIdentities: readonly SignedIdentityObject[]): IdentityVersionRows {
   const signedIdentitiesByLink = new Map<Link<unknown>, SignedIdentityObject>();
   for (const signedIdentity of signedIdentities) {

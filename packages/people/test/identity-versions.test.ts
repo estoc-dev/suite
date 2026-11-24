@@ -1,4 +1,4 @@
-import { ed25519, eip191, loadIdentity } from "@estoc/identity";
+import { ed25519, eip191, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import {
   AbsentBlob,
   decodeObject,
@@ -58,32 +58,40 @@ describe("the identity version of a signed identity", () => {
 });
 
 describe("the index of identity versions", () => {
-  it("gives the row of each identity version the store holds, ordered by identifier and at", async () => {
-    const root = signer(ed25519, 5);
-    const first = await publish(root, { at: 1_000 });
-    const second = await publish(root, { prior: first, at: 2_000 });
+  it("gives the row of each identity version the store holds, by identifier and then by at", async () => {
+    const identifierOf = (root: SoftwareSigner) => keys.encode(root.key).link;
+    const [lesser, greater] = [signer(ed25519, 5), signer(ed25519, 6)].sort((a, b) =>
+      identifierOf(a) < identifierOf(b) ? -1 : 1,
+    ) as [SoftwareSigner, SoftwareSigner];
+    const first = await publish(lesser, { at: 2_000 });
+    const second = await publish(lesser, { prior: first, at: 3_000 });
+    const ofGreater = await publish(greater, { at: 1_000 });
     const store = new Store(new MemoryBackend());
-    await store.write({ roots: [second.link], blobs: [...second.blobs] });
+    await store.write({ roots: [ofGreater.link, second.link], blobs: [...ofGreater.blobs, ...second.blobs] });
 
     const rows = [];
     for await (const { data } of (await scan(store, identityVersions)).range([])) rows.push(data);
-    expect(rows).toEqual([identityVersionOf(first), identityVersionOf(second)]);
+    expect(rows).toEqual([identityVersionOf(first), identityVersionOf(second), identityVersionOf(ofGreater)]);
   });
 });
 
 describe("the selection of identity versions", () => {
   const selection = verifiedSignedIdentities;
   // The kit that the selection reads by keeps what it has signed or verified, so what the selection
-  // is to read from a reader is published by another kit, each at an `at` of its own.
+  // is to read from a reader is published by another kit, as a root that signs nothing else.
   const elsewhere = loadIdentity([ed25519]);
+  const freshRoot = () => SoftwareSigner.fromSecretKey(ed25519, crypto.getRandomValues(new Uint8Array(32)));
   const root = signer(ed25519, 4);
 
   it.each([
-    ["with no agents", () => elsewhere.publish(root, { at: 1_000 })],
-    ["with agents", () => elsewhere.publish(root, { agents: [key(ed25519, 2)], at: 1_100 })],
+    ["with no agents", () => elsewhere.publish(freshRoot(), { at: 1_000 })],
+    ["with agents", () => elsewhere.publish(freshRoot(), { agents: [key(ed25519, 2)], at: 1_000 })],
     [
       "that follows another",
-      async () => elsewhere.publish(root, { prior: await elsewhere.publish(root, { at: 500 }), at: 1_200 }),
+      async () => {
+        const root = freshRoot();
+        return elsewhere.publish(root, { prior: await elsewhere.publish(root, { at: 500 }), at: 1_000 });
+      },
     ],
   ])("reads the signed identity of an identity %s as the implementation does", async (_, signIdentity) => {
     const signedIdentity = await signIdentity();
@@ -95,7 +103,7 @@ describe("the selection of identity versions", () => {
   });
 
   it("reads an object already read with its schema from the blobs it links to alone", async () => {
-    const signedIdentity = await elsewhere.publish(root, { at: 1_300 });
+    const signedIdentity = await elsewhere.publish(freshRoot(), { at: 1_000 });
     const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
     const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
     expect((await selection.itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
@@ -128,7 +136,7 @@ describe("the selection of identity versions", () => {
   });
 
   it("refuses a signed identity whose identity the reader does not give, by the reader's error", async () => {
-    const signedIdentity = await elsewhere.publish(root, { at: 1_400 });
+    const signedIdentity = await elsewhere.publish(freshRoot(), { at: 1_000 });
     const failingReader = {
       get: async (link: Link<unknown>) => {
         if (link === signedIdentity.link) return bytesOf(signedIdentity);

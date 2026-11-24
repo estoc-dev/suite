@@ -55,7 +55,7 @@ async function personActingAs(
   const post = new Post(store, { transports: [network.transport], clock });
   const intake = new Intake(store, clock);
   const actor = actorOver(store);
-  const correspondence = post.correspondenceAs(actor, identity);
+  const correspondence = post.correspondenceAs(actor);
   return { actor, signedIdentity, store, post, intake, correspondence };
 }
 

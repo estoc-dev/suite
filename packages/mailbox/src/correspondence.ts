@@ -1,4 +1,4 @@
-import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
+import { type Actor, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
 import { peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type Store, view, writtenObjectsOf } from "@estoc/store";
@@ -8,30 +8,19 @@ import type { Delivery, Post } from "./post.ts";
 import type { MailboxData } from "./schema.ts";
 import { signedIdentityArrivalsView } from "./signed-identity-arrivals.ts";
 
-export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
-
 export class Correspondence {
   readonly #store: Store;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
-  readonly #signatures: CorrespondenceIdentity["signatures"];
 
-  constructor(
-    store: Store,
-    post: Pick<Post, "outbox">,
-    actor: Actor,
-    clock: () => number,
-    grants: MailboxGrants,
-    { signatures }: CorrespondenceIdentity,
-  ) {
+  constructor(store: Store, post: Pick<Post, "outbox">, actor: Actor, clock: () => number, grants: MailboxGrants) {
     this.#store = store;
     this.#post = post;
     this.#actor = actor;
     this.#clock = clock;
     this.#grants = grants;
-    this.#signatures = signatures;
   }
 
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
@@ -94,7 +83,7 @@ export class Correspondence {
   async #signatureAtRootOf(bundle: Link<never>): Promise<Signature | undefined> {
     const closure = await this.#store.closure(bundle);
     try {
-      return await this.#signatures.read(bundle, { get: (link) => closure.get(link) });
+      return await identityKit.signatures.read(bundle, { get: (link) => closure.get(link) });
     } catch {
       return undefined;
     }

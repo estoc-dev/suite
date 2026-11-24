@@ -36,7 +36,7 @@ export function loadIdentity(schemes: readonly Scheme[]): IdentityKit {
 }
 
 /**
- * The kit of the schemes the suite signs in. A program has this one alone, so what verifies with
- * it can be a constant as well.
+ * Those who use this kit share what it keeps: a signature or a signed identity that it has verified
+ * for one of them, it reads for another without the reader.
  */
 export const identityKit = loadIdentity([ed25519, eip191, solanaOffchain]);

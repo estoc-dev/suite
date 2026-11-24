@@ -5,6 +5,7 @@ import {
   eip191,
   type IdentityObject,
   identityKit,
+  loadIdentity,
   type SignedIdentityObject,
   SoftwareSigner,
   solanaOffchain,
@@ -33,7 +34,10 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 // whom a message was meant for writes that into the object it signs.
 
 const identity = identityKit;
-const { keys, identities, signatures, signedIdentities, publish } = identity;
+const { keys, identities, signatures, publish } = identity;
+// A kit that has verified nothing, as whoever a bundle comes to has: who signed is read from the
+// blobs that came.
+const receiverKit = () => loadIdentity([ed25519, eip191, solanaOffchain]);
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const seenPeople = peopleView(identity);
 
@@ -46,7 +50,7 @@ const sendSigned = async (mailbox: Mailbox, object: EncodedObject, by: SoftwareS
 };
 
 async function readSigned<F extends ValueMap>(bundle: Bundle, schema: Schema<F>) {
-  const signature = await signatures.read(bundle.link, bundle);
+  const signature = await receiverKit().signatures.read(bundle.link, bundle);
   return {
     signature,
     identity: signature.signedIdentity.identity,
@@ -295,13 +299,13 @@ describe("two people who meet", () => {
     // Heidi hands over a signed identity, and Grace hands back a grant of a mailbox.
     const handedIdentity = decodeBundle(encodeBundle(heidi.signedIdentity.link, heidi.signedIdentity.blobs));
     await grace.intake.receive(handedIdentity);
-    const heidiAsSeen = await signedIdentities.read(heidi.signedIdentity.link, handedIdentity);
+    const heidiAsSeen = await receiverKit().signedIdentities.read(heidi.signedIdentity.link, handedIdentity);
     const atGrace = await grace.openInbox();
     const handedGrant = await bundleIn(grace, (await grace.correspondence.grant(heidiAsSeen, [atGrace.mailbox])).link);
     await heidi.intake.receive(handedGrant);
 
     // That grant says who Grace is, and Heidi's own grant goes to the mailbox it names.
-    const graceAsSeen = (await signatures.read(handedGrant.link, handedGrant)).signedIdentity;
+    const graceAsSeen = (await receiverKit().signatures.read(handedGrant.link, handedGrant)).signedIdentity;
     expect(graceAsSeen.link).toBe(grace.signedIdentity.link);
     const atHeidi = await heidi.openInbox();
     const heidisGrant = await heidi.correspondence.grant(graceAsSeen, [atHeidi.mailbox]);

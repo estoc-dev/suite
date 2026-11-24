@@ -12,7 +12,7 @@ import {
   SoftwareSigner,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, identityVersionInHand } from "./fixtures.ts";
+import { byLink, freshKit, identityVersionInHand } from "./fixtures.ts";
 
 // Applications built on objects and signatures. What makes a login or a sale
 // hold is each application's own rule, written here against the schemas it
@@ -27,7 +27,8 @@ const sign = async (object: { readonly link: Link<unknown> }, by: Signer) =>
 
 /**
  * What an application holds: blobs by link, the objects of the identities
- * that signed among them, and the signatures it was given.
+ * that signed among them, and the signatures it was given. It reads them
+ * with a kit that has verified nothing, so who signed is read from the blobs.
  */
 interface ReceivedSignatures {
   readonly blobs: Reader;
@@ -35,7 +36,9 @@ interface ReceivedSignatures {
 }
 
 async function signersOf(link: Link<unknown>, receivedSignatures: ReceivedSignatures): Promise<IdentityObject[]> {
-  const read = receivedSignatures.signatures.map((signature) => signatures.read(signature, receivedSignatures.blobs));
+  const read = receivedSignatures.signatures.map((signature) =>
+    freshKit().signatures.read(signature, receivedSignatures.blobs),
+  );
   return (await Promise.all(read))
     .filter((signature) => signature.object === link)
     .map((signature) => signature.signedIdentity.identity);
@@ -52,7 +55,7 @@ async function loggedInIdentity(
   blobs: readonly Uint8Array[],
 ): Promise<IdentityObject | undefined> {
   const expected = encodeObject(login, { audience, nonce });
-  const read = await signatures.read(signature, byLink(blobs));
+  const read = await freshKit().signatures.read(signature, byLink(blobs));
   return read.object === expected.link ? read.signedIdentity.identity : undefined;
 }
 

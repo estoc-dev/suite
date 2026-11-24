@@ -1,5 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
-import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,10 @@ describe("a mailbox", () => {
     const bundle = await bob.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
     expect(bundle.get(hello.link)).toEqual(hello.bytes);
-    expect((await signatures.read(bundle.link, bundle)).signedIdentity.identity).toEqual(
+    // Bob reads with a kit of his own, which has verified nothing that Alice signed, so who signed
+    // is read from the blobs that the mailbox carried.
+    const bobsSignatures = loadIdentity([ed25519]).signatures;
+    expect((await bobsSignatures.read(bundle.link, bundle)).signedIdentity.identity).toEqual(
       identities.encode(alice.key, { at: 0 }),
     );
   });

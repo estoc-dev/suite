@@ -13,8 +13,8 @@ export interface Curve {
 /**
  * - `curveScheme` alone makes one. A scheme that only verifies may have a member named `curve`
  *   too, and no curve signs in it.
- * - Its curve is in a field of the class, so that TypeScript takes no object of the same members
- *   for one.
+ * - Its curve is in a private field, so that TypeScript takes no object of the same members for
+ *   one.
  */
 export class CurveScheme implements Scheme {
   readonly name: string;

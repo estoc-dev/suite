@@ -49,6 +49,23 @@ describe("a keyring", () => {
     expect(verify(key, digest, await signer.sign(digest))).toBe(true);
   });
 
+  it("generates no key in a scheme written by hand with the members of one a curve signs in", async () => {
+    const handwrittenScheme = {
+      name: "ed25519-by-hand",
+      publicKeyLength: 32,
+      curve: ed25519Curve,
+      message: ed25519.message,
+      verify: ed25519.verify,
+    };
+    const backend = new MemoryBackend();
+    const keyring = keyringOver(backend, loadIdentity([handwrittenScheme]).secretKeys);
+    // @ts-expect-error: refused at compile time too
+    await expect(keyring.generate(handwrittenScheme)).rejects.toThrow(/not one a curve signs in/);
+    const statements = [];
+    for await (const statement of new Store(backend).records()) statements.push(statement);
+    expect(statements).toEqual([]);
+  });
+
   it("gives no signer for a key it does not hold", async () => {
     const keyring = keyringOver();
     await keyring.generate(ed25519);

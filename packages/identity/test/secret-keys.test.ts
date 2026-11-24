@@ -25,16 +25,15 @@ const heldSecret = written(secretSchema.link, { bytes: secret });
 const secretBlobs = [heldSecret, ...secretSchema.blobs];
 
 const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
-// A scheme that only verifies, and keeps the curve it verifies with in a member named as that of a
-// scheme a curve signs in.
 const verifyingP256: Scheme & { readonly curve: typeof p256 } = {
   name: "p256-der",
   publicKeyLength: 33,
   curve: p256,
-  verify: (signature, text, publicKey) =>
-    p256.verify(signature, utf8ToBytes(text), publicKey, { format: "der", lowS: true }),
+  verify(signature, text, publicKey) {
+    return this.curve.verify(signature, utf8ToBytes(text), publicKey, { format: "der", lowS: true });
+  },
 };
-const writtenByHand = {
+const handwrittenScheme = {
   name: "ed25519-by-hand",
   publicKeyLength: 32,
   curve: ed25519Curve,
@@ -70,7 +69,7 @@ describe("a Secret Key", () => {
     );
   });
 
-  it.each([plain, verifyingP256, writtenByHand])(
+  it.each([plain, verifyingP256, handwrittenScheme])(
     "is refused when its key is in $name, which no curve signs in",
     async (scheme) => {
       const kit = loadIdentity([...schemes, scheme]);
@@ -84,6 +83,12 @@ describe("a Secret Key", () => {
       );
     },
   );
+
+  it("is not written in a scheme written by hand with the members of one a curve signs in", () => {
+    const kit = loadIdentity([handwrittenScheme]);
+    // @ts-expect-error: refused at compile time too
+    expect(() => kit.secretKeys.encode(handwrittenScheme, secret)).toThrow(/not one a curve signs in/);
+  });
 
   it("is refused when its key is in a scheme the kit does not read, and not written in one", async () => {
     const kit = loadIdentity([ed25519]);
@@ -108,7 +113,7 @@ describe("the scheme Secret Keys give by a name", () => {
 
   it("is none for a scheme written by hand with the members of one a curve signs in", () => {
     // @ts-expect-error: refused at compile time too
-    const scheme: CurveScheme = writtenByHand;
+    const scheme: CurveScheme = handwrittenScheme;
     expect(loadIdentity([scheme]).secretKeys.schemeNamed(scheme.name)).toBeUndefined();
   });
 

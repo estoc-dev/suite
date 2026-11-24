@@ -1,11 +1,5 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
-import {
-  type IdentityKit,
-  identityKit,
-  type Signature,
-  type Signatures,
-  type SignedIdentityObject,
-} from "@estoc/identity";
+import { identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
 import {
   type Bytes,
@@ -23,9 +17,9 @@ import { type People, peopleView } from "@estoc/people";
 import { type Store, sendableBlobs, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { Accounts } from "./accounts.ts";
-import { type AcknowledgementsView, acknowledgementsView } from "./acknowledgements.ts";
+import { acknowledgementsView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
-import { type LocationsView, locationsView } from "./locations.ts";
+import { locationsView } from "./locations.ts";
 import type { Mailboxes, OpenMailbox } from "./mailboxes.ts";
 import { loadNotary, type Notary } from "./notary.ts";
 import {
@@ -80,9 +74,6 @@ type SignedRequest = {
 
 class MailboxService {
   readonly #notary: Notary;
-  readonly #locations: LocationsView;
-  readonly #acknowledgements: AcknowledgementsView;
-  readonly #signatures: Signatures;
   readonly #store: Store;
   readonly #accounts: Accounts;
   readonly #mailboxes: Mailboxes;
@@ -90,13 +81,9 @@ class MailboxService {
 
   constructor(
     notary: Notary,
-    kit: IdentityKit,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#notary = notary;
-    this.#locations = locationsView(kit.signatures);
-    this.#acknowledgements = acknowledgementsView(kit.signatures);
-    this.#signatures = kit.signatures;
     this.#store = store;
     this.#accounts = accounts;
     this.#mailboxes = mailboxes;
@@ -110,7 +97,7 @@ class MailboxService {
   /** It answers any origin, since no request carries credentials. */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    const locations = await view(this.#store, this.#locations);
+    const locations = await view(this.#store, locationsView);
     const people = await view(this.#store, peopleView);
     const [latest, ...earlier] = await locations.servicesOf(this.#notary.identifier, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
@@ -157,7 +144,7 @@ class MailboxService {
     let signature: Signature;
     try {
       bundle = decodeBundle(file);
-      signature = await this.#signatures.read(bundle.link, bundle);
+      signature = await identityKit.signatures.read(bundle.link, bundle);
     } catch (error) {
       return answer(400, reasonOf(error));
     }
@@ -193,7 +180,7 @@ class MailboxService {
     if (acceptance.object !== offer) return answer(400, `the acceptance signs ${acceptance.object}, not the offer`);
     if (acceptance.signedIdentity.identity.identifier === this.#notary.identifier)
       return answer(400, "a service opens no account for itself");
-    const acknowledgements = await view(this.#store, this.#acknowledgements);
+    const acknowledgements = await view(this.#store, acknowledgementsView);
     const heldAcknowledgement = await acknowledgements.acknowledgementOf(acceptance.link);
     const acknowledgement =
       heldAcknowledgement === undefined
@@ -344,7 +331,7 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const notary = await loadNotary(keyring, { kit: identityKit, store, clock });
+  const notary = await loadNotary(keyring, { store, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
@@ -354,7 +341,7 @@ export async function loadMailboxService(
   // A store only gains blobs, and holds each Service with the identity version its signature
   // carries, so people read after the locations have seen that of every Service that the locations
   // give.
-  const locations = await view(store, locationsView(identityKit.signatures));
+  const locations = await view(store, locationsView);
   const people = await view(store, peopleView);
   const at = clock();
   const [latest] = await locations.servicesOf(notary.identifier, people);
@@ -365,5 +352,5 @@ export async function loadMailboxService(
       encodeObject(serviceSchema, next),
       offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
     );
-  return new MailboxService(notary, identityKit, { ...options, clock });
+  return new MailboxService(notary, { ...options, clock });
 }

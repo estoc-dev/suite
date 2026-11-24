@@ -1,3 +1,4 @@
+export { acknowledgements } from "./acknowledgements.ts";
 export {
   type Account,
   type AccountOffer,
@@ -6,7 +7,9 @@ export {
   type Service,
   type Services,
 } from "./client.ts";
+export { locations } from "./locations.ts";
 export { openedMailboxes } from "./opened-mailboxes.ts";
+export { recordedIdentityVersions } from "./recorded-identity-versions.ts";
 export { recordedSignatures } from "./recorded-signatures.ts";
 export {
   type AccountOfferData,

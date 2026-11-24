@@ -1,4 +1,4 @@
-import type { Signatures } from "@estoc/identity";
+import { identityKit } from "@estoc/identity";
 import { type EncodedObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 import { indexOver, selectedRecords, type View, writtenObjectsOver } from "@estoc/store";
@@ -10,7 +10,13 @@ const acknowledgementRowSchema = schema("Acknowledgement row", {
   acknowledgement: link(),
 });
 
-type AcknowledgementOrder = readonly ["acceptance", "acknowledgement"];
+export const acknowledgements = indexOver(
+  selectedRecords(writtenObjectsOver(identityKit.signatures.selectionOver(acknowledgementSchema))),
+  acknowledgementRowSchema,
+  ({ signature, object }) => [{ acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) }],
+)
+  .orderedBy("acceptance", "acknowledgement")
+  .named("Acknowledgements");
 
 export interface Acknowledgements {
   /**
@@ -20,29 +26,19 @@ export interface Acknowledgements {
   acknowledgementOf(acceptance: Link<unknown>): Promise<Link<unknown> | undefined>;
 }
 
-export type AcknowledgementsView = View<
-  DataOf<typeof acknowledgementRowSchema>,
-  AcknowledgementOrder,
+export const acknowledgementsView: View<
+  DataOf<typeof acknowledgements.rowSchema>,
+  typeof acknowledgements.order,
   Acknowledgements
->;
-
-export function acknowledgementsView(signatures: Signatures): AcknowledgementsView {
-  return {
-    index: indexOver(
-      selectedRecords(writtenObjectsOver(signatures.selectionOver(acknowledgementSchema))),
-      acknowledgementRowSchema,
-      ({ signature, object }) => [
-        { acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) },
-      ],
-    ).orderedBy("acceptance", "acknowledgement"),
-    read: (rows) => ({
-      async acknowledgementOf(acceptance) {
-        for await (const { data } of rows.range([new LinkValue(acceptance)])) return data.acknowledgement.link;
-        return undefined;
-      },
-    }),
-  };
-}
+> = {
+  index: acknowledgements,
+  read: (rows) => ({
+    async acknowledgementOf(acceptance) {
+      for await (const { data } of rows.range([new LinkValue(acceptance)])) return data.acknowledgement.link;
+      return undefined;
+    },
+  }),
+};
 
 /**
  * An acknowledgement that the store came to hold another way, such as at a mailbox, opens none: a

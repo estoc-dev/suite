@@ -76,7 +76,7 @@ async function setUp(): Promise<void> {
     const store = new Store(backend);
     const keyring = new Keyring(store, identityKit.secretKeys);
     const root = await keyring.generate(ed25519);
-    const signedIdentity = await setUpNotary(keyring, root.link, { kit: identityKit, store, at: Date.now() });
+    const signedIdentity = await setUpNotary(keyring, root.link, { store, at: Date.now() });
     console.log(signedIdentity.identity.identifier);
   } finally {
     backend.close();

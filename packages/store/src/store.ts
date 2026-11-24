@@ -50,7 +50,8 @@ export interface Store {
    * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
    *   it fails on, and that would otherwise stop the other rows from being read.
    * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
-   *   selection or its rows catch it, and nothing is kept of what it read.
+   *   selection or its rows catch it. That is not listed in the `failures`, and a later scan reads
+   *   the link again.
    */
   scan<F extends ValueMap, By extends FieldNames<F>>(
     index: OrderedIndex<F, By>,
@@ -79,7 +80,10 @@ export interface StagedStore {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   commit(): Promise<void>;
-  /** The rows and their failures are those of the store once the batch is written. */
+  /**
+   * The rows and their failures come of the blobs the store holds at the scan together with those
+   * of the batch. No Record is staged, so the batch adds nothing to what is recorded.
+   */
   scan<F extends ValueMap, By extends FieldNames<F>>(
     index: OrderedIndex<F, By>,
     options?: ScanOptions,

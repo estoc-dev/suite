@@ -12,6 +12,7 @@ import {
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
+  arrivalsView,
   type InboundObject,
   Intake,
   inboundSchema,
@@ -21,6 +22,7 @@ import {
   Store,
   selectedBlobs,
   selectedRecords,
+  view,
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
@@ -170,6 +172,16 @@ describe("an intake", () => {
       at: 1000,
       via: new LinkValue(mailbox.link),
     });
+  });
+
+  it("gives a view of the arrivals, on a staged bundle, no arrival of the bundle until that is committed", async () => {
+    const { store, intake } = sides();
+    const note = object({ text: "hello" });
+    const arrivals = arrivalsView(anything);
+    const stagedStore = await intake.stage(bundleOf(note));
+    expect(await (await view(stagedStore, arrivals)).atOf(note.link)).toBeUndefined();
+    await stagedStore.commit();
+    expect(await (await view(store, arrivals)).atOf(note.link)).toBe(1000);
   });
 
   it("gives an index over blobs, on a staged bundle, the blobs of the bundle", async () => {

@@ -21,10 +21,9 @@ export async function scannedRows<F extends ValueMap, By extends FieldNames<F>>(
   index: OrderedIndex<F, By>,
   { throwsOnFailure }: ScanOptions = {},
 ): Promise<Rows<F, By>> {
-  const { readsBlobs } = derivationOf(orderOf(index).index);
   const sortedRows = await rows.sortedRowsOf(index);
   const [failure] = sortedRows.failures;
-  if (failure !== undefined && (throwsOnFailure ?? !readsBlobs)) throw failure.error;
+  if (failure !== undefined && (throwsOnFailure ?? !index.readsBlobs)) throw failure.error;
   return sortedRows;
 }
 

@@ -11,38 +11,21 @@ import {
   type OrderedIndex,
   orderOf,
 } from "./source.ts";
-import type { StagedStore, Store } from "./store.ts";
 
-/**
- * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
- *   put since.
- * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
- *   the `failures` of the rows, and is not read again.
- * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
- *   it fails on, and that would otherwise stop the other rows from being read.
- * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
- *   selection or its rows catch it, and nothing is kept of what it read.
- */
-export async function scan<F extends ValueMap, By extends FieldNames<F>>(
-  store: Store | StagedStore,
-  index: OrderedIndex<F, By>,
-  { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
-): Promise<Rows<F, By>> {
-  if (!(readRows in store))
-    throw new TypeError("only a store made by `new Store`, or what is staged on one, is scanned");
-  const { readsBlobs } = derivationOf(orderOf(index).index);
-  const rows = await (store as RowKeeper)[readRows]((rows) => rows.sortedRowsOf(index));
-  const [failure] = rows.failures;
-  if (failure !== undefined && (throwsOnFailure ?? !readsBlobs)) throw failure.error;
-  return rows;
+export interface ScanOptions {
+  readonly throwsOnFailure?: boolean;
 }
 
-/** The key under which `scan` asks a store for the rows it has of each index, which nothing outside this package can. */
-export const readRows: unique symbol = Symbol("readRows");
-
-export interface RowKeeper {
-  /** All that `use` reads of `rows` comes of the same blobs, as many as `rows` says. */
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T>;
+export async function scannedRows<F extends ValueMap, By extends FieldNames<F>>(
+  rows: RowsByIndex,
+  index: OrderedIndex<F, By>,
+  { throwsOnFailure }: ScanOptions = {},
+): Promise<Rows<F, By>> {
+  const { readsBlobs } = derivationOf(orderOf(index).index);
+  const sortedRows = await rows.sortedRowsOf(index);
+  const [failure] = sortedRows.failures;
+  if (failure !== undefined && (throwsOnFailure ?? !readsBlobs)) throw failure.error;
+  return sortedRows;
 }
 
 export interface RowsByIndex {

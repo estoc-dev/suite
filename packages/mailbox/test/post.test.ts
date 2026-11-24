@@ -2,16 +2,7 @@ import type { Bundle } from "@estoc/bundle";
 import { ed25519, identityKit, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
-import {
-  Intake,
-  inboundSchema,
-  indexOver,
-  MemoryBackend,
-  recordSchema,
-  Store,
-  scan,
-  selectedRecords,
-} from "@estoc/store";
+import { Intake, inboundSchema, indexOver, MemoryBackend, recordSchema, Store, selectedRecords } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import {
   type MailboxData,
@@ -252,7 +243,7 @@ describe("an inbox", () => {
       { mailbox: data.mailbox, key: new LinkValue(link) },
     ]).orderedBy("mailbox");
     const keys = [];
-    for await (const { data } of (await scan(store, byMailbox)).range([new LinkValue(inbox.mailbox)]))
+    for await (const { data } of (await store.scan(byMailbox)).range([new LinkValue(inbox.mailbox)]))
       keys.push(data.key.link);
     expect(keys).toEqual([inbox.key]);
 

@@ -10,7 +10,6 @@ import {
   RefusedBatch,
   type StagedStore,
   Store,
-  scan,
   selectedBlobs,
   writtenObjectSchema,
   writtenObjectsOf,
@@ -25,7 +24,7 @@ const cardsByName = indexOver(selectedBlobs(objectsOf(cardSchema)), cardSchema, 
 
 async function cardNamesIn(store: Store | StagedStore): Promise<string[]> {
   const names: string[] = [];
-  for await (const { data } of (await scan(store, cardsByName)).range([])) names.push(data.name);
+  for await (const { data } of (await store.scan(cardsByName)).range([])) names.push(data.name);
   return names;
 }
 
@@ -352,22 +351,6 @@ describe("an action performed on a store", () => {
     await expect(
       storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] }),
     ).rejects.toThrow(noBatchAfterAnswer);
-    expect(await blobsOf(store)).toEqual([]);
-  });
-
-  it("is not performed on a store not made by `new Store`", async () => {
-    const store = newStore();
-    const lookalike: Store = {
-      get: <T>(link: Link<T>) => store.get(link),
-      write: (batch) => store.write(batch),
-      stage: (batch) => store.stage(batch),
-      record: (batch) => store.record(batch),
-      blobs: () => store.blobs(),
-      records: () => store.records(),
-      recordedStatements: () => store.recordedStatements(),
-      closure: (link) => store.closure(link),
-    };
-    await expect(perform(lookalike, addCard, { name: "ace" })).rejects.toThrow(TypeError);
     expect(await blobsOf(store)).toEqual([]);
   });
 });

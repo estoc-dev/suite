@@ -1,5 +1,4 @@
 import type { Reader, ValueMap } from "@estoc/object";
-import { scan } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
@@ -17,5 +16,5 @@ export async function view<F extends ValueMap, By extends FieldNames<F>, V>(
   store: Store | StagedStore,
   view: View<F, By, V>,
 ): Promise<Awaited<V>> {
-  return await view.read(await scan(store, view.index), store);
+  return await view.read(await store.scan(view.index), store);
 }

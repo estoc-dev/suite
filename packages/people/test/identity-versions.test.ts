@@ -10,7 +10,7 @@ import {
   objectFormat,
   type ValueMap,
 } from "@estoc/object";
-import { MemoryBackend, Store, scan } from "@estoc/store";
+import { MemoryBackend, Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { identityVersionOf, identityVersions, verifiedSignedIdentities } from "../src/identity-versions.ts";
 import { byLink, bytesOf, key, keys, peopleHavingSeen, publish, signedIdentities, signer } from "./fixtures.ts";
@@ -70,7 +70,7 @@ describe("the index of identity versions", () => {
     await store.write({ roots: [ofGreater.link, second.link], blobs: [...ofGreater.blobs, ...second.blobs] });
 
     const rows = [];
-    for await (const { data } of (await scan(store, identityVersions)).range([])) rows.push(data);
+    for await (const { data } of (await store.scan(identityVersions)).range([])) rows.push(data);
     expect(rows).toEqual([identityVersionOf(first), identityVersionOf(second), identityVersionOf(ofGreater)]);
   });
 });

@@ -2,7 +2,7 @@ import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
 import { type Bytes, blobsOf, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
-import { Intake, RefusedBatch, type Store, scan, writtenObjectsOf } from "@estoc/store";
+import { Intake, RefusedBatch, type Store, writtenObjectsOf } from "@estoc/store";
 import { Correspondence } from "./correspondence.ts";
 import { heldMailboxKeys } from "./held-mailbox-keys.ts";
 import { MailboxKey } from "./key.ts";
@@ -77,7 +77,7 @@ export class Post {
    * Key among the records of the store.
    */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
-    for await (const { data } of (await scan(this.#store, heldMailboxKeys)).range([new LinkValue(key)])) {
+    for await (const { data } of (await this.#store.scan(heldMailboxKeys)).range([new LinkValue(key)])) {
       const mailbox = await readObject(this.#store, data.mailbox.link, mailboxSchema);
       const secret = await readObject(this.#store, data.secret.link, secretSchema);
       const opener = await MailboxKey.fromSecretKey(secret.data.bytes);

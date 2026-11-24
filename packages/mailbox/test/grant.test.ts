@@ -18,7 +18,7 @@ import {
   objectFormat,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { Intake, MemoryBackend, Store, scan, view } from "@estoc/store";
+import { Intake, MemoryBackend, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
 import {
   grantSeriesView,
@@ -129,7 +129,7 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
 describe("the index of mailbox grants", () => {
   const rowsIn = async (store: Store) => {
     const rows = [];
-    for await (const { data } of (await scan(store, mailboxGrants)).range([])) rows.push(data);
+    for await (const { data } of (await store.scan(mailboxGrants)).range([])) rows.push(data);
     return rows;
   };
 

@@ -19,7 +19,6 @@ import {
   type Rows,
   recordSchema,
   Store,
-  scan,
   selectedRecords,
   view,
 } from "@estoc/store";
@@ -162,7 +161,7 @@ async function chat(faults: Faults = {}) {
   // which way it went and who wrote it. What came in and is no message from
   // anyone the person gave that mailbox is left out.
   const show = async (person: Person, mine: Mailbox, theirs: Mailbox) => {
-    const rows = await conversation(await scan(person.store, deliveries), mine, theirs);
+    const rows = await conversation(await person.store.scan(deliveries), mine, theirs);
     const lines = await Promise.all(
       rows.map(async ({ direction, mailbox, bundle }) => {
         const signature: Signature | undefined =
@@ -178,7 +177,7 @@ async function chat(faults: Faults = {}) {
   };
   // What the person's store records as having come in, or gone out, at any mailbox.
   const recorded = async ({ store }: Person, direction: Direction) =>
-    all((await scan(store, deliveries)).range([direction]));
+    all((await store.scan(deliveries)).range([direction]));
 
   // Someone who was given no grant, and was passed the mailbox that Alice gave
   // Bob, sends a line of their own there.
@@ -193,7 +192,7 @@ async function chat(faults: Faults = {}) {
       recorded: (direction: Direction) => recorded(alice, direction),
       resend: (root: Link<unknown>) => alice.correspondence.send(bob.signedIdentity, root),
       store: alice.store,
-      conversation: async (store: Store) => conversation(await scan(store, deliveries), atAlice.mailbox, atBob.mailbox),
+      conversation: async (store: Store) => conversation(await store.scan(deliveries), atAlice.mailbox, atBob.mailbox),
     },
     bob: {
       say: (text: string) => say(bob, alice.signedIdentity, text),

@@ -19,7 +19,6 @@ import {
   MemoryBackend,
   RefusedBatch,
   Store,
-  scan,
   selectedBlobs,
   selectedRecords,
 } from "../src/index.ts";
@@ -180,7 +179,7 @@ describe("an intake", () => {
       data.text === undefined ? [] : [{ text: data.text }],
     ).orderedBy("text");
     const stagedStore = await intake.stage(bundleOf(object({ text: "hello" })));
-    expect((await listOf((await scan(stagedStore, texts)).range([]))).map(({ data }) => data.text)).toEqual(["hello"]);
+    expect((await listOf((await stagedStore.scan(texts)).range([]))).map(({ data }) => data.text)).toEqual(["hello"]);
   });
 
   it("refuses to stage a bundle that it refuses to receive", async () => {
@@ -210,7 +209,7 @@ describe("what an intake records", () => {
     const bundle = bundleOf(object({ text: "hello" }));
     await intake.receive(bundle);
     await intake.receive(bundle);
-    const rows = await listOf((await scan(store, cameIn)).range([new LinkValue(bundle.link)]));
+    const rows = await listOf((await store.scan(cameIn)).range([new LinkValue(bundle.link)]));
     expect(rows.map(({ data }) => data.at)).toEqual([1000, 1001]);
   });
 
@@ -220,7 +219,7 @@ describe("what an intake records", () => {
     const sentInbound = encodeObject(inboundSchema, { bundle: new LinkValue(note.link as Link<never>), at: 0 });
     await intake.receive(bundleOf(sentInbound, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
     expect(await store.get(sentInbound.link)).toEqual(sentInbound.bytes);
-    const rows = await listOf((await scan(store, cameIn)).range([]));
+    const rows = await listOf((await store.scan(cameIn)).range([]));
     expect(rows.map(({ data }) => data)).toEqual([{ bundle: new LinkValue(sentInbound.link), at: 1000 }]);
   });
 });

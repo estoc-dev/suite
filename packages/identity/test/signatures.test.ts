@@ -19,8 +19,8 @@ import {
   type CurveScheme,
   ed25519,
   eip191,
+  identityKit,
   isSameKey,
-  loadIdentity,
   type Signature,
   type SignedIdentityObject,
   type Signer,
@@ -38,7 +38,7 @@ import {
   schemes,
 } from "./fixtures.ts";
 
-const { identities, signatures, publish } = loadIdentity(schemes);
+const { identities, signatures, publish } = identityKit;
 const verified = async (bytes: Uint8Array, blobs: Reader = new Map()) =>
   freshKit().signatures.verify(decodeObject(bytes, signatureSchema), blobs);
 

@@ -12,6 +12,7 @@ import {
   ed25519,
   ed25519Curve,
   eip191,
+  identityKit,
   isSameKey,
   loadIdentity,
   type Scheme,
@@ -21,7 +22,7 @@ import {
   signingText,
   solanaOffchain,
 } from "../src/index.ts";
-import { byLink, identityVersionInHand, schemaLinkOf, schemes } from "./fixtures.ts";
+import { byLink, identityVersionInHand, schemaLinkOf } from "./fixtures.ts";
 
 const secretKey = new Uint8Array(32).fill(1);
 
@@ -141,7 +142,7 @@ describe("a scheme given as a Scheme alone", () => {
 describe("loadIdentity", () => {
   it("reads and writes keys in the schemes it is given alone", async () => {
     const { keys } = loadIdentity([ed25519]);
-    const { keys: everyKey } = loadIdentity(schemes);
+    const { keys: everyKey } = identityKit;
     const key = SoftwareSigner.fromSecretKey(eip191, secretKey).key;
     const object = everyKey.encode(key);
     expect(() => keys.encode(key)).toThrow("the eip191 scheme is not one written here");

@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import {
   type Actor,
   ed25519,
-  loadIdentity,
+  identityKit,
   type SignedIdentityObject,
   type Signer,
   SoftwareSigner,
@@ -21,7 +21,7 @@ import { recordedIn } from "./recorded.ts";
 // other a grant of a mailbox, sends by the grant they were given, and reads
 // what came in by the grants they gave.
 
-const identity = loadIdentity([ed25519]);
+const identity = identityKit;
 const { signatures, publish } = identity;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);

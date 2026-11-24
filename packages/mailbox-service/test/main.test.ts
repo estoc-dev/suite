@@ -3,13 +3,13 @@ import { once } from "node:events";
 import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { type AddressInfo, createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { isSameKey, loadIdentity } from "@estoc/identity";
+import { identityKit, isSameKey } from "@estoc/identity";
 import { Keyring } from "@estoc/keyring";
 import { Store, writtenObjectsOf } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
 import { openTestMailbox } from "../src/smoke.ts";
-import { makeTemporaryPath, schemes, signedIdentities, writtenObjectsIn } from "./fixtures.ts";
+import { makeTemporaryPath, signedIdentities, writtenObjectsIn } from "./fixtures.ts";
 
 const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const smoke = fileURLToPath(new URL("../src/smoke.ts", import.meta.url));
@@ -67,7 +67,7 @@ function openStores(path: string) {
   const backend = new SqliteBackend(path);
   onTestFinished(() => backend.close());
   const store = new Store(backend);
-  return { store, keyring: new Keyring(store, loadIdentity(schemes).secretKeys) };
+  return { store, keyring: new Keyring(store, identityKit.secretKeys) };
 }
 
 describe("main.ts", { timeout: 20_000 }, () => {

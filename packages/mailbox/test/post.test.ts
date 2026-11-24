@@ -1,5 +1,5 @@
 import type { Bundle } from "@estoc/bundle";
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import {
@@ -26,7 +26,10 @@ import {
 import { MemoryNetwork } from "./memory-network.ts";
 import { recordedIn } from "./recorded.ts";
 
-const { signatures, publish } = loadIdentity([ed25519]);
+const { signatures, publish } = identityKit;
+// Of a kit that has verified nothing, as whoever a bundle comes to has: who signed is read from the
+// blobs that came.
+const receiverSignatures = () => loadIdentity([ed25519]).signatures;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const note = schema("Note", { text: string() });
 const alice = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
@@ -114,7 +117,7 @@ describe("an outbox", () => {
     await (await atBob.post.outbox(atCarol.link)).send(signature.link);
     const bundle = await carol.open(queue.takeOne());
     expect(bundle.link).toBe(signature.link);
-    expect((await signatures.read(bundle.link, bundle)).object).toBe(hello.link);
+    expect((await receiverSignatures().read(bundle.link, bundle)).object).toBe(hello.link);
   });
 
   it("records nothing when the transport cannot hand on what it sends, and rejects as the transport does", async () => {
@@ -269,7 +272,7 @@ describe("an inbox", () => {
       { direction: "inbound", bundle: signature.link, mailbox: inbox.mailbox, at: 1002 },
     ]);
     expect(await recordedIn(store)).toEqual([inbox.key, inbox.mailbox, ...deliveries.map(({ link }) => link)]);
-    expect((await signatures.read(signature.link, store)).object).toBe(hello.link);
+    expect((await receiverSignatures().read(signature.link, store)).object).toBe(hello.link);
     expect(queue.take()).toEqual([]);
   });
 

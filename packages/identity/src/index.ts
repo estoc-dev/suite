@@ -19,7 +19,7 @@ export {
 } from "./key/interface.ts";
 export type { Keys } from "./key/keys.ts";
 export { solanaOffchain } from "./key/solana-offchain.ts";
-export { type IdentityKit, loadIdentity } from "./load.ts";
+export { type IdentityKit, identityKit, loadIdentity } from "./load.ts";
 export { type SecretKeyData, type SecretKeyObject, type SecretKeys, secretKeySchema } from "./secret-key.ts";
 export {
   type Actor,

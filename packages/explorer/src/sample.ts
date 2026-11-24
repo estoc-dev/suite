@@ -1,5 +1,5 @@
 import { markdownBodyOf, postSchema } from "@estoc/blog";
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Store, writtenObjectsOf } from "@estoc/store";
@@ -46,7 +46,7 @@ async function writeSample(store: Store): Promise<void> {
   await store.write({ roots: [photo.link], blobs: [photo.bytes, image, ...photoSchema.blobs] });
   await store.record(writtenObjectsOf([photo.link], firstDay + 120 * DAY));
 
-  const { publish, signatures } = loadIdentity([ed25519]);
+  const { publish, signatures } = identityKit;
   const root = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
   const agent = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2));
   const signedIdentity = await publish(root, { agents: [agent.key], at: firstDay });

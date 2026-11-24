@@ -51,6 +51,8 @@ export async function makeTemporaryPath(): Promise<string> {
   return join(folder, "service.db");
 }
 
+// A kit of its own, as a process apart from the service has: the service has verified nothing that
+// the tests sign before it reads it.
 const kit = loadIdentity(schemes);
 export const { keys, identities, signedIdentities, signatures, publish } = kit;
 
@@ -128,7 +130,6 @@ export async function memoryService({
     accounts,
     mailboxes,
     terms: offeredTerms,
-    schemes,
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
   return { service, store, accounts, mailboxes };

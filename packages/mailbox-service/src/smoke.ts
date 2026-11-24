@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { mailboxSchema } from "@estoc/mailbox";
 import { encodeObject, LinkValue } from "@estoc/object";
 import { peopleView } from "@estoc/people";
@@ -22,14 +22,14 @@ export interface TestMailbox {
  * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
-  const { signatures, signedIdentities, publish } = loadIdentity([ed25519]);
+  const { signatures, signedIdentities, publish } = identityKit;
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
   const store = new Store(new MemoryBackend());
   const seenPeople = peopleView({ signedIdentities });
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }), async (inHand) =>
     (await view(store, seenPeople)).current(inHand),
   );
-  const services = loadServices(store, { schemes: [ed25519] });
+  const services = loadServices(store);
   const { account, mailbox: offer } = await services.fetch(origin);
   if (account === undefined || offer === undefined) throw new Error(`${origin} offers no account or no mailboxes`);
   await account.accept(actor);

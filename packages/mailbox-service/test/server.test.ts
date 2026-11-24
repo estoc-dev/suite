@@ -1,5 +1,13 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type Actor, ed25519, eip191, loadIdentity, type SignedIdentityObject, type Signer } from "@estoc/identity";
+import {
+  type Actor,
+  ed25519,
+  eip191,
+  loadIdentity,
+  type SignedIdentityObject,
+  type Signer,
+  SoftwareSigner,
+} from "@estoc/identity";
 import {
   decodeObject,
   encodeObject,
@@ -341,9 +349,10 @@ describe("a mailbox service", () => {
       },
     ],
     [
-      "whose signature comes without its identity",
+      "whose signature comes without its identity, which the service has not verified before",
       async (service) => {
-        const { signature } = await directAcceptance((await rootOf(service)).offer);
+        const stranger = SoftwareSigner.fromSecretKey(ed25519, crypto.getRandomValues(new Uint8Array(32)));
+        const { signature } = await directAcceptance((await rootOf(service)).offer, stranger);
         return encodeBundle(signature.link, [bytesOf(signature)]);
       },
     ],

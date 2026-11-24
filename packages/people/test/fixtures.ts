@@ -1,17 +1,9 @@
-import {
-  type CurveScheme,
-  ed25519,
-  eip191,
-  loadIdentity,
-  type SignedIdentityObject,
-  SoftwareSigner,
-  solanaOffchain,
-} from "@estoc/identity";
+import { type CurveScheme, identityKit, type SignedIdentityObject, SoftwareSigner } from "@estoc/identity";
 import { type Link, linkOf } from "@estoc/object";
 import { type IdentityVersionRows, IdentityVersions } from "../src/identity-versions.ts";
 import type { People } from "../src/index.ts";
 
-export const { keys, signatures, signedIdentities, publish } = loadIdentity([ed25519, eip191, solanaOffchain]);
+export const { keys, signatures, signedIdentities, publish } = identityKit;
 export const identityVersions = new IdentityVersions(signedIdentities);
 
 export const signer = (scheme: CurveScheme, fill = 1) =>

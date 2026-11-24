@@ -1,5 +1,5 @@
 import { access, open } from "node:fs/promises";
-import { ed25519, eip191, loadIdentity, solanaOffchain } from "@estoc/identity";
+import { ed25519, identityKit } from "@estoc/identity";
 import { Keyring } from "@estoc/keyring";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -10,7 +10,6 @@ import { SqliteAccounts, SqliteMailboxes } from "./sqlite.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const MIB = 1024 * 1024;
-const schemes = [ed25519, eip191, solanaOffchain];
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === undefined) await start();
@@ -35,14 +34,13 @@ async function start(): Promise<void> {
   const accounts = new SqliteAccounts(database);
   const mailboxes = new SqliteMailboxes(database);
   const store = new Store(backend);
-  const keyring = new Keyring(store, loadIdentity(schemes).secretKeys);
+  const keyring = new Keyring(store, identityKit.secretKeys);
   const service = await loadMailboxService(keyring, {
     origin,
     store,
     accounts,
     mailboxes,
     terms,
-    schemes,
   });
   const server = await serve(
     async (request) => {
@@ -75,11 +73,10 @@ async function setUp(): Promise<void> {
   await (await open(database, "wx", 0o600)).close();
   const backend = new SqliteBackend(database);
   try {
-    const kit = loadIdentity(schemes);
     const store = new Store(backend);
-    const keyring = new Keyring(store, kit.secretKeys);
+    const keyring = new Keyring(store, identityKit.secretKeys);
     const root = await keyring.generate(ed25519);
-    const signedIdentity = await setUpNotary(keyring, root.link, { kit, store, at: Date.now() });
+    const signedIdentity = await setUpNotary(keyring, root.link, { kit: identityKit, store, at: Date.now() });
     console.log(signedIdentity.identity.identifier);
   } finally {
     backend.close();

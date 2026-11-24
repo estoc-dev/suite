@@ -1,4 +1,4 @@
-import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
+import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, LinkValue } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
 import { MemoryBackend, Store, scan, view } from "@estoc/store";
@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkHonors, peopleView } from "../src/index.ts";
 import { identityVersionInHand } from "./fixtures.ts";
 
-const { signatures, signedIdentities, publish } = loadIdentity([ed25519]);
+const { signatures, signedIdentities, publish } = identityKit;
 const note = schema("Note", { text: string() });
 
 describe("the index of the people of a store", () => {

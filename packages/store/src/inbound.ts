@@ -1,4 +1,4 @@
-import { type Bytes, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
+import { type Bytes, blobsOf, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
 import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
@@ -55,8 +55,8 @@ export class Intake {
   ): Promise<{ readonly inbound: InboundObject; readonly stagedStore: StagedStore }> {
     const data: InboundData = { bundle: new LinkValue(bundle.link), at: this.#clock() };
     const inbound = encodeObject(inboundSchema, via === undefined ? data : { ...data, via: new LinkValue(via.link) });
-    const viaBlobs = via === undefined ? [] : [via.bytes, ...via.schema.blobs];
-    const record = { statements: [inbound.link], blobs: [inbound.bytes, ...inboundSchema.blobs, ...viaBlobs] };
+    const viaBlobs = via === undefined ? [] : blobsOf(via);
+    const record = { statements: [inbound.link], blobs: [...blobsOf(inbound), ...viaBlobs] };
     const stagedBundle = await this.#store.stage({ roots: [bundle.link], blobs: bundle.blobs() });
     return { inbound, stagedStore: new StagedArrival(stagedBundle, this.#store, record) };
   }

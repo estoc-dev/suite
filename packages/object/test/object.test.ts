@@ -3,6 +3,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it, test } from "vitest";
 import {
   AbsentBlob,
+  blobsOf,
   decodeObject,
   decodeSchema,
   encodeObject,
@@ -72,6 +73,11 @@ describe("an object", () => {
   it.each(malformed)("is refused %s", (_, bytes) => {
     expect(() => decodeObject(bytes, anything)).toThrow();
   });
+});
+
+test("the blobs of an object are the object and the blobs of its schema", () => {
+  const object = encodeObject(login, greeting);
+  expect(blobsOf(object)).toEqual([object.bytes, ...login.blobs]);
 });
 
 describe("an object read by its link", () => {

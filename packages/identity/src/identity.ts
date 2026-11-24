@@ -1,7 +1,7 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import { concatBytes } from "@noble/hashes/utils.js";
-import { blobsOf } from "./blobs.ts";
+import { distinctBlobsOf } from "./blobs.ts";
 import { isSameKey, type Key, type KeyObject, verify } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 import type { SignedIdentityObject } from "./signed-identity.ts";
@@ -127,7 +127,7 @@ function identityOf(
     agents,
     at,
     isCrisis: crisis === true,
-    blobs: blobsOf(
+    blobs: distinctBlobsOf(
       object,
       [root, ...agents, ...(prior === undefined ? [] : [prior])].flatMap(({ blobs }) => blobs),
     ),

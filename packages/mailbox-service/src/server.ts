@@ -3,6 +3,7 @@ import { identityKit, type Signature, type SignedIdentityObject } from "@estoc/i
 import type { Keyring } from "@estoc/keyring";
 import {
   type Bytes,
+  blobsOf,
   type EncodedObject,
   encodeObject,
   type Link,
@@ -217,7 +218,7 @@ class MailboxService {
       }),
       bundle,
       signature.signedIdentity,
-      [...mailboxRequestSchema.blobs],
+      mailboxRequestSchema.blobs,
     );
     const { identity: _, ...terms } = offer.data;
     const mailbox = {
@@ -350,7 +351,7 @@ export async function loadMailboxService(
   if (previous === undefined || formOf(previous) !== formOf(next))
     await notary.sign(
       encodeObject(serviceSchema, next),
-      offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
+      offers.flatMap((offer) => blobsOf(offer)),
     );
   return new MailboxService(notary, { ...options, clock });
 }

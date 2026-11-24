@@ -1,6 +1,6 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { blobsOf } from "./blobs.ts";
+import { distinctBlobsOf } from "./blobs.ts";
 import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 
@@ -38,5 +38,5 @@ export class WalletKeys {
 }
 
 function walletKeyOf(object: EncodedObject<WalletKeyData>, key: KeyObject): WalletKeyObject {
-  return { link: object.link, key, blobs: blobsOf(object, key.blobs) };
+  return { link: object.link, key, blobs: distinctBlobsOf(object, key.blobs) };
 }

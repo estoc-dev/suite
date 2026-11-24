@@ -1,6 +1,6 @@
 import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { mailboxSchema } from "@estoc/mailbox";
-import { encodeObject, LinkValue } from "@estoc/object";
+import { blobsOf, encodeObject, LinkValue } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { MemoryBackend, Store, view } from "@estoc/store";
 import { loadServices } from "./client.ts";
@@ -34,7 +34,7 @@ export async function openTestMailbox(origin: string): Promise<TestMailbox> {
   await account.accept(actor);
   const transport = await offer.open(actor, MAILBOX_KEY);
   const mailbox = encodeObject(mailboxSchema, { key: MAILBOX_KEY, transport: new LinkValue(transport.link) });
-  await store.write({ roots: [mailbox.link], blobs: [mailbox.bytes, ...mailboxSchema.blobs] });
+  await store.write({ roots: [mailbox.link], blobs: blobsOf(mailbox) });
   return {
     url: transport.data.url,
     async pickUp() {

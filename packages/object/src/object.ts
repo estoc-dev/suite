@@ -35,6 +35,10 @@ export function encodeObject<F extends ValueMap>(
   return { ...decodeObject(bytes, schema), bytes };
 }
 
+export function blobsOf(object: EncodedObject): Uint8Array[] {
+  return [object.bytes, ...object.schema.blobs];
+}
+
 export class AbsentBlob extends Error {
   override readonly name = "AbsentBlob";
   readonly link: Link<unknown>;

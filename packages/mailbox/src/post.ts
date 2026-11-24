@@ -1,21 +1,12 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import {
-  type Bytes,
-  decodeObject,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  readObject,
-  schemaOf,
-} from "@estoc/object";
+import { type Bytes, blobsOf, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
 import { Intake, RefusedBatch, type Store, scan, writtenObjectsOf } from "@estoc/store";
 import { Correspondence } from "./correspondence.ts";
 import { heldMailboxKeys } from "./held-mailbox-keys.ts";
 import { MailboxKey } from "./key.ts";
-import { type Mailbox, mailboxAt, type Options, type Transport } from "./mailbox.ts";
+import { decodeTransport, type Mailbox, mailboxAt, type Options, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
 import { type MailboxData, type MailboxKeyData, mailboxKeySchema, mailboxSchema, outboundSchema } from "./schema.ts";
 
@@ -59,13 +50,12 @@ export class Post {
     const secretKey = crypto.getRandomValues(new Uint8Array(32));
     const key = await MailboxKey.fromSecretKey(secretKey);
     const { bytes } = await makeTransport(key.publicKey);
-    const named = schemaOf(bytes);
-    const transport = this.#transports.find(({ schema }) => schema.link === named);
-    if (transport === undefined) throw new Error(`no transport takes ${named}`);
-    const transportObject = decodeObject(bytes, transport.schema);
+    const decoded = decodeTransport(bytes, this.#transports);
+    if (decoded.transport === undefined) throw new Error(`no transport takes ${decoded.schema}`);
+    const transport = decoded.object;
     const mailbox = encodeObject(mailboxSchema, {
       key: key.publicKey,
-      transport: new LinkValue(transportObject.link),
+      transport: new LinkValue(transport.link),
     });
     const secret = encodeObject(secretSchema, { bytes: secretKey });
     const object = encodeObject(mailboxKeySchema, {
@@ -76,16 +66,7 @@ export class Post {
     // writes are cut short.
     await this.#store.record({
       statements: [object.link],
-      blobs: [
-        object.bytes,
-        ...mailboxKeySchema.blobs,
-        secret.bytes,
-        ...secretSchema.blobs,
-        mailbox.bytes,
-        ...mailboxSchema.blobs,
-        transportObject.bytes,
-        ...transport.schema.blobs,
-      ],
+      blobs: [object, secret, mailbox, transport].flatMap((each) => blobsOf(each)),
     });
     await this.#store.record(writtenObjectsOf([mailbox.link], this.#clock()));
     return this.#inbox(mailbox, object.link, key);
@@ -137,7 +118,7 @@ export class Outbox {
       mailbox: new LinkValue(mailbox),
       at,
     });
-    await this.#store.record({ statements: [outbound.link], blobs: [outbound.bytes, ...outboundSchema.blobs] });
+    await this.#store.record({ statements: [outbound.link], blobs: blobsOf(outbound) });
     return { direction: "outbound", bundle, mailbox, at, link: outbound.link };
   }
 }

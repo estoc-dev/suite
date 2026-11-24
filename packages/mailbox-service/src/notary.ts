@@ -1,6 +1,6 @@
 import { type Actor, identityKit, type Signature, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
-import { type Bytes, type EncodedObject, type Link, LinkValue } from "@estoc/object";
+import { type Bytes, blobsOf, type EncodedObject, type Link, LinkValue } from "@estoc/object";
 import { type People, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
 import { type Store, type View, view, writtenObjectsOf } from "@estoc/store";
@@ -31,7 +31,7 @@ class Notary {
   /** `blobs` hold what the closure of `object` takes besides the object and its schema. */
   async sign(object: EncodedObject, blobs: readonly Bytes<unknown>[] = []): Promise<Signature> {
     const signature = await this.#actor.sign(object);
-    await this.#write(signature, [object.bytes, ...object.schema.blobs, ...blobs]);
+    await this.#write(signature, [...blobsOf(object), ...blobs]);
     return signature;
   }
 

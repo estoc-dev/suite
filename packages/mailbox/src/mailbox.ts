@@ -86,9 +86,21 @@ export async function mailboxAt(
   const transportLink = data.transport.link;
   const bytes = await reader.get(transportLink);
   if (bytes === undefined) throw new AbsentBlob(transportLink);
-  const named = schemaOf(bytes);
-  const transport = transports.find(({ schema }) => schema.link === named);
-  if (transport === undefined) throw new UndeliveredMessage("gone", `no transport given takes ${named}`);
-  const route = transport.routeTo(decodeObject(bytes, transport.schema).data);
+  const decoded = decodeTransport(bytes, transports);
+  if (decoded.transport === undefined)
+    throw new UndeliveredMessage("gone", `no transport given takes ${decoded.schema}`);
+  const route = decoded.transport.routeTo(decoded.object.data);
   return new Mailbox(link, await publicKeyFrom(data.key), route);
+}
+
+type DecodedTransport =
+  | { readonly schema: Link<Schema>; readonly transport: Transport; readonly object: EncodedObject }
+  | { readonly schema: Link<Schema>; readonly transport: undefined };
+
+export function decodeTransport(bytes: Bytes<EncodedObject>, transports: readonly Transport[]): DecodedTransport {
+  const schema = schemaOf(bytes);
+  const transport = transports.find((each) => each.schema.link === schema);
+  return transport === undefined
+    ? { schema, transport }
+    : { schema, transport, object: decodeObject(bytes, transport.schema) };
 }

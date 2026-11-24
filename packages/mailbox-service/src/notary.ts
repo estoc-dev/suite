@@ -20,6 +20,7 @@ import {
   writtenObjectsOf,
   writtenObjectsOver,
 } from "@estoc/store";
+import { recordedSignatures } from "./recorded-signatures.ts";
 
 type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
 
@@ -30,14 +31,12 @@ type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
 class Notary {
   readonly #actor: Actor;
   readonly #signatures: Signatures;
-  readonly #recordedSignatures: RecordedSignaturesView;
   readonly #store: Store;
   readonly #clock: () => number;
 
   constructor(actor: Actor, { kit, store, clock }: NotaryOptions & { readonly clock: () => number }) {
     this.#actor = actor;
     this.#signatures = kit.signatures;
-    this.#recordedSignatures = recordedSignaturesView(kit.signatures);
     this.#store = store;
     this.#clock = clock;
   }
@@ -56,8 +55,8 @@ class Notary {
   async renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
     const signature = await this.#signatures.read(link, this.#store);
     if (await people.honors(signature)) return link;
-    const recordedSignatures = await view(this.#store, this.#recordedSignatures);
-    for (const recordedLink of await recordedSignatures.signaturesOver(signature.object)) {
+    const recordedLinks = await (await view(this.#store, recordedSignaturesView)).signaturesOver(signature.object);
+    for (const recordedLink of recordedLinks) {
       if (recordedLink === link) continue;
       const recordedSignature = await this.#signatures.read(recordedLink, this.#store);
       if (await people.honors(recordedSignature)) return recordedLink;
@@ -148,28 +147,17 @@ function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdent
   };
 }
 
-const recordedSignatureSchema = schema("Recorded signature", { object: link(), signature: link() });
-
-type RecordedSignaturesView = View<
-  DataOf<typeof recordedSignatureSchema>,
-  readonly ["object", "signature"],
+const recordedSignaturesView: View<
+  DataOf<typeof recordedSignatures.rowSchema>,
+  typeof recordedSignatures.order,
   { signaturesOver(object: Link<unknown>): Promise<Link<unknown>[]> }
->;
-
-/** A signature that the store holds may have no record, as when a write stopped between the two. */
-function recordedSignaturesView(signatures: Signatures): RecordedSignaturesView {
-  return {
-    index: indexOver(
-      selectedRecords(writtenObjectsOver(objectsOf(signatures.schema))),
-      recordedSignatureSchema,
-      ({ link, data }) => [{ object: new LinkValue(data.object.link), signature: new LinkValue(link) }],
-    ).orderedBy("object", "signature"),
-    read: (rows) => ({
-      async signaturesOver(object) {
-        const links: Link<unknown>[] = [];
-        for await (const { data } of rows.range([new LinkValue(object)])) links.push(data.signature.link);
-        return links;
-      },
-    }),
-  };
-}
+> = {
+  index: recordedSignatures,
+  read: (rows) => ({
+    async signaturesOver(object) {
+      const links: Link<unknown>[] = [];
+      for await (const { data } of rows.range([new LinkValue(object)])) links.push(data.signature.link);
+      return links;
+    },
+  }),
+};

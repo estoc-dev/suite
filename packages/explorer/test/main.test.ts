@@ -91,13 +91,23 @@ describe("main.ts", { timeout: 20_000 }, () => {
     onTestFinished(() => socket.terminate());
     await once(socket, "open");
     const client = new Client(socketChannel(socket));
-    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual(["Held Keys", "Held Mailbox Keys"]);
+    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual([
+      "Held Keys",
+      "Held Mailbox Keys",
+      "Arrivals of Roots and Identity Versions",
+      "Opened Mailboxes",
+      "Recorded Signatures",
+    ]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
     const { rows } = await client.page("Held Keys", 0, 10);
     expect(rows.map((bytes) => decodeObject(bytes, heldKeys.rowSchema).data)).toEqual([
       { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
     ]);
     expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    // A post each day, the photo, the signature over it and the identity version that signed it.
+    expect(await client.page("Arrivals of Roots and Identity Versions", 0, 0)).toMatchObject({ rowCount: 123 });
+    expect(await client.page("Opened Mailboxes", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Recorded Signatures", 0, 10)).toMatchObject({ rowCount: 1 });
   });
 
   it("refuses to start without its database, and does not make it", async () => {

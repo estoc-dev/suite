@@ -17,8 +17,9 @@ import {
   objectFormat,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
-import { arrivalsView, Intake, MemoryBackend, Store, view } from "@estoc/store";
+import { Intake, MemoryBackend, Store, view } from "@estoc/store";
 import { assert, describe, expect, it, test } from "vitest";
+import { identityVersionArrivalsView } from "../src/identity-version-arrivals.ts";
 import { type Inbox, type MailboxData, MailboxGrants, Post } from "../src/index.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -33,7 +34,6 @@ const { signatures, signedIdentities, publish } = identity;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);
 const seenPeople = peopleView({ signedIdentities });
-const arrivalsOfIdentityVersions = arrivalsView(signedIdentities.schema);
 const network = new MemoryNetwork();
 
 // One clock for everyone, so that what comes in later is recorded with the greater `at`.
@@ -113,7 +113,7 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   (await view(store, grants.series)).grantFrom(
     from.identifier,
     to.identifier,
-    (await view(store, seenPeople)).asOfArrival(await view(store, arrivalsOfIdentityVersions)),
+    (await view(store, seenPeople)).asOfArrival(await view(store, identityVersionArrivalsView)),
   );
 
 describe("the latest grant of one person to another", () => {

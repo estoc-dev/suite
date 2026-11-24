@@ -7,6 +7,7 @@ export {
   mailboxGrantRowSchema,
 } from "./grant.ts";
 export { heldMailboxKeys } from "./held-mailbox-keys.ts";
+export { identityVersionArrivals } from "./identity-version-arrivals.ts";
 export { MailboxKey } from "./key.ts";
 export { type Mailbox, mailboxAt, type Options, type Route, type Transport, UndeliveredMessage } from "./mailbox.ts";
 export type { Arrival, Pickup } from "./pickup.ts";

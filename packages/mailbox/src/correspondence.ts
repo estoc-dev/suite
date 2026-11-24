@@ -1,8 +1,9 @@
 import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
 import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
-import { type ArrivalsView, arrivalsView, type Store, view, writtenObjectsOf } from "@estoc/store";
+import { type Store, view, writtenObjectsOf } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
+import { identityVersionArrivalsView } from "./identity-version-arrivals.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
 import type { Delivery, Post } from "./post.ts";
 import type { MailboxData } from "./schema.ts";
@@ -21,7 +22,6 @@ export class Correspondence {
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
   readonly #seenPeople: PeopleView;
-  readonly #arrivals: ArrivalsView;
 
   constructor(
     store: Store,
@@ -38,7 +38,6 @@ export class Correspondence {
     this.#grants = grants;
     this.#signatures = signatures;
     this.#seenPeople = peopleView({ signedIdentities });
-    this.#arrivals = arrivalsView(signedIdentities.schema);
   }
 
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
@@ -94,7 +93,7 @@ export class Correspondence {
 
   async #peopleAsOfArrival(): Promise<SeenIdentityVersions> {
     const people = await view(this.#store, this.#seenPeople);
-    return people.asOfArrival(await view(this.#store, this.#arrivals));
+    return people.asOfArrival(await view(this.#store, identityVersionArrivalsView));
   }
 
   // The closure is read first, so that a store that fails is told apart from a bundle that does not read.

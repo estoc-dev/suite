@@ -81,8 +81,9 @@ export interface StagedStore {
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   commit(): Promise<void>;
   /**
-   * The rows and their failures come of the blobs the store holds at the scan together with those
-   * of the batch. No Record is staged, so the batch adds nothing to what is recorded.
+   * The rows and their failures come of the blobs the store holds at the scan together with the
+   * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
+   * recorded.
    */
   scan<F extends ValueMap, By extends FieldNames<F>>(
     index: OrderedIndex<F, By>,

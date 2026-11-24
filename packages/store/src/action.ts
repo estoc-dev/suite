@@ -48,8 +48,8 @@ export class Action<Q extends ValueMap, R extends ValueMap, E extends object = o
  *   the store it is given.
  * - A batch `run` leaves under way when it answers is waited for, and does not fail the action when
  *   it is refused: the action fails as `run` throws.
- * - The store given to `run` takes no batch once the action has answered or thrown. It has answered
- *   when `run` returned its data, or when `perform` took them from the promise `run` returned.
+ * - Once `perform` has taken what `run` answered or threw, the store given to `run` refuses `write`,
+ *   `record` and the `commit` of what it staged.
  */
 export function actionOver<Q extends ValueMap, R extends ValueMap, E extends object = object>(
   requestSchema: Schema<Q>,
@@ -88,9 +88,7 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   const commitNotes = new CommitNotes();
   let data: R;
   try {
-    const answer = runOf(action)(validRequest, new NotingStore(store as Store & RowKeeper, commitNotes), environment);
-    // Data are taken as `run` returns, so that no batch begins between its answer and the close.
-    data = answer instanceof Promise ? await answer : answer;
+    data = await runOf(action)(validRequest, new NotingStore(store as Store & RowKeeper, commitNotes), environment);
   } finally {
     commitNotes.close();
   }

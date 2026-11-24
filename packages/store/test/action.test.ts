@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { encodeObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { array, boolean, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
@@ -35,6 +36,8 @@ async function blobsOf(store: Store): Promise<Link<unknown>[]> {
 }
 
 const newStore = () => new Store(new MemoryBackend());
+
+const OtherRealmPromise = runInNewContext("Promise") as PromiseConstructor;
 
 const noBatchAfterAnswer = "the store given to an action takes no batch after the action answered";
 
@@ -213,7 +216,7 @@ describe("an action performed on a store", () => {
     expect((await store.recordedStatements()).statements).toEqual([]);
   });
 
-  it("refuses a batch begun on its store once it answered with its data", async () => {
+  it("gives the commits of a batch begun on its store before `perform` took its answer, and refuses one begun after", async () => {
     const storesGiven: Store[] = [];
     const keepStore = actionOver(schema("Keep Store", {}), schema("Kept Store", {}), (_, store) => {
       storesGiven.push(store);
@@ -223,11 +226,35 @@ describe("an action performed on a store", () => {
     const outcome = perform(store, keepStore, {});
     const [storeGiven] = storesGiven;
     assert.exists(storeGiven);
+    await storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] });
+    expect((await outcome).commits).toEqual([card("ace").link]);
     await expect(
-      storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] }),
+      storeGiven.write({ roots: [card("king").link], blobs: [card("king").bytes, ...cardSchema.blobs] }),
     ).rejects.toThrow(noBatchAfterAnswer);
-    expect((await outcome).commits).toEqual([]);
-    expect(await blobsOf(store)).toEqual([]);
+    expect(await cardNamesIn(store)).toEqual(["ace"]);
+  });
+
+  it("answers as the promise it returned is fulfilled, when the promise is of another realm", async () => {
+    const addInOtherRealm = actionOver(addCard.requestSchema, addCard.resultSchema, ({ name }, store) =>
+      OtherRealmPromise.resolve().then(async () => {
+        const addedCard = card(name);
+        await store.write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] });
+        return { card: new LinkValue(addedCard.link) };
+      }),
+    );
+    const store = newStore();
+    const { result, commits } = await perform(store, addInOtherRealm, { name: "ace" });
+    expect(result.data).toEqual({ card: new LinkValue(card("ace").link) });
+    expect(commits).toEqual([card("ace").link]);
+    expect(await cardNamesIn(store)).toEqual(["ace"]);
+  });
+
+  it("fails as the promise it returned is rejected, when the promise is of another realm", async () => {
+    const failure = new Error("no card is added");
+    const failInOtherRealm = actionOver(schema("Fail", {}), schema("Failed", {}), () =>
+      OtherRealmPromise.reject(failure),
+    );
+    await expect(perform(newStore(), failInOtherRealm, {})).rejects.toBe(failure);
   });
 
   it("refuses a batch begun on its store, and the commit of what it staged, after its promise was fulfilled", async () => {

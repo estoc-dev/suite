@@ -327,11 +327,10 @@ function bundleAnswer(status: number, file: Uint8Array<ArrayBuffer>): Response {
 
 export async function loadMailboxService(
   keyring: Pick<Keyring, "signerFor">,
-  { origin, terms, clock = Date.now, ...options }: ServiceOptions,
+  { origin, terms, store, accounts, mailboxes, clock = Date.now }: ServiceOptions,
 ): Promise<MailboxService> {
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
-  const { store } = options;
   const notary = await loadNotary(keyring, { store, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
@@ -353,5 +352,5 @@ export async function loadMailboxService(
       encodeObject(serviceSchema, next),
       offers.flatMap((offer) => blobsOf(offer)),
     );
-  return new MailboxService(notary, { ...options, clock });
+  return new MailboxService(notary, { store, accounts, mailboxes, clock });
 }

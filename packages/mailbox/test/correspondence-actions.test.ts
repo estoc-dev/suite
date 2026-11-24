@@ -94,6 +94,20 @@ describe("Grant", () => {
     });
   });
 
+  it("signs at the time of a clock that its environment inherits", async () => {
+    const [alice, bob] = await acquaintances();
+    const request = {
+      actor: new LinkValue(alice.signedIdentity.link),
+      to: new LinkValue(bob.signedIdentity.link),
+      mailboxes: [],
+    };
+    const environment: Pick<PostOptions, "clock"> = Object.create({ clock: () => 2000 });
+
+    const { result } = await perform(alice.store, grant, request, environment);
+    const signature = await signatures.read(result.data.signature.link, alice.store);
+    expect((await readObject(alice.store, signature.object, mailboxGrantSchema)).data.at).toBe(2000);
+  });
+
   it("commits the signature it gives and the Written Object of it, and nothing else", async () => {
     const [alice, bob] = await acquaintances();
     const { inbox } = await openInbox(alice);

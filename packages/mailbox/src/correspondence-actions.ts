@@ -21,9 +21,9 @@ export const grant = actionOver(
     mailboxes: array(link<EncodedObject<MailboxData>>()),
   }),
   schema("Signed Grant", { signature: link() }),
-  async ({ actor, to, mailboxes }, store, environment: Pick<PostOptions, "clock">) => {
+  async ({ actor, to, mailboxes }, store, { clock = Date.now }: Pick<PostOptions, "clock">) => {
     // A grant is signed and recorded, and goes out by no transport.
-    const correspondence = await correspondenceAs(actor.link, store, { ...environment, transports: [] });
+    const correspondence = await correspondenceAs(actor.link, store, { transports: [], clock });
     const signature = await correspondence.grant(
       await signedIdentities.read(to.link, store),
       mailboxes.map((mailbox) => mailbox.link),

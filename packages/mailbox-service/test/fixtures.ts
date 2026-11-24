@@ -44,6 +44,12 @@ export async function writtenObjectsIn(store: Store): Promise<Link<never>[]> {
   return links;
 }
 
+export async function dataOf<T>(rows: AsyncIterable<{ readonly data: T }>): Promise<T[]> {
+  const all: T[] = [];
+  for await (const { data } of rows) all.push(data);
+  return all;
+}
+
 /** A path to a file in a folder of its own, which is removed once the test finishes. */
 export async function makeTemporaryPath(): Promise<string> {
   const folder = await mkdtemp(join(tmpdir(), "mailbox-service-"));

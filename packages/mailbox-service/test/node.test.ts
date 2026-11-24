@@ -21,7 +21,6 @@ function oneAtATime() {
   const agent = new Agent({ keepAlive: true, maxSockets: 1 });
   onTestFinished(() => agent.destroy());
   return {
-    /** Posts `body` to `url`, resolving to the status and the text of the answer. */
     post: (url: string, body: Uint8Array) =>
       new Promise<{ status: number; text: string }>((resolve, reject) => {
         const outgoing = request(url, { method: "POST", agent }, async (incoming) => {

@@ -44,6 +44,7 @@ import {
   actorOf,
   actorSigningBy,
   bytesOf,
+  dataOf,
   identities,
   identityVersionInHand,
   keys,
@@ -516,7 +517,7 @@ describe("a mailbox service", () => {
 });
 
 describe("the store of a mailbox service that acknowledged an acceptance", () => {
-  async function acknowledged() {
+  async function setUpAcknowledgedAcceptance() {
     const store = memoryStore();
     const signedIdentity = await setUpService({ store });
     const { service } = await memoryService({ store });
@@ -525,21 +526,16 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
     const acknowledgement = await bundleOf(await post(service, acceptId, acceptance.file));
     return { store, signedIdentity, service: signature, at: data.at, acceptance, acknowledgement };
   }
-  async function dataOf<T>(rows: AsyncIterable<{ readonly data: T }>) {
-    const all: T[] = [];
-    for await (const { data } of rows) all.push(data);
-    return all;
-  }
   const identifier = new LinkValue(serviceRoot.link);
 
   it("has a location of the Service that the service signed", async () => {
-    const { store, service, at } = await acknowledged();
+    const { store, service, at } = await setUpAcknowledgedAcceptance();
     const rows = await dataOf((await scan(store, locations)).range([]));
     expect(rows).toEqual([{ identifier, at, service: new LinkValue(service.link) }]);
   });
 
   it("has the acknowledgement by the acceptance it answers", async () => {
-    const { store, acceptance, acknowledgement } = await acknowledged();
+    const { store, acceptance, acknowledgement } = await setUpAcknowledgedAcceptance();
     const rows = await dataOf((await scan(store, acknowledgements)).range([]));
     expect(rows).toEqual([
       { acceptance: new LinkValue(acceptance.signature.link), acknowledgement: new LinkValue(acknowledgement.link) },
@@ -547,7 +543,7 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
   });
 
   it("has the identity version that the service was set up with", async () => {
-    const { store, signedIdentity } = await acknowledged();
+    const { store, signedIdentity } = await setUpAcknowledgedAcceptance();
     const rows = await dataOf((await scan(store, recordedIdentityVersions)).range([]));
     expect(rows).toEqual([{ identifier, signedIdentity: new LinkValue(signedIdentity.link) }]);
   });

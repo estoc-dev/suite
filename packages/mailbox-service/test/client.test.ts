@@ -198,6 +198,17 @@ describe("a service reached at its origin", () => {
     await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another identifier/);
   });
 
+  it("refuses a mailbox offer that names another identifier, though the Service lists one of its own before it", async () => {
+    const mailboxOfferOf = (root: Signer) =>
+      encodeObject(mailboxOfferSchema, { identity: new LinkValue(keys.encode(root.key).link), ...terms });
+    const offers = [mailboxOfferOf(mallory), mailboxOfferOf(serviceSigner)];
+    const { origin } = await startServer(
+      async (_, origin) => new Response(await signedService(origin, offers, await actorOf(mallory))),
+    );
+    const { services } = client();
+    await expect(services.fetch(origin)).rejects.toThrow(/lists a mailbox offer that names another identifier/);
+  });
+
   it("passes over an offer of a schema it does not read", async () => {
     const other = schema("Other offer", { identity: link() });
     const unread = encodeObject(other, { identity: new LinkValue(serviceRoot.link) });
@@ -315,6 +326,25 @@ describe("an offer found by its link", () => {
     const { mailbox } = await services.fetch(origin);
     assert.exists(mailbox);
     expect(await services.mailboxOffer(mailbox.link)).toMatchObject({ link: mailbox.link, terms });
+  });
+
+  it("is each offer of mailboxes that the latest Service of the identity it names lists, which opens a mailbox on its own terms", async () => {
+    const actor = await actorOf(alice);
+    const { run, store, services } = await withAccount(actor);
+    const identity = new LinkValue(serviceRoot.link);
+    const listedTerms = [terms, { ...terms, size: 2048 }];
+    const mailboxOffers = listedTerms.map((each) => encodeObject(mailboxOfferSchema, { identity, ...each }));
+    const service = await signedService(run.origin, [offer, ...mailboxOffers], await serviceActor(1_000), 5_000);
+    await new Intake(run.store).receive(decodeBundle(service));
+    await services.fetch(run.origin);
+
+    for (const [position, listedOffer] of mailboxOffers.entries()) {
+      const mailboxOffer = await services.mailboxOffer(listedOffer.link);
+      expect(mailboxOffer.terms).toEqual(listedTerms[position]);
+      const { transport } = await openMailbox(store, mailboxOffer, actor, keyOf(position));
+      const sendId = new URL(transport.data.url).pathname.slice(1);
+      expect((await run.mailboxes.mailboxNamed(sendId))?.terms).toEqual(listedTerms[position]);
+    }
   });
 
   it("is not found once the latest Service of the identity it names offers another in its place", async () => {

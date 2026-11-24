@@ -28,6 +28,7 @@ const mailboxOffer = new LinkValue(
 );
 const noteSchema = schema("Note", { text: string() });
 const note = encodeObject(noteSchema, { text: "hello, Alice" });
+const laterNote = encodeObject(noteSchema, { text: "hello again, Alice" });
 const clock = () => 9_000;
 
 // Someone whose store records the Secret Key of their root and holds their identity.
@@ -45,7 +46,7 @@ async function person(): Promise<{ readonly store: Store; readonly signedIdentit
  * A service running, and someone whose store holds its Service. `service` is the Signed Identity of
  * the service, which the store holds and records no Secret Key of.
  */
-async function atService() {
+async function clientAtService() {
   let postCount = 0;
   const run = await startService({}, (service, request) => {
     postCount += 1;
@@ -64,26 +65,26 @@ async function atService() {
   };
 }
 
-async function withAccount() {
-  const client = await atService();
+async function clientWithAccount() {
+  const client = await clientAtService();
   await perform(client.store, acceptAccountOffer, { actor: client.actor, offer: accountOffer });
   return client;
 }
 
-async function withInbox() {
-  const client = await withAccount();
+async function clientWithInbox() {
+  const client = await clientWithAccount();
   const { result } = await perform(client.store, openInbox, { actor: client.actor, offer: mailboxOffer });
   return { ...client, mailbox: result.data.mailbox, mailboxKey: result.data.mailboxKey };
 }
 
-/** Sends the note to `mailbox`, which `store` holds, from a store of the sender's own. */
-async function sendNote(store: Store, mailbox: Link<EncodedObject<MailboxData>>) {
+/** Sends `sentNote` to `mailbox`, which `store` holds, from a store of the sender's own. */
+async function sendNote(store: Store, mailbox: Link<EncodedObject<MailboxData>>, sentNote = note) {
   const sender = memoryStore();
   await sender.write({
-    roots: [mailbox, note.link],
-    blobs: [...(await store.closure(mailbox)).values(), note.bytes, ...noteSchema.blobs],
+    roots: [mailbox, sentNote.link],
+    blobs: [...(await store.closure(mailbox)).values(), sentNote.bytes, ...noteSchema.blobs],
   });
-  await (await new Post(sender, { transports: [httpTransport] }).outbox(mailbox)).send(note.link);
+  await (await new Post(sender, { transports: [httpTransport] }).outbox(mailbox)).send(sentNote.link);
 }
 
 async function statementsIn(store: Store) {
@@ -92,7 +93,6 @@ async function statementsIn(store: Store) {
   return statements;
 }
 
-/** The schema of the object at each of `links`, which `store` holds. */
 function schemasAt(store: Store, links: readonly Link<unknown>[]) {
   return Promise.all(
     links.map(async (link) => {
@@ -135,7 +135,7 @@ describe("Fetch Service", () => {
 
 describe("Accept Account Offer", () => {
   it("gives the service's signature over an acknowledgement of the actor's acceptance of the offer", async () => {
-    const { store, signedIdentity, actor } = await atService();
+    const { store, signedIdentity, actor } = await clientAtService();
 
     const { result } = await perform(store, acceptAccountOffer, { actor, offer: accountOffer });
     const acknowledgement = await signatures.read(result.data.acknowledgement.link, store);
@@ -147,7 +147,7 @@ describe("Accept Account Offer", () => {
   });
 
   it("commits the acknowledgement it took and the Inbound of it at the time of the clock given, and nothing else", async () => {
-    const { store, actor } = await atService();
+    const { store, actor } = await clientAtService();
     const recordedBefore = await statementsIn(store);
 
     const { result, commits } = await perform(store, acceptAccountOffer, { actor, offer: accountOffer }, { clock });
@@ -163,7 +163,7 @@ describe("Accept Account Offer", () => {
   });
 
   it("fails for an actor whose keys the store records no Secret Key of, and posts nothing to the service", async () => {
-    const { store, service, postCount } = await atService();
+    const { store, service, postCount } = await clientAtService();
     const recordedBefore = await statementsIn(store);
 
     const request = { actor: service, offer: accountOffer };
@@ -175,7 +175,7 @@ describe("Accept Account Offer", () => {
 
 describe("Open Inbox", () => {
   it("gives a mailbox at the service, and the Mailbox Key of it that the store records", async () => {
-    const { origin, store, actor } = await withAccount();
+    const { origin, store, actor } = await clientWithAccount();
 
     const { result } = await perform(store, openInbox, { actor, offer: mailboxOffer });
     const { mailbox, mailboxKey } = result.data;
@@ -186,7 +186,7 @@ describe("Open Inbox", () => {
   });
 
   it("commits the acknowledgement it took, the Inbound of it, the Opened mailbox, the Mailbox Key and the Written Object of the mailbox, and nothing else", async () => {
-    const { store, actor } = await withAccount();
+    const { store, actor } = await clientWithAccount();
     const recordedBefore = await statementsIn(store);
 
     const { result, commits } = await perform(store, openInbox, { actor, offer: mailboxOffer }, { clock });
@@ -213,7 +213,7 @@ describe("Open Inbox", () => {
   });
 
   it("fails for an actor whose keys the store records no Secret Key of, and posts nothing to the service", async () => {
-    const { store, service, postCount } = await withAccount();
+    const { store, service, postCount } = await clientWithAccount();
     const postCountBefore = postCount();
     const recordedBefore = await statementsIn(store);
 
@@ -225,15 +225,17 @@ describe("Open Inbox", () => {
 });
 
 describe("Collect", () => {
-  it("gives the Inbound of each bundle that waits at the mailbox, and none once they are collected", async () => {
-    const { store, actor, mailbox, mailboxKey } = await withInbox();
-    await sendNote(store, mailbox.link);
+  it("gives the Inbound of each bundle that waits at the mailbox, in the order they came, and none once they are collected", async () => {
+    const { store, actor, mailbox, mailboxKey } = await clientWithInbox();
+    const notes = [note, laterNote];
+    for (const sentNote of notes) await sendNote(store, mailbox.link, sentNote);
 
     const { result } = await perform(store, collect, { actor, mailboxKey });
-    expect(result.data.inbounds).toHaveLength(1);
-    const inbound = await inboundAt(store, result.data.inbounds[0]?.link);
-    expect(inbound).toMatchObject({ bundle: { link: note.link }, via: { link: mailbox.link } });
-    expect(await store.get(note.link)).toEqual(note.bytes);
+    const inbounds = await Promise.all(result.data.inbounds.map(({ link }) => inboundAt(store, link)));
+    expect(inbounds.map(({ bundle, via }) => [bundle.link, via?.link])).toEqual(
+      notes.map(({ link }) => [link, mailbox.link]),
+    );
+    for (const { link, bytes } of notes) expect(await store.get(link)).toEqual(bytes);
 
     const again = await perform(store, collect, { actor, mailboxKey });
     expect(again.result.data.inbounds).toEqual([]);
@@ -241,7 +243,7 @@ describe("Collect", () => {
   });
 
   it("commits each bundle it took and the Inbound of it at the time of the clock given, and nothing else", async () => {
-    const { store, actor, mailbox, mailboxKey } = await withInbox();
+    const { store, actor, mailbox, mailboxKey } = await clientWithInbox();
     await sendNote(store, mailbox.link);
     const recordedBefore = await statementsIn(store);
 
@@ -256,7 +258,7 @@ describe("Collect", () => {
   });
 
   it("fails for an actor whose keys the store records no Secret Key of, and posts nothing to the service", async () => {
-    const { store, service, mailbox, mailboxKey, postCount } = await withInbox();
+    const { store, service, mailbox, mailboxKey, postCount } = await clientWithInbox();
     await sendNote(store, mailbox.link);
     const postCountBefore = postCount();
 

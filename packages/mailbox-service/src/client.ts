@@ -85,6 +85,12 @@ export interface Service {
   readonly mailbox: MailboxOffer | undefined;
 }
 
+type ServiceListing = {
+  readonly service: Service;
+  readonly accountOffers: readonly AccountOffer[];
+  readonly mailboxOffers: readonly MailboxOffer[];
+};
+
 export class AccountOffer {
   readonly service: SignedIdentityObject;
   readonly link: Link<EncodedObject<AccountOfferData>>;
@@ -290,7 +296,7 @@ export class Services {
     checkOrigin(origin);
     const bundle = await bundleIn(await fetch(new URL("/", origin), REQUEST), [200]);
     const stagedStore = await this.#intake.stage(bundle, this.#originOf(origin));
-    const service = await this.#read(bundle.link, stagedStore);
+    const { service } = await this.#read(bundle.link, stagedStore);
     if (service.origin !== origin) throw new Error(`the Service at ${origin} names ${service.origin}`);
     await stagedStore.commit();
     return service;
@@ -302,19 +308,19 @@ export class Services {
    * its `at`.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
-    return this.#latestOf(signedIdentity.identity.identifier);
+    return (await this.#latestOf(signedIdentity.identity.identifier))?.service;
   }
 
   /**
-   * An offer is taken up where the latest Service of the identity it names offers it, so one that
+   * An offer is taken up where the latest Service of the identity it names lists it, so one that
    * the service offers no more is not found.
    */
   async accountOffer(link: Link<EncodedObject<AccountOfferData>>): Promise<AccountOffer> {
-    return this.#listedOffer(link, accountOfferSchema, ({ account }) => account);
+    return this.#listedOffer(link, accountOfferSchema, ({ accountOffers }) => accountOffers);
   }
 
   async mailboxOffer(link: Link<EncodedObject<MailboxOfferData>>): Promise<MailboxOffer> {
-    return this.#listedOffer(link, mailboxOfferSchema, ({ mailbox }) => mailbox);
+    return this.#listedOffer(link, mailboxOfferSchema, ({ mailboxOffers }) => mailboxOffers);
   }
 
   /**
@@ -341,7 +347,7 @@ export class Services {
     return new ServicePickup(target, actor);
   }
 
-  async #latestOf(identifier: Link<unknown>): Promise<Service | undefined> {
+  async #latestOf(identifier: Link<unknown>): Promise<ServiceListing | undefined> {
     const locations = await view(this.#store, locationsView);
     const people = await view(this.#store, peopleView);
     const [latest] = await locations.servicesOf(identifier, people);
@@ -351,17 +357,17 @@ export class Services {
   async #listedOffer<
     F extends ValueMap & { readonly identity: LinkValue<unknown> },
     O extends AccountOffer | MailboxOffer,
-  >(link: Link<EncodedObject<F>>, schema: Schema<F>, offerOf: (service: Service) => O | undefined): Promise<O> {
+  >(link: Link<EncodedObject<F>>, schema: Schema<F>, offersOf: (listing: ServiceListing) => readonly O[]): Promise<O> {
     const identifier = (await readObject(this.#store, link, schema)).data.identity.link;
-    const service = await this.#latestOf(identifier);
-    if (service === undefined) throw new Error(`the store holds no Service of ${identifier}`);
-    const offer = offerOf(service);
-    if (offer?.link !== link)
+    const listing = await this.#latestOf(identifier);
+    if (listing === undefined) throw new Error(`the store holds no Service of ${identifier}`);
+    const offer = offersOf(listing).find((listed) => listed.link === link);
+    if (offer === undefined)
       throw new Error(`the latest Service of ${identifier} that the store holds does not offer ${link}`);
     return offer;
   }
 
-  async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {
+  async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<ServiceListing> {
     const people = await view(reader, peopleView);
     const serviceSignature = await signatures.read(link, reader);
     await checkHonors(people, serviceSignature);
@@ -374,28 +380,29 @@ export class Services {
       intake: this.#intake,
       origin: this.#originOf(origin),
     };
-    let account: AccountOffer | undefined;
-    let mailbox: MailboxOffer | undefined;
+    const accountOffers: AccountOffer[] = [];
+    const mailboxOffers: MailboxOffer[] = [];
     for (const { link: listed } of offers) {
       const bytes: Uint8Array | undefined = await reader.get(listed);
       if (bytes === undefined) throw new AbsentBlob(listed);
       const schema = schemaOf(bytes);
       const url = new URL(`/${listed}`, origin);
-      if (account === undefined && schema === accountOfferSchema.link) {
+      if (schema === accountOfferSchema.link) {
         const offer = decodeObject(bytes, accountOfferSchema);
         if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists an account offer that names another identifier`);
         }
-        account = new AccountOffer({ service: signedIdentity, offer: offer.link, url }, posting);
-      } else if (mailbox === undefined && schema === mailboxOfferSchema.link) {
+        accountOffers.push(new AccountOffer({ service: signedIdentity, offer: offer.link, url }, posting));
+      } else if (schema === mailboxOfferSchema.link) {
         const offer = decodeObject(bytes, mailboxOfferSchema);
         if (offer.data.identity.link !== identifier) {
           throw new Error(`the Service of ${identifier} lists a mailbox offer that names another identifier`);
         }
-        mailbox = new MailboxOffer({ service: signedIdentity, offer, url }, posting);
+        mailboxOffers.push(new MailboxOffer({ service: signedIdentity, offer, url }, posting));
       }
     }
-    return { signedIdentity, origin, at, link, account, mailbox };
+    const service = { signedIdentity, origin, at, link, account: accountOffers[0], mailbox: mailboxOffers[0] };
+    return { service, accountOffers, mailboxOffers };
   }
 
   #originOf(origin: string): EncodedObject<OriginData> {

@@ -25,6 +25,13 @@ export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
    * would have given, under any prefix: what failed gave no row to tell where it belongs.
    */
   readonly failures: readonly ItemFailure[];
+  /**
+   * How many blobs were held where the rows were read: by the store, or by the staged store with
+   * its batch, which is not the count of the store it is staged on. Either only grows and the rows
+   * come of the blobs held alone, so the rows of the same index read there while it holds as many
+   * are these.
+   */
+  readonly blobCount: number;
 }
 
 type KeyPart = number | string | Uint8Array | undefined;
@@ -36,6 +43,7 @@ interface KeyedRow<F extends ValueMap> {
 
 // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
 export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements Rows<F, By> {
+  readonly blobCount: number;
   readonly #index: OrderedIndex<F, By>;
   readonly #derivedObjects: DerivedObjects<F>;
   readonly #rows: readonly KeyedRow<F>[];
@@ -44,20 +52,22 @@ export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements
     index: OrderedIndex<F, By>,
     derivedObjects: DerivedObjects<F> = new DerivedObjects(derivationOf(orderOf(index).index)),
     rows: readonly KeyedRow<F>[] = [],
+    blobCount = 0,
   ) {
     this.#index = index;
     this.#derivedObjects = derivedObjects;
     this.#rows = rows;
+    this.blobCount = blobCount;
   }
 
   get failures(): readonly ItemFailure[] {
     return this.#derivedObjects.failures;
   }
 
-  including(derivedObjects: DerivedObjects<F>): SortedRows<F, By> {
-    if (derivedObjects === this.#derivedObjects) return this;
+  including(derivedObjects: DerivedObjects<F>, blobCount: number): SortedRows<F, By> {
+    if (derivedObjects === this.#derivedObjects && blobCount === this.blobCount) return this;
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
-    if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows);
+    if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows, blobCount);
     const { index, by } = orderOf(this.#index);
     const { schema } = derivationOf(index);
     const keyedRows = newRows.map((row) => ({
@@ -68,6 +78,7 @@ export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements
       this.#index,
       derivedObjects,
       [...this.#rows, ...keyedRows].sort((a, b) => compareKeys(a.key, b.key) || compareParts(a.row.link, b.row.link)),
+      blobCount,
     );
   }
 

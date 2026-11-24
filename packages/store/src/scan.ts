@@ -28,23 +28,25 @@ export async function scan<F extends ValueMap, By extends FieldNames<F>>(
   index: OrderedIndex<F, By>,
   { throwsOnFailure }: { readonly throwsOnFailure?: boolean } = {},
 ): Promise<Rows<F, By>> {
-  if (!(rowsByIndex in store))
+  if (!(readRows in store))
     throw new TypeError("only a store made by `new Store`, or what is staged on one, is scanned");
   const { readsBlobs } = derivationOf(orderOf(index).index);
-  const rows = await (store as RowKeeper)[rowsByIndex].sortedRowsOf(index);
+  const rows = await (store as RowKeeper)[readRows]((rows) => rows.sortedRowsOf(index));
   const [failure] = rows.failures;
   if (failure !== undefined && (throwsOnFailure ?? !readsBlobs)) throw failure.error;
   return rows;
 }
 
 /** The key under which `scan` asks a store for the rows it has of each index, which nothing outside this package can. */
-export const rowsByIndex: unique symbol = Symbol("rowsByIndex");
+export const readRows: unique symbol = Symbol("readRows");
 
 export interface RowKeeper {
-  readonly [rowsByIndex]: RowsByIndex;
+  /** All that `use` reads of `rows` comes of the same blobs, as many as `rows` says. */
+  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T>;
 }
 
 export interface RowsByIndex {
+  readonly blobCount: number;
   records(): Promise<ListedLinks<EncodedObject>>;
   heldBlobs(): Promise<ListedLinks>;
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
@@ -101,96 +103,103 @@ class LinksRead<T = unknown> {
   }
 }
 
-class KeptValue<T> {
-  #value: Promise<T>;
-
-  constructor(initial: T) {
-    this.#value = Promise.resolve(initial);
-  }
-
-  advance(step: (value: T) => Promise<T>): Promise<T> {
-    const previous = this.#value;
-    const next = previous.then(step);
-    this.#value = next.catch(() => previous);
-    return next;
-  }
-}
-
 /**
  * - The rows of what is read depend on it and its closure alone, and a store only grows, so the
  *   rows of what was read before still hold.
  * - Records are among the blobs, so every blob put is read once to list the statements recorded.
  * - The rows are kept for as long as the index is, and their order for as long as the ordered index
  *   is, so a program makes each once and keeps it.
+ * - One reading goes at a time and lists the blobs once, so all that it gives comes of the blobs
+ *   held at that listing. What an index reads therefore waits without end if it reads the rows of
+ *   the same store.
  */
-export class KeptRows implements RowsByIndex {
+export class KeptRows {
   readonly #reader: Reader;
   readonly #blobsFrom: (start: number) => AsyncIterable<Link<unknown>>;
-  readonly #records = new KeptValue(new LinksRead<EncodedObject>());
-  readonly #blobs = new KeptValue(new ListedLinks());
-  readonly #objectsByDerivation = new WeakMap<object, KeptValue<unknown>>();
-  readonly #sortedRowsByIndex = new WeakMap<object, KeptValue<unknown>>();
+  #lastRead: Promise<void> = Promise.resolve();
+  #blobs = new ListedLinks();
+  #records = new LinksRead<EncodedObject>();
+  readonly #objectsByDerivation = new WeakMap<object, unknown>();
+  readonly #sortedRowsByIndex = new WeakMap<object, unknown>();
 
   constructor(reader: Reader, blobsFrom: (start: number) => AsyncIterable<Link<unknown>>) {
     this.#reader = reader;
     this.#blobsFrom = blobsFrom;
   }
 
-  async records(): Promise<ListedLinks<EncodedObject>> {
-    const read = await this.#records.advance((records) =>
-      records.adding(this.#blobsFrom(records.readCount), async (blob) => {
-        const bytes = await this.#reader.get(blob);
-        if (bytes === undefined) throw new Error(`the store lists ${blob} but does not hold it`);
-        return statementRecordedIn(bytes);
-      }),
+  read<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
+    const reading = this.#lastRead.then(async () => {
+      this.#blobs = await this.#blobs.adding(this.#blobsFrom(this.#blobs.links.length));
+      return use(this.#rowsOf(this.#blobs));
+    });
+    // Only that the reading is done is kept, so what it gave goes when whoever asked for it lets go.
+    this.#lastRead = reading.then(
+      () => {},
+      () => {},
     );
-    return read.links;
+    return reading;
   }
 
-  heldBlobs(): Promise<ListedLinks> {
-    return this.#blobs.advance((listed) => listed.adding(this.#blobsFrom(listed.links.length)));
-  }
-
-  derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
-    // What is kept under what an index is made of are rows of it.
-    let kept = this.#objectsByDerivation.get(derivation) as KeptValue<DerivedObjects<F>> | undefined;
-    if (kept === undefined) {
-      kept = new KeptValue(new DerivedObjects(derivation));
-      this.#objectsByDerivation.set(derivation, kept);
-    }
-    return kept.advance((objects) => objects.adding(this.#reader, this));
-  }
-
-  sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>> {
-    // What is kept under an ordered index are rows of it.
-    let kept = this.#sortedRowsByIndex.get(index) as KeptValue<SortedRows<F, By>> | undefined;
-    if (kept === undefined) {
-      kept = new KeptValue(new SortedRows(index));
-      this.#sortedRowsByIndex.set(index, kept);
-    }
-    // The rows in their order come first, so that those derived next go on from the ones they are of.
-    return kept.advance(async (sortedRows) =>
-      sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index))),
-    );
+  #rowsOf(blobs: ListedLinks): RowsByIndex {
+    const rows: RowsByIndex = {
+      blobCount: blobs.links.length,
+      heldBlobs: async () => blobs,
+      records: async () => {
+        this.#records = await this.#records.adding(blobs.links.slice(this.#records.readCount), async (blob) => {
+          const bytes = await this.#reader.get(blob);
+          if (bytes === undefined) throw new Error(`the store lists ${blob} but does not hold it`);
+          return statementRecordedIn(bytes);
+        });
+        return this.#records.links;
+      },
+      derivedObjectsOf: async <F extends ValueMap>(derivation: Derivation<F>) => {
+        // What is kept under what an index is made of are rows of it.
+        const kept = this.#objectsByDerivation.get(derivation) as DerivedObjects<F> | undefined;
+        const objects = await (kept ?? new DerivedObjects(derivation)).adding(this.#reader, rows);
+        this.#objectsByDerivation.set(derivation, objects);
+        return objects;
+      },
+      sortedRowsOf: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => {
+        // What is kept under an ordered index are rows of it.
+        const kept = this.#sortedRowsByIndex.get(index) as SortedRows<F, By> | undefined;
+        const derivedObjects = await rows.derivedObjectsOf(derivationOf(orderOf(index).index));
+        const sortedRows = (kept ?? new SortedRows(index)).including(derivedObjects, rows.blobCount);
+        this.#sortedRowsByIndex.set(index, sortedRows);
+        return sortedRows;
+      },
+    };
+    return rows;
   }
 }
 
 /**
  * - A batch can hold what its store holds already, so the rows and their failures are those of the
- *   store once the batch is written.
+ *   store once the batch is written, and the blobs counted are the ones it would then hold.
  * - A store stages no Record, so the batch adds nothing to what is recorded.
  * - It is for one scan, and nothing is kept of its rows for the next.
  */
-export class AddedRows implements RowsByIndex {
+export async function rowsWithAdded(
+  rows: RowsByIndex,
+  addedBlobs: readonly Link<unknown>[],
+  reader: Reader,
+): Promise<RowsByIndex> {
+  return new AddedRows(rows, await (await rows.heldBlobs()).adding(addedBlobs), reader);
+}
+
+class AddedRows implements RowsByIndex {
   readonly #rows: RowsByIndex;
-  readonly #addedBlobs: readonly Link<unknown>[];
+  readonly #blobs: ListedLinks;
   readonly #reader: Reader;
   readonly #objectsByDerivation = new Map<object, Promise<unknown>>();
 
-  constructor(rows: RowsByIndex, addedBlobs: readonly Link<unknown>[], reader: Reader) {
+  constructor(rows: RowsByIndex, blobs: ListedLinks, reader: Reader) {
     this.#rows = rows;
-    this.#addedBlobs = addedBlobs;
+    this.#blobs = blobs;
     this.#reader = reader;
+  }
+
+  get blobCount(): number {
+    return this.#blobs.links.length;
   }
 
   records(): Promise<ListedLinks<EncodedObject>> {
@@ -198,7 +207,7 @@ export class AddedRows implements RowsByIndex {
   }
 
   async heldBlobs(): Promise<ListedLinks> {
-    return (await this.#rows.heldBlobs()).adding(this.#addedBlobs);
+    return this.#blobs;
   }
 
   derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
@@ -214,8 +223,7 @@ export class AddedRows implements RowsByIndex {
   async sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(
     index: OrderedIndex<F, By>,
   ): Promise<SortedRows<F, By>> {
-    // The rows in their order come first, so that those derived next go on from the ones they are of.
     const sortedRows = await this.#rows.sortedRowsOf(index);
-    return sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index)));
+    return sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index)), this.blobCount);
   }
 }

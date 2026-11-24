@@ -94,10 +94,11 @@ th,
 
 header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
-  min-height: 48px;
-  padding: 0 24px;
+  gap: 8px 24px;
+  min-height: 32px;
+  padding: 8px 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -108,7 +109,8 @@ header {
 
 header nav {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 
 header [aria-current] {

@@ -127,6 +127,15 @@ describe("a page of a list sorted by its fields", () => {
     });
   });
 
+  it("holds the columns of the fields it is sorted by first, and after them the others", async () => {
+    const list = listOf("Entries", entriesOf(1), ["count", "name"]);
+    const source = sourceOf(list);
+    const rowSchema = await readRowSchema(source, entrySchema.link);
+    const { columns, rows } = await readListPage(source, list.description, rowSchema, undefined);
+    expect(columns.map(({ name }) => name)).toEqual(["count", "name", "to"]);
+    expect(rows).toEqual([[0, "entry 0", undefined]]);
+  });
+
   it("holds the rows after the place it reads from, between the pages beside it", async () => {
     expect(await pageOf(sortedList(200), 100)).toEqual({
       counts: countsFrom(100, 149),

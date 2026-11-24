@@ -69,12 +69,17 @@ export async function readListPage(
     : source.page(list.name, ...spanFrom(from ?? 0, step)));
   const [near, far] = inOrderShown(page.start, page.start + page.rows.length);
   const [first, last] = inOrderShown(0, page.rowCount);
+  // The fields a list is sorted by come first, so the order of its rows is read off the first columns.
+  const shownColumns = [
+    ...list.order.flatMap((name) => columns.filter((column) => column.name === name)),
+    ...columns.filter(({ name }) => !list.order.includes(name)),
+  ];
   const rows = page.rows.map((bytes) => {
     const { data } = decodeObject(bytes, schema);
-    return columns.map(({ name }) => memberOf(data, name));
+    return shownColumns.map(({ name }) => memberOf(data, name));
   });
   return {
-    columns,
+    columns: shownColumns,
     rows: step > 0 ? rows : rows.reverse(),
     start: page.start,
     rowCount: page.rowCount,

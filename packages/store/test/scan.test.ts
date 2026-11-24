@@ -886,6 +886,7 @@ describe("an index over blobs", () => {
       record: (batch) => store.record(batch),
       blobs: () => store.blobs(),
       records: () => store.records(),
+      recordedStatements: () => store.recordedStatements(),
       closure: (link) => store.closure(link),
     };
     await expect(scan(lookalike, byTagName)).rejects.toThrow(TypeError);
@@ -1054,6 +1055,73 @@ describe("an index over blobs", () => {
       await stagedStore.commit();
       expect(await namesOf(await scan(store, byTagName))).toEqual(["x", "y"]);
     });
+  });
+});
+
+describe("the rows of a scan", () => {
+  const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
+  const [firstTag, secondTag] = [encodeObject(tag, { names: ["x"] }), encodeObject(tag, { names: ["y"] })];
+  const [first, second] = [
+    encodeObject(note, { names: ["a"], of: new LinkValue(firstTag.link) }),
+    encodeObject(note, { names: ["b"], of: new LinkValue(secondTag.link) }),
+  ];
+
+  async function blobCountOf(store: Store): Promise<number> {
+    let count = 0;
+    for await (const _ of store.blobs()) count++;
+    return count;
+  }
+
+  it("say how many blobs the store held when they were read", async () => {
+    const store = newStore();
+    await recordIn(store, [first], [firstTag.bytes, ...schemas]);
+    const heldCount = await blobCountOf(store);
+    expect((await scan(store, byName)).blobCount).toBe(heldCount);
+    const attachment = new TextEncoder().encode("an attachment");
+    await store.write({ roots: [linkOf(attachment)], blobs: [attachment] });
+    const rows = await scan(store, byName);
+    expect(await namesOf(rows)).toEqual(["a"]);
+    expect(rows.blobCount).toBe(heldCount + 1);
+    expect((await scan(store, byName)).blobCount).toBe(heldCount + 1);
+  });
+
+  it("are those of the blobs they count, though more are written while an index of records and of blobs is read", async () => {
+    const backend = new MemoryBackend();
+    const writer = newStore(backend);
+    let writeAfterListing: (() => Promise<void>) | undefined;
+    const store = newStore({
+      get: (link) => backend.get(link),
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      async *blobs(start) {
+        yield* backend.blobs(start);
+        const write = writeAfterListing;
+        writeAfterListing = undefined;
+        await write?.();
+      },
+    });
+    const union = noteNames.union(tagNames).orderedBy("name");
+    await recordIn(writer, [first], [firstTag.bytes, ...schemas]);
+    const heldCount = await blobCountOf(writer);
+    writeAfterListing = () => recordIn(writer, [second], [secondTag.bytes]);
+    const rows = await scan(store, union);
+    expect(await namesOf(rows)).toEqual(["a", "x"]);
+    expect(rows.blobCount).toBe(heldCount);
+    const laterRows = await scan(store, union);
+    expect(await namesOf(laterRows)).toEqual(["a", "b", "x", "y"]);
+    expect(laterRows.blobCount).toBe(await blobCountOf(writer));
+  });
+
+  it("count, on a staged batch, the blobs the store would hold once the batch is written", async () => {
+    const store = newStore();
+    await store.write(batchOf([firstTag], schemas));
+    const heldCount = await blobCountOf(store);
+    const stagedStore = await store.stage(batchOf([firstTag, secondTag]));
+    const stagedRows = await scan(stagedStore, tagNames.orderedBy("name"));
+    expect(await namesOf(stagedRows)).toEqual(["x", "y"]);
+    expect(stagedRows.blobCount).toBe(heldCount + 1);
+    await stagedStore.commit();
+    expect(await blobCountOf(store)).toBe(heldCount + 1);
   });
 });
 

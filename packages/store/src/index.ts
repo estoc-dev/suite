@@ -7,7 +7,7 @@ export {
   arrivalsView,
 } from "./arrival.ts";
 export type { Backend } from "./backend.ts";
-export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
+export { type Batch, linksIn, type RecordBatch, RefusedBatch } from "./batch.ts";
 export {
   type InboundData,
   type InboundObject,
@@ -32,7 +32,7 @@ export {
   selectedBlobs,
   selectedRecords,
 } from "./source.ts";
-export { type StagedStore, Store } from "./store.ts";
+export { type RecordedStatements, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
 export {
   type WrittenObject,

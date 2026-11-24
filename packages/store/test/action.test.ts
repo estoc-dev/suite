@@ -79,7 +79,7 @@ describe("an action performed on a store", () => {
   it("gives the roots it wrote and the statements it recorded, in the order they went through", async () => {
     const store = newStore();
     const { commits } = await perform(store, addCard, { name: "ace" });
-    expect(commits).toEqual([{ root: card("ace").link }, { statement: writtenAt(card("ace"), 0).link }]);
+    expect(commits).toEqual([card("ace").link, writtenAt(card("ace"), 0).link]);
     expect(await store.get(card("ace").link)).toEqual(card("ace").bytes);
     expect((await store.recordedStatements()).statements).toEqual([writtenAt(card("ace"), 0).link]);
   });
@@ -104,7 +104,7 @@ describe("an action performed on a store", () => {
     expect(await store.get(card("ace").link)).toBeUndefined();
     const kept = await perform(store, draftCard, { name: "ace", isKept: true });
     expect(kept.result.data.names).toEqual(["ace", "king"]);
-    expect(kept.commits).toEqual([{ root: card("ace").link }]);
+    expect(kept.commits).toEqual([card("ace").link]);
     expect(await cardNamesIn(store)).toEqual(["ace", "king"]);
   });
 
@@ -126,7 +126,7 @@ describe("an action performed on a store", () => {
       return { card: new LinkValue(added.link) };
     });
     const { commits } = await perform(newStore(), addAfterRefusal, { name: "ace" });
-    expect(commits).toEqual([{ root: card("ace").link }]);
+    expect(commits).toEqual([card("ace").link]);
   });
 
   it("gives the roots and statements of batches that give them only once", async () => {
@@ -145,11 +145,7 @@ describe("an action performed on a store", () => {
     });
     const store = newStore();
     const { commits } = await perform(store, addTwo, {});
-    expect(commits).toEqual([
-      { root: card("ace").link },
-      { root: card("king").link },
-      { statement: writtenAt(card("ace"), 0).link },
-    ]);
+    expect(commits).toEqual([card("ace").link, card("king").link, writtenAt(card("ace"), 0).link]);
     expect(await cardNamesIn(store)).toEqual(["ace", "king"]);
   });
 
@@ -165,11 +161,11 @@ describe("an action performed on a store", () => {
     );
     const { commits } = await perform(newStore(), addPair, { first: "ace", second: "king" });
     expect(commits).toEqual([
-      { root: card("ace").link },
-      { statement: writtenAt(card("ace"), 0).link },
-      { statement: writtenAt(card("ace"), 1).link },
-      { root: card("king").link },
-      { statement: writtenAt(card("king"), 0).link },
+      card("ace").link,
+      writtenAt(card("ace"), 0).link,
+      writtenAt(card("ace"), 1).link,
+      card("king").link,
+      writtenAt(card("king"), 0).link,
     ]);
   });
 
@@ -186,7 +182,7 @@ describe("an action performed on a store", () => {
     );
     const store = newStore();
     const { commits } = await perform(store, stampCard, { name: "ace" }, { clock: () => 7 });
-    expect(commits).toEqual([{ root: card("ace").link }, { statement: writtenAt(card("ace"), 7).link }]);
+    expect(commits).toEqual([card("ace").link, writtenAt(card("ace"), 7).link]);
     // @ts-expect-error the action is given a clock
     await expect(perform(store, stampCard, { name: "ace" })).rejects.toThrow(TypeError);
   });

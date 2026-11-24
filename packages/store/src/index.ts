@@ -1,4 +1,4 @@
-export { type Action, type ActionOutcome, actionOver, type Commit, perform } from "./action.ts";
+export { type Action, type ActionOutcome, actionOver, perform } from "./action.ts";
 export {
   type ArrivalData,
   type ArrivalOrder,

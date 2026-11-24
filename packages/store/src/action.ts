@@ -3,16 +3,13 @@ import type { Batch, RecordBatch } from "./batch.ts";
 import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
 import type { RecordedStatements, StagedStore, Store } from "./store.ts";
 
-/**
- * A root that was written, or a statement that was recorded and so is among the records of the
- * store. It says that the batch went through, and not that the store held less before it.
- */
-export type Commit = { readonly root: Link<unknown> } | { readonly statement: Link<EncodedObject> };
-
 export interface ActionOutcome<R extends ValueMap> {
   readonly result: EncodedObject<R>;
-  /** In the order their batches went through. */
-  readonly commits: readonly Commit[];
+  /**
+   * The roots written and the statements recorded, in the order their batches went through. Each
+   * says that its batch went through, and not that the store held less before it.
+   */
+  readonly commits: readonly Link<unknown>[];
 }
 
 type Run<Q extends ValueMap, R extends ValueMap, E extends object> = (
@@ -80,7 +77,7 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   environment: object = {},
 ): Promise<ActionOutcome<R>> {
   if (!(readRows in store)) throw new TypeError("an action is performed on a store made by `new Store`");
-  const commits: Commit[] = [];
+  const commits: Link<unknown>[] = [];
   const data = await runOf(action)(request, new NotingStore(store as Store & RowKeeper, commits), environment);
   return { result: encodeObject(action.resultSchema, data), commits };
 }
@@ -88,9 +85,9 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
 /** Its rows are those of the store it is over, so an action scans it as it would that store. */
 class NotingStore implements Store, RowKeeper {
   readonly #store: Store & RowKeeper;
-  readonly #commits: Commit[];
+  readonly #commits: Link<unknown>[];
 
-  constructor(store: Store & RowKeeper, commits: Commit[]) {
+  constructor(store: Store & RowKeeper, commits: Link<unknown>[]) {
     this.#store = store;
     this.#commits = commits;
   }
@@ -114,16 +111,13 @@ class NotingStore implements Store, RowKeeper {
     const stagedRoots = [...roots];
     const stagedStore = await this.#store.stage({ roots: stagedRoots, blobs });
     // What a store stages keeps rows.
-    return new NotingStagedStore(stagedStore as StagedStore & RowKeeper, () =>
-      this.#commits.push(...stagedRoots.map((root) => ({ root }))),
-    );
+    return new NotingStagedStore(stagedStore as StagedStore & RowKeeper, () => this.#commits.push(...stagedRoots));
   }
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
     const statementLinks = [...statements];
     await this.#store.record({ statements: statementLinks, blobs });
-    // A store records objects alone.
-    this.#commits.push(...statementLinks.map((statement) => ({ statement: statement as Link<EncodedObject> })));
+    this.#commits.push(...statementLinks);
   }
 
   blobs(): AsyncIterable<Link<unknown>> {

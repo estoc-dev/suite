@@ -25,6 +25,11 @@ export class SecretKeys {
     this.#keys = keys;
   }
 
+  schemeNamed(name: string): CurveScheme | undefined {
+    const scheme = this.#keys.schemeNamed(name);
+    return scheme !== undefined && isCurveScheme(scheme) ? scheme : undefined;
+  }
+
   encode(scheme: CurveScheme, secretKey: Uint8Array): SecretKeyObject {
     const signer = SoftwareSigner.fromSecretKey(scheme, secretKey);
     const key = this.#keys.encode(signer.key);

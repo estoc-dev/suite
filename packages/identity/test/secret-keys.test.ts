@@ -70,3 +70,17 @@ describe("a Secret Key", () => {
     expect(() => kit.secretKeys.encode(eip191, secret)).toThrow(/not one written here/);
   });
 });
+
+describe("the scheme Secret Keys give by a name", () => {
+  it.each(schemes)("is $name for its name", (scheme) => {
+    expect(secretKeys.schemeNamed(scheme.name)).toBe(scheme);
+  });
+
+  it("is none for the name of a scheme no curve signs in, or a name no scheme has", () => {
+    const plain: Scheme = { name: "plain", publicKeyLength: 32, verify: () => false };
+    const kit = loadIdentity([...schemes, plain]);
+    expect(kit.keys.schemeNamed("plain")).toBe(plain);
+    expect(kit.secretKeys.schemeNamed("plain")).toBeUndefined();
+    expect(kit.secretKeys.schemeNamed("ed448")).toBeUndefined();
+  });
+});

@@ -26,8 +26,10 @@ export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
    */
   readonly failures: readonly ItemFailure[];
   /**
-   * How many blobs the store held when the rows were read. A store only grows and the rows come of
-   * the blobs held alone, so the rows read while it holds as many are these.
+   * How many blobs were held where the rows were read: by the store, or by the staged store with
+   * its batch, which is not the count of the store it is staged on. Either only grows and the rows
+   * come of the blobs held alone, so the rows of the same index read there while it holds as many
+   * are these.
    */
   readonly blobCount: number;
 }
@@ -62,7 +64,6 @@ export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements
     return this.#derivedObjects.failures;
   }
 
-  /** The rows with those of `derivedObjects`, which were read from that many blobs. */
   including(derivedObjects: DerivedObjects<F>, blobCount: number): SortedRows<F, By> {
     if (derivedObjects === this.#derivedObjects && blobCount === this.blobCount) return this;
     const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);

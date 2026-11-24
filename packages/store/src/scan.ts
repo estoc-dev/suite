@@ -116,7 +116,7 @@ class LinksRead<T = unknown> {
 export class KeptRows {
   readonly #reader: Reader;
   readonly #blobsFrom: (start: number) => AsyncIterable<Link<unknown>>;
-  #lastRead: Promise<unknown> = Promise.resolve();
+  #lastRead: Promise<void> = Promise.resolve();
   #blobs = new ListedLinks();
   #records = new LinksRead<EncodedObject>();
   readonly #objectsByDerivation = new WeakMap<object, unknown>();
@@ -132,7 +132,11 @@ export class KeptRows {
       this.#blobs = await this.#blobs.adding(this.#blobsFrom(this.#blobs.links.length));
       return use(this.#rowsOf(this.#blobs));
     });
-    this.#lastRead = reading.catch(() => {});
+    // Only that the reading is done is kept, so what it gave goes when whoever asked for it lets go.
+    this.#lastRead = reading.then(
+      () => {},
+      () => {},
+    );
     return reading;
   }
 

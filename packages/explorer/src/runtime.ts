@@ -38,8 +38,8 @@ function pageIn<T>(rows: readonly T[], start: number, limit: number): { start: n
   return { start: first, rows: rows.slice(first, first + Math.max(limit, 0)) };
 }
 
-interface LinksRead {
-  readonly links: readonly Link<unknown>[];
+interface LinksRead<T = unknown> {
+  readonly links: readonly Link<T>[];
   readonly blobCount: number;
 }
 
@@ -62,13 +62,13 @@ const descriptionOf = (name: string, rowSchema: Schema, order: string[], readsBl
  * `read` gives links whose order only grows at the end, so a row keeps its place. `rowOf` says what
  * the blob of its link alone tells, so a page reads the blobs of that page and no others.
  */
-function listInWrittenOrder<F extends ValueMap>(
+function listInWrittenOrder<F extends ValueMap, T>(
   name: string,
   rowSchema: Schema<F>,
   readsBlobs: boolean,
   store: Store,
-  read: () => Promise<LinksRead>,
-  rowOf: (link: Link<unknown>, bytes: Uint8Array) => F,
+  read: () => Promise<LinksRead<T>>,
+  rowOf: (link: Link<T>, bytes: Uint8Array) => F,
 ): List {
   return {
     description: descriptionOf(name, rowSchema, [], readsBlobs),
@@ -101,7 +101,7 @@ function recordsList(store: Store): List {
       return { links: statements, blobCount };
     },
     (statement, bytes) => ({
-      statement: new LinkValue(statement as Link<EncodedObject>),
+      statement: new LinkValue(statement),
       schema: new LinkValue(schemaOf(bytes)),
     }),
   );

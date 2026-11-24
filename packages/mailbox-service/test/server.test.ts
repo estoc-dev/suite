@@ -21,18 +21,21 @@ import {
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
-import { MemoryBackend, recordSchema, Store, view } from "@estoc/store";
+import { MemoryBackend, recordSchema, Store, scan, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   accountOfferSchema,
   acknowledgementSchema,
+  acknowledgements,
+  locations,
   mailboxAcknowledgementSchema,
   mailboxOfferSchema,
   mailboxRequestSchema,
   pickupAnswerSchema,
   pickupRequestSchema,
+  recordedIdentityVersions,
   serviceSchema,
 } from "../src/index.ts";
 import type { MailboxService } from "../src/server.ts";
@@ -509,6 +512,44 @@ describe("a mailbox service", () => {
 
   it("refuses to start at a url that is not an origin", async () => {
     await expect(memoryService({ origin: "https://mail.example/inbox" })).rejects.toThrow(/is not an origin/);
+  });
+});
+
+describe("the store of a mailbox service that acknowledged an acceptance", () => {
+  async function acknowledged() {
+    const store = memoryStore();
+    const signedIdentity = await setUpService({ store });
+    const { service } = await memoryService({ store });
+    const { signature, data, offer, acceptId } = await rootOf(service);
+    const acceptance = await directAcceptance(offer);
+    const acknowledgement = await bundleOf(await post(service, acceptId, acceptance.file));
+    return { store, signedIdentity, service: signature, at: data.at, acceptance, acknowledgement };
+  }
+  async function dataOf<T>(rows: AsyncIterable<{ readonly data: T }>) {
+    const all: T[] = [];
+    for await (const { data } of rows) all.push(data);
+    return all;
+  }
+  const identifier = new LinkValue(serviceRoot.link);
+
+  it("has a location of the Service that the service signed", async () => {
+    const { store, service, at } = await acknowledged();
+    const rows = await dataOf((await scan(store, locations)).range([]));
+    expect(rows).toEqual([{ identifier, at, service: new LinkValue(service.link) }]);
+  });
+
+  it("has the acknowledgement by the acceptance it answers", async () => {
+    const { store, acceptance, acknowledgement } = await acknowledged();
+    const rows = await dataOf((await scan(store, acknowledgements)).range([]));
+    expect(rows).toEqual([
+      { acceptance: new LinkValue(acceptance.signature.link), acknowledgement: new LinkValue(acknowledgement.link) },
+    ]);
+  });
+
+  it("has the identity version that the service was set up with", async () => {
+    const { store, signedIdentity } = await acknowledged();
+    const rows = await dataOf((await scan(store, recordedIdentityVersions)).range([]));
+    expect(rows).toEqual([{ identifier, signedIdentity: new LinkValue(signedIdentity.link) }]);
   });
 });
 

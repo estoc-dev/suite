@@ -1,12 +1,5 @@
 import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
-import {
-  type Actor,
-  type IdentityKit,
-  identityKit,
-  type Signature,
-  type Signatures,
-  type SignedIdentityObject,
-} from "@estoc/identity";
+import { type Actor, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import { type Arrival, type MailboxData, mailboxSchema, type Pickup } from "@estoc/mailbox";
 import { httpTransport } from "@estoc/mailbox/http";
 import {
@@ -29,7 +22,7 @@ import { Intake, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import { openedMailboxesView } from "./acknowledgements.ts";
 import { BUNDLE_TYPE, PICKUP, readBody } from "./http.ts";
-import { type LocationsView, locationsView } from "./locations.ts";
+import { locationsView } from "./locations.ts";
 import {
   type AccountOfferData,
   accountOfferSchema,
@@ -46,6 +39,8 @@ import {
   pickupRequestSchema,
   serviceSchema,
 } from "./schemas.ts";
+
+const { signatures } = identityKit;
 
 // The answers hold an acceptance and a few blobs of the service's. The
 // client chose the service, so this only bounds what it reads.
@@ -71,7 +66,6 @@ type Posting = {
   readonly store: Store;
   readonly intake: Intake;
   readonly origin: EncodedObject<OriginData>;
-  readonly signatures: Signatures;
 };
 
 export interface Account {
@@ -193,7 +187,7 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   },
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
-  { intake, origin, signatures }: Posting,
+  { intake, origin }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
   const answer = await postSigned(to.url, signature, blobs, { statuses: [200, 201] });
   const stagedStore = await intake.stage(answer, origin);
@@ -281,14 +275,10 @@ class ServicePickup implements Pickup {
 export class Services {
   readonly #store: Store;
   readonly #intake: Intake;
-  readonly #signatures: Signatures;
-  readonly #locations: LocationsView;
 
-  constructor(store: Store, intake: Intake, kit: IdentityKit) {
+  constructor(store: Store, intake: Intake) {
     this.#store = store;
     this.#intake = intake;
-    this.#signatures = kit.signatures;
-    this.#locations = locationsView(kit.signatures);
   }
 
   /**
@@ -311,7 +301,7 @@ export class Services {
    * its `at`.
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
-    const locations = await view(this.#store, this.#locations);
+    const locations = await view(this.#store, locationsView);
     const people = await view(this.#store, peopleView);
     const [latest] = await locations.servicesOf(signedIdentity.identity.identifier, people);
     return latest === undefined ? undefined : this.#read(latest.link, this.#store);
@@ -327,9 +317,9 @@ export class Services {
     if (link === undefined) throw new Error(`the store has no record of opening a mailbox at ${transport.link}`);
     // It says only where to pick up, which a later identity version of the
     // service that does not list the key that signed it does not change.
-    const { signedIdentity, object } = await this.#signatures.read(link, this.#store);
+    const { signedIdentity, object } = await signatures.read(link, this.#store);
     const { request, pickupId } = (await readObject(this.#store, object, mailboxAcknowledgementSchema)).data;
-    const { object: requestObject } = (await readObject(this.#store, request.link, this.#signatures.schema)).data;
+    const { object: requestObject } = (await readObject(this.#store, request.link, signatures.schema)).data;
     const { offer, key: requestedKey } = (await readObject(this.#store, requestObject.link, mailboxRequestSchema)).data;
     if (requestedKey.length !== key.length || requestedKey.some((byte, at) => byte !== key[at]))
       throw new Error(`${mailbox} names another key than the one its transport was opened for`);
@@ -343,7 +333,7 @@ export class Services {
 
   async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {
     const people = await view(reader, peopleView);
-    const serviceSignature = await this.#signatures.read(link, reader);
+    const serviceSignature = await signatures.read(link, reader);
     await checkHonors(people, serviceSignature);
     const { signedIdentity, object } = serviceSignature;
     const { identifier } = signedIdentity.identity;
@@ -353,7 +343,6 @@ export class Services {
       store: this.#store,
       intake: this.#intake,
       origin: this.#originOf(origin),
-      signatures: this.#signatures,
     };
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;
@@ -421,5 +410,5 @@ async function bundleIn(response: Response, statuses: readonly number[], limit =
 }
 
 export function loadServices(store: Store, { clock = Date.now }: { readonly clock?: () => number } = {}): Services {
-  return new Services(store, new Intake(store, clock), identityKit);
+  return new Services(store, new Intake(store, clock));
 }

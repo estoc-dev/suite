@@ -87,7 +87,7 @@ export async function setUpService({
   readonly by?: Signer;
   readonly store: Store;
 }) {
-  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { kit, store, at: start });
+  return setUpNotary(keyringOf(by), keys.encode(by.key).link, { store, at: start });
 }
 
 async function recordsIdentityVersion(store: Store): Promise<boolean> {

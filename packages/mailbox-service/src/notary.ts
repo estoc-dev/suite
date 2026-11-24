@@ -1,28 +1,13 @@
-import type {
-  Actor,
-  IdentityKit,
-  Signature,
-  Signatures,
-  SignedIdentities,
-  SignedIdentityObject,
-  Signer,
-} from "@estoc/identity";
+import { type Actor, identityKit, type Signature, type SignedIdentityObject, type Signer } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
-import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
+import { type Bytes, type EncodedObject, type Link, LinkValue } from "@estoc/object";
 import { type People, peopleView } from "@estoc/people";
-import { type DataOf, link, schema } from "@estoc/schema";
-import {
-  indexOver,
-  type Store,
-  selectedRecords,
-  type View,
-  view,
-  writtenObjectsOf,
-  writtenObjectsOver,
-} from "@estoc/store";
+import type { DataOf } from "@estoc/schema";
+import { type Store, type View, view, writtenObjectsOf } from "@estoc/store";
+import { recordedIdentityVersions } from "./recorded-identity-versions.ts";
 import { recordedSignatures } from "./recorded-signatures.ts";
 
-type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
+const { publish, signatures, signedIdentities } = identityKit;
 
 /**
  * It records what it signs, which is how a service tells its own signatures from ones that only
@@ -30,13 +15,11 @@ type NotaryOptions = { readonly kit: IdentityKit; readonly store: Store };
  */
 class Notary {
   readonly #actor: Actor;
-  readonly #signatures: Signatures;
   readonly #store: Store;
   readonly #clock: () => number;
 
-  constructor(actor: Actor, { kit, store, clock }: NotaryOptions & { readonly clock: () => number }) {
+  constructor(actor: Actor, store: Store, clock: () => number) {
     this.#actor = actor;
-    this.#signatures = kit.signatures;
     this.#store = store;
     this.#clock = clock;
   }
@@ -53,12 +36,12 @@ class Notary {
   }
 
   async renew(link: Link<unknown>, people: People): Promise<Link<unknown>> {
-    const signature = await this.#signatures.read(link, this.#store);
+    const signature = await signatures.read(link, this.#store);
     if (await people.honors(signature)) return link;
     const recordedLinks = await (await view(this.#store, recordedSignaturesView)).signaturesOver(signature.object);
     for (const recordedLink of recordedLinks) {
       if (recordedLink === link) continue;
-      const recordedSignature = await this.#signatures.read(recordedLink, this.#store);
+      const recordedSignature = await signatures.read(recordedLink, this.#store);
       if (await people.honors(recordedSignature)) return recordedLink;
     }
     const renewedSignature = await this.#actor.sign({ link: signature.object });
@@ -81,10 +64,10 @@ export type { Notary };
 export async function setUpNotary(
   keyring: Pick<Keyring, "signerFor">,
   root: Link<unknown>,
-  { kit, store, at }: NotaryOptions & { readonly at: number },
+  { store, at }: { readonly store: Store; readonly at: number },
 ): Promise<SignedIdentityObject> {
   const person = await (await view(store, peopleView)).personIdentifiedBy(root);
-  const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
+  const signedIdentity = (await person?.current()) ?? (await publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
   await store.record(writtenObjectsOf([signedIdentity.link], at));
   return signedIdentity;
@@ -92,13 +75,12 @@ export async function setUpNotary(
 
 export async function loadNotary(
   keyring: Pick<Keyring, "signerFor">,
-  { clock, ...options }: NotaryOptions & { readonly clock: () => number },
+  { store, clock }: { readonly store: Store; readonly clock: () => number },
 ): Promise<Notary> {
-  const { kit, store } = options;
-  const recorded = await (await view(store, recordedIdentityView(kit.signedIdentities))).signedIdentity();
+  const recorded = await (await view(store, recordedIdentityView)).signedIdentity();
   const currentOf = async (inHand: SignedIdentityObject) => (await view(store, peopleView)).current(inHand);
   const signer = await rootSigner(keyring, recorded.identity.root.link);
-  return new Notary(kit.signatures.actor(signer, recorded, currentOf), { ...options, clock });
+  return new Notary(signatures.actor(signer, recorded, currentOf), store, clock);
 }
 
 /**
@@ -111,41 +93,28 @@ async function rootSigner(keyring: Pick<Keyring, "signerFor">, root: Link<unknow
   return signer;
 }
 
-const recordedIdentitySchema = schema("Recorded identity version", { identifier: link(), signedIdentity: link() });
-
-type RecordedIdentityView = View<
-  DataOf<typeof recordedIdentitySchema>,
-  readonly ["identifier", "signedIdentity"],
+const recordedIdentityView: View<
+  DataOf<typeof recordedIdentityVersions.rowSchema>,
+  typeof recordedIdentityVersions.order,
   { signedIdentity(): Promise<SignedIdentityObject> }
->;
-
-function recordedIdentityView(signedIdentities: SignedIdentities): RecordedIdentityView {
-  return {
-    index: indexOver(
-      selectedRecords(writtenObjectsOver(objectsOf(signedIdentities.schema))),
-      recordedIdentitySchema,
-      async function* (object, reader) {
-        const { identifier } = (await signedIdentities.verify(object, reader)).identity;
-        yield { identifier: new LinkValue(identifier), signedIdentity: new LinkValue(object.link) };
-      },
-    ).orderedBy("identifier", "signedIdentity"),
-    read: (rows, reader) => ({
-      async signedIdentity() {
-        const identifiers = new Set<Link<unknown>>();
-        let recorded: Link<unknown> | undefined;
-        for await (const { data } of rows.range([])) {
-          identifiers.add(data.identifier.link);
-          recorded = data.signedIdentity.link;
-        }
-        if (recorded === undefined || identifiers.size > 1)
-          throw new Error(
-            `the store records identity versions of ${identifiers.size} identities, where a service takes one`,
-          );
-        return signedIdentities.read(recorded, reader);
-      },
-    }),
-  };
-}
+> = {
+  index: recordedIdentityVersions,
+  read: (rows, reader) => ({
+    async signedIdentity() {
+      const identifiers = new Set<Link<unknown>>();
+      let recorded: Link<unknown> | undefined;
+      for await (const { data } of rows.range([])) {
+        identifiers.add(data.identifier.link);
+        recorded = data.signedIdentity.link;
+      }
+      if (recorded === undefined || identifiers.size > 1)
+        throw new Error(
+          `the store records identity versions of ${identifiers.size} identities, where a service takes one`,
+        );
+      return signedIdentities.read(recorded, reader);
+    },
+  }),
+};
 
 const recordedSignaturesView: View<
   DataOf<typeof recordedSignatures.rowSchema>,

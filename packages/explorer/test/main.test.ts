@@ -100,7 +100,10 @@ describe("main.ts", { timeout: 20_000 }, () => {
       "Held Mailbox Keys",
       "Mailbox Grants",
       "Arrivals of Roots and Signed Identities",
+      "Locations",
+      "Acknowledgements",
       "Opened Mailboxes",
+      "Recorded Identity Versions",
       "Recorded Signatures",
     ]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
@@ -110,7 +113,10 @@ describe("main.ts", { timeout: 20_000 }, () => {
     ]);
     expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
     expect(await client.page("Mailbox Grants", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Locations", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Acknowledgements", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
     expect(await client.page("Opened Mailboxes", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Recorded Identity Versions", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
     const recorded = await client.page("Recorded Signatures", 0, 10);
     expect(recorded.rowCount).toBe(1);
     const [recordedSignature] = recorded.rows.map((bytes) => decodeObject(bytes, recordedSignatures.rowSchema).data);

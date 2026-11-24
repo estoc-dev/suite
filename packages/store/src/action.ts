@@ -6,8 +6,10 @@ import type { RecordedStatements, StagedStore, Store } from "./store.ts";
 export interface ActionOutcome<R extends ValueMap> {
   readonly result: EncodedObject<R>;
   /**
-   * The roots written and the statements recorded, in the order their batches went through. Each
-   * says that its batch went through, and not that the store held less before it.
+   * The roots written and the statements recorded by the batches that went through.
+   * - The links of a batch are in the order it gave them, and a batch begun after another went
+   *   through comes after it. Batches under way at once come in either order.
+   * - Each says that its batch went through, and not that the store held less before it.
    */
   readonly commits: readonly Link<unknown>[];
 }
@@ -42,8 +44,10 @@ export class Action<Q extends ValueMap, R extends ValueMap, E extends object = o
 }
 
 /**
- * `run` answers with the data of the result and does not say what it committed: that is read off
- * the store it is given.
+ * - `run` answers with the data of the result and does not say what it committed: that is read off
+ *   the store it is given.
+ * - A batch `run` leaves under way when it answers is waited for. A batch begun on that store after
+ *   `run` answered goes through as any other and is not among the commits.
  */
 export function actionOver<Q extends ValueMap, R extends ValueMap, E extends object = object>(
   requestSchema: Schema<Q>,
@@ -77,19 +81,46 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   environment: object = {},
 ): Promise<ActionOutcome<R>> {
   if (!(readRows in store)) throw new TypeError("an action is performed on a store made by `new Store`");
-  const commits: Link<unknown>[] = [];
-  const data = await runOf(action)(request, new NotingStore(store as Store & RowKeeper, commits), environment);
-  return { result: encodeObject(action.resultSchema, data), commits };
+  const commitNotes = new CommitNotes();
+  const data = await runOf(action)(
+    // The type of a request admits what its schema refuses, such as a field the schema does not name.
+    action.requestSchema.validate(request),
+    new NotingStore(store as Store & RowKeeper, commitNotes),
+    environment,
+  );
+  return { result: encodeObject(action.resultSchema, data), commits: await commitNotes.settledLinks() };
 }
 
-/** Its rows are those of the store it is over, so an action scans it as it would that store. */
+class CommitNotes {
+  readonly #links: Link<unknown>[] = [];
+  readonly #batchesUnderWay = new Set<Promise<void>>();
+
+  /** Notes `links` once `batch` goes through. */
+  note(links: readonly Link<unknown>[], batch: Promise<void>): Promise<void> {
+    const noted = batch.then(() => {
+      // One at a time, since a batch may give more links than a call takes arguments.
+      for (const link of links) this.#links.push(link);
+    });
+    const forget = () => void this.#batchesUnderWay.delete(noted);
+    this.#batchesUnderWay.add(noted);
+    noted.then(forget, forget);
+    return noted;
+  }
+
+  /** The links noted once no batch is under way. A link noted after that is not among them. */
+  async settledLinks(): Promise<readonly Link<unknown>[]> {
+    while (this.#batchesUnderWay.size > 0) await Promise.allSettled(this.#batchesUnderWay);
+    return [...this.#links];
+  }
+}
+
 class NotingStore implements Store, RowKeeper {
   readonly #store: Store & RowKeeper;
-  readonly #commits: Link<unknown>[];
+  readonly #commitNotes: CommitNotes;
 
-  constructor(store: Store & RowKeeper, commits: Link<unknown>[]) {
+  constructor(store: Store & RowKeeper, commitNotes: CommitNotes) {
     this.#store = store;
-    this.#commits = commits;
+    this.#commitNotes = commitNotes;
   }
 
   [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
@@ -102,22 +133,22 @@ class NotingStore implements Store, RowKeeper {
     return this.#store.get(link);
   }
 
-  async write(batch: Batch): Promise<void> {
-    await (await this.stage(batch)).commit();
+  async write({ roots, blobs }: Batch): Promise<void> {
+    // Read once, since an iterable may give its roots only the first time.
+    const writtenRoots = [...roots];
+    await this.#commitNotes.note(writtenRoots, this.#store.write({ roots: writtenRoots, blobs }));
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    // Read once, since an iterable may give its roots only the first time.
     const stagedRoots = [...roots];
     const stagedStore = await this.#store.stage({ roots: stagedRoots, blobs });
     // What a store stages keeps rows.
-    return new NotingStagedStore(stagedStore as StagedStore & RowKeeper, () => this.#commits.push(...stagedRoots));
+    return new NotingStagedStore(stagedStore as StagedStore & RowKeeper, stagedRoots, this.#commitNotes);
   }
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
     const statementLinks = [...statements];
-    await this.#store.record({ statements: statementLinks, blobs });
-    this.#commits.push(...statementLinks);
+    await this.#commitNotes.note(statementLinks, this.#store.record({ statements: statementLinks, blobs }));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {
@@ -139,11 +170,13 @@ class NotingStore implements Store, RowKeeper {
 
 class NotingStagedStore implements StagedStore, RowKeeper {
   readonly #stagedStore: StagedStore & RowKeeper;
-  readonly #note: () => void;
+  readonly #roots: readonly Link<unknown>[];
+  readonly #commitNotes: CommitNotes;
 
-  constructor(stagedStore: StagedStore & RowKeeper, note: () => void) {
+  constructor(stagedStore: StagedStore & RowKeeper, roots: readonly Link<unknown>[], commitNotes: CommitNotes) {
     this.#stagedStore = stagedStore;
-    this.#note = note;
+    this.#roots = roots;
+    this.#commitNotes = commitNotes;
   }
 
   [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
@@ -157,7 +190,6 @@ class NotingStagedStore implements StagedStore, RowKeeper {
   }
 
   async commit(): Promise<void> {
-    await this.#stagedStore.commit();
-    this.#note();
+    await this.#commitNotes.note(this.#roots, this.#stagedStore.commit());
   }
 }

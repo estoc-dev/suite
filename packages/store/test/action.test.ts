@@ -1,6 +1,6 @@
 import { encodeObject, type Link, LinkValue, objectsOf } from "@estoc/object";
 import { array, boolean, link, schema, string } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   actionOver,
   indexOver,
@@ -40,10 +40,10 @@ const addCard = actionOver(
   schema("Add Card", { name: string() }),
   schema("Added Card", { card: link() }),
   async ({ name }, store) => {
-    const added = card(name);
-    await store.write({ roots: [added.link], blobs: [added.bytes, ...cardSchema.blobs] });
-    await store.record(writtenObjectsOf([added.link], 0));
-    return { card: new LinkValue(added.link) };
+    const addedCard = card(name);
+    await store.write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] });
+    await store.record(writtenObjectsOf([addedCard.link], 0));
+    return { card: new LinkValue(addedCard.link) };
   },
 );
 
@@ -98,13 +98,13 @@ describe("an action performed on a store", () => {
   it("gives the roots of a batch it staged once the batch is committed, and scans what it staged", async () => {
     const store = newStore();
     await perform(store, addCard, { name: "king" });
-    const left = await perform(store, draftCard, { name: "ace", isKept: false });
-    expect(left.result.data.names).toEqual(["ace", "king"]);
-    expect(left.commits).toEqual([]);
+    const discardedDraft = await perform(store, draftCard, { name: "ace", isKept: false });
+    expect(discardedDraft.result.data.names).toEqual(["ace", "king"]);
+    expect(discardedDraft.commits).toEqual([]);
     expect(await store.get(card("ace").link)).toBeUndefined();
-    const kept = await perform(store, draftCard, { name: "ace", isKept: true });
-    expect(kept.result.data.names).toEqual(["ace", "king"]);
-    expect(kept.commits).toEqual([card("ace").link]);
+    const keptDraft = await perform(store, draftCard, { name: "ace", isKept: true });
+    expect(keptDraft.result.data.names).toEqual(["ace", "king"]);
+    expect(keptDraft.commits).toEqual([card("ace").link]);
     expect(await cardNamesIn(store)).toEqual(["ace", "king"]);
   });
 
@@ -121,9 +121,9 @@ describe("an action performed on a store", () => {
     const addAfterRefusal = actionOver(addCard.requestSchema, addCard.resultSchema, async ({ name }, store) => {
       await expect(store.write({ roots: [card("absent").link], blobs: [] })).rejects.toThrow(RefusedBatch);
       await expect(store.record({ statements: [card("absent").link], blobs: [] })).rejects.toThrow(RefusedBatch);
-      const added = card(name);
-      await store.write({ roots: [added.link], blobs: [added.bytes, ...cardSchema.blobs] });
-      return { card: new LinkValue(added.link) };
+      const addedCard = card(name);
+      await store.write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] });
+      return { card: new LinkValue(addedCard.link) };
     });
     const { commits } = await perform(newStore(), addAfterRefusal, { name: "ace" });
     expect(commits).toEqual([card("ace").link]);
@@ -149,14 +149,80 @@ describe("an action performed on a store", () => {
     expect(await cardNamesIn(store)).toEqual(["ace", "king"]);
   });
 
+  it("gives every root of a batch with more roots than a call takes arguments", async () => {
+    const roots = new Array<Link<unknown>>(150_000).fill(card("ace").link);
+    const addMany = actionOver(schema("Add Many Cards", {}), schema("Added Many Cards", {}), async (_, store) => {
+      await store.write({ roots, blobs: [card("ace").bytes, ...cardSchema.blobs] });
+      return {};
+    });
+    const { commits } = await perform(newStore(), addMany, {});
+    expect(commits).toEqual(roots);
+  });
+
+  it("gives the commits of batches under way at once, in either order", async () => {
+    const addBoth = actionOver(schema("Add Both Cards", {}), schema("Added Both Cards", {}), async (_, store) => {
+      const stagedStore = await store.stage({
+        roots: [card("king").link],
+        blobs: [card("king").bytes, ...cardSchema.blobs],
+      });
+      const { statements, blobs } = writtenObjectsOf([card("ace").link], 0);
+      await Promise.all([
+        store.record({ statements, blobs: [...blobs, card("ace").bytes, ...cardSchema.blobs] }),
+        stagedStore.commit(),
+      ]);
+      return {};
+    });
+    const { commits } = await perform(newStore(), addBoth, {});
+    expect(commits).toHaveLength(2);
+    expect(commits).toEqual(expect.arrayContaining([card("king").link, writtenAt(card("ace"), 0).link]));
+  });
+
+  it("gives the commits of a batch it began and did not wait for", async () => {
+    const batchesUnderWay: Promise<void>[] = [];
+    const addWithoutWaiting = actionOver(addCard.requestSchema, addCard.resultSchema, ({ name }, store) => {
+      const addedCard = card(name);
+      batchesUnderWay.push(store.write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] }));
+      return { card: new LinkValue(addedCard.link) };
+    });
+    const store = newStore();
+    const { commits } = await perform(store, addWithoutWaiting, { name: "ace" });
+    expect(commits).toEqual([card("ace").link]);
+    expect(await cardNamesIn(store)).toEqual(["ace"]);
+    await Promise.all(batchesUnderWay);
+  });
+
+  it("gives no commit of a batch begun after it answered", async () => {
+    const storesGiven: Store[] = [];
+    const keepStore = actionOver(schema("Keep Store", {}), schema("Kept Store", {}), (_, store) => {
+      storesGiven.push(store);
+      return {};
+    });
+    const store = newStore();
+    const { commits } = await perform(store, keepStore, {});
+    const [storeGiven] = storesGiven;
+    assert.exists(storeGiven);
+    await storeGiven.write({ roots: [card("ace").link], blobs: [card("ace").bytes, ...cardSchema.blobs] });
+    expect(commits).toEqual([]);
+    expect(await cardNamesIn(store)).toEqual(["ace"]);
+  });
+
+  it("is not run with a request its request schema refuses", async () => {
+    const store = newStore();
+    const request = { name: "ace", suit: "spades" };
+    await expect(perform(store, addCard, request)).rejects.toThrow("does not fit its schema");
+    expect(await blobsOf(store)).toEqual([]);
+  });
+
   it("gives the commits of the actions it performs itself, among its own", async () => {
     const addPair = actionOver(
       schema("Add Pair", { first: string(), second: string() }),
       schema("Added Pair", { cards: array(link()) }),
       async ({ first, second }, store) => {
-        const added = await perform(store, addCard, { name: first });
-        await store.record(writtenObjectsOf([added.result.data.card.link], 1));
-        return { cards: [added.result.data.card, (await perform(store, addCard, { name: second })).result.data.card] };
+        const firstOutcome = await perform(store, addCard, { name: first });
+        const firstCard = firstOutcome.result.data.card;
+        await store.record(writtenObjectsOf([firstCard.link], 1));
+        const secondOutcome = await perform(store, addCard, { name: second });
+        return { cards: [firstCard, secondOutcome.result.data.card] };
       },
     );
     const { commits } = await perform(newStore(), addPair, { first: "ace", second: "king" });
@@ -174,10 +240,10 @@ describe("an action performed on a store", () => {
       addCard.requestSchema,
       addCard.resultSchema,
       async ({ name }, store, { clock }: { readonly clock: () => number }) => {
-        const added = card(name);
-        await store.write({ roots: [added.link], blobs: [added.bytes, ...cardSchema.blobs] });
-        await store.record(writtenObjectsOf([added.link], clock()));
-        return { card: new LinkValue(added.link) };
+        const addedCard = card(name);
+        await store.write({ roots: [addedCard.link], blobs: [addedCard.bytes, ...cardSchema.blobs] });
+        await store.record(writtenObjectsOf([addedCard.link], clock()));
+        return { card: new LinkValue(addedCard.link) };
       },
     );
     const store = newStore();

@@ -173,7 +173,7 @@ export class MailboxOffer {
     });
     await this.#posting.store.record({
       statements: [openedMailbox.link],
-      blobs: blobsOf(openedMailbox, blobsOf(transport)),
+      blobs: [...blobsOf(openedMailbox), ...blobsOf(transport)],
     });
     return transport;
   }

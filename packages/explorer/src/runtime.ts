@@ -54,8 +54,8 @@ async function heldBytesOf(store: Store, blob: Link<unknown>): Promise<Uint8Arra
 
 /**
  * - The rows are in the order of the links of `origin`, so a row keeps its place.
- * - `rowOf` says what the blob of its link alone tells, so a page reads the blobs of that page and
- *   no others.
+ * - `rowOf` says what the blob of its link alone tells, so the rows of a page are made from the
+ *   blobs of that page and no others.
  */
 function listInWrittenOrder<F extends ValueMap, T>(
   name: string,
@@ -104,10 +104,7 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, heldBlobs, (blob, 
 
 type LinkPair = readonly [first: Link<unknown>, second: Link<unknown>];
 
-/**
- * - A row holds a pair under the two fields of `order`, the first of the pair under the first.
- * - The rows come of more than the blobs of one page, so each page reads every blob held.
- */
+/** The rows come of more than the blobs of one page, so each page reads every blob held. */
 function listOfSortedPairs<F extends { readonly [field: string]: LinkValue<unknown> }>(
   name: string,
   rowSchema: Schema<F>,

@@ -1,15 +1,6 @@
 import type { Bundle } from "@estoc/bundle";
 import type { Actor } from "@estoc/identity";
-import {
-  type Bytes,
-  blobsOf,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  readObject,
-  schemaOf,
-} from "@estoc/object";
+import { type Bytes, blobsOf, type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { secretSchema } from "@estoc/schema";
 import { Intake, RefusedBatch, type Store, scan, writtenObjectsOf } from "@estoc/store";
 import { Correspondence } from "./correspondence.ts";
@@ -59,8 +50,9 @@ export class Post {
     const secretKey = crypto.getRandomValues(new Uint8Array(32));
     const key = await MailboxKey.fromSecretKey(secretKey);
     const { bytes } = await makeTransport(key.publicKey);
-    const transport = decodeTransport(bytes, this.#transports)?.object;
-    if (transport === undefined) throw new Error(`no transport takes ${schemaOf(bytes)}`);
+    const decoded = decodeTransport(bytes, this.#transports);
+    if (decoded.transport === undefined) throw new Error(`no transport takes ${decoded.schema}`);
+    const transport = decoded.object;
     const mailbox = encodeObject(mailboxSchema, {
       key: key.publicKey,
       transport: new LinkValue(transport.link),

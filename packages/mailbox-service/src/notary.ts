@@ -31,7 +31,7 @@ class Notary {
   /** `blobs` hold what the closure of `object` takes besides the object and its schema. */
   async sign(object: EncodedObject, blobs: readonly Bytes<unknown>[] = []): Promise<Signature> {
     const signature = await this.#actor.sign(object);
-    await this.#write(signature, blobsOf(object, blobs));
+    await this.#write(signature, [...blobsOf(object), ...blobs]);
     return signature;
   }
 

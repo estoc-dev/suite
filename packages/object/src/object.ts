@@ -35,12 +35,8 @@ export function encodeObject<F extends ValueMap>(
   return { ...decodeObject(bytes, schema), bytes };
 }
 
-/** The object and the blobs of its schema, then `carried`, each blob once. */
-export function blobsOf(object: EncodedObject, carried: Iterable<Uint8Array> = []): Uint8Array[] {
-  const blobs = new Map<Link<unknown>, Uint8Array>([[object.link, object.bytes]]);
-  for (const bytes of object.schema.blobs) blobs.set(linkOf(bytes), bytes);
-  for (const bytes of carried) blobs.set(linkOf(bytes), bytes);
-  return [...blobs.values()];
+export function blobsOf(object: EncodedObject): Uint8Array[] {
+  return [object.bytes, ...object.schema.blobs];
 }
 
 export class AbsentBlob extends Error {

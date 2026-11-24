@@ -1,5 +1,4 @@
 import {
-  blobsOf,
   digestOf,
   type EncodedObject,
   encodeObject,
@@ -15,6 +14,7 @@ import {
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { LRUCache } from "lru-cache";
+import { distinctBlobsOf } from "./blobs.ts";
 import { signerOf, signingFunction } from "./identity.ts";
 import type { KeyObject } from "./key/interface.ts";
 import type { SignedIdentities, SignedIdentityObject } from "./signed-identity.ts";
@@ -143,7 +143,7 @@ export class Signatures {
       key,
       object,
       signature: value,
-      blobs: blobsOf(signature, signedIdentity.blobs),
+      blobs: distinctBlobsOf(signature, signedIdentity.blobs),
     };
     this.#cache.set(signature.link, verifiedSignature);
     return verifiedSignature;

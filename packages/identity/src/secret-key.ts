@@ -1,13 +1,6 @@
-import {
-  blobsOf,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  type Reader,
-  readObject,
-} from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
 import { type DataOf, link, schema, secretSchema } from "@estoc/schema";
+import { distinctBlobsOf } from "./blobs.ts";
 import { type CurveScheme, isCurveScheme } from "./key/curves.ts";
 import { isSameKey, type KeyObject, type Scheme } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
@@ -70,5 +63,5 @@ function secretKeyOf(
   signer: Signer,
   secret: EncodedObject,
 ): SecretKeyObject {
-  return { link: object.link, key, signer, blobs: blobsOf(object, [...blobsOf(secret), ...key.blobs]) };
+  return { link: object.link, key, signer, blobs: distinctBlobsOf(object, [...distinctBlobsOf(secret), ...key.blobs]) };
 }

@@ -4,6 +4,7 @@ import { encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { MailboxKey, mailboxAt, mailboxSchema, UndeliveredMessage } from "../src/index.ts";
+import { decodeTransport } from "../src/mailbox.ts";
 import { mailboxBundle } from "./mailbox-bundle.ts";
 import { MemoryNetwork } from "./memory-network.ts";
 
@@ -109,5 +110,14 @@ describe("a mailbox at a link", () => {
     const making = mailboxIn(mailbox());
     await expect(making).rejects.toThrow(UndeliveredMessage);
     await expect(making).rejects.toMatchObject({ kind: "gone" });
+  });
+});
+
+describe("a transport object that no transport given takes", () => {
+  it("is decoded to the schema it names, and to no transport", () => {
+    expect(decodeTransport(otherTransport.bytes, options.transports)).toEqual({
+      schema: otherTransportSchema.link,
+      transport: undefined,
+    });
   });
 });

@@ -1,5 +1,4 @@
 import {
-  blobsOf,
   digestOf,
   type EncodedObject,
   encodeObject,
@@ -11,6 +10,7 @@ import {
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { LRUCache } from "lru-cache";
+import { distinctBlobsOf } from "./blobs.ts";
 import type { Identities, IdentityObject } from "./identity.ts";
 import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";
@@ -74,7 +74,7 @@ export class SignedIdentities {
     if (!verify(identity.root, digestOf(identity.link), signature)) {
       throw new Error(`the root of ${identity.link} did not sign ${object.link}`);
     }
-    const signedIdentity = { link: object.link, identity, signature, blobs: blobsOf(object, identity.blobs) };
+    const signedIdentity = { link: object.link, identity, signature, blobs: distinctBlobsOf(object, identity.blobs) };
     this.#cache.set(object.link, signedIdentity);
     return signedIdentity;
   }

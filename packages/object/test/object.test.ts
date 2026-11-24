@@ -75,21 +75,9 @@ describe("an object", () => {
   });
 });
 
-describe("the blobs of an object", () => {
+test("the blobs of an object are the object and the blobs of its schema", () => {
   const object = encodeObject(login, greeting);
-
-  it("are the object and the blobs of its schema", () => {
-    expect(blobsOf(object)).toEqual([object.bytes, ...login.blobs]);
-  });
-
-  it("are followed by what it carries, each blob once", () => {
-    const carried = encodeObject(anything, greeting);
-    expect(blobsOf(object, [carried.bytes, ...login.blobs, object.bytes])).toEqual([
-      object.bytes,
-      ...login.blobs,
-      carried.bytes,
-    ]);
-  });
+  expect(blobsOf(object)).toEqual([object.bytes, ...login.blobs]);
 });
 
 describe("an object read by its link", () => {

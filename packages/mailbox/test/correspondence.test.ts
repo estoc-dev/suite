@@ -95,7 +95,6 @@ async function recordIdentityVersion({ store }: Person, identityVersion: SignedI
   await store.record(writtenObjectsOf([identityVersion.link], clock()));
 }
 
-// `from` gives `to` a grant of `mailboxes` and hands it over out of band.
 async function grantMailboxes(from: Person, to: Person, mailboxes: readonly OpenedInbox[]) {
   const signature = await from.correspondence.grant(
     to.signedIdentity,

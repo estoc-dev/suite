@@ -127,6 +127,12 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   );
 
 describe("the index of mailbox grants", () => {
+  const rowsIn = async (store: Store) => {
+    const rows = [];
+    for await (const { data } of (await scan(store, mailboxGrants)).range([])) rows.push(data);
+    return rows;
+  };
+
   it("gives the rows of the grants of one person by whom each is to and then by at", async () => {
     const alice = await person(1);
     const [lesser, greater] = [await person(2), await person(3)].sort((a, b) =>
@@ -136,15 +142,32 @@ describe("the index of mailbox grants", () => {
     const ofGreater = await give(alice, greater, [alice.inbox.mailbox], 1_000);
     const first = await give(alice, lesser, [alice.inbox.mailbox], 2_000);
 
-    const rows = [];
-    for await (const { data } of (await scan(alice.store, mailboxGrants)).range([])) rows.push(data);
     const rowOf = (to: Person, at: number, signature: Signature) => ({
       from: new LinkValue(alice.identifier),
       to: new LinkValue(to.identifier),
       at,
       signature: new LinkValue(signature.link),
     });
-    expect(rows).toEqual([rowOf(lesser, 2_000, first), rowOf(lesser, 3_000, second), rowOf(greater, 1_000, ofGreater)]);
+    expect(await rowsIn(alice.store)).toEqual([
+      rowOf(lesser, 2_000, first),
+      rowOf(lesser, 3_000, second),
+      rowOf(greater, 1_000, ofGreater),
+    ]);
+  });
+
+  it("leaves out an object that names the schema of a grant and does not fit it", async () => {
+    const [alice, bob, mallory] = await Promise.all([person(1), person(2), person(4)]);
+    const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
+    await send(alice, bob, signature.link);
+
+    const misfit = objectFormat.encode(
+      new ObjectValue(mailboxGrantSchema.link, { to: new LinkValue(bob.signedIdentity.link), at: 2_000 }),
+    );
+    const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
+    const blobs = [...misfitSignature.blobs, misfit, ...mailboxGrantSchema.blobs, ...bob.signedIdentity.blobs];
+    await bob.intake.receive(decodeBundle(encodeBundle(misfitSignature.link, blobs)));
+
+    expect((await rowsIn(bob.store)).map((row) => row.signature.link)).toEqual([signature.link]);
   });
 });
 
@@ -267,19 +290,6 @@ describe("the latest grant of one person to another", () => {
       ],
     });
     await send(mallory, bob, forgedSignature.link);
-
-    expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
-  });
-
-  it("is not one that came in over an object that names the schema of a grant and does not fit it", async () => {
-    const [alice, bob, mallory] = await Promise.all([person(1), person(2), person(4)]);
-    const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
-    await send(alice, bob, signature.link);
-
-    const misfit = objectFormat.encode(new ObjectValue(mailboxGrantSchema.link, { at: 2_000 }));
-    const misfitSignature = await mallory.actor.sign({ link: linkOf(misfit) });
-    const blobs = [...misfitSignature.blobs, misfit, ...mailboxGrantSchema.blobs];
-    await bob.intake.receive(decodeBundle(encodeBundle(misfitSignature.link, blobs)));
 
     expect((await grantFrom(bob, alice, bob))?.signature.link).toBe(signature.link);
   });

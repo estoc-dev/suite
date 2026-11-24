@@ -9,6 +9,7 @@ import { heldKeys } from "@estoc/keyring";
 import { signedIdentityArrivals } from "@estoc/mailbox";
 import { recordedSignatures } from "@estoc/mailbox-service";
 import { decodeObject, type Link, LinkValue, readObject } from "@estoc/object";
+import { identityVersions } from "@estoc/people";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
@@ -95,6 +96,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const client = new Client(socketChannel(socket));
     expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual([
       "Held Keys",
+      "Identity Versions",
       "Held Mailbox Keys",
       "Arrivals of Roots and Signed Identities",
       "Opened Mailboxes",
@@ -118,6 +120,10 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(
       arrivals.rows.map((bytes) => decodeObject(bytes, signedIdentityArrivals.rowSchema).data.object.link),
     ).toContain(signature.data.signedIdentity.link);
+    const versions = await client.page("Identity Versions", 0, 10);
+    expect(
+      versions.rows.map((bytes) => decodeObject(bytes, identityVersions.rowSchema).data.signedIdentity.link),
+    ).toEqual([signature.data.signedIdentity.link]);
   });
 
   it("refuses to start without its database, and does not make it", async () => {

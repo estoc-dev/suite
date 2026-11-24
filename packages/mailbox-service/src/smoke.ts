@@ -22,12 +22,11 @@ export interface TestMailbox {
  * too, and reaches the same mailbox.
  */
 export async function openTestMailbox(origin: string): Promise<TestMailbox> {
-  const { signatures, signedIdentities, publish } = identityKit;
+  const { signatures, publish } = identityKit;
   const signer = SoftwareSigner.fromSecretKey(ed25519, IDENTITY_KEY);
   const store = new Store(new MemoryBackend());
-  const seenPeople = peopleView({ signedIdentities });
   const actor = signatures.actor(signer, await publish(signer, { at: 0 }), async (inHand) =>
-    (await view(store, seenPeople)).current(inHand),
+    (await view(store, peopleView)).current(inHand),
   );
   const services = loadServices(store);
   const { account, mailbox: offer } = await services.fetch(origin);

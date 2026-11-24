@@ -23,7 +23,7 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
-import { checkHonors, type PeopleView, peopleView } from "@estoc/people";
+import { checkHonors, peopleView } from "@estoc/people";
 import type { DataOf } from "@estoc/schema";
 import { Intake, type StagedStore, type Store, view } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -72,7 +72,6 @@ type Posting = {
   readonly intake: Intake;
   readonly origin: EncodedObject<OriginData>;
   readonly signatures: Signatures;
-  readonly people: PeopleView;
 };
 
 export interface Account {
@@ -194,11 +193,11 @@ async function post<K extends string, F extends Readonly<Record<K, LinkValue<unk
   },
   signature: Signature,
   blobs: readonly Bytes<unknown>[],
-  { intake, origin, signatures, people }: Posting,
+  { intake, origin, signatures }: Posting,
 ): Promise<{ readonly signature: Signature; readonly data: F }> {
   const answer = await postSigned(to.url, signature, blobs, { statuses: [200, 201] });
   const stagedStore = await intake.stage(answer, origin);
-  const stagedPeople = await view(stagedStore, people);
+  const stagedPeople = await view(stagedStore, peopleView);
   const acknowledgement = await signatures.read(answer.link, stagedStore);
   await checkHonors(stagedPeople, acknowledgement);
   if (!stagedPeople.personOf(to.service).hasSigned(acknowledgement)) {
@@ -284,14 +283,12 @@ export class Services {
   readonly #intake: Intake;
   readonly #signatures: Signatures;
   readonly #locations: LocationsView;
-  readonly #people: PeopleView;
 
   constructor(store: Store, intake: Intake, kit: IdentityKit) {
     this.#store = store;
     this.#intake = intake;
     this.#signatures = kit.signatures;
     this.#locations = locationsView(kit.signatures);
-    this.#people = peopleView(kit);
   }
 
   /**
@@ -315,7 +312,7 @@ export class Services {
    */
   async latestOf(signedIdentity: SignedIdentityObject): Promise<Service | undefined> {
     const locations = await view(this.#store, this.#locations);
-    const people = await view(this.#store, this.#people);
+    const people = await view(this.#store, peopleView);
     const [latest] = await locations.servicesOf(signedIdentity.identity.identifier, people);
     return latest === undefined ? undefined : this.#read(latest.link, this.#store);
   }
@@ -345,7 +342,7 @@ export class Services {
   }
 
   async #read(link: Link<unknown>, reader: Store | StagedStore): Promise<Service> {
-    const people = await view(reader, this.#people);
+    const people = await view(reader, peopleView);
     const serviceSignature = await this.#signatures.read(link, reader);
     await checkHonors(people, serviceSignature);
     const { signedIdentity, object } = serviceSignature;
@@ -357,7 +354,6 @@ export class Services {
       intake: this.#intake,
       origin: this.#originOf(origin),
       signatures: this.#signatures,
-      people: this.#people,
     };
     let account: AccountOffer | undefined;
     let mailbox: MailboxOffer | undefined;

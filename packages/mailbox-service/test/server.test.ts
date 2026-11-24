@@ -56,7 +56,6 @@ import {
   setUpService,
   signatures,
   signedAtOrigins,
-  signedIdentities,
   signer,
   terms,
   writtenObjectsIn,
@@ -453,7 +452,7 @@ describe("a mailbox service", () => {
     expect(acceptanceResponse.status).toBe(201);
     const { signature } = await acknowledgementIn(acceptanceResponse);
     const mailbox = await openMailbox(service, actor);
-    const people = await view(store, peopleView({ signedIdentities }));
+    const people = await view(store, peopleView);
     for (const link of [signature.link, mailbox.link]) {
       const read = await signatures.read(link, store);
       expect(read.signedIdentity.link).toBe(crisis.link);
@@ -522,7 +521,7 @@ describe("a mailbox service first started on a store that holds identity version
     const { service } = await memoryService({ store });
     const { signature, offer } = await rootOf(service);
     expect(signature.signedIdentity.link).toBe(listing.link);
-    const people = await view(store, peopleView({ signedIdentities }));
+    const people = await view(store, peopleView);
     expect(await people.honors(await signatures.actor(agent, listing, identityVersionInHand).sign(offer))).toBe(true);
   });
 
@@ -626,7 +625,7 @@ describe("a mailbox service started again", () => {
     const after = await rootOf(again);
     expect(after.signature.signedIdentity.link).toBe(crisis.link);
     expect(after.acceptId).toBe(before.acceptId);
-    const people = await view(store, peopleView({ signedIdentities }));
+    const people = await view(store, peopleView);
     expect(await people.honors(after.signature)).toBe(true);
     await openMailbox(again, actor, keyOf(0x22));
     expect((await post(again, mailbox.sendId, ciphertextOf(1))).status).toBe(204);
@@ -652,7 +651,7 @@ describe("a mailbox service started again", () => {
     const repeatedRequestResponse = await postMailboxRequest(again, file);
     expect(repeatedRequestResponse.status).toBe(200);
     const renewedMailboxAcknowledgement = await mailboxAcknowledgementIn(repeatedRequestResponse);
-    const people = await view(store, peopleView({ signedIdentities }));
+    const people = await view(store, peopleView);
     for (const [renewal, first] of [
       [renewedAccountAcknowledgement, firstAccountAcknowledgement],
       [renewedMailboxAcknowledgement, firstMailboxAcknowledgement],
@@ -1064,7 +1063,7 @@ describe("a mailbox service's offer of mailboxes", () => {
     expect([openerAnswer.status, racerAnswer.status]).toEqual([201, 200]);
     const [first, second] = await Promise.all([openerAnswer, racerAnswer].map(mailboxAcknowledgementIn));
     expect(second?.signature.object).toBe(first?.signature.object);
-    const people = await view(store, peopleView({ signedIdentities }));
+    const people = await view(store, peopleView);
     assert.exists(second);
     expect(second.signature.signedIdentity.link).toBe(crisis.link);
     expect(await people.honors(second.signature)).toBe(true);

@@ -19,7 +19,7 @@ import {
   schemaOf,
   type ValueMap,
 } from "@estoc/object";
-import { type People, type PeopleView, peopleView } from "@estoc/people";
+import { type People, peopleView } from "@estoc/people";
 import { type Store, sendableBlobs, view } from "@estoc/store";
 import { hex } from "@scure/base";
 import type { Accounts } from "./accounts.ts";
@@ -81,7 +81,6 @@ type SignedRequest = {
 class MailboxService {
   readonly #notary: Notary;
   readonly #locations: LocationsView;
-  readonly #people: PeopleView;
   readonly #acknowledgements: AcknowledgementsView;
   readonly #signatures: Signatures;
   readonly #store: Store;
@@ -92,12 +91,10 @@ class MailboxService {
   constructor(
     notary: Notary,
     kit: IdentityKit,
-    people: PeopleView,
     { store, accounts, mailboxes, clock }: Required<Pick<ServiceOptions, "store" | "accounts" | "mailboxes" | "clock">>,
   ) {
     this.#notary = notary;
     this.#locations = locationsView(kit.signatures);
-    this.#people = people;
     this.#acknowledgements = acknowledgementsView(kit.signatures);
     this.#signatures = kit.signatures;
     this.#store = store;
@@ -114,7 +111,7 @@ class MailboxService {
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
     const locations = await view(this.#store, this.#locations);
-    const people = await view(this.#store, this.#people);
+    const people = await view(this.#store, peopleView);
     const [latest, ...earlier] = await locations.servicesOf(this.#notary.identifier, people);
     if (latest === undefined) throw new Error("the store holds no Service of the service's");
     if (pathname === "/") return answerTo(request, "GET", () => this.#answerWith(latest.link, 200));
@@ -155,7 +152,7 @@ class MailboxService {
     const file = await readBody(request.body, limit);
     if (file === undefined) return answer(413, `a request holds at most ${limit} bytes`);
     const receivedAt = this.#clock();
-    const people = await view(this.#store, this.#people);
+    const people = await view(this.#store, peopleView);
     let bundle: Bundle;
     let signature: Signature;
     try {
@@ -347,8 +344,7 @@ export async function loadMailboxService(
   if (new URL(origin).origin !== origin)
     throw new Error(`${origin} is not an origin, which is a scheme, a host and a port alone`);
   const { store } = options;
-  const seenPeople = peopleView(identityKit);
-  const notary = await loadNotary(keyring, { kit: identityKit, store, people: seenPeople, clock });
+  const notary = await loadNotary(keyring, { kit: identityKit, store, clock });
   const identity = new LinkValue(notary.identifier);
   const offers = [
     encodeObject(accountOfferSchema, { identity }),
@@ -359,7 +355,7 @@ export async function loadMailboxService(
   // carries, so people read after the locations have seen that of every Service that the locations
   // give.
   const locations = await view(store, locationsView(identityKit.signatures));
-  const people = await view(store, seenPeople);
+  const people = await view(store, peopleView);
   const at = clock();
   const [latest] = await locations.servicesOf(notary.identifier, people);
   const previous = latest === undefined ? undefined : (await readObject(store, latest.object, serviceSchema)).data;
@@ -369,5 +365,5 @@ export async function loadMailboxService(
       encodeObject(serviceSchema, next),
       offers.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]),
     );
-  return new MailboxService(notary, identityKit, seenPeople, { ...options, clock });
+  return new MailboxService(notary, identityKit, { ...options, clock });
 }

@@ -1,10 +1,9 @@
 import { type CurveScheme, identityKit, type SignedIdentityObject, SoftwareSigner } from "@estoc/identity";
 import { type Link, linkOf } from "@estoc/object";
-import { type IdentityVersionRows, IdentityVersions } from "../src/identity-versions.ts";
+import { type IdentityVersionRows, identityVersionOf, peopleSeenIn } from "../src/identity-versions.ts";
 import type { People } from "../src/index.ts";
 
 export const { keys, signatures, signedIdentities, publish } = identityKit;
-export const identityVersions = new IdentityVersions(signedIdentities);
 
 export const signer = (scheme: CurveScheme, fill = 1) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -30,9 +29,7 @@ function rowsOf(...signedIdentities: readonly SignedIdentityObject[]): IdentityV
       signedIdentitiesByLink.set(each.link, each);
     }
   }
-  const rows = [...signedIdentitiesByLink.values()].map((signedIdentity) =>
-    identityVersions.identityVersionOf(signedIdentity),
-  );
+  const rows = [...signedIdentitiesByLink.values()].map(identityVersionOf);
   const versionLinkOf = ({ signedIdentity }: (typeof rows)[number]) => signedIdentity.link;
   rows.sort(
     (a, b) => a.at - b.at || (versionLinkOf(a) < versionLinkOf(b) ? -1 : versionLinkOf(a) > versionLinkOf(b) ? 1 : 0),
@@ -45,4 +42,4 @@ function rowsOf(...signedIdentities: readonly SignedIdentityObject[]): IdentityV
 }
 
 export const peopleHavingSeen = (...versions: readonly SignedIdentityObject[]): People =>
-  identityVersions.people(rowsOf(...versions), byLink(versions.flatMap(({ blobs }) => blobs)));
+  peopleSeenIn(rowsOf(...versions), byLink(versions.flatMap(({ blobs }) => blobs)));

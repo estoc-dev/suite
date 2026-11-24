@@ -16,6 +16,7 @@
     "@estoc/mailbox": "workspace:*",
     "@estoc/mailbox-service": "workspace:*",
     "@estoc/object": "workspace:*",
+    "@estoc/people": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@estoc/store": "workspace:*",
     "ws": "^8.23.0"

@@ -35,7 +35,6 @@ import { type Faults, MemoryNetwork } from "./memory-network.ts";
 
 const identity = identityKit;
 const { signatures, publish } = identity;
-const seenPeople = peopleView(identity);
 const line = schema("Line", { text: string() });
 const schemas = [line, signatures.schema].flatMap(({ blobs }) => blobs);
 
@@ -119,7 +118,7 @@ async function chat(faults: Faults = {}) {
     const backend = new MemoryBackend();
     const store = new Store(backend);
     const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
-      (await view(store, seenPeople)).current(inHand),
+      (await view(store, peopleView)).current(inHand),
     );
     const post = new Post(store, { transports, clock });
     const intake = new Intake(store, clock);

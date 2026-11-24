@@ -1,6 +1,6 @@
 import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
+import { peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type Store, view, writtenObjectsOf } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
@@ -17,7 +17,6 @@ export class Correspondence {
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
   readonly #signatures: CorrespondenceIdentity["signatures"];
-  readonly #seenPeople: PeopleView;
 
   constructor(
     store: Store,
@@ -25,7 +24,7 @@ export class Correspondence {
     actor: Actor,
     clock: () => number,
     grants: MailboxGrants,
-    { signatures, signedIdentities }: CorrespondenceIdentity,
+    { signatures }: CorrespondenceIdentity,
   ) {
     this.#store = store;
     this.#post = post;
@@ -33,11 +32,10 @@ export class Correspondence {
     this.#clock = clock;
     this.#grants = grants;
     this.#signatures = signatures;
-    this.#seenPeople = peopleView({ signedIdentities });
   }
 
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
-    const current = await (await view(this.#store, this.#seenPeople)).current(to);
+    const current = await (await view(this.#store, peopleView)).current(to);
     const at = this.#clock();
     const grant = this.#grants.encode(current, mailboxes, at);
     const signature = await this.#actor.sign(grant);
@@ -88,7 +86,7 @@ export class Correspondence {
   }
 
   async #peopleAsOfArrival(): Promise<SeenIdentityVersions> {
-    const people = await view(this.#store, this.#seenPeople);
+    const people = await view(this.#store, peopleView);
     return people.asOfArrival(await view(this.#store, signedIdentityArrivalsView));
   }
 

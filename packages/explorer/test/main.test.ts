@@ -4,7 +4,9 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { decodeObject, type Link } from "@estoc/object";
+import { ed25519, identityKit } from "@estoc/identity";
+import { heldKeys } from "@estoc/keyring";
+import { decodeObject, type Link, LinkValue } from "@estoc/object";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
@@ -79,6 +81,23 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(page.rows.map((bytes) => decodeObject(bytes, heldBlobSchema).data.blob.link)).toEqual(blobs.slice(-3));
     socket.terminate();
     expect(await runtime.stop()).toBe(0);
+  });
+
+  it("shows the indexes of the suite, with the rows of what the sample recorded", async () => {
+    const { database, pages } = await makePaths();
+    expect(await run(sample, [database])).toEqual({ code: 0, stderr: "" });
+    const runtime = await start([database, pages]);
+    const socket = new WebSocket(runtime.origin.replace("http", "ws"), { origin: runtime.origin });
+    onTestFinished(() => socket.terminate());
+    await once(socket, "open");
+    const client = new Client(socketChannel(socket));
+    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual(["Held Keys", "Held Mailbox Keys"]);
+    const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
+    const { rows } = await client.page("Held Keys", 0, 10);
+    expect(rows.map((bytes) => decodeObject(bytes, heldKeys.schema).data)).toEqual([
+      { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
+    ]);
+    expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
   });
 
   it("refuses to start without its database, and does not make it", async () => {

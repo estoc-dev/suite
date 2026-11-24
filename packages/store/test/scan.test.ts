@@ -729,6 +729,35 @@ describe("an index scanned in two orders", () => {
   });
 });
 
+describe("an ordered index", () => {
+  const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
+
+  it("says the schema of its rows and the fields they are sorted by", () => {
+    expect(byName.schema).toBe(named);
+    expect(byName.order).toEqual(["name"]);
+  });
+
+  it("says that it reads blobs when any index that it is a union of does", () => {
+    expect(byName.readsBlobs).toBe(false);
+    expect(tagNames.orderedBy("name").readsBlobs).toBe(true);
+    expect(noteNames.union(tagNames).orderedBy("name").readsBlobs).toBe(true);
+  });
+
+  it("says the same of itself under a name", () => {
+    const names = byName.named("Names");
+    expect(names.name).toBe("Names");
+    expect([names.schema, names.order, names.readsBlobs]).toEqual([byName.schema, byName.order, byName.readsBlobs]);
+  });
+
+  it("has, under a name, the rows that the store keeps of it without one", async () => {
+    const store = newStore();
+    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+    const rows = await scan(store, byName);
+    expect(await scan(store, byName.named("Names"))).toBe(rows);
+    expect(await scan(store, byName.named("Other names"))).toBe(rows);
+  });
+});
+
 describe("an index over blobs", () => {
   const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
   const byTagName = tagNames.orderedBy("name");

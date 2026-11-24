@@ -120,7 +120,7 @@ export class KeptRows {
   #blobs = new ListedLinks();
   #records = new LinksRead<EncodedObject>();
   readonly #objectsByDerivation = new WeakMap<object, unknown>();
-  readonly #sortedRowsByIndex = new WeakMap<object, unknown>();
+  readonly #sortedRowsByOrder = new WeakMap<object, unknown>();
 
   constructor(reader: Reader, blobsFrom: (start: number) => AsyncIterable<Link<unknown>>) {
     this.#reader = reader;
@@ -160,11 +160,12 @@ export class KeptRows {
         return objects;
       },
       sortedRowsOf: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => {
-        // What is kept under an ordered index are rows of it.
-        const kept = this.#sortedRowsByIndex.get(index) as SortedRows<F, By> | undefined;
-        const derivedObjects = await rows.derivedObjectsOf(derivationOf(orderOf(index).index));
+        // What is kept under the order of an index are rows of it, and of each index named after it.
+        const order = orderOf(index);
+        const kept = this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined;
+        const derivedObjects = await rows.derivedObjectsOf(derivationOf(order.index));
         const sortedRows = (kept ?? new SortedRows(index)).including(derivedObjects, rows.blobCount);
-        this.#sortedRowsByIndex.set(index, sortedRows);
+        this.#sortedRowsByOrder.set(order, sortedRows);
         return sortedRows;
       },
     };

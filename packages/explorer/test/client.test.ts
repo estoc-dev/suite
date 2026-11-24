@@ -1,9 +1,19 @@
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, type ValueMap } from "@estoc/object";
-import { link, rootSchema, schema } from "@estoc/schema";
-import { type Backend, MemoryBackend, Store, writtenObjectSchema, writtenObjectsOf } from "@estoc/store";
+import { decodeObject, encodeObject, type Link, LinkValue, linkOf, objectsOf, type ValueMap } from "@estoc/object";
+import { link, rootSchema, schema, string } from "@estoc/schema";
+import {
+  type Backend,
+  indexOver,
+  MemoryBackend,
+  Store,
+  scan,
+  selectedRecords,
+  writtenObjectSchema,
+  writtenObjectsOf,
+} from "@estoc/store";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { callSchema, replySchema } from "../src/calls.ts";
 import { type Channel, Client } from "../src/index.ts";
+import { listOfIndex } from "../src/list.ts";
 import { heldBlobSchema, heldLinkSchema, heldObjectSchema, Runtime, recordedStatementSchema } from "../src/runtime.ts";
 import { channelEnds, clientOf, image, note, noteBlobs, noteSchema, storeOfNote } from "./fixtures.ts";
 
@@ -282,10 +292,102 @@ describe("a client of a runtime", () => {
   });
 });
 
+describe("a client of a runtime that is given the list of an index", () => {
+  const notedTextSchema = schema("Noted Text", { text: string(), note: link() });
+  const notesByText = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+    if (data.text === "unreadable") throw new Error("the index does not read this note");
+    return [{ text: data.text, note: new LinkValue(link) }];
+  })
+    .orderedBy("text")
+    .named("Notes by text");
+  const notesList = listOfIndex(notesByText);
+
+  async function storeRecording(...texts: readonly string[]): Promise<Store> {
+    const store = new Store(new MemoryBackend());
+    await recordNotes(store, ...texts);
+    return store;
+  }
+
+  async function recordNotes(store: Store, ...texts: readonly string[]): Promise<void> {
+    const notes = texts.map((text) => encodeObject(noteSchema, { text }));
+    await store.record({
+      statements: notes.map(({ link }) => link),
+      blobs: [...notes.map(({ bytes }) => bytes), ...noteSchema.blobs],
+    });
+  }
+
+  async function blobCountOf(store: Store): Promise<number> {
+    let count = 0;
+    for await (const _ of store.blobs()) count += 1;
+    return count;
+  }
+
+  const textsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, notedTextSchema).data.text);
+
+  it("lists it after the lists of what the store holds, by the name, the schema and the order of the index", async () => {
+    const lists = await clientOf(await storeRecording(), [notesList]).lists();
+    expect(lists.map(({ data }) => data.name)).toEqual(["Records", "Blobs", "Schemas", "Links", "Notes by text"]);
+    expect(lists.at(-1)?.data).toEqual({
+      name: "Notes by text",
+      rows: new LinkValue(notedTextSchema.link),
+      order: ["text"],
+      readsBlobs: false,
+    });
+  });
+
+  it("reads the schema that the rows of the index are written to, though the store does not hold it", async () => {
+    const store = await storeRecording("a");
+    expect(await store.get(notedTextSchema.link)).toBeUndefined();
+    expect(await clientOf(store, [notesList]).get(notedTextSchema.link)).toEqual(notedTextSchema.bytes);
+  });
+
+  it("reads a page of it as the rows of the index, in the order of the index", async () => {
+    const store = await storeRecording("b", "c", "a");
+    const client = clientOf(store, [notesList]);
+    const blobCount = await blobCountOf(store);
+    const page = await client.page("Notes by text", 0, 10);
+    expect(page).toMatchObject({ start: 0, rowCount: 3, blobCount });
+    expect(textsIn(page.rows)).toEqual(["a", "b", "c"]);
+    const lastPage = await client.page("Notes by text", -2, 1);
+    expect(lastPage).toMatchObject({ start: 1, rowCount: 3, blobCount });
+    expect(textsIn(lastPage.rows)).toEqual(["b"]);
+  });
+
+  it("reads a page of it with the rows of what was recorded since the one before", async () => {
+    const store = await storeRecording("b");
+    const client = clientOf(store, [notesList]);
+    expect(textsIn((await client.page("Notes by text", 0, 10)).rows)).toEqual(["b"]);
+    await recordNotes(store, "a");
+    const page = await client.page("Notes by text", 0, 10);
+    expect(page).toMatchObject({ rowCount: 2, blobCount: await blobCountOf(store) });
+    expect(textsIn(page.rows)).toEqual(["a", "b"]);
+  });
+
+  it("reads a page of it without the rows of what the index fails on", async () => {
+    const client = clientOf(await storeRecording("b", "unreadable", "a"), [notesList]);
+    const page = await client.page("Notes by text", 0, 10);
+    expect(page).toMatchObject({ start: 0, rowCount: 2 });
+    expect(textsIn(page.rows)).toEqual(["a", "b"]);
+  });
+
+  it("reads a page of it from the rows that whatever else scans the index in that store reads", async () => {
+    const store = await storeRecording("a");
+    let readCount = 0;
+    const countedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+      readCount += 1;
+      return [{ text: data.text, note: new LinkValue(link) }];
+    }).orderedBy("text");
+    await scan(store, countedTexts);
+    const page = await clientOf(store, [listOfIndex(countedTexts.named("Counted texts"))]).page("Counted texts", 0, 1);
+    expect(textsIn(page.rows)).toEqual(["a"]);
+    expect(readCount).toBe(1);
+  });
+});
+
 describe("a runtime", () => {
   async function replyTo(call: ValueMap) {
     const [near, far] = channelEnds();
-    new Runtime(await storeOfNote()).serve(far);
+    new Runtime(await storeOfNote(), []).serve(far);
     return new Promise<ValueMap>((resolve) => {
       near.receive(
         (message) => resolve(decodeObject(message, replySchema).data),
@@ -303,9 +405,21 @@ describe("a runtime", () => {
     expect(await replyTo(call)).toEqual({ id: 7, error: expect.stringContaining(reason) });
   });
 
+  it.each([
+    ["another list it is given", ["Notes", "Notes"]],
+    ["a list of what the store holds", ["Blobs"]],
+  ])("is not made with a list named as %s is", async (_, names) => {
+    const texts = indexOver(selectedRecords(objectsOf(noteSchema)), schema("Text", { text: string() }), ({ data }) => [
+      { text: data.text },
+    ]).orderedBy("text");
+    const store = await storeOfNote();
+    const lists = names.map((name) => listOfIndex(texts.named(name)));
+    expect(() => new Runtime(store, lists)).toThrow(`two lists are named ${names[0]}`);
+  });
+
   it("closes a channel that brings what is not a call", async () => {
     const [near, far] = channelEnds();
-    new Runtime(await storeOfNote()).serve(far);
+    new Runtime(await storeOfNote(), []).serve(far);
     const isClosed = new Promise<void>((resolve) => near.receive(() => {}, resolve));
     near.send(note.bytes);
     await isClosed;

@@ -158,6 +158,37 @@ export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
   constructor(order: Order<F, By>) {
     this.#order = order;
   }
+
+  /** The schema that every row is written to. */
+  get schema(): Schema<F> {
+    return derivationOf(this.#order.index).schema;
+  }
+
+  get order(): By {
+    return this.#order.by;
+  }
+
+  /**
+   * Whether any of what the index is made of reads every blob held, so that a row may come of an
+   * object that a stranger sent. Where none does, every row comes of a statement the store recorded.
+   */
+  get readsBlobs(): boolean {
+    return derivationOf(this.#order.index).readsBlobs;
+  }
+
+  /** A store keeps one set of rows for this index and each one named after it. */
+  named(name: string): NamedIndex<F, By> {
+    return new NamedIndex(this.#order, name);
+  }
+}
+
+export class NamedIndex<F extends ValueMap, By extends FieldNames<F>> extends OrderedIndex<F, By> {
+  readonly name: string;
+
+  constructor(order: Order<F, By>, name: string) {
+    super(order);
+    this.name = name;
+  }
 }
 
 /**

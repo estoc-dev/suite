@@ -7,14 +7,14 @@ import {
   encodeObject,
   type Link,
   LinkValue,
-  objectsOf,
   readObject,
   schemaOf,
 } from "@estoc/object";
-import { link, schema, secretSchema } from "@estoc/schema";
-import { Intake, indexOver, RefusedBatch, type Store, scan, selectedRecords, writtenObjectsOf } from "@estoc/store";
+import { secretSchema } from "@estoc/schema";
+import { Intake, RefusedBatch, type Store, scan, writtenObjectsOf } from "@estoc/store";
 import { Correspondence, type CorrespondenceIdentity } from "./correspondence.ts";
 import { MailboxGrants } from "./grant.ts";
+import { heldMailboxKeys } from "./held-mailbox-keys.ts";
 import { MailboxKey } from "./key.ts";
 import { type Mailbox, mailboxAt, type Options, type Transport } from "./mailbox.ts";
 import type { Pickup } from "./pickup.ts";
@@ -33,16 +33,6 @@ export interface Delivery {
 }
 
 type TransportBytes = { readonly bytes: Bytes<EncodedObject> };
-
-const heldKeySchema = schema("Held Mailbox Key", {
-  key: link<EncodedObject<MailboxKeyData>>(),
-  mailbox: link<EncodedObject<MailboxData>>(),
-  secret: link(),
-});
-
-const byKey = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), heldKeySchema, ({ link, data }) => [
-  { key: new LinkValue(link), ...data },
-]).orderedBy("key");
 
 export class Post {
   readonly #store: Store;
@@ -107,7 +97,7 @@ export class Post {
    * Key among the records of the store.
    */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
-    for await (const { data } of (await scan(this.#store, byKey)).range([new LinkValue(key)])) {
+    for await (const { data } of (await scan(this.#store, heldMailboxKeys)).range([new LinkValue(key)])) {
       const mailbox = await readObject(this.#store, data.mailbox.link, mailboxSchema);
       const secret = await readObject(this.#store, data.secret.link, secretSchema);
       const opener = await MailboxKey.fromSecretKey(secret.data.bytes);

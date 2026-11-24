@@ -1,13 +1,7 @@
-import { type CurveScheme, type KeyObject, type SecretKeys, type Signer, secretKeySchema } from "@estoc/identity";
-import { type Link, LinkValue, objectsOf } from "@estoc/object";
-import { link, schema } from "@estoc/schema";
-import { indexOver, type Store, scan, selectedRecords } from "@estoc/store";
-
-const heldKeySchema = schema("Held Key", { key: link(), secretKey: link() });
-
-const byKey = indexOver(selectedRecords(objectsOf(secretKeySchema)), heldKeySchema, ({ link, data }) => [
-  { key: data.key, secretKey: new LinkValue(link) },
-]).orderedBy("key");
+import type { CurveScheme, KeyObject, SecretKeys, Signer } from "@estoc/identity";
+import { type Link, LinkValue } from "@estoc/object";
+import { type Store, scan } from "@estoc/store";
+import { heldKeys } from "./held-keys.ts";
 
 /**
  * - It signs with the Secret Keys among the records of the store. Anyone can send a Secret Key and
@@ -31,7 +25,7 @@ export class Keyring {
   }
 
   async signerFor(key: Link<unknown>): Promise<Signer | undefined> {
-    for await (const { data } of (await scan(this.#store, byKey)).range([new LinkValue(key)]))
+    for await (const { data } of (await scan(this.#store, heldKeys)).range([new LinkValue(key)]))
       return (await this.#secretKeys.read(data.secretKey.link, this.#store)).signer;
     return undefined;
   }

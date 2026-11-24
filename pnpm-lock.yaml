@@ -76,6 +76,12 @@ importers:
       '@estoc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@estoc/keyring':
+        specifier: workspace:*
+        version: link:../keyring
+      '@estoc/mailbox':
+        specifier: workspace:*
+        version: link:../mailbox
       '@estoc/object':
         specifier: workspace:*
         version: link:../object

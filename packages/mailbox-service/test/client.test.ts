@@ -6,7 +6,7 @@ import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, read
 import { link, schema, string } from "@estoc/schema";
 import { Intake, inboundSchema, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   accountOfferSchema,
   acknowledgementSchema,
@@ -21,7 +21,6 @@ import {
   type Services,
   serviceSchema,
 } from "../src/index.ts";
-import { serve } from "../src/node.ts";
 import type { MailboxService } from "../src/server.ts";
 import {
   actorOf,
@@ -38,6 +37,8 @@ import {
   signatures,
   signedAtOrigins,
   signer,
+  startServer,
+  startService,
   terms,
 } from "./fixtures.ts";
 
@@ -52,35 +53,6 @@ const offer = encodeObject(accountOfferSchema, { identity: new LinkValue(service
 
 const agentOf = async (agent: Signer, root: Signer) =>
   actorSigningBy(agent, await publish(root, { agents: [agent.key] }));
-
-const servers: { close(): Promise<void> }[] = [];
-afterEach(async () => void (await Promise.all(servers.splice(0).map((server) => server.close()))));
-
-/** Serves at an origin of 127.0.0.1 what `handle` makes, given that origin, for each request. */
-async function startServer(handle: (request: Request, origin: string) => Promise<Response>) {
-  const server = await serve((request) => handle(request, server.origin), 0);
-  servers.push(server);
-  return server;
-}
-
-/**
- * Runs a service in memory at an origin of 127.0.0.1, which it is loaded
- * with, and answers a `POST` as `answer` does when it is given.
- */
-async function startService(
-  options: Parameters<typeof memoryService>[0] = {},
-  answer?: (service: MailboxService, request: Request) => Promise<Response>,
-) {
-  let run: Awaited<ReturnType<typeof memoryService>> | undefined;
-  const server = await startServer(async (request) => {
-    assert.exists(run);
-    return answer !== undefined && request.method === "POST"
-      ? answer(run.service, request)
-      : run.service.fetch(request);
-  });
-  run = await memoryService({ ...options, origin: server.origin });
-  return { ...run, origin: server.origin, close: () => server.close() };
-}
 
 /**
  * What the Inbounds among the records of `store` say came in, each as the link of its root and the origin it
@@ -226,6 +198,17 @@ describe("a service reached at its origin", () => {
     await expect(services.fetch(origin)).rejects.toThrow(/lists an account offer that names another identifier/);
   });
 
+  it("refuses a mailbox offer that names another identifier, though the Service lists one of its own before it", async () => {
+    const mailboxOfferOf = (root: Signer) =>
+      encodeObject(mailboxOfferSchema, { identity: new LinkValue(keys.encode(root.key).link), ...terms });
+    const offers = [mailboxOfferOf(mallory), mailboxOfferOf(serviceSigner)];
+    const { origin } = await startServer(
+      async (_, origin) => new Response(await signedService(origin, offers, await actorOf(mallory))),
+    );
+    const { services } = client();
+    await expect(services.fetch(origin)).rejects.toThrow(/lists a mailbox offer that names another identifier/);
+  });
+
   it("passes over an offer of a schema it does not read", async () => {
     const other = schema("Other offer", { identity: link() });
     const unread = encodeObject(other, { identity: new LinkValue(serviceRoot.link) });
@@ -322,6 +305,65 @@ describe("a service found by its identifier", () => {
     expect(await services.latestOf(signedIdentity)).toBeUndefined();
     await services.fetch(origin);
     expect(await services.latestOf((await actorOf(alice)).signedIdentity)).toBeUndefined();
+  });
+});
+
+describe("an offer found by its link", () => {
+  it("is the offer of an account that the latest Service of the identity it names makes, taken at its origin", async () => {
+    const first = await startService();
+    const { services } = client();
+    await services.fetch(first.origin);
+    const movedService = await startService({ store: first.store, clock: { now: 5_000 } });
+    await services.fetch(movedService.origin);
+    await first.close();
+    const account = await services.accountOffer(offer.link);
+    expect((await account.accept(await actorOf(alice))).at).toBe(5_000);
+  });
+
+  it("is the offer of mailboxes that the latest Service of the identity it names makes", async () => {
+    const { origin } = await startService();
+    const { services } = client();
+    const { mailbox } = await services.fetch(origin);
+    assert.exists(mailbox);
+    expect(await services.mailboxOffer(mailbox.link)).toMatchObject({ link: mailbox.link, terms });
+  });
+
+  it("is each offer of mailboxes that the latest Service of the identity it names lists, which opens a mailbox on its own terms", async () => {
+    const actor = await actorOf(alice);
+    const { run, store, services } = await withAccount(actor);
+    const identity = new LinkValue(serviceRoot.link);
+    const listedTerms = [terms, { ...terms, size: 2048 }];
+    const mailboxOffers = listedTerms.map((each) => encodeObject(mailboxOfferSchema, { identity, ...each }));
+    const service = await signedService(run.origin, [offer, ...mailboxOffers], await serviceActor(1_000), 5_000);
+    await new Intake(run.store).receive(decodeBundle(service));
+    await services.fetch(run.origin);
+
+    for (const [position, listedOffer] of mailboxOffers.entries()) {
+      const mailboxOffer = await services.mailboxOffer(listedOffer.link);
+      expect(mailboxOffer.terms).toEqual(listedTerms[position]);
+      const { transport } = await openMailbox(store, mailboxOffer, actor, keyOf(position));
+      const sendId = new URL(transport.data.url).pathname.slice(1);
+      expect((await run.mailboxes.mailboxNamed(sendId))?.terms).toEqual(listedTerms[position]);
+    }
+  });
+
+  it("is not found once the latest Service of the identity it names offers another in its place", async () => {
+    const first = await startService();
+    const { services } = client();
+    const { mailbox: former } = await services.fetch(first.origin);
+    assert.exists(former);
+    const laterTerms = { ...terms, size: 2048 };
+    const later = await startService({ store: first.store, clock: { now: 5_000 }, offeredTerms: laterTerms });
+    const { mailbox: latter } = await services.fetch(later.origin);
+    assert.exists(latter);
+    await expect(services.mailboxOffer(former.link)).rejects.toThrow(`does not offer ${former.link}`);
+    expect((await services.mailboxOffer(latter.link)).terms).toEqual(laterTerms);
+  });
+
+  it("is not found while the store holds no Service of the identity it names", async () => {
+    const { store, services } = client();
+    await store.write({ roots: [offer.link], blobs: [offer.bytes, ...accountOfferSchema.blobs, ...serviceRoot.blobs] });
+    await expect(services.accountOffer(offer.link)).rejects.toThrow(`no Service of ${serviceRoot.link}`);
   });
 });
 

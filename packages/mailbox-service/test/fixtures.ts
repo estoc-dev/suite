@@ -14,12 +14,13 @@ import {
 import type { Keyring } from "@estoc/keyring";
 import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
 import { type Backend, MemoryBackend, Store, writtenObjectSchema } from "@estoc/store";
-import { onTestFinished } from "vitest";
+import { assert, onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
 import { type MailboxTerms, type ServiceData, serviceSchema } from "../src/index.ts";
 import { type Mailboxes, MemoryMailboxes } from "../src/mailboxes.ts";
+import { serve } from "../src/node.ts";
 import { setUpNotary } from "../src/notary.ts";
-import { loadMailboxService } from "../src/server.ts";
+import { loadMailboxService, type MailboxService } from "../src/server.ts";
 
 export const schemes: readonly CurveScheme[] = [ed25519, eip191, solanaOffchain];
 export const signer = (scheme: CurveScheme, fill: number) =>
@@ -139,6 +140,35 @@ export async function memoryService({
     clock: clock === undefined ? () => now++ : () => clock.now,
   });
   return { service, store, accounts, mailboxes };
+}
+
+/**
+ * Serves at an origin of 127.0.0.1 what `handle` makes, given that origin, for each request, until
+ * the test finishes.
+ */
+export async function startServer(handle: (request: Request, origin: string) => Promise<Response>) {
+  const server = await serve((request) => handle(request, server.origin), 0);
+  onTestFinished(() => server.close());
+  return server;
+}
+
+/**
+ * Runs a service in memory at an origin of 127.0.0.1, which it is loaded
+ * with, and answers a `POST` as `answer` does when it is given.
+ */
+export async function startService(
+  options: Parameters<typeof memoryService>[0] = {},
+  answer?: (service: MailboxService, request: Request) => Promise<Response>,
+) {
+  let run: Awaited<ReturnType<typeof memoryService>> | undefined;
+  const server = await startServer(async (request) => {
+    assert.exists(run);
+    return answer !== undefined && request.method === "POST"
+      ? answer(run.service, request)
+      : run.service.fetch(request);
+  });
+  run = await memoryService({ ...options, origin: server.origin });
+  return { ...run, origin: server.origin, close: () => server.close() };
 }
 
 /**

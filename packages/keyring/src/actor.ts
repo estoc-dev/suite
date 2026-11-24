@@ -8,8 +8,8 @@ const { secretKeys, signatures, signedIdentities } = identityKit;
 
 /**
  * The key is chosen once, among those of the identity version that is current when the actor is
- * made: its root, then its agents in the order listed. An actor whose key a later identity version
- * leaves out does not sign.
+ * made: its root, then its agents in the order listed. The actor does not sign while the current
+ * identity version leaves that key out.
  */
 export async function actorFor(signedIdentity: Link<unknown>, store: Store): Promise<Actor> {
   const inHand = await signedIdentities.read(signedIdentity, store);

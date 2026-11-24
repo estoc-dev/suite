@@ -8,7 +8,7 @@ import { actorFor, Keyring } from "../src/index.ts";
 const { publish, secretKeys } = identityKit;
 const note = encodeObject(schema("Note", { text: string() }), { text: "hello" });
 
-// A root that no store holds, as a wallet is.
+// A root whose Secret Key no store records, as that of a wallet.
 const wallet = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
 const keyOutside = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(2)).key;
 
@@ -18,7 +18,6 @@ const hold = (store: Store, { link, blobs }: SignedIdentityObject) => store.writ
 
 const generateKey = (store: Store) => new Keyring(store, secretKeys).generate(ed25519);
 
-// A signer for a key whose Secret Key `store` records.
 async function generateSigner(store: Store) {
   const keyring = new Keyring(store, secretKeys);
   const signer = await keyring.signerFor((await keyring.generate(ed25519)).link);
@@ -74,7 +73,7 @@ describe("the actor for a signed identity", () => {
     await expect(actorFor(listing.link, store)).rejects.toThrow(removal.link);
   });
 
-  it("does not sign once the store holds an identity version that leaves out the key it was made with", async () => {
+  it("does not sign while the current identity version leaves out the key it was made with", async () => {
     const store = newStore();
     const former = await generateKey(store);
     const listing = await publish(wallet, { agents: [former], at: 1_000 });

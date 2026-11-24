@@ -22,6 +22,7 @@ const { publish, secretKeys, signatures } = identityKit;
 const note = schema("Note", { text: string() });
 const hello = encodeObject(note, { text: "hello, Bob" });
 const network = new MemoryNetwork();
+const clock = () => 1000;
 
 interface Person {
   readonly store: Store;
@@ -37,7 +38,7 @@ async function person(): Promise<Person> {
   if (root === undefined) throw new Error("a keyring signs with a key it generated");
   const signedIdentity = await publish(root, { at: 0 });
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
-  return { store, signedIdentity, environment: { transports: [network.transport], clock: () => 1000 } };
+  return { store, signedIdentity, environment: { transports: [network.transport], clock } };
 }
 
 // `from` hands what its store holds under `root` to `to` out of band, and `to` keeps it.
@@ -60,17 +61,15 @@ async function openInbox({ store, environment }: Person) {
   return { queue, inbox, pickup: queue.pickup(inbox.mailbox) };
 }
 
-const linkTo = ({ link }: SignedIdentityObject) => new LinkValue(link as Link<never>);
-
 // `from` opens an inbox and grants it to `to`, who is handed the grant.
 async function grantInbox(from: Person, to: Person) {
   const openedInbox = await openInbox(from);
   const request = {
-    actor: linkTo(from.signedIdentity),
-    to: linkTo(to.signedIdentity),
+    actor: new LinkValue(from.signedIdentity.link),
+    to: new LinkValue(to.signedIdentity.link),
     mailboxes: [new LinkValue(openedInbox.inbox.mailbox)],
   };
-  const { result } = await perform(from.store, grant, request, from.environment);
+  const { result } = await perform(from.store, grant, request, { clock });
   await handOver(from, to, result.data.signature.link);
   return openedInbox;
 }
@@ -80,12 +79,12 @@ describe("Grant", () => {
     const [alice, bob] = await acquaintances();
     const { inbox } = await openInbox(alice);
     const request = {
-      actor: linkTo(alice.signedIdentity),
-      to: linkTo(bob.signedIdentity),
+      actor: new LinkValue(alice.signedIdentity.link),
+      to: new LinkValue(bob.signedIdentity.link),
       mailboxes: [new LinkValue(inbox.mailbox)],
     };
 
-    const { result } = await perform(alice.store, grant, request, alice.environment);
+    const { result } = await perform(alice.store, grant, request, { clock });
     const signature = await signatures.read(result.data.signature.link, alice.store);
     expect(signature.signedIdentity.link).toBe(alice.signedIdentity.link);
     expect((await readObject(alice.store, signature.object, mailboxGrantSchema)).data).toEqual({
@@ -104,11 +103,11 @@ describe("Grant", () => {
       alice.store,
       grant,
       {
-        actor: linkTo(alice.signedIdentity),
-        to: linkTo(bob.signedIdentity),
+        actor: new LinkValue(alice.signedIdentity.link),
+        to: new LinkValue(bob.signedIdentity.link),
         mailboxes: [new LinkValue(inbox.mailbox)],
       },
-      alice.environment,
+      { clock },
     );
     const signature = result.data.signature.link;
     expect(commits).toHaveLength(2);
@@ -132,11 +131,11 @@ describe("Grant", () => {
     const recordedBefore = await recordedIn(alice.store);
 
     const request = {
-      actor: linkTo(bob.signedIdentity),
-      to: linkTo(alice.signedIdentity),
+      actor: new LinkValue(bob.signedIdentity.link),
+      to: new LinkValue(alice.signedIdentity.link),
       mailboxes: [new LinkValue(inbox.mailbox)],
     };
-    await expect(perform(alice.store, grant, request, alice.environment)).rejects.toThrow(/no Secret Key/);
+    await expect(perform(alice.store, grant, request, { clock })).rejects.toThrow(/no Secret Key/);
     expect(await recordedIn(alice.store)).toEqual(recordedBefore);
   });
 
@@ -146,11 +145,11 @@ describe("Grant", () => {
     const recordedBefore = await recordedIn(alice.store);
 
     const request = grant.requestSchema.validate({
-      actor: linkTo(alice.signedIdentity),
-      to: linkTo(bob.signedIdentity),
+      actor: new LinkValue(alice.signedIdentity.link),
+      to: new LinkValue(bob.signedIdentity.link),
       mailboxes: [new LinkValue(hello.link)],
     });
-    await expect(perform(alice.store, grant, request, alice.environment)).rejects.toThrow(mailboxSchema.link);
+    await expect(perform(alice.store, grant, request, { clock })).rejects.toThrow(mailboxSchema.link);
     expect(await recordedIn(alice.store)).toEqual(recordedBefore);
   });
 });
@@ -160,8 +159,8 @@ describe("Send To", () => {
     const [alice, bob] = await acquaintances();
     await alice.store.write({ roots: [hello.link], blobs: [hello.bytes, ...note.blobs] });
     const request = {
-      actor: linkTo(alice.signedIdentity),
-      to: linkTo(bob.signedIdentity),
+      actor: new LinkValue(alice.signedIdentity.link),
+      to: new LinkValue(bob.signedIdentity.link),
       root: new LinkValue(hello.link),
     };
     return { alice, bob, request };
@@ -211,7 +210,7 @@ describe("Send To", () => {
     const carol = await person();
     await handOver(carol, alice, carol.signedIdentity.link);
 
-    const asCarol = { ...request, actor: linkTo(carol.signedIdentity) };
+    const asCarol = { ...request, actor: new LinkValue(carol.signedIdentity.link) };
     await expect(perform(alice.store, sendTo, asCarol, alice.environment)).rejects.toThrow(/no Secret Key/);
     expect(queue.take()).toEqual([]);
   });

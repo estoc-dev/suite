@@ -23,7 +23,7 @@ export const signedIdentitySchema = schema("Signed Identity", {
 export type SignedIdentityData = DataOf<typeof signedIdentitySchema>;
 
 export interface SignedIdentityObject {
-  readonly link: Link<unknown>;
+  readonly link: Link<EncodedObject<SignedIdentityData>>;
   readonly identity: IdentityObject;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];

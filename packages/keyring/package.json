@@ -12,6 +12,7 @@
   "dependencies": {
     "@estoc/identity": "workspace:*",
     "@estoc/object": "workspace:*",
+    "@estoc/people": "workspace:*",
     "@estoc/schema": "workspace:*",
     "@estoc/store": "workspace:*"
   },

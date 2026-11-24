@@ -1,4 +1,5 @@
 import {
+  blobsOf,
   digestOf,
   type EncodedObject,
   encodeObject,
@@ -10,7 +11,6 @@ import {
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { LRUCache } from "lru-cache";
-import { blobsOf } from "./blobs.ts";
 import type { Identities, IdentityObject } from "./identity.ts";
 import { verify } from "./key/interface.ts";
 import type { Signer } from "./signer.ts";

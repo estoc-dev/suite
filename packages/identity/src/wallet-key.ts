@@ -1,6 +1,13 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, type Reader, readObject } from "@estoc/object";
+import {
+  blobsOf,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  type Reader,
+  readObject,
+} from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { blobsOf } from "./blobs.ts";
 import type { Key, KeyObject } from "./key/interface.ts";
 import type { Keys } from "./key/keys.ts";
 

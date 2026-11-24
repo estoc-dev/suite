@@ -2,6 +2,7 @@ export { type Implementation, Implementations } from "./implementation.ts";
 export { type Bytes, digestOf, isLink, type Link, linkOf } from "./link.ts";
 export {
   AbsentBlob,
+  blobsOf,
   decodeObject,
   type EncodedObject,
   encodeObject,

@@ -5,6 +5,7 @@ import { httpTransport } from "@estoc/mailbox/http";
 import {
   AbsentBlob,
   type Bytes,
+  blobsOf,
   decodeObject,
   type EncodedObject,
   encodeObject,
@@ -172,7 +173,7 @@ export class MailboxOffer {
     });
     await this.#posting.store.record({
       statements: [openedMailbox.link],
-      blobs: [openedMailbox.bytes, ...openedMailbox.schema.blobs, transport.bytes, ...transport.schema.blobs],
+      blobs: blobsOf(openedMailbox, blobsOf(transport)),
     });
     return transport;
   }

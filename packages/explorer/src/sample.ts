@@ -1,6 +1,6 @@
 import { markdownBodyOf, postSchema } from "@estoc/blog";
 import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, LinkValue, linkOf } from "@estoc/object";
+import { blobsOf, encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Store, writtenObjectsOf } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -33,17 +33,14 @@ async function writeSample(store: Store): Promise<void> {
       date: new Date(at).toISOString().slice(0, 10),
       body: new LinkValue(body.link),
     });
-    await store.write({
-      roots: [post.link],
-      blobs: [post.bytes, body.bytes, ...postSchema.blobs, ...body.schema.blobs],
-    });
+    await store.write({ roots: [post.link], blobs: blobsOf(post, blobsOf(body)) });
     await store.record(writtenObjectsOf([post.link], at));
   }
   const image = new TextEncoder().encode(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>',
   );
   const photo = encodeObject(photoSchema, { caption: "A circle", image: new LinkValue(linkOf(image)) });
-  await store.write({ roots: [photo.link], blobs: [photo.bytes, image, ...photoSchema.blobs] });
+  await store.write({ roots: [photo.link], blobs: blobsOf(photo, [image]) });
   await store.record(writtenObjectsOf([photo.link], firstDay + 120 * DAY));
 
   const { publish, secretKeys, signatures } = identityKit;

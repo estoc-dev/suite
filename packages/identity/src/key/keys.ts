@@ -1,4 +1,5 @@
 import {
+  blobsOf,
   type EncodedObject,
   encodeObject,
   type Implementation,
@@ -7,7 +8,6 @@ import {
   type Reader,
 } from "@estoc/object";
 import { bytes, schema } from "@estoc/schema";
-import { blobsOf } from "../blobs.ts";
 import type { Key, KeyData, KeyObject, Scheme } from "./interface.ts";
 
 interface KeyImplementation extends Implementation<KeyObject, KeyData> {

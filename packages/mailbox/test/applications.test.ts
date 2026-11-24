@@ -39,7 +39,6 @@ const { keys, identities, signatures, publish } = identity;
 // blobs that came.
 const receiverKit = () => loadIdentity([ed25519, eip191, solanaOffchain]);
 const identityVersionInHand = async <T>(inHand: T) => inHand;
-const seenPeople = peopleView(identity);
 
 const signer = (scheme: CurveScheme, fill: number) =>
   SoftwareSigner.fromSecretKey(scheme, new Uint8Array(32).fill(fill));
@@ -250,12 +249,12 @@ describe("two people who meet", () => {
       const backend = new MemoryBackend();
       const store = new Store(backend);
       const actor = signatures.actor(by, signedIdentity, async (inHand) =>
-        (await view(store, seenPeople)).current(inHand),
+        (await view(store, peopleView)).current(inHand),
       );
       const options = { transports: [network.transport], clock };
       const post = new Post(store, options);
       const intake = new Intake(store, clock);
-      const correspondence = post.correspondenceAs(actor, identity);
+      const correspondence = post.correspondenceAs(actor);
       const openInbox = async () => {
         const queue = network.queue();
         const inbox = await post.openInbox(() => queue.transport);

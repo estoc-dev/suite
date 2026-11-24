@@ -1,20 +1,16 @@
-import {
-  hasSigner,
-  type Signature,
-  type SignedIdentities,
-  type SignedIdentityData,
-  type SignedIdentityObject,
-} from "@estoc/identity";
+import { hasSigner, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import { type Link, LinkValue, type Reader, SelectionBySchema } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import type { Arrivals } from "@estoc/store";
+import { type Arrivals, indexOver, selectedBlobs } from "@estoc/store";
 import type { People, Person } from "./person.ts";
+
+const { signedIdentities } = identityKit;
 
 /**
  * A root that signs one identity twice with a signer that signs with randomness makes two identity
  * versions at one `at`, told apart by the links of their signed identities.
  */
-export const identityVersionSchema = schema("Identity Version", {
+const identityVersionSchema = schema("Identity Version", {
   identifier: link(),
   at: integer(),
   signedIdentity: link(),
@@ -23,105 +19,103 @@ export const identityVersionSchema = schema("Identity Version", {
 
 export type IdentityVersionData = DataOf<typeof identityVersionSchema>;
 
-export type IdentityVersionOrder = readonly ["identifier", "at", "signedIdentity"];
-
 export interface IdentityVersionRows {
   range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
-export class IdentityVersions {
-  readonly schema = identityVersionSchema;
-  readonly order: IdentityVersionOrder = ["identifier", "at", "signedIdentity"];
-  readonly selection: SelectionBySchema<SignedIdentityObject, SignedIdentityData>;
-  readonly rows = (signedIdentity: SignedIdentityObject): readonly [IdentityVersionData] => [
-    this.identityVersionOf(signedIdentity),
-  ];
-  readonly #signedIdentities: SignedIdentities;
+export const verifiedSignedIdentities = new SelectionBySchema(signedIdentities.schema, (object, reader) =>
+  signedIdentities.implementation.read(object, reader),
+);
 
-  constructor(signedIdentities: SignedIdentities) {
-    this.#signedIdentities = signedIdentities;
-    const { schema, implementation } = signedIdentities;
-    this.selection = new SelectionBySchema(schema, (object, reader) => implementation.read(object, reader));
-  }
+/**
+ * A store takes in identity versions from anyone it corresponds with. One that its root signed
+ * gives a row whether or not a signature that carries it is honored.
+ */
+export const identityVersions = indexOver(
+  selectedBlobs(verifiedSignedIdentities),
+  identityVersionSchema,
+  (signedIdentity) => [identityVersionOf(signedIdentity)],
+)
+  .orderedBy("identifier", "at", "signedIdentity")
+  .named("Identity Versions");
 
-  identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {
-    const { identity, link } = signedIdentity;
-    const lastCrisis = lastCrisisOf(signedIdentity);
+export function identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {
+  const { identity, link } = signedIdentity;
+  const lastCrisis = lastCrisisOf(signedIdentity);
+  return {
+    identifier: new LinkValue(identity.identifier),
+    at: identity.at,
+    signedIdentity: new LinkValue(link),
+    ...(lastCrisis === undefined ? {} : { lastCrisis: new LinkValue(lastCrisis) }),
+  };
+}
+
+/**
+ * `rows` hold those that each identity version follows, as an index over the blobs of a store
+ * does, since the store holds the closure of each.
+ */
+export function peopleSeenIn(rows: IdentityVersionRows, reader: Reader): People {
+  const read = (link: Link<unknown>) => signedIdentities.read(link, reader);
+  const versionsOf = async (signedIdentity: SignedIdentityObject) => {
+    const inHand = new Map<Link<unknown>, SignedIdentityObject>(
+      [...chainOf(signedIdentity)].map((each) => [each.link, each] as const),
+    );
+    const seen = new Map<Link<unknown>, IdentityVersionData>(
+      [...inHand.values()].map((each) => [each.link, identityVersionOf(each)] as const),
+    );
+    for await (const { data } of rows.range([new LinkValue(signedIdentity.identity.identifier)]))
+      seen.set(data.signedIdentity.link, data);
+    const signedIdentityOf = async (link: Link<unknown>) => inHand.get(link) ?? read(link);
     return {
-      identifier: new LinkValue(identity.identifier),
-      at: identity.at,
-      signedIdentity: new LinkValue(link),
-      ...(lastCrisis === undefined ? {} : { lastCrisis: new LinkValue(lastCrisis) }),
+      inHand,
+      seen: [...seen.values()].sort(compareIdentityVersions),
+      signedIdentityOf,
+      currentAmong: (countingVersions: readonly Link<unknown>[]) =>
+        // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
+        signedIdentityOf(countingVersions.at(-1)!),
     };
-  }
-
-  /**
-   * `rows` hold those that each identity version follows, as an index over the blobs of a store
-   * does, since the store holds the closure of each.
-   */
-  people(rows: IdentityVersionRows, reader: Reader): People {
-    const read = (link: Link<unknown>) => this.#signedIdentities.read(link, reader);
-    const versionsOf = async (signedIdentity: SignedIdentityObject) => {
-      const inHand = new Map<Link<unknown>, SignedIdentityObject>(
-        [...chainOf(signedIdentity)].map((each) => [each.link, each] as const),
-      );
-      const seen = new Map<Link<unknown>, IdentityVersionData>(
-        [...inHand.values()].map((each) => [each.link, this.identityVersionOf(each)] as const),
-      );
-      for await (const { data } of rows.range([new LinkValue(signedIdentity.identity.identifier)]))
-        seen.set(data.signedIdentity.link, data);
-      const signedIdentityOf = async (link: Link<unknown>) => inHand.get(link) ?? read(link);
-      return {
-        inHand,
-        seen: [...seen.values()].sort(compareIdentityVersions),
-        signedIdentityOf,
-        currentAmong: (countingVersions: readonly Link<unknown>[]) =>
-          // biome-ignore lint/style/noNonNullAssertion: the latest crisis counts, or the one in hand when none is a crisis
-          signedIdentityOf(countingVersions.at(-1)!),
-      };
+  };
+  const personOf = (signedIdentity: SignedIdentityObject): Person => {
+    const { identifier } = signedIdentity.identity;
+    return {
+      identifier,
+      identityVersions: async () => {
+        const { seen, signedIdentityOf } = await versionsOf(signedIdentity);
+        return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
+      },
+      current: async () => {
+        const { seen, currentAmong } = await versionsOf(signedIdentity);
+        return currentAmong(countingVersionsAmong(seen));
+      },
+      hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
     };
-    const personOf = (signedIdentity: SignedIdentityObject): Person => {
-      const { identifier } = signedIdentity.identity;
-      return {
-        identifier,
-        identityVersions: async () => {
-          const { seen, signedIdentityOf } = await versionsOf(signedIdentity);
-          return Promise.all(countingVersionsAmong(seen).map(signedIdentityOf));
-        },
-        current: async () => {
-          const { seen, currentAmong } = await versionsOf(signedIdentity);
-          return currentAmong(countingVersionsAmong(seen));
-        },
-        hasSigned: (signature) => signature.signedIdentity.identity.identifier === identifier,
-      };
-    };
-    const honors = async (signature: Signature, arrivals?: Arrivals) => {
-      const { signedIdentity, key } = signature;
-      const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
-      const countingVersions = countingVersionsAmong(seen);
-      let countingVersionsThen = countingVersions;
-      const at = await arrivals?.atOf(signature.link);
-      if (arrivals !== undefined && at !== undefined) {
-        const heldThen: IdentityVersionData[] = [];
-        for (const row of seen) {
-          const { link } = row.signedIdentity;
-          const heldSince = inHand.has(link) ? undefined : await arrivals.atOf(link);
-          if (heldSince === undefined || heldSince <= at) heldThen.push(row);
-        }
-        countingVersionsThen = countingVersionsAmong(heldThen);
+  };
+  const honors = async (signature: Signature, arrivals?: Arrivals) => {
+    const { signedIdentity, key } = signature;
+    const { inHand, seen, currentAmong } = await versionsOf(signedIdentity);
+    const countingVersions = countingVersionsAmong(seen);
+    let countingVersionsThen = countingVersions;
+    const at = await arrivals?.atOf(signature.link);
+    if (arrivals !== undefined && at !== undefined) {
+      const heldThen: IdentityVersionData[] = [];
+      for (const row of seen) {
+        const { link } = row.signedIdentity;
+        const heldSince = inHand.has(link) ? undefined : await arrivals.atOf(link);
+        if (heldSince === undefined || heldSince <= at) heldThen.push(row);
       }
-      return (
-        countingVersions.includes(signedIdentity.link) &&
-        hasSigner((await currentAmong(countingVersionsThen)).identity, key)
-      );
-    };
-    return {
-      personOf,
-      current: (signedIdentity) => personOf(signedIdentity).current(),
-      honors: (signature) => honors(signature),
-      asOfArrival: (arrivals) => ({ honors: (signature) => honors(signature, arrivals) }),
-    };
-  }
+      countingVersionsThen = countingVersionsAmong(heldThen);
+    }
+    return (
+      countingVersions.includes(signedIdentity.link) &&
+      hasSigner((await currentAmong(countingVersionsThen)).identity, key)
+    );
+  };
+  return {
+    personOf,
+    current: (signedIdentity) => personOf(signedIdentity).current(),
+    honors: (signature) => honors(signature),
+    asOfArrival: (arrivals) => ({ honors: (signature) => honors(signature, arrivals) }),
+  };
 }
 
 function* chainOf(signedIdentity: SignedIdentityObject): Iterable<SignedIdentityObject> {

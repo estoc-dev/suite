@@ -1,4 +1,4 @@
-export type { Correspondence, CorrespondenceIdentity } from "./correspondence.ts";
+export type { Correspondence } from "./correspondence.ts";
 export {
   type GrantSeries,
   type MailboxGrant,

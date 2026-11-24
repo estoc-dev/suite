@@ -9,7 +9,7 @@ import type {
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
 import { type Bytes, type EncodedObject, type Link, LinkValue, objectsOf } from "@estoc/object";
-import { type People, type PeopleView, peopleView } from "@estoc/people";
+import { type People, peopleView } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
 import {
   indexOver,
@@ -83,7 +83,7 @@ export async function setUpNotary(
   root: Link<unknown>,
   { kit, store, at }: NotaryOptions & { readonly at: number },
 ): Promise<SignedIdentityObject> {
-  const person = await (await view(store, peopleView(kit))).personIdentifiedBy(root);
+  const person = await (await view(store, peopleView)).personIdentifiedBy(root);
   const signedIdentity = (await person?.current()) ?? (await kit.publish(await rootSigner(keyring, root), { at }));
   await store.write({ roots: [signedIdentity.link], blobs: signedIdentity.blobs });
   await store.record(writtenObjectsOf([signedIdentity.link], at));
@@ -92,11 +92,11 @@ export async function setUpNotary(
 
 export async function loadNotary(
   keyring: Pick<Keyring, "signerFor">,
-  { people, clock, ...options }: NotaryOptions & { readonly people: PeopleView; readonly clock: () => number },
+  { clock, ...options }: NotaryOptions & { readonly clock: () => number },
 ): Promise<Notary> {
   const { kit, store } = options;
   const recorded = await (await view(store, recordedIdentityView(kit.signedIdentities))).signedIdentity();
-  const currentOf = async (inHand: SignedIdentityObject) => (await view(store, people)).current(inHand);
+  const currentOf = async (inHand: SignedIdentityObject) => (await view(store, peopleView)).current(inHand);
   const signer = await rootSigner(keyring, recorded.identity.root.link);
   return new Notary(kit.signatures.actor(signer, recorded, currentOf), { ...options, clock });
 }

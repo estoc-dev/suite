@@ -33,7 +33,6 @@ const identity = identityKit;
 const { signatures, signedIdentities, publish } = identity;
 const identityVersionInHand = async <T>(inHand: T) => inHand;
 const grants = new MailboxGrants(identity);
-const seenPeople = peopleView({ signedIdentities });
 const network = new MemoryNetwork();
 
 // One clock for everyone, so that what comes in later is recorded with the greater `at`.
@@ -58,7 +57,7 @@ async function person(fill: number, backend = new MemoryBackend()): Promise<Pers
   const signedIdentity = await publish(signer, { at: 0 });
   const store = new Store(backend);
   const actor = signatures.actor(signer, signedIdentity, async (inHand) =>
-    (await view(store, seenPeople)).current(inHand),
+    (await view(store, peopleView)).current(inHand),
   );
   const post = new Post(store, { transports: [network.transport], clock });
   const intake = new Intake(store, clock);
@@ -113,7 +112,7 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   (await view(store, grants.series)).grantFrom(
     from.identifier,
     to.identifier,
-    (await view(store, seenPeople)).asOfArrival(await view(store, signedIdentityArrivalsView)),
+    (await view(store, peopleView)).asOfArrival(await view(store, signedIdentityArrivalsView)),
   );
 
 describe("the latest grant of one person to another", () => {

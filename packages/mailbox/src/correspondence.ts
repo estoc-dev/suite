@@ -1,6 +1,6 @@
-import type { Actor, IdentityKit, Signature, SignedIdentityObject } from "@estoc/identity";
+import { type Actor, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import type { EncodedObject, Link } from "@estoc/object";
-import { type PeopleView, peopleView, type SeenIdentityVersions } from "@estoc/people";
+import { peopleView, type SeenIdentityVersions } from "@estoc/people";
 import { type Store, view, writtenObjectsOf } from "@estoc/store";
 import type { MailboxGrants } from "./grant.ts";
 import { UndeliveredMessage } from "./mailbox.ts";
@@ -8,36 +8,23 @@ import type { Delivery, Post } from "./post.ts";
 import type { MailboxData } from "./schema.ts";
 import { signedIdentityArrivalsView } from "./signed-identity-arrivals.ts";
 
-export type CorrespondenceIdentity = Pick<IdentityKit, "signatures" | "signedIdentities">;
-
 export class Correspondence {
   readonly #store: Store;
   readonly #post: Pick<Post, "outbox">;
   readonly #actor: Actor;
   readonly #clock: () => number;
   readonly #grants: MailboxGrants;
-  readonly #signatures: CorrespondenceIdentity["signatures"];
-  readonly #seenPeople: PeopleView;
 
-  constructor(
-    store: Store,
-    post: Pick<Post, "outbox">,
-    actor: Actor,
-    clock: () => number,
-    grants: MailboxGrants,
-    { signatures, signedIdentities }: CorrespondenceIdentity,
-  ) {
+  constructor(store: Store, post: Pick<Post, "outbox">, actor: Actor, clock: () => number, grants: MailboxGrants) {
     this.#store = store;
     this.#post = post;
     this.#actor = actor;
     this.#clock = clock;
     this.#grants = grants;
-    this.#signatures = signatures;
-    this.#seenPeople = peopleView({ signedIdentities });
   }
 
   async grant(to: SignedIdentityObject, mailboxes: readonly Link<EncodedObject<MailboxData>>[]): Promise<Signature> {
-    const current = await (await view(this.#store, this.#seenPeople)).current(to);
+    const current = await (await view(this.#store, peopleView)).current(to);
     const at = this.#clock();
     const grant = this.#grants.encode(current, mailboxes, at);
     const signature = await this.#actor.sign(grant);
@@ -88,7 +75,7 @@ export class Correspondence {
   }
 
   async #peopleAsOfArrival(): Promise<SeenIdentityVersions> {
-    const people = await view(this.#store, this.#seenPeople);
+    const people = await view(this.#store, peopleView);
     return people.asOfArrival(await view(this.#store, signedIdentityArrivalsView));
   }
 
@@ -96,7 +83,7 @@ export class Correspondence {
   async #signatureAtRootOf(bundle: Link<never>): Promise<Signature | undefined> {
     const closure = await this.#store.closure(bundle);
     try {
-      return await this.#signatures.read(bundle, { get: (link) => closure.get(link) });
+      return await identityKit.signatures.read(bundle, { get: (link) => closure.get(link) });
     } catch {
       return undefined;
     }

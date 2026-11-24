@@ -43,21 +43,19 @@ interface Person {
 
 const signerOf = (fill: number) => SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(fill));
 
-const seenPeople = peopleView(identity);
-
 async function personActingAs(
   signer: Signer,
   signedIdentity: SignedIdentityObject,
   // Those given the same backend are one person's devices as one: they share the blobs and the records.
   backend = new MemoryBackend(),
   actorOver = (store: Store) =>
-    signatures.actor(signer, signedIdentity, async (inHand) => (await view(store, seenPeople)).current(inHand)),
+    signatures.actor(signer, signedIdentity, async (inHand) => (await view(store, peopleView)).current(inHand)),
 ): Promise<Person> {
   const store = new Store(backend);
   const post = new Post(store, { transports: [network.transport], clock });
   const intake = new Intake(store, clock);
   const actor = actorOver(store);
-  const correspondence = post.correspondenceAs(actor, identity);
+  const correspondence = post.correspondenceAs(actor);
   return { actor, signedIdentity, store, post, intake, correspondence };
 }
 

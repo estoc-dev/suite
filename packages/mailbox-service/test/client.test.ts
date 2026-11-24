@@ -4,7 +4,7 @@ import { mailboxAt, mailboxSchema, type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
 import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
-import { Intake, inboundSchema, type Store, scan } from "@estoc/store";
+import { Intake, inboundSchema, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
@@ -355,7 +355,7 @@ describe("an account offer", () => {
     const { store, services } = client();
     const account = await (await accountAt(services, origin)).accept(await actorOf(alice));
     expect((await signatures.read(account.link, store)).signedIdentity.link).toBe(account.service.link);
-    expect(await dataOf((await scan(store, acknowledgements)).range([]))).toEqual([]);
+    expect(await dataOf((await store.scan(acknowledgements)).range([]))).toEqual([]);
   });
 
   it("accepted by an agent that an identity lists opens the account of whoever it signs for", async () => {

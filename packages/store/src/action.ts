@@ -10,7 +10,9 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
-import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
+import type { ScanOptions } from "./scan.ts";
+import type { Rows } from "./sorted-rows.ts";
+import type { FieldNames, OrderedIndex } from "./source.ts";
 import type { RecordedStatements, StagedStore, Store } from "./store.ts";
 
 export interface ActionOutcome<R extends ValueMap> {
@@ -115,7 +117,6 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   request: Q,
   environment: object = {},
 ): Promise<ActionOutcome<R>> {
-  if (!(readRows in store)) throw new TypeError("an action is performed on a store made by `new Store`");
   // The type of a request admits what its schema refuses, such as a field the schema does not name.
   const validRequest = action.requestSchema.validate(request);
   const targetSchemas: { readonly [field: string]: Schema | undefined } = action.targetSchemas;
@@ -126,7 +127,7 @@ export async function perform<Q extends ValueMap, R extends ValueMap>(
   const commitNotes = new CommitNotes();
   let data: R;
   try {
-    data = await runOf(action)(validRequest, new NotingStore(store as Store & RowKeeper, commitNotes), environment);
+    data = await runOf(action)(validRequest, new NotingStore(store, commitNotes), environment);
   } finally {
     commitNotes.close();
   }
@@ -167,17 +168,13 @@ class CommitNotes {
   }
 }
 
-class NotingStore implements Store, RowKeeper {
-  readonly #store: Store & RowKeeper;
+class NotingStore implements Store {
+  readonly #store: Store;
   readonly #commitNotes: CommitNotes;
 
-  constructor(store: Store & RowKeeper, commitNotes: CommitNotes) {
+  constructor(store: Store, commitNotes: CommitNotes) {
     this.#store = store;
     this.#commitNotes = commitNotes;
-  }
-
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
-    return this.#store[readRows](use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -195,8 +192,7 @@ class NotingStore implements Store, RowKeeper {
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
     const stagedRoots = [...roots];
     const stagedStore = await this.#store.stage({ roots: stagedRoots, blobs });
-    // What a store stages keeps rows.
-    return new NotingStagedStore(stagedStore as StagedStore & RowKeeper, stagedRoots, this.#commitNotes);
+    return new NotingStagedStore(stagedStore, stagedRoots, this.#commitNotes);
   }
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
@@ -219,21 +215,24 @@ class NotingStore implements Store, RowKeeper {
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
     return this.#store.closure(link);
   }
+
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>> {
+    return this.#store.scan(index, options);
+  }
 }
 
-class NotingStagedStore implements StagedStore, RowKeeper {
-  readonly #stagedStore: StagedStore & RowKeeper;
+class NotingStagedStore implements StagedStore {
+  readonly #stagedStore: StagedStore;
   readonly #roots: readonly Link<unknown>[];
   readonly #commitNotes: CommitNotes;
 
-  constructor(stagedStore: StagedStore & RowKeeper, roots: readonly Link<unknown>[], commitNotes: CommitNotes) {
+  constructor(stagedStore: StagedStore, roots: readonly Link<unknown>[], commitNotes: CommitNotes) {
     this.#stagedStore = stagedStore;
     this.#roots = roots;
     this.#commitNotes = commitNotes;
-  }
-
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
-    return this.#stagedStore[readRows](use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -244,5 +243,12 @@ class NotingStagedStore implements StagedStore, RowKeeper {
 
   async commit(): Promise<void> {
     await this.#commitNotes.note(this.#roots, () => this.#stagedStore.commit());
+  }
+
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>> {
+    return this.#stagedStore.scan(index, options);
   }
 }

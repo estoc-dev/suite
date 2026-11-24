@@ -2,7 +2,7 @@ import { decodeBundle, encodeBundle } from "@estoc/bundle";
 import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { Intake, indexOver, MemoryBackend, Store, scan, selectedRecords, sendableBlobs } from "../src/index.ts";
+import { Intake, indexOver, MemoryBackend, Store, selectedRecords, sendableBlobs } from "../src/index.ts";
 
 // What names a Secret without being one, as a key that links to its secret bytes.
 const keySchema = schema("Key", { name: string(), secret: link() });
@@ -40,7 +40,7 @@ describe("a store", () => {
       statements: [key.link],
       blobs: [key.bytes, secret.bytes, ...keySchema.blobs, ...secretSchema.blobs],
     });
-    const [row] = await listOf((await scan(store, recordedKeys())).range(["a"]));
+    const [row] = await listOf((await store.scan(recordedKeys())).range(["a"]));
     expect(row?.data.secret.link).toBe(secret.link);
     expect(await listOf(store.records())).toEqual([key.link]);
   });
@@ -56,7 +56,7 @@ describe("an intake", () => {
     );
     await new Intake(store).receive(bundle);
     expect(await store.get(secret.link)).toEqual(secret.bytes);
-    expect(await listOf((await scan(store, recordedKeys())).range([]))).toEqual([]);
+    expect(await listOf((await store.scan(recordedKeys())).range([]))).toEqual([]);
   });
 });
 

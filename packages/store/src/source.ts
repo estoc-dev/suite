@@ -79,7 +79,7 @@ interface Order<F extends ValueMap, By extends FieldNames<F>> {
   readonly by: By;
 }
 
-// `indexOver` and `scan` read what a source, an index and an ordered index are made of, which nothing
+// `indexOver` and the scan of a store read what a source, an index and an ordered index are made of, which nothing
 // outside this package can.
 let readingOf: <T>(source: Source<T>) => Reading<T>;
 export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;

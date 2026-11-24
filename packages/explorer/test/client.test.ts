@@ -5,7 +5,6 @@ import {
   indexOver,
   MemoryBackend,
   Store,
-  scan,
   selectedRecords,
   writtenObjectSchema,
   writtenObjectsOf,
@@ -377,7 +376,7 @@ describe("a client of a runtime that is given the list of an index", () => {
       readCount += 1;
       return [{ text: data.text, note: new LinkValue(link) }];
     }).orderedBy("text");
-    await scan(store, countedTexts);
+    await store.scan(countedTexts);
     const page = await clientOf(store, [listOfIndex(countedTexts.named("Counted texts"))]).page("Counted texts", 0, 1);
     expect(textsIn(page.rows)).toEqual(["a"]);
     expect(readCount).toBe(1);

@@ -7,7 +7,6 @@ import {
   RefusedBatch,
   recordSchema,
   Store,
-  scan,
   selectedBlobs,
   selectedRecords,
   sendableBlobs,
@@ -50,7 +49,7 @@ const takenNames = () =>
 
 async function namesIn(store: Store, index = takenNames()): Promise<string[]> {
   const names: string[] = [];
-  for await (const { data } of (await scan(store, index)).range([])) names.push(data.name);
+  for await (const { data } of (await store.scan(index)).range([])) names.push(data.name);
   return names;
 }
 
@@ -367,9 +366,9 @@ describe("an index over records", () => {
       return [{ name: "", at: data.at }];
     }).orderedBy("at");
     await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
-    await scan(store, index);
+    await store.scan(index);
     await store.record(batchOf([taken(alice, 2)]));
-    expect((await listOf((await scan(store, index)).range([]))).map(({ data }) => data.at)).toEqual([1, 2]);
+    expect((await listOf((await store.scan(index)).range([]))).map(({ data }) => data.at)).toEqual([1, 2]);
     expect(readTimes).toEqual([1, 2]);
   });
 
@@ -381,7 +380,7 @@ describe("an index over records", () => {
     const index = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, () => {
       throw new Error("not read");
     }).orderedBy("at");
-    await expect(scan(store, index)).rejects.toThrow("not read");
+    await expect(store.scan(index)).rejects.toThrow("not read");
   });
 
   it("gives a view its rows, with the store to read what they name", async () => {
@@ -406,7 +405,7 @@ describe("an index over written objects", () => {
       { name: data.name, at: 0 },
     ]).orderedBy("name");
   const namesByName = async (store: Store, index: ReturnType<typeof writtenNames>) =>
-    (await listOf((await scan(store, index)).range([]))).map(({ data }) => data.name);
+    (await listOf((await store.scan(index)).range([]))).map(({ data }) => data.name);
 
   it("reads the objects that the Written Objects among the records link to", async () => {
     const { store } = sides();
@@ -485,7 +484,7 @@ describe("an index over blobs", () => {
     const index = indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, ({ data }) => [
       { name: "", at: data.at },
     ]).orderedBy("at");
-    const rows = await listOf((await scan(store, index)).range([]));
+    const rows = await listOf((await store.scan(index)).range([]));
     expect(rows.map(({ data }) => data.at)).toEqual([0, 1]);
   });
 });

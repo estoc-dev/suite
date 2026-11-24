@@ -5,7 +5,6 @@ import {
   MemoryBackend,
   type OrderedIndex,
   Store,
-  scan,
   selectedRecords,
   writtenObjectsOf,
   writtenObjectsOver,
@@ -51,7 +50,7 @@ async function recordHeads(store: Store, ...chains: readonly Lineage[]) {
 
 async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
   const heads: Link<LineageNodeObject>[] = [];
-  for await (const { data } of (await scan(store, index)).range([new LinkValue(key)])) heads.push(data.head.link);
+  for await (const { data } of (await store.scan(index)).range([new LinkValue(key)])) heads.push(data.head.link);
   return heads;
 }
 
@@ -118,7 +117,7 @@ describe("the selection of a schema lineage over a store", () => {
       yield { text, title: title ?? "" };
     }).orderedBy("text");
     const rows: DataOf<typeof titled>[] = [];
-    for await (const { data } of (await scan(store, byText)).range([])) rows.push(data);
+    for await (const { data } of (await store.scan(byText)).range([])) rows.push(data);
     expect(rows).toEqual([
       { text: "titled", title: "Greeting" },
       { text: "untitled", title: "" },

@@ -1,7 +1,7 @@
 import { ed25519, identityKit, SoftwareSigner } from "@estoc/identity";
 import { encodeObject, LinkValue } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { MemoryBackend, Store, scan, view } from "@estoc/store";
+import { MemoryBackend, Store, view } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { checkHonors, identityVersions, peopleView } from "../src/index.ts";
 import { identityVersionInHand } from "./fixtures.ts";
@@ -21,7 +21,7 @@ describe("the index of the people of a store", () => {
     const store = new Store(new MemoryBackend());
     await store.write({ roots: [second.link, forged.link], blobs: [...second.blobs, forged.bytes] });
 
-    const rows = await scan(store, identityVersions);
+    const rows = await store.scan(identityVersions);
     const signedIdentitiesOfRows = [];
     for await (const { data } of rows.range([])) signedIdentitiesOfRows.push(data.signedIdentity.link);
     expect(signedIdentitiesOfRows).toEqual([first.link, second.link]);

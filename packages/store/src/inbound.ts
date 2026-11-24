@@ -1,7 +1,17 @@
-import { type Bytes, blobsOf, type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
+import {
+  type Bytes,
+  blobsOf,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  type ValueMap,
+} from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
-import { type RowKeeper, type RowsByIndex, readRows } from "./scan.ts";
+import type { ScanOptions } from "./scan.ts";
+import type { Rows } from "./sorted-rows.ts";
+import type { FieldNames, OrderedIndex } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
 
 /**
@@ -62,7 +72,7 @@ export class Intake {
   }
 }
 
-class StagedArrival implements StagedStore, RowKeeper {
+class StagedArrival implements StagedStore {
   readonly #stagedBundle: StagedStore;
   readonly #store: Store;
   readonly #record: RecordBatch;
@@ -71,11 +81,6 @@ class StagedArrival implements StagedStore, RowKeeper {
     this.#stagedBundle = stagedBundle;
     this.#store = store;
     this.#record = record;
-  }
-
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
-    // What a store stages keeps rows.
-    return (this.#stagedBundle as StagedStore & RowKeeper)[readRows](use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -87,5 +92,12 @@ class StagedArrival implements StagedStore, RowKeeper {
   async commit(): Promise<void> {
     await this.#stagedBundle.commit();
     await this.#store.record(this.#record);
+  }
+
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>> {
+    return this.#stagedBundle.scan(index, options);
   }
 }

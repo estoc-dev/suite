@@ -1,4 +1,4 @@
-import type { Bytes, EncodedObject, Link, Reader } from "@estoc/object";
+import type { Bytes, EncodedObject, Link, Reader, ValueMap } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
 import {
   type Batch,
@@ -9,7 +9,9 @@ import {
   type RecordBatch,
   recordsOf,
 } from "./batch.ts";
-import { KeptRows, type RowKeeper, type RowsByIndex, readRows, rowsWithAdded } from "./scan.ts";
+import { KeptRows, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import type { Rows } from "./sorted-rows.ts";
+import type { FieldNames, OrderedIndex } from "./source.ts";
 
 /**
  * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
@@ -40,6 +42,21 @@ export interface Store {
   records(): AsyncIterable<Link<EncodedObject>>;
   recordedStatements(): Promise<RecordedStatements>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
+  /**
+   * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
+   *   put since.
+   * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
+   *   the `failures` of the rows, and is not read again.
+   * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
+   *   it fails on, and that would otherwise stop the other rows from being read.
+   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
+   *   selection or its rows catch it. That is not listed in the `failures`, and a later scan reads
+   *   the link again.
+   */
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>>;
 }
 
 export interface RecordedStatements {
@@ -63,19 +80,24 @@ export interface StagedStore {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   commit(): Promise<void>;
+  /**
+   * The rows and their failures come of the blobs the store holds at the scan together with the
+   * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
+   * recorded.
+   */
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>>;
 }
 
-export class StoreOf implements Store, RowKeeper {
+export class StoreOf implements Store {
   readonly #backend: Backend;
   readonly #keptRows: KeptRows;
 
   constructor(backend: Backend) {
     this.#backend = backend;
     this.#keptRows = new KeptRows(this, (start) => backend.blobs(start));
-  }
-
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
-    return this.#keptRows.read(use);
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -90,7 +112,8 @@ export class StoreOf implements Store, RowKeeper {
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
     const hashedBatch = { blobs: hashedBlobs(blobs), records: [] };
-    return new StagedStoreOf(this, this.#backend, await leavesFirst(roots, hashedBatch, this.#backend));
+    const stagedBlobs = await leavesFirst(roots, hashedBatch, this.#backend);
+    return new StagedStoreOf(this, this.#keptRows, this.#backend, stagedBlobs);
   }
 
   async record({ statements, blobs }: RecordBatch): Promise<void> {
@@ -110,27 +133,35 @@ export class StoreOf implements Store, RowKeeper {
   }
 
   recordedStatements(): Promise<RecordedStatements> {
-    return this[readRows](async (rows) => ({ statements: (await rows.records()).links, blobCount: rows.blobCount }));
+    return this.#keptRows.read(async (rows) => ({
+      statements: (await rows.records()).links,
+      blobCount: rows.blobCount,
+    }));
   }
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
     return closureIn(this, link);
   }
+
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>> {
+    return this.#keptRows.read((rows) => scannedRows(rows, index, options));
+  }
 }
 
-class StagedStoreOf implements StagedStore, RowKeeper {
-  readonly #store: Reader & RowKeeper;
+class StagedStoreOf implements StagedStore {
+  readonly #store: Reader;
+  readonly #keptRows: KeptRows;
   readonly #backend: Backend;
   readonly #blobs: ReadonlyMap<Link<unknown>, Uint8Array>;
 
-  constructor(store: Reader & RowKeeper, backend: Backend, blobs: ReadonlyMap<Link<unknown>, Uint8Array>) {
+  constructor(store: Reader, keptRows: KeptRows, backend: Backend, blobs: ReadonlyMap<Link<unknown>, Uint8Array>) {
     this.#store = store;
+    this.#keptRows = keptRows;
     this.#backend = backend;
     this.#blobs = blobs;
-  }
-
-  [readRows]<T>(use: (rows: RowsByIndex) => Promise<T>): Promise<T> {
-    return this.#store[readRows](async (rows) => use(await rowsWithAdded(rows, [...this.#blobs.keys()], this)));
   }
 
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
@@ -141,6 +172,15 @@ class StagedStoreOf implements StagedStore, RowKeeper {
 
   commit(): Promise<void> {
     return this.#backend.put(this.#blobs);
+  }
+
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>> {
+    return this.#keptRows.read(async (rows) =>
+      scannedRows(await rowsWithAdded(rows, [...this.#blobs.keys()], this), index, options),
+    );
   }
 }
 

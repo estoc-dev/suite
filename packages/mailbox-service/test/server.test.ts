@@ -21,7 +21,7 @@ import {
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { link, schema } from "@estoc/schema";
-import { MemoryBackend, recordSchema, Store, scan, view } from "@estoc/store";
+import { MemoryBackend, recordSchema, Store, view } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
 import { hex } from "@scure/base";
 import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -530,13 +530,13 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
 
   it("has a location of the Service that the service signed", async () => {
     const { store, service, at } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await scan(store, locations)).range([]));
+    const rows = await dataOf((await store.scan(locations)).range([]));
     expect(rows).toEqual([{ identifier, at, service: new LinkValue(service.link) }]);
   });
 
   it("has the acknowledgement by the acceptance it answers", async () => {
     const { store, acceptance, acknowledgement } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await scan(store, acknowledgements)).range([]));
+    const rows = await dataOf((await store.scan(acknowledgements)).range([]));
     expect(rows).toEqual([
       { acceptance: new LinkValue(acceptance.signature.link), acknowledgement: new LinkValue(acknowledgement.link) },
     ]);
@@ -544,7 +544,7 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
 
   it("has the identity version that the service was set up with", async () => {
     const { store, signedIdentity } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await scan(store, recordedIdentityVersions)).range([]));
+    const rows = await dataOf((await store.scan(recordedIdentityVersions)).range([]));
     expect(rows).toEqual([{ identifier, signedIdentity: new LinkValue(signedIdentity.link) }]);
   });
 });

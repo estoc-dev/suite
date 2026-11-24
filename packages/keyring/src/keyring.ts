@@ -1,6 +1,6 @@
 import type { CurveScheme, KeyObject, SecretKeys, Signer } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
-import { type Store, scan } from "@estoc/store";
+import type { Store } from "@estoc/store";
 import { heldKeys } from "./held-keys.ts";
 
 /**
@@ -25,7 +25,7 @@ export class Keyring {
   }
 
   async signerFor(key: Link<unknown>): Promise<Signer | undefined> {
-    for await (const { data } of (await scan(this.#store, heldKeys)).range([new LinkValue(key)]))
+    for await (const { data } of (await this.#store.scan(heldKeys)).range([new LinkValue(key)]))
       return (await this.#secretKeys.read(data.secretKey.link, this.#store)).signer;
     return undefined;
   }

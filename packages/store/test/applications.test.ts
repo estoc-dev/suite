@@ -15,7 +15,6 @@ import {
   indexOver,
   MemoryBackend,
   Store,
-  scan,
   selectedRecords,
   writtenObjectsOf,
   writtenObjectsOver,
@@ -116,7 +115,7 @@ describe("an object slipped into a bundle", () => {
       ({ data }) => [data],
     ).orderedBy("name");
     const names: string[] = [];
-    for await (const { data } of (await scan(bob, byName)).range([])) names.push(data.name);
+    for await (const { data } of (await bob.scan(byName)).range([])) names.push(data.name);
     expect(names).toEqual(["Alice"]);
   });
 });

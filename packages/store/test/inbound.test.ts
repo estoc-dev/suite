@@ -12,6 +12,7 @@ import {
 import { type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
+  arrivalsView,
   type InboundObject,
   Intake,
   inboundSchema,
@@ -19,9 +20,9 @@ import {
   MemoryBackend,
   RefusedBatch,
   Store,
-  scan,
   selectedBlobs,
   selectedRecords,
+  view,
 } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
@@ -173,6 +174,16 @@ describe("an intake", () => {
     });
   });
 
+  it("gives a view of the arrivals, on a staged bundle, no arrival of the bundle until that is committed", async () => {
+    const { store, intake } = sides();
+    const note = object({ text: "hello" });
+    const arrivals = arrivalsView(anything);
+    const stagedStore = await intake.stage(bundleOf(note));
+    expect(await (await view(stagedStore, arrivals)).atOf(note.link)).toBeUndefined();
+    await stagedStore.commit();
+    expect(await (await view(store, arrivals)).atOf(note.link)).toBe(1000);
+  });
+
   it("gives an index over blobs, on a staged bundle, the blobs of the bundle", async () => {
     const { intake } = sides();
     const textSchema = schema("Text", { text: string() });
@@ -180,7 +191,7 @@ describe("an intake", () => {
       data.text === undefined ? [] : [{ text: data.text }],
     ).orderedBy("text");
     const stagedStore = await intake.stage(bundleOf(object({ text: "hello" })));
-    expect((await listOf((await scan(stagedStore, texts)).range([]))).map(({ data }) => data.text)).toEqual(["hello"]);
+    expect((await listOf((await stagedStore.scan(texts)).range([]))).map(({ data }) => data.text)).toEqual(["hello"]);
   });
 
   it("refuses to stage a bundle that it refuses to receive", async () => {
@@ -210,7 +221,7 @@ describe("what an intake records", () => {
     const bundle = bundleOf(object({ text: "hello" }));
     await intake.receive(bundle);
     await intake.receive(bundle);
-    const rows = await listOf((await scan(store, cameIn)).range([new LinkValue(bundle.link)]));
+    const rows = await listOf((await store.scan(cameIn)).range([new LinkValue(bundle.link)]));
     expect(rows.map(({ data }) => data.at)).toEqual([1000, 1001]);
   });
 
@@ -220,7 +231,7 @@ describe("what an intake records", () => {
     const sentInbound = encodeObject(inboundSchema, { bundle: new LinkValue(note.link as Link<never>), at: 0 });
     await intake.receive(bundleOf(sentInbound, [note.bytes, ...anything.blobs, ...inboundSchema.blobs]));
     expect(await store.get(sentInbound.link)).toEqual(sentInbound.bytes);
-    const rows = await listOf((await scan(store, cameIn)).range([]));
+    const rows = await listOf((await store.scan(cameIn)).range([]));
     expect(rows.map(({ data }) => data)).toEqual([{ bundle: new LinkValue(sentInbound.link), at: 1000 }]);
   });
 });

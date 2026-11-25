@@ -1,9 +1,9 @@
 import { createMemo, For, Show } from "solid-js";
-import { type ActionSource, readActionForms } from "./action-page.ts";
+import type { ActionSessions } from "./action-sessions.ts";
 import { fragmentOf } from "./place.ts";
 
-export function ActionsView(props: { source: ActionSource }) {
-  const forms = createMemo(() => readActionForms(props.source));
+export function ActionsView(props: { sessions: ActionSessions }) {
+  const forms = createMemo(async () => (await props.sessions.all()).map(({ form }) => form));
   return (
     <>
       <h1>Actions</h1>

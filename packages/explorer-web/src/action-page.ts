@@ -39,7 +39,7 @@ export interface ActionForm {
 }
 
 export async function readActionForms(source: ActionSource): Promise<ActionForm[]> {
-  const titledSchema = async (link: Link<Schema>): Promise<TitledSchema> => ({
+  const readTitledSchema = async (link: Link<Schema>): Promise<TitledSchema> => ({
     link,
     title: (await readSchema(source, link)).document.title,
   });
@@ -51,12 +51,12 @@ export async function readActionForms(source: ActionSource): Promise<ActionForm[
       return {
         title: document.title,
         request: schema,
-        result: await titledSchema(data.result.link),
+        result: await readTitledSchema(data.result.link),
         fields: await Promise.all(
           Object.entries(document.fields).map(async ([name, field]) => {
             const target = targetOf(name);
             return target instanceof LinkValue
-              ? { name, field, target: await titledSchema(target.link as Link<Schema>) }
+              ? { name, field, target: await readTitledSchema(target.link as Link<Schema>) }
               : { name, field };
           }),
         ),
@@ -80,48 +80,52 @@ function linkIn(text: string, name: string): LinkValue<unknown> {
   return new LinkValue(text);
 }
 
+/** What the field holds in a request for the text typed for it, or nothing where the field is left out. */
+function valueIn(text: string, { name, field }: FormField): Value | undefined {
+  const entry = entryOf(field);
+  const isLeftEmpty = entry === undefined || text.trim() === "";
+  if (isLeftEmpty && field.optional === true) return undefined;
+  if (entry === undefined) throw new Error(`the page has no input for the field ${name}, ${typeNameOf(field)}`);
+  if (entry === "text") return text;
+  if (entry === "link") return linkIn(text.trim(), name);
+  return isLeftEmpty
+    ? []
+    : text
+        .trim()
+        .split(/\s+/)
+        .map((part) => linkIn(part, name));
+}
+
 /**
- * Gives the bytes of a request. `texts` holds what was typed for a field under its name. An
- * optional field is left out of the request where nothing is typed for it, and where the page has
- * no input for its type.
+ * `texts` holds what was typed for a field under its name. An optional field is left out of the
+ * request where nothing is typed for it, and where the page has no input for its type.
  */
 export function requestOf(form: ActionForm, texts: ReadonlyMap<string, string>): Uint8Array {
-  const data: { [name: string]: Value } = {};
-  for (const { name, field } of form.fields) {
-    const entry = entryOf(field);
-    const text = texts.get(name) ?? "";
-    const isLeftEmpty = entry === undefined || text.trim() === "";
-    if (isLeftEmpty && field.optional === true) continue;
-    if (entry === undefined) throw new Error(`the page has no input for the field ${name}, ${typeNameOf(field)}`);
-    if (entry === "text") data[name] = text;
-    else if (entry === "link") data[name] = linkIn(text.trim(), name);
-    else
-      data[name] = isLeftEmpty
-        ? []
-        : text
-            .trim()
-            .split(/\s+/)
-            .map((part) => linkIn(part, name));
-  }
+  // Assigning each member to an object would leave out a field named `__proto__`.
+  const data = Object.fromEntries(
+    form.fields.flatMap((field): [string, Value][] => {
+      const value = valueIn(texts.get(field.name) ?? "", field);
+      return value === undefined ? [] : [[field.name, value]];
+    }),
+  );
   return encodeObject(form.request, data).bytes;
 }
 
-/** The result is not in the store, so its page is read from the bytes the runtime gave. */
-export type Outcome =
-  | { readonly kind: "performed"; readonly result: BlobPage; readonly commits: readonly Link<unknown>[] }
-  | { readonly kind: "failed"; readonly error: unknown };
+export type ResultPage =
+  | { readonly kind: "read"; readonly page: BlobPage }
+  | { readonly kind: "unread"; readonly error: unknown };
 
-export async function performForm(
-  source: ActionSource,
-  form: ActionForm,
-  texts: ReadonlyMap<string, string>,
-): Promise<Outcome> {
+/**
+ * The reply holds the bytes of the result, and the schema it names and what it links to are read
+ * from the source. A read that fails says nothing of how the action went, so it gives a page that
+ * is unread in place of throwing.
+ */
+export async function readResultPage(source: Pick<ActionSource, "get">, result: Uint8Array): Promise<ResultPage> {
+  const link = linkOf(result);
+  const reader: Reader = { get: async (asked) => (asked === link ? result : source.get(asked)) };
   try {
-    const { result, commits } = await source.perform(requestOf(form, texts));
-    const link = linkOf(result);
-    const reader: Reader = { get: async (asked) => (asked === link ? result : source.get(asked)) };
-    return { kind: "performed", result: await readBlobPage(reader, link), commits };
+    return { kind: "read", page: await readBlobPage(reader, link) };
   } catch (error) {
-    return { kind: "failed", error };
+    return { kind: "unread", error };
   }
 }

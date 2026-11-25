@@ -103,11 +103,9 @@ export function App(props: { source: Source & ActionSource }) {
           <Errored fallback={failureView}>
             <Switch fallback={<p class="note">The runtime gives no list of that name.</p>}>
               <Match when={shownBlob()}>{(blob) => <BlobView reader={props.source} link={blob()} />}</Match>
-              <Match when={shownAction()}>
-                {(action) => <ActionView source={props.source} action={action()} sessions={sessions} />}
-              </Match>
+              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
               <Match when={place() === actionsPlace}>
-                <ActionsView source={props.source} />
+                <ActionsView sessions={sessions} />
               </Match>
               <Match when={shownList()}>
                 {(list) => <ListView source={props.source} list={list()} from={listPlace()?.from} />}

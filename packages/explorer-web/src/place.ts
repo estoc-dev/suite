@@ -14,7 +14,6 @@ export interface BlobPlace {
   readonly blob: Link<unknown>;
 }
 
-/** Where every action of the runtime is listed. */
 export const actionsPlace = { actions: "all" } as const;
 
 /** `action` is the request schema of the action, which is what tells it from the others. */

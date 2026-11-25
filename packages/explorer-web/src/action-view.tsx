@@ -1,15 +1,8 @@
 import type { Link, Schema } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Match, Show, Switch } from "solid-js";
-import {
-  type ActionForm,
-  type ActionSource,
-  entryOf,
-  type FormField,
-  readActionForms,
-  type TitledSchema,
-} from "./action-page.ts";
-import type { ActionSessions } from "./action-sessions.ts";
+import { createMemo, For, Loading, Match, Show, Switch } from "solid-js";
+import { entryOf, type FormField, type ResultPage, type TitledSchema } from "./action-page.ts";
+import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
@@ -20,12 +13,22 @@ const titledSchemaView = ({ link, title }: TitledSchema): JSX.Element => (
   </>
 );
 
-function inputView({ name, field }: FormField, texts: Map<string, string>): JSX.Element {
+function inputView({ name, field }: FormField, session: ActionSession): JSX.Element {
   const entry = entryOf(field);
   if (entry === undefined) return <span class="muted">The page has no input for this type.</span>;
-  const keep = (event: { currentTarget: { value: string } }) => texts.set(name, event.currentTarget.value);
+  const keep = (event: { currentTarget: { value: string } }) => session.setText(name, event.currentTarget.value);
   return entry === "links" ? (
-    <textarea class="mono" aria-label={name} rows="3" spellcheck={false} value={texts.get(name) ?? ""} onInput={keep} />
+    <>
+      <textarea
+        class="mono"
+        aria-label={name}
+        rows="3"
+        spellcheck={false}
+        value={session.textOf(name)}
+        onInput={keep}
+      />
+      <span class="muted">Separate links with spaces or new lines.</span>
+    </>
   ) : (
     <input
       class="mono"
@@ -33,15 +36,41 @@ function inputView({ name, field }: FormField, texts: Map<string, string>): JSX.
       aria-label={name}
       autocomplete="off"
       spellcheck={false}
-      value={texts.get(name) ?? ""}
+      value={session.textOf(name)}
       onInput={keep}
     />
   );
 }
 
-function FormView(props: { form: ActionForm; sessions: ActionSessions }) {
-  const action = () => props.form.request.link;
-  const state = () => props.sessions.stateOf(action());
+function ResultView(props: { result: Promise<ResultPage> }) {
+  const result = createMemo(() => props.result);
+  const read = () => {
+    const held = result();
+    return held.kind === "read" ? held.page : undefined;
+  };
+  const unread = () => {
+    const held = result();
+    return held.kind === "unread" ? held : undefined;
+  };
+  return (
+    <Loading fallback={<p class="note">Reading the result.</p>}>
+      <Switch>
+        <Match when={read()}>{(page) => <>{blobPageView(page())}</>}</Match>
+        <Match when={unread()}>
+          {(unread) => (
+            <p class="problem" role="alert">
+              The result could not be read: {messageOf(unread().error)}
+            </p>
+          )}
+        </Match>
+      </Switch>
+    </Loading>
+  );
+}
+
+function FormView(props: { session: ActionSession }) {
+  const form = () => props.session.form;
+  const state = () => props.session.state();
   const failed = () => {
     const held = state();
     return held?.kind === "failed" ? held : undefined;
@@ -52,21 +81,21 @@ function FormView(props: { form: ActionForm; sessions: ActionSessions }) {
   };
   return (
     <>
-      <h1>{props.form.title}</h1>
+      <h1>{form().title}</h1>
       <form
         class="card"
         onSubmit={(event) => {
           event.preventDefault();
-          void props.sessions.perform(props.form);
+          void props.session.perform();
         }}
       >
         <dl class="head">
           <dt>Request</dt>
-          <dd>{titledSchemaView({ link: action(), title: props.form.title })}</dd>
+          <dd>{titledSchemaView({ link: form().request.link, title: form().title })}</dd>
           <dt>Result</dt>
-          <dd>{titledSchemaView(props.form.result)}</dd>
+          <dd>{titledSchemaView(form().result)}</dd>
         </dl>
-        <Show when={props.form.fields.length > 0}>
+        <Show when={form().fields.length > 0}>
           <table class="fields">
             <thead>
               <tr>
@@ -76,13 +105,13 @@ function FormView(props: { form: ActionForm; sessions: ActionSessions }) {
               </tr>
             </thead>
             <tbody>
-              <For each={props.form.fields}>
+              <For each={form().fields}>
                 {(field) => (
                   <tr>
                     <td>
                       <span class="mono name">{field.name}</span>
                     </td>
-                    <td>{inputView(field, props.sessions.textsOf(action()))}</td>
+                    <td>{inputView(field, props.session)}</td>
                     <td>
                       <span class="mono">{typeNameOf(field.field)}</span>
                       {field.field.optional === true && <span class="muted"> · optional</span>}
@@ -122,7 +151,9 @@ function FormView(props: { form: ActionForm; sessions: ActionSessions }) {
           {(performed) => (
             <>
               <h2>Result</h2>
-              <section class="card">{blobPageView(performed().result)}</section>
+              <section class="card">
+                <ResultView result={performed().result} />
+              </section>
               <h2>Commits</h2>
               <section class="card">
                 <Show
@@ -142,16 +173,16 @@ function FormView(props: { form: ActionForm; sessions: ActionSessions }) {
   );
 }
 
-export function ActionView(props: { source: ActionSource; action: Link<Schema>; sessions: ActionSessions }) {
-  const forms = createMemo(() => readActionForms(props.source));
-  const form = createMemo(() => forms().find(({ request }) => request.link === props.action));
+export function ActionView(props: { sessions: ActionSessions; action: Link<Schema> }) {
+  const sessions = createMemo(() => props.sessions.all());
+  const session = createMemo(() => sessions().find(({ form }) => form.request.link === props.action));
   return (
     <Show
-      when={form()}
+      when={session()}
       keyed
       fallback={<p class="note">The runtime lists no action that takes a request written to that schema.</p>}
     >
-      {(shown) => <FormView form={shown} sessions={props.sessions} />}
+      {(shown) => <FormView session={shown} />}
     </Show>
   );
 }

@@ -98,6 +98,29 @@ const tick: GivenAction = {
 
 const placeOf = ({ requestSchema }: GivenAction) => `#action=${encodeURIComponent(requestSchema.link)}`;
 
+/** A source that refuses what it is asked once it is closed, as a client does once its channel closed. */
+function closing(source: Source & ActionSource): { source: Source & ActionSource; close: () => void } {
+  let isClosed = false;
+  const whileOpen =
+    <A extends unknown[], R>(call: (...given: A) => Promise<R>) =>
+    async (...given: A): Promise<R> => {
+      if (isClosed) throw new Error("the channel is closed");
+      return call(...given);
+    };
+  return {
+    source: {
+      get: whileOpen(source.get),
+      lists: whileOpen(source.lists),
+      page: whileOpen(source.page),
+      actions: whileOpen(source.actions),
+      perform: whileOpen(source.perform),
+    },
+    close: () => {
+      isClosed = true;
+    },
+  };
+}
+
 beforeEach(() => {
   location.hash = "";
 });
@@ -418,7 +441,7 @@ describe("the page of an action", () => {
     expect(cellsOf(root)).toEqual([
       ["to", "", "link · to Entry"],
       ["words", "", "string"],
-      ["others", "", "array of link · optional"],
+      ["others", "Separate links with spaces or new lines.", "array of link · optional"],
     ]);
     expect(typedIn(root)).toEqual([
       ["to", ""],
@@ -452,6 +475,59 @@ describe("the page of an action", () => {
       [other, `#${other}`],
     ]);
     expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("shows the commits while the result is read", async () => {
+    location.hash = placeOf(greet);
+    const reading = gate();
+    let isPerformed = false;
+    const source = sourceWithActions(sourceOf(), {
+      ...greet,
+      async perform(request) {
+        isPerformed = true;
+        return { ...(await greet.perform(request)), commits: [other] };
+      },
+    });
+    const root = show({
+      ...source,
+      async get(asked) {
+        if (isPerformed) await reading.permissionToRead;
+        return source.get(asked);
+      },
+    });
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    expect(textsOf(root, "section .note")).toEqual(["Reading the result."]);
+    expect(hrefsOf(root, ".commits a")).toEqual([[other, `#${other}`]]);
+    reading.open();
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    expect(textsOf(root, "section .note")).not.toContain("Reading the result.");
+  });
+
+  it("shows the commits of an action whose result could not be read, and says so under the result", async () => {
+    location.hash = placeOf(tick);
+    const { source, close } = closing(
+      sourceWithActions(sourceOf(), {
+        ...tick,
+        async perform() {
+          close();
+          return { result: {}, commits: [entry.link] };
+        },
+      }),
+    );
+    const performed = vi.spyOn(source, "perform");
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Tick"]));
+    perform(root);
+    await vi.waitFor(() =>
+      expect(textsOf(root, "[role=alert]")).toEqual(["The result could not be read: the channel is closed"]),
+    );
+    expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]);
+    expect(hrefsOf(root, ".commits a")).toEqual([[entry.link, `#${entry.link}`]]);
+    expect(performed).toHaveBeenCalledTimes(1);
   });
 
   it("says that an action which committed nothing did so", async () => {
@@ -517,6 +593,28 @@ describe("the page of an action", () => {
       ["others", `${other}\n${entry.link}`],
     ]);
     expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string');
+  });
+
+  it("shows the form, what was typed and the result again with no read of the source", async () => {
+    location.hash = "#actions";
+    const { source, close } = closing(sourceHolding(sourceWithActions(sourceOf(), greet, tick), entry.bytes));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Actions"]));
+    await open(placeOf(greet));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    await open(`#${entry.link}`);
+    expect(textsOf(root, "h1")).toEqual(["Blob"]);
+    close();
+    await open(placeOf(greet));
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    expect(typedIn(root)).toContainEqual(["words", "good day"]);
+    expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string');
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    await open("#actions");
+    expect(cellsOf(root).map(([title]) => title)).toEqual(["Greet", "Tick"]);
   });
 
   it("shows the form of another action once the fragment names it, with what was typed for that one", async () => {

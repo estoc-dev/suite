@@ -141,6 +141,7 @@ main {
 }
 
 .card > .note,
+.card > .problem,
 .dump {
   padding: 16px;
 }

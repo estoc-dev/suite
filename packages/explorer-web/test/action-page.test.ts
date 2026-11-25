@@ -1,7 +1,7 @@
 import { decodeObject, encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { array, boolean, integer, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it, vi } from "vitest";
-import { performForm, readActionForms, requestOf } from "../src/action-page.ts";
+import { describe, expect, it } from "vitest";
+import { readActionForms, readResultPage, requestOf } from "../src/action-page.ts";
 import { entrySchema, type GivenAction, sourceOf, sourceWithActions } from "./fixtures.ts";
 
 const greetingSchema = schema("Greeting", { text: string(), to: link() });
@@ -90,6 +90,13 @@ describe("the request of a form", () => {
     });
   });
 
+  it("holds a field named __proto__ as any other", async () => {
+    const remember = { ...count, requestSchema: schema("Remember", { ["__proto__"]: optional(string()) }) };
+    const form = await formOf(remember);
+    const { data } = decodeObject(requestOf(form, new Map([["__proto__", "memo"]])), form.request);
+    expect(Object.entries(data)).toEqual([["__proto__", "memo"]]);
+  });
+
   it("is refused where a field of links holds what is not a link", async () => {
     await expect(dataOf(greet, { words: "hello" })).rejects.toThrow('the field to takes a link, which "" is not');
     await expect(dataOf(greet, { words: "hello", to: entry.link, others: `${other} nearby` })).rejects.toThrow(
@@ -110,49 +117,28 @@ describe("the request of a form", () => {
   });
 });
 
-describe("a form that is performed", () => {
-  it("gives the result as the page of a blob, read from the bytes of the reply and not from the store", async () => {
-    const { source, form } = await given(greet);
-    const outcome = await performForm(source, form, typed({ words: "hello", to: entry.link }));
-    const result = encodeObject(greetingSchema, { text: "hello!", to: new LinkValue(entry.link) });
+describe("the page of a result", () => {
+  const result = encodeObject(greetingSchema, { text: "hello!", to: new LinkValue(entry.link) });
+
+  it("is read from the bytes of the reply, which the source need not hold", async () => {
+    const { source } = await given(greet);
     expect(await source.get(result.link)).toBeUndefined();
-    expect(outcome).toMatchObject({
-      kind: "performed",
-      result: {
+    expect(await readResultPage(source, result.bytes)).toMatchObject({
+      kind: "read",
+      page: {
         inspection: { kind: "object", link: result.link, schema: { kind: "schema", problems: [] } },
         reading: undefined,
       },
-      commits: [],
     });
   });
 
-  it("gives the commits of the reply", async () => {
-    const commits = [entry.link, other];
-    const { source, form } = await given({
-      requestSchema: schema("Tick", {}),
-      resultSchema: schema("Ticked", {}),
-      perform: async () => ({ result: {}, commits }),
-    });
-    expect(await performForm(source, form, typed({}))).toMatchObject({ kind: "performed", commits });
-  });
-
-  it("gives why the runtime failed", async () => {
-    const perform = async () => {
-      throw new Error("the mailbox gave no answer");
+  it("is unread where the source fails to give the schema that the result names", async () => {
+    const get = async () => {
+      throw new Error("the channel is closed");
     };
-    const { source, form } = await given({ ...greet, perform });
-    const outcome = await performForm(source, form, typed({ words: "hello", to: entry.link }));
-    expect(outcome).toEqual({ kind: "failed", error: new Error("the mailbox gave no answer") });
-  });
-
-  it("gives why a request was refused, and asks nothing of the runtime", async () => {
-    const perform = vi.fn(greet.perform);
-    const { source, form } = await given({ ...greet, perform });
-    const outcome = await performForm(source, form, typed({ to: "somewhere" }));
-    expect(outcome).toEqual({
-      kind: "failed",
-      error: new Error('the field to takes a link, which "somewhere" is not'),
+    expect(await readResultPage({ get }, result.bytes)).toEqual({
+      kind: "unread",
+      error: new Error("the channel is closed"),
     });
-    expect(perform).not.toHaveBeenCalled();
   });
 });

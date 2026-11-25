@@ -26,31 +26,36 @@ function show(source: AppSource): HTMLElement {
   return root;
 }
 
-const navigation = new EventTarget();
+let historyEntryCount = 0;
+const historyEntry = () => ({ id: String(historyEntryCount++) });
+
+const navigation = Object.assign(new EventTarget(), { currentEntry: historyEntry() });
 vi.stubGlobal("navigation", navigation);
+let loadedEntry = navigation.currentEntry;
+const openedEntries = new Map<string, { id: string }>();
 
 /** The handlers the page intercepts the navigation with. A browser runs them once it has changed the address. */
-function navigate(
-  url: string,
-  sameDocument: boolean,
-  navigationType: NavigationType = "push",
-): NavigationInterceptHandler[] {
+function navigate(url: string, sameDocument: boolean): NavigationInterceptHandler[] {
   const handlers: NavigationInterceptHandler[] = [];
   const intercept = ({ handler }: NavigationInterceptOptions) => handler && handlers.push(handler);
-  navigation.dispatchEvent(
-    Object.assign(new Event("navigate"), { destination: { url, sameDocument }, navigationType, intercept }),
-  );
+  navigation.dispatchEvent(Object.assign(new Event("navigate"), { destination: { url, sameDocument }, intercept }));
   return handlers;
 }
 
-/** Resolves when the page says that the place is shown. */
-async function open(fragment: string, navigationType?: NavigationType): Promise<void> {
+async function showEntry(fragment: string, entry: { id: string }): Promise<void> {
   location.hash = fragment;
-  await Promise.all(navigate(location.href, true, navigationType).map((handler) => handler()));
+  navigation.currentEntry = entry;
+  await Promise.all(navigate(location.href, true).map((handler) => handler()));
 }
 
-/** As the browser does for an entry of its history that the page was at before. */
-const goBackTo = (fragment: string) => open(fragment, "traverse");
+/** Makes an entry of the history at the fragment, as a link does, and resolves when the page says that the place is shown. */
+function open(fragment: string): Promise<void> {
+  const entry = historyEntry();
+  openedEntries.set(fragment, entry);
+  return showEntry(fragment, entry);
+}
+
+const goBackTo = (fragment: string) => showEntry(fragment, openedEntries.get(fragment) ?? loadedEntry);
 
 function gate(): { permissionToRead: Promise<void>; open: () => void } {
   let open = () => {};
@@ -139,6 +144,9 @@ function closing(source: AppSource): { source: AppSource; close: () => void } {
 
 beforeEach(() => {
   location.hash = "";
+  loadedEntry = historyEntry();
+  navigation.currentEntry = loadedEntry;
+  openedEntries.clear();
 });
 
 describe("the page", () => {
@@ -459,6 +467,7 @@ describe("the page of the actions", () => {
 describe("the page of an action", () => {
   const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
   const other = linkOf(Uint8Array.of(1));
+  const fragmentFilledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
 
   it("shows an input for each field of the request schema, with its type and the schema its links are to", async () => {
     location.hash = placeOf(greet);
@@ -827,8 +836,52 @@ describe("the page of an action", () => {
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
   });
 
+  it("keeps a field that was emptied where the browser goes back to the form", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    type(root, "to", "");
+    await open("#actions");
+    await goBackTo(fragmentFilledWith(entry.link));
+    await turn();
+    expect(typedIn(root)).toContainEqual(["to", ""]);
+  });
+
+  it("fills in the field where the browser goes back to a form that the page has not shown since it was loaded", async () => {
+    const source = sourceWithActions(sourceOf(), greet);
+    await open(fragmentFilledWith(entry.link));
+    await open("#actions");
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Actions"]));
+    await goBackTo(fragmentFilledWith(entry.link));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+  });
+
+  it("fills in the field where the browser goes back to a form that was not read the first time", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const source = sourceWithActions(sourceOf(), greet);
+    vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open("#list=Entries");
+    await goBackTo(fragmentFilledWith(entry.link));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("shows the form that another link for the same action leads to, in place of why it was not read before", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const source = sourceWithActions(sourceOf(), greet);
+    vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open(fragmentFilledWith(other));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
   it("fills in the field of the form shown where the fragment comes to name another link for it", async () => {
-    const fragmentFilledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
     location.hash = fragmentFilledWith(entry.link);
     const root = show(sourceWithActions(sourceOf(), greet));
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));

@@ -1,10 +1,11 @@
-import type { Link, Schema } from "@estoc/object";
+import type { Link } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, Errored, For, Loading, Match, Show, Switch } from "solid-js";
 import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
 import { remainingLinksView } from "./links-view.tsx";
+import type { ActionPlace } from "./place.ts";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
 
@@ -193,8 +194,8 @@ function FormView(props: { session: ActionSession }) {
   );
 }
 
-export function ActionView(props: { sessions: ActionSessions; action: Link<Schema> }) {
-  const session = createMemo(() => props.sessions.sessionOf(props.action));
+export function ActionView(props: { sessions: ActionSessions; place: ActionPlace; historyEntry: string }) {
+  const session = createMemo(() => props.sessions.enter(props.place, props.historyEntry));
   return (
     <Show
       when={session()}

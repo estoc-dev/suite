@@ -72,6 +72,7 @@ export class ActionSession {
 export class ActionSessions {
   readonly #source: ActionSource;
   #sessions: Promise<readonly ActionSession[]> | undefined;
+  readonly #filledHistoryEntries = new Set<string>();
 
   constructor(source: ActionSource) {
     this.#source = source;
@@ -88,12 +89,17 @@ export class ActionSessions {
     return this.#sessions;
   }
 
-  async sessionOf(action: Link<Schema>): Promise<ActionSession | undefined> {
-    return (await this.all()).find(({ form }) => form.request.link === action);
-  }
-
-  async fill({ action, filledField }: ActionPlace): Promise<void> {
-    if (filledField === undefined) return;
-    (await this.sessionOf(action))?.setText(filledField.name, filledField.link);
+  /**
+   * Gives the session of the action of `place`. `historyEntry` tells the entry of the history of the
+   * browser that is at `place` from its other entries: the field that `place` fills in is set the
+   * first time the actions are read for that entry, and not after.
+   */
+  async enter({ action, filledField }: ActionPlace, historyEntry: string): Promise<ActionSession | undefined> {
+    const session = (await this.all()).find(({ form }) => form.request.link === action);
+    if (filledField !== undefined && !this.#filledHistoryEntries.has(historyEntry)) {
+      this.#filledHistoryEntries.add(historyEntry);
+      session?.setText(filledField.name, filledField.link);
+    }
+    return session;
   }
 }

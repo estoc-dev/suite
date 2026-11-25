@@ -22,15 +22,23 @@ function PlaceReadiness(props: { onReady: () => void }): null {
   return null;
 }
 
+interface Visit {
+  readonly fragment: string;
+  /** The id of the entry of the history that the page is at. */
+  readonly historyEntry: string;
+}
+
+// The browser has changed the address and the entry by the time it runs what a navigation was
+// intercepted with.
+function currentVisit(): Visit {
+  const entry = navigation.currentEntry;
+  if (entry === null) throw new Error("the page is at no entry of the history of a tab");
+  return { fragment: location.hash, historyEntry: entry.id };
+}
+
 export function App(props: { source: Source & ActionSource & LinkSource }) {
   const sessions = new ActionSessions(props.source);
-  const fill = (fragment: string) => {
-    const place = placeIn(fragment);
-    // The form reads the actions as well, and shows why a read of them failed.
-    if (place !== undefined && "action" in place) sessions.fill(place).catch(() => {});
-  };
-  fill(location.hash);
-  const [fragment, setFragment] = createSignal(location.hash);
+  const [visit, setVisit] = createSignal(currentVisit());
   let showFirstPlace = () => {};
   const firstPlace = new Promise<void>((resolve) => {
     showFirstPlace = resolve;
@@ -45,9 +53,7 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
       if (!event.destination.sameDocument) return;
       event.intercept({
         handler: async () => {
-          const { hash } = new URL(event.destination.url);
-          if (event.navigationType !== "traverse") fill(hash);
-          setFragment(hash);
+          setVisit(currentVisit());
           await new Promise<void>((resolve) => onSettled(() => resolve()));
           await firstPlace;
         },
@@ -56,6 +62,8 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
     navigation.addEventListener("navigate", show);
     return () => navigation.removeEventListener("navigate", show);
   });
+  // A navigation to the address the page is at reads no place again.
+  const fragment = createMemo(() => visit().fragment);
   const place = createMemo(() => placeIn(fragment()));
   const lists = createMemo(async () => (await props.source.lists()).map(({ data }) => data));
   const shownBlob = createMemo(() => {
@@ -70,9 +78,9 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
     const shown = place();
     return shown !== undefined && ("objectsOf" in shown || "sourcesOf" in shown) ? shown : undefined;
   });
-  const shownAction = createMemo(() => {
+  const actionPlace = createMemo(() => {
     const shown = place();
-    return shown !== undefined && "action" in shown ? shown.action : undefined;
+    return shown !== undefined && "action" in shown ? shown : undefined;
   });
   // The first list of the runtime is shown while the fragment names no place.
   const shownList = createMemo(() => {
@@ -119,7 +127,9 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
               <Match when={shownBlob()}>
                 {(blob) => <BlobView source={props.source} sessions={sessions} link={blob()} />}
               </Match>
-              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
+              <Match when={actionPlace()}>
+                {(place) => <ActionView sessions={sessions} place={place()} historyEntry={visit().historyEntry} />}
+              </Match>
               <Match when={place() === actionsPlace}>
                 <ActionsView sessions={sessions} />
               </Match>

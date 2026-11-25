@@ -29,9 +29,10 @@ export interface FilledField {
 
 /**
  * - `action` is the request schema of the action, which is what tells it from the others.
- * - Going to a place with `filledField`, by a link or by its address, sets that field of the form
- *   to the link, over what was typed for it. Going back or forward to one in the history of the
- *   browser sets nothing, so the form is as it was left.
+ * - A place with `filledField` has that field of the form set to the link, over what was typed for
+ *   it, once for each entry of the history of the browser that is at the place: a link to the place
+ *   makes an entry, and going back or forward to an entry makes none. So a form that was shown is as
+ *   it was left on going back to it. A page that is loaded again has set nothing yet.
  */
 export interface ActionPlace {
   readonly action: Link<Schema>;

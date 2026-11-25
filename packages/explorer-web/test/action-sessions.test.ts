@@ -1,10 +1,9 @@
-import { heldObjects } from "@estoc/explorer";
 import { encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";
 import { ActionSessions } from "../src/action-sessions.ts";
-import { entrySchema, type GivenAction, pairListOf, sourceOf, sourceWithActions } from "./fixtures.ts";
+import { entrySchema, type GivenAction, sourceOf, sourceWithActions, sourceWithLinks } from "./fixtures.ts";
 
 const greetingSchema = schema("Greeting", { text: string(), to: link() });
 
@@ -126,11 +125,11 @@ describe("the session of an action", () => {
     const objects = Array.from({ length: 12 }, (_, count) => encodeObject(entrySchema, { name: "one", count }).link);
     const pairs = objects.map((object) => [entrySchema.link, object] as const);
     const session = await sessionOver(
-      sourceWithActions(sourceOf(pairListOf(heldObjects, [greetingSchema.link, other], ...pairs)), greet),
+      sourceWithActions(sourceWithLinks(sourceOf(), { objects: [[greetingSchema.link, other], ...pairs] }), greet),
     );
-    expect(await session.readObjectsOf(entrySchema.link)).toEqual({ links: objects.slice(0, 10), rowCount: 12 });
-    expect(await session.readObjectsOf(greetingSchema.link)).toEqual({ links: [other], rowCount: 1 });
-    expect(await session.readObjectsOf(tick.requestSchema.link)).toEqual({ links: [], rowCount: 0 });
+    expect(await session.readObjectsOf(entrySchema.link)).toMatchObject({ links: objects.slice(0, 10), linkCount: 12 });
+    expect(await session.readObjectsOf(greetingSchema.link)).toMatchObject({ links: [other], linkCount: 1 });
+    expect(await session.readObjectsOf(tick.requestSchema.link)).toMatchObject({ links: [], linkCount: 0 });
   });
 
   it("holds why the runtime failed", async () => {

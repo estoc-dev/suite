@@ -15,7 +15,7 @@ import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { readSchema } from "./schema.ts";
 import { typeNameOf } from "./text.ts";
 
-export type ActionSource = Pick<Client, "get" | "page" | "actions" | "perform">;
+export type ActionSource = Pick<Client, "get" | "objectsOf" | "actions" | "perform">;
 
 export interface TitledSchema {
   readonly schema: Schema;

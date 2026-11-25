@@ -43,20 +43,49 @@ export const listSchema = schema("List", {
 export type ListData = DataOf<typeof listSchema>;
 
 /**
- * - The page is of the rows under `prefix`: those that hold its values, in their order, in the
- *   first of the fields the list is sorted by. Every row is under the empty prefix.
- * - `start` and `rowCount` count the rows under `prefix` alone. A `start` below zero counts from
- *   the end of them, and the `start` of the result is where the page begins counted from the front.
- * - `blobCount` is how many blobs the store held when the page was read. A store only grows and a
- *   list comes of the blobs held alone, so every list is as it was while that count is.
+ * - A `start` below zero counts from the end of the list, and the `start` of the result is where
+ *   the page begins counted from the front.
+ * - `rowCount` is how many rows the list has, and `blobCount` how many blobs the store held when
+ *   the page was read. A store only grows and a list comes of the blobs held alone, so every list
+ *   is as it was while that count is.
  */
 export const pageCall = {
   name: "page",
-  parameters: schema("Page Parameters", { list: string(), prefix: array(any()), start: integer(), limit: integer() }),
+  parameters: schema("Page Parameters", { list: string(), start: integer(), limit: integer() }),
   result: schema("Page Result", { start: integer(), rowCount: integer(), blobCount: integer(), rows: array(bytes()) }),
 };
 
 export type Page = DataOf<typeof pageCall.result>;
+
+/**
+ * A page of links, sorted as links are. `start` and `blobCount` are as those of a page of a list,
+ * and `linkCount` is how many links the page is of.
+ */
+const linkPageSchema = schema("Link Page", {
+  start: integer(),
+  linkCount: integer(),
+  blobCount: integer(),
+  links: array(link()),
+});
+
+export type LinkPageData = DataOf<typeof linkPageSchema>;
+
+/** The page is of the objects held that are written to `schema`. */
+export const objectsCall = {
+  name: "objects",
+  parameters: schema("Objects Parameters", { schema: link<Schema>(), start: integer(), limit: integer() }),
+  result: linkPageSchema,
+};
+
+/**
+ * The page is of what the store holds that links to `target`. An object that gives its schema by a
+ * link to `target` is among them.
+ */
+export const sourcesCall = {
+  name: "sources",
+  parameters: schema("Sources Parameters", { target: link(), start: integer(), limit: integer() }),
+  result: linkPageSchema,
+};
 
 /** Each of `actions` is the bytes of an Action. */
 export const actionsCall = {

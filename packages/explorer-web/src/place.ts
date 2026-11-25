@@ -1,17 +1,20 @@
 import { isLink, type Link, type Schema } from "@estoc/object";
 
 /**
- * - `prefix` holds links for the first of the fields the list is sorted by, in their order, and the
- *   place is of the rows under them. Left out, it is of every row of the list.
- * - `from` counts the rows of the place before where the page begins. The page goes on from there
- *   in the order the list is shown: towards the end of a list shown in its own order, and towards
- *   the front of one shown last row first. Left out, the page begins where the list as shown begins.
+ * `from` counts the rows of the list before where the page begins. The page goes on from there in
+ * the order the list is shown: towards the end of a list shown in its own order, and towards the
+ * front of one shown last row first. Left out, the page begins where the list as shown begins.
  */
 export interface ListPlace {
   readonly list: string;
-  readonly prefix?: readonly Link<unknown>[];
   readonly from?: number;
 }
+
+/** The objects held that are written to a schema, or the objects held that link to a blob. */
+export type LinkSet = { readonly objectsOf: Link<Schema> } | { readonly sourcesOf: Link<unknown> };
+
+/** `from` counts the links of the set before where the page begins, and left out it is none. */
+export type LinksPlace = LinkSet & { readonly from?: number };
 
 export interface BlobPlace {
   readonly blob: Link<unknown>;
@@ -34,7 +37,7 @@ export interface ActionPlace {
   readonly filledField?: FilledField;
 }
 
-export type Place = ListPlace | BlobPlace | typeof actionsPlace | ActionPlace;
+export type Place = ListPlace | LinksPlace | BlobPlace | typeof actionsPlace | ActionPlace;
 
 export function fragmentOf(place: Place): string {
   if ("blob" in place) return `#${place.blob}`;
@@ -44,12 +47,13 @@ export function fragmentOf(place: Place): string {
     const filling = filledField === undefined ? {} : { field: filledField.name, link: filledField.link };
     return `#${new URLSearchParams({ action, ...filling })}`;
   }
-  const { list, prefix = [], from } = place;
-  return `#${new URLSearchParams([
-    ["list", list],
-    ...prefix.map((link) => ["prefix", link]),
-    ...(from === undefined ? [] : [["from", String(from)]]),
-  ])}`;
+  const [name, value] =
+    "list" in place
+      ? ["list", place.list]
+      : "objectsOf" in place
+        ? ["objects", place.objectsOf]
+        : ["sources", place.sourcesOf];
+  return `#${new URLSearchParams([[name, value], ...(place.from === undefined ? [] : [["from", String(place.from)]])])}`;
 }
 
 function countIn(text: string | null): number | undefined {
@@ -69,9 +73,12 @@ export function placeIn(fragment: string): Place | undefined {
     const link = parameters.get("link");
     return name !== null && link !== null && isLink(link) ? { action, filledField: { name, link } } : { action };
   }
-  const list = parameters.get("list");
-  const prefix = parameters.getAll("prefix");
-  if (list === null || !prefix.every(isLink)) return undefined;
   const from = countIn(parameters.get("from"));
-  return { list, ...(prefix.length > 0 && { prefix }), ...(from !== undefined && { from }) };
+  const start = from === undefined ? {} : { from };
+  const list = parameters.get("list");
+  if (list !== null) return { list, ...start };
+  const schema = parameters.get("objects");
+  if (schema !== null) return isLink(schema) ? { objectsOf: schema, ...start } : undefined;
+  const target = parameters.get("sources");
+  return target !== null && isLink(target) ? { sourcesOf: target, ...start } : undefined;
 }

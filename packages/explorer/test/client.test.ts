@@ -13,20 +13,17 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { callSchema, replySchema } from "../src/calls.ts";
 import { type Channel, Client } from "../src/index.ts";
 import { listOfIndex } from "../src/list.ts";
-import { heldLinks, heldObjects } from "../src/pair-lists.ts";
-import { heldBlobSchema, Runtime, recordedStatementSchema } from "../src/runtime.ts";
+import { heldBlobSchema, heldLinkSchema, heldObjectSchema, Runtime, recordedStatementSchema } from "../src/runtime.ts";
 import { channelEnds, clientOf, image, note, noteBlobs, noteSchema, storeOfNote } from "./fixtures.ts";
 
 const heldBlobsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, heldBlobSchema).data);
 
 const linkPairsIn = (rows: readonly Uint8Array[]) =>
-  rows
-    .map((bytes) => decodeObject(bytes, heldLinks.rowSchema).data)
-    .map(({ target, source }) => [target.link, source.link]);
+  rows.map((bytes) => decodeObject(bytes, heldLinkSchema).data).map(({ target, source }) => [target.link, source.link]);
 
 const objectPairsIn = (rows: readonly Uint8Array[]) =>
   rows
-    .map((bytes) => decodeObject(bytes, heldObjects.rowSchema).data)
+    .map((bytes) => decodeObject(bytes, heldObjectSchema).data)
     .map(({ schema, object }) => [schema.link, object.link]);
 
 const sortedPairs = (pairs: [string, string][]) => [...pairs].sort();
@@ -67,20 +64,15 @@ describe("a client of a runtime", () => {
     expect((await client.lists()).map(({ data }) => data)).toEqual([
       { name: "Records", rows: new LinkValue(recordedStatementSchema.link), order: [], readsBlobs: false },
       { name: "Blobs", rows: new LinkValue(heldBlobSchema.link), order: [], readsBlobs: true },
-      {
-        name: "Schemas",
-        rows: new LinkValue(heldObjects.rowSchema.link),
-        order: ["schema", "object"],
-        readsBlobs: true,
-      },
-      { name: "Links", rows: new LinkValue(heldLinks.rowSchema.link), order: ["target", "source"], readsBlobs: true },
+      { name: "Schemas", rows: new LinkValue(heldObjectSchema.link), order: ["schema", "object"], readsBlobs: true },
+      { name: "Links", rows: new LinkValue(heldLinkSchema.link), order: ["target", "source"], readsBlobs: true },
     ]);
   });
 
   it("reads the schema that the rows of a list are written to, though the store does not hold it", async () => {
     const store = await storeOfNote();
     const client = clientOf(store);
-    for (const rowSchema of [recordedStatementSchema, heldBlobSchema, heldObjects.rowSchema, heldLinks.rowSchema]) {
+    for (const rowSchema of [recordedStatementSchema, heldBlobSchema, heldObjectSchema, heldLinkSchema]) {
       expect(await store.get(rowSchema.link)).toBeUndefined();
       expect(await client.get(rowSchema.link)).toEqual(rowSchema.bytes);
     }
@@ -88,7 +80,7 @@ describe("a client of a runtime", () => {
 
   it("reads a page of Blobs as a row for each blob, in the order written, with its size and the schema it names", async () => {
     const client = clientOf(await storeOfNote());
-    const page = await client.page("Blobs", [], 0, 10);
+    const page = await client.page("Blobs", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 4, blobCount: 4 });
     expect(heldBlobsIn(page.rows)).toEqual([
       { blob: new LinkValue(rootSchema.link), size: rootSchema.bytes.length, schema: new LinkValue(rootSchema.link) },
@@ -107,7 +99,7 @@ describe("a client of a runtime", () => {
     ["of no rows where its limit is below one", 1, -1, 1, []],
   ])("reads a page %s", async (_, start, limit, pageStart, blobs) => {
     const client = clientOf(await storeOfNote());
-    const page = await client.page("Blobs", [], start, limit);
+    const page = await client.page("Blobs", start, limit);
     expect(page).toMatchObject({ start: pageStart, rowCount: 4, blobCount: 4 });
     const links = noteBlobs.map((bytes) => linkOf(bytes));
     expect(heldBlobsIn(page.rows).map(({ blob }) => blob.link)).toEqual(blobs.map((at) => links[at]));
@@ -116,10 +108,10 @@ describe("a client of a runtime", () => {
   it("reads a page with the blobs written since the one before", async () => {
     const store = await storeOfNote();
     const client = clientOf(store);
-    expect(await client.page("Blobs", [], -1, 1)).toMatchObject({ start: 3, blobCount: 4 });
+    expect(await client.page("Blobs", -1, 1)).toMatchObject({ start: 3, blobCount: 4 });
     const later = encodeObject(noteSchema, { text: "written later" });
     await store.write({ roots: [later.link], blobs: [later.bytes] });
-    const page = await client.page("Blobs", [], -1, 1);
+    const page = await client.page("Blobs", -1, 1);
     expect(page).toMatchObject({ start: 4, rowCount: 5, blobCount: 5 });
     expect(heldBlobsIn(page.rows)).toMatchObject([{ blob: new LinkValue(later.link) }]);
   });
@@ -130,7 +122,7 @@ describe("a client of a runtime", () => {
     const second = writtenObjectsOf([linkOf(image)], 2);
     await store.record(first);
     await store.record(second);
-    const page = await clientOf(store).page("Records", [], 0, 10);
+    const page = await clientOf(store).page("Records", 0, 10);
     // The note, the statements and their schema, and a Record of each with the schema of Records.
     expect(page).toMatchObject({ start: 0, rowCount: 2, blobCount: 10 });
     expect(page.rows.map((bytes) => decodeObject(bytes, recordedStatementSchema).data)).toEqual(
@@ -159,11 +151,11 @@ describe("a client of a runtime", () => {
         },
       }),
     );
-    const earlier = await client.page("Records", [], -1, 1);
+    const earlier = await client.page("Records", -1, 1);
     const later = writtenObjectsOf([linkOf(image)], 2);
     recordAfterListing = () => writer.record(later);
-    expect(await client.page("Records", [], -1, 1)).toEqual(earlier);
-    const page = await client.page("Records", [], -1, 1);
+    expect(await client.page("Records", -1, 1)).toEqual(earlier);
+    const page = await client.page("Records", -1, 1);
     // The later statement and its Record.
     expect(page).toMatchObject({ start: 1, rowCount: 2, blobCount: earlier.blobCount + 2 });
     expect(page.rows.map((bytes) => decodeObject(bytes, recordedStatementSchema).data.statement.link)).toEqual(
@@ -178,17 +170,17 @@ describe("a client of a runtime", () => {
     const later = writtenObjectsOf([linkOf(image)], 2);
     await store.record(later);
     const client = clientOf(store);
-    await client.page("Records", [], 0, 10);
+    await client.page("Records", 0, 10);
     requestedLinks.length = 0;
-    await client.page("Records", [], -1, 1);
+    await client.page("Records", -1, 1);
     expect(requestedLinks).toEqual(later.statements);
     requestedLinks.length = 0;
-    await client.page("Records", [], 0, 0);
+    await client.page("Records", 0, 0);
     expect(requestedLinks).toEqual([]);
   });
 
   it("reads a page of Schemas as a row for each object, sorted by the schema it names and then by the object", async () => {
-    const page = await clientOf(await storeOfNote()).page("Schemas", [], 0, 10);
+    const page = await clientOf(await storeOfNote()).page("Schemas", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 3, blobCount: 4 });
     expect(objectPairsIn(page.rows)).toEqual(
       sortedPairs([
@@ -199,52 +191,8 @@ describe("a client of a runtime", () => {
     );
   });
 
-  it("reads a page of Schemas under a schema as the objects written to it, and counts those rows alone", async () => {
-    const client = clientOf(await storeOfNote());
-    const underRoot = [new LinkValue(rootSchema.link)];
-    const objects = sortedPairs([
-      [rootSchema.link, rootSchema.link],
-      [rootSchema.link, noteSchema.link],
-    ]);
-    const page = await client.page("Schemas", underRoot, 0, 10);
-    expect(page).toMatchObject({ start: 0, rowCount: 2, blobCount: 4 });
-    expect(objectPairsIn(page.rows)).toEqual(objects);
-    const second = await client.page("Schemas", underRoot, 1, 10);
-    expect(second).toMatchObject({ start: 1, rowCount: 2 });
-    expect(objectPairsIn(second.rows)).toEqual(objects.slice(1));
-    const last = await client.page("Schemas", underRoot, -1, 10);
-    expect(last).toMatchObject({ start: 1, rowCount: 2 });
-    expect(objectPairsIn(last.rows)).toEqual(objects.slice(1));
-  });
-
-  it("reads a page of Links under a blob as what links to it", async () => {
-    const page = await clientOf(await storeOfNote()).page("Links", [new LinkValue(linkOf(image))], 0, 10);
-    expect(page).toMatchObject({ start: 0, rowCount: 1, blobCount: 4 });
-    expect(linkPairsIn(page.rows)).toEqual([[linkOf(image), note.link]]);
-  });
-
-  it("reads a page of Links under both fields as the one row that holds them, and no row under what none holds", async () => {
-    const client = clientOf(await storeOfNote());
-    const target = new LinkValue(noteSchema.link);
-    const page = await client.page("Links", [target, new LinkValue(note.link)], 0, 10);
-    expect(linkPairsIn(page.rows)).toEqual([[noteSchema.link, note.link]]);
-    for (const prefix of [[new LinkValue(note.link)], [target, new LinkValue(noteSchema.link)], [noteSchema.link]]) {
-      expect(await client.page("Links", prefix, 0, 10)).toEqual({ start: 0, rowCount: 0, blobCount: 4, rows: [] });
-    }
-  });
-
-  it("reads no row of a list sorted by no field under a prefix that holds a value", async () => {
-    const client = clientOf(await storeOfNote());
-    expect(await client.page("Blobs", [new LinkValue(note.link)], 0, 10)).toEqual({
-      start: 0,
-      rowCount: 0,
-      blobCount: 4,
-      rows: [],
-    });
-  });
-
   it("reads a page of Links as a row for each blob an object links to, sorted by that blob and then by the object", async () => {
-    const page = await clientOf(await storeOfNote()).page("Links", [], 0, 10);
+    const page = await clientOf(await storeOfNote()).page("Links", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 3, blobCount: 4 });
     expect(linkPairsIn(page.rows)).toEqual(
       sortedPairs([
@@ -261,7 +209,7 @@ describe("a client of a runtime", () => {
     const target = new LinkValue(linkOf(image));
     const pair = encodeObject(pairSchema, { left: target, right: target });
     await store.write({ roots: [pair.link], blobs: [pair.bytes, ...pairSchema.blobs] });
-    const { rows } = await clientOf(store).page("Links", [], 0, 10);
+    const { rows } = await clientOf(store).page("Links", 0, 10);
     expect(linkPairsIn(rows).filter(([, source]) => source === pair.link)).toEqual(
       sortedPairs([
         [pairSchema.link, pair.link],
@@ -273,35 +221,86 @@ describe("a client of a runtime", () => {
   it("reads a page of a sorted list from where it starts, with the rows of the blobs written since the one before", async () => {
     const store = await storeOfNote();
     const client = clientOf(store);
-    expect(await client.page("Links", [], 1, 1)).toMatchObject({ start: 1, rowCount: 3, blobCount: 4 });
+    expect(await client.page("Links", 1, 1)).toMatchObject({ start: 1, rowCount: 3, blobCount: 4 });
     const later = encodeObject(noteSchema, { text: "written later" });
     await store.write({ roots: [later.link], blobs: [later.bytes] });
-    const page = await client.page("Links", [], -2, 1);
+    const page = await client.page("Links", -2, 1);
     expect(page).toMatchObject({ start: 2, rowCount: 4, blobCount: 5 });
     expect(page.rows).toHaveLength(1);
   });
 
-  it.each(["Schemas", "Links"])(
-    "reads from the store, for a page of %s, the blobs written since the one before and no others",
-    async (list) => {
-      const requestedLinks: Link<unknown>[] = [];
-      const store = await storeOfNote(backendNoting(requestedLinks));
-      const client = clientOf(store);
-      await client.page(list, [], 0, 10);
-      const later = encodeObject(noteSchema, { text: "written later" });
-      await store.write({ roots: [later.link], blobs: [later.bytes] });
-      requestedLinks.length = 0;
-      await client.page(list, [new LinkValue(noteSchema.link)], 0, 10);
-      expect(requestedLinks).toEqual([later.link]);
-      requestedLinks.length = 0;
-      await client.page(list, [], 0, 10);
-      expect(requestedLinks).toEqual([]);
-    },
-  );
+  it("reads the objects held that are written to a schema, sorted as links are, and counts those alone", async () => {
+    const client = clientOf(await storeOfNote());
+    const objects = [rootSchema.link, noteSchema.link].sort();
+    expect(await client.objectsOf(rootSchema.link, 0, 10)).toEqual({
+      start: 0,
+      linkCount: 2,
+      blobCount: 4,
+      links: objects,
+    });
+    expect(await client.objectsOf(rootSchema.link, 1, 10)).toMatchObject({ start: 1, links: objects.slice(1) });
+    expect(await client.objectsOf(rootSchema.link, -1, 10)).toMatchObject({ start: 1, links: objects.slice(1) });
+    expect(await client.objectsOf(rootSchema.link, 0, 1)).toMatchObject({ linkCount: 2, links: objects.slice(0, 1) });
+  });
+
+  it("reads no object for a schema that no object held is written to", async () => {
+    const client = clientOf(await storeOfNote());
+    expect(await client.objectsOf(schema("Unused", {}).link, 0, 10)).toEqual({
+      start: 0,
+      linkCount: 0,
+      blobCount: 4,
+      links: [],
+    });
+  });
+
+  it("reads what links to a blob, and nothing for a blob that nothing held links to", async () => {
+    const client = clientOf(await storeOfNote());
+    expect(await client.sourcesOf(linkOf(image), 0, 10)).toEqual({
+      start: 0,
+      linkCount: 1,
+      blobCount: 4,
+      links: [note.link],
+    });
+    expect(await client.sourcesOf(rootSchema.link, 0, 10)).toMatchObject({ linkCount: 1, links: [noteSchema.link] });
+    expect(await client.sourcesOf(note.link, 0, 10)).toEqual({ start: 0, linkCount: 0, blobCount: 4, links: [] });
+  });
+
+  it("reads what links to a blob from where the page starts, up to its limit", async () => {
+    const store = await storeOfNote();
+    const later = encodeObject(noteSchema, { text: "written later", image: new LinkValue(linkOf(image)) });
+    await store.write({ roots: [later.link], blobs: [later.bytes] });
+    const sources = [note.link, later.link].sort();
+    expect(await clientOf(store).sourcesOf(linkOf(image), 1, 1)).toEqual({
+      start: 1,
+      linkCount: 2,
+      blobCount: 5,
+      links: sources.slice(1),
+    });
+  });
+
+  it.each<[string, (client: Client) => Promise<unknown>]>([
+    ["a page of Schemas", (client) => client.page("Schemas", 0, 10)],
+    ["a page of Links", (client) => client.page("Links", 0, 10)],
+    ["the objects written to a schema", (client) => client.objectsOf(noteSchema.link, 0, 10)],
+    ["what links to a blob", (client) => client.sourcesOf(noteSchema.link, 0, 10)],
+  ])("reads from the store, for %s, the blobs written since the read before and no others", async (_, read) => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = await storeOfNote(backendNoting(requestedLinks));
+    const client = clientOf(store);
+    await read(client);
+    const later = encodeObject(noteSchema, { text: "written later" });
+    await store.write({ roots: [later.link], blobs: [later.bytes] });
+    requestedLinks.length = 0;
+    await read(client);
+    expect(requestedLinks).toEqual([later.link]);
+    requestedLinks.length = 0;
+    await read(client);
+    expect(requestedLinks).toEqual([]);
+  });
 
   it("fails a call with the reason the runtime gives", async () => {
     const client = clientOf(await storeOfNote());
-    await expect(client.page("Nothing", [], 0, 1)).rejects.toThrow("there is no list named Nothing");
+    await expect(client.page("Nothing", 0, 1)).rejects.toThrow("there is no list named Nothing");
   });
 
   it("receives a later reply while the first call is still pending", async () => {
@@ -335,7 +334,7 @@ describe("a client of a runtime", () => {
   it("refuses a result that does not fit its call", async () => {
     const [near, far] = channelEnds();
     answerEach(far, () => ({ rows: [] }));
-    await expect(new Client(near).page("Blobs", [], 0, 1)).rejects.toThrow("#/start: left out");
+    await expect(new Client(near).page("Blobs", 0, 1)).rejects.toThrow("#/start: left out");
   });
 
   it.each([
@@ -357,7 +356,7 @@ describe("a client of a runtime", () => {
     const keep = (reason: unknown) => unhandledRejections.push(reason);
     process.on("unhandledRejection", keep);
     onTestFinished(() => void process.off("unhandledRejection", keep));
-    await expect(client.page("Blobs", [], 0.5, 1)).rejects.toThrow("a number is an integer");
+    await expect(client.page("Blobs", 0.5, 1)).rejects.toThrow("a number is an integer");
     const read = client.get(note.link);
     far.close();
     await expect(read).rejects.toThrow("the channel closed before the reply");
@@ -419,36 +418,27 @@ describe("a client of a runtime that is given the list of an index", () => {
     const store = await storeRecording("b", "c", "a");
     const client = clientOf(store, [notesList]);
     const blobCount = await blobCountOf(store);
-    const page = await client.page("Notes by text", [], 0, 10);
+    const page = await client.page("Notes by text", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 3, blobCount });
     expect(textsIn(page.rows)).toEqual(["a", "b", "c"]);
-    const lastPage = await client.page("Notes by text", [], -2, 1);
+    const lastPage = await client.page("Notes by text", -2, 1);
     expect(lastPage).toMatchObject({ start: 1, rowCount: 3, blobCount });
     expect(textsIn(lastPage.rows)).toEqual(["b"]);
-  });
-
-  it("reads a page of it under a value as the rows that hold it in the field the index is ordered by", async () => {
-    const client = clientOf(await storeRecording("b", "c", "a", "b"), [notesList]);
-    const page = await client.page("Notes by text", ["b"], 0, 10);
-    expect(page).toMatchObject({ start: 0, rowCount: 1 });
-    expect(textsIn(page.rows)).toEqual(["b"]);
-    expect(await client.page("Notes by text", ["d"], 0, 10)).toMatchObject({ start: 0, rowCount: 0, rows: [] });
-    expect(await client.page("Notes by text", [1], 0, 10)).toMatchObject({ start: 0, rowCount: 0, rows: [] });
   });
 
   it("reads a page of it with the rows of what was recorded since the one before", async () => {
     const store = await storeRecording("b");
     const client = clientOf(store, [notesList]);
-    expect(textsIn((await client.page("Notes by text", [], 0, 10)).rows)).toEqual(["b"]);
+    expect(textsIn((await client.page("Notes by text", 0, 10)).rows)).toEqual(["b"]);
     await recordNotes(store, "a");
-    const page = await client.page("Notes by text", [], 0, 10);
+    const page = await client.page("Notes by text", 0, 10);
     expect(page).toMatchObject({ rowCount: 2, blobCount: await blobCountOf(store) });
     expect(textsIn(page.rows)).toEqual(["a", "b"]);
   });
 
   it("reads a page of it without the rows of what the index fails on", async () => {
     const client = clientOf(await storeRecording("b", "unreadable", "a"), [notesList]);
-    const page = await client.page("Notes by text", [], 0, 10);
+    const page = await client.page("Notes by text", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 2 });
     expect(textsIn(page.rows)).toEqual(["a", "b"]);
   });
@@ -461,12 +451,7 @@ describe("a client of a runtime that is given the list of an index", () => {
       return [{ text: data.text, note: new LinkValue(link) }];
     }).orderedBy("text");
     await store.scan(countedTexts);
-    const page = await clientOf(store, [listOfIndex(countedTexts.named("Counted texts"))]).page(
-      "Counted texts",
-      [],
-      0,
-      1,
-    );
+    const page = await clientOf(store, [listOfIndex(countedTexts.named("Counted texts"))]).page("Counted texts", 0, 1);
     expect(textsIn(page.rows)).toEqual(["a"]);
     expect(readCount).toBe(1);
   });

@@ -1,11 +1,10 @@
-import { heldObjects } from "@estoc/explorer";
 import type { Link } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, Errored, For, Loading, Match, Show, Switch } from "solid-js";
 import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
-import { remainingRowsView } from "./pair-rows-view.tsx";
+import { remainingLinksView } from "./links-view.tsx";
 import type { ActionPlace } from "./place.ts";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
@@ -46,7 +45,7 @@ function CandidatesView(props: { session: ActionSession; name: string; target: T
               )}
             </For>
           </ul>
-          {remainingRowsView(objects(), { list: heldObjects.name, prefix: [target()] })}
+          {remainingLinksView(objects(), { objectsOf: target() })}
         </Show>
       </Loading>
     </Errored>

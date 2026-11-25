@@ -1,5 +1,4 @@
 import { markdownBodyOf, markdownBodySchema } from "@estoc/blog";
-import { heldLinks } from "@estoc/explorer";
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
 import {
   encodeObject,
@@ -17,9 +16,13 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";
 import { ActionSessions } from "../src/action-sessions.ts";
 import { BlobView } from "../src/blob-view.tsx";
-import { type GivenAction, pairListOf, sourceHolding, sourceOf, sourceWithActions } from "./fixtures.ts";
+import type { LinkSource } from "../src/link-page.ts";
+import { type GivenAction, sourceHolding, sourceOf, sourceWithActions, sourceWithLinks } from "./fixtures.ts";
 
-async function viewOver(source: ActionSource, link: Link<unknown>): Promise<HTMLElement> {
+async function viewOver(
+  source: ActionSource & Pick<LinkSource, "sourcesOf">,
+  link: Link<unknown>,
+): Promise<HTMLElement> {
   const root = document.createElement("div");
   onTestFinished(render(() => <BlobView source={source} sessions={new ActionSessions(source)} link={link} />, root));
   await vi.waitFor(() => expect(root.querySelector(".head")).not.toBeNull());
@@ -174,10 +177,12 @@ describe("what links to a blob, under its view", () => {
   const target = linkOf(photo);
   const sourcesOf = (count: number) => Array.from({ length: count }, (_, at) => linkOf(Uint8Array.of(at)));
   const linkedFrom = (...sources: readonly Link<unknown>[]) =>
-    sourceOf(pairListOf(heldLinks, [linkOf(Uint8Array.of(255)), target], ...sources.map((s) => [target, s] as const)));
+    sourceWithLinks(sourceOf(), {
+      links: [[linkOf(Uint8Array.of(255)), target], ...sources.map((source) => [target, source] as const)],
+    });
   const sectionOf = (view: HTMLElement) => view.querySelector("section:last-of-type") as HTMLElement;
 
-  it("is each source of the rows of Links under it, as a link to that blob", async () => {
+  it("is each object that links to it, as a link to that object", async () => {
     const sources = sourcesOf(2);
     const view = await viewOver(linkedFrom(...sources), target);
     await vi.waitFor(() => expect(hrefsOf(sectionOf(view), "a")).toEqual(sources.map((link) => `#${link}`)));
@@ -185,24 +190,27 @@ describe("what links to a blob, under its view", () => {
     expect(textsOf(sectionOf(view), ".note")).toEqual([]);
   });
 
-  it("is said to be nothing where no row of Links is under it", async () => {
+  it("is said to be nothing where nothing links to it", async () => {
     const view = await viewOver(linkedFrom(), target);
     await vi.waitFor(() => expect(textsOf(sectionOf(view), ".note")).toEqual(["Nothing the store holds links to it."]));
   });
 
-  it("is the first sources where there are more, with a link to the rows of Links under the blob", async () => {
+  it("is the first of them where there are more, with a link to the page of all of them", async () => {
     const sources = sourcesOf(12);
     const view = await viewOver(linkedFrom(...sources), target);
-    await vi.waitFor(() => expect(textsOf(sectionOf(view), ".note")).toEqual(["The first 10 of 12 rows."]));
+    await vi.waitFor(() => expect(textsOf(sectionOf(view), ".note")).toEqual(["The first 10 of 12 objects."]));
     expect(hrefsOf(sectionOf(view), "a")).toEqual([
       ...sources.slice(0, 10).map((link) => `#${link}`),
-      `#list=Links&prefix=${encodeURIComponent(target)}`,
+      `#sources=${encodeURIComponent(target)}`,
     ]);
   });
 
   it("is replaced by why it was not read, with the blob still shown", async () => {
     const source = sourceHolding(sourceOf(), photo);
-    const view = await viewOver({ ...source, page: () => Promise.reject(new Error("database is locked")) }, target);
+    const view = await viewOver(
+      { ...source, sourcesOf: () => Promise.reject(new Error("database is locked")) },
+      target,
+    );
     await vi.waitFor(() => expect(textsOf(sectionOf(view), ".problem")).toEqual(["database is locked"]));
     expect(textsOf(view, "dt, dd")).toEqual(["Link", target, "Size", "3 bytes"]);
   });

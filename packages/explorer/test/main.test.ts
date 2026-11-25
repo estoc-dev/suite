@@ -81,7 +81,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(await (await fetch(runtime.origin)).text()).toBe("<!doctype html>");
     const socket = new WebSocket(runtime.origin.replace("http", "ws"), { origin: runtime.origin });
     await once(socket, "open");
-    const page = await new Client(socketChannel(socket)).page("Blobs", [], -3, 3);
+    const page = await new Client(socketChannel(socket)).page("Blobs", -3, 3);
     expect(page).toMatchObject({ start: blobs.length - 3, rowCount: blobs.length, blobCount: blobs.length });
     expect(page.rows.map((bytes) => decodeObject(bytes, heldBlobSchema).data.blob.link)).toEqual(blobs.slice(-3));
     socket.terminate();
@@ -109,28 +109,28 @@ describe("main.ts", { timeout: 20_000 }, () => {
       "Recorded Signatures",
     ]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
-    const { rows } = await client.page("Held Keys", [], 0, 10);
+    const { rows } = await client.page("Held Keys", 0, 10);
     expect(rows.map((bytes) => decodeObject(bytes, heldKeys.rowSchema).data)).toEqual([
       { key: new LinkValue(sampleKey.key.link), secretKey: new LinkValue(sampleKey.link) },
     ]);
-    expect(await client.page("Held Mailbox Keys", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    expect(await client.page("Mailbox Grants", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    expect(await client.page("Locations", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    expect(await client.page("Acknowledgements", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    expect(await client.page("Opened Mailboxes", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    expect(await client.page("Recorded Identity Versions", [], 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
-    const recorded = await client.page("Recorded Signatures", [], 0, 10);
+    expect(await client.page("Held Mailbox Keys", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Mailbox Grants", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Locations", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Acknowledgements", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Opened Mailboxes", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    expect(await client.page("Recorded Identity Versions", 0, 10)).toMatchObject({ rowCount: 0, rows: [] });
+    const recorded = await client.page("Recorded Signatures", 0, 10);
     expect(recorded.rowCount).toBe(1);
     const [recordedSignature] = recorded.rows.map((bytes) => decodeObject(bytes, recordedSignatures.rowSchema).data);
     assert.exists(recordedSignature);
     const signature = await readObject(client, recordedSignature.signature.link, signatureSchema);
     // A post each day, the photo, the signature over it and the signed identity of that signature.
-    const arrivals = await client.page("Arrivals of Roots and Signed Identities", [], 0, 200);
+    const arrivals = await client.page("Arrivals of Roots and Signed Identities", 0, 200);
     expect(arrivals.rowCount).toBe(123);
     expect(
       arrivals.rows.map((bytes) => decodeObject(bytes, signedIdentityArrivals.rowSchema).data.object.link),
     ).toContain(signature.data.signedIdentity.link);
-    const versions = await client.page("Identity Versions", [], 0, 10);
+    const versions = await client.page("Identity Versions", 0, 10);
     expect(
       versions.rows.map((bytes) => decodeObject(bytes, identityVersions.rowSchema).data.signedIdentity.link),
     ).toEqual([signature.data.signedIdentity.link]);
@@ -152,7 +152,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const request = encodeObject(generateKey.requestSchema, { scheme: ed25519.name });
     const { result, commits } = await client.perform(request.bytes);
     const { key } = decodeObject(result, generateKey.resultSchema).data;
-    const heldKeyRows = (await client.page("Held Keys", [], 0, 10)).rows;
+    const heldKeyRows = (await client.page("Held Keys", 0, 10)).rows;
     expect(heldKeyRows.map((bytes) => decodeObject(bytes, heldKeys.rowSchema).data.key.link)).toEqual([key.link]);
     socket.terminate();
     expect(await runtime.stop()).toBe(0);

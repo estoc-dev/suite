@@ -1,9 +1,9 @@
-import { heldObjects } from "@estoc/explorer";
+import type { LinkPage } from "@estoc/explorer";
 import type { Link, Schema } from "@estoc/object";
 import { createSignal } from "solid-js";
 import { type ActionForm, type ActionSource, readActionForms, readResultPage, requestOf } from "./action-page.ts";
 import type { BlobPage } from "./blob-page.ts";
-import { type LinksUnder, readLinksUnder } from "./pair-rows.ts";
+import { shownLinkLimit } from "./link-page.ts";
 import type { ActionPlace } from "./place.ts";
 
 export type ActionState =
@@ -62,8 +62,9 @@ export class ActionSession {
     return readResultPage(this.#source, this.form, result);
   }
 
-  readObjectsOf(schema: Link<Schema>): Promise<LinksUnder> {
-    return readLinksUnder(this.#source, heldObjects, schema);
+  /** The first of the objects held that are written to `schema`, with how many there are. */
+  readObjectsOf(schema: Link<Schema>): Promise<LinkPage> {
+    return this.#source.objectsOf(schema, 0, shownLinkLimit);
   }
 }
 

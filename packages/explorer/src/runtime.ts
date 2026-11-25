@@ -23,15 +23,17 @@ import {
   blobCall,
   type CallKind,
   callSchema,
+  type LinkPageData,
   listSchema,
   listsCall,
+  objectsCall,
   pageCall,
   performCall,
   replySchema,
+  sourcesCall,
 } from "./calls.ts";
 import type { Channel } from "./channel.ts";
 import { type List, listOfIndex, pageIn } from "./list.ts";
-import { heldLinks, heldObjects } from "./pair-lists.ts";
 
 interface LinksRead<T = unknown> {
   readonly links: readonly Link<T>[];
@@ -83,16 +85,14 @@ function listInWrittenOrder<F extends ValueMap, T>(
     rowSchema,
     order: [],
     readsBlobs: origin.readsBlobs,
-    async page(store, prefix, start, limit) {
+    async page(store, start, limit) {
       const { links, blobCount } = await origin.read(store);
-      // The list is sorted by no field, so no row is under a prefix that holds a value.
-      const linksUnderPrefix = prefix.length === 0 ? links : [];
-      const page = pageIn(linksUnderPrefix, start, limit);
+      const page = pageIn(links, start, limit);
       const rows: Uint8Array[] = [];
       for (const link of page.rows) {
         rows.push(encodeObject(rowSchema, rowOf(link, await heldBytesOf(store, link))).bytes);
       }
-      return { start: page.start, rowCount: linksUnderPrefix.length, blobCount, rows };
+      return { start: page.start, rowCount: links.length, blobCount, rows };
     },
   };
 }
@@ -119,22 +119,36 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, blobLinks, (blob, 
   };
 });
 
-const schemasList = listOfIndex(
-  indexOver(heldBlobs, heldObjects.rowSchema, function* ({ link, bytes }) {
-    const schema = namedSchemaOf(bytes);
-    if (schema !== undefined) yield { schema: new LinkValue(schema), object: new LinkValue(link) };
-  })
-    .orderedBy(...heldObjects.order)
-    .named(heldObjects.name),
-);
+export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
 
-const linksList = listOfIndex(
-  indexOver(heldBlobs, heldLinks.rowSchema, ({ link, bytes }) =>
-    Array.from(linksIn(bytes), (target) => ({ target: new LinkValue(target), source: new LinkValue(link) })),
-  )
-    .orderedBy(...heldLinks.order)
-    .named(heldLinks.name),
-);
+const heldObjects = indexOver(heldBlobs, heldObjectSchema, function* ({ link, bytes }) {
+  const schema = namedSchemaOf(bytes);
+  if (schema !== undefined) yield { schema: new LinkValue(schema), object: new LinkValue(link) };
+})
+  .orderedBy("schema", "object")
+  .named("Schemas");
+
+/** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
+export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });
+
+const heldLinks = indexOver(heldBlobs, heldLinkSchema, ({ link, bytes }) =>
+  Array.from(linksIn(bytes), (target) => ({ target: new LinkValue(target), source: new LinkValue(link) })),
+)
+  .orderedBy("target", "source")
+  .named("Links");
+
+async function linkPageOf<F extends ValueMap>(
+  rows: AsyncIterable<EncodedObject<F>>,
+  linkIn: (row: F) => LinkValue<unknown>,
+  blobCount: number,
+  start: number,
+  limit: number,
+): Promise<LinkPageData> {
+  const links: LinkValue<unknown>[] = [];
+  for await (const { data } of rows) links.push(linkIn(data));
+  const page = pageIn(links, start, limit);
+  return { start: page.start, linkCount: links.length, blobCount, links: page.rows };
+}
 
 type Answer = (parameters: Value) => Promise<ValueMap>;
 
@@ -169,7 +183,7 @@ export class Runtime {
    */
   constructor(store: Store, lists: readonly List[], actions: readonly ListedAction[]) {
     const listsByName = new Map<string, List>();
-    for (const list of [recordsList, blobsList, schemasList, linksList, ...lists]) {
+    for (const list of [recordsList, blobsList, listOfIndex(heldObjects), listOfIndex(heldLinks), ...lists]) {
       if (listsByName.has(list.name)) throw new Error(`two lists are named ${list.name}`);
       listsByName.set(list.name, list);
     }
@@ -215,10 +229,18 @@ export class Runtime {
         return bytes === undefined ? {} : { bytes };
       }),
       answerTo(listsCall, async () => ({ lists: listDescriptions })),
-      answerTo(pageCall, async ({ list: name, prefix, start, limit }) => {
+      answerTo(pageCall, async ({ list: name, start, limit }) => {
         const list = listsByName.get(name);
         if (list === undefined) throw new Error(`there is no list named ${name}`);
-        return list.page(store, prefix, start, limit);
+        return list.page(store, start, limit);
+      }),
+      answerTo(objectsCall, async ({ schema, start, limit }) => {
+        const rows = await store.scan(heldObjects);
+        return linkPageOf(rows.range([schema]), ({ object }) => object, rows.blobCount, start, limit);
+      }),
+      answerTo(sourcesCall, async ({ target, start, limit }) => {
+        const rows = await store.scan(heldLinks);
+        return linkPageOf(rows.range([target]), ({ source }) => source, rows.blobCount, start, limit);
       }),
       answerTo(actionsCall, async () => ({ actions: actionDescriptions })),
       answerTo(performCall, async ({ request }) => {

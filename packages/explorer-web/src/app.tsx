@@ -4,6 +4,8 @@ import { ActionSessions } from "./action-sessions.ts";
 import { ActionView } from "./action-view.tsx";
 import { ActionsView } from "./actions-view.tsx";
 import { BlobView } from "./blob-view.tsx";
+import type { LinkSource } from "./link-page.ts";
+import { LinksView } from "./links-view.tsx";
 import type { Source } from "./list-page.ts";
 import { ListView } from "./list-view.tsx";
 import { actionsPlace, fragmentOf, placeIn } from "./place.ts";
@@ -20,7 +22,7 @@ function PlaceReadiness(props: { onReady: () => void }): null {
   return null;
 }
 
-export function App(props: { source: Source & ActionSource }) {
+export function App(props: { source: Source & ActionSource & LinkSource }) {
   const sessions = new ActionSessions(props.source);
   const [fragment, setFragment] = createSignal(location.hash);
   let showFirstPlace = () => {};
@@ -55,6 +57,10 @@ export function App(props: { source: Source & ActionSource }) {
   const listPlace = createMemo(() => {
     const shown = place();
     return shown !== undefined && "list" in shown ? shown : undefined;
+  });
+  const linksPlace = createMemo(() => {
+    const shown = place();
+    return shown !== undefined && ("objectsOf" in shown || "sourcesOf" in shown) ? shown : undefined;
   });
   const actionPlace = createMemo(() => {
     const shown = place();
@@ -109,15 +115,9 @@ export function App(props: { source: Source & ActionSource }) {
               <Match when={place() === actionsPlace}>
                 <ActionsView sessions={sessions} />
               </Match>
+              <Match when={linksPlace()}>{(place) => <LinksView source={props.source} place={place()} />}</Match>
               <Match when={shownList()}>
-                {(list) => (
-                  <ListView
-                    source={props.source}
-                    list={list()}
-                    prefix={listPlace()?.prefix ?? []}
-                    from={listPlace()?.from}
-                  />
-                )}
+                {(list) => <ListView source={props.source} list={list()} from={listPlace()?.from} />}
               </Match>
             </Switch>
           </Errored>

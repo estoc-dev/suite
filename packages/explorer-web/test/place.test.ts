@@ -10,11 +10,10 @@ describe("the fragment of a place", () => {
     [{ list: "Blobs" }, "#list=Blobs"],
     [{ list: "Blobs", from: 350 }, "#list=Blobs&from=350"],
     [{ list: "Held Keys & more", from: 0 }, "#list=Held+Keys+%26+more&from=0"],
-    [{ list: "Links", prefix: [blob] }, `#list=Links&prefix=${encodeURIComponent(blob)}`],
-    [
-      { list: "Links", prefix: [blob, other], from: 50 },
-      `#list=Links&prefix=${encodeURIComponent(blob)}&prefix=${encodeURIComponent(other)}&from=50`,
-    ],
+    [{ objectsOf: blob }, `#objects=${encodeURIComponent(blob)}`],
+    [{ objectsOf: blob, from: 50 }, `#objects=${encodeURIComponent(blob)}&from=50`],
+    [{ sourcesOf: blob }, `#sources=${encodeURIComponent(blob)}`],
+    [{ sourcesOf: blob, from: 0 }, `#sources=${encodeURIComponent(blob)}&from=0`],
     [{ blob }, `#${blob}`],
     [{ actions: "all" } as const, "#actions"],
     [{ action: blob }, `#action=${encodeURIComponent(blob)}`],
@@ -36,9 +35,12 @@ describe("the place in a fragment", () => {
     },
   );
 
-  it("is none where the prefix of a list holds what is not a link", () => {
-    expect(placeIn(`#list=Links&prefix=${encodeURIComponent(blob)}&prefix=somewhere`)).toBeUndefined();
-  });
+  it.each(["#objects=somewhere", "#sources=somewhere", "#sources="])(
+    "is none where %j names what is not a link",
+    (fragment) => {
+      expect(placeIn(fragment)).toBeUndefined();
+    },
+  );
 
   it.each([
     `#action=${encodeURIComponent(blob)}&field=to`,

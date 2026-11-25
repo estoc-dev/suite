@@ -1,21 +1,15 @@
 import type { ListData } from "@estoc/explorer";
-import type { Link } from "@estoc/object";
 import { createMemo, For, Show } from "solid-js";
 import { isShownLastFirst, readListPage, readRowSchema, type Source } from "./list-page.ts";
 import { fragmentOf, type ListPlace } from "./place.ts";
 import { quantityOf } from "./text.ts";
-import { linkView, valueView } from "./value-view.tsx";
+import { valueView } from "./value-view.tsx";
 
-export function ListView(props: {
-  source: Source;
-  list: ListData;
-  prefix: readonly Link<unknown>[];
-  from: number | undefined;
-}) {
+export function ListView(props: { source: Source; list: ListData; from: number | undefined }) {
   const rowSchema = createMemo(() => readRowSchema(props.source, props.list.rows.link));
-  const page = createMemo(() => readListPage(props.source, props.list, rowSchema(), props.prefix, props.from));
+  const page = createMemo(() => readListPage(props.source, props.list, rowSchema(), props.from));
   const placeAt = (from: number | undefined): ListPlace | undefined =>
-    from === undefined ? undefined : { list: props.list.name, prefix: props.prefix, from };
+    from === undefined ? undefined : { list: props.list.name, from };
   return (
     <>
       <h1>{props.list.name}</h1>
@@ -27,20 +21,6 @@ export function ListView(props: {
           ? "Read from every blob the store holds, so a row may come of an object that a stranger sent."
           : "Read from the records of the store."}
       </p>
-      <Show when={props.prefix.length > 0}>
-        <p class="note under">
-          The rows that hold
-          <For each={props.prefix}>
-            {(link, at) => (
-              <>
-                {" "}
-                {linkView(link)} in <span class="mono name">{props.list.order[at()]}</span>
-              </>
-            )}
-          </For>
-          .
-        </p>
-      </Show>
       <section class="card">
         <Show when={page().rows.length > 0} fallback={<p class="note">The page has no rows.</p>}>
           <table>

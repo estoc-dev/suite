@@ -1,4 +1,3 @@
-import { heldLinks, heldObjects } from "@estoc/explorer";
 import { ed25519, loadIdentity, SoftwareSigner, signatureSchema } from "@estoc/identity";
 import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { any, array, boolean, bytes, link, optional, schema, string } from "@estoc/schema";
@@ -6,19 +5,22 @@ import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";
 import { App } from "../src/app.tsx";
+import type { LinkSource } from "../src/link-page.ts";
 import type { Source } from "../src/list-page.ts";
 import {
   entriesOf,
   entrySchema,
   type GivenAction,
   listOf,
-  pairListOf,
   sourceHolding,
   sourceOf,
   sourceWithActions,
+  sourceWithLinks,
 } from "./fixtures.ts";
 
-function show(source: Source & ActionSource): HTMLElement {
+type AppSource = Source & ActionSource & LinkSource;
+
+function show(source: AppSource): HTMLElement {
   const root = document.createElement("div");
   onTestFinished(render(() => <App source={source} />, root));
   return root;
@@ -102,7 +104,7 @@ const tick: GivenAction = {
 const placeOf = ({ requestSchema }: GivenAction) => `#action=${encodeURIComponent(requestSchema.link)}`;
 
 /** A source that refuses what it is asked once it is closed, as a client does once its channel closed. */
-function closing(source: Source & ActionSource): { source: Source & ActionSource; close: () => void } {
+function closing(source: AppSource): { source: AppSource; close: () => void } {
   let isClosed = false;
   const whileOpen =
     <A extends unknown[], R>(call: (...given: A) => Promise<R>) =>
@@ -115,6 +117,8 @@ function closing(source: Source & ActionSource): { source: Source & ActionSource
       get: whileOpen(source.get),
       lists: whileOpen(source.lists),
       page: whileOpen(source.page),
+      objectsOf: whileOpen(source.objectsOf),
+      sourcesOf: whileOpen(source.sourcesOf),
       actions: whileOpen(source.actions),
       perform: whileOpen(source.perform),
     },
@@ -376,8 +380,8 @@ describe("the page", () => {
     const source = sourceOf(listOf("Entries", entriesOf(120)));
     const root = show({
       ...source,
-      page: (list, prefix, start, limit) =>
-        start < 0 ? Promise.reject(new Error("the channel is closed")) : source.page(list, prefix, start, limit),
+      page: (list, start, limit) =>
+        start < 0 ? Promise.reject(new Error("the channel is closed")) : source.page(list, start, limit),
     });
     await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
     expect(textsOf(root, "header a")).toEqual(["Entries", "Actions"]);
@@ -390,8 +394,8 @@ describe("the page", () => {
     const source = sourceOf(listOf("Entries", entriesOf(120)));
     const root = show({
       ...source,
-      page: (list, prefix, start, limit) =>
-        start < 0 ? source.page(list, prefix, start, limit) : Promise.reject(new Error("the channel is closed")),
+      page: (list, start, limit) =>
+        start < 0 ? source.page(list, start, limit) : Promise.reject(new Error("the channel is closed")),
     });
     await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
     await open("#list=Entries&from=70");
@@ -690,9 +694,9 @@ describe("the page of an action", () => {
     const objects = [entry.link, other];
     const root = show(
       sourceWithActions(
-        sourceOf(
-          pairListOf(heldObjects, [greetingSchema.link, other], ...objects.map((o) => [entrySchema.link, o] as const)),
-        ),
+        sourceWithLinks(sourceOf(), {
+          objects: [[greetingSchema.link, other], ...objects.map((object) => [entrySchema.link, object] as const)],
+        }),
         greet,
       ),
     );
@@ -713,7 +717,12 @@ describe("the page of an action", () => {
     location.hash = placeOf(gather);
     const root = show(
       sourceWithActions(
-        sourceOf(pairListOf(heldObjects, [entrySchema.link, entry.link], [entrySchema.link, other])),
+        sourceWithLinks(sourceOf(), {
+          objects: [
+            [entrySchema.link, entry.link],
+            [entrySchema.link, other],
+          ],
+        }),
         gather,
       ),
     );
@@ -725,28 +734,28 @@ describe("the page of an action", () => {
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", `${entry.link}\n${other}`]));
   });
 
-  it("leads to the rows of Schemas under the schema where more objects are held than it lists", async () => {
+  it("leads to the page of the objects written to the schema where more are held than it lists", async () => {
     location.hash = placeOf(greet);
     const objects = Array.from({ length: 12 }, (_, at) => linkOf(Uint8Array.of(at)));
     const root = show(
       sourceWithActions(
-        sourceOf(pairListOf(heldObjects, ...objects.map((o) => [entrySchema.link, o] as const))),
+        sourceWithLinks(sourceOf(), { objects: objects.map((object) => [entrySchema.link, object] as const) }),
         greet,
       ),
     );
-    await vi.waitFor(() => expect(textsOf(root, ".remaining")).toEqual(["The first 10 of 12 rows."]));
+    await vi.waitFor(() => expect(textsOf(root, ".remaining")).toEqual(["The first 10 of 12 objects."]));
     expect(textsOf(root, ".candidates a")).toEqual(objects.slice(0, 10));
-    const place = `#list=Schemas&prefix=${encodeURIComponent(entrySchema.link)}`;
-    expect(hrefsOf(root, ".remaining a")).toEqual([["12 rows", place]]);
+    const place = `#objects=${encodeURIComponent(entrySchema.link)}`;
+    expect(hrefsOf(root, ".remaining a")).toEqual([["12 objects", place]]);
     await open(place);
-    expect(textsOf(root, "h1")).toEqual(["Schemas"]);
-    expect(cellsOf(root)).toEqual(objects.map((object) => [entrySchema.link, object]));
+    expect(textsOf(root, "h1")).toEqual(["Objects"]);
+    expect(textsOf(root, ".sources a")).toEqual(objects);
   });
 
   it("shows why the objects were not read under the field, and performs on what is typed", async () => {
     location.hash = placeOf(greet);
     const source = sourceWithActions(sourceOf(), greet);
-    const root = show({ ...source, page: () => Promise.reject(new Error("database is locked")) });
+    const root = show({ ...source, objectsOf: () => Promise.reject(new Error("database is locked")) });
     await vi.waitFor(() => expect(textsOf(root, "tbody .problem")).toEqual(["database is locked"]));
     expect(textsOf(root, "[role=alert]")).toEqual([]);
     type(root, "words", "good day");
@@ -802,7 +811,7 @@ describe("the page of a blob", () => {
     location.hash = `#${entry.link}`;
     const root = show(
       sourceHolding(
-        sourceWithActions(sourceOf(pairListOf(heldLinks, [entry.link, source])), greet, tick),
+        sourceWithActions(sourceWithLinks(sourceOf(), { links: [[entry.link, source]] }), greet, tick),
         entry.bytes,
         ...entrySchema.blobs,
       ),
@@ -818,7 +827,7 @@ describe("the page of a blob", () => {
 
   it("shows what links to the blob it comes to show, in place of what links to the one before", async () => {
     location.hash = `#${entry.link}`;
-    const root = show(sourceHolding(sourceOf(pairListOf(heldLinks, [entry.link, source])), entry.bytes));
+    const root = show(sourceHolding(sourceWithLinks(sourceOf(), { links: [[entry.link, source]] }), entry.bytes));
     await vi.waitFor(() => expect(textsOf(root, ".sources a")).toEqual([source]));
     await open(`#${source}`);
     expect(textsOf(root, ".head dd")).toEqual([source]);
@@ -829,39 +838,63 @@ describe("the page of a blob", () => {
   });
 });
 
-describe("the page of a list under a prefix", () => {
+describe("the page of a set of links", () => {
   const target = linkOf(Uint8Array.of(1));
-  const sources = Array.from({ length: 120 }, (_, at) => linkOf(Uint8Array.of(2, at)));
-  const links = pairListOf(heldLinks, [linkOf(Uint8Array.of(0)), target], ...sources.map((s) => [target, s] as const));
-  const under = `#list=Links&prefix=${encodeURIComponent(target)}`;
-
-  it("shows the rows under the links of the prefix alone, and says which they are", async () => {
-    location.hash = under;
-    const root = show(sourceOf(links));
-    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
-    expect(cellsOf(root)).toEqual(sources.slice(0, 50).map((s) => [target, s]));
-    expect(textsOf(root, ".under")).toEqual([`The rows that hold ${target} in target.`]);
-    expect(textsOf(root, ".turns")).toEqual(["Rows 1 to 50 of 120Next"]);
-    expect(textsOf(root, "header [aria-current]")).toEqual(["Links"]);
+  const schema = linkOf(Uint8Array.of(3));
+  const held = Array.from({ length: 120 }, (_, at) => linkOf(Uint8Array.of(2, at)));
+  const other = linkOf(Uint8Array.of(0));
+  const source = sourceWithLinks(sourceOf(listOf("Entries", entriesOf(1))), {
+    objects: [[other, target], ...held.map((object) => [schema, object] as const)],
+    links: [[other, target], ...held.map((source) => [target, source] as const)],
   });
+  const sourcesPlace = `#sources=${encodeURIComponent(target)}`;
 
-  it("turns to the pages before and after it under the same prefix", async () => {
-    location.hash = `${under}&from=50`;
-    const root = show(sourceOf(links));
-    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
-    expect(hrefsOf(root, ".turns a")).toEqual([
-      ["Previous", `${under}&from=0`],
-      ["Next", `${under}&from=100`],
+  it("shows the first of what links to a blob, each as a link to it, and says which blob", async () => {
+    location.hash = sourcesPlace;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toHaveLength(50));
+    expect(hrefsOf(root, ".sources a")).toEqual(held.slice(0, 50).map((link) => [link, `#${link}`]));
+    expect(textsOf(root, "h1")).toEqual(["Linked from"]);
+    expect(textsOf(root, "main > .note")).toEqual([
+      `The objects the store holds that link to ${target}. Read from every blob the store holds, so one may be an object that a stranger sent.`,
     ]);
-    await open(`${under}&from=100`);
-    expect(cellsOf(root)).toEqual(sources.slice(100).map((s) => [target, s]));
+    expect(textsOf(root, ".turns")).toEqual(["Objects 1 to 50 of 120Next"]);
+    expect(textsOf(root, "header [aria-current]")).toEqual([]);
   });
 
-  it("says nothing of a prefix where the place has none", async () => {
-    location.hash = "#list=Links";
-    const root = show(sourceOf(links));
-    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
-    expect(textsOf(root, ".under")).toEqual([]);
-    expect(textsOf(root, ".turns")).toEqual(["Rows 1 to 50 of 121Next"]);
+  it("shows the objects written to a schema, and says which schema", async () => {
+    location.hash = `#objects=${encodeURIComponent(schema)}`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toEqual(held.slice(0, 50)));
+    expect(textsOf(root, "h1")).toEqual(["Objects"]);
+    expect(textsOf(root, "main > .note")).toEqual([
+      `The objects the store holds that are written to ${schema}. Read from every blob the store holds, so one may be an object that a stranger sent.`,
+    ]);
+  });
+
+  it("turns to the pages before and after it of the same set", async () => {
+    location.hash = `${sourcesPlace}&from=50`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toHaveLength(50));
+    expect(hrefsOf(root, ".turns a")).toEqual([
+      ["Previous", `${sourcesPlace}&from=0`],
+      ["Next", `${sourcesPlace}&from=100`],
+    ]);
+    await open(`${sourcesPlace}&from=100`);
+    expect(textsOf(root, ".sources a")).toEqual(held.slice(100));
+    expect(textsOf(root, ".turns")).toEqual(["PreviousObjects 101 to 120 of 120"]);
+  });
+
+  it("says that the page has no objects where the set has none", async () => {
+    location.hash = `#sources=${encodeURIComponent(schema)}`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "section .note")).toEqual(["The page has no objects."]));
+    expect(textsOf(root, ".turns")).toEqual(["0 objects"]);
+  });
+
+  it("shows why the set was not read", async () => {
+    location.hash = sourcesPlace;
+    const root = show({ ...source, sourcesOf: () => Promise.reject(new Error("the channel is closed")) });
+    await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
   });
 });

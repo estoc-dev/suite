@@ -1,13 +1,13 @@
-import { heldLinks } from "@estoc/explorer";
+import type { Client } from "@estoc/explorer";
 import type { Link } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, Errored, For, Loading, Show } from "solid-js";
-import { type ActionSource, fieldsTaking } from "./action-page.ts";
+import { fieldsTaking } from "./action-page.ts";
 import type { ActionSessions } from "./action-sessions.ts";
 import { type BlobPage, readBlobPage } from "./blob-page.ts";
+import { shownLinkLimit } from "./link-page.ts";
+import { remainingLinksView } from "./links-view.tsx";
 import { objectView } from "./object-view.tsx";
-import { readLinksUnder } from "./pair-rows.ts";
-import { remainingRowsView } from "./pair-rows-view.tsx";
 import { fragmentOf } from "./place.ts";
 import { hexOf, messageOf, quantityOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
@@ -88,20 +88,20 @@ function TakingActionsView(props: { sessions: ActionSessions; object: Link<unkno
   );
 }
 
-function LinkedFromView(props: { source: Pick<ActionSource, "page">; link: Link<unknown> }) {
-  const sources = createMemo(() => readLinksUnder(props.source, heldLinks, props.link));
+function LinkedFromView(props: { source: Pick<Client, "sourcesOf">; link: Link<unknown> }) {
+  const sources = createMemo(() => props.source.sourcesOf(props.link, 0, shownLinkLimit));
   return (
     <Show when={sources().links.length > 0} fallback={<p class="note">Nothing the store holds links to it.</p>}>
       <ul class="items sources">
         <For each={sources().links}>{(source) => <li>{linkView(source)}</li>}</For>
       </ul>
-      {remainingRowsView(sources(), { list: heldLinks.name, prefix: [props.link] })}
+      {remainingLinksView(sources(), { sourcesOf: props.link })}
     </Show>
   );
 }
 
 export function BlobView(props: {
-  source: Pick<ActionSource, "get" | "page">;
+  source: Pick<Client, "get" | "sourcesOf">;
   sessions: ActionSessions;
   link: Link<unknown>;
 }) {

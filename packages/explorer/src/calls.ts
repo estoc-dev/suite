@@ -56,3 +56,38 @@ export const pageCall = {
 };
 
 export type Page = DataOf<typeof pageCall.result>;
+
+/** Each of `actions` is the bytes of an Action. */
+export const actionsCall = {
+  name: "actions",
+  parameters: schema("Actions Parameters", {}),
+  result: schema("Actions Result", { actions: array(bytes()) }),
+};
+
+/**
+ * - `request` names the schema that a request of the action is written to, which is what tells the
+ *   action from the others, and `result` the schema that its result is written to.
+ * - `targetSchemas` is a map. Under the name of a field of the request it holds a link to the
+ *   schema that each link of that field is to an object of. The request schema gives the type of
+ *   each field. Where the map leaves out a field of links, the schema of what those links are to
+ *   is unspecified.
+ */
+export const actionSchema = schema("Action", {
+  request: link<Schema>(),
+  result: link<Schema>(),
+  targetSchemas: any(),
+});
+
+export type ActionData = DataOf<typeof actionSchema>;
+
+/**
+ * - `request` is the bytes of an object written to the request schema of an action, and `result`
+ *   the bytes of the result of the action. The runtime writes neither of them to the store.
+ * - `commits` are the roots written and the statements recorded as the action was performed. When
+ *   it fails, what it committed before stays in the store, and the reply holds the reason alone.
+ */
+export const performCall = {
+  name: "perform",
+  parameters: schema("Perform Parameters", { request: bytes() }),
+  result: schema("Perform Result", { result: bytes(), commits: array(link()) }),
+};

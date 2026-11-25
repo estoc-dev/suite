@@ -23,7 +23,7 @@ export interface ExplorerServer {
  * a page of that origin opens.
  *
  * - It listens on the loopback address alone. Another user of the same machine reaches it there,
- *   and is given the store like any page.
+ *   and is given the store, and has actions performed on it, like any page.
  * - A browser lets a page of any site open a WebSocket to this port, and says in `Origin` which
  *   site the page is of, which the page cannot set. A page that reached this port under another
  *   name, as one whose name was made to resolve here, is of that name's origin and is refused too.

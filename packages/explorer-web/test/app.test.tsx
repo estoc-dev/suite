@@ -5,6 +5,7 @@ import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";
 import { App } from "../src/app.tsx";
+import type { LinkSource } from "../src/link-page.ts";
 import type { Source } from "../src/list-page.ts";
 import {
   entriesOf,
@@ -14,16 +15,24 @@ import {
   sourceHolding,
   sourceOf,
   sourceWithActions,
+  sourceWithLinks,
 } from "./fixtures.ts";
 
-function show(source: Source & ActionSource): HTMLElement {
+type AppSource = Source & ActionSource & LinkSource;
+
+function show(source: AppSource): HTMLElement {
   const root = document.createElement("div");
   onTestFinished(render(() => <App source={source} />, root));
   return root;
 }
 
-const navigation = new EventTarget();
+let historyEntryCount = 0;
+const historyEntry = () => ({ id: String(historyEntryCount++) });
+
+const navigation = Object.assign(new EventTarget(), { currentEntry: historyEntry() });
 vi.stubGlobal("navigation", navigation);
+let loadedEntry = navigation.currentEntry;
+const openedEntries = new Map<string, { id: string }>();
 
 /** The handlers the page intercepts the navigation with. A browser runs them once it has changed the address. */
 function navigate(url: string, sameDocument: boolean): NavigationInterceptHandler[] {
@@ -33,11 +42,20 @@ function navigate(url: string, sameDocument: boolean): NavigationInterceptHandle
   return handlers;
 }
 
-/** Resolves when the page says that the place is shown. */
-async function open(fragment: string): Promise<void> {
+async function showEntry(fragment: string, entry: { id: string }): Promise<void> {
   location.hash = fragment;
+  navigation.currentEntry = entry;
   await Promise.all(navigate(location.href, true).map((handler) => handler()));
 }
+
+/** Makes an entry of the history at the fragment, as a link does, and resolves when the page says that the place is shown. */
+function open(fragment: string): Promise<void> {
+  const entry = historyEntry();
+  openedEntries.set(fragment, entry);
+  return showEntry(fragment, entry);
+}
+
+const goBackTo = (fragment: string) => showEntry(fragment, openedEntries.get(fragment) ?? loadedEntry);
 
 function gate(): { permissionToRead: Promise<void>; open: () => void } {
   let open = () => {};
@@ -100,7 +118,7 @@ const tick: GivenAction = {
 const placeOf = ({ requestSchema }: GivenAction) => `#action=${encodeURIComponent(requestSchema.link)}`;
 
 /** A source that refuses what it is asked once it is closed, as a client does once its channel closed. */
-function closing(source: Source & ActionSource): { source: Source & ActionSource; close: () => void } {
+function closing(source: AppSource): { source: AppSource; close: () => void } {
   let isClosed = false;
   const whileOpen =
     <A extends unknown[], R>(call: (...given: A) => Promise<R>) =>
@@ -113,6 +131,8 @@ function closing(source: Source & ActionSource): { source: Source & ActionSource
       get: whileOpen(source.get),
       lists: whileOpen(source.lists),
       page: whileOpen(source.page),
+      objectsOf: whileOpen(source.objectsOf),
+      sourcesOf: whileOpen(source.sourcesOf),
       actions: whileOpen(source.actions),
       perform: whileOpen(source.perform),
     },
@@ -124,6 +144,9 @@ function closing(source: Source & ActionSource): { source: Source & ActionSource
 
 beforeEach(() => {
   location.hash = "";
+  loadedEntry = historyEntry();
+  navigation.currentEntry = loadedEntry;
+  openedEntries.clear();
 });
 
 describe("the page", () => {
@@ -444,6 +467,7 @@ describe("the page of the actions", () => {
 describe("the page of an action", () => {
   const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
   const other = linkOf(Uint8Array.of(1));
+  const fragmentFilledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
 
   it("shows an input for each field of the request schema, with its type and the schema its links are to", async () => {
     location.hash = placeOf(greet);
@@ -454,11 +478,13 @@ describe("the page of an action", () => {
       [greet.requestSchema.link, `#${greet.requestSchema.link}`],
       [greetingSchema.link, `#${greetingSchema.link}`],
     ]);
-    expect(cellsOf(root)).toEqual([
-      ["to", "", "link · to Entry"],
-      ["words", "", "string"],
-      ["others", "Separate links with spaces or new lines.", "array of link · optional"],
-    ]);
+    await vi.waitFor(() =>
+      expect(cellsOf(root)).toEqual([
+        ["to", "The store holds no object written to Entry.", "link · to Entry"],
+        ["words", "", "string"],
+        ["others", "Separate links with spaces or new lines.", "array of link · optional"],
+      ]),
+    );
     expect(typedIn(root)).toEqual([
       ["to", ""],
       ["words", ""],
@@ -681,6 +707,188 @@ describe("the page of an action", () => {
     );
   });
 
+  it("lists the objects held that a field takes, and sets the field to the one that is used", async () => {
+    location.hash = placeOf(greet);
+    const objects = [entry.link, other];
+    const root = show(
+      sourceWithActions(
+        sourceWithLinks(sourceOf(), {
+          objects: [[greetingSchema.link, other], ...objects.map((object) => [entrySchema.link, object] as const)],
+        }),
+        greet,
+      ),
+    );
+    await vi.waitFor(() => expect(hrefsOf(root, ".candidates a")).toEqual(objects.map((link) => [link, `#${link}`])));
+    expect(textsOf(root, ".candidates button")).toEqual(["Use", "Use"]);
+    expect(textsOf(root, ".remaining")).toEqual([]);
+    type(root, "to", "somewhere");
+    type(root, "words", "good day");
+    root.querySelectorAll<HTMLButtonElement>(".candidates button")[1]?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain(`to${other}link`));
+    expect(typedIn(root)).toContainEqual(["words", "good day"]);
+  });
+
+  it("adds an object that is used to a field of links, after what is typed for it", async () => {
+    const gather = { ...greet, targetSchemas: { others: entrySchema } };
+    location.hash = placeOf(gather);
+    const root = show(
+      sourceWithActions(
+        sourceWithLinks(sourceOf(), {
+          objects: [
+            [entrySchema.link, entry.link],
+            [entrySchema.link, other],
+          ],
+        }),
+        gather,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, ".candidates button")).toEqual(["Add", "Add"]));
+    const [first, second] = root.querySelectorAll<HTMLButtonElement>(".candidates button");
+    first?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+    second?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", `${entry.link}\n${other}`]));
+  });
+
+  it("leads to the page of the objects written to the schema where more are held than it lists", async () => {
+    location.hash = placeOf(greet);
+    const objects = Array.from({ length: 12 }, (_, at) => linkOf(Uint8Array.of(at)));
+    const root = show(
+      sourceWithActions(
+        sourceWithLinks(sourceOf(), { objects: objects.map((object) => [entrySchema.link, object] as const) }),
+        greet,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, ".remaining")).toEqual(["The first 10 of 12 objects."]));
+    expect(textsOf(root, ".candidates a")).toEqual(objects.slice(0, 10));
+    const place = `#objects=${encodeURIComponent(entrySchema.link)}`;
+    expect(hrefsOf(root, ".remaining a")).toEqual([["12 objects", place]]);
+    await open(place);
+    expect(textsOf(root, "h1")).toEqual(["Objects"]);
+    expect(textsOf(root, ".sources a")).toEqual(objects);
+  });
+
+  it("shows why the objects were not read under the field, and performs on what is typed", async () => {
+    location.hash = placeOf(greet);
+    const source = sourceWithActions(sourceOf(), greet);
+    const root = show({ ...source, objectsOf: () => Promise.reject(new Error("database is locked")) });
+    await vi.waitFor(() => expect(textsOf(root, "tbody .problem")).toEqual(["database is locked"]));
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+  });
+
+  it("fills in the field that the fragment names each time a link leads to it, and keeps what is typed for the others", async () => {
+    const prefilledFragment = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    location.hash = prefilledFragment;
+    const root = show(sourceHolding(sourceWithActions(sourceOf(), greet), entry.bytes));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    type(root, "to", other);
+    type(root, "words", "good day");
+    await open(`#${entry.link}`);
+    await open(prefilledFragment);
+    await vi.waitFor(() =>
+      expect(typedIn(root)).toEqual([
+        ["to", entry.link],
+        ["words", "good day"],
+        ["others", ""],
+      ]),
+    );
+    type(root, "to", other);
+    await open(placeOf(greet));
+    expect(typedIn(root)).toContainEqual(["to", other]);
+  });
+
+  it("keeps what was typed for the field that the fragment names where the browser goes back to the form", async () => {
+    const second = encodeObject(entrySchema, { name: "second", count: 8 });
+    const prefilledFragment = `${placeOf(greet)}&field=others&link=${encodeURIComponent(entry.link)}`;
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(
+          sourceWithLinks(sourceOf(), {
+            objects: [entry, second].map(({ link }) => [entrySchema.link, link] as const),
+          }),
+          { ...greet, targetSchemas: { others: entrySchema } },
+        ),
+        entry.bytes,
+        second.bytes,
+        ...entrySchema.blobs,
+      ),
+    );
+    await vi.waitFor(() => expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", prefilledFragment]]));
+    await open(prefilledFragment);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+    await vi.waitFor(() => expect(textsOf(root, ".candidates a")).toEqual([entry.link, second.link]));
+    root.querySelectorAll<HTMLButtonElement>(".candidates button")[1]?.click();
+    const both = `${entry.link}\n${second.link}`;
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", both]));
+    await open(`#${second.link}`);
+    await goBackTo(prefilledFragment);
+    await turn();
+    expect(typedIn(root)).toContainEqual(["others", both]);
+    await goBackTo(`#${entry.link}`);
+    await open(prefilledFragment);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+  });
+
+  it("keeps a field that was emptied where the browser goes back to the form", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    type(root, "to", "");
+    await open("#actions");
+    await goBackTo(fragmentFilledWith(entry.link));
+    await turn();
+    expect(typedIn(root)).toContainEqual(["to", ""]);
+  });
+
+  it("fills in the field where the browser goes back to a form that the page has not shown since it was loaded", async () => {
+    const source = sourceWithActions(sourceOf(), greet);
+    await open(fragmentFilledWith(entry.link));
+    await open("#actions");
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Actions"]));
+    await goBackTo(fragmentFilledWith(entry.link));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+  });
+
+  it("fills in the field where the browser goes back to a form that was not read the first time", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const source = sourceWithActions(sourceOf(), greet);
+    vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open("#list=Entries");
+    await goBackTo(fragmentFilledWith(entry.link));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("shows the form that another link for the same action leads to, in place of why it was not read before", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const source = sourceWithActions(sourceOf(), greet);
+    vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open(fragmentFilledWith(other));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("fills in the field of the form shown where the fragment comes to name another link for it", async () => {
+    location.hash = fragmentFilledWith(entry.link);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    await open(fragmentFilledWith(other));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+  });
+
   it("says where a field is of a type that the page has no input for", async () => {
     const count = { ...tick, requestSchema: schema("Count", { from: optional(boolean()) }) };
     location.hash = placeOf(count);
@@ -689,5 +897,134 @@ describe("the page of an action", () => {
       expect(cellsOf(root)).toEqual([["from", "The page has no input for this type.", "boolean · optional"]]),
     );
     expect(typedIn(root)).toEqual([]);
+  });
+});
+
+describe("the page of a blob", () => {
+  const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+  const source = linkOf(Uint8Array.of(1));
+
+  it("leads to the form of an action that takes the object, with the field filled in, and to what links to it", async () => {
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(sourceWithLinks(sourceOf(), { links: [[entry.link, source]] }), greet, tick),
+        entry.bytes,
+        ...entrySchema.blobs,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Actions", "Linked from"]));
+    const prefilledFragment = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", prefilledFragment]]);
+    expect(hrefsOf(root, ".sources a")).toEqual([[source, `#${source}`]]);
+    await open(prefilledFragment);
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+  });
+
+  it("lists the actions that take the object it comes to show, in place of those that take the one before", async () => {
+    const letterSchema = schema("Letter", { text: string() });
+    const letter = encodeObject(letterSchema, { text: "a word" });
+    const post: GivenAction = {
+      requestSchema: schema("Post", { letter: link() }),
+      resultSchema: schema("Posted", {}),
+      targetSchemas: { letter: letterSchema },
+      perform: async () => ({ result: {}, commits: [] }),
+    };
+    const fragmentOf = (action: GivenAction, field: string, object: string) =>
+      `${placeOf(action)}&field=${field}&link=${encodeURIComponent(object)}`;
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(sourceOf(), greet, post),
+        entry.bytes,
+        letter.bytes,
+        ...entrySchema.blobs,
+        ...letterSchema.blobs,
+      ),
+    );
+    const actions = () => hrefsOf(root, "h2 + section tbody a");
+    await vi.waitFor(() => expect(actions()).toEqual([["Greet", fragmentOf(greet, "to", entry.link)]]));
+    await open(`#${letter.link}`);
+    await vi.waitFor(() => expect(actions()).toEqual([["Post", fragmentOf(post, "letter", letter.link)]]));
+    expect(textsOf(root, "h2 + section tbody .name")).toEqual(["letter"]);
+    await open(`#${entry.link}`);
+    await vi.waitFor(() => expect(actions()).toEqual([["Greet", fragmentOf(greet, "to", entry.link)]]));
+    expect(textsOf(root, "h2 + section tbody .name")).toEqual(["to"]);
+    await open(`#${letterSchema.link}`);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Linked from"]));
+  });
+
+  it("shows what links to the blob it comes to show, in place of what links to the one before", async () => {
+    location.hash = `#${entry.link}`;
+    const root = show(sourceHolding(sourceWithLinks(sourceOf(), { links: [[entry.link, source]] }), entry.bytes));
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toEqual([source]));
+    await open(`#${source}`);
+    expect(textsOf(root, ".head dd")).toEqual([source]);
+    await vi.waitFor(() =>
+      expect(textsOf(root, "section:last-of-type .note")).toEqual(["Nothing the store holds links to it."]),
+    );
+    expect(textsOf(root, ".sources a")).toEqual([]);
+  });
+});
+
+describe("the page of a set of links", () => {
+  const target = linkOf(Uint8Array.of(1));
+  const schema = linkOf(Uint8Array.of(3));
+  const held = Array.from({ length: 120 }, (_, at) => linkOf(Uint8Array.of(2, at)));
+  const other = linkOf(Uint8Array.of(0));
+  const source = sourceWithLinks(sourceOf(listOf("Entries", entriesOf(1))), {
+    objects: [[other, target], ...held.map((object) => [schema, object] as const)],
+    links: [[other, target], ...held.map((source) => [target, source] as const)],
+  });
+  const sourcesPlace = `#sources=${encodeURIComponent(target)}`;
+
+  it("shows the first of what links to a blob, each as a link to it, and says which blob", async () => {
+    location.hash = sourcesPlace;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toHaveLength(50));
+    expect(hrefsOf(root, ".sources a")).toEqual(held.slice(0, 50).map((link) => [link, `#${link}`]));
+    expect(textsOf(root, "h1")).toEqual(["Linked from"]);
+    expect(textsOf(root, "main > .note")).toEqual([
+      `The objects the store holds that link to ${target}. Read from every blob the store holds, so one may be an object that a stranger sent.`,
+    ]);
+    expect(textsOf(root, ".turns")).toEqual(["Objects 1 to 50 of 120Next"]);
+    expect(textsOf(root, "header [aria-current]")).toEqual([]);
+  });
+
+  it("shows the objects written to a schema, and says which schema", async () => {
+    location.hash = `#objects=${encodeURIComponent(schema)}`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toEqual(held.slice(0, 50)));
+    expect(textsOf(root, "h1")).toEqual(["Objects"]);
+    expect(textsOf(root, "main > .note")).toEqual([
+      `The objects the store holds that are written to ${schema}. Read from every blob the store holds, so one may be an object that a stranger sent.`,
+    ]);
+  });
+
+  it("turns to the pages before and after it of the same set", async () => {
+    location.hash = `${sourcesPlace}&from=50`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toHaveLength(50));
+    expect(hrefsOf(root, ".turns a")).toEqual([
+      ["Previous", `${sourcesPlace}&from=0`],
+      ["Next", `${sourcesPlace}&from=100`],
+    ]);
+    await open(`${sourcesPlace}&from=100`);
+    expect(textsOf(root, ".sources a")).toEqual(held.slice(100));
+    expect(textsOf(root, ".turns")).toEqual(["PreviousObjects 101 to 120 of 120"]);
+  });
+
+  it("says that the page has no objects where the set has none", async () => {
+    location.hash = `#sources=${encodeURIComponent(schema)}`;
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "section .note")).toEqual(["The page has no objects."]));
+    expect(textsOf(root, ".turns")).toEqual(["0 objects"]);
+  });
+
+  it("shows why the set was not read", async () => {
+    location.hash = sourcesPlace;
+    const root = show({ ...source, sourcesOf: () => Promise.reject(new Error("the channel is closed")) });
+    await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
   });
 });

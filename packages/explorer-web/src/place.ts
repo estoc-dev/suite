@@ -10,25 +10,52 @@ export interface ListPlace {
   readonly from?: number;
 }
 
+/** The objects held that are written to a schema, or the objects held that link to a blob. */
+export type LinkSet = { readonly objectsOf: Link<Schema> } | { readonly sourcesOf: Link<unknown> };
+
+/** `from` counts the links of the set before where the page begins, and left out it is none. */
+export type LinksPlace = LinkSet & { readonly from?: number };
+
 export interface BlobPlace {
   readonly blob: Link<unknown>;
 }
 
 export const actionsPlace = { actions: "all" } as const;
 
-/** `action` is the request schema of the action, which is what tells it from the others. */
-export interface ActionPlace {
-  readonly action: Link<Schema>;
+export interface FilledField {
+  readonly name: string;
+  readonly link: Link<unknown>;
 }
 
-export type Place = ListPlace | BlobPlace | typeof actionsPlace | ActionPlace;
+/**
+ * - `action` is the request schema of the action, which is what tells it from the others.
+ * - A place with `filledField` has that field of the form set to the link, over what was typed for
+ *   it, once for each entry of the history of the browser that is at the place: a link to the place
+ *   makes an entry, and going back or forward to an entry makes none. So a form that was shown is as
+ *   it was left on going back to it. A page that is loaded again has set nothing yet.
+ */
+export interface ActionPlace {
+  readonly action: Link<Schema>;
+  readonly filledField?: FilledField;
+}
+
+export type Place = ListPlace | LinksPlace | BlobPlace | typeof actionsPlace | ActionPlace;
 
 export function fragmentOf(place: Place): string {
   if ("blob" in place) return `#${place.blob}`;
   if ("actions" in place) return "#actions";
-  if ("action" in place) return `#${new URLSearchParams({ action: place.action })}`;
-  const { list, from } = place;
-  return `#${new URLSearchParams({ list, ...(from === undefined ? {} : { from: String(from) }) })}`;
+  if ("action" in place) {
+    const { action, filledField } = place;
+    const fieldParameters = filledField === undefined ? {} : { field: filledField.name, link: filledField.link };
+    return `#${new URLSearchParams({ action, ...fieldParameters })}`;
+  }
+  const [name, value] =
+    "list" in place
+      ? ["list", place.list]
+      : "objectsOf" in place
+        ? ["objects", place.objectsOf]
+        : ["sources", place.sourcesOf];
+  return `#${new URLSearchParams([[name, value], ...(place.from === undefined ? [] : [["from", String(place.from)]])])}`;
 }
 
 function countIn(text: string | null): number | undefined {
@@ -42,9 +69,18 @@ export function placeIn(fragment: string): Place | undefined {
   if (text === "actions") return actionsPlace;
   const parameters = new URLSearchParams(text);
   const action = parameters.get("action");
-  if (action !== null) return isLink(action) ? { action } : undefined;
-  const list = parameters.get("list");
-  if (list === null) return undefined;
+  if (action !== null) {
+    if (!isLink(action)) return undefined;
+    const name = parameters.get("field");
+    const link = parameters.get("link");
+    return name !== null && link !== null && isLink(link) ? { action, filledField: { name, link } } : { action };
+  }
   const from = countIn(parameters.get("from"));
-  return from === undefined ? { list } : { list, from };
+  const start = from === undefined ? {} : { from };
+  const list = parameters.get("list");
+  if (list !== null) return { list, ...start };
+  const schema = parameters.get("objects");
+  if (schema !== null) return isLink(schema) ? { objectsOf: schema, ...start } : undefined;
+  const target = parameters.get("sources");
+  return target !== null && isLink(target) ? { sourcesOf: target, ...start } : undefined;
 }

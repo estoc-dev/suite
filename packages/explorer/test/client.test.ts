@@ -21,7 +21,25 @@ const heldBlobsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeO
 const linkPairsIn = (rows: readonly Uint8Array[]) =>
   rows.map((bytes) => decodeObject(bytes, heldLinkSchema).data).map(({ target, source }) => [target.link, source.link]);
 
+const objectPairsIn = (rows: readonly Uint8Array[]) =>
+  rows
+    .map((bytes) => decodeObject(bytes, heldObjectSchema).data)
+    .map(({ schema, object }) => [schema.link, object.link]);
+
 const sortedPairs = (pairs: [string, string][]) => [...pairs].sort();
+
+function backendNoting(requestedLinks: Link<unknown>[]): Backend {
+  const backend = new MemoryBackend();
+  return {
+    get(link) {
+      requestedLinks.push(link);
+      return backend.get(link);
+    },
+    has: (link) => backend.has(link),
+    put: (blobs) => backend.put(blobs),
+    blobs: (start) => backend.blobs(start),
+  };
+}
 
 function answerEach(far: Channel, resultOf: (name: string) => ValueMap): void {
   far.receive(
@@ -146,17 +164,8 @@ describe("a client of a runtime", () => {
   });
 
   it("reads from the store the statements of a page of Records and no others, once the records were listed", async () => {
-    const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
-    const store = await storeOfNote({
-      get(link) {
-        requestedLinks.push(link);
-        return backend.get(link);
-      },
-      has: (link) => backend.has(link),
-      put: (blobs) => backend.put(blobs),
-      blobs: (start) => backend.blobs(start),
-    });
+    const store = await storeOfNote(backendNoting(requestedLinks));
     await store.record(writtenObjectsOf([note.link], 1));
     const later = writtenObjectsOf([linkOf(image)], 2);
     await store.record(later);
@@ -173,11 +182,7 @@ describe("a client of a runtime", () => {
   it("reads a page of Schemas as a row for each object, sorted by the schema it names and then by the object", async () => {
     const page = await clientOf(await storeOfNote()).page("Schemas", 0, 10);
     expect(page).toMatchObject({ start: 0, rowCount: 3, blobCount: 4 });
-    expect(
-      page.rows
-        .map((bytes) => decodeObject(bytes, heldObjectSchema).data)
-        .map(({ schema, object }) => [schema.link, object.link]),
-    ).toEqual(
+    expect(objectPairsIn(page.rows)).toEqual(
       sortedPairs([
         [rootSchema.link, rootSchema.link],
         [rootSchema.link, noteSchema.link],
@@ -222,6 +227,75 @@ describe("a client of a runtime", () => {
     const page = await client.page("Links", -2, 1);
     expect(page).toMatchObject({ start: 2, rowCount: 4, blobCount: 5 });
     expect(page.rows).toHaveLength(1);
+  });
+
+  it("reads the objects held that are written to a schema, sorted as links are, and counts those alone", async () => {
+    const client = clientOf(await storeOfNote());
+    const objects = [rootSchema.link, noteSchema.link].sort();
+    expect(await client.objectsOf(rootSchema.link, 0, 10)).toEqual({
+      start: 0,
+      linkCount: 2,
+      blobCount: 4,
+      links: objects,
+    });
+    expect(await client.objectsOf(rootSchema.link, 1, 10)).toMatchObject({ start: 1, links: objects.slice(1) });
+    expect(await client.objectsOf(rootSchema.link, -1, 10)).toMatchObject({ start: 1, links: objects.slice(1) });
+    expect(await client.objectsOf(rootSchema.link, 0, 1)).toMatchObject({ linkCount: 2, links: objects.slice(0, 1) });
+  });
+
+  it("reads no object for a schema that no object held is written to", async () => {
+    const client = clientOf(await storeOfNote());
+    expect(await client.objectsOf(schema("Unused", {}).link, 0, 10)).toEqual({
+      start: 0,
+      linkCount: 0,
+      blobCount: 4,
+      links: [],
+    });
+  });
+
+  it("reads what links to a blob, and nothing for a blob that nothing held links to", async () => {
+    const client = clientOf(await storeOfNote());
+    expect(await client.sourcesOf(linkOf(image), 0, 10)).toEqual({
+      start: 0,
+      linkCount: 1,
+      blobCount: 4,
+      links: [note.link],
+    });
+    expect(await client.sourcesOf(rootSchema.link, 0, 10)).toMatchObject({ linkCount: 1, links: [noteSchema.link] });
+    expect(await client.sourcesOf(note.link, 0, 10)).toEqual({ start: 0, linkCount: 0, blobCount: 4, links: [] });
+  });
+
+  it("reads what links to a blob from where the page starts, up to its limit", async () => {
+    const store = await storeOfNote();
+    const later = encodeObject(noteSchema, { text: "written later", image: new LinkValue(linkOf(image)) });
+    await store.write({ roots: [later.link], blobs: [later.bytes] });
+    const sources = [note.link, later.link].sort();
+    expect(await clientOf(store).sourcesOf(linkOf(image), 1, 1)).toEqual({
+      start: 1,
+      linkCount: 2,
+      blobCount: 5,
+      links: sources.slice(1),
+    });
+  });
+
+  it.each<[string, (client: Client) => Promise<unknown>]>([
+    ["a page of Schemas", (client) => client.page("Schemas", 0, 10)],
+    ["a page of Links", (client) => client.page("Links", 0, 10)],
+    ["the objects written to a schema", (client) => client.objectsOf(noteSchema.link, 0, 10)],
+    ["what links to a blob", (client) => client.sourcesOf(noteSchema.link, 0, 10)],
+  ])("reads from the store, for %s, the blobs written since the read before and no others", async (_, read) => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = await storeOfNote(backendNoting(requestedLinks));
+    const client = clientOf(store);
+    await read(client);
+    const later = encodeObject(noteSchema, { text: "written later" });
+    await store.write({ roots: [later.link], blobs: [later.bytes] });
+    requestedLinks.length = 0;
+    await read(client);
+    expect(requestedLinks).toEqual([later.link]);
+    requestedLinks.length = 0;
+    await read(client);
+    expect(requestedLinks).toEqual([]);
   });
 
   it("fails a call with the reason the runtime gives", async () => {

@@ -15,7 +15,7 @@ import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { readSchema } from "./schema.ts";
 import { typeNameOf } from "./text.ts";
 
-export type ActionSource = Pick<Client, "get" | "actions" | "perform">;
+export type ActionSource = Pick<Client, "get" | "objectsOf" | "actions" | "perform">;
 
 export interface TitledSchema {
   readonly schema: Schema;
@@ -61,6 +61,18 @@ export async function readActionForms(source: ActionSource): Promise<ActionForm[
         ),
       };
     }),
+  );
+}
+
+export interface TakingField {
+  readonly form: ActionForm;
+  readonly field: FormField;
+}
+
+/** The fields that take links to objects written to `schema`, in the order of the forms. */
+export function fieldsTaking(forms: readonly ActionForm[], schema: Link<unknown>): TakingField[] {
+  return forms.flatMap((form) =>
+    form.fields.filter(({ target }) => target?.schema.link === schema).map((field) => ({ form, field })),
   );
 }
 

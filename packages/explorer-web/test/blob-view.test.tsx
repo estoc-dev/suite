@@ -13,16 +13,24 @@ import {
 import { any, array, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ActionSource } from "../src/action-page.ts";
+import { ActionSessions } from "../src/action-sessions.ts";
 import { BlobView } from "../src/blob-view.tsx";
-import { readerOf } from "./fixtures.ts";
+import type { LinkSource } from "../src/link-page.ts";
+import { type GivenAction, sourceHolding, sourceOf, sourceWithActions, sourceWithLinks } from "./fixtures.ts";
 
-async function viewAt(link: Link<unknown>, ...blobs: readonly Uint8Array[]): Promise<HTMLElement> {
-  const reader = readerOf(...blobs);
+async function viewOver(
+  source: ActionSource & Pick<LinkSource, "sourcesOf">,
+  link: Link<unknown>,
+): Promise<HTMLElement> {
   const root = document.createElement("div");
-  onTestFinished(render(() => <BlobView reader={reader} link={link} />, root));
+  onTestFinished(render(() => <BlobView source={source} sessions={new ActionSessions(source)} link={link} />, root));
   await vi.waitFor(() => expect(root.querySelector(".head")).not.toBeNull());
   return root;
 }
+
+const viewAt = (link: Link<unknown>, ...blobs: readonly Uint8Array[]) =>
+  viewOver(sourceHolding(sourceOf(), ...blobs), link);
 
 function viewOf(objectSchema: Schema, data: ValueMap, ...others: readonly Uint8Array[]): Promise<HTMLElement> {
   const bytes = objectFormat.encode(new ObjectValue(objectSchema.link, data));
@@ -45,7 +53,7 @@ describe("the view of a blob", () => {
   it("shows the link alone where no blob is given for it", async () => {
     const view = await viewAt(linkOf(photo));
     expect(textsOf(view, "dt, dd")).toEqual(["Link", linkOf(photo)]);
-    expect(textsOf(view, ".note")).toEqual(["The runtime gives no blob for it."]);
+    expect(textsOf(view, "section:first-of-type .note")).toEqual(["The runtime gives no blob for it."]);
   });
 
   it("shows the size and the hex of bytes that are not an object", async () => {
@@ -124,7 +132,7 @@ describe("the view of a blob", () => {
 
   it("says that an object with no data has no fields", async () => {
     const view = await viewOf(schema("Nothing", {}), {});
-    expect(textsOf(view, ".card > .note")).toEqual(["The object has no fields."]);
+    expect(textsOf(view, "section:first-of-type > .note")).toEqual(["The object has no fields."]);
   });
 
   it("shows the body the page reads the object as, rendered above its fields", async () => {
@@ -162,5 +170,98 @@ describe("the view of a blob", () => {
     expect(textsOf(view, ".reading .note")).toEqual([
       "Honored by the identity version it carries and those that version follows alone. The page looks at no others to verify it, a later crisis that the store holds among them.",
     ]);
+  });
+});
+
+describe("what links to a blob, under its view", () => {
+  const target = linkOf(photo);
+  const sourcesOf = (count: number) => Array.from({ length: count }, (_, at) => linkOf(Uint8Array.of(at)));
+  const linkedFrom = (...sources: readonly Link<unknown>[]) =>
+    sourceWithLinks(sourceOf(), {
+      links: [[linkOf(Uint8Array.of(255)), target], ...sources.map((source) => [target, source] as const)],
+    });
+  const sectionOf = (view: HTMLElement) => view.querySelector("section:last-of-type") as HTMLElement;
+
+  it("is each object that links to it, as a link to that object", async () => {
+    const sources = sourcesOf(2);
+    const view = await viewOver(linkedFrom(...sources), target);
+    await vi.waitFor(() => expect(hrefsOf(sectionOf(view), "a")).toEqual(sources.map((link) => `#${link}`)));
+    expect(textsOf(view, "h2")).toEqual(["Linked from"]);
+    expect(textsOf(sectionOf(view), ".note")).toEqual([]);
+  });
+
+  it("is said to be nothing where nothing links to it", async () => {
+    const view = await viewOver(linkedFrom(), target);
+    await vi.waitFor(() => expect(textsOf(sectionOf(view), ".note")).toEqual(["Nothing the store holds links to it."]));
+  });
+
+  it("is the first of them where there are more, with a link to the page of all of them", async () => {
+    const sources = sourcesOf(12);
+    const view = await viewOver(linkedFrom(...sources), target);
+    await vi.waitFor(() => expect(textsOf(sectionOf(view), ".note")).toEqual(["The first 10 of 12 objects."]));
+    expect(hrefsOf(sectionOf(view), "a")).toEqual([
+      ...sources.slice(0, 10).map((link) => `#${link}`),
+      `#sources=${encodeURIComponent(target)}`,
+    ]);
+  });
+
+  it("is replaced by why it was not read, with the blob still shown", async () => {
+    const source = sourceHolding(sourceOf(), photo);
+    const view = await viewOver(
+      { ...source, sourcesOf: () => Promise.reject(new Error("database is locked")) },
+      target,
+    );
+    await vi.waitFor(() => expect(textsOf(sectionOf(view), ".problem")).toEqual(["database is locked"]));
+    expect(textsOf(view, "dt, dd")).toEqual(["Link", target, "Size", "3 bytes"]);
+  });
+});
+
+describe("the actions that take an object, under its view", () => {
+  const noteSchema = schema("Note", { text: string() });
+  const note = encodeObject(noteSchema, { text: "a note" });
+  const send: GivenAction = {
+    requestSchema: schema("Send", { note: link(), to: array(link()), about: link() }),
+    resultSchema: schema("Sent", {}),
+    targetSchemas: { note: noteSchema, about: noteSchema, to: schema("Reader", {}) },
+    perform: async () => ({ result: {}, commits: [] }),
+  };
+  const keep: GivenAction = {
+    requestSchema: schema("Keep", { kept: array(link()) }),
+    resultSchema: schema("Kept", {}),
+    targetSchemas: { kept: noteSchema },
+    perform: async () => ({ result: {}, commits: [] }),
+  };
+  const holding = (...actions: readonly GivenAction[]) =>
+    sourceWithActions(sourceHolding(sourceOf(), note.bytes, ...noteSchema.blobs), ...actions);
+  const placeOf = (action: GivenAction, field: string) =>
+    `#action=${encodeURIComponent(action.requestSchema.link)}&field=${field}&link=${encodeURIComponent(note.link)}`;
+
+  it("are listed with each field that takes it, each leading to the form with that field filled in", async () => {
+    const view = await viewOver(holding(send, keep), note.link);
+    await vi.waitFor(() => expect(textsOf(view, "h2")).toEqual(["Actions", "Linked from"]));
+    const table = view.querySelector("h2 + section") as HTMLElement;
+    expect(textsOf(table, "th")).toEqual(["Action", "Field"]);
+    expect(textsOf(table, "tbody tr")).toEqual(["Sendnote", "Sendabout", "Keepkept"]);
+    expect(hrefsOf(table, "a")).toEqual([placeOf(send, "note"), placeOf(send, "about"), placeOf(keep, "kept")]);
+  });
+
+  it("are not listed where no field takes objects written to its schema, nor for bytes that are not an object", async () => {
+    const view = await viewOver(holding(send), noteSchema.link);
+    await vi.waitFor(() => expect(textsOf(view, "section:last-of-type .note")).toHaveLength(1));
+    expect(textsOf(view, "h2")).toEqual(["Linked from"]);
+    const bytes = await viewOver(sourceHolding(holding(send), photo), linkOf(photo));
+    await vi.waitFor(() => expect(textsOf(bytes, "section:last-of-type .note")).toHaveLength(1));
+    expect(textsOf(bytes, "h2")).toEqual(["Linked from"]);
+  });
+
+  it("are replaced by why they were not read, with the object still shown", async () => {
+    const source = holding(send);
+    const view = await viewOver(
+      { ...source, actions: () => Promise.reject(new Error("database is locked")) },
+      note.link,
+    );
+    await vi.waitFor(() => expect(textsOf(view, ".problem")).toEqual(["database is locked"]));
+    expect(textsOf(view, ".head .title")).toEqual(["Note"]);
+    expect(textsOf(view, "h2")).toEqual(["Linked from"]);
   });
 });

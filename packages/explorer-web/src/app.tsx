@@ -4,6 +4,8 @@ import { ActionSessions } from "./action-sessions.ts";
 import { ActionView } from "./action-view.tsx";
 import { ActionsView } from "./actions-view.tsx";
 import { BlobView } from "./blob-view.tsx";
+import type { LinkSource } from "./link-page.ts";
+import { LinksView } from "./links-view.tsx";
 import type { Source } from "./list-page.ts";
 import { ListView } from "./list-view.tsx";
 import { actionsPlace, fragmentOf, placeIn } from "./place.ts";
@@ -20,9 +22,23 @@ function PlaceReadiness(props: { onReady: () => void }): null {
   return null;
 }
 
-export function App(props: { source: Source & ActionSource }) {
+interface Visit {
+  readonly fragment: string;
+  /** The id of the entry of the history that the page is at. */
+  readonly historyEntry: string;
+}
+
+// The browser has changed the address and the entry by the time it runs what a navigation was
+// intercepted with.
+function currentVisit(): Visit {
+  const entry = navigation.currentEntry;
+  if (entry === null) throw new Error("the page is at no entry of the history of a tab");
+  return { fragment: location.hash, historyEntry: entry.id };
+}
+
+export function App(props: { source: Source & ActionSource & LinkSource }) {
   const sessions = new ActionSessions(props.source);
-  const [fragment, setFragment] = createSignal(location.hash);
+  const [visit, setVisit] = createSignal(currentVisit());
   let showFirstPlace = () => {};
   const firstPlace = new Promise<void>((resolve) => {
     showFirstPlace = resolve;
@@ -37,7 +53,7 @@ export function App(props: { source: Source & ActionSource }) {
       if (!event.destination.sameDocument) return;
       event.intercept({
         handler: async () => {
-          setFragment(new URL(event.destination.url).hash);
+          setVisit(currentVisit());
           await new Promise<void>((resolve) => onSettled(() => resolve()));
           await firstPlace;
         },
@@ -46,6 +62,8 @@ export function App(props: { source: Source & ActionSource }) {
     navigation.addEventListener("navigate", show);
     return () => navigation.removeEventListener("navigate", show);
   });
+  // A navigation to the address the page is at reads no place again.
+  const fragment = createMemo(() => visit().fragment);
   const place = createMemo(() => placeIn(fragment()));
   const lists = createMemo(async () => (await props.source.lists()).map(({ data }) => data));
   const shownBlob = createMemo(() => {
@@ -56,9 +74,13 @@ export function App(props: { source: Source & ActionSource }) {
     const shown = place();
     return shown !== undefined && "list" in shown ? shown : undefined;
   });
-  const shownAction = createMemo(() => {
+  const linksPlace = createMemo(() => {
     const shown = place();
-    return shown !== undefined && "action" in shown ? shown.action : undefined;
+    return shown !== undefined && ("objectsOf" in shown || "sourcesOf" in shown) ? shown : undefined;
+  });
+  const actionPlace = createMemo(() => {
+    const shown = place();
+    return shown !== undefined && "action" in shown ? shown : undefined;
   });
   // The first list of the runtime is shown while the fragment names no place.
   const shownList = createMemo(() => {
@@ -102,11 +124,16 @@ export function App(props: { source: Source & ActionSource }) {
         <main class={{ pending: isPending(() => place()) }}>
           <Errored fallback={failureView}>
             <Switch fallback={<p class="note">The runtime gives no list of that name.</p>}>
-              <Match when={shownBlob()}>{(blob) => <BlobView reader={props.source} link={blob()} />}</Match>
-              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
+              <Match when={shownBlob()}>
+                {(blob) => <BlobView source={props.source} sessions={sessions} link={blob()} />}
+              </Match>
+              <Match when={actionPlace()}>
+                {(place) => <ActionView sessions={sessions} place={place()} historyEntry={visit().historyEntry} />}
+              </Match>
               <Match when={place() === actionsPlace}>
                 <ActionsView sessions={sessions} />
               </Match>
+              <Match when={linksPlace()}>{(place) => <LinksView source={props.source} place={place()} />}</Match>
               <Match when={shownList()}>
                 {(list) => <ListView source={props.source} list={list()} from={listPlace()?.from} />}
               </Match>

@@ -7,6 +7,7 @@ import {
   LinkValue,
   linkOf,
   type Reader,
+  type Schema,
   type ValueMap,
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
@@ -17,17 +18,36 @@ import {
   blobCall,
   type CallKind,
   callSchema,
+  type LinkPageData,
   type ListData,
   listSchema,
   listsCall,
+  objectsCall,
   type Page,
   pageCall,
   performCall,
   replySchema,
+  sourcesCall,
 } from "./calls.ts";
 import type { Channel } from "./channel.ts";
 
 type Reply = DataOf<typeof replySchema>;
+
+/**
+ * `start` is how many of the links come before `links`, `linkCount` how many there are, and
+ * `blobCount` how many blobs the store held when the page was read.
+ */
+export interface LinkPage {
+  readonly start: number;
+  readonly linkCount: number;
+  readonly blobCount: number;
+  readonly links: readonly Link<unknown>[];
+}
+
+const linkPageOf = ({ links, ...counts }: LinkPageData): LinkPage => ({
+  ...counts,
+  links: links.map(({ link }) => link),
+});
 
 export class Client implements Reader {
   readonly #channel: Channel;
@@ -64,6 +84,14 @@ export class Client implements Reader {
 
   page(list: string, start: number, limit: number): Promise<Page> {
     return this.#call(pageCall, { list, start, limit });
+  }
+
+  async objectsOf(schema: Link<Schema>, start: number, limit: number): Promise<LinkPage> {
+    return linkPageOf(await this.#call(objectsCall, { schema: new LinkValue(schema), start, limit }));
+  }
+
+  async sourcesOf(target: Link<unknown>, start: number, limit: number): Promise<LinkPage> {
+    return linkPageOf(await this.#call(sourcesCall, { target: new LinkValue(target), start, limit }));
   }
 
   async actions(): Promise<EncodedObject<ActionData>[]> {

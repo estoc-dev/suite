@@ -406,3 +406,49 @@ button:disabled {
 .commits {
   padding: 12px 16px;
 }
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.candidates li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.quiet {
+  padding: 1px 8px;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+}
+
+.card > .problem,
+.card > .remaining {
+  padding: 12px 16px;
+}
+
+.sources + .remaining {
+  padding-top: 0;
+}
+
+.entry > .remaining {
+  padding: 0;
+}

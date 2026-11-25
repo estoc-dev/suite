@@ -29,6 +29,7 @@ import {
   type Backend,
   type Batch,
   type FieldNames,
+  heldBlobs,
   type Index,
   indexOver,
   MemoryBackend,
@@ -1069,6 +1070,52 @@ describe("an index over blobs", () => {
       await stagedStore.commit();
       expect(await namesOf(await store.scan(byTagName))).toEqual(["x", "y"]);
     });
+  });
+});
+
+describe("an index over every blob held", () => {
+  const blobSizeSchema = schema("Sized", { blob: link(), size: integer() });
+  const byBlob = indexOver(heldBlobs, blobSizeSchema, ({ link, bytes }) => [
+    { blob: new LinkValue(link), size: bytes.length },
+  ]).orderedBy("blob");
+  const sizesIn = async (store: Pick<Store, "scan">) =>
+    (await rowDataOf((await store.scan(byBlob)).range([]))).map(({ blob, size }) => [blob.link, size]).sort();
+  // A blob that two schemas share is held once.
+  const sizesOf = (...blobs: readonly Uint8Array[]) =>
+    [...new Map(blobs.map((blob) => [linkOf(blob), blob.length]))].sort();
+  const text = new TextEncoder().encode("an image");
+  const first = encodeObject(tag, { names: ["a"] });
+  const second = encodeObject(note, { attachments: [new LinkValue(linkOf(text))] });
+
+  it("holds the rows of each blob by its link and bytes, an object of any schema and what is not an object", async () => {
+    const store = newStore();
+    await store.write(batchOf([first, second], [text, ...schemas]));
+    expect(await sizesIn(store)).toEqual(sizesOf(first.bytes, second.bytes, text, ...schemas));
+    expect((await store.scan(byBlob)).failures).toEqual([]);
+  });
+
+  it("says that it reads blobs", () => {
+    expect(byBlob.readsBlobs).toBe(true);
+  });
+
+  it("reads only the blobs put since the last scan", async () => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(backendNoting(requestedLinks, new MemoryBackend()));
+    await store.write(batchOf([first], tag.blobs));
+    expect(await sizesIn(store)).toEqual(sizesOf(first.bytes, ...tag.blobs));
+    await store.write(batchOf([second], [text, ...note.blobs]));
+    requestedLinks.length = 0;
+    expect(await sizesIn(store)).toEqual(sizesOf(first.bytes, second.bytes, text, ...schemas));
+    expect(requestedLinks).not.toContain(first.link);
+    expect(requestedLinks).toContain(linkOf(text));
+  });
+
+  it("holds, on a staged batch, the rows of the blobs the batch keeps on top of those of its store", async () => {
+    const store = newStore();
+    await store.write(batchOf([first], tag.blobs));
+    const stagedStore = await store.stage(batchOf([second], [text, ...note.blobs]));
+    expect(await sizesIn(stagedStore)).toEqual(sizesOf(first.bytes, second.bytes, text, ...schemas));
+    expect(await sizesIn(store)).toEqual(sizesOf(first.bytes, ...tag.blobs));
   });
 });
 

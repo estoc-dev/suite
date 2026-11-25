@@ -57,6 +57,36 @@ export const pageCall = {
 
 export type Page = DataOf<typeof pageCall.result>;
 
+/**
+ * A page of links, sorted as links are. `start` and `blobCount` are as those of a page of a list,
+ * and `linkCount` is how many links the page is of.
+ */
+const linkPageSchema = schema("Link Page", {
+  start: integer(),
+  linkCount: integer(),
+  blobCount: integer(),
+  links: array(link()),
+});
+
+export type LinkPageData = DataOf<typeof linkPageSchema>;
+
+/** The page is of the objects held that are written to `schema`. */
+export const objectsCall = {
+  name: "objects",
+  parameters: schema("Objects Parameters", { schema: link<Schema>(), start: integer(), limit: integer() }),
+  result: linkPageSchema,
+};
+
+/**
+ * The page is of what the store holds that links to `target`. An object that gives its schema by a
+ * link to `target` is among them.
+ */
+export const sourcesCall = {
+  name: "sources",
+  parameters: schema("Sources Parameters", { target: link(), start: integer(), limit: integer() }),
+  result: linkPageSchema,
+};
+
 /** Each of `actions` is the bytes of an Action. */
 export const actionsCall = {
   name: "actions",

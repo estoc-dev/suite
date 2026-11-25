@@ -48,7 +48,7 @@ const recordedStatements: Origin = {
   listingIn: (rows) => rows.records(),
 };
 
-const heldBlobs: Origin = {
+const blobOrigin: Origin = {
   readsBlobs: true,
   listingIn: (rows) => rows.heldBlobs(),
 };
@@ -116,8 +116,22 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
  * - A scan reads every blob the store holds, attachments as well, once for each index.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
-  return new Source({ origin: heldBlobs, itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({ origin: blobOrigin, itemOf: (blob) => itemOf(selection, blob) });
 }
+
+export interface HeldBlob {
+  readonly link: Link<unknown>;
+  readonly bytes: Uint8Array;
+}
+
+/**
+ * Every blob the store holds, whatever its bytes are: an attachment and what a stranger sent as
+ * well as an object of the store's own. A scan reads each of them once for each index.
+ */
+export const heldBlobs: Source<HeldBlob> = new Source({
+  origin: blobOrigin,
+  itemOf: async ({ link, reader }) => ({ link, bytes: await reader.get(link) }),
+});
 
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each

@@ -15,7 +15,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { linksIn, type Store } from "@estoc/store";
+import { heldBlobs, indexOver, linksIn, type Store } from "@estoc/store";
 import type { ListedAction } from "./action.ts";
 import {
   actionSchema,
@@ -30,8 +30,8 @@ import {
   replySchema,
 } from "./calls.ts";
 import type { Channel } from "./channel.ts";
-import { type List, pageIn } from "./list.ts";
-import { heldLinks, heldObjects, type PairList } from "./pair-lists.ts";
+import { type List, listOfIndex, pageIn } from "./list.ts";
+import { heldLinks, heldObjects } from "./pair-lists.ts";
 
 interface LinksRead<T = unknown> {
   readonly links: readonly Link<T>[];
@@ -52,7 +52,7 @@ const recordedStatements: Origin<EncodedObject> = {
   },
 };
 
-const heldBlobs: Origin = {
+const blobLinks: Origin = {
   readsBlobs: true,
   async read(store) {
     const links: Link<unknown>[] = [];
@@ -110,7 +110,7 @@ const recordsList = listInWrittenOrder("Records", recordedStatementSchema, recor
 /** `size` is in bytes, and `schema` is left out for a blob that is not an object. */
 export const heldBlobSchema = schema("Held Blob", { blob: link(), size: integer(), schema: optional(link<Schema>()) });
 
-const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, heldBlobs, (blob, bytes) => {
+const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, blobLinks, (blob, bytes) => {
   const schema = namedSchemaOf(bytes);
   return {
     blob: new LinkValue(blob),
@@ -119,52 +119,21 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, heldBlobs, (blob, 
   };
 });
 
-type LinkPair = readonly [first: Link<unknown>, second: Link<unknown>];
+const schemasList = listOfIndex(
+  indexOver(heldBlobs, heldObjects.rowSchema, function* ({ link, bytes }) {
+    const schema = namedSchemaOf(bytes);
+    if (schema !== undefined) yield { schema: new LinkValue(schema), object: new LinkValue(link) };
+  })
+    .orderedBy(...heldObjects.order)
+    .named(heldObjects.name),
+);
 
-/** The rows come of more than the blobs of one page, so each page reads every blob held. */
-function listOfSortedPairs<First extends string, Second extends string>(
-  { name, rowSchema, order }: PairList<First, Second>,
-  pairsIn: (blob: Link<unknown>, bytes: Uint8Array) => Iterable<LinkPair>,
-): List {
-  const [first, second] = order;
-  return {
-    name,
-    rowSchema,
-    order,
-    readsBlobs: heldBlobs.readsBlobs,
-    async page(store, prefix, start, limit) {
-      const { links, blobCount } = await heldBlobs.read(store);
-      const isUnderPrefix = (pair: LinkPair) =>
-        prefix.every((value, at) => value instanceof LinkValue && value.link === pair[at]);
-      const pairs: LinkPair[] = [];
-      for (const blob of links) {
-        // One at a time: an object can hold more links than a call takes arguments.
-        for (const pair of pairsIn(blob, await heldBytesOf(store, blob))) if (isUnderPrefix(pair)) pairs.push(pair);
-      }
-      const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-      pairs.sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
-      const page = pageIn(pairs, start, limit);
-      return {
-        start: page.start,
-        rowCount: pairs.length,
-        blobCount,
-        rows: page.rows.map(
-          (pair) =>
-            encodeObject<ValueMap>(rowSchema, { [first]: new LinkValue(pair[0]), [second]: new LinkValue(pair[1]) })
-              .bytes,
-        ),
-      };
-    },
-  };
-}
-
-const schemasList = listOfSortedPairs(heldObjects, function* (blob, bytes) {
-  const schema = namedSchemaOf(bytes);
-  if (schema !== undefined) yield [schema, blob];
-});
-
-const linksList = listOfSortedPairs(heldLinks, (blob, bytes) =>
-  Array.from(new Set(linksIn(bytes)), (target): LinkPair => [target, blob]),
+const linksList = listOfIndex(
+  indexOver(heldBlobs, heldLinks.rowSchema, ({ link, bytes }) =>
+    Array.from(linksIn(bytes), (target) => ({ target: new LinkValue(target), source: new LinkValue(link) })),
+  )
+    .orderedBy(...heldLinks.order)
+    .named(heldLinks.name),
 );
 
 type Answer = (parameters: Value) => Promise<ValueMap>;

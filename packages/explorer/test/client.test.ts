@@ -31,6 +31,19 @@ const objectPairsIn = (rows: readonly Uint8Array[]) =>
 
 const sortedPairs = (pairs: [string, string][]) => [...pairs].sort();
 
+function backendNoting(requestedLinks: Link<unknown>[]): Backend {
+  const backend = new MemoryBackend();
+  return {
+    get(link) {
+      requestedLinks.push(link);
+      return backend.get(link);
+    },
+    has: (link) => backend.has(link),
+    put: (blobs) => backend.put(blobs),
+    blobs: (start) => backend.blobs(start),
+  };
+}
+
 function answerEach(far: Channel, resultOf: (name: string) => ValueMap): void {
   far.receive(
     (message) => {
@@ -159,17 +172,8 @@ describe("a client of a runtime", () => {
   });
 
   it("reads from the store the statements of a page of Records and no others, once the records were listed", async () => {
-    const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
-    const store = await storeOfNote({
-      get(link) {
-        requestedLinks.push(link);
-        return backend.get(link);
-      },
-      has: (link) => backend.has(link),
-      put: (blobs) => backend.put(blobs),
-      blobs: (start) => backend.blobs(start),
-    });
+    const store = await storeOfNote(backendNoting(requestedLinks));
     await store.record(writtenObjectsOf([note.link], 1));
     const later = writtenObjectsOf([linkOf(image)], 2);
     await store.record(later);
@@ -276,6 +280,24 @@ describe("a client of a runtime", () => {
     expect(page).toMatchObject({ start: 2, rowCount: 4, blobCount: 5 });
     expect(page.rows).toHaveLength(1);
   });
+
+  it.each(["Schemas", "Links"])(
+    "reads from the store, for a page of %s, the blobs written since the one before and no others",
+    async (list) => {
+      const requestedLinks: Link<unknown>[] = [];
+      const store = await storeOfNote(backendNoting(requestedLinks));
+      const client = clientOf(store);
+      await client.page(list, [], 0, 10);
+      const later = encodeObject(noteSchema, { text: "written later" });
+      await store.write({ roots: [later.link], blobs: [later.bytes] });
+      requestedLinks.length = 0;
+      await client.page(list, [new LinkValue(noteSchema.link)], 0, 10);
+      expect(requestedLinks).toEqual([later.link]);
+      requestedLinks.length = 0;
+      await client.page(list, [], 0, 10);
+      expect(requestedLinks).toEqual([]);
+    },
+  );
 
   it("fails a call with the reason the runtime gives", async () => {
     const client = clientOf(await storeOfNote());

@@ -23,6 +23,8 @@ export { sendableBlobs } from "./sendable-blobs.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
+  type HeldBlob,
+  heldBlobs,
   type Index,
   type ItemFailure,
   indexOver,

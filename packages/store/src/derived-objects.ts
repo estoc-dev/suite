@@ -43,7 +43,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
         for (const part of originParts) {
           const partObjects: EncodedObject<F>[] = [];
           try {
-            for await (const data of part(blob)) partObjects.push(encodeObject(schema, data));
+            for await (const data of part.rowsOf(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
             ownFailures.push({ item: link, error });
             continue;

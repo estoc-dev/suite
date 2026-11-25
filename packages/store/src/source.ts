@@ -7,6 +7,15 @@ import {
   SelectionBySchema,
   type ValueMap,
 } from "@estoc/object";
+import {
+  type IndexDefinition,
+  indexDefinitionOf,
+  type PartDefinition,
+  partAlong,
+  rowReaderOf,
+  type ValuePath,
+} from "./definition.ts";
+import { recordOf, recordSchema } from "./record.ts";
 import type { RowsByIndex } from "./scan.ts";
 import type { ScannedBlob } from "./scanned-blob.ts";
 
@@ -24,7 +33,11 @@ export type Prefix<K extends readonly unknown[]> =
   | readonly []
   | (K extends readonly [infer First, ...infer Rest] ? readonly [First, ...Prefix<Rest>] : K);
 
-type Part<F> = (blob: ScannedBlob) => AsyncIterable<F>;
+interface Part<F> {
+  /** Left out where a function gives the rows. */
+  readonly definition?: PartDefinition;
+  rowsOf(blob: ScannedBlob): AsyncIterable<F>;
+}
 
 export interface Origin {
   readonly readsBlobs: boolean;
@@ -62,11 +75,14 @@ export class Derivation<F extends ValueMap> implements Origin {
   readonly schema: Schema<F>;
   readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
   readonly readsBlobs: boolean;
+  readonly partDefinitions: readonly PartDefinition[] | undefined;
 
   constructor(schema: Schema<F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
     this.schema = schema;
     this.parts = parts;
     this.readsBlobs = [...parts.keys()].some((origin) => origin.readsBlobs);
+    const definitions = [...parts.values()].flat().map(({ definition }) => definition);
+    this.partDefinitions = definitions.every((definition) => definition !== undefined) ? definitions : undefined;
   }
 
   listingIn(rows: RowsByIndex): Promise<Listing> {
@@ -197,10 +213,14 @@ export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
 
 export class NamedIndex<F extends ValueMap, By extends FieldNames<F>> extends OrderedIndex<F, By> {
   readonly name: string;
+  /** An index has none where a function gives the rows of any of its parts. */
+  readonly definition: IndexDefinition | undefined;
 
   constructor(order: Order<F, By>, name: string) {
     super(order);
     this.name = name;
+    const { schema, partDefinitions } = derivationOf(order.index);
+    this.definition = partDefinitions && indexDefinitionOf(name, schema, order.by, partDefinitions);
   }
 }
 
@@ -217,11 +237,37 @@ export function indexOver<F extends ValueMap, T>(
   rows: (item: T, reader: Reader) => Iterable<NoInfer<F>> | AsyncIterable<NoInfer<F>>,
 ): Index<F> {
   const reading = readingOf(source);
-  const part: Part<F> = async function* (blob) {
-    const item = await reading.itemOf(blob);
-    if (item !== undefined) yield* rows(item, blob.reader);
+  const part: Part<F> = {
+    async *rowsOf(blob) {
+      const item = await reading.itemOf(blob);
+      if (item !== undefined) yield* rows(item, blob.reader);
+    },
   };
   return new Index(new Derivation(schema, new Map([[reading.origin, [part]]])));
+}
+
+/**
+ * Each row holds under every field the value that the path of the field reaches, from one object
+ * that the paths start at. The paths say all of it, so the index has a definition where it is named.
+ */
+export function indexOfRows<F extends ValueMap>(
+  schema: Schema<F>,
+  paths: { readonly [N in keyof F]-?: ValuePath<F[N]> },
+): Index<F> {
+  const definition = partAlong(paths);
+  const rowFrom = rowReaderOf(schema, definition);
+  const readsRecords = definition.schema.link === recordSchema.link;
+  const part: Part<F> = {
+    definition,
+    async *rowsOf(blob) {
+      // A Record is the same bytes wherever it is encoded, so the one of a statement listed as
+      // recorded is encoded here, and not looked for among the blobs.
+      const start = readsRecords ? recordOf(blob.link as Link<EncodedObject>) : await blob.objectOf(definition.schema);
+      const row = start && (await rowFrom(start, blob.reader));
+      if (row !== undefined) yield row as F;
+    },
+  };
+  return new Index(new Derivation(schema, new Map([[readsRecords ? recordedStatements : blobOrigin, [part]]])));
 }
 
 async function itemOf<T>(selection: Selection<T>, blob: ScannedBlob): Promise<T | undefined> {

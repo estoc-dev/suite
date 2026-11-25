@@ -1,6 +1,6 @@
-import { type EncodedObject, LinkValue, objectsOf } from "@estoc/object";
+import type { EncodedObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { indexOver, selectedRecords } from "@estoc/store";
+import { indexOfRows, recordedStatement } from "@estoc/store";
 import { type MailboxData, type MailboxKeyData, mailboxKeySchema } from "./schema.ts";
 
 const heldMailboxKeySchema = schema("Held Mailbox Key", {
@@ -9,10 +9,12 @@ const heldMailboxKeySchema = schema("Held Mailbox Key", {
   secret: link(),
 });
 
-export const heldMailboxKeys = indexOver(
-  selectedRecords(objectsOf(mailboxKeySchema)),
-  heldMailboxKeySchema,
-  ({ link, data }) => [{ key: new LinkValue(link), ...data }],
-)
+const mailboxKey = recordedStatement(mailboxKeySchema);
+
+export const heldMailboxKeys = indexOfRows(heldMailboxKeySchema, {
+  key: mailboxKey.link,
+  mailbox: mailboxKey.field("mailbox"),
+  secret: mailboxKey.field("secret"),
+})
   .orderedBy("key")
   .named("Held Mailbox Keys");

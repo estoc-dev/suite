@@ -1074,8 +1074,8 @@ describe("an index over blobs", () => {
 });
 
 describe("an index over every blob held", () => {
-  const sized = schema("Sized", { blob: link(), size: integer() });
-  const byBlob = indexOver(heldBlobs, sized, ({ link, bytes }) => [
+  const blobSizeSchema = schema("Sized", { blob: link(), size: integer() });
+  const byBlob = indexOver(heldBlobs, blobSizeSchema, ({ link, bytes }) => [
     { blob: new LinkValue(link), size: bytes.length },
   ]).orderedBy("blob");
   const sizesIn = async (store: Pick<Store, "scan">) =>

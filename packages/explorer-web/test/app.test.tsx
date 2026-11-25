@@ -30,18 +30,27 @@ const navigation = new EventTarget();
 vi.stubGlobal("navigation", navigation);
 
 /** The handlers the page intercepts the navigation with. A browser runs them once it has changed the address. */
-function navigate(url: string, sameDocument: boolean): NavigationInterceptHandler[] {
+function navigate(
+  url: string,
+  sameDocument: boolean,
+  navigationType: NavigationType = "push",
+): NavigationInterceptHandler[] {
   const handlers: NavigationInterceptHandler[] = [];
   const intercept = ({ handler }: NavigationInterceptOptions) => handler && handlers.push(handler);
-  navigation.dispatchEvent(Object.assign(new Event("navigate"), { destination: { url, sameDocument }, intercept }));
+  navigation.dispatchEvent(
+    Object.assign(new Event("navigate"), { destination: { url, sameDocument }, navigationType, intercept }),
+  );
   return handlers;
 }
 
 /** Resolves when the page says that the place is shown. */
-async function open(fragment: string): Promise<void> {
+async function open(fragment: string, navigationType?: NavigationType): Promise<void> {
   location.hash = fragment;
-  await Promise.all(navigate(location.href, true).map((handler) => handler()));
+  await Promise.all(navigate(location.href, true, navigationType).map((handler) => handler()));
 }
+
+/** As the browser does for an entry of its history that the page was at before. */
+const goBackTo = (fragment: string) => open(fragment, "traverse");
 
 function gate(): { permissionToRead: Promise<void>; open: () => void } {
   let open = () => {};
@@ -764,31 +773,66 @@ describe("the page of an action", () => {
     await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
   });
 
-  it("fills in the field that the fragment names each time it is shown, and keeps what is typed for the others", async () => {
-    const filled = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
-    location.hash = filled;
+  it("fills in the field that the fragment names each time a link leads to it, and keeps what is typed for the others", async () => {
+    const prefilledFragment = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    location.hash = prefilledFragment;
     const root = show(sourceHolding(sourceWithActions(sourceOf(), greet), entry.bytes));
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
     type(root, "to", other);
     type(root, "words", "good day");
     await open(`#${entry.link}`);
-    await open(filled);
-    expect(typedIn(root)).toEqual([
-      ["to", entry.link],
-      ["words", "good day"],
-      ["others", ""],
-    ]);
+    await open(prefilledFragment);
+    await vi.waitFor(() =>
+      expect(typedIn(root)).toEqual([
+        ["to", entry.link],
+        ["words", "good day"],
+        ["others", ""],
+      ]),
+    );
     type(root, "to", other);
     await open(placeOf(greet));
     expect(typedIn(root)).toContainEqual(["to", other]);
   });
 
+  it("keeps what was typed for the field that the fragment names where the browser goes back to the form", async () => {
+    const second = encodeObject(entrySchema, { name: "second", count: 8 });
+    const prefilledFragment = `${placeOf(greet)}&field=others&link=${encodeURIComponent(entry.link)}`;
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(
+          sourceWithLinks(sourceOf(), {
+            objects: [entry, second].map(({ link }) => [entrySchema.link, link] as const),
+          }),
+          { ...greet, targetSchemas: { others: entrySchema } },
+        ),
+        entry.bytes,
+        second.bytes,
+        ...entrySchema.blobs,
+      ),
+    );
+    await vi.waitFor(() => expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", prefilledFragment]]));
+    await open(prefilledFragment);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+    await vi.waitFor(() => expect(textsOf(root, ".candidates a")).toEqual([entry.link, second.link]));
+    root.querySelectorAll<HTMLButtonElement>(".candidates button")[1]?.click();
+    const both = `${entry.link}\n${second.link}`;
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", both]));
+    await open(`#${second.link}`);
+    await goBackTo(prefilledFragment);
+    await turn();
+    expect(typedIn(root)).toContainEqual(["others", both]);
+    await goBackTo(`#${entry.link}`);
+    await open(prefilledFragment);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+  });
+
   it("fills in the field of the form shown where the fragment comes to name another link for it", async () => {
-    const filledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
-    location.hash = filledWith(entry.link);
+    const fragmentFilledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
+    location.hash = fragmentFilledWith(entry.link);
     const root = show(sourceWithActions(sourceOf(), greet));
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
-    await open(filledWith(other));
+    await open(fragmentFilledWith(other));
     await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
   });
 
@@ -817,12 +861,45 @@ describe("the page of a blob", () => {
       ),
     );
     await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Actions", "Linked from"]));
-    const filled = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
-    expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", filled]]);
+    const prefilledFragment = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", prefilledFragment]]);
     expect(hrefsOf(root, ".sources a")).toEqual([[source, `#${source}`]]);
-    await open(filled);
+    await open(prefilledFragment);
     expect(textsOf(root, "h1")).toEqual(["Greet"]);
-    expect(typedIn(root)).toContainEqual(["to", entry.link]);
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+  });
+
+  it("lists the actions that take the object it comes to show, in place of those that take the one before", async () => {
+    const letterSchema = schema("Letter", { text: string() });
+    const letter = encodeObject(letterSchema, { text: "a word" });
+    const post: GivenAction = {
+      requestSchema: schema("Post", { letter: link() }),
+      resultSchema: schema("Posted", {}),
+      targetSchemas: { letter: letterSchema },
+      perform: async () => ({ result: {}, commits: [] }),
+    };
+    const fragmentOf = (action: GivenAction, field: string, object: string) =>
+      `${placeOf(action)}&field=${field}&link=${encodeURIComponent(object)}`;
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(sourceOf(), greet, post),
+        entry.bytes,
+        letter.bytes,
+        ...entrySchema.blobs,
+        ...letterSchema.blobs,
+      ),
+    );
+    const actions = () => hrefsOf(root, "h2 + section tbody a");
+    await vi.waitFor(() => expect(actions()).toEqual([["Greet", fragmentOf(greet, "to", entry.link)]]));
+    await open(`#${letter.link}`);
+    await vi.waitFor(() => expect(actions()).toEqual([["Post", fragmentOf(post, "letter", letter.link)]]));
+    expect(textsOf(root, "h2 + section tbody .name")).toEqual(["letter"]);
+    await open(`#${entry.link}`);
+    await vi.waitFor(() => expect(actions()).toEqual([["Greet", fragmentOf(greet, "to", entry.link)]]));
+    expect(textsOf(root, "h2 + section tbody .name")).toEqual(["to"]);
+    await open(`#${letterSchema.link}`);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Linked from"]));
   });
 
   it("shows what links to the blob it comes to show, in place of what links to the one before", async () => {

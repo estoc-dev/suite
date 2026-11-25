@@ -43,12 +43,8 @@ const problemView = (error: () => unknown) => <p class="problem">{messageOf(erro
 
 /** The actions with a field that takes the object, each leading to its form with that field filled in. */
 function TakingActionsView(props: { sessions: ActionSessions; object: Link<unknown>; schema: Link<unknown> }) {
-  const fields = createMemo(async () =>
-    fieldsTaking(
-      (await props.sessions.all()).map(({ form }) => form),
-      props.schema,
-    ),
-  );
+  const forms = createMemo(async () => (await props.sessions.all()).map(({ form }) => form));
+  const fields = createMemo(() => fieldsTaking(forms(), props.schema));
   return (
     <Show when={fields().length > 0}>
       <h2>Actions</h2>

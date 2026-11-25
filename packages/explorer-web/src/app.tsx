@@ -24,6 +24,12 @@ function PlaceReadiness(props: { onReady: () => void }): null {
 
 export function App(props: { source: Source & ActionSource & LinkSource }) {
   const sessions = new ActionSessions(props.source);
+  const fill = (fragment: string) => {
+    const place = placeIn(fragment);
+    // The form reads the actions as well, and shows why a read of them failed.
+    if (place !== undefined && "action" in place) sessions.fill(place).catch(() => {});
+  };
+  fill(location.hash);
   const [fragment, setFragment] = createSignal(location.hash);
   let showFirstPlace = () => {};
   const firstPlace = new Promise<void>((resolve) => {
@@ -39,7 +45,9 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
       if (!event.destination.sameDocument) return;
       event.intercept({
         handler: async () => {
-          setFragment(new URL(event.destination.url).hash);
+          const { hash } = new URL(event.destination.url);
+          if (event.navigationType !== "traverse") fill(hash);
+          setFragment(hash);
           await new Promise<void>((resolve) => onSettled(() => resolve()));
           await firstPlace;
         },
@@ -62,9 +70,9 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
     const shown = place();
     return shown !== undefined && ("objectsOf" in shown || "sourcesOf" in shown) ? shown : undefined;
   });
-  const actionPlace = createMemo(() => {
+  const shownAction = createMemo(() => {
     const shown = place();
-    return shown !== undefined && "action" in shown ? shown : undefined;
+    return shown !== undefined && "action" in shown ? shown.action : undefined;
   });
   // The first list of the runtime is shown while the fragment names no place.
   const shownList = createMemo(() => {
@@ -111,7 +119,7 @@ export function App(props: { source: Source & ActionSource & LinkSource }) {
               <Match when={shownBlob()}>
                 {(blob) => <BlobView source={props.source} sessions={sessions} link={blob()} />}
               </Match>
-              <Match when={actionPlace()}>{(place) => <ActionView sessions={sessions} place={place()} />}</Match>
+              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
               <Match when={place() === actionsPlace}>
                 <ActionsView sessions={sessions} />
               </Match>

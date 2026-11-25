@@ -1,11 +1,10 @@
-import type { Link } from "@estoc/object";
+import type { Link, Schema } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, Errored, For, Loading, Match, Show, Switch } from "solid-js";
 import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
 import { remainingLinksView } from "./links-view.tsx";
-import type { ActionPlace } from "./place.ts";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
 
@@ -15,16 +14,12 @@ const titledSchemaView = ({ schema, title }: TitledSchema): JSX.Element => (
   </>
 );
 
-/**
- * The objects held that the field takes, each with a button that fills the field in with it. A
- * field of one link is set to the object, and a field of links has it added after what is typed.
- */
 function CandidatesView(props: { session: ActionSession; name: string; target: TitledSchema; isAdded: boolean }) {
   const target = () => props.target.schema.link;
   const objects = createMemo(() => props.session.readObjectsOf(target()));
   const take = (object: Link<unknown>) => {
-    const typed = props.session.textOf(props.name).trim();
-    props.session.setText(props.name, props.isAdded && typed !== "" ? `${typed}\n${object}` : object);
+    const fieldText = props.session.textOf(props.name).trim();
+    props.session.setText(props.name, props.isAdded && fieldText !== "" ? `${fieldText}\n${object}` : object);
   };
   return (
     <Errored fallback={(error) => <span class="problem">{messageOf(error())}</span>}>
@@ -198,8 +193,8 @@ function FormView(props: { session: ActionSession }) {
   );
 }
 
-export function ActionView(props: { sessions: ActionSessions; place: ActionPlace }) {
-  const session = createMemo(() => props.sessions.enter(props.place));
+export function ActionView(props: { sessions: ActionSessions; action: Link<Schema> }) {
+  const session = createMemo(() => props.sessions.sessionOf(props.action));
   return (
     <Show
       when={session()}

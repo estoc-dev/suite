@@ -88,10 +88,12 @@ export class ActionSessions {
     return this.#sessions;
   }
 
-  /** Sets the field that `place` fills in, and gives the session of its action where the runtime lists one. */
-  async enter({ action, filledField }: ActionPlace): Promise<ActionSession | undefined> {
-    const session = (await this.all()).find(({ form }) => form.request.link === action);
-    if (filledField !== undefined) session?.setText(filledField.name, filledField.link);
-    return session;
+  async sessionOf(action: Link<Schema>): Promise<ActionSession | undefined> {
+    return (await this.all()).find(({ form }) => form.request.link === action);
+  }
+
+  async fill({ action, filledField }: ActionPlace): Promise<void> {
+    if (filledField === undefined) return;
+    (await this.sessionOf(action))?.setText(filledField.name, filledField.link);
   }
 }

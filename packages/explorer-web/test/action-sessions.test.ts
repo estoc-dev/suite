@@ -56,30 +56,48 @@ describe("the sessions of the actions", () => {
   });
 });
 
-describe("entering the place of an action", () => {
-  it("gives the session of that action, with what was typed for it", async () => {
-    const sessions = new ActionSessions(sourceWithActions(sourceOf(), greet, tick));
-    const [first] = await sessions.all();
-    first?.setText("words", "good day");
-    const entered = await sessions.enter({ action: greet.requestSchema.link });
-    expect(entered).toBe(first);
-    expect(entered?.textOf("words")).toBe("good day");
+describe("the session of the action that takes a request written to a schema", () => {
+  it("is the one among all of them, with what was typed for it", async () => {
+    const sessions = new ActionSessions(sourceWithActions(sourceOf(), tick, greet));
+    const [, second] = await sessions.all();
+    second?.setText("words", "good day");
+    const session = await sessions.sessionOf(greet.requestSchema.link);
+    expect(session).toBe(second);
+    expect(session?.textOf("words")).toBe("good day");
   });
 
-  it("sets the field that the place fills in to its link, over what was typed for it, and keeps the others", async () => {
+  it("is none where the runtime lists no such action", async () => {
+    const sessions = new ActionSessions(sourceWithActions(sourceOf(), tick));
+    expect(await sessions.sessionOf(greet.requestSchema.link)).toBeUndefined();
+  });
+});
+
+describe("filling in the form of a place", () => {
+  it("sets the field that the place names to its link, over what was typed for it, and keeps the others", async () => {
     const sessions = new ActionSessions(sourceWithActions(sourceOf(), greet, tick));
     const place = { action: greet.requestSchema.link, filledField: { name: "to", link: entry.link } };
-    const session = await sessions.enter(place);
+    const session = await sessions.sessionOf(place.action);
+    await sessions.fill(place);
     expect(session?.textOf("to")).toBe(entry.link);
     session?.setText("to", other);
     session?.setText("words", "good day");
-    await sessions.enter(place);
+    await sessions.fill(place);
     expect(["words", "to"].map((field) => session?.textOf(field))).toEqual(["good day", entry.link]);
   });
 
-  it("gives no session where the runtime lists no action that takes a request written to that schema", async () => {
+  it("sets nothing, and reads no action, for a place that names no field", async () => {
+    const source = sourceWithActions(sourceOf(), greet);
+    const actions = vi.spyOn(source, "actions");
+    const sessions = new ActionSessions(source);
+    await sessions.fill({ action: greet.requestSchema.link });
+    expect(actions).not.toHaveBeenCalled();
+    expect((await sessions.sessionOf(greet.requestSchema.link))?.textOf("to")).toBe("");
+  });
+
+  it("sets nothing where the runtime lists no action that takes a request written to that schema", async () => {
     const sessions = new ActionSessions(sourceWithActions(sourceOf(), tick));
-    expect(await sessions.enter({ action: greet.requestSchema.link })).toBeUndefined();
+    await sessions.fill({ action: greet.requestSchema.link, filledField: { name: "to", link: entry.link } });
+    expect((await sessions.all()).map((session) => session.textOf("to"))).toEqual([""]);
   });
 });
 

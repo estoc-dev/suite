@@ -29,8 +29,9 @@ export interface FilledField {
 
 /**
  * - `action` is the request schema of the action, which is what tells it from the others.
- * - Each time a place with `filledField` is shown, that field of the form is set to the link, over
- *   what was typed for it.
+ * - Going to a place with `filledField`, by a link or by its address, sets that field of the form
+ *   to the link, over what was typed for it. Going back or forward to one in the history of the
+ *   browser sets nothing, so the form is as it was left.
  */
 export interface ActionPlace {
   readonly action: Link<Schema>;
@@ -44,8 +45,8 @@ export function fragmentOf(place: Place): string {
   if ("actions" in place) return "#actions";
   if ("action" in place) {
     const { action, filledField } = place;
-    const filling = filledField === undefined ? {} : { field: filledField.name, link: filledField.link };
-    return `#${new URLSearchParams({ action, ...filling })}`;
+    const fieldParameters = filledField === undefined ? {} : { field: filledField.name, link: filledField.link };
+    return `#${new URLSearchParams({ action, ...fieldParameters })}`;
   }
   const [name, value] =
     "list" in place

@@ -68,8 +68,9 @@ export const actionsCall = {
  * - `request` names the schema that a request of the action is written to, which is what tells the
  *   action from the others, and `result` the schema that its result is written to.
  * - `targetSchemas` is a map. Under the name of a field of the request it holds a link to the
- *   schema that each link of that field is to an object of. A field it leaves out takes a link to
- *   any blob.
+ *   schema that each link of that field is to an object of. The request schema gives the type of
+ *   each field. Where the map leaves out a field of links, the schema of what those links are to
+ *   is unspecified.
  */
 export const actionSchema = schema("Action", {
   request: link<Schema>(),
@@ -80,9 +81,8 @@ export const actionSchema = schema("Action", {
 export type ActionData = DataOf<typeof actionSchema>;
 
 /**
- * - `request` is the bytes of an object written to the request schema of an action, and is not
- *   written to the store.
- * - `result` is the bytes of the result of the action, which the store does not hold either.
+ * - `request` is the bytes of an object written to the request schema of an action, and `result`
+ *   the bytes of the result of the action. The runtime writes neither of them to the store.
  * - `commits` are the roots written and the statements recorded as the action was performed. When
  *   it fails, what it committed before stays in the store, and the reply holds the reason alone.
  */

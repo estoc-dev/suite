@@ -1,15 +1,16 @@
-import { decodeObject, type Schema, type ValueMap } from "@estoc/object";
+import type { Schema, ValueMap } from "@estoc/object";
 import { type Action, type ActionOutcome, perform, type Store } from "@estoc/store";
 
 /**
- * An action with the environment it is performed in, which takes a request as the bytes that cross
- * a channel. It is bound to no store: whoever performs it says on which.
+ * An action with the environment it is performed in, which takes as a request the data of an
+ * object that was read with no schema in hand. It is bound to no store: whoever performs it says
+ * on which.
  */
 export interface ListedAction {
   readonly requestSchema: Schema;
   readonly resultSchema: Schema;
   readonly targetSchemas: { readonly [field: string]: Schema | undefined };
-  perform(store: Store, request: Uint8Array): Promise<ActionOutcome<ValueMap>>;
+  perform(store: Store, request: ValueMap): Promise<ActionOutcome<ValueMap>>;
 }
 
 export function listedAction<Q extends ValueMap, R extends ValueMap, E extends object>(
@@ -20,6 +21,6 @@ export function listedAction<Q extends ValueMap, R extends ValueMap, E extends o
     requestSchema: action.requestSchema,
     resultSchema: action.resultSchema,
     targetSchemas: action.targetSchemas,
-    perform: (store, request) => perform(store, action, decodeObject(request, action.requestSchema).data, environment),
+    perform: (store, request) => perform(store, action, action.requestSchema.validate(request), environment),
   };
 }

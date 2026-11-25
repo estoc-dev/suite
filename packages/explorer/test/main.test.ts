@@ -1,13 +1,16 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, identityKit, signatureSchema } from "@estoc/identity";
 import { generateKey, heldKeys } from "@estoc/keyring";
-import { grant, send, sendTo, signedIdentityArrivals } from "@estoc/mailbox";
+import { grant, MailboxKey, mailboxSchema, outboundSchema, send, sendTo, signedIdentityArrivals } from "@estoc/mailbox";
+import { httpTransport } from "@estoc/mailbox/http";
 import { acceptAccountOffer, collect, fetchService, openInbox, recordedSignatures } from "@estoc/mailbox-service";
-import { decodeObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
+import { blobsOf, decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
 import { identityVersions } from "@estoc/people";
 import { Store } from "@estoc/store";
 import { SqliteBackend } from "@estoc/store/sqlite";
@@ -15,7 +18,7 @@ import { assert, describe, expect, it, onTestFinished } from "vitest";
 import { WebSocket } from "ws";
 import { Client, socketChannel } from "../src/index.ts";
 import { heldBlobSchema } from "../src/runtime.ts";
-import { makeTemporaryFolder } from "./fixtures.ts";
+import { makeTemporaryFolder, noteSchema } from "./fixtures.ts";
 
 const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const sample = fileURLToPath(new URL("../src/sample.ts", import.meta.url));
@@ -155,6 +158,53 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(await runtime.stop()).toBe(0);
     expect(commits).toHaveLength(1);
     expect(await blobsIn(database)).toEqual(expect.arrayContaining([key.link, ...commits]));
+  });
+
+  it("records the Outbound of a bundle that a mailbox answers for after it is told to stop", async () => {
+    const { database, pages } = await makePaths();
+    const mailboxServer = createServer((incoming) => void incoming.resume());
+    onTestFinished(() => void mailboxServer.close());
+    await once(mailboxServer.listen(0, "127.0.0.1"), "listening");
+    const { port } = mailboxServer.address() as AddressInfo;
+    const transport = encodeObject(httpTransport.schema, { url: `http://127.0.0.1:${port}/` });
+    const { publicKey } = await MailboxKey.fromSecretKey(crypto.getRandomValues(new Uint8Array(32)));
+    const mailbox = encodeObject(mailboxSchema, { key: publicKey, transport: new LinkValue(transport.link) });
+    const note = encodeObject(noteSchema, { text: "sent as it stops" });
+    const backend = new SqliteBackend(database);
+    await new Store(backend).write({
+      roots: [mailbox.link, note.link],
+      blobs: [...blobsOf(mailbox), ...blobsOf(transport), ...blobsOf(note)],
+    });
+    backend.close();
+
+    const runtime = await start([database, pages]);
+    const socket = new WebSocket(runtime.origin.replace("http", "ws"), { origin: runtime.origin });
+    await once(socket, "open");
+    const request = encodeObject(send.requestSchema, {
+      mailbox: new LinkValue(mailbox.link),
+      root: new LinkValue(note.link),
+    });
+    const posted = once(mailboxServer, "request");
+    const reply = expect(new Client(socketChannel(socket)).perform(request.bytes)).rejects.toThrow(
+      "the channel closed before the reply",
+    );
+    const [, outgoing] = (await posted) as [unknown, ServerResponse];
+    const exitCode = runtime.stop();
+    await once(socket, "close");
+    outgoing.writeHead(200).end();
+    expect(await exitCode).toBe(0);
+    await reply;
+
+    const reopened = new SqliteBackend(database);
+    onTestFinished(() => reopened.close());
+    const store = new Store(reopened);
+    const outbounds: unknown[] = [];
+    for await (const statement of store.records()) {
+      const bytes = await store.get(statement);
+      assert.exists(bytes);
+      if (schemaOf(bytes) === outboundSchema.link) outbounds.push(decodeObject(bytes, outboundSchema).data);
+    }
+    expect(outbounds).toMatchObject([{ bundle: { link: note.link } }]);
   });
 
   it("says how it is run when it is given no folder of pages", async () => {

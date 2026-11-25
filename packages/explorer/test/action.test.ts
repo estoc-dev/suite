@@ -6,6 +6,8 @@ import {
   encodeObject,
   LinkValue,
   linkOf,
+  ObjectValue,
+  objectFormat,
   readObject,
   type ValueMap,
 } from "@estoc/object";
@@ -20,7 +22,6 @@ const { secretKeys } = identityKit;
 
 const annotatedSchema = schema("Annotated", { annotation: link() });
 
-/** Writes a note of `text` whose image is the note it is given. */
 const annotate = actionOver(
   schema("Annotate", { note: link<EncodedObject<DataOf<typeof noteSchema>>>(), text: string() }),
   annotatedSchema,
@@ -132,6 +133,13 @@ describe("a client of a runtime that is given actions", () => {
     });
     await expect(client.perform(request.bytes)).rejects.toThrow(`not to ${noteSchema.link}`);
     expect((await client.page("Blobs", 0, 10)).blobCount).toBe(4);
+  });
+
+  it("is refused a request whose data its schema refuses, and nothing is recorded", async () => {
+    const client = clientOf(emptyStore(), [], [listedAction(generateKey, {})]);
+    const request = objectFormat.encode(new ObjectValue(generateKey.requestSchema.link, { scheme: 25519 }));
+    await expect(client.perform(request)).rejects.toThrow();
+    expect((await client.page("Records", 0, 10)).rowCount).toBe(0);
   });
 
   it("is refused a request written to a schema that no action takes", async () => {

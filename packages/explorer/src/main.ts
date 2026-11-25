@@ -11,13 +11,12 @@ if (database === undefined || pages === undefined || rest.length > 0) {
   console.error("Usage: main.ts <database> <folder of the pages> [port]");
   process.exitCode = 1;
 } else {
-  const backend = new SqliteBackend(database);
-  const runtime = new Runtime(new Store(backend), suiteLists, suiteActions({ transports: [httpTransport] }));
+  const store = new Store(new SqliteBackend(database));
+  const runtime = new Runtime(store, suiteLists, suiteActions({ transports: [httpTransport] }));
   const server = await serve(runtime, pages, Number(port));
-  const stop = async () => {
-    await server.close();
-    backend.close();
-  };
+  // The database is left open: an action that is still being performed writes to it after the
+  // server has closed, and the process ends once none is.
+  const stop = () => server.close();
   process.once("SIGTERM", stop).once("SIGINT", stop);
   // Whoever waits for this line can open the page from then on.
   console.log(`${database} is shown at ${server.origin}`);

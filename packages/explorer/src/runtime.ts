@@ -3,10 +3,12 @@ import {
   type EncodedObject,
   encodeObject,
   isValueMap,
+  itself,
   type Link,
   LinkValue,
   linkOf,
   namedSchemaOf,
+  objectFormat,
   type Schema,
   schemaOf,
   type Value,
@@ -190,8 +192,9 @@ function answerTo<P extends ValueMap, R extends ValueMap>(
  *
  * - A page is given the whole of the store, Secrets as well: its user is inside the boundary that
  *   the store is in.
- * - A page has any of the actions performed on any request, so it signs and sends as whoever the
- *   store records a Secret Key of.
+ * - A page has any of the actions performed on any request, so it signs and sends as any Signed
+ *   Identity that the store holds, where the store records a Secret Key of the root or of an agent
+ *   of its current version.
  */
 export class Runtime {
   readonly #answers: ReadonlyMap<string, Answer>;
@@ -211,7 +214,7 @@ export class Runtime {
       ({ name, rowSchema, order, readsBlobs }) =>
         encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order: [...order], readsBlobs }).bytes,
     );
-    const actionsByRequestSchema = new Map<Link<Schema>, ListedAction>();
+    const actionsByRequestSchema = new Map<Link<unknown>, ListedAction>();
     for (const action of actions) {
       const { link } = action.requestSchema;
       if (actionsByRequestSchema.has(link)) throw new Error(`two actions take a request written to ${link}`);
@@ -255,10 +258,11 @@ export class Runtime {
       }),
       answerTo(actionsCall, async () => ({ actions: actionDescriptions })),
       answerTo(performCall, async ({ request }) => {
-        const schema = schemaOf(request);
-        const action = actionsByRequestSchema.get(schema);
-        if (action === undefined) throw new Error(`no action takes a request written to ${schema}`);
-        const { result, commits } = await action.perform(store, request);
+        const { schema, data } = objectFormat.decode(request);
+        const requestSchema = schema === itself ? linkOf(request) : schema;
+        const action = actionsByRequestSchema.get(requestSchema);
+        if (action === undefined) throw new Error(`no action takes a request written to ${requestSchema}`);
+        const { result, commits } = await action.perform(store, data);
         return { result: result.bytes, commits: commits.map((link) => new LinkValue(link)) };
       }),
     ]);

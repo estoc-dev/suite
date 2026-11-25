@@ -104,9 +104,7 @@ describe("a channel over a socket", () => {
     channel.send(Uint8Array.of(1));
     await expect.poll(() => receivedBytes).toEqual([1, 2]);
   });
-});
 
-describe("a channel over a socket", () => {
   it("gives the socket the array it is given to send", () => {
     const sentMessages: Uint8Array[] = [];
     const channel = socketChannel({

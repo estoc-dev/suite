@@ -10,6 +10,8 @@ describe("the fragment of a place", () => {
     [{ list: "Blobs", from: 350 }, "#list=Blobs&from=350"],
     [{ list: "Held Keys & more", from: 0 }, "#list=Held+Keys+%26+more&from=0"],
     [{ blob }, `#${blob}`],
+    [{ actions: "all" } as const, "#actions"],
+    [{ action: blob }, `#action=${encodeURIComponent(blob)}`],
   ])("reads back as the place %j", (place, fragment) => {
     expect(fragmentOf(place)).toBe(fragment);
     expect(placeIn(fragment)).toEqual(place);
@@ -17,8 +19,8 @@ describe("the fragment of a place", () => {
 });
 
 describe("the place in a fragment", () => {
-  it.each(["", "#", "#from=3", "#sha256:00", `#${blob.toUpperCase()}`, `#blob=${blob}`])(
-    "is none where %j names no list and is not a link",
+  it.each(["", "#", "#from=3", "#sha256:00", `#${blob.toUpperCase()}`, `#blob=${blob}`, "#action=", "#action=Send"])(
+    "is none where %j names no list and no action, and is not a link",
     (fragment) => {
       expect(placeIn(fragment)).toBeUndefined();
     },

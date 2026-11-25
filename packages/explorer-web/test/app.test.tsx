@@ -1,12 +1,22 @@
-import { encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
-import { any, array, boolean, bytes, optional, schema, string } from "@estoc/schema";
+import { ed25519, loadIdentity, SoftwareSigner, signatureSchema } from "@estoc/identity";
+import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
+import { any, array, boolean, bytes, link, optional, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ActionSource } from "../src/action-page.ts";
 import { App } from "../src/app.tsx";
 import type { Source } from "../src/list-page.ts";
-import { entriesOf, entrySchema, listOf, sourceHolding, sourceOf } from "./fixtures.ts";
+import {
+  entriesOf,
+  entrySchema,
+  type GivenAction,
+  listOf,
+  sourceHolding,
+  sourceOf,
+  sourceWithActions,
+} from "./fixtures.ts";
 
-function show(source: Source): HTMLElement {
+function show(source: Source & ActionSource): HTMLElement {
   const root = document.createElement("div");
   onTestFinished(render(() => <App source={source} />, root));
   return root;
@@ -57,6 +67,61 @@ const cellsOf = (root: HTMLElement) =>
 const hrefsOf = (root: HTMLElement, selector: string) =>
   Array.from(root.querySelectorAll(selector), (node) => [node.textContent, node.getAttribute("href")]);
 
+function type(root: HTMLElement, field: string, text: string): void {
+  const input = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${field}"]`);
+  if (input === null) throw new Error(`the page has no input for ${field}`);
+  input.value = text;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+const typedIn = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea"), (input) => [
+    input.getAttribute("aria-label"),
+    input.value,
+  ]);
+
+const perform = (root: HTMLElement) => root.querySelector("form")?.requestSubmit();
+
+const greetingSchema = schema("Greeting", { text: string(), to: link() });
+
+const greet: GivenAction = {
+  requestSchema: schema("Greet", { words: string(), to: link(), others: optional(array(link())) }),
+  resultSchema: greetingSchema,
+  targetSchemas: { to: entrySchema },
+  perform: async ({ words, to }) => ({ result: { text: `${words}!`, ...(to !== undefined && { to }) }, commits: [] }),
+};
+
+const tick: GivenAction = {
+  requestSchema: schema("Tick", {}),
+  resultSchema: schema("Ticked", {}),
+  perform: async () => ({ result: {}, commits: [] }),
+};
+
+const placeOf = ({ requestSchema }: GivenAction) => `#action=${encodeURIComponent(requestSchema.link)}`;
+
+/** A source that refuses what it is asked once it is closed, as a client does once its channel closed. */
+function closing(source: Source & ActionSource): { source: Source & ActionSource; close: () => void } {
+  let isClosed = false;
+  const whileOpen =
+    <A extends unknown[], R>(call: (...given: A) => Promise<R>) =>
+    async (...given: A): Promise<R> => {
+      if (isClosed) throw new Error("the channel is closed");
+      return call(...given);
+    };
+  return {
+    source: {
+      get: whileOpen(source.get),
+      lists: whileOpen(source.lists),
+      page: whileOpen(source.page),
+      actions: whileOpen(source.actions),
+      perform: whileOpen(source.perform),
+    },
+    close: () => {
+      isClosed = true;
+    },
+  };
+}
+
 beforeEach(() => {
   location.hash = "";
 });
@@ -69,6 +134,7 @@ describe("the page", () => {
     expect(hrefsOf(root, "header a")).toEqual([
       ["Entries", "#list=Entries"],
       ["Others", "#list=Others"],
+      ["Actions", "#actions"],
     ]);
     expect(textsOf(root, "header [aria-current]")).toEqual(["Entries"]);
   });
@@ -163,7 +229,7 @@ describe("the page", () => {
     );
     expect(textsOf(root, "h1")).toEqual(["Blob"]);
     expect(textsOf(root, ".head .title")).toEqual(["Entry"]);
-    expect(textsOf(root, "header a")).toEqual(["Entries"]);
+    expect(textsOf(root, "header a")).toEqual(["Entries", "Actions"]);
     expect(textsOf(root, "header [aria-current]")).toEqual([]);
     await open("#list=Entries");
     expect(cellsOf(root)).toEqual([["", "entry 0", "0"]]);
@@ -312,7 +378,7 @@ describe("the page", () => {
         start < 0 ? Promise.reject(new Error("the channel is closed")) : source.page(list, start, limit),
     });
     await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
-    expect(textsOf(root, "header a")).toEqual(["Entries"]);
+    expect(textsOf(root, "header a")).toEqual(["Entries", "Actions"]);
     await open("#list=Entries&from=70");
     expect(cellsOf(root)[0]).toEqual(["", "entry 69", "69"]);
     expect(textsOf(root, "[role=alert]")).toEqual([]);
@@ -334,5 +400,294 @@ describe("the page", () => {
   it("shows why the lists were not read", async () => {
     const root = show({ ...sourceOf(), lists: () => Promise.reject(new Error("the channel is closed")) });
     await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["the channel is closed"]));
+  });
+});
+
+describe("the page of the actions", () => {
+  it("shows each action of the runtime with a link to its page, the fields it takes and what it gives", async () => {
+    location.hash = "#actions";
+    const root = show(sourceWithActions(sourceOf(listOf("Entries", entriesOf(1))), greet, tick));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Actions"]));
+    expect(cellsOf(root)).toEqual([
+      ["Greet", "to, words, others", "Greeting"],
+      ["Tick", "", "Ticked"],
+    ]);
+    expect(hrefsOf(root, "td a")).toEqual([
+      ["Greet", placeOf(greet)],
+      ["Tick", placeOf(tick)],
+    ]);
+    expect(textsOf(root, "header [aria-current]")).toEqual(["Actions"]);
+  });
+
+  it("lists the actions again after a read of them that failed, and reads them once from then on", async () => {
+    location.hash = "#actions";
+    const source = sourceWithActions(sourceOf(listOf("Entries", entriesOf(1))), greet, tick);
+    const actions = vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open("#list=Entries");
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    await open("#actions");
+    await vi.waitFor(() => expect(cellsOf(root).map(([title]) => title)).toEqual(["Greet", "Tick"]));
+    await open(placeOf(greet));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    expect(actions).toHaveBeenCalledTimes(2);
+  });
+
+  it("says that the runtime lists no action", async () => {
+    location.hash = "#actions";
+    const root = show(sourceOf());
+    await vi.waitFor(() => expect(textsOf(root, ".card")).toEqual(["The runtime lists no action."]));
+  });
+});
+
+describe("the page of an action", () => {
+  const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+  const other = linkOf(Uint8Array.of(1));
+
+  it("shows an input for each field of the request schema, with its type and the schema its links are to", async () => {
+    location.hash = placeOf(greet);
+    const root = show(sourceWithActions(sourceOf(), greet, tick));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    expect(textsOf(root, ".head .title")).toEqual(["Greet", "Greeting"]);
+    expect(hrefsOf(root, ".head a")).toEqual([
+      [greet.requestSchema.link, `#${greet.requestSchema.link}`],
+      [greetingSchema.link, `#${greetingSchema.link}`],
+    ]);
+    expect(cellsOf(root)).toEqual([
+      ["to", "", "link · to Entry"],
+      ["words", "", "string"],
+      ["others", "Separate links with spaces or new lines.", "array of link · optional"],
+    ]);
+    expect(typedIn(root)).toEqual([
+      ["to", ""],
+      ["words", ""],
+      ["others", ""],
+    ]);
+    expect(hrefsOf(root, "tbody a")).toEqual([["Entry", `#${entrySchema.link}`]]);
+    expect(textsOf(root, "header [aria-current]")).toEqual([]);
+  });
+
+  it("has the runtime perform the action on what was typed, and shows the result and the commits", async () => {
+    location.hash = placeOf(greet);
+    const commits = [entry.link, other];
+    const root = show(
+      sourceWithActions(sourceOf(), {
+        ...greet,
+        perform: async (request) => ({ ...(await greet.perform(request)), commits }),
+      }),
+    );
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    const result = encodeObject(greetingSchema, { text: "good day!", to: new LinkValue(entry.link) });
+    expect(textsOf(root, "section .head dd")[0]).toBe(result.link);
+    expect(textsOf(root, "section tbody tr")).toEqual([`to${entry.link}link`, 'text"good day!"string']);
+    expect(hrefsOf(root, "section tbody a")).toEqual([[entry.link, `#${entry.link}`]]);
+    expect(hrefsOf(root, ".commits a")).toEqual([
+      [entry.link, `#${entry.link}`],
+      [other, `#${other}`],
+    ]);
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("shows the result of an action with no read of the source", async () => {
+    location.hash = placeOf(greet);
+    const { source, close } = closing(
+      sourceWithActions(sourceOf(), {
+        ...greet,
+        async perform(request) {
+          close();
+          return { ...(await greet.perform(request)), commits: [other] };
+        },
+      }),
+    );
+    const performed = vi.spyOn(source, "perform");
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    expect(textsOf(root, "section .head .title")).toEqual(["Greeting"]);
+    expect(hrefsOf(root, ".commits a")).toEqual([[other, `#${other}`]]);
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    expect(performed).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the commits while it reads the blobs that it reads the result as a signature by", async () => {
+    const { publish, signatures } = loadIdentity([ed25519]);
+    const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+    const signature = await signatures
+      .actor(signer, await publish(signer, { at: 1763078400000 }), async (inHand) => inHand)
+      .sign(entry);
+    const signatureBytes = signature.blobs.find((blob) => linkOf(blob) === signature.link);
+    if (signatureBytes === undefined) throw new Error("the blobs of the signature do not hold it");
+    const others = signature.blobs.filter((blob) => blob !== signatureBytes);
+    const sign: GivenAction = {
+      requestSchema: schema("Sign", {}),
+      resultSchema: signatureSchema,
+      perform: async () => ({ result: decodeObject(signatureBytes, signatureSchema).data, commits: [other] }),
+    };
+    location.hash = placeOf(sign);
+    const reading = gate();
+    let isPerformed = false;
+    const source = sourceHolding(
+      sourceWithActions(sourceOf(), {
+        ...sign,
+        async perform(request) {
+          isPerformed = true;
+          return sign.perform(request);
+        },
+      }),
+      ...others,
+    );
+    const root = show({
+      ...source,
+      async get(asked) {
+        if (isPerformed) await reading.permissionToRead;
+        return source.get(asked);
+      },
+    });
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Sign"]));
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    expect(textsOf(root, "section .note")).toEqual(["Reading the result."]);
+    expect(hrefsOf(root, ".commits a")).toEqual([[other, `#${other}`]]);
+    reading.open();
+    await vi.waitFor(() => expect(textsOf(root, ".reading .band")).toEqual(["Read by this page as a signature"]));
+    expect(textsOf(root, "section .note")).not.toContain("Reading the result.");
+  });
+
+  it("says that an action which committed nothing did so", async () => {
+    location.hash = placeOf(tick);
+    const root = show(sourceWithActions(sourceOf(), tick));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Tick"]));
+    expect(root.querySelector("form table")).toBeNull();
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section .note")).toContain("The action committed nothing."));
+  });
+
+  it("shows why the action failed in place of a result, and the result of the request after it", async () => {
+    location.hash = placeOf(greet);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", "nowhere");
+    perform(root);
+    await vi.waitFor(() =>
+      expect(textsOf(root, "[role=alert]")).toEqual(['the field to takes a link, which "nowhere" is not']),
+    );
+    expect(textsOf(root, "h2")).toEqual([]);
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+  });
+
+  it("says that the runtime is performing the action until it replies, and takes no other request till then", async () => {
+    location.hash = placeOf(tick);
+    const performing = gate();
+    const performed = vi.fn(async () => {
+      await performing.permissionToRead;
+      return { result: {}, commits: [] };
+    });
+    const root = show(sourceWithActions(sourceOf(), { ...tick, perform: performed }));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Tick"]));
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, ".perform")).toEqual(["PerformThe runtime is performing it."]));
+    expect(root.querySelector("button")?.disabled).toBe(true);
+    performing.open();
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    expect(textsOf(root, ".perform")).toEqual(["Perform"]);
+    expect(root.querySelector("button")?.disabled).toBe(false);
+    expect(performed).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps what was typed and the result of an action while another place is shown", async () => {
+    location.hash = placeOf(greet);
+    const root = show(sourceHolding(sourceWithActions(sourceOf(), greet, tick), entry.bytes));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    type(root, "others", `${other}\n${entry.link}`);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    await open(`#${entry.link}`);
+    expect(textsOf(root, "h1")).toEqual(["Blob"]);
+    await open(placeOf(greet));
+    expect(typedIn(root)).toEqual([
+      ["to", entry.link],
+      ["words", "good day"],
+      ["others", `${other}\n${entry.link}`],
+    ]);
+    expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string');
+  });
+
+  it("shows the form, what was typed and the result again with no read of the source", async () => {
+    location.hash = "#actions";
+    const { source, close } = closing(sourceHolding(sourceWithActions(sourceOf(), greet, tick), entry.bytes));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Actions"]));
+    await open(placeOf(greet));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    await open(`#${entry.link}`);
+    expect(textsOf(root, "h1")).toEqual(["Blob"]);
+    close();
+    await open(placeOf(greet));
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    expect(typedIn(root)).toContainEqual(["words", "good day"]);
+    expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string');
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    await open("#actions");
+    expect(cellsOf(root).map(([title]) => title)).toEqual(["Greet", "Tick"]);
+  });
+
+  it("shows the form of another action once the fragment names it, with what was typed for that one", async () => {
+    location.hash = placeOf(greet);
+    const farewell = { ...greet, requestSchema: schema("Farewell", { words: string(), to: link() }) };
+    const root = show(sourceWithActions(sourceOf(), greet, farewell));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
+    await open(placeOf(farewell));
+    expect(textsOf(root, "h1")).toEqual(["Farewell"]);
+    expect(typedIn(root)).toEqual([
+      ["to", ""],
+      ["words", ""],
+    ]);
+    expect(textsOf(root, "h2")).toEqual([]);
+    type(root, "words", "so long");
+    await open(placeOf(greet));
+    expect(typedIn(root)).toContainEqual(["words", "good day"]);
+    await open(placeOf(farewell));
+    expect(typedIn(root)).toContainEqual(["words", "so long"]);
+  });
+
+  it("says that the runtime lists no action for a request schema that none of them takes", async () => {
+    location.hash = placeOf(tick);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() =>
+      expect(textsOf(root, "main")).toEqual([
+        "The runtime lists no action that takes a request written to that schema.",
+      ]),
+    );
+  });
+
+  it("says where a field is of a type that the page has no input for", async () => {
+    const count = { ...tick, requestSchema: schema("Count", { from: optional(boolean()) }) };
+    location.hash = placeOf(count);
+    const root = show(sourceWithActions(sourceOf(), count));
+    await vi.waitFor(() =>
+      expect(cellsOf(root)).toEqual([["from", "The page has no input for this type.", "boolean · optional"]]),
+    );
+    expect(typedIn(root)).toEqual([]);
   });
 });

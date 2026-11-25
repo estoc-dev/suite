@@ -5,7 +5,7 @@ import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { objectView } from "./object-view.tsx";
 import { hexOf, quantityOf } from "./text.ts";
 
-function pageView({ inspection, reading }: BlobPage): JSX.Element {
+export function blobPageView({ inspection, reading }: BlobPage): JSX.Element {
   if (inspection.kind === "object") return objectView(inspection, reading);
   if (inspection.kind === "absent")
     return (
@@ -37,7 +37,7 @@ export function BlobView(props: { reader: Reader; link: Link<unknown> }) {
   return (
     <>
       <h1>Blob</h1>
-      <section class="card">{pageView(page())}</section>
+      <section class="card">{blobPageView(page())}</section>
     </>
   );
 }

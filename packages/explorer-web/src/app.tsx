@@ -1,8 +1,12 @@
 import { createMemo, createSignal, Errored, For, isPending, Loading, Match, onSettled, Switch } from "solid-js";
+import type { ActionSource } from "./action-page.ts";
+import { ActionSessions } from "./action-sessions.ts";
+import { ActionView } from "./action-view.tsx";
+import { ActionsView } from "./actions-view.tsx";
 import { BlobView } from "./blob-view.tsx";
 import type { Source } from "./list-page.ts";
 import { ListView } from "./list-view.tsx";
-import { fragmentOf, placeIn } from "./place.ts";
+import { actionsPlace, fragmentOf, placeIn } from "./place.ts";
 import { messageOf } from "./text.ts";
 
 const failureView = (error: () => unknown) => (
@@ -16,7 +20,8 @@ function PlaceReadiness(props: { onReady: () => void }): null {
   return null;
 }
 
-export function App(props: { source: Source }) {
+export function App(props: { source: Source & ActionSource }) {
+  const sessions = new ActionSessions(props.source);
   const [fragment, setFragment] = createSignal(location.hash);
   let showFirstPlace = () => {};
   const firstPlace = new Promise<void>((resolve) => {
@@ -51,11 +56,15 @@ export function App(props: { source: Source }) {
     const shown = place();
     return shown !== undefined && "list" in shown ? shown : undefined;
   });
+  const shownAction = createMemo(() => {
+    const shown = place();
+    return shown !== undefined && "action" in shown ? shown.action : undefined;
+  });
   // The first list of the runtime is shown while the fragment names no place.
   const shownList = createMemo(() => {
-    if (shownBlob() !== undefined) return undefined;
+    if (place() === undefined) return lists()[0];
     const name = listPlace()?.list;
-    return name === undefined ? lists()[0] : lists().find((list) => list.name === name);
+    return lists().find((list) => list.name === name);
   });
   return (
     <Loading
@@ -81,12 +90,23 @@ export function App(props: { source: Source }) {
                 </a>
               )}
             </For>
+            <a
+              class="link"
+              href={fragmentOf(actionsPlace)}
+              aria-current={place() === actionsPlace ? "page" : undefined}
+            >
+              Actions
+            </a>
           </nav>
         </header>
         <main class={{ pending: isPending(() => place()) }}>
           <Errored fallback={failureView}>
             <Switch fallback={<p class="note">The runtime gives no list of that name.</p>}>
               <Match when={shownBlob()}>{(blob) => <BlobView reader={props.source} link={blob()} />}</Match>
+              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
+              <Match when={place() === actionsPlace}>
+                <ActionsView sessions={sessions} />
+              </Match>
               <Match when={shownList()}>
                 {(list) => <ListView source={props.source} list={list()} from={listPlace()?.from} />}
               </Match>

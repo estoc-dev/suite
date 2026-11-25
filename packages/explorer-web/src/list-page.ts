@@ -1,6 +1,7 @@
 import type { Client, ListData } from "@estoc/explorer";
-import { AbsentBlob, decodeObject, decodeSchema, type Link, memberOf, type Schema, type Value } from "@estoc/object";
-import { type Field, rootSchema, schemaLanguage, schemaValidator } from "@estoc/schema";
+import { decodeObject, type Link, memberOf, type Schema, type Value } from "@estoc/object";
+import type { Field } from "@estoc/schema";
+import { readSchema } from "./schema.ts";
 
 export type Source = Pick<Client, "get" | "lists" | "page">;
 
@@ -17,13 +18,8 @@ export interface RowSchema {
 }
 
 export async function readRowSchema(source: Source, link: Link<Schema>): Promise<RowSchema> {
-  const bytes = await source.get(link);
-  if (bytes === undefined) throw new AbsentBlob(link);
-  const { fields } = schemaLanguage.document(decodeObject(bytes, rootSchema).data);
-  return {
-    schema: decodeSchema(bytes, schemaValidator),
-    columns: Object.entries(fields).map(([name, field]) => ({ name, field })),
-  };
+  const { schema, document } = await readSchema(source, link);
+  return { schema, columns: Object.entries(document.fields).map(([name, field]) => ({ name, field })) };
 }
 
 /**

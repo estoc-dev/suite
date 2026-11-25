@@ -61,9 +61,11 @@ gives no meaning and no reader an advantage.
   request.
 - `@estoc/explorer-web`: the pages that the explorer gives. One shows a
   list as a table with a column for each field of the schema its rows are
-  written to, a page at a time. The other shows a blob: the schema it
+  written to, a page at a time. Another shows a blob: the schema it
   names, its fields, what the pages read it as, and a link to follow for
-  each link it holds.
+  each link it holds. An action has a page with a form of the fields of
+  its request schema, which has the explorer perform it and shows the
+  result and what was committed.
 
 Semantics carry meaning. Estoc writes them, and they do nothing that a
 semantics written elsewhere could not.

@@ -1,14 +1,15 @@
-import { AbsentBlob, LinkValue, linkOf } from "@estoc/object";
+import { AbsentBlob, type Link, LinkValue, linkOf } from "@estoc/object";
 import { describe, expect, it } from "vitest";
 import { readListPage, readRowSchema } from "../src/list-page.ts";
 import { entriesOf, entrySchema, type GivenList, listOf, sourceOf } from "./fixtures.ts";
 
-async function pageOf(list: GivenList, from?: number) {
+async function pageOf(list: GivenList, from?: number, prefix: readonly Link<unknown>[] = []) {
   const source = sourceOf(list);
   const { columns, rows, ...rest } = await readListPage(
     source,
     list.description,
     await readRowSchema(source, list.rowSchema.link),
+    prefix,
     from,
   );
   return { counts: rows.map((row) => row[columns.findIndex(({ name }) => name === "count")]), ...rest };
@@ -42,7 +43,7 @@ describe("a row of a page", () => {
     ]);
     const source = sourceOf(list);
     const rowSchema = await readRowSchema(source, entrySchema.link);
-    const { rows } = await readListPage(source, list.description, rowSchema, undefined);
+    const { rows } = await readListPage(source, list.description, rowSchema, [], undefined);
     expect(rows).toEqual([
       [new LinkValue(target), "linked", 2],
       [undefined, "alone", 1],
@@ -131,7 +132,7 @@ describe("a page of a list sorted by its fields", () => {
     const list = listOf("Entries", entriesOf(1), ["count", "name"]);
     const source = sourceOf(list);
     const rowSchema = await readRowSchema(source, entrySchema.link);
-    const { columns, rows } = await readListPage(source, list.description, rowSchema, undefined);
+    const { columns, rows } = await readListPage(source, list.description, rowSchema, [], undefined);
     expect(columns.map(({ name }) => name)).toEqual(["count", "name", "to"]);
     expect(rows).toEqual([[0, "entry 0", undefined]]);
   });
@@ -157,5 +158,25 @@ describe("a page of a list sorted by its fields", () => {
       rowCount: 120,
       previous: 50,
     });
+  });
+
+  it("holds the rows under the links of a prefix, and counts those alone", async () => {
+    const target = linkOf(Uint8Array.of(1));
+    const other = linkOf(Uint8Array.of(2));
+    const rows = entriesOf(130).map((entry) => ({ ...entry, to: new LinkValue(entry.count < 70 ? target : other) }));
+    const list = listOf("Entries", rows, ["to", "count"]);
+    expect(await pageOf(list, undefined, [target])).toEqual({
+      counts: countsFrom(0, 49),
+      start: 0,
+      rowCount: 70,
+      next: 50,
+    });
+    expect(await pageOf(list, 50, [target])).toEqual({
+      counts: countsFrom(50, 69),
+      start: 50,
+      rowCount: 70,
+      previous: 0,
+    });
+    expect(await pageOf(list, undefined, [linkOf(Uint8Array.of(3))])).toEqual({ counts: [], start: 0, rowCount: 0 });
   });
 });

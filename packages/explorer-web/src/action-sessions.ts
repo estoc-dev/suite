@@ -1,7 +1,10 @@
-import type { Link } from "@estoc/object";
+import { heldObjects } from "@estoc/explorer";
+import type { Link, Schema } from "@estoc/object";
 import { createSignal } from "solid-js";
 import { type ActionForm, type ActionSource, readActionForms, readResultPage, requestOf } from "./action-page.ts";
 import type { BlobPage } from "./blob-page.ts";
+import { type LinksUnder, readLinksUnder } from "./pair-rows.ts";
+import type { ActionPlace } from "./place.ts";
 
 export type ActionState =
   | { readonly kind: "performing" }
@@ -15,22 +18,30 @@ export type ActionState =
 export class ActionSession {
   readonly form: ActionForm;
   readonly #source: ActionSource;
+  // A signal gives what it held before a write until the writes are flushed, and what performs
+  // right after a text is set reads that text. So the texts are held here, and the signal only
+  // tells what shows them that one was set.
   readonly #texts = new Map<string, string>();
+  readonly #trackTexts;
+  readonly #notifyOfTexts;
   readonly #state;
   readonly #setState;
 
   constructor(source: ActionSource, form: ActionForm) {
     this.#source = source;
     this.form = form;
+    [this.#trackTexts, this.#notifyOfTexts] = createSignal<undefined>(undefined, { equals: false });
     [this.#state, this.#setState] = createSignal<ActionState | undefined>(undefined);
   }
 
   textOf(field: string): string {
+    this.#trackTexts();
     return this.#texts.get(field) ?? "";
   }
 
   setText(field: string, text: string): void {
     this.#texts.set(field, text);
+    this.#notifyOfTexts(undefined);
   }
 
   state(): ActionState | undefined {
@@ -49,6 +60,10 @@ export class ActionSession {
 
   readPageOf(result: Uint8Array): Promise<BlobPage> {
     return readResultPage(this.#source, this.form, result);
+  }
+
+  readObjectsOf(schema: Link<Schema>): Promise<LinksUnder> {
+    return readLinksUnder(this.#source, heldObjects, schema);
   }
 }
 
@@ -70,5 +85,12 @@ export class ActionSessions {
       },
     );
     return this.#sessions;
+  }
+
+  /** Sets the field that `place` fills in, and gives the session of its action where the runtime lists one. */
+  async enter({ action, filledField }: ActionPlace): Promise<ActionSession | undefined> {
+    const session = (await this.all()).find(({ form }) => form.request.link === action);
+    if (filledField !== undefined) session?.setText(filledField.name, filledField.link);
+    return session;
   }
 }

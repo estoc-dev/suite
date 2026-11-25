@@ -88,7 +88,7 @@ describe("a client of a runtime that is given actions", () => {
     const [secretKey] = commits;
     assert.exists(secretKey);
     expect((await readObject(client, secretKey, secretKeys.schema)).data.key.link).toBe(key.link);
-    const records = await client.page("Records", 0, 10);
+    const records = await client.page("Records", [], 0, 10);
     expect(records.rows.map((bytes) => decodeObject(bytes, recordedStatementSchema).data.statement.link)).toEqual(
       commits,
     );
@@ -132,14 +132,14 @@ describe("a client of a runtime that is given actions", () => {
       text: "seen",
     });
     await expect(client.perform(request.bytes)).rejects.toThrow(`not to ${noteSchema.link}`);
-    expect((await client.page("Blobs", 0, 10)).blobCount).toBe(4);
+    expect((await client.page("Blobs", [], 0, 10)).blobCount).toBe(4);
   });
 
   it("is refused a request whose data its schema refuses, and nothing is recorded", async () => {
     const client = clientOf(emptyStore(), [], [listedAction(generateKey, {})]);
     const request = objectFormat.encode(new ObjectValue(generateKey.requestSchema.link, { scheme: 25519 }));
     await expect(client.perform(request)).rejects.toThrow();
-    expect((await client.page("Records", 0, 10)).rowCount).toBe(0);
+    expect((await client.page("Records", [], 0, 10)).rowCount).toBe(0);
   });
 
   it("is refused a request written to a schema that no action takes", async () => {

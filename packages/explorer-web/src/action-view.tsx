@@ -1,9 +1,12 @@
-import type { Link, Schema } from "@estoc/object";
+import { heldObjects } from "@estoc/explorer";
+import type { Link } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Loading, Match, Show, Switch } from "solid-js";
+import { createMemo, Errored, For, Loading, Match, Show, Switch } from "solid-js";
 import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
+import { remainingRowsView } from "./pair-rows-view.tsx";
+import type { ActionPlace } from "./place.ts";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
 
@@ -13,32 +16,76 @@ const titledSchemaView = ({ schema, title }: TitledSchema): JSX.Element => (
   </>
 );
 
-function inputView({ name, field }: FormField, session: ActionSession): JSX.Element {
+/**
+ * The objects held that the field takes, each with a button that fills the field in with it. A
+ * field of one link is set to the object, and a field of links has it added after what is typed.
+ */
+function CandidatesView(props: { session: ActionSession; name: string; target: TitledSchema; isAdded: boolean }) {
+  const target = () => props.target.schema.link;
+  const objects = createMemo(() => props.session.readObjectsOf(target()));
+  const take = (object: Link<unknown>) => {
+    const typed = props.session.textOf(props.name).trim();
+    props.session.setText(props.name, props.isAdded && typed !== "" ? `${typed}\n${object}` : object);
+  };
+  return (
+    <Errored fallback={(error) => <span class="problem">{messageOf(error())}</span>}>
+      <Loading fallback={<span class="muted">Reading the objects held.</span>}>
+        <Show
+          when={objects().links.length > 0}
+          fallback={<span class="muted">The store holds no object written to {props.target.title}.</span>}
+        >
+          <ul class="items candidates">
+            <For each={objects().links}>
+              {(object) => (
+                <li>
+                  <button type="button" class="quiet" onClick={() => take(object)}>
+                    {props.isAdded ? "Add" : "Use"}
+                  </button>
+                  {linkView(object)}
+                </li>
+              )}
+            </For>
+          </ul>
+          {remainingRowsView(objects(), { list: heldObjects.name, prefix: [target()] })}
+        </Show>
+      </Loading>
+    </Errored>
+  );
+}
+
+function inputView({ name, field, target }: FormField, session: ActionSession): JSX.Element {
   const entry = entryOf(field);
   if (entry === undefined) return <span class="muted">The page has no input for this type.</span>;
   const keep = (event: { currentTarget: { value: string } }) => session.setText(name, event.currentTarget.value);
-  return entry === "links" ? (
+  return (
     <>
-      <textarea
-        class="mono"
-        aria-label={name}
-        rows="3"
-        spellcheck={false}
-        value={session.textOf(name)}
-        onInput={keep}
-      />
-      <span class="muted">Separate links with spaces or new lines.</span>
+      {entry === "links" ? (
+        <>
+          <textarea
+            class="mono"
+            aria-label={name}
+            rows="3"
+            spellcheck={false}
+            value={session.textOf(name)}
+            onInput={keep}
+          />
+          <span class="muted">Separate links with spaces or new lines.</span>
+        </>
+      ) : (
+        <input
+          class="mono"
+          type="text"
+          aria-label={name}
+          autocomplete="off"
+          spellcheck={false}
+          value={session.textOf(name)}
+          onInput={keep}
+        />
+      )}
+      {entry !== "text" && target !== undefined && (
+        <CandidatesView session={session} name={name} target={target} isAdded={entry === "links"} />
+      )}
     </>
-  ) : (
-    <input
-      class="mono"
-      type="text"
-      aria-label={name}
-      autocomplete="off"
-      spellcheck={false}
-      value={session.textOf(name)}
-      onInput={keep}
-    />
   );
 }
 
@@ -90,7 +137,7 @@ function FormView(props: { session: ActionSession }) {
                     <td>
                       <span class="mono name">{field.name}</span>
                     </td>
-                    <td>{inputView(field, props.session)}</td>
+                    <td class="entry">{inputView(field, props.session)}</td>
                     <td>
                       <span class="mono">{typeNameOf(field.field)}</span>
                       {field.field.optional === true && <span class="muted"> · optional</span>}
@@ -152,9 +199,8 @@ function FormView(props: { session: ActionSession }) {
   );
 }
 
-export function ActionView(props: { sessions: ActionSessions; action: Link<Schema> }) {
-  const sessions = createMemo(() => props.sessions.all());
-  const session = createMemo(() => sessions().find(({ form }) => form.request.link === props.action));
+export function ActionView(props: { sessions: ActionSessions; place: ActionPlace }) {
+  const session = createMemo(() => props.sessions.enter(props.place));
   return (
     <Show
       when={session()}

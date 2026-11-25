@@ -43,15 +43,16 @@ export const listSchema = schema("List", {
 export type ListData = DataOf<typeof listSchema>;
 
 /**
- * - A `start` below zero counts from the end of the list, and the `start` of the result is where
- *   the page begins counted from the front.
- * - `rowCount` is how many rows the list has, and `blobCount` how many blobs the store held when
- *   the page was read. A store only grows and a list comes of the blobs held alone, so every list
- *   is as it was while that count is.
+ * - The page is of the rows under `prefix`: those that hold its values, in their order, in the
+ *   first of the fields the list is sorted by. Every row is under the empty prefix.
+ * - `start` and `rowCount` count the rows under `prefix` alone. A `start` below zero counts from
+ *   the end of them, and the `start` of the result is where the page begins counted from the front.
+ * - `blobCount` is how many blobs the store held when the page was read. A store only grows and a
+ *   list comes of the blobs held alone, so every list is as it was while that count is.
  */
 export const pageCall = {
   name: "page",
-  parameters: schema("Page Parameters", { list: string(), start: integer(), limit: integer() }),
+  parameters: schema("Page Parameters", { list: string(), prefix: array(any()), start: integer(), limit: integer() }),
   result: schema("Page Result", { start: integer(), rowCount: integer(), blobCount: integer(), rows: array(bytes()) }),
 };
 

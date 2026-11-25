@@ -1,3 +1,4 @@
+import { heldLinks, heldObjects } from "@estoc/explorer";
 import { ed25519, loadIdentity, SoftwareSigner, signatureSchema } from "@estoc/identity";
 import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { any, array, boolean, bytes, link, optional, schema, string } from "@estoc/schema";
@@ -11,6 +12,7 @@ import {
   entrySchema,
   type GivenAction,
   listOf,
+  pairListOf,
   sourceHolding,
   sourceOf,
   sourceWithActions,
@@ -374,8 +376,8 @@ describe("the page", () => {
     const source = sourceOf(listOf("Entries", entriesOf(120)));
     const root = show({
       ...source,
-      page: (list, start, limit) =>
-        start < 0 ? Promise.reject(new Error("the channel is closed")) : source.page(list, start, limit),
+      page: (list, prefix, start, limit) =>
+        start < 0 ? Promise.reject(new Error("the channel is closed")) : source.page(list, prefix, start, limit),
     });
     await vi.waitFor(() => expect(textsOf(root, "main [role=alert]")).toEqual(["the channel is closed"]));
     expect(textsOf(root, "header a")).toEqual(["Entries", "Actions"]);
@@ -388,8 +390,8 @@ describe("the page", () => {
     const source = sourceOf(listOf("Entries", entriesOf(120)));
     const root = show({
       ...source,
-      page: (list, start, limit) =>
-        start < 0 ? source.page(list, start, limit) : Promise.reject(new Error("the channel is closed")),
+      page: (list, prefix, start, limit) =>
+        start < 0 ? source.page(list, prefix, start, limit) : Promise.reject(new Error("the channel is closed")),
     });
     await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
     await open("#list=Entries&from=70");
@@ -454,11 +456,13 @@ describe("the page of an action", () => {
       [greet.requestSchema.link, `#${greet.requestSchema.link}`],
       [greetingSchema.link, `#${greetingSchema.link}`],
     ]);
-    expect(cellsOf(root)).toEqual([
-      ["to", "", "link · to Entry"],
-      ["words", "", "string"],
-      ["others", "Separate links with spaces or new lines.", "array of link · optional"],
-    ]);
+    await vi.waitFor(() =>
+      expect(cellsOf(root)).toEqual([
+        ["to", "The store holds no object written to Entry.", "link · to Entry"],
+        ["words", "", "string"],
+        ["others", "Separate links with spaces or new lines.", "array of link · optional"],
+      ]),
+    );
     expect(typedIn(root)).toEqual([
       ["to", ""],
       ["words", ""],
@@ -681,6 +685,104 @@ describe("the page of an action", () => {
     );
   });
 
+  it("lists the objects held that a field takes, and sets the field to the one that is used", async () => {
+    location.hash = placeOf(greet);
+    const objects = [entry.link, other];
+    const root = show(
+      sourceWithActions(
+        sourceOf(
+          pairListOf(heldObjects, [greetingSchema.link, other], ...objects.map((o) => [entrySchema.link, o] as const)),
+        ),
+        greet,
+      ),
+    );
+    await vi.waitFor(() => expect(hrefsOf(root, ".candidates a")).toEqual(objects.map((link) => [link, `#${link}`])));
+    expect(textsOf(root, ".candidates button")).toEqual(["Use", "Use"]);
+    expect(textsOf(root, ".remaining")).toEqual([]);
+    type(root, "to", "somewhere");
+    type(root, "words", "good day");
+    root.querySelectorAll<HTMLButtonElement>(".candidates button")[1]?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain(`to${other}link`));
+    expect(typedIn(root)).toContainEqual(["words", "good day"]);
+  });
+
+  it("adds an object that is used to a field of links, after what is typed for it", async () => {
+    const gather = { ...greet, targetSchemas: { others: entrySchema } };
+    location.hash = placeOf(gather);
+    const root = show(
+      sourceWithActions(
+        sourceOf(pairListOf(heldObjects, [entrySchema.link, entry.link], [entrySchema.link, other])),
+        gather,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, ".candidates button")).toEqual(["Add", "Add"]));
+    const [first, second] = root.querySelectorAll<HTMLButtonElement>(".candidates button");
+    first?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", entry.link]));
+    second?.click();
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["others", `${entry.link}\n${other}`]));
+  });
+
+  it("leads to the rows of Schemas under the schema where more objects are held than it lists", async () => {
+    location.hash = placeOf(greet);
+    const objects = Array.from({ length: 12 }, (_, at) => linkOf(Uint8Array.of(at)));
+    const root = show(
+      sourceWithActions(
+        sourceOf(pairListOf(heldObjects, ...objects.map((o) => [entrySchema.link, o] as const))),
+        greet,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, ".remaining")).toEqual(["The first 10 of 12 rows."]));
+    expect(textsOf(root, ".candidates a")).toEqual(objects.slice(0, 10));
+    const place = `#list=Schemas&prefix=${encodeURIComponent(entrySchema.link)}`;
+    expect(hrefsOf(root, ".remaining a")).toEqual([["12 rows", place]]);
+    await open(place);
+    expect(textsOf(root, "h1")).toEqual(["Schemas"]);
+    expect(cellsOf(root)).toEqual(objects.map((object) => [entrySchema.link, object]));
+  });
+
+  it("shows why the objects were not read under the field, and performs on what is typed", async () => {
+    location.hash = placeOf(greet);
+    const source = sourceWithActions(sourceOf(), greet);
+    const root = show({ ...source, page: () => Promise.reject(new Error("database is locked")) });
+    await vi.waitFor(() => expect(textsOf(root, "tbody .problem")).toEqual(["database is locked"]));
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+  });
+
+  it("fills in the field that the fragment names each time it is shown, and keeps what is typed for the others", async () => {
+    const filled = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    location.hash = filled;
+    const root = show(sourceHolding(sourceWithActions(sourceOf(), greet), entry.bytes));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    type(root, "to", other);
+    type(root, "words", "good day");
+    await open(`#${entry.link}`);
+    await open(filled);
+    expect(typedIn(root)).toEqual([
+      ["to", entry.link],
+      ["words", "good day"],
+      ["others", ""],
+    ]);
+    type(root, "to", other);
+    await open(placeOf(greet));
+    expect(typedIn(root)).toContainEqual(["to", other]);
+  });
+
+  it("fills in the field of the form shown where the fragment comes to name another link for it", async () => {
+    const filledWith = (link: string) => `${placeOf(greet)}&field=to&link=${encodeURIComponent(link)}`;
+    location.hash = filledWith(entry.link);
+    const root = show(sourceWithActions(sourceOf(), greet));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", entry.link]));
+    await open(filledWith(other));
+    await vi.waitFor(() => expect(typedIn(root)).toContainEqual(["to", other]));
+  });
+
   it("says where a field is of a type that the page has no input for", async () => {
     const count = { ...tick, requestSchema: schema("Count", { from: optional(boolean()) }) };
     location.hash = placeOf(count);
@@ -689,5 +791,77 @@ describe("the page of an action", () => {
       expect(cellsOf(root)).toEqual([["from", "The page has no input for this type.", "boolean · optional"]]),
     );
     expect(typedIn(root)).toEqual([]);
+  });
+});
+
+describe("the page of a blob", () => {
+  const entry = encodeObject(entrySchema, { name: "alone", count: 7 });
+  const source = linkOf(Uint8Array.of(1));
+
+  it("leads to the form of an action that takes the object, with the field filled in, and to what links to it", async () => {
+    location.hash = `#${entry.link}`;
+    const root = show(
+      sourceHolding(
+        sourceWithActions(sourceOf(pairListOf(heldLinks, [entry.link, source])), greet, tick),
+        entry.bytes,
+        ...entrySchema.blobs,
+      ),
+    );
+    await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Actions", "Linked from"]));
+    const filled = `${placeOf(greet)}&field=to&link=${encodeURIComponent(entry.link)}`;
+    expect(hrefsOf(root, "h2 + section tbody a")).toEqual([["Greet", filled]]);
+    expect(hrefsOf(root, ".sources a")).toEqual([[source, `#${source}`]]);
+    await open(filled);
+    expect(textsOf(root, "h1")).toEqual(["Greet"]);
+    expect(typedIn(root)).toContainEqual(["to", entry.link]);
+  });
+
+  it("shows what links to the blob it comes to show, in place of what links to the one before", async () => {
+    location.hash = `#${entry.link}`;
+    const root = show(sourceHolding(sourceOf(pairListOf(heldLinks, [entry.link, source])), entry.bytes));
+    await vi.waitFor(() => expect(textsOf(root, ".sources a")).toEqual([source]));
+    await open(`#${source}`);
+    expect(textsOf(root, ".head dd")).toEqual([source]);
+    await vi.waitFor(() =>
+      expect(textsOf(root, "section:last-of-type .note")).toEqual(["Nothing the store holds links to it."]),
+    );
+    expect(textsOf(root, ".sources a")).toEqual([]);
+  });
+});
+
+describe("the page of a list under a prefix", () => {
+  const target = linkOf(Uint8Array.of(1));
+  const sources = Array.from({ length: 120 }, (_, at) => linkOf(Uint8Array.of(2, at)));
+  const links = pairListOf(heldLinks, [linkOf(Uint8Array.of(0)), target], ...sources.map((s) => [target, s] as const));
+  const under = `#list=Links&prefix=${encodeURIComponent(target)}`;
+
+  it("shows the rows under the links of the prefix alone, and says which they are", async () => {
+    location.hash = under;
+    const root = show(sourceOf(links));
+    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
+    expect(cellsOf(root)).toEqual(sources.slice(0, 50).map((s) => [target, s]));
+    expect(textsOf(root, ".under")).toEqual([`The rows that hold ${target} in target.`]);
+    expect(textsOf(root, ".turns")).toEqual(["Rows 1 to 50 of 120Next"]);
+    expect(textsOf(root, "header [aria-current]")).toEqual(["Links"]);
+  });
+
+  it("turns to the pages before and after it under the same prefix", async () => {
+    location.hash = `${under}&from=50`;
+    const root = show(sourceOf(links));
+    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
+    expect(hrefsOf(root, ".turns a")).toEqual([
+      ["Previous", `${under}&from=0`],
+      ["Next", `${under}&from=100`],
+    ]);
+    await open(`${under}&from=100`);
+    expect(cellsOf(root)).toEqual(sources.slice(100).map((s) => [target, s]));
+  });
+
+  it("says nothing of a prefix where the place has none", async () => {
+    location.hash = "#list=Links";
+    const root = show(sourceOf(links));
+    await vi.waitFor(() => expect(cellsOf(root)).toHaveLength(50));
+    expect(textsOf(root, ".under")).toEqual([]);
+    expect(textsOf(root, ".turns")).toEqual(["Rows 1 to 50 of 121Next"]);
   });
 });

@@ -1,9 +1,10 @@
+import { heldObjects } from "@estoc/explorer";
 import { encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";
 import { ActionSessions } from "../src/action-sessions.ts";
-import { entrySchema, type GivenAction, sourceOf, sourceWithActions } from "./fixtures.ts";
+import { entrySchema, type GivenAction, pairListOf, sourceOf, sourceWithActions } from "./fixtures.ts";
 
 const greetingSchema = schema("Greeting", { text: string(), to: link() });
 
@@ -56,6 +57,33 @@ describe("the sessions of the actions", () => {
   });
 });
 
+describe("entering the place of an action", () => {
+  it("gives the session of that action, with what was typed for it", async () => {
+    const sessions = new ActionSessions(sourceWithActions(sourceOf(), greet, tick));
+    const [first] = await sessions.all();
+    first?.setText("words", "good day");
+    const entered = await sessions.enter({ action: greet.requestSchema.link });
+    expect(entered).toBe(first);
+    expect(entered?.textOf("words")).toBe("good day");
+  });
+
+  it("sets the field that the place fills in to its link, over what was typed for it, and keeps the others", async () => {
+    const sessions = new ActionSessions(sourceWithActions(sourceOf(), greet, tick));
+    const place = { action: greet.requestSchema.link, filledField: { name: "to", link: entry.link } };
+    const session = await sessions.enter(place);
+    expect(session?.textOf("to")).toBe(entry.link);
+    session?.setText("to", other);
+    session?.setText("words", "good day");
+    await sessions.enter(place);
+    expect(["words", "to"].map((field) => session?.textOf(field))).toEqual(["good day", entry.link]);
+  });
+
+  it("gives no session where the runtime lists no action that takes a request written to that schema", async () => {
+    const sessions = new ActionSessions(sourceWithActions(sourceOf(), tick));
+    expect(await sessions.enter({ action: greet.requestSchema.link })).toBeUndefined();
+  });
+});
+
 describe("the session of an action", () => {
   it("holds the text that was set for a field, and no text for the others", async () => {
     const session = await sessionOf(greet);
@@ -92,6 +120,17 @@ describe("the session of an action", () => {
     expect(await session.readPageOf(result.bytes)).toMatchObject({
       inspection: { kind: "object", link: result.link, schema: { kind: "schema", problems: [] } },
     });
+  });
+
+  it("reads the first of the objects held that are written to a schema, and how many there are", async () => {
+    const objects = Array.from({ length: 12 }, (_, count) => encodeObject(entrySchema, { name: "one", count }).link);
+    const pairs = objects.map((object) => [entrySchema.link, object] as const);
+    const session = await sessionOver(
+      sourceWithActions(sourceOf(pairListOf(heldObjects, [greetingSchema.link, other], ...pairs)), greet),
+    );
+    expect(await session.readObjectsOf(entrySchema.link)).toEqual({ links: objects.slice(0, 10), rowCount: 12 });
+    expect(await session.readObjectsOf(greetingSchema.link)).toEqual({ links: [other], rowCount: 1 });
+    expect(await session.readObjectsOf(tick.requestSchema.link)).toEqual({ links: [], rowCount: 0 });
   });
 
   it("holds why the runtime failed", async () => {

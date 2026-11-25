@@ -7,6 +7,7 @@ import {
   LinkValue,
   linkOf,
   type Reader,
+  type Value,
   type ValueMap,
 } from "@estoc/object";
 import type { DataOf } from "@estoc/schema";
@@ -62,8 +63,8 @@ export class Client implements Reader {
     return lists.map((bytes) => decodeObject(bytes, listSchema));
   }
 
-  page(list: string, start: number, limit: number): Promise<Page> {
-    return this.#call(pageCall, { list, start, limit });
+  page(list: string, prefix: readonly Value[], start: number, limit: number): Promise<Page> {
+    return this.#call(pageCall, { list, prefix: [...prefix], start, limit });
   }
 
   async actions(): Promise<EncodedObject<ActionData>[]> {

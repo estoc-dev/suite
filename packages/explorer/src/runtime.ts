@@ -31,6 +31,7 @@ import {
 } from "./calls.ts";
 import type { Channel } from "./channel.ts";
 import { type List, pageIn } from "./list.ts";
+import { heldLinks, heldObjects, type PairList } from "./pair-lists.ts";
 
 interface LinksRead<T = unknown> {
   readonly links: readonly Link<T>[];
@@ -82,14 +83,16 @@ function listInWrittenOrder<F extends ValueMap, T>(
     rowSchema,
     order: [],
     readsBlobs: origin.readsBlobs,
-    async page(store, start, limit) {
+    async page(store, prefix, start, limit) {
       const { links, blobCount } = await origin.read(store);
-      const page = pageIn(links, start, limit);
+      // The list is sorted by no field, so no row is under a prefix that holds a value.
+      const linksUnderPrefix = prefix.length === 0 ? links : [];
+      const page = pageIn(linksUnderPrefix, start, limit);
       const rows: Uint8Array[] = [];
       for (const link of page.rows) {
         rows.push(encodeObject(rowSchema, rowOf(link, await heldBytesOf(store, link))).bytes);
       }
-      return { start: page.start, rowCount: links.length, blobCount, rows };
+      return { start: page.start, rowCount: linksUnderPrefix.length, blobCount, rows };
     },
   };
 }
@@ -119,10 +122,8 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, heldBlobs, (blob, 
 type LinkPair = readonly [first: Link<unknown>, second: Link<unknown>];
 
 /** The rows come of more than the blobs of one page, so each page reads every blob held. */
-function listOfSortedPairs<F extends { readonly [field: string]: LinkValue<unknown> }>(
-  name: string,
-  rowSchema: Schema<F>,
-  order: readonly [keyof F & string, keyof F & string],
+function listOfSortedPairs<First extends string, Second extends string>(
+  { name, rowSchema, order }: PairList<First, Second>,
   pairsIn: (blob: Link<unknown>, bytes: Uint8Array) => Iterable<LinkPair>,
 ): List {
   const [first, second] = order;
@@ -131,12 +132,14 @@ function listOfSortedPairs<F extends { readonly [field: string]: LinkValue<unkno
     rowSchema,
     order,
     readsBlobs: heldBlobs.readsBlobs,
-    async page(store, start, limit) {
+    async page(store, prefix, start, limit) {
       const { links, blobCount } = await heldBlobs.read(store);
+      const isUnderPrefix = (pair: LinkPair) =>
+        prefix.every((value, at) => value instanceof LinkValue && value.link === pair[at]);
       const pairs: LinkPair[] = [];
       for (const blob of links) {
         // One at a time: an object can hold more links than a call takes arguments.
-        for (const pair of pairsIn(blob, await heldBytesOf(store, blob))) pairs.push(pair);
+        for (const pair of pairsIn(blob, await heldBytesOf(store, blob))) if (isUnderPrefix(pair)) pairs.push(pair);
       }
       const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
       pairs.sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
@@ -155,20 +158,12 @@ function listOfSortedPairs<F extends { readonly [field: string]: LinkValue<unkno
   };
 }
 
-export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link<EncodedObject>() });
-
-const schemasList = listOfSortedPairs("Schemas", heldObjectSchema, ["schema", "object"], function* (blob, bytes) {
+const schemasList = listOfSortedPairs(heldObjects, function* (blob, bytes) {
   const schema = namedSchemaOf(bytes);
   if (schema !== undefined) yield [schema, blob];
 });
 
-export const heldLinkSchema = schema("Held Link", { target: link(), source: link<EncodedObject>() });
-
-/**
- * The rows under a blob are what links to it. A `source` that gives its schema by a link to
- * `target` is a row here as well as in Schemas.
- */
-const linksList = listOfSortedPairs("Links", heldLinkSchema, ["target", "source"], (blob, bytes) =>
+const linksList = listOfSortedPairs(heldLinks, (blob, bytes) =>
   Array.from(new Set(linksIn(bytes)), (target): LinkPair => [target, blob]),
 );
 
@@ -251,10 +246,10 @@ export class Runtime {
         return bytes === undefined ? {} : { bytes };
       }),
       answerTo(listsCall, async () => ({ lists: listDescriptions })),
-      answerTo(pageCall, async ({ list: name, start, limit }) => {
+      answerTo(pageCall, async ({ list: name, prefix, start, limit }) => {
         const list = listsByName.get(name);
         if (list === undefined) throw new Error(`there is no list named ${name}`);
-        return list.page(store, start, limit);
+        return list.page(store, prefix, start, limit);
       }),
       answerTo(actionsCall, async () => ({ actions: actionDescriptions })),
       answerTo(performCall, async ({ request }) => {

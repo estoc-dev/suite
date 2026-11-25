@@ -1,7 +1,7 @@
 import { decodeObject, encodeObject, LinkValue, linkOf } from "@estoc/object";
 import { array, boolean, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { readActionForms, readResultPage, requestOf } from "../src/action-page.ts";
+import { fieldsTaking, readActionForms, readResultPage, requestOf } from "../src/action-page.ts";
 import { entrySchema, type GivenAction, sourceOf, sourceWithActions } from "./fixtures.ts";
 
 const greetingSchema = schema("Greeting", { text: string(), to: link() });
@@ -64,6 +64,23 @@ describe("the forms of the actions", () => {
   it("hold no target for a field that the action names no schema for", async () => {
     const { fields } = await formOf(count);
     expect(fields.map((field) => "target" in field)).toEqual([false, false, false]);
+  });
+});
+
+describe("the fields that take objects written to a schema", () => {
+  it("are those that the forms name that schema for, in the order of the forms", async () => {
+    const farewell = {
+      ...greet,
+      requestSchema: schema("Farewell", { to: link() }),
+      targetSchemas: { to: entrySchema },
+    };
+    const forms = await formsOf(count, greet, farewell);
+    expect(fieldsTaking(forms, entrySchema.link).map(({ form, field }) => [form.title, field.name])).toEqual([
+      ["Greet", "to"],
+      ["Greet", "others"],
+      ["Farewell", "to"],
+    ]);
+    expect(fieldsTaking(forms, greetingSchema.link)).toEqual([]);
   });
 });
 

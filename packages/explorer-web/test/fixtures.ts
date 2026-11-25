@@ -1,4 +1,4 @@
-import { actionSchema, type ListData, listSchema } from "@estoc/explorer";
+import { actionSchema, heldLinks, heldObjects, type ListData, listSchema, type PairList } from "@estoc/explorer";
 import {
   encodeObject,
   itself,
@@ -8,6 +8,7 @@ import {
   objectFormat,
   type Reader,
   type Schema,
+  type Value,
   type ValueMap,
 } from "@estoc/object";
 import { integer, link, optional, schema, string } from "@estoc/schema";
@@ -38,25 +39,45 @@ export function listOf(
   return { description: { name, rows: new LinkValue(rowSchema.link), order, readsBlobs: false }, rowSchema, rows };
 }
 
+/** A list of pairs that every runtime has, with a row for each of `pairs`. */
+export function pairListOf<First extends string, Second extends string>(
+  { name, rowSchema, order }: PairList<First, Second>,
+  ...pairs: readonly (readonly [Link<unknown>, Link<unknown>])[]
+): GivenList {
+  const [first, second] = order;
+  const rows = pairs.map((pair) => ({ [first]: new LinkValue(pair[0]), [second]: new LinkValue(pair[1]) }));
+  return listOf(name, rows, order, rowSchema);
+}
+
+const isSameValue = (held: Value | undefined, asked: Value) =>
+  held instanceof LinkValue && asked instanceof LinkValue ? held.link === asked.link : held === asked;
+
 /**
  * Gives the pages of `lists` by the rule of a runtime, reading the rows as they are when it is
- * asked, and lists no action.
+ * asked, and lists no action. Schemas and Links have no rows where they are not among `lists`.
  */
 export function sourceOf(...lists: readonly GivenList[]): Source & ActionSource {
   const blobs = readerOf(...lists.flatMap(({ rowSchema }) => rowSchema.blobs));
+  const unlisted = [pairListOf(heldObjects), pairListOf(heldLinks)];
   return {
     get: async (link) => blobs.get(link),
     lists: async () => lists.map(({ description }) => encodeObject(listSchema, description)),
-    async page(name, start, limit) {
-      const list = lists.find(({ description }) => description.name === name);
+    async page(name, prefix, start, limit) {
+      const list = [...lists, ...unlisted].find(({ description }) => description.name === name);
       if (list === undefined) throw new Error(`there is no list named ${name}`);
-      const { length } = list.rows;
+      const rowsUnderPrefix = list.rows.filter((row) =>
+        prefix.every((value, at) => {
+          const field = list.description.order[at];
+          return field !== undefined && isSameValue(row[field], value);
+        }),
+      );
+      const { length } = rowsUnderPrefix;
       const first = start < 0 ? Math.max(length + start, 0) : Math.min(start, length);
-      const rows = list.rows.slice(first, first + Math.max(limit, 0));
+      const rows = rowsUnderPrefix.slice(first, first + Math.max(limit, 0));
       return {
         start: first,
         rowCount: length,
-        blobCount: length,
+        blobCount: list.rows.length,
         rows: rows.map((row) => encodeObject(list.rowSchema, row).bytes),
       };
     },
@@ -81,7 +102,7 @@ export interface GivenAction {
 }
 
 /** Lists `actions` and performs them as a runtime does, and gives the blobs of the schemas they name. */
-export function sourceWithActions<S extends Pick<ActionSource, "get">>(
+export function sourceWithActions<S extends Pick<ActionSource, "get" | "page">>(
   source: S,
   ...actions: readonly GivenAction[]
 ): S & ActionSource {

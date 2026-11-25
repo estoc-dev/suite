@@ -1,5 +1,5 @@
 import type { Client, ListData } from "@estoc/explorer";
-import { decodeObject, type Link, memberOf, type Schema, type Value } from "@estoc/object";
+import { decodeObject, type Link, LinkValue, memberOf, type Schema, type Value } from "@estoc/object";
 import type { Field } from "@estoc/schema";
 import { readSchema } from "./schema.ts";
 
@@ -24,7 +24,9 @@ export async function readRowSchema(source: Source, link: Link<Schema>): Promise
 
 /**
  * - `rows` are in the order shown, each with a value for each of `columns` in their order, and none
- *   where the row leaves the field out. `start` is how many rows the list has before them.
+ *   where the row leaves the field out.
+ * - `rowCount` is how many rows are under the prefix the page was read under, and `start` how many
+ *   of them come before `rows`.
  * - `previous` and `next` are where the pages shown before and after this one read from, each left
  *   out where the list as shown ends.
  */
@@ -54,6 +56,7 @@ export async function readListPage(
   source: Source,
   list: ListData,
   { schema, columns }: RowSchema,
+  prefix: readonly Link<unknown>[],
   from: number | undefined,
 ): Promise<ListPage> {
   // By how much the count of the rows before a row changes from a row shown to the one shown after it.
@@ -61,9 +64,13 @@ export async function readListPage(
   const inOrderShown = <T>(front: T, end: T): [T, T] => (step > 0 ? [front, end] : [end, front]);
   // Where a list shown last row first begins is not known before it is read, and the runtime counts a
   // negative start from the end of the list.
-  const page = await (from === undefined && step < 0
-    ? source.page(list.name, -pageSize, pageSize)
-    : source.page(list.name, ...spanFrom(from ?? 0, step)));
+  const [start, limit] = from === undefined && step < 0 ? [-pageSize, pageSize] : spanFrom(from ?? 0, step);
+  const page = await source.page(
+    list.name,
+    prefix.map((link) => new LinkValue(link)),
+    start,
+    limit,
+  );
   const [near, far] = inOrderShown(page.start, page.start + page.rows.length);
   const [first, last] = inOrderShown(0, page.rowCount);
   // The fields a list is sorted by come first, so the order of its rows is read off the first columns.

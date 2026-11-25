@@ -56,9 +56,9 @@ export function App(props: { source: Source & ActionSource }) {
     const shown = place();
     return shown !== undefined && "list" in shown ? shown : undefined;
   });
-  const shownAction = createMemo(() => {
+  const actionPlace = createMemo(() => {
     const shown = place();
-    return shown !== undefined && "action" in shown ? shown.action : undefined;
+    return shown !== undefined && "action" in shown ? shown : undefined;
   });
   // The first list of the runtime is shown while the fragment names no place.
   const shownList = createMemo(() => {
@@ -102,13 +102,22 @@ export function App(props: { source: Source & ActionSource }) {
         <main class={{ pending: isPending(() => place()) }}>
           <Errored fallback={failureView}>
             <Switch fallback={<p class="note">The runtime gives no list of that name.</p>}>
-              <Match when={shownBlob()}>{(blob) => <BlobView reader={props.source} link={blob()} />}</Match>
-              <Match when={shownAction()}>{(action) => <ActionView sessions={sessions} action={action()} />}</Match>
+              <Match when={shownBlob()}>
+                {(blob) => <BlobView source={props.source} sessions={sessions} link={blob()} />}
+              </Match>
+              <Match when={actionPlace()}>{(place) => <ActionView sessions={sessions} place={place()} />}</Match>
               <Match when={place() === actionsPlace}>
                 <ActionsView sessions={sessions} />
               </Match>
               <Match when={shownList()}>
-                {(list) => <ListView source={props.source} list={list()} from={listPlace()?.from} />}
+                {(list) => (
+                  <ListView
+                    source={props.source}
+                    list={list()}
+                    prefix={listPlace()?.prefix ?? []}
+                    from={listPlace()?.from}
+                  />
+                )}
               </Match>
             </Switch>
           </Errored>

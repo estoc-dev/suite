@@ -45,15 +45,15 @@ describe("the forms of the actions", () => {
       {
         title: "Greet",
         request: { link: greet.requestSchema.link },
-        result: { link: greetingSchema.link, title: "Greeting" },
+        result: { schema: { link: greetingSchema.link }, title: "Greeting" },
         fields: [
-          { name: "to", field: { type: "link" }, target: { link: entrySchema.link, title: "Entry" } },
+          { name: "to", field: { type: "link" }, target: { schema: { link: entrySchema.link }, title: "Entry" } },
           { name: "note", field: { type: "string", optional: true } },
           { name: "words", field: { type: "string" } },
           {
             name: "others",
             field: { type: "array", items: { type: "link" }, optional: true },
-            target: { link: entrySchema.link, title: "Entry" },
+            target: { schema: { link: entrySchema.link }, title: "Entry" },
           },
         ],
       },
@@ -120,25 +120,13 @@ describe("the request of a form", () => {
 describe("the page of a result", () => {
   const result = encodeObject(greetingSchema, { text: "hello!", to: new LinkValue(entry.link) });
 
-  it("is read from the bytes of the reply, which the source need not hold", async () => {
-    const { source } = await given(greet);
-    expect(await source.get(result.link)).toBeUndefined();
-    expect(await readResultPage(source, result.bytes)).toMatchObject({
-      kind: "read",
-      page: {
-        inspection: { kind: "object", link: result.link, schema: { kind: "schema", problems: [] } },
-        reading: undefined,
-      },
-    });
-  });
-
-  it("is unread where the source fails to give the schema that the result names", async () => {
+  it("is read from the bytes of the reply and the result schema of the form, with no read of the source", async () => {
     const get = async () => {
       throw new Error("the channel is closed");
     };
-    expect(await readResultPage({ get }, result.bytes)).toEqual({
-      kind: "unread",
-      error: new Error("the channel is closed"),
+    expect(await readResultPage({ get }, await formOf(greet), result.bytes)).toMatchObject({
+      inspection: { kind: "object", link: result.link, schema: { kind: "schema", problems: [] } },
+      reading: undefined,
     });
   });
 });

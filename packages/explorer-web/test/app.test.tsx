@@ -1,4 +1,5 @@
-import { encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
+import { ed25519, loadIdentity, SoftwareSigner, signatureSchema } from "@estoc/identity";
+import { decodeObject, encodeObject, LinkValue, linkOf, type ValueMap } from "@estoc/object";
 import { any, array, boolean, bytes, link, optional, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -418,6 +419,21 @@ describe("the page of the actions", () => {
     expect(textsOf(root, "header [aria-current]")).toEqual(["Actions"]);
   });
 
+  it("lists the actions again after a read of them that failed, and reads them once from then on", async () => {
+    location.hash = "#actions";
+    const source = sourceWithActions(sourceOf(listOf("Entries", entriesOf(1))), greet, tick);
+    const actions = vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "[role=alert]")).toEqual(["database is locked"]));
+    await open("#list=Entries");
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Entries"]));
+    await open("#actions");
+    await vi.waitFor(() => expect(cellsOf(root).map(([title]) => title)).toEqual(["Greet", "Tick"]));
+    await open(placeOf(greet));
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    expect(actions).toHaveBeenCalledTimes(2);
+  });
+
   it("says that the runtime lists no action", async () => {
     location.hash = "#actions";
     const root = show(sourceOf());
@@ -477,17 +493,57 @@ describe("the page of an action", () => {
     expect(textsOf(root, "[role=alert]")).toEqual([]);
   });
 
-  it("shows the commits while the result is read", async () => {
+  it("shows the result of an action with no read of the source", async () => {
     location.hash = placeOf(greet);
+    const { source, close } = closing(
+      sourceWithActions(sourceOf(), {
+        ...greet,
+        async perform(request) {
+          close();
+          return { ...(await greet.perform(request)), commits: [other] };
+        },
+      }),
+    );
+    const performed = vi.spyOn(source, "perform");
+    const root = show(source);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
+    type(root, "words", "good day");
+    type(root, "to", entry.link);
+    perform(root);
+    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    expect(textsOf(root, "section .head .title")).toEqual(["Greeting"]);
+    expect(hrefsOf(root, ".commits a")).toEqual([[other, `#${other}`]]);
+    expect(textsOf(root, "[role=alert]")).toEqual([]);
+    expect(performed).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the commits while it reads the blobs that it reads the result as a signature by", async () => {
+    const { publish, signatures } = loadIdentity([ed25519]);
+    const signer = SoftwareSigner.fromSecretKey(ed25519, new Uint8Array(32).fill(1));
+    const signature = await signatures
+      .actor(signer, await publish(signer, { at: 1763078400000 }), async (inHand) => inHand)
+      .sign(entry);
+    const signatureBytes = signature.blobs.find((blob) => linkOf(blob) === signature.link);
+    if (signatureBytes === undefined) throw new Error("the blobs of the signature do not hold it");
+    const others = signature.blobs.filter((blob) => blob !== signatureBytes);
+    const sign: GivenAction = {
+      requestSchema: schema("Sign", {}),
+      resultSchema: signatureSchema,
+      perform: async () => ({ result: decodeObject(signatureBytes, signatureSchema).data, commits: [other] }),
+    };
+    location.hash = placeOf(sign);
     const reading = gate();
     let isPerformed = false;
-    const source = sourceWithActions(sourceOf(), {
-      ...greet,
-      async perform(request) {
-        isPerformed = true;
-        return { ...(await greet.perform(request)), commits: [other] };
-      },
-    });
+    const source = sourceHolding(
+      sourceWithActions(sourceOf(), {
+        ...sign,
+        async perform(request) {
+          isPerformed = true;
+          return sign.perform(request);
+        },
+      }),
+      ...others,
+    );
     const root = show({
       ...source,
       async get(asked) {
@@ -495,39 +551,14 @@ describe("the page of an action", () => {
         return source.get(asked);
       },
     });
-    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Greet"]));
-    type(root, "words", "good day");
-    type(root, "to", entry.link);
+    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Sign"]));
     perform(root);
     await vi.waitFor(() => expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]));
     expect(textsOf(root, "section .note")).toEqual(["Reading the result."]);
     expect(hrefsOf(root, ".commits a")).toEqual([[other, `#${other}`]]);
     reading.open();
-    await vi.waitFor(() => expect(textsOf(root, "section tbody tr")).toContain('text"good day!"string'));
+    await vi.waitFor(() => expect(textsOf(root, ".reading .band")).toEqual(["Read by this page as a signature"]));
     expect(textsOf(root, "section .note")).not.toContain("Reading the result.");
-  });
-
-  it("shows the commits of an action whose result could not be read, and says so under the result", async () => {
-    location.hash = placeOf(tick);
-    const { source, close } = closing(
-      sourceWithActions(sourceOf(), {
-        ...tick,
-        async perform() {
-          close();
-          return { result: {}, commits: [entry.link] };
-        },
-      }),
-    );
-    const performed = vi.spyOn(source, "perform");
-    const root = show(source);
-    await vi.waitFor(() => expect(textsOf(root, "h1")).toEqual(["Tick"]));
-    perform(root);
-    await vi.waitFor(() =>
-      expect(textsOf(root, "[role=alert]")).toEqual(["The result could not be read: the channel is closed"]),
-    );
-    expect(textsOf(root, "h2")).toEqual(["Result", "Commits"]);
-    expect(hrefsOf(root, ".commits a")).toEqual([[entry.link, `#${entry.link}`]]);
-    expect(performed).toHaveBeenCalledTimes(1);
   });
 
   it("says that an action which committed nothing did so", async () => {

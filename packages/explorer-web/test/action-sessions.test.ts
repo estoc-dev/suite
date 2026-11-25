@@ -43,6 +43,17 @@ describe("the sessions of the actions", () => {
     expect(await sessions.all()).toBe(await sessions.all());
     expect(actions).toHaveBeenCalledTimes(1);
   });
+
+  it("read the forms again after a read that failed, and keep the sessions of the one that did not", async () => {
+    const source = sourceWithActions(sourceOf(), greet, tick);
+    const actions = vi.spyOn(source, "actions").mockRejectedValueOnce(new Error("database is locked"));
+    const sessions = new ActionSessions(source);
+    await expect(sessions.all()).rejects.toThrow("database is locked");
+    const read = await sessions.all();
+    expect(read.map(({ form }) => form.title)).toEqual(["Greet", "Tick"]);
+    expect(await sessions.all()).toBe(read);
+    expect(actions).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("the session of an action", () => {
@@ -53,7 +64,7 @@ describe("the session of an action", () => {
     expect(session.state()).toBeUndefined();
   });
 
-  it("has the runtime perform the action on the texts, and holds the commits and the page of the result", async () => {
+  it("has the runtime perform the action on the texts, and holds the bytes of the result and the commits", async () => {
     const commits = [entry.link, other];
     const session = await sessionOf({
       ...greet,
@@ -63,37 +74,24 @@ describe("the session of an action", () => {
     session.setText("to", entry.link);
     await session.perform();
     const result = encodeObject(greetingSchema, { text: "hello!", to: new LinkValue(entry.link) });
-    const state = session.state();
-    expect(state).toMatchObject({ kind: "performed", commits });
-    expect(state?.kind === "performed" && (await state.result)).toMatchObject({
-      kind: "read",
-      page: { inspection: { kind: "object", link: result.link } },
-    });
+    expect(session.state()).toEqual({ kind: "performed", result: result.bytes, commits });
   });
 
-  it("holds the commits of a reply whose result could not be read, and has the action performed once", async () => {
-    const commits = [entry.link];
+  it("reads the page of a result that the source has since stopped giving blobs for", async () => {
     let isClosed = false;
-    const perform = vi.fn(async () => {
-      isClosed = true;
-      return { result: {}, commits };
-    });
-    const source = sourceWithActions(sourceOf(), { ...tick, perform });
+    const source = sourceWithActions(sourceOf(), greet);
     const session = await sessionOver({
       ...source,
       async get(asked) {
-        if (isClosed) throw new Error("the channel closed before the reply");
+        if (isClosed) throw new Error("database is locked");
         return source.get(asked);
       },
     });
-    await session.perform();
-    const state = session.state();
-    expect(state).toMatchObject({ kind: "performed", commits });
-    expect(state?.kind === "performed" && (await state.result)).toEqual({
-      kind: "unread",
-      error: new Error("the channel closed before the reply"),
+    isClosed = true;
+    const result = encodeObject(greetingSchema, { text: "hello!", to: new LinkValue(entry.link) });
+    expect(await session.readPageOf(result.bytes)).toMatchObject({
+      inspection: { kind: "object", link: result.link, schema: { kind: "schema", problems: [] } },
     });
-    expect(perform).toHaveBeenCalledTimes(1);
   });
 
   it("holds why the runtime failed", async () => {

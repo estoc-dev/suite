@@ -1,15 +1,15 @@
 import type { Link, Schema } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, For, Loading, Match, Show, Switch } from "solid-js";
-import { entryOf, type FormField, type ResultPage, type TitledSchema } from "./action-page.ts";
+import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
 
-const titledSchemaView = ({ link, title }: TitledSchema): JSX.Element => (
+const titledSchemaView = ({ schema, title }: TitledSchema): JSX.Element => (
   <>
-    <span class="title">{title}</span> {linkView(link)}
+    <span class="title">{title}</span> {linkView(schema.link)}
   </>
 );
 
@@ -42,30 +42,9 @@ function inputView({ name, field }: FormField, session: ActionSession): JSX.Elem
   );
 }
 
-function ResultView(props: { result: Promise<ResultPage> }) {
-  const result = createMemo(() => props.result);
-  const read = () => {
-    const held = result();
-    return held.kind === "read" ? held.page : undefined;
-  };
-  const unread = () => {
-    const held = result();
-    return held.kind === "unread" ? held : undefined;
-  };
-  return (
-    <Loading fallback={<p class="note">Reading the result.</p>}>
-      <Switch>
-        <Match when={read()}>{(page) => <>{blobPageView(page())}</>}</Match>
-        <Match when={unread()}>
-          {(unread) => (
-            <p class="problem" role="alert">
-              The result could not be read: {messageOf(unread().error)}
-            </p>
-          )}
-        </Match>
-      </Switch>
-    </Loading>
-  );
+function ResultView(props: { session: ActionSession; result: Uint8Array }) {
+  const page = createMemo(() => props.session.readPageOf(props.result));
+  return <Loading fallback={<p class="note">Reading the result.</p>}>{blobPageView(page())}</Loading>;
 }
 
 function FormView(props: { session: ActionSession }) {
@@ -91,7 +70,7 @@ function FormView(props: { session: ActionSession }) {
       >
         <dl class="head">
           <dt>Request</dt>
-          <dd>{titledSchemaView({ link: form().request.link, title: form().title })}</dd>
+          <dd>{titledSchemaView({ schema: form().request, title: form().title })}</dd>
           <dt>Result</dt>
           <dd>{titledSchemaView(form().result)}</dd>
         </dl>
@@ -118,7 +97,7 @@ function FormView(props: { session: ActionSession }) {
                       {field.target !== undefined && (
                         <>
                           <span class="muted"> · to </span>
-                          <a class="link" href={`#${field.target.link}`} title={field.target.link}>
+                          <a class="link" href={`#${field.target.schema.link}`} title={field.target.schema.link}>
                             {field.target.title}
                           </a>
                         </>
@@ -152,7 +131,7 @@ function FormView(props: { session: ActionSession }) {
             <>
               <h2>Result</h2>
               <section class="card">
-                <ResultView result={performed().result} />
+                <ResultView session={props.session} result={performed().result} />
               </section>
               <h2>Commits</h2>
               <section class="card">

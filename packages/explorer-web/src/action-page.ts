@@ -7,7 +7,6 @@ import {
   LinkValue,
   linkOf,
   memberOf,
-  type Reader,
   type Schema,
   type Value,
 } from "@estoc/object";
@@ -19,7 +18,7 @@ import { typeNameOf } from "./text.ts";
 export type ActionSource = Pick<Client, "get" | "actions" | "perform">;
 
 export interface TitledSchema {
-  readonly link: Link<Schema>;
+  readonly schema: Schema;
   readonly title: string;
 }
 
@@ -39,10 +38,10 @@ export interface ActionForm {
 }
 
 export async function readActionForms(source: ActionSource): Promise<ActionForm[]> {
-  const readTitledSchema = async (link: Link<Schema>): Promise<TitledSchema> => ({
-    link,
-    title: (await readSchema(source, link)).document.title,
-  });
+  const readTitledSchema = async (link: Link<Schema>): Promise<TitledSchema> => {
+    const { schema, document } = await readSchema(source, link);
+    return { schema, title: document.title };
+  };
   return Promise.all(
     (await source.actions()).map(async ({ data }) => {
       const { schema, document } = await readSchema(source, data.request.link);
@@ -80,7 +79,6 @@ function linkIn(text: string, name: string): LinkValue<unknown> {
   return new LinkValue(text);
 }
 
-/** What the field holds in a request for the text typed for it, or nothing where the field is left out. */
 function valueIn(text: string, { name, field }: FormField): Value | undefined {
   const entry = entryOf(field);
   const isLeftEmpty = entry === undefined || text.trim() === "";
@@ -111,21 +109,18 @@ export function requestOf(form: ActionForm, texts: ReadonlyMap<string, string>):
   return encodeObject(form.request, data).bytes;
 }
 
-export type ResultPage =
-  | { readonly kind: "read"; readonly page: BlobPage }
-  | { readonly kind: "unread"; readonly error: unknown };
-
 /**
- * The reply holds the bytes of the result, and the schema it names and what it links to are read
- * from the source. A read that fails says nothing of how the action went, so it gives a page that
- * is unread in place of throwing.
+ * A result is written to the result schema of its action, which the form holds, so what the result
+ * holds is shown from the bytes of the reply with no read of the source. What the page reads the
+ * result as beyond that may read other blobs from the source.
  */
-export async function readResultPage(source: Pick<ActionSource, "get">, result: Uint8Array): Promise<ResultPage> {
-  const link = linkOf(result);
-  const reader: Reader = { get: async (asked) => (asked === link ? result : source.get(asked)) };
-  try {
-    return { kind: "read", page: await readBlobPage(reader, link) };
-  } catch (error) {
-    return { kind: "unread", error };
-  }
+export function readResultPage(
+  source: Pick<ActionSource, "get">,
+  form: ActionForm,
+  result: Uint8Array,
+): Promise<BlobPage> {
+  const held = new Map<Link<unknown>, Uint8Array>(
+    [result, ...form.result.schema.blobs].map((bytes) => [linkOf(bytes), bytes]),
+  );
+  return readBlobPage({ get: async (link) => held.get(link) ?? source.get(link) }, linkOf(result));
 }

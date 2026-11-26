@@ -8,11 +8,13 @@ import {
   ObjectValue,
   objectFormat,
   objectsOf,
+  rootSchema,
   type Schema,
 } from "@estoc/object";
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
-import { assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
+  anyHeldObject,
   type Backend,
   heldObject,
   type Index,
@@ -68,6 +70,10 @@ async function rowDataOf<F>(range: AsyncIterable<{ readonly data: F }>): Promise
 
 const titlesIn = async (store: Store, index: Index<{ readonly title: string }>) =>
   (await rowDataOf((await store.scan(index)).orderedBy("title").range([]))).map(({ title }) => title);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("an index of rows taken along paths from the statements recorded", () => {
   it("holds a row of each statement of the schema, with the value that each path reaches", async () => {
@@ -154,6 +160,22 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(new Set(requestedLinks)).toEqual(new Set([statement.link, ada.link, lisbon.link]));
   });
 
+  it("decodes a statement once for all the parts of a union that follow its Record to it", async () => {
+    const titleOf = (path: ValuePath<string>) => indexOfRows(titled, { title: path });
+    const titles = titleOf(recordedCard.field("title")).union(
+      titleOf(recordedStatement(place).field("city")),
+      titleOf(recordedStatement(schema("Trip", { name: string() })).field("name")),
+    );
+    const people = ["Ada", "Grace", "Edsger"].map((name) =>
+      encodeObject(person, { name, home: new LinkValue(lisbon.link) }),
+    );
+    const store = await storeRecording(...people);
+    for await (const _ of store.records());
+    const decode = vi.spyOn(objectFormat, "decode");
+    expect(await titlesIn(store, titles)).toEqual([]);
+    expect(decode).toHaveBeenCalledTimes(people.length);
+  });
+
   it("holds the rows of an index that a function gives the rows of as well, in a union with it", async () => {
     const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [
       { title: data.title.toUpperCase() },
@@ -196,6 +218,151 @@ describe("an index of rows taken along paths from the objects held of a schema",
   });
 });
 
+describe("an index of rows taken along paths from every object held", () => {
+  const written = schema("Written", { object: link(), schema: link<Schema>() });
+  const schemasOfObjects = indexOfRows(written, { object: anyHeldObject.link, schema: anyHeldObject.schema });
+  const linked = schema("Linked", { source: link(), target: link() });
+  const image = new TextEncoder().encode("an image");
+  const statement = cardOf("a");
+
+  async function storeHoldingAnImage(): Promise<Store> {
+    const store = await storeRecording(statement);
+    await store.write({ roots: [linkOf(image)], blobs: [image] });
+    return store;
+  }
+
+  it("holds a row of each object with the schema it is written to, its own link for one written to itself", async () => {
+    const rows = (await (await storeHoldingAnImage()).scan(schemasOfObjects)).orderedBy("object");
+    const schemaOf = async (object: Link<unknown>) =>
+      (await rowDataOf(rows.range([new LinkValue(object)]))).map(({ schema }) => schema.link);
+    expect(await schemaOf(statement.link)).toEqual([card.link]);
+    expect(await schemaOf(card.link)).toEqual([rootSchema.link]);
+    expect(await schemaOf(rootSchema.link)).toEqual([rootSchema.link]);
+  });
+
+  it("holds no row of a blob that is not an object", async () => {
+    const held = schema("Held", { object: link() });
+    const objects = indexOfRows(held, { object: anyHeldObject.link });
+    const rows = await (await storeHoldingAnImage()).scan(objects);
+    const links = (await rowDataOf(rows)).map(({ object }) => object.link);
+    expect(links).toContain(statement.link);
+    expect(links).not.toContain(linkOf(image));
+    expect(rows.failures).toEqual([]);
+  });
+
+  it("holds a row of each link written in an object, that of its schema among them unless it is written to itself", async () => {
+    const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
+    const rows = (await (await storeHoldingAnImage()).scan(links)).orderedBy("source", "target");
+    const targetsOf = async (source: Link<unknown>) =>
+      (await rowDataOf(rows.range([new LinkValue(source)]))).map(({ target }) => target.link);
+    expect((await targetsOf(statement.link)).sort()).toEqual([card.link, ada.link].sort());
+    expect(await targetsOf(rootSchema.link)).toEqual([]);
+  });
+
+  it("decodes each blob once for its schema and the links it holds", async () => {
+    const links = indexOfRows(linked, { source: anyHeldObject.schema, target: anyHeldObject.eachLink() });
+    const store = await storeHoldingAnImage();
+    const heldLinks: Link<unknown>[] = [];
+    for await (const held of store.blobs()) heldLinks.push(held);
+    const decode = vi.spyOn(objectFormat, "decode");
+    await store.scan(links);
+    // Each row is decoded as well, once it is encoded.
+    const decodedLinks = decode.mock.calls.map(([bytes]) => linkOf(bytes));
+    expect(decodedLinks.filter((decoded) => heldLinks.includes(decoded)).sort()).toEqual(heldLinks.sort());
+  });
+
+  it("holds one value under the fields of a row whose paths expand at the same place", async () => {
+    const links = indexOfRows(linked, { source: anyHeldObject.eachLink(), target: anyHeldObject.eachLink() });
+    const rows = await rowDataOf(await (await storeHoldingAnImage()).scan(links));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter(({ source, target }) => source.link !== target.link)).toEqual([]);
+  });
+});
+
+describe("an index of rows taken along paths through the closure of a link", () => {
+  const trip = schema("Trip", { name: string(), stops: array(link()) });
+  const stop = schema("Stop", { trip: string(), city: string() });
+  const recordedTrip = recordedStatement(trip);
+  const stops = indexOfRows(stop, {
+    trip: recordedTrip.field("name"),
+    city: recordedTrip.link.eachInClosure().objectOf(place).field("city"),
+  });
+  const porto = encodeObject(place, { city: "Porto" });
+  const cityless = objectFormat.encode(new ObjectValue(place.link, {}));
+  const tripTo = (name: string, ...stopLinks: readonly Link<unknown>[]) =>
+    encodeObject(trip, { name, stops: stopLinks.map((stopLink) => new LinkValue(stopLink)) });
+
+  async function storeRecordingTrips(...trips: readonly EncodedObject[]): Promise<Store> {
+    const store = new Store(new MemoryBackend());
+    await store.record({
+      statements: trips.map(({ link }) => link),
+      blobs: [...trips.map(({ bytes }) => bytes), porto.bytes, cityless, ...trip.blobs, ...closure],
+    });
+    return store;
+  }
+
+  const stopsIn = async (store: Store) => rowDataOf((await store.scan(stops)).orderedBy("trip", "city").range([]));
+
+  it("holds a row of each object of the schema in the closure, with what the other paths reach", async () => {
+    const store = await storeRecordingTrips(tripTo("south", lisbon.link, porto.link, ada.link), tripTo("home"));
+    expect(await stopsIn(store)).toEqual([
+      { trip: "south", city: "Lisbon" },
+      { trip: "south", city: "Porto" },
+    ]);
+  });
+
+  it("holds no row of a statement where a path that does not expand reaches no value", async () => {
+    const home = schema("Home", { owner: string(), city: string() });
+    const homes = indexOfRows(home, {
+      owner: owner.field("name"),
+      city: recordedCard.link.eachInClosure().objectOf(place).field("city"),
+    });
+    const store = await storeRecording(cardOf("of a person"), cardOf("of a place", lisbon.link));
+    expect(await rowDataOf(await store.scan(homes))).toEqual([{ owner: "Ada", city: "Lisbon" }]);
+  });
+
+  it("holds no row of a blob in the closure that names the schema and does not fit it, and the rows of the others", async () => {
+    const store = await storeRecordingTrips(tripTo("south", lisbon.link, linkOf(cityless), porto.link));
+    expect((await store.scan(stops)).failures).toEqual([]);
+    expect(await stopsIn(store)).toEqual([
+      { trip: "south", city: "Lisbon" },
+      { trip: "south", city: "Porto" },
+    ]);
+  });
+
+  it.each([
+    ["of the closure", stops],
+    [
+      "that a path follows from a link it expanded to",
+      indexOfRows(stop, {
+        trip: recordedTrip.field("name"),
+        city: recordedTrip.eachLink().objectOf(place).field("city"),
+      }),
+    ],
+  ])("is not filled where the store fails to give a blob %s", async (_, index) => {
+    const backend = new MemoryBackend();
+    const diskError = new Error("the disk is gone");
+    let isFailing = false;
+    const store = new Store({
+      get: (link) => (isFailing && link === porto.link ? Promise.reject(diskError) : backend.get(link)),
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      blobs: (start) => backend.blobs(start),
+    });
+    const south = tripTo("south", lisbon.link, porto.link);
+    await store.record({ statements: [south.link], blobs: [south.bytes, porto.bytes, ...trip.blobs, ...closure] });
+    // The Records are listed while every blob can be read, so the scan fails where the paths read.
+    for await (const _ of store.records());
+    isFailing = true;
+    await expect(store.scan(index)).rejects.toBe(diskError);
+    isFailing = false;
+    expect(await rowDataOf((await store.scan(index)).orderedBy("trip", "city").range([]))).toEqual([
+      { trip: "south", city: "Lisbon" },
+      { trip: "south", city: "Porto" },
+    ]);
+  });
+});
+
 describe("a union of indexes", () => {
   const aliased = schema("Aliased", { title: string(), alias: optional(string()) });
   const title = recordedCard.field("title");
@@ -219,14 +386,11 @@ describe("the definition of an index", () => {
   it("holds the schema of the rows and what each part reads and takes", () => {
     const titles = indexOfRows(titled, { title: heldObject(card).field("title") });
     const { definition } = ownedCards.union(ownedCards);
-    const follow = (name: string, followed: Schema) => [
-      { step: "field", name },
-      { step: "object", schema: linkTo(followed) },
-    ];
-    const toCard = follow("object", card);
+    const as = (taken: Schema) => ({ step: "as", schema: linkTo(taken) });
+    const follow = (name: string, followed: Schema) => [{ step: "field", name }, { step: "object" }, as(followed)];
+    const toCard = [as(recordSchema), ...follow("object", card)];
     const toOwner = [...toCard, ...follow("owner", person)];
     const part = {
-      schema: linkTo(recordSchema),
       paths: {
         card: [...toCard, { step: "link" }],
         title: [...toCard, { step: "field", name: "title" }],
@@ -235,8 +399,37 @@ describe("the definition of an index", () => {
       },
     };
     expect(definition?.data).toEqual({ rows: linkTo(ownedCard), parts: [part, part] });
-    expect(titles.definition?.data.parts).toEqual([
-      { schema: linkTo(card), paths: { title: [{ step: "field", name: "title" }] } },
+    expect(titles.definition?.data.parts).toEqual([{ paths: { title: [as(card), { step: "field", name: "title" }] } }]);
+  });
+
+  it("holds no step that takes the object read as a schema where the paths say none, and the steps that expand", () => {
+    const linked = schema("Linked", { source: link(), target: link() });
+    const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
+    const closures = indexOfRows(linked, {
+      source: anyHeldObject.link,
+      target: anyHeldObject.link.eachInClosure().objectOf(card).field("owner"),
+    });
+    expect(links.definition?.data.parts).toEqual([
+      { paths: { source: [{ step: "link" }], target: [{ step: "eachLink" }] } },
+    ]);
+    expect(closures.definition?.data.parts).toEqual([
+      {
+        paths: {
+          source: [{ step: "link" }],
+          target: [
+            { step: "link" },
+            { step: "eachInClosure" },
+            { step: "object" },
+            { step: "as", schema: linkTo(card) },
+            { step: "field", name: "owner" },
+          ],
+        },
+      },
+    ]);
+    const written = schema("Written", { object: link(), schema: link<Schema>() });
+    const schemasOfObjects = indexOfRows(written, { object: anyHeldObject.link, schema: anyHeldObject.schema });
+    expect(schemasOfObjects.definition?.data.parts).toEqual([
+      { paths: { object: [{ step: "link" }], schema: [{ step: "schema" }] } },
     ]);
   });
 
@@ -298,11 +491,50 @@ describe("an index of rows taken along paths", () => {
     );
   });
 
-  it("is refused where its paths start at objects of two schemas", () => {
+  it("is refused where its paths take one object as two schemas", () => {
     const pair = schema("Pair", { title: string(), name: string() });
     expect(() => indexOfRows(pair, { title, name: heldObject(person).field("name") })).toThrow(
-      "the paths of a part start at one schema, and that of name at another",
+      "the path of name in Pair takes as Person an object that another path takes as Record",
     );
+    const followed = recordedCard.field("owner");
+    const [name, city] = [followed.objectOf(person).field("name"), followed.objectOf(place).field("city")];
+    expect(() => indexOfRows(pair, { title: city, name })).toThrow(
+      "the path of name in Pair takes as Person an object that another path takes as Place",
+    );
+  });
+
+  it("reads the objects of a schema alone where every path takes the object read as that schema", async () => {
+    const backend = new MemoryBackend();
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store({
+      get: (link) => {
+        requestedLinks.push(link);
+        return backend.get(link);
+      },
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      blobs: (start) => backend.blobs(start),
+    });
+    const statement = cardOf("a");
+    await store.record({ statements: [statement.link], blobs: [statement.bytes, ...closure] });
+    const linked = schema("Linked", { record: link(), statement: link() });
+    const record = heldObject(recordSchema);
+    const ofRecords = indexOfRows(linked, { record: record.link, statement: record.field("object") });
+    const ofAnyObject = indexOfRows(linked, { record: anyHeldObject.link, statement: record.field("object") });
+    for await (const _ of store.records());
+    requestedLinks.length = 0;
+    const rows = await rowDataOf(await store.scan(ofRecords));
+    expect(requestedLinks).toEqual([]);
+    expect(await rowDataOf(await store.scan(ofAnyObject))).toEqual(rows);
+    expect(requestedLinks).toContain(ada.link);
+  });
+
+  it("is refused where its paths expand at two places", () => {
+    const pair = schema("Pair", { left: link(), right: link() });
+    const refusal = "the path of right in Pair expands at a second place, and a part expands at one";
+    const closure = anyHeldObject.link.eachInClosure();
+    expect(() => indexOfRows(pair, { left: anyHeldObject.eachLink(), right: closure })).toThrow(refusal);
+    expect(() => indexOfRows(pair, { left: closure, right: closure.eachInClosure() })).toThrow(refusal);
   });
 
   it("takes the paths that the compiler finds to fit the rows and the schemas they pass", () => {
@@ -317,6 +549,17 @@ describe("an index of rows taken along paths", () => {
     const followed = title.objectOf(card);
     expect(() => indexOfRows(titled, { title: followed.field("title") })).toThrow(
       "follows string, and only a link leads to an object",
+    );
+    // @ts-expect-error A path that does not say the schema of an object takes no field of it.
+    const unsaid: ValuePath<string> = anyHeldObject.field("title");
+    expect(() => indexOfRows(titled, { title: unsaid })).toThrow(
+      "takes the field title of an object whose schema it does not say",
+    );
+    const linked = schema("Linked", { title: link() });
+    // @ts-expect-error A string has no closure.
+    const expanded = title.eachInClosure();
+    expect(() => indexOfRows(linked, { title: expanded })).toThrow(
+      "expands the closure of string, which is taken of a link",
     );
   });
 });

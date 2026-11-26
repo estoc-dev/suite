@@ -1,8 +1,8 @@
-import { type Link, LinkValue, namedSchemaOf, objectsOf, type Reader } from "@estoc/object";
+import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { closureIn } from "./batch.ts";
+import { recordedStatement, type ValuePath } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
-import { indexOver, selectedRecords } from "./source.ts";
+import { indexOfRows } from "./source.ts";
 import type { View } from "./view.ts";
 import { writtenObjectSchema } from "./written-object.ts";
 
@@ -26,22 +26,18 @@ export type ArrivalsView = View<ArrivalData, Arrivals>;
  * - The closure of each root is read once for its record, so blobs that many closures share are
  *   read once for each.
  */
-export function arrivalsView(schema: { readonly link: Link<unknown> }): ArrivalsView {
-  async function* arrivalsOf(root: Link<unknown>, at: number, reader: Reader): AsyncIterable<ArrivalData> {
-    yield { object: new LinkValue(root), at };
-    for (const [blob, bytes] of await closureIn(reader, root))
-      if (blob !== root && namedSchemaOf(bytes) === schema.link) yield { object: new LinkValue(blob), at };
-  }
-  const arrivalsOfBundles = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }, reader) =>
-    arrivalsOf(data.bundle.link, data.at, reader),
-  );
-  const arrivalsOfWrittenObjects = indexOver(
-    selectedRecords(objectsOf(writtenObjectSchema)),
-    arrivalSchema,
-    ({ data }, reader) => arrivalsOf(data.object.link, data.at, reader),
-  );
+export function arrivalsView(schema: Schema): ArrivalsView {
+  // The root has a row whatever it is, and a root of `schema` has the same row of both parts.
+  const arrivalsOf = (root: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
+    indexOfRows(arrivalSchema, { object: root, at }).union(
+      indexOfRows(arrivalSchema, { object: root.eachInClosure().objectOf(schema).link, at }),
+    );
+  const inbound = recordedStatement(inboundSchema);
+  const writtenObject = recordedStatement(writtenObjectSchema);
   return {
-    index: arrivalsOfBundles.union(arrivalsOfWrittenObjects),
+    index: arrivalsOf(inbound.field("bundle"), inbound.field("at")).union(
+      arrivalsOf(writtenObject.field("object"), writtenObject.field("at")),
+    ),
     read: (rows) => {
       const orderedRows = rows.orderedBy("object", "at");
       return {

@@ -1,8 +1,10 @@
 import {
   decodeObject,
   type EncodedObject,
+  itself,
   type Link,
-  namedSchemaOf,
+  type ObjectValue,
+  objectFormat,
   type Reader,
   type Schema,
   type ValueMap,
@@ -11,15 +13,19 @@ import {
 export class ScannedBlob {
   readonly link: Link<unknown>;
   readonly reader: { get(link: Link<unknown>): Promise<Uint8Array> };
-  #namedSchema: { readonly link: Link<unknown> | undefined } | undefined;
+  #namedSchema: Promise<Link<Schema> | undefined> | undefined;
+  #objectValue: Promise<ObjectValue | undefined> | undefined;
   readonly #objects = new Map<object, unknown>();
   readonly #blobsByLink = new Map<Link<unknown>, ScannedBlob>();
   #readFailure: { readonly error: unknown } | undefined;
 
   /** `object` is what `link` names where an index derived it, so that it is not read and validated again. */
-  constructor(link: Link<unknown>, store: Reader, object?: { readonly schema: object }) {
+  constructor(link: Link<unknown>, store: Reader, object?: { readonly schema: { readonly link: Link<Schema> } }) {
     this.link = link;
-    if (object !== undefined) this.#objects.set(object.schema, object);
+    if (object !== undefined) {
+      this.#objects.set(object.schema, object);
+      this.#namedSchema = Promise.resolve(object.schema.link);
+    }
     this.reader = readerOnce(async (blob) => {
       try {
         const bytes = await store.get(blob);
@@ -38,17 +44,41 @@ export class ScannedBlob {
 
   /** A blob of the closure of this one, the same one for a link however often it is asked for. */
   blobAt(link: Link<unknown>): ScannedBlob {
+    if (link === this.link) return this;
     const blob = this.#blobsByLink.get(link) ?? new ScannedBlob(link, this.reader);
     this.#blobsByLink.set(link, blob);
     return blob;
   }
 
+  #readObjectValue(): Promise<ObjectValue | undefined> {
+    this.#objectValue ??= this.reader.get(this.link).then((bytes) => {
+      try {
+        return objectFormat.decode(bytes);
+      } catch {
+        return undefined;
+      }
+    });
+    return this.#objectValue;
+  }
+
+  /** None where the blob is not an object. */
+  namedSchema(): Promise<Link<Schema> | undefined> {
+    this.#namedSchema ??= this.#readObjectValue().then(
+      (object) => object && ((object.schema === itself ? this.link : object.schema) as Link<Schema>),
+    );
+    return this.#namedSchema;
+  }
+
+  /** The links written in the object, and none where the blob is not an object. */
+  async links(): Promise<Iterable<Link<unknown>>> {
+    const object = await this.#readObjectValue();
+    return object === undefined ? [] : objectFormat.links(object);
+  }
+
   async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {
     if (!this.#objects.has(schema)) {
-      const bytes = await this.reader.get(this.link);
-      this.#namedSchema ??= { link: namedSchemaOf(bytes) };
-      const isOfSchema = this.#namedSchema.link === schema.link;
-      this.#objects.set(schema, isOfSchema ? decodeObject(bytes, schema) : undefined);
+      const isOfSchema = (await this.namedSchema()) === schema.link;
+      this.#objects.set(schema, isOfSchema ? decodeObject(await this.reader.get(this.link), schema) : undefined);
     }
     return this.#objects.get(schema) as EncodedObject<F> | undefined;
   }

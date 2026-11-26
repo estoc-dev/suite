@@ -155,7 +155,7 @@ export class KeptRows {
   }
 }
 
-export const emptyRows: RowsByIndex = {
+const emptyRows: RowsByIndex = {
   blobCount: 0,
   records: async () => new ListedLinks(),
   heldBlobs: async () => new ListedLinks(),
@@ -165,10 +165,9 @@ export const emptyRows: RowsByIndex = {
 };
 
 /**
- * - What is added can be among the blobs of `rows` already, so the rows and their failures are those
- *   of both together, and each blob is counted once.
- * - What is added adds nothing to what is recorded: a store stages no Record, and nothing is
- *   recorded in a collection.
+ * - A batch can hold what its store holds already, so the rows and their failures are those of the
+ *   store once the batch is written, and the blobs counted are the ones it would then hold.
+ * - A store stages no Record, so the batch adds nothing to what is recorded.
  * - It is for one scan, and nothing is kept of its rows for the next.
  */
 export async function rowsWithAdded(
@@ -177,6 +176,11 @@ export async function rowsWithAdded(
   reader: Reader,
 ): Promise<RowsByIndex> {
   return new AddedRows(rows, await (await rows.heldBlobs()).adding(addedBlobs), reader);
+}
+
+/** `members` lists each of them once. It is for one scan, as the rows of a batch are. */
+export function rowsOfMembers(members: readonly Link<unknown>[], reader: Reader): RowsByIndex {
+  return new AddedRows(emptyRows, new ListedLinks(members), reader);
 }
 
 class AddedRows implements RowsByIndex {

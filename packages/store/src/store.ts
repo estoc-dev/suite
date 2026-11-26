@@ -10,7 +10,7 @@ import {
   recordsOf,
 } from "./batch.ts";
 import { collectionSchema, membersOf } from "./collection.ts";
-import { emptyRows, KeptRows, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import { KeptRows, rowsOfMembers, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -162,9 +162,7 @@ export class StoreOf implements Store {
 
   async heldCollection(link: Link<unknown>): Promise<HeldCollection> {
     const members = membersOf(await readObject(this, link, collectionSchema));
-    return {
-      scan: async (index, options) => scannedRows(await rowsWithAdded(emptyRows, members, this), index, options),
-    };
+    return { scan: (index, options) => scannedRows(rowsOfMembers(members, this), index, options) };
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(

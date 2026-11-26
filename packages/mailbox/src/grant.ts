@@ -30,9 +30,7 @@ export const mailboxGrants = indexOver(
       signature: new LinkValue(signature.link),
     };
   },
-)
-  .orderedBy("from", "to", "at", "signature")
-  .named("Mailbox Grants");
+).orderedBy("from", "to", "at", "signature");
 
 export interface MailboxGrant {
   readonly object: EncodedObject<MailboxGrantData>;

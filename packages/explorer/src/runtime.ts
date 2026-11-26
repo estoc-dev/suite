@@ -120,18 +120,14 @@ export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), 
 const heldObjects = indexOver(heldBlobs, heldObjectSchema, function* ({ link, bytes }) {
   const schema = namedSchemaOf(bytes);
   if (schema !== undefined) yield { schema: new LinkValue(schema), object: new LinkValue(link) };
-})
-  .orderedBy("schema", "object")
-  .named("Schemas");
+}).orderedBy("schema", "object");
 
 /** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });
 
 const heldLinks = indexOver(heldBlobs, heldLinkSchema, ({ link, bytes }) =>
   Array.from(linksIn(bytes), (target) => ({ target: new LinkValue(target), source: new LinkValue(link) })),
-)
-  .orderedBy("target", "source")
-  .named("Links");
+).orderedBy("target", "source");
 
 async function linkPageOf<F extends ValueMap>(
   rows: AsyncIterable<EncodedObject<F>>,
@@ -179,7 +175,13 @@ export class Runtime {
    */
   constructor(store: Store, lists: readonly List[], actions: readonly ListedAction[]) {
     const listsByName = new Map<string, List>();
-    for (const list of [recordsList, blobsList, listOfIndex(heldObjects), listOfIndex(heldLinks), ...lists]) {
+    for (const list of [
+      recordsList,
+      blobsList,
+      listOfIndex(heldObjects, "Schemas"),
+      listOfIndex(heldLinks, "Links"),
+      ...lists,
+    ]) {
       if (listsByName.has(list.name)) throw new Error(`two lists are named ${list.name}`);
       listsByName.set(list.name, list);
     }

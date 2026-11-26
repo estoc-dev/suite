@@ -714,20 +714,6 @@ describe("an ordered index", () => {
     expect(byName.rowSchema).toBe(named);
     expect(byName.order).toEqual(["name"]);
   });
-
-  it("says the same of itself under a name", () => {
-    const names = byName.named("Names");
-    expect(names.name).toBe("Names");
-    expect([names.rowSchema, names.order]).toEqual([byName.rowSchema, byName.order]);
-  });
-
-  it("has, under a name, the rows that the store keeps of it without one", async () => {
-    const store = newStore();
-    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
-    const rows = await store.scan(byName);
-    expect(await store.scan(byName.named("Names"))).toBe(rows);
-    expect(await store.scan(byName.named("Other names"))).toBe(rows);
-  });
 });
 
 describe("an index over blobs", () => {

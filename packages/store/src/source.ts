@@ -66,13 +66,15 @@ interface Reading<T> {
 export class Derivation<F extends ValueMap> implements Origin {
   readonly schema: Schema<F>;
   readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
-  readonly partDefinitions: readonly PartDefinition[] | undefined;
+  readonly definition: IndexDefinition | undefined;
 
   constructor(schema: Schema<F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
     this.schema = schema;
     this.parts = parts;
     const definitions = [...parts.values()].flat().map(({ definition }) => definition);
-    this.partDefinitions = definitions.every((definition) => definition !== undefined) ? definitions : undefined;
+    this.definition = definitions.every((definition) => definition !== undefined)
+      ? indexDefinitionOf(schema, definitions)
+      : undefined;
   }
 
   listingIn(blobSet: BlobSet): Promise<Listing> {
@@ -161,6 +163,11 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     this.#derivation = derivation;
   }
 
+  /** An index has none where a function gives the rows of any of its parts. */
+  get definition(): IndexDefinition | undefined {
+    return this.#derivation.definition;
+  }
+
   union(...others: readonly Index<F>[]): Index<F> {
     // The compiler takes two schemas whose fields fit each other as one, and the rows of every part
     // are encoded to the schema of this index.
@@ -196,24 +203,6 @@ export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
   get order(): Readonly<By> {
     return this.#order.by;
   }
-
-  /** A store keeps one set of rows for this index and each one named after it. */
-  named(name: string): NamedIndex<F, By> {
-    return new NamedIndex(this.#order, name);
-  }
-}
-
-export class NamedIndex<F extends ValueMap, By extends FieldNames<F>> extends OrderedIndex<F, By> {
-  readonly name: string;
-  /** An index has none where a function gives the rows of any of its parts. */
-  readonly definition: IndexDefinition | undefined;
-
-  constructor(order: Order<F, By>, name: string) {
-    super(order);
-    this.name = name;
-    const { schema, partDefinitions } = derivationOf(order.index);
-    this.definition = partDefinitions && indexDefinitionOf(name, schema, order.by, partDefinitions);
-  }
 }
 
 /**
@@ -240,7 +229,7 @@ export function indexOver<F extends ValueMap, T>(
 
 /**
  * Each row holds under every field the value that the path of the field reaches, from one object
- * that the paths start at. The paths say all of it, so the index has a definition where it is named.
+ * that the paths start at. The paths say all of it, so the index has a definition.
  */
 export function indexOfRows<F extends ValueMap>(
   schema: Schema<F>,

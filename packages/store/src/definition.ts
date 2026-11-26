@@ -21,7 +21,6 @@ import {
   type SchemaDocument,
   schema,
   schemaLanguage,
-  string,
 } from "@estoc/schema";
 import { recordSchema } from "./record.ts";
 
@@ -250,10 +249,11 @@ export function rowReaderOf(
 }
 
 /**
- * - `rows` is the schema of the rows, and `order` the fields that they are ordered by.
- * - The rows are those that any part gives. A part holds `schema`, the link of the schema of the
- *   blobs it reads, and `paths`, which holds under each field of a row the steps from a blob read to
- *   the value of the field.
+ * - Its link stands for which rows an index holds, so it holds nothing of what they are called or
+ *   ordered by.
+ * - `rows` is the schema of the rows, and the rows are those that any part gives. A part holds
+ *   `schema`, the link of the schema of the blobs it reads, and `paths`, which holds under each
+ *   field of a row the steps from a blob read to the value of the field.
  * - A step is one of three. `{ step: "field", name }` takes a field of the object it is at,
  *   `{ step: "link" }` the link of that object, and `{ step: "object", schema }` the object that
  *   the link it is at leads to, where that is written to `schema`.
@@ -263,28 +263,16 @@ export function rowReaderOf(
  *   schema. So where every blob that the paths come to can be read, whether a blob read gives a
  *   row, none or a failure does not depend on the order the paths are taken in.
  */
-const indexDefinitionSchema = schema("Index Definition", {
-  title: string(),
-  rows: link<Schema>(),
-  order: array(string()),
-  parts: array(any()),
-});
+const indexDefinitionSchema = schema("Index Definition", { rows: link<Schema>(), parts: array(any()) });
 
 export type IndexDefinition = EncodedObject<DataOf<typeof indexDefinitionSchema>>;
 
 const stepValueOf = (step: Step): ValueMap =>
   step.step === "object" ? { step: step.step, schema: new LinkValue(step.schema.link) } : step;
 
-export function indexDefinitionOf(
-  title: string,
-  rows: Schema,
-  order: readonly string[],
-  parts: readonly PartDefinition[],
-): IndexDefinition {
+export function indexDefinitionOf(rows: Schema, parts: readonly PartDefinition[]): IndexDefinition {
   return encodeObject(indexDefinitionSchema, {
-    title,
     rows: new LinkValue(rows.link),
-    order,
     parts: parts.map(({ schema, paths }) => ({
       schema: new LinkValue(schema.link),
       paths: Object.fromEntries(Object.entries(paths).map(([rowField, steps]) => [rowField, steps.map(stepValueOf)])),

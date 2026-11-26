@@ -6,6 +6,7 @@ const heldKeySchema = schema("Held Key", { key: link(), secretKey: link() });
 
 const secretKey = recordedStatement(secretKeySchema);
 
-export const heldKeys = indexOfRows(heldKeySchema, { key: secretKey.field("key"), secretKey: secretKey.link })
-  .orderedBy("key")
-  .named("Held Keys");
+export const heldKeys = indexOfRows(heldKeySchema, {
+  key: secretKey.field("key"),
+  secretKey: secretKey.link,
+}).orderedBy("key");

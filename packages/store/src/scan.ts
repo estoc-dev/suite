@@ -106,7 +106,7 @@ export class KeptRows {
         return objects;
       },
       scan: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => {
-        // What is kept under the order of an index are rows of it, and of each index named after it.
+        // What is kept under the order of an index are rows of it.
         const order = orderOf(index);
         const kept = this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined;
         const derivedObjects = await blobSet.rowsOf(derivationOf(order.index));

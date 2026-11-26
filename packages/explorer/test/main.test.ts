@@ -7,7 +7,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ed25519, identityKit, signatureSchema } from "@estoc/identity";
 import { generateKey, heldKeys } from "@estoc/keyring";
-import { grant, MailboxKey, mailboxSchema, outboundSchema, send, sendTo, signedIdentityArrivals } from "@estoc/mailbox";
+import {
+  grant,
+  MailboxKey,
+  mailboxSchema,
+  outboundSchema,
+  send,
+  sendTo,
+  signedIdentityArrivalsView,
+} from "@estoc/mailbox";
 import { httpTransport } from "@estoc/mailbox/http";
 import { acceptAccountOffer, collect, fetchService, openInbox, recordedSignatures } from "@estoc/mailbox-service";
 import { blobsOf, decodeObject, encodeObject, type Link, LinkValue, readObject, schemaOf } from "@estoc/object";
@@ -128,7 +136,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     const arrivals = await client.page("Arrivals of Roots and Signed Identities", 0, 200);
     expect(arrivals.rowCount).toBe(123);
     expect(
-      arrivals.rows.map((bytes) => decodeObject(bytes, signedIdentityArrivals.rowSchema).data.object.link),
+      arrivals.rows.map((bytes) => decodeObject(bytes, signedIdentityArrivalsView.index.rowSchema).data.object.link),
     ).toContain(signature.data.signedIdentity.link);
     const versions = await client.page("Identity Versions", 0, 10);
     expect(

@@ -28,9 +28,7 @@ export const locations = indexOver(
       service: new LinkValue(signature.link),
     },
   ],
-)
-  .orderedBy("identifier", "at", "service")
-  .named("Locations");
+).orderedBy("identifier", "at", "service");
 
 /**
  * A Service carries its authority in the signature, so one that came in at a mailbox is honored as

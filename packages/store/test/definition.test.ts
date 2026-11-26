@@ -13,8 +13,8 @@ import {
 import { array, integer, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
+  anyHeldObject,
   type Backend,
-  heldBlob,
   heldObject,
   type Index,
   type IndexDefinition,
@@ -197,9 +197,9 @@ describe("an index of rows taken along paths from the objects held of a schema",
   });
 });
 
-describe("an index of rows taken along paths from every blob held", () => {
-  const written = schema("Written", { blob: link(), schema: link<Schema>() });
-  const schemasOfBlobs = indexOfRows(written, { blob: heldBlob.link, schema: heldBlob.schema });
+describe("an index of rows taken along paths from every object held", () => {
+  const written = schema("Written", { object: link(), schema: link<Schema>() });
+  const schemasOfObjects = indexOfRows(written, { object: anyHeldObject.link, schema: anyHeldObject.schema });
   const linked = schema("Linked", { source: link(), target: link() });
   const image = new TextEncoder().encode("an image");
   const statement = cardOf("a");
@@ -211,32 +211,33 @@ describe("an index of rows taken along paths from every blob held", () => {
   }
 
   it("holds a row of each object with the schema it is written to, its own link for one written to itself", async () => {
-    const rows = (await (await storeHoldingAnImage()).scan(schemasOfBlobs)).orderedBy("blob");
-    const schemaOf = async (blob: Link<unknown>) =>
-      (await rowDataOf(rows.range([new LinkValue(blob)]))).map(({ schema }) => schema.link);
+    const rows = (await (await storeHoldingAnImage()).scan(schemasOfObjects)).orderedBy("object");
+    const schemaOf = async (object: Link<unknown>) =>
+      (await rowDataOf(rows.range([new LinkValue(object)]))).map(({ schema }) => schema.link);
     expect(await schemaOf(statement.link)).toEqual([card.link]);
     expect(await schemaOf(card.link)).toEqual([rootSchema.link]);
     expect(await schemaOf(rootSchema.link)).toEqual([rootSchema.link]);
   });
 
-  it("holds no row of a blob that is not an object, where a path takes its schema or each link in it", async () => {
-    const store = await storeHoldingAnImage();
-    const links = indexOfRows(linked, { source: heldBlob.link, target: heldBlob.eachLink() });
-    const ofImage = [new LinkValue(linkOf(image))] as const;
-    expect(await rowDataOf((await store.scan(schemasOfBlobs)).orderedBy("blob").range(ofImage))).toEqual([]);
-    expect(await rowDataOf((await store.scan(links)).orderedBy("source").range(ofImage))).toEqual([]);
-    expect((await store.scan(links)).failures).toEqual([]);
+  it("holds no row of a blob that is not an object", async () => {
+    const held = schema("Held", { object: link() });
+    const objects = indexOfRows(held, { object: anyHeldObject.link });
+    const rows = await (await storeHoldingAnImage()).scan(objects);
+    const links = (await rowDataOf(rows)).map(({ object }) => object.link);
+    expect(links).toContain(statement.link);
+    expect(links).not.toContain(linkOf(image));
+    expect(rows.failures).toEqual([]);
   });
 
   it("holds a row of each link in a blob, the one to its schema among them", async () => {
-    const links = indexOfRows(linked, { source: heldBlob.link, target: heldBlob.eachLink() });
+    const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
     const rows = (await (await storeHoldingAnImage()).scan(links)).orderedBy("source", "target");
     const targets = (await rowDataOf(rows.range([new LinkValue(statement.link)]))).map(({ target }) => target.link);
     expect(targets.sort()).toEqual([card.link, ada.link].sort());
   });
 
   it("holds one value under the fields of a row whose paths expand at the same place", async () => {
-    const links = indexOfRows(linked, { source: heldBlob.eachLink(), target: heldBlob.eachLink() });
+    const links = indexOfRows(linked, { source: anyHeldObject.eachLink(), target: anyHeldObject.eachLink() });
     const rows = await rowDataOf(await (await storeHoldingAnImage()).scan(links));
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.filter(({ source, target }) => source.link !== target.link)).toEqual([]);
@@ -360,12 +361,12 @@ describe("the definition of an index", () => {
     ]);
   });
 
-  it("holds no schema for a part that reads every blob, and the steps that expand", () => {
+  it("holds no schema for a part that reads every object, and the steps that expand", () => {
     const linked = schema("Linked", { source: link(), target: link() });
-    const links = indexOfRows(linked, { source: heldBlob.link, target: heldBlob.eachLink() });
+    const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
     const closures = indexOfRows(linked, {
-      source: heldBlob.link,
-      target: heldBlob.link.eachInClosure().objectOf(card).field("owner"),
+      source: anyHeldObject.link,
+      target: anyHeldObject.link.eachInClosure().objectOf(card).field("owner"),
     });
     expect(links.definition?.data.parts).toEqual([
       { paths: { source: [{ step: "link" }], target: [{ step: "eachLink" }] } },
@@ -383,9 +384,10 @@ describe("the definition of an index", () => {
         },
       },
     ]);
-    const written = schema("Written", { blob: link(), schema: link<Schema>() });
-    expect(indexOfRows(written, { blob: heldBlob.link, schema: heldBlob.schema }).definition?.data.parts).toEqual([
-      { paths: { blob: [{ step: "link" }], schema: [{ step: "schema" }] } },
+    const written = schema("Written", { object: link(), schema: link<Schema>() });
+    const schemasOfObjects = indexOfRows(written, { object: anyHeldObject.link, schema: anyHeldObject.schema });
+    expect(schemasOfObjects.definition?.data.parts).toEqual([
+      { paths: { object: [{ step: "link" }], schema: [{ step: "schema" }] } },
     ]);
   });
 
@@ -457,8 +459,8 @@ describe("an index of rows taken along paths", () => {
   it("is refused where its paths expand at two places", () => {
     const pair = schema("Pair", { left: link(), right: link() });
     const refusal = "the path of right in Pair expands at a second place, and a part expands at one";
-    const closure = heldBlob.link.eachInClosure();
-    expect(() => indexOfRows(pair, { left: heldBlob.eachLink(), right: closure })).toThrow(refusal);
+    const closure = anyHeldObject.link.eachInClosure();
+    expect(() => indexOfRows(pair, { left: anyHeldObject.eachLink(), right: closure })).toThrow(refusal);
     expect(() => indexOfRows(pair, { left: closure, right: closure.eachInClosure() })).toThrow(refusal);
   });
 
@@ -474,6 +476,11 @@ describe("an index of rows taken along paths", () => {
     const followed = title.objectOf(card);
     expect(() => indexOfRows(titled, { title: followed.field("title") })).toThrow(
       "follows string, and only a link leads to an object",
+    );
+    // @ts-expect-error A path that does not say the schema of an object takes no field of it.
+    const unsaid: ValuePath<string> = anyHeldObject.field("title");
+    expect(() => indexOfRows(titled, { title: unsaid })).toThrow(
+      "takes the field title of an object whose schema it does not say",
     );
     const linked = schema("Linked", { title: link() });
     // @ts-expect-error A string has no closure.

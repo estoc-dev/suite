@@ -15,7 +15,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { heldBlob, indexOfRows, type Store } from "@estoc/store";
+import { anyHeldObject, indexOfRows, type Store } from "@estoc/store";
 import type { ListedAction } from "./action.ts";
 import {
   actionSchema,
@@ -117,12 +117,12 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, blobLinks, (blob, 
 
 export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
 
-const heldObjects = indexOfRows(heldObjectSchema, { schema: heldBlob.schema, object: heldBlob.link });
+const heldObjects = indexOfRows(heldObjectSchema, { schema: anyHeldObject.schema, object: anyHeldObject.link });
 
 /** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });
 
-const heldLinks = indexOfRows(heldLinkSchema, { target: heldBlob.eachLink(), source: heldBlob.link });
+const heldLinks = indexOfRows(heldLinkSchema, { target: anyHeldObject.eachLink(), source: anyHeldObject.link });
 
 async function linkPageOf<F extends ValueMap>(
   rows: AsyncIterable<EncodedObject<F>>,

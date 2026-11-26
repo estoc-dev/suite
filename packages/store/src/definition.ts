@@ -7,6 +7,7 @@ import {
   memberOf,
   namedSchemaOf,
   type Schema,
+  schemaOf,
   type Value,
   type ValueMap,
 } from "@estoc/object";
@@ -34,8 +35,8 @@ type Step =
   | { readonly step: "eachInClosure" };
 
 /**
- * A part reads the blobs held that are objects of `schema`, or every blob held where it has none.
- * Each path starts at the blob read.
+ * A part reads the objects held that are written to `schema`, or every object held where it has
+ * none. Each path starts at the object read.
  */
 export interface PartDefinition {
   readonly schema?: Schema;
@@ -51,47 +52,37 @@ const routeWith = ({ start, steps }: Route, step: Step): Route => ({ start, step
 
 declare const end: unique symbol;
 
-let routeOfBlob: (path: BlobPath<unknown>) => Route;
 let routeOf: (path: ValuePath<unknown>) => Route;
 
 type FieldsHeldIn<F> = { [N in keyof F & string]-?: undefined extends F[N] ? never : N }[keyof F & string];
 
-export class BlobPath<T> {
+/** `F` holds the fields that the path can take: none where it does not say the schema of the object. */
+export class ObjectPath<F extends ValueMap> {
   readonly #route: Route;
-
-  static {
-    routeOfBlob = (path) => path.#route;
-  }
 
   constructor(route: Route) {
     this.#route = route;
   }
 
-  get link(): ValuePath<LinkValue<T>> {
-    return new ValuePath(routeWith(this.#route, { step: "link" }));
-  }
-
-  /** A blob that is not an object gives no row. */
-  get schema(): ValuePath<LinkValue<Schema>> {
-    return new ValuePath(routeWith(this.#route, { step: "schema" }));
-  }
-
-  /**
-   * A row of each link that the blob holds, the one to its schema among them. A blob that is not an
-   * object holds none.
-   */
-  eachLink(): ValuePath<LinkValue<unknown>> {
-    return new ValuePath(routeWith(this.#route, { step: "eachLink" }));
-  }
-}
-
-export class ObjectPath<F extends ValueMap> extends BlobPath<EncodedObject<F>> {
   /**
    * What a row takes of a field that an object left out is not settled, so a path takes a field that
    * every object of the schema holds.
    */
   field<N extends FieldsHeldIn<F>>(name: N): ValuePath<F[N]> {
-    return new ValuePath(routeWith(routeOfBlob(this), { step: "field", name }));
+    return new ValuePath(routeWith(this.#route, { step: "field", name }));
+  }
+
+  get link(): ValuePath<LinkValue<EncodedObject<F>>> {
+    return new ValuePath(routeWith(this.#route, { step: "link" }));
+  }
+
+  get schema(): ValuePath<LinkValue<Schema>> {
+    return new ValuePath(routeWith(this.#route, { step: "schema" }));
+  }
+
+  /** A row of each link that the object holds, the one to its schema among them. */
+  eachLink(): ValuePath<LinkValue<unknown>> {
+    return new ValuePath(routeWith(this.#route, { step: "eachLink" }));
   }
 }
 
@@ -119,11 +110,10 @@ export class ValuePath<T> {
 }
 
 /**
- * Any blob held, whatever its bytes are: an attachment and what a stranger sent as well as an
- * object of the store's own. A scan reads every blob it is over once for each index that reads
- * this way.
+ * An object held of any schema, what a stranger sent as well as the store's own. A scan reads
+ * every blob it is over once for each index that reads this way.
  */
-export const heldBlob: BlobPath<unknown> = new BlobPath({ start: undefined, steps: [] });
+export const anyHeldObject: ObjectPath<Record<never, never>> = new ObjectPath({ start: undefined, steps: [] });
 
 /**
  * - Anyone can send a bundle with an object of any schema in it, so an object read this way may be
@@ -162,8 +152,8 @@ function documentOf(schema: Schema): SchemaDocument {
   return schemaLanguage.document(decodeObject(bytes, rootSchema).data);
 }
 
-class BlobWalk {
-  /** Left out where the walk does not say what schema the blob is written to. */
+class ObjectWalk {
+  /** Left out where the walk does not say what schema the object is written to. */
   readonly document: SchemaDocument | undefined;
   readonly fields = new Map<string, ValueWalk>();
   link: ValueWalk | undefined;
@@ -177,7 +167,7 @@ class BlobWalk {
 
 interface FollowedLink {
   readonly schema: Schema;
-  readonly walk: BlobWalk;
+  readonly walk: ObjectWalk;
 }
 
 class ValueWalk {
@@ -199,15 +189,16 @@ const fieldOf = ({ fields }: SchemaDocument, name: string): Field | undefined =>
 const typeOf = ({ optional: _, ...type }: Field): Item => type;
 
 /**
- * - Paths that begin with the same steps share them in the walk, so each is taken once for a blob
- *   read. A step that does not fit where it is taken from is refused here, before any blob is read.
+ * - Paths that begin with the same steps share them in the walk, so each is taken once for an
+ *   object read. A step that does not fit where it is taken from is refused here, before any blob
+ *   is read.
  * - A part expands at one place, so that its rows are not every pairing of what two places give.
  */
-function walkOf(rows: Schema, { schema, paths }: PartDefinition): BlobWalk {
+function walkOf(rows: Schema, { schema, paths }: PartDefinition): ObjectWalk {
   const rowDocument = documentOf(rows);
   for (const name of Object.keys(rowDocument.fields))
     if (!Object.hasOwn(paths, name)) throw new Error(`no path is given for the field ${name} of ${rowDocument.title}`);
-  const start = new BlobWalk(schema);
+  const start = new ObjectWalk(schema);
   let expansion: ValueWalk | undefined;
   for (const [name, steps] of Object.entries(paths)) {
     const rowField = fieldOf(rowDocument, name);
@@ -221,7 +212,7 @@ function walkOf(rows: Schema, { schema, paths }: PartDefinition): BlobWalk {
       expansion = new ValueWalk({ type: "link" });
       return expansion;
     };
-    let place: BlobWalk | ValueWalk = start;
+    let place: ObjectWalk | ValueWalk = start;
     for (const step of steps) {
       if (place instanceof ValueWalk) {
         if (step.step !== "object" && step.step !== "eachInClosure")
@@ -238,14 +229,14 @@ function walkOf(rows: Schema, { schema, paths }: PartDefinition): BlobWalk {
         } else {
           const next: FollowedLink = place.objects.get(step.schema.link) ?? {
             schema: step.schema,
-            walk: new BlobWalk(step.schema),
+            walk: new ObjectWalk(step.schema),
           };
           place.objects.set(step.schema.link, next);
           place = next.walk;
         }
       } else if (step.step === "field") {
         if (place.document === undefined)
-          return refuse(`takes the field ${step.name} of a blob whose schema it does not say`);
+          return refuse(`takes the field ${step.name} of an object whose schema it does not say`);
         const { title } = place.document;
         const field = fieldOf(place.document, step.name);
         if (field === undefined) return refuse(`takes the field ${step.name}, which ${title} has not`);
@@ -269,7 +260,7 @@ function walkOf(rows: Schema, { schema, paths }: PartDefinition): BlobWalk {
         return refuse("expands the closure of an object, which is taken of its link");
       }
     }
-    if (place instanceof BlobWalk) return refuse("ends at an object, and a row takes a value");
+    if (place instanceof ObjectWalk) return refuse("ends at an object, and a row takes a value");
     const rowType = nameOf(typeOf(rowField));
     if (nameOf(place.type) !== rowType) return refuse(`gives ${nameOf(place.type)}, and the row takes ${rowType}`);
     place.rowFields.push(name);
@@ -282,8 +273,8 @@ interface BlobReader {
   get(link: Link<unknown>): Promise<Uint8Array>;
 }
 
-/** `data` is held where the blob was read as an object of the schema that the walk says for it. */
-interface ReadBlob {
+/** `data` is held where the object was read to the schema that the walk says for it. */
+interface ReadObject {
   readonly link: Link<unknown>;
   readonly bytes: Uint8Array;
   readonly data?: ValueMap;
@@ -299,19 +290,21 @@ const rowsJoining = (rowsOfEach: readonly (readonly PartialRow[])[]): readonly P
 
 // Every path is taken before any of them is found to reach nothing: one that comes to a blob of
 // another schema does not stop the others, as one of them may come to a blob that does not fit its
-// schema, which fails the blob read.
-async function rowsFromBlob(walk: BlobWalk, blob: ReadBlob, reader: BlobReader): Promise<readonly PartialRow[]> {
+// schema, which fails the object read.
+async function rowsFromObject(
+  walk: ObjectWalk,
+  object: ReadObject,
+  reader: BlobReader,
+): Promise<readonly PartialRow[]> {
   const rowsOfEach: (readonly PartialRow[])[] = [];
   for (const [name, next] of walk.fields) {
-    const value = memberOf(blob.data ?? {}, name);
+    const value = memberOf(object.data ?? {}, name);
     rowsOfEach.push(value === undefined ? [] : await rowsFromValue(next, value, reader));
   }
-  if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(blob.link), reader));
-  if (walk.schema !== undefined) {
-    const schema = namedSchemaOf(blob.bytes);
-    rowsOfEach.push(schema === undefined ? [] : await rowsFromValue(walk.schema, new LinkValue(schema), reader));
-  }
-  if (walk.eachLink !== undefined) rowsOfEach.push(await rowsFromEach(walk.eachLink, linksIn(blob.bytes), reader));
+  if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(object.link), reader));
+  if (walk.schema !== undefined)
+    rowsOfEach.push(await rowsFromValue(walk.schema, new LinkValue(schemaOf(object.bytes)), reader));
+  if (walk.eachLink !== undefined) rowsOfEach.push(await rowsFromEach(walk.eachLink, linksIn(object.bytes), reader));
   return rowsJoining(rowsOfEach);
 }
 
@@ -323,7 +316,7 @@ async function rowsFromValue(walk: ValueWalk, value: Value, reader: BlobReader):
       const bytes = await reader.get(value.link);
       for (const { schema, walk: next } of walk.objects.values()) {
         const isOfSchema = namedSchemaOf(bytes) === schema.link;
-        rowsOfEach.push(isOfSchema ? await rowsFromBlob(next, decodeObject(bytes, schema), reader) : []);
+        rowsOfEach.push(isOfSchema ? await rowsFromObject(next, decodeObject(bytes, schema), reader) : []);
       }
     }
     if (walk.eachInClosure !== undefined) {
@@ -355,36 +348,36 @@ async function rowsFromEach(
 export function rowReaderOf(
   rows: Schema,
   definition: PartDefinition,
-): (start: ReadBlob, reader: BlobReader) => Promise<ValueMap[]> {
+): (start: ReadObject, reader: BlobReader) => Promise<ValueMap[]> {
   const walk = walkOf(rows, definition);
   // A row may hold a field named `__proto__`, which assigning to an object would leave out.
-  return async (start, reader) => (await rowsFromBlob(walk, start, reader)).map((row) => Object.fromEntries(row));
+  return async (start, reader) => (await rowsFromObject(walk, start, reader)).map((row) => Object.fromEntries(row));
 }
 
 /**
  * - It says how rows come of the blobs that a scan is over. Which blobs those are, what the rows are
  *   called and what they are ordered by are no part of it, so none of them changes its link.
  * - `rows` is the schema of the rows, and the rows are those that any part gives. A part reads the
- *   blobs written to `schema`, the link of a schema, or every blob where it holds none. Its `paths`
- *   hold under each field of a row the steps from a blob read to the value of the field.
- * - A step is taken at a blob or at a link. At a blob, `{ step: "field", name }` takes a field of
- *   the object it is, where a part or a step said its schema, `{ step: "link" }` its link,
+ *   objects written to `schema`, the link of a schema, or every object where it holds none. Its
+ *   `paths` hold under each field of a row the steps from an object read to the value of the field.
+ * - A step is taken at an object or at a link. At an object, `{ step: "field", name }` takes a
+ *   field of it, where a part or a step said its schema, `{ step: "link" }` its link,
  *   `{ step: "schema" }` the link of the schema it is written to, and `{ step: "eachLink" }` each
  *   link that it holds. At a link, `{ step: "object", schema }` takes the object that it leads to,
  *   where that is written to `schema`, and `{ step: "eachInClosure" }` the link of each blob in its
  *   closure, its own among them.
  * - The steps named `each` expand: the steps after one are taken from each value that it gives. The
  *   paths of a part expand at one place, which those that expand share the steps up to.
- * - Where no path expands, a blob read gives a row where every path reaches a value. Where some do,
+ * - Where no path expands, an object read gives a row where every path reaches a value. Where some do,
  *   it gives a row of each value of the expansion that every one of them reaches a value from, and
  *   each row holds what the other paths reach as well. It gives none where any other path reaches
  *   no value.
- * - A path reaches no value where a link that it follows leads to a blob of another schema, and
- *   where it takes the schema of a blob that is not an object. Such a blob holds no link.
+ * - A path reaches no value where a link that it follows leads to a blob that is not an object of
+ *   the schema the step says.
  * - Where a path comes to a blob that names its schema and does not fit it, the value of an
- *   expansion that it came from gives no row. Where it came from none, the blob read fails, even
+ *   expansion that it came from gives no row. Where it came from none, the object read fails, even
  *   where another path leads to a blob of another schema. So where every blob that the paths come
- *   to can be read, whether a blob read gives rows, none or a failure does not depend on the order
+ *   to can be read, whether an object read gives rows, none or a failure does not depend on the order
  *   the paths are taken in.
  */
 const indexDefinitionSchema = schema("Index Definition", { rows: link<Schema>(), parts: array(any()) });

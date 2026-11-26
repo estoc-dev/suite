@@ -1,6 +1,7 @@
 import {
   type EncodedObject,
   type Link,
+  namedSchemaOf,
   type Reader,
   type Schema,
   type Selection,
@@ -202,8 +203,8 @@ export function indexOver<F extends ValueMap, T>(
 }
 
 /**
- * Each row holds under every field a value that the path of the field reaches, from one blob that
- * the paths start at. The paths say all of it, so the index has a definition.
+ * Each row holds under every field a value that the path of the field reaches, from one object
+ * that the paths start at. The paths say all of it, so the index has a definition.
  */
 export function indexOfRows<F extends ValueMap>(
   schema: Schema<F>,
@@ -219,14 +220,16 @@ function indexAlong<F extends ValueMap>(origin: Origin, schema: Schema<F>, defin
   const part: Part<F> = {
     definition,
     async *rowsOf(blob) {
-      const start =
-        definition.schema === undefined
-          ? { link: blob.link, bytes: await blob.reader.get(blob.link) }
-          : await blob.objectOf(definition.schema);
+      const start = definition.schema === undefined ? await heldObjectAt(blob) : await blob.objectOf(definition.schema);
       if (start !== undefined) yield* (await rowsFrom(start, blob.reader)) as F[];
     },
   };
   return new Index(new Derivation(schema, new Map([[origin, [part]]])));
+}
+
+async function heldObjectAt({ link, reader }: ScannedBlob): Promise<HeldBlob | undefined> {
+  const bytes = await reader.get(link);
+  return namedSchemaOf(bytes) === undefined ? undefined : { link, bytes };
 }
 
 /**

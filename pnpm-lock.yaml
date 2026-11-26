@@ -382,6 +382,9 @@ importers:
       cborg:
         specifier: ^6.2.1
         version: 6.2.1
+      lru-cache:
+        specifier: ^11.5.3
+        version: 11.5.3
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

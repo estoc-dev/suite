@@ -10,8 +10,10 @@ import {
   objectsOf,
   readObject,
   rootSchema,
+  type Schema,
   type Selection,
   SelectionBySchema,
+  type ValueMap,
 } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, vi } from "vitest";
@@ -95,6 +97,12 @@ const batchOf = (objects: readonly KeptObject[], blobs: Iterable<Uint8Array> = [
 /** Lists the records first, so that a count taken after it is of what an index reads. */
 async function listRecordsOf(store: Store): Promise<void> {
   for await (const _ of store.records());
+}
+
+/** An object that nothing has decoded or validated yet, as one that another program wrote. */
+function writtenByHand(to: Schema, data: ValueMap): KeptObject {
+  const bytes = objectFormat.encode(new ObjectValue(to.link, data));
+  return { link: linkOf(bytes), bytes };
 }
 
 async function recordIn(store: Store, objects: readonly KeptObject[], blobs?: Iterable<Uint8Array>): Promise<void> {
@@ -282,7 +290,7 @@ describe("an index over records", () => {
     const noteSchema = schema("Note", fields);
     const validate = vi.spyOn(noteSchema, "validate");
     const store = newStore();
-    await recordIn(store, [encodeObject(note, {})], schemas);
+    await recordIn(store, [writtenByHand(note, { names: ["read by three selections"] })], schemas);
     const index = indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "a" }]).union(
       indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "b" }]),
       indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "c" }]),
@@ -748,9 +756,9 @@ describe("an index over blobs", () => {
 
   it("validates a blob of its schema once", async () => {
     const store = new Store(new MemoryBackend());
-    await store.write(batchOf([encodeObject(tag, { names: ["a"] })], schemas));
+    await store.write(batchOf([writtenByHand(tag, { names: ["validated once"] })], schemas));
     const validate = vi.spyOn(tag, "validate");
-    expect(await namesOf(await store.scan(tagNames))).toEqual(["a"]);
+    expect(await namesOf(await store.scan(tagNames))).toEqual(["validated once"]);
     expect(validate).toHaveBeenCalledTimes(1);
     validate.mockRestore();
   });
@@ -1207,7 +1215,7 @@ describe("an index over another index", () => {
   });
 
   it("hands on a row of the other index as that index wrote it, validated once", async () => {
-    const namedCounting = schema("Named", { name: string() });
+    const namedCounting = schema("Counted Name", { name: string() });
     const validate = vi.spyOn(namedCounting, "validate");
     const names = indexOver(selectedRecords(objectsOf(note)), namedCounting, namedOf);
     const upper: NameIndex = indexOver(names, named, ({ data }) => [{ name: `${data.name}`.toUpperCase() }]);

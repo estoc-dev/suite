@@ -332,7 +332,7 @@ async function rowsFromEach(
     } catch {
       // What an expansion goes over is not all of one making: a closure holds what anyone sent in
       // it. So a blob that does not fit its schema gives no row, and the others keep theirs. A blob
-      // that the store failed to give is not lost here: `start` keeps the failure of the read.
+      // that the store failed to give is not lost here: the reader of `start` keeps the failure.
     }
   }
   return rows;

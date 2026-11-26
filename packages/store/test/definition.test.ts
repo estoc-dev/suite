@@ -160,20 +160,23 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(new Set(requestedLinks)).toEqual(new Set([statement.link, ada.link, lisbon.link]));
   });
 
-  it("decodes a statement once for all the parts of a union that follow its Record to it", async () => {
+  it("decodes a statement once, to write it and for all the parts of a union that follow its Record to it", async () => {
     const titleOf = (path: ValuePath<string>) => indexOfRows(titled, { title: path });
     const titles = titleOf(recordedCard.field("title")).union(
       titleOf(recordedStatement(place).field("city")),
       titleOf(recordedStatement(schema("Trip", { name: string() })).field("name")),
     );
-    const people = ["Ada", "Grace", "Edsger"].map((name) =>
-      encodeObject(person, { name, home: new LinkValue(lisbon.link) }),
+    // Written out by hand, so that nothing has decoded them before the store does.
+    const people = ["Grace", "Edsger", "Barbara"].map((name) =>
+      objectFormat.encode(new ObjectValue(person.link, { name, home: new LinkValue(lisbon.link) })),
     );
-    const store = await storeRecording(...people);
-    for await (const _ of store.records());
+    const statements = people.map((bytes) => linkOf(bytes));
     const decode = vi.spyOn(objectFormat, "decode");
+    const store = new Store(new MemoryBackend());
+    await store.record({ statements, blobs: [...people, ...closure] });
     expect(await titlesIn(store, titles)).toEqual([]);
-    expect(decode).toHaveBeenCalledTimes(people.length);
+    const decodedLinks = decode.mock.calls.map(([bytes]) => linkOf(bytes));
+    expect(decodedLinks.filter((decoded) => statements.includes(decoded)).sort()).toEqual(statements.sort());
   });
 
   it("holds the rows of an index that a function gives the rows of as well, in a union with it", async () => {
@@ -259,16 +262,15 @@ describe("an index of rows taken along paths from every object held", () => {
     expect(await targetsOf(rootSchema.link)).toEqual([]);
   });
 
-  it("decodes each blob once for its schema and the links it holds", async () => {
+  it("decodes an object once, to write it and for its schema and the links it holds", async () => {
     const links = indexOfRows(linked, { source: anyHeldObject.schema, target: anyHeldObject.eachLink() });
-    const store = await storeHoldingAnImage();
-    const heldLinks: Link<unknown>[] = [];
-    for await (const held of store.blobs()) heldLinks.push(held);
+    // Written out by hand, so that nothing has decoded it before the store does.
+    const braga = objectFormat.encode(new ObjectValue(place.link, { city: "Braga" }));
     const decode = vi.spyOn(objectFormat, "decode");
+    const store = await storeHoldingAnImage();
+    await store.write({ roots: [linkOf(braga)], blobs: [braga] });
     await store.scan(links);
-    // Each row is decoded as well, once it is encoded.
-    const decodedLinks = decode.mock.calls.map(([bytes]) => linkOf(bytes));
-    expect(decodedLinks.filter((decoded) => heldLinks.includes(decoded)).sort()).toEqual(heldLinks.sort());
+    expect(decode.mock.calls.filter(([bytes]) => linkOf(bytes) === linkOf(braga))).toHaveLength(1);
   });
 
   it("holds one value under the fields of a row whose paths expand at the same place", async () => {

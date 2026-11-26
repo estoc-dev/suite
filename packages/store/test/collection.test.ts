@@ -1,4 +1,13 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import {
+  blobsOf,
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectsOf,
+  readObject,
+} from "@estoc/object";
 import { array, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -38,7 +47,7 @@ const newStore = () => new Store(new MemoryBackend());
 async function keepIn(store: Store, objects: readonly EncodedObject[], blobs: Iterable<Uint8Array> = []) {
   await store.write({
     roots: objects.map(({ link }) => link),
-    blobs: [...objects.flatMap(({ bytes, schema }) => [bytes, ...schema.blobs]), ...blobs],
+    blobs: [...objects.flatMap(blobsOf), ...blobs],
   });
 }
 
@@ -71,6 +80,28 @@ describe("a collection", () => {
 });
 
 describe("a collection that a store holds", () => {
+  it("is given for the link that another object holds to it", async () => {
+    const store = newStore();
+    const soup = note("soup");
+    const inner = collectionOf([soup.link]);
+    const outer = collectionOf([inner.link]);
+    await keepIn(store, [soup, inner, outer]);
+
+    const listed = (await readObject(store, outer.link, collectionSchema)).data.members;
+    const collections = await Promise.all(listed.map(({ link }) => store.heldCollection(link)));
+    const textsByCollection = collections.map(async (collection) => textsOf(await collection.scan(heldTexts)));
+    expect(await Promise.all(textsByCollection)).toEqual([["soup"]]);
+  });
+
+  it("is refused where the object is written to another schema", async () => {
+    const store = newStore();
+    const soup = note("soup");
+    await keepIn(store, [soup]);
+    await expect(store.heldCollection(soup.link)).rejects.toThrow(
+      `the object is written to ${noteSchema.link}, not to ${collectionSchema.link}`,
+    );
+  });
+
   it("is refused where its members are out of the order of their links", async () => {
     const store = newStore();
     const [soup, salad] = [note("soup"), note("salad")];

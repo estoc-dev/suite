@@ -9,8 +9,8 @@ import {
   type RecordBatch,
   recordsOf,
 } from "./batch.ts";
-import { type Collection, collectionSchema, membersOf } from "./collection.ts";
-import { KeptRows, MemberRows, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import { collectionSchema, membersOf } from "./collection.ts";
+import { emptyRows, KeptRows, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -43,11 +43,7 @@ export interface Store {
   records(): AsyncIterable<Link<EncodedObject>>;
   recordedStatements(): Promise<RecordedStatements>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
-  /**
-   * A collection may be a stranger's, as any blob held may: that the store holds one does not say
-   * that the store wrote it.
-   */
-  heldCollection(link: Link<Collection>): Promise<HeldCollection>;
+  heldCollection(link: Link<unknown>): Promise<HeldCollection>;
   /**
    * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
    *   put since.
@@ -164,9 +160,11 @@ export class StoreOf implements Store {
     return closureIn(this, link);
   }
 
-  async heldCollection(link: Link<Collection>): Promise<HeldCollection> {
+  async heldCollection(link: Link<unknown>): Promise<HeldCollection> {
     const members = membersOf(await readObject(this, link, collectionSchema));
-    return { scan: (index, options) => scannedRows(new MemberRows(members, this), index, options) };
+    return {
+      scan: async (index, options) => scannedRows(await rowsWithAdded(emptyRows, members, this), index, options),
+    };
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(

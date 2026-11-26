@@ -10,7 +10,6 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
-import type { Collection } from "./collection.ts";
 import type { ScanOptions } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
@@ -217,7 +216,7 @@ class NotingStore implements Store {
     return this.#store.closure(link);
   }
 
-  heldCollection(link: Link<Collection>): Promise<HeldCollection> {
+  heldCollection(link: Link<unknown>): Promise<HeldCollection> {
     return this.#store.heldCollection(link);
   }
 

@@ -155,10 +155,20 @@ export class KeptRows {
   }
 }
 
+export const emptyRows: RowsByIndex = {
+  blobCount: 0,
+  records: async () => new ListedLinks(),
+  heldBlobs: async () => new ListedLinks(),
+  derivedObjectsOf: async <F extends ValueMap>(derivation: Derivation<F>) => new DerivedObjects(derivation),
+  sortedRowsOf: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) =>
+    new SortedRows(index),
+};
+
 /**
- * - A batch can hold what its store holds already, so the rows and their failures are those of the
- *   store once the batch is written, and the blobs counted are the ones it would then hold.
- * - A store stages no Record, so the batch adds nothing to what is recorded.
+ * - What is added can be among the blobs of `rows` already, so the rows and their failures are those
+ *   of both together, and each blob is counted once.
+ * - What is added adds nothing to what is recorded: a store stages no Record, and nothing is
+ *   recorded in a collection.
  * - It is for one scan, and nothing is kept of its rows for the next.
  */
 export async function rowsWithAdded(
@@ -208,49 +218,5 @@ class AddedRows implements RowsByIndex {
   ): Promise<SortedRows<F, By>> {
     const sortedRows = await this.#rows.sortedRowsOf(index);
     return sortedRows.including(await this.derivedObjectsOf(derivationOf(orderOf(index).index)), this.blobCount);
-  }
-}
-
-/**
- * - `reader` gives the closure of each member, which need not be among the members.
- * - It is for one scan, and nothing is kept of its rows for the next.
- */
-export class MemberRows implements RowsByIndex {
-  readonly #members: ListedLinks;
-  readonly #reader: Reader;
-  readonly #objectsByDerivation = new Map<object, Promise<unknown>>();
-
-  constructor(members: readonly Link<unknown>[], reader: Reader) {
-    this.#members = new ListedLinks(members);
-    this.#reader = reader;
-  }
-
-  get blobCount(): number {
-    return this.#members.links.length;
-  }
-
-  async records(): Promise<ListedLinks<EncodedObject>> {
-    return new ListedLinks();
-  }
-
-  async heldBlobs(): Promise<ListedLinks> {
-    return this.#members;
-  }
-
-  derivedObjectsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>> {
-    // What is worked out under what an index is made of are rows of it.
-    let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<F>> | undefined;
-    if (objects === undefined) {
-      objects = new DerivedObjects(derivation).adding(this.#reader, this);
-      this.#objectsByDerivation.set(derivation, objects);
-    }
-    return objects;
-  }
-
-  async sortedRowsOf<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-  ): Promise<SortedRows<F, By>> {
-    const derivedObjects = await this.derivedObjectsOf(derivationOf(orderOf(index).index));
-    return new SortedRows(index).including(derivedObjects, this.blobCount);
   }
 }

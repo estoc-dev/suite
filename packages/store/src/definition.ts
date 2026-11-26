@@ -44,7 +44,7 @@ interface Route {
   readonly steps: readonly Step[];
 }
 
-const extended = ({ start, steps }: Route, step: Step): Route => ({ start, steps: [...steps, step] });
+const routeWith = ({ start, steps }: Route, step: Step): Route => ({ start, steps: [...steps, step] });
 
 declare const end: unique symbol;
 
@@ -64,11 +64,11 @@ export class ObjectPath<F extends ValueMap> {
    * every object of the schema holds.
    */
   field<N extends FieldsHeldIn<F>>(name: N): ValuePath<F[N]> {
-    return new ValuePath(extended(this.#route, { step: "field", name }));
+    return new ValuePath(routeWith(this.#route, { step: "field", name }));
   }
 
   get link(): ValuePath<LinkValue<EncodedObject<F>>> {
-    return new ValuePath(extended(this.#route, { step: "link" }));
+    return new ValuePath(routeWith(this.#route, { step: "link" }));
   }
 }
 
@@ -86,7 +86,7 @@ export class ValuePath<T> {
 
   /** Where the link leads to a blob that is not an object of `schema`, the item gives no row. */
   objectOf<F extends ValueMap>(this: ValuePath<LinkValue<unknown>>, schema: Schema<F>): ObjectPath<F> {
-    return new ObjectPath(extended(this.#route, { step: "object", schema }));
+    return new ObjectPath(routeWith(this.#route, { step: "object", schema }));
   }
 }
 
@@ -210,53 +210,63 @@ interface BlobReader {
   get(link: Link<unknown>): Promise<Uint8Array>;
 }
 
-type Row = { [field: string]: Value };
+type Row = Map<string, Value>;
 
+// Every path is taken as far as it goes even where another has stopped, so a blob that does not fit
+// its schema fails the object read whichever path comes to it first.
 async function fillFromObject(row: Row, walk: ObjectWalk, object: EncodedObject, reader: BlobReader): Promise<boolean> {
+  let reachesAll = true;
   for (const [name, next] of walk.fields) {
     const value = memberOf(object.data, name);
-    if (value === undefined || !(await fillFromValue(row, next, value, reader))) return false;
+    if (value === undefined || !(await fillFromValue(row, next, value, reader))) reachesAll = false;
   }
-  return walk.link === undefined || fillFromValue(row, walk.link, new LinkValue(object.link), reader);
+  if (walk.link !== undefined && !(await fillFromValue(row, walk.link, new LinkValue(object.link), reader)))
+    reachesAll = false;
+  return reachesAll;
 }
 
 async function fillFromValue(row: Row, walk: ValueWalk, value: Value, reader: BlobReader): Promise<boolean> {
-  for (const field of walk.rowFields) row[field] = value;
-  for (const { schema, walk: next } of walk.objects.values()) {
-    if (!(value instanceof LinkValue)) return false;
-    const bytes = await reader.get(value.link);
-    if (namedSchemaOf(bytes) !== schema.link) return false;
-    if (!(await fillFromObject(row, next, decodeObject(bytes, schema), reader))) return false;
-  }
-  return true;
+  for (const field of walk.rowFields) row.set(field, value);
+  if (walk.objects.size === 0) return true;
+  if (!(value instanceof LinkValue)) return false;
+  const bytes = await reader.get(value.link);
+  let reachesAll = true;
+  for (const { schema, walk: next } of walk.objects.values())
+    if (namedSchemaOf(bytes) !== schema.link || !(await fillFromObject(row, next, decodeObject(bytes, schema), reader)))
+      reachesAll = false;
+  return reachesAll;
 }
 
-/** What gives the row that a part takes of an object it reads, or none where a path does not reach its value. */
 export function rowReaderOf(
   rows: Schema,
   definition: PartDefinition,
 ): (start: EncodedObject, reader: BlobReader) => Promise<ValueMap | undefined> {
   const walk = walkOf(rows, definition);
   return async (start, reader) => {
-    const row: Row = {};
-    return (await fillFromObject(row, walk, start, reader)) ? row : undefined;
+    const row: Row = new Map();
+    // A row may hold a field named `__proto__`, which assigning to an object would leave out.
+    return (await fillFromObject(row, walk, start, reader)) ? Object.fromEntries(row) : undefined;
   };
 }
 
 /**
  * - `rows` is the schema of the rows, and `order` the fields that they are ordered by.
- * - `parts` is an array, and the rows are those that any part gives. A part holds `schema`, the
- *   link of the schema of the blobs it reads, and `paths`, which holds under each field of a row
- *   the steps from a blob read to the value of the field.
+ * - The rows are those that any part gives. A part holds `schema`, the link of the schema of the
+ *   blobs it reads, and `paths`, which holds under each field of a row the steps from a blob read to
+ *   the value of the field.
  * - A step is one of three. `{ step: "field", name }` takes a field of the object it is at,
  *   `{ step: "link" }` the link of that object, and `{ step: "object", schema }` the object that
  *   the link it is at leads to, where that is written to `schema`.
+ * - A blob read gives a row where every path reaches a value, and none where a link that a path
+ *   follows leads to a blob of another schema. Where any path comes to a blob that names its schema
+ *   and does not fit it, the blob read fails, whatever the other paths reach. So whether a blob
+ *   read gives a row, none or a failure does not depend on the order the paths are taken in.
  */
 const indexDefinitionSchema = schema("Index Definition", {
   title: string(),
   rows: link<Schema>(),
   order: array(string()),
-  parts: any(),
+  parts: array(any()),
 });
 
 export type IndexDefinition = EncodedObject<DataOf<typeof indexDefinitionSchema>>;

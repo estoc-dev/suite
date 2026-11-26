@@ -166,6 +166,10 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   }
 
   union(...others: readonly Index<F>[]): Index<F> {
+    // The compiler takes two schemas whose fields fit each other as one, and the rows of every part
+    // are encoded to the schema of this index.
+    if (others.some((other) => other.#derivation.schema.link !== this.#derivation.schema.link))
+      throw new Error("the indexes in a union hold rows of one schema, and one of these holds rows of another");
     const parts = new Map<Origin, readonly Part<F>[]>();
     for (const index of [this, ...others])
       for (const [origin, originParts] of index.#derivation.parts)

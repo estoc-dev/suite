@@ -100,6 +100,39 @@ describe("an index of rows taken along paths from the statements recorded", () =
     await expect(store.scan(byTitle)).rejects.toThrow("#/name: left out");
   });
 
+  it("fails on such a statement whichever path is given first, where another follows a link to another schema", async () => {
+    const pair = schema("Pair", { left: link(), right: link() });
+    const names = schema("Names", { left: string(), right: string() });
+    const recordedPair = recordedStatement(pair);
+    const left = recordedPair.field("left").objectOf(person).field("name");
+    const right = recordedPair.field("right").objectOf(person).field("name");
+    const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
+    const statement = encodeObject(pair, { left: new LinkValue(lisbon.link), right: new LinkValue(linkOf(nameless)) });
+    const store = new Store(new MemoryBackend());
+    await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...pair.blobs, ...closure] });
+    const [leftFirst, rightFirst] = [indexOfRows(names, { left, right }), indexOfRows(names, { right, left })].map(
+      (index) => index.orderedBy("left").named("Names"),
+    );
+    expect(rightFirst?.definition?.link).toBe(leftFirst?.definition?.link);
+    for (const index of [leftFirst, rightFirst] as const) {
+      if (index === undefined) throw new Error("an index is left out");
+      await expect(store.scan(index)).rejects.toThrow("#/name: left out");
+      const { failures } = await store.scan(index, { throwsOnFailure: false });
+      expect(failures.map(({ item }) => item)).toEqual([statement.link]);
+    }
+  });
+
+  it.each([
+    ["every row holds", string()],
+    ["a row may leave out", optional(string())],
+  ])("holds the value that a path reaches under a field named __proto__ that %s", async (_, field) => {
+    const labeled = schema("Labeled", { ["__proto__"]: field });
+    const byLabel = indexOfRows(labeled, { ["__proto__"]: recordedCard.field("title") }).orderedBy("__proto__");
+    const store = await storeRecording(cardOf("a"), cardOf("b"));
+    const rows = await rowDataOf((await store.scan(byLabel)).range(["a"]));
+    expect(rows.map((row) => Object.entries(row))).toEqual([[["__proto__", "a"]]]);
+  });
+
   it("reads the statements and what its paths follow, and no other blob held", async () => {
     const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
@@ -164,6 +197,23 @@ describe("an index of rows taken along paths from the objects held of a schema",
     });
     expect(await titlesIn(store, byHeldTitle)).toEqual(["deep", "held", "recorded"]);
     expect(byHeldTitle.readsBlobs).toBe(true);
+  });
+});
+
+describe("a union of indexes", () => {
+  const aliased = schema("Aliased", { title: string(), alias: optional(string()) });
+  const title = recordedCard.field("title");
+  const refusal = "the indexes in a union hold rows of one schema, and one of these holds rows of another";
+
+  it("is refused where they hold rows of two schemas, whichever comes first", () => {
+    const [titles, aliases] = [indexOfRows(titled, { title }), indexOfRows(aliased, { title, alias: title })];
+    expect(() => titles.union(aliases)).toThrow(refusal);
+    expect(() => aliases.union(titles)).toThrow(refusal);
+  });
+
+  it("is refused where a function gives the rows of one of another schema", () => {
+    const shouted = indexOver(selectedRecords(objectsOf(card)), aliased, ({ data }) => [{ title: data.title }]);
+    expect(() => indexOfRows(titled, { title }).union(shouted)).toThrow(refusal);
   });
 });
 

@@ -21,7 +21,6 @@ export function listOfIndex<F extends ValueMap, By extends FieldNames<F>>(index:
     rowSchema: index.rowSchema,
     order: index.order,
     async page(store, start, limit) {
-      // What the index fails on gives no row, and the rows of the rest are shown without it.
       const sortedRows = await store.scan(index);
       const rows: Uint8Array[] = [];
       for await (const { bytes } of sortedRows.range([])) rows.push(bytes);

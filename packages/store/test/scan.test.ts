@@ -371,19 +371,23 @@ describe("an index over records", () => {
 describe("an index whose rows give none of what does not read as they expect", () => {
   const about = encodeObject(note, { names: ["a"] });
   const record = encodeObject(note, { about: new LinkValue(about.link) });
-  const byAbout = indexOver(selectedRecords(objectsOf(note)), named, async function* ({ data }, reader) {
-    const { about } = data;
-    if (about === undefined) return;
-    let aboutNames: readonly Named[];
-    try {
-      aboutNames = namedOf(await readObject(reader, about.link, note));
-    } catch {
-      return;
-    }
-    yield* aboutNames;
-  }).orderedBy("name");
+  const aboutNamesCatching = (caughtErrors: unknown[]) =>
+    indexOver(selectedRecords(objectsOf(note)), named, async function* ({ data }, reader) {
+      const { about } = data;
+      if (about === undefined) return;
+      let aboutNames: readonly Named[];
+      try {
+        aboutNames = namedOf(await readObject(reader, about.link, note));
+      } catch (error) {
+        caughtErrors.push(error);
+        return;
+      }
+      yield* aboutNames;
+    }).orderedBy("name");
 
-  async function storeGiving(readOverride: { get?: () => Promise<Uint8Array | undefined> }) {
+  /** The Records are read before `about` fails, so the failure comes where the rows read it. */
+  async function storeFailingToRead(readAbout: () => Promise<Uint8Array | undefined>) {
+    const readOverride: { get?: () => Promise<Uint8Array | undefined> } = {};
     const backend = new (class extends MemoryBackend {
       override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
         return link === about.link && readOverride.get !== undefined ? readOverride.get() : super.get(link);
@@ -391,24 +395,29 @@ describe("an index whose rows give none of what does not read as they expect", (
     })();
     const store = newStore(backend);
     await recordIn(store, [record], [about.bytes, ...schemas]);
-    return store;
+    await store.recordedStatements();
+    readOverride.get = readAbout;
+    return { store, readOverride };
   }
 
   it("is not filled when the store throws for a blob of a recorded object's closure, and a later scan reads the object", async () => {
     const readError = new Error("the disk is gone");
-    const readOverride: { get?: () => Promise<Uint8Array | undefined> } = {};
-    const store = await storeGiving(readOverride);
-    readOverride.get = () => Promise.reject(readError);
+    const { store, readOverride } = await storeFailingToRead(() => Promise.reject(readError));
+    const caughtErrors: unknown[] = [];
+    const byAbout = aboutNamesCatching(caughtErrors);
     await expect(store.scan(byAbout)).rejects.toBe(readError);
+    expect(caughtErrors).toEqual([readError]);
     delete readOverride.get;
     expect(await namesOf(await store.scan(byAbout))).toEqual(["a"]);
   });
 
   it("is not filled when the store does not hold a blob of a recorded object's closure", async () => {
-    const store = await storeGiving({ get: async () => undefined });
-    await expect(store.scan(byAbout)).rejects.toThrow(
-      `the store lists ${about.link} but does not hold ${about.link} of its closure`,
+    const { store } = await storeFailingToRead(async () => undefined);
+    const caughtErrors: unknown[] = [];
+    await expect(store.scan(aboutNamesCatching(caughtErrors))).rejects.toThrow(
+      `the store lists ${recordOf(record.link).link} but does not hold ${about.link} of its closure`,
     );
+    expect(caughtErrors).toHaveLength(1);
   });
 });
 

@@ -370,10 +370,8 @@ describe("a client of a runtime that is given the list of an index", () => {
   const notesByText = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
     if (data.text === "unreadable") throw new Error("the index does not read this note");
     return [{ text: data.text, note: new LinkValue(link) }];
-  })
-    .orderedBy("text")
-    .named("Notes by text");
-  const notesList = listOfIndex(notesByText);
+  }).orderedBy("text");
+  const notesList = listOfIndex(notesByText, "Notes by text");
 
   async function storeRecording(...texts: readonly string[]): Promise<Store> {
     const store = new Store(new MemoryBackend());
@@ -397,7 +395,7 @@ describe("a client of a runtime that is given the list of an index", () => {
 
   const textsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, notedTextSchema).data.text);
 
-  it("lists it after the lists of what the store holds, by the name, the schema and the order of the index", async () => {
+  it("lists it after the lists of what the store holds, by the name it is given and the schema and the order of the index", async () => {
     const lists = await clientOf(await storeRecording(), [notesList]).lists();
     expect(lists.map(({ data }) => data.name)).toEqual(["Records", "Blobs", "Schemas", "Links", "Notes by text"]);
     expect(lists.at(-1)?.data).toEqual({
@@ -450,7 +448,7 @@ describe("a client of a runtime that is given the list of an index", () => {
       return [{ text: data.text, note: new LinkValue(link) }];
     }).orderedBy("text");
     await store.scan(countedTexts);
-    const page = await clientOf(store, [listOfIndex(countedTexts.named("Counted texts"))]).page("Counted texts", 0, 1);
+    const page = await clientOf(store, [listOfIndex(countedTexts, "Counted texts")]).page("Counted texts", 0, 1);
     expect(textsIn(page.rows)).toEqual(["a"]);
     expect(readCount).toBe(1);
   });
@@ -485,7 +483,7 @@ describe("a runtime", () => {
       { text: data.text },
     ]).orderedBy("text");
     const store = await storeOfNote();
-    const lists = names.map((name) => listOfIndex(texts.named(name)));
+    const lists = names.map((name) => listOfIndex(texts, name));
     expect(() => new Runtime(store, lists, [])).toThrow(`two lists are named ${names[0]}`);
   });
 

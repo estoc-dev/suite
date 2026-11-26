@@ -17,4 +17,4 @@ export {
   outboundSchema,
 } from "./schema.ts";
 export { send } from "./send.ts";
-export { signedIdentityArrivals } from "./signed-identity-arrivals.ts";
+export { signedIdentityArrivalsView } from "./signed-identity-arrivals.ts";

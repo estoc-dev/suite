@@ -21,7 +21,6 @@ import {
   type SchemaDocument,
   schema,
   schemaLanguage,
-  string,
 } from "@estoc/schema";
 import { recordSchema } from "./record.ts";
 
@@ -93,8 +92,8 @@ export class ValuePath<T> {
 /**
  * - Anyone can send a bundle with an object of any schema in it, so an object read this way may be
  *   a stranger's, unless `schema` is that of a Record, which the store alone writes.
- * - A scan reads every blob the store holds once for each index that reads this way. The Records
- *   are read once for all of them.
+ * - A scan reads every blob it is over once for each index that reads this way. The Records are
+ *   read once for all of them.
  */
 export function heldObject<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
   return new ObjectPath({ start: schema, steps: [] });
@@ -250,10 +249,11 @@ export function rowReaderOf(
 }
 
 /**
- * - `rows` is the schema of the rows, and `order` the fields that they are ordered by.
- * - The rows are those that any part gives. A part holds `schema`, the link of the schema of the
- *   blobs it reads, and `paths`, which holds under each field of a row the steps from a blob read to
- *   the value of the field.
+ * - It says how rows come of the blobs that a scan is over. Which blobs those are, what the rows are
+ *   called and what they are ordered by are no part of it, so none of them changes its link.
+ * - `rows` is the schema of the rows, and the rows are those that any part gives. A part holds
+ *   `schema`, the link of the schema of the blobs it reads, and `paths`, which holds under each
+ *   field of a row the steps from a blob read to the value of the field.
  * - A step is one of three. `{ step: "field", name }` takes a field of the object it is at,
  *   `{ step: "link" }` the link of that object, and `{ step: "object", schema }` the object that
  *   the link it is at leads to, where that is written to `schema`.
@@ -263,28 +263,16 @@ export function rowReaderOf(
  *   schema. So where every blob that the paths come to can be read, whether a blob read gives a
  *   row, none or a failure does not depend on the order the paths are taken in.
  */
-const indexDefinitionSchema = schema("Index Definition", {
-  title: string(),
-  rows: link<Schema>(),
-  order: array(string()),
-  parts: array(any()),
-});
+const indexDefinitionSchema = schema("Index Definition", { rows: link<Schema>(), parts: array(any()) });
 
 export type IndexDefinition = EncodedObject<DataOf<typeof indexDefinitionSchema>>;
 
 const stepValueOf = (step: Step): ValueMap =>
   step.step === "object" ? { step: step.step, schema: new LinkValue(step.schema.link) } : step;
 
-export function indexDefinitionOf(
-  title: string,
-  rows: Schema,
-  order: readonly string[],
-  parts: readonly PartDefinition[],
-): IndexDefinition {
+export function indexDefinitionOf(rows: Schema, parts: readonly PartDefinition[]): IndexDefinition {
   return encodeObject(indexDefinitionSchema, {
-    title,
     rows: new LinkValue(rows.link),
-    order,
     parts: parts.map(({ schema, paths }) => ({
       schema: new LinkValue(schema.link),
       paths: Object.fromEntries(Object.entries(paths).map(([rowField, steps]) => [rowField, steps.map(stepValueOf)])),

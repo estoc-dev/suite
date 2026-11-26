@@ -11,11 +11,12 @@ import {
   type Schema,
 } from "@estoc/object";
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   type Backend,
   type FieldNames,
   heldObject,
+  type IndexDefinition,
   indexOfRows,
   indexOver,
   MemoryBackend,
@@ -111,12 +112,12 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const statement = encodeObject(pair, { left: new LinkValue(lisbon.link), right: new LinkValue(linkOf(nameless)) });
     const store = new Store(new MemoryBackend());
     await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...pair.blobs, ...closure] });
-    const leftFirst = indexOfRows(names, { left, right }).orderedBy("left").named("Names");
-    const rightFirst = indexOfRows(names, { right, left }).orderedBy("left").named("Names");
+    const leftFirst = indexOfRows(names, { left, right });
+    const rightFirst = indexOfRows(names, { right, left });
     expect(leftFirst.definition).toBeDefined();
     expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
     for (const index of [leftFirst, rightFirst]) {
-      const { failures } = await store.scan(index);
+      const { failures } = await store.scan(index.orderedBy("left"));
       expect(failures.map(({ item }) => item)).toEqual([recordOf(statement.link).link]);
       expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
     }
@@ -216,12 +217,12 @@ describe("a union of indexes", () => {
   });
 });
 
-describe("the definition of a named index", () => {
+describe("the definition of an index", () => {
   const linkTo = ({ link }: Schema) => new LinkValue(link);
 
-  it("holds the name, the schema of the rows, the order and what each part reads and takes", () => {
+  it("holds the schema of the rows and what each part reads and takes", () => {
     const titles = indexOfRows(titled, { title: heldObject(card).field("title") });
-    const { definition } = ownedCards.union(ownedCards).orderedBy("title", "card").named("Owned Cards");
+    const { definition } = ownedCards.union(ownedCards);
     const follow = (name: string, followed: Schema) => [
       { step: "field", name },
       { step: "object", schema: linkTo(followed) },
@@ -237,34 +238,37 @@ describe("the definition of a named index", () => {
         city: [...toOwner, ...follow("home", place), { step: "field", name: "city" }],
       },
     };
-    expect(definition?.data).toEqual({
-      title: "Owned Cards",
-      rows: linkTo(ownedCard),
-      order: ["title", "card"],
-      parts: [part, part],
-    });
-    expect(titles.orderedBy("title").named("Titles").definition?.data.parts).toEqual([
+    expect(definition?.data).toEqual({ rows: linkTo(ownedCard), parts: [part, part] });
+    expect(titles.definition?.data.parts).toEqual([
       { schema: linkTo(card), paths: { title: [{ step: "field", name: "title" }] } },
     ]);
   });
 
-  it("has the same link for the same name, rows, order and parts, and another for another name", () => {
+  it("has the same link for the same rows and parts, and another for other parts or rows of another schema", () => {
     const again = indexOfRows(ownedCard, {
       city: recordedStatement(card).field("owner").objectOf(person).field("home").objectOf(place).field("city"),
       owner: recordedStatement(card).field("owner").objectOf(person).field("name"),
       title: recordedStatement(card).field("title"),
       card: recordedStatement(card).link,
     });
-    const linkOfNamed = (name: string, index = ownedCards) => index.orderedBy("title").named(name).definition?.link;
-    expect(linkOfNamed("Owned Cards", again)).toBe(linkOfNamed("Owned Cards"));
-    expect(linkOfNamed("Cards")).not.toBe(linkOfNamed("Owned Cards"));
+    const definitionLinkOf = ({ definition }: { readonly definition: IndexDefinition | undefined }) => {
+      assert.exists(definition);
+      return definition.link;
+    };
+    expect(definitionLinkOf(again)).toBe(definitionLinkOf(ownedCards));
+    expect(definitionLinkOf(ownedCards.union(ownedCards))).not.toBe(definitionLinkOf(ownedCards));
+    const title = heldObject(card).field("title");
+    const retitled = schema("Retitled", { title: string() });
+    expect(definitionLinkOf(indexOfRows(retitled, { title }))).not.toBe(
+      definitionLinkOf(indexOfRows(titled, { title })),
+    );
   });
 
   it("is absent where a function gives the rows of a part", () => {
     const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [{ title: data.title }]);
     const titles = indexOfRows(titled, { title: recordedCard.field("title") });
-    expect(titles.union(shouted).orderedBy("title").named("Titles").definition).toBeUndefined();
-    expect(shouted.orderedBy("title").named("Titles").definition).toBeUndefined();
+    expect(titles.union(shouted).definition).toBeUndefined();
+    expect(shouted.definition).toBeUndefined();
   });
 });
 

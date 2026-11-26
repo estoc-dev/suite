@@ -15,6 +15,4 @@ export const heldMailboxKeys = indexOfRows(heldMailboxKeySchema, {
   key: mailboxKey.link,
   mailbox: mailboxKey.field("mailbox"),
   secret: mailboxKey.field("secret"),
-})
-  .orderedBy("key")
-  .named("Held Mailbox Keys");
+}).orderedBy("key");

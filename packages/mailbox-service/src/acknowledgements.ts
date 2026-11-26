@@ -14,9 +14,7 @@ export const acknowledgements = indexOver(
   selectedRecords(writtenObjectsOver(identityKit.signatures.selectionOver(acknowledgementSchema))),
   acknowledgementRowSchema,
   ({ signature, object }) => [{ acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) }],
-)
-  .orderedBy("acceptance", "acknowledgement")
-  .named("Acknowledgements");
+).orderedBy("acceptance", "acknowledgement");
 
 export interface Acknowledgements {
   /**

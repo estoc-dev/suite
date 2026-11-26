@@ -1,5 +1,5 @@
 import type { Schema, ValueMap } from "@estoc/object";
-import type { FieldNames, NamedIndex, Store } from "@estoc/store";
+import type { FieldNames, OrderedIndex, Store } from "@estoc/store";
 import type { Page } from "./calls.ts";
 
 /** It is bound to no store: whoever reads a page says which store the page is of. */
@@ -15,9 +15,12 @@ export function pageIn<T>(rows: readonly T[], start: number, limit: number): { s
   return { start: first, rows: rows.slice(first, first + Math.max(limit, 0)) };
 }
 
-export function listOfIndex<F extends ValueMap, By extends FieldNames<F>>(index: NamedIndex<F, By>): List {
+export function listOfIndex<F extends ValueMap, By extends FieldNames<F>>(
+  index: OrderedIndex<F, By>,
+  name: string,
+): List {
   return {
-    name: index.name,
+    name,
     rowSchema: index.rowSchema,
     order: index.order,
     async page(store, start, limit) {

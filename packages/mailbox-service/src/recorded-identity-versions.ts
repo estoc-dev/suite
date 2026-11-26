@@ -17,6 +17,4 @@ export const recordedIdentityVersions = indexOver(
     const { identifier } = (await signedIdentities.verify(object, reader)).identity;
     yield { identifier: new LinkValue(identifier), signedIdentity: new LinkValue(object.link) };
   },
-)
-  .orderedBy("identifier", "signedIdentity")
-  .named("Recorded Identity Versions");
+).orderedBy("identifier", "signedIdentity");

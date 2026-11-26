@@ -13,6 +13,4 @@ const openedMailbox = recordedStatement(openedMailboxSchema);
 export const openedMailboxes = indexOfRows(openedMailboxRowSchema, {
   transport: openedMailbox.field("transport"),
   acknowledgement: openedMailbox.field("acknowledgement"),
-})
-  .orderedBy("transport", "acknowledgement")
-  .named("Opened Mailboxes");
+}).orderedBy("transport", "acknowledgement");

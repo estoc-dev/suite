@@ -1,4 +1,4 @@
-import type { Bytes, EncodedObject, Link, Reader, ValueMap } from "@estoc/object";
+import { type Bytes, type EncodedObject, type Link, type Reader, readObject, type ValueMap } from "@estoc/object";
 import { type Backend, blobIn } from "./backend.ts";
 import {
   type Batch,
@@ -9,7 +9,8 @@ import {
   type RecordBatch,
   recordsOf,
 } from "./batch.ts";
-import { KeptRows, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import { collectionSchema, membersOf } from "./collection.ts";
+import { KeptRows, rowsOfMembers, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -42,6 +43,7 @@ export interface Store {
   records(): AsyncIterable<Link<EncodedObject>>;
   recordedStatements(): Promise<RecordedStatements>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
+  heldCollection(link: Link<unknown>): Promise<HeldCollection>;
   /**
    * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
    *   put since.
@@ -85,6 +87,21 @@ export interface StagedStore {
    * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
    * recorded.
    */
+  scan<F extends ValueMap, By extends FieldNames<F>>(
+    index: OrderedIndex<F, By>,
+    options?: ScanOptions,
+  ): Promise<Rows<F, By>>;
+}
+
+/**
+ * - An index gives here the rows and the failures that it gives of the members in the store, and
+ *   none of any other blob held. Each member is read with its closure, which the store holds; a
+ *   blob that is in a closure and is not a member is not read for rows of its own.
+ * - Nothing is recorded in a collection, so an index gives no row of what it reads from the
+ *   records, even where a statement that the store recorded is a member.
+ * - The rows are worked out at each scan, and none is kept for the next.
+ */
+export interface HeldCollection {
   scan<F extends ValueMap, By extends FieldNames<F>>(
     index: OrderedIndex<F, By>,
     options?: ScanOptions,
@@ -141,6 +158,11 @@ export class StoreOf implements Store {
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
     return closureIn(this, link);
+  }
+
+  async heldCollection(link: Link<unknown>): Promise<HeldCollection> {
+    const members = membersOf(await readObject(this, link, collectionSchema));
+    return { scan: (index, options) => scannedRows(rowsOfMembers(members, this), index, options) };
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(

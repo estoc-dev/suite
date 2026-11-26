@@ -155,6 +155,15 @@ export class KeptRows {
   }
 }
 
+const emptyRows: RowsByIndex = {
+  blobCount: 0,
+  records: async () => new ListedLinks(),
+  heldBlobs: async () => new ListedLinks(),
+  derivedObjectsOf: async <F extends ValueMap>(derivation: Derivation<F>) => new DerivedObjects(derivation),
+  sortedRowsOf: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) =>
+    new SortedRows(index),
+};
+
 /**
  * - A batch can hold what its store holds already, so the rows and their failures are those of the
  *   store once the batch is written, and the blobs counted are the ones it would then hold.
@@ -167,6 +176,11 @@ export async function rowsWithAdded(
   reader: Reader,
 ): Promise<RowsByIndex> {
   return new AddedRows(rows, await (await rows.heldBlobs()).adding(addedBlobs), reader);
+}
+
+/** `members` lists each of them once. It is for one scan, as the rows of a batch are. */
+export function rowsOfMembers(members: readonly Link<unknown>[], reader: Reader): RowsByIndex {
+  return new AddedRows(emptyRows, new ListedLinks(members), reader);
 }
 
 class AddedRows implements RowsByIndex {

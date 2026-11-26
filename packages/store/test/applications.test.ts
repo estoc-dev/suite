@@ -109,13 +109,13 @@ describe("an object slipped into a bundle", () => {
     await receive(bob, encodeBundle(reply.link, [reply.bytes, slippedContact.bytes]));
 
     expect((await readObject(bob, slippedContact.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
-    const byName = indexOver(
+    const writtenContacts = indexOver(
       selectedRecords(writtenObjectsOver(objectsOf(contactSchema))),
       contactSchema,
       ({ data }) => [data],
-    ).orderedBy("name");
+    );
     const names: string[] = [];
-    for await (const { data } of (await bob.scan(byName)).range([])) names.push(data.name);
+    for await (const { data } of (await bob.scan(writtenContacts)).orderedBy("name").range([])) names.push(data.name);
     expect(names).toEqual(["Alice"]);
   });
 });

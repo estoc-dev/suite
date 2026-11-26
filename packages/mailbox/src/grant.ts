@@ -30,7 +30,7 @@ export const mailboxGrants = indexOver(
       signature: new LinkValue(signature.link),
     };
   },
-).orderedBy("from", "to", "at", "signature");
+);
 
 export interface MailboxGrant {
   readonly object: EncodedObject<MailboxGrantData>;
@@ -63,9 +63,10 @@ export function mailboxGrantTo(
   });
 }
 
-export const grantSeriesView: View<DataOf<typeof mailboxGrants.rowSchema>, typeof mailboxGrants.order, GrantSeries> = {
+export const grantSeriesView: View<DataOf<typeof mailboxGrants.rowSchema>, GrantSeries> = {
   index: mailboxGrants,
   read: (rows, reader) => {
+    const orderedRows = rows.orderedBy("from", "to", "at", "signature");
     const grantOf = async (signature: Signature): Promise<MailboxGrant> => {
       const object = await readObject(reader, signature.object, mailboxGrantSchema);
       return { object, signature, to: await signedIdentities.read(object.data.to.link, reader) };
@@ -75,7 +76,7 @@ export const grantSeriesView: View<DataOf<typeof mailboxGrants.rowSchema>, typeo
       to: Link<unknown>,
       seenIdentityVersions: SeenIdentityVersions,
     ) {
-      for await (const { data } of rows.range([new LinkValue(from), new LinkValue(to)])) {
+      for await (const { data } of orderedRows.range([new LinkValue(from), new LinkValue(to)])) {
         const signature = await signatures.read(data.signature.link, reader);
         if (await seenIdentityVersions.honors(signature)) yield signature;
       }

@@ -12,7 +12,7 @@ import {
 import { collectionSchema, membersOf } from "./collection.ts";
 import { blobSetOf, KeptRows, recordedStatementsIn } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
-import type { FieldNames, OrderedIndex } from "./source.ts";
+import { derivationOf, type Index } from "./source.ts";
 
 export interface Scannable {
   /**
@@ -23,7 +23,7 @@ export interface Scannable {
    * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
    *   selection or its rows catch it. That is not listed in the `failures`.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>>;
 }
 
 /**
@@ -71,7 +71,7 @@ export interface Store extends Scannable {
    * A store keeps the rows of each index it is scanned for, and what the index failed on, so a
    * later scan reads only what was put since the last scan for it that gave rows.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>>;
 }
 
 export interface RecordedStatements {
@@ -100,7 +100,7 @@ export interface StagedStore extends Scannable {
    * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
    * recorded.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>>;
 }
 
 export class StoreOf implements Store {
@@ -158,11 +158,11 @@ export class StoreOf implements Store {
     const members = membersOf(await readObject(this, link, collectionSchema));
     // A blob set keeps what it has worked out, a failure of the store to read as well, so each scan
     // is given a new one.
-    return { scan: (index) => blobSetOf(members, this).scan(index) };
+    return { scan: (index) => blobSetOf(members, this).rowsOf(derivationOf(index)) };
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
-    return this.#keptRows.read((blobSet) => blobSet.scan(index));
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>> {
+    return this.#keptRows.read((blobSet) => blobSet.rowsOf(derivationOf(index)));
   }
 }
 
@@ -189,8 +189,10 @@ class StagedStoreOf implements StagedStore {
     return this.#backend.put(this.#blobs);
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
-    return this.#keptRows.read(async (blobSet) => (await blobSet.adding([...this.#blobs.keys()], this)).scan(index));
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>> {
+    return this.#keptRows.read(async (blobSet) =>
+      (await blobSet.adding([...this.#blobs.keys()], this)).rowsOf(derivationOf(index)),
+    );
   }
 }
 

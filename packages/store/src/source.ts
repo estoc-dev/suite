@@ -82,16 +82,10 @@ export class Derivation<F extends ValueMap> implements Origin {
   }
 }
 
-interface Order<F extends ValueMap, By extends FieldNames<F>> {
-  readonly index: Index<F>;
-  readonly by: By;
-}
-
-// `indexOver` and the scan of a store read what a source, an index and an ordered index are made of, which nothing
-// outside this package can.
+// `indexOver` and the scan of a store read what a source and an index are made of, which nothing outside this
+// package can.
 let readingOf: <T>(source: Source<T>) => Reading<T>;
 export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
-export let orderOf: <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => Order<F, By>;
 
 /**
  * A reading that trusts what an index derived holds only over the rows of that index, so it is
@@ -163,6 +157,10 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     this.#derivation = derivation;
   }
 
+  get rowSchema(): Schema<F> {
+    return this.#derivation.schema;
+  }
+
   /** An index has none where a function gives the rows of any of its parts. */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;
@@ -178,30 +176,6 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
       for (const [origin, originParts] of index.#derivation.parts)
         parts.set(origin, [...(parts.get(origin) ?? []), ...originParts]);
     return new Index(new Derivation(this.#derivation.schema, parts));
-  }
-
-  orderedBy<const By extends FieldNames<F>>(...by: By): OrderedIndex<F, By> {
-    return new OrderedIndex({ index: this, by });
-  }
-}
-
-export class OrderedIndex<F extends ValueMap, By extends FieldNames<F>> {
-  readonly #order: Order<F, By>;
-
-  static {
-    orderOf = (index) => index.#order;
-  }
-
-  constructor(order: Order<F, By>) {
-    this.#order = order;
-  }
-
-  get rowSchema(): Schema<F> {
-    return derivationOf(this.#order.index).schema;
-  }
-
-  get order(): Readonly<By> {
-    return this.#order.by;
   }
 }
 

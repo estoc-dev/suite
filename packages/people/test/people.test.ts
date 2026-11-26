@@ -23,7 +23,8 @@ describe("the index of the people of a store", () => {
 
     const rows = await store.scan(identityVersions);
     const signedIdentitiesOfRows = [];
-    for await (const { data } of rows.range([])) signedIdentitiesOfRows.push(data.signedIdentity.link);
+    for await (const { data } of rows.orderedBy("identifier", "at", "signedIdentity").range([]))
+      signedIdentitiesOfRows.push(data.signedIdentity.link);
     expect(signedIdentitiesOfRows).toEqual([first.link, second.link]);
     expect(rows.failures.map(({ item }) => item)).toEqual([forged.link]);
     expect((await (await view(store, peopleView)).current(first)).link).toBe(second.link);

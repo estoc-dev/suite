@@ -14,13 +14,12 @@ import { array, integer, link, optional, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   type Backend,
-  type FieldNames,
   heldObject,
+  type Index,
   type IndexDefinition,
   indexOfRows,
   indexOver,
   MemoryBackend,
-  type OrderedIndex,
   recordedStatement,
   recordSchema,
   Store,
@@ -45,7 +44,6 @@ const ownedCards = indexOfRows(ownedCard, {
   owner: owner.field("name"),
   city: owner.field("home").objectOf(place).field("city"),
 });
-const byTitle = ownedCards.orderedBy("title");
 
 const lisbon = encodeObject(place, { city: "Lisbon" });
 const ada = encodeObject(person, { name: "Ada", home: new LinkValue(lisbon.link) });
@@ -68,14 +66,14 @@ async function rowDataOf<F>(range: AsyncIterable<{ readonly data: F }>): Promise
   return rows;
 }
 
-const titlesIn = async <F extends { readonly title: string }>(store: Store, index: OrderedIndex<F, FieldNames<F>>) =>
-  (await rowDataOf((await store.scan(index)).range([]))).map(({ title }) => title);
+const titlesIn = async (store: Store, index: Index<{ readonly title: string }>) =>
+  (await rowDataOf((await store.scan(index)).orderedBy("title").range([]))).map(({ title }) => title);
 
 describe("an index of rows taken along paths from the statements recorded", () => {
   it("holds a row of each statement of the schema, with the value that each path reaches", async () => {
     const [first, second] = [cardOf("b"), cardOf("a")];
     const store = await storeRecording(first, second, lisbon);
-    expect(await rowDataOf((await store.scan(byTitle)).range([]))).toEqual([
+    expect(await rowDataOf((await store.scan(ownedCards)).orderedBy("title").range([]))).toEqual([
       { card: new LinkValue(second.link), title: "a", owner: "Ada", city: "Lisbon" },
       { card: new LinkValue(first.link), title: "b", owner: "Ada", city: "Lisbon" },
     ]);
@@ -85,12 +83,12 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const store = await storeRecording(cardOf("recorded"));
     const held = cardOf("held");
     await store.write({ roots: [held.link], blobs: [held.bytes, ...closure] });
-    expect(await titlesIn(store, byTitle)).toEqual(["recorded"]);
+    expect(await titlesIn(store, ownedCards)).toEqual(["recorded"]);
   });
 
   it("holds no row of a statement where a link that a path follows leads to an object of another schema", async () => {
     const store = await storeRecording(cardOf("of a person"), cardOf("of a place", lisbon.link));
-    expect(await titlesIn(store, byTitle)).toEqual(["of a person"]);
+    expect(await titlesIn(store, ownedCards)).toEqual(["of a person"]);
   });
 
   it("fails on a statement where a link that a path follows leads to an object that does not fit its schema", async () => {
@@ -98,7 +96,7 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const store = new Store(new MemoryBackend());
     const statement = cardOf("of no one", linkOf(nameless));
     await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...closure] });
-    const { failures } = await store.scan(byTitle);
+    const { failures } = await store.scan(ownedCards);
     expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
   });
 
@@ -117,7 +115,7 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(leftFirst.definition).toBeDefined();
     expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
     for (const index of [leftFirst, rightFirst]) {
-      const { failures } = await store.scan(index.orderedBy("left"));
+      const { failures } = await store.scan(index);
       expect(failures.map(({ item }) => item)).toEqual([recordOf(statement.link).link]);
       expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
     }
@@ -128,9 +126,9 @@ describe("an index of rows taken along paths from the statements recorded", () =
     ["a row may leave out", optional(string())],
   ])("holds the value that a path reaches under a field named __proto__ that %s", async (_, field) => {
     const labeled = schema("Labeled", { ["__proto__"]: field });
-    const byLabel = indexOfRows(labeled, { ["__proto__"]: recordedCard.field("title") }).orderedBy("__proto__");
+    const labels = indexOfRows(labeled, { ["__proto__"]: recordedCard.field("title") });
     const store = await storeRecording(cardOf("a"), cardOf("b"));
-    const rows = await rowDataOf((await store.scan(byLabel)).range(["a"]));
+    const rows = await rowDataOf((await store.scan(labels)).orderedBy("__proto__").range(["a"]));
     expect(rows.map((row) => Object.entries(row))).toEqual([[["__proto__", "a"]]]);
   });
 
@@ -152,7 +150,7 @@ describe("an index of rows taken along paths from the statements recorded", () =
     await store.write({ roots: [other.link], blobs: [other.bytes, ...closure] });
     for await (const _ of store.records());
     requestedLinks.length = 0;
-    expect(await titlesIn(store, byTitle)).toEqual(["a"]);
+    expect(await titlesIn(store, ownedCards)).toEqual(["a"]);
     expect(new Set(requestedLinks)).toEqual(new Set([statement.link, ada.link, lisbon.link]));
   });
 
@@ -162,21 +160,19 @@ describe("an index of rows taken along paths from the statements recorded", () =
     ]);
     const titles = indexOfRows(titled, { title: recordedCard.field("title") });
     const store = await storeRecording(cardOf("a"));
-    expect(await titlesIn(store, titles.union(shouted).orderedBy("title"))).toEqual(["A", "a"]);
+    expect(await titlesIn(store, titles.union(shouted))).toEqual(["A", "a"]);
   });
 });
 
 describe("an index of rows taken along paths from the Records", () => {
   const record = heldObject(recordSchema);
   const recorded = schema("Recorded", { record: link(), statement: link() });
-  const byStatement = indexOfRows(recorded, { record: record.link, statement: record.field("object") }).orderedBy(
-    "statement",
-  );
+  const statementsOfRecords = indexOfRows(recorded, { record: record.link, statement: record.field("object") });
 
   it("holds under the link of a Record the link of the blob that records the statement", async () => {
     const statement = cardOf("a");
     const store = await storeRecording(statement);
-    const [row, ...others] = await rowDataOf((await store.scan(byStatement)).range([]));
+    const [row, ...others] = await rowDataOf((await store.scan(statementsOfRecords)).orderedBy("statement").range([]));
     expect(others).toEqual([]);
     expect(row?.statement).toEqual(new LinkValue(statement.link));
     const bytes = await store.get(row?.record.link as Link<unknown>);
@@ -186,7 +182,7 @@ describe("an index of rows taken along paths from the Records", () => {
 
 describe("an index of rows taken along paths from the objects held of a schema", () => {
   const heldCard = heldObject(card);
-  const byHeldTitle = indexOfRows(titled, { title: heldCard.field("title") }).orderedBy("title");
+  const heldTitles = indexOfRows(titled, { title: heldCard.field("title") });
 
   it("holds a row of each object of the schema, recorded or not", async () => {
     const store = await storeRecording(cardOf("recorded"));
@@ -196,7 +192,7 @@ describe("an index of rows taken along paths from the objects held of a schema",
       roots: [held.link, carrying.link],
       blobs: [held.bytes, carrying.bytes, deep.bytes, ...closure],
     });
-    expect(await titlesIn(store, byHeldTitle)).toEqual(["deep", "held", "recorded"]);
+    expect(await titlesIn(store, heldTitles)).toEqual(["deep", "held", "recorded"]);
   });
 });
 

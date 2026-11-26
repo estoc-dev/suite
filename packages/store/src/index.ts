@@ -1,7 +1,6 @@
 export { type Action, type ActionOutcome, actionOver, perform } from "./action.ts";
 export {
   type ArrivalData,
-  type ArrivalOrder,
   type Arrivals,
   type ArrivalsView,
   arrivalSchema,
@@ -27,7 +26,7 @@ export {
 export { MemoryBackend } from "./memory.ts";
 export { type RecordData, type RecordObject, recordSchema } from "./record.ts";
 export { sendableBlobs } from "./sendable-blobs.ts";
-export type { Rows } from "./sorted-rows.ts";
+export type { OrderedRows, Rows } from "./sorted-rows.ts";
 export {
   type FieldNames,
   type HeldBlob,
@@ -37,7 +36,6 @@ export {
   indexOfRows,
   indexOver,
   type KeyOf,
-  type OrderedIndex,
   type Prefix,
   type Source,
   selectedBlobs,

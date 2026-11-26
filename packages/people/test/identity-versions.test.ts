@@ -70,7 +70,10 @@ describe("the index of identity versions", () => {
     await store.write({ roots: [ofGreater.link, second.link], blobs: [...ofGreater.blobs, ...second.blobs] });
 
     const rows = [];
-    for await (const { data } of (await store.scan(identityVersions)).range([])) rows.push(data);
+    for await (const { data } of (await store.scan(identityVersions))
+      .orderedBy("identifier", "at", "signedIdentity")
+      .range([]))
+      rows.push(data);
     expect(rows).toEqual([identityVersionOf(first), identityVersionOf(second), identityVersionOf(ofGreater)]);
   });
 });

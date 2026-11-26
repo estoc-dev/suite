@@ -34,22 +34,21 @@ const note = (text: string, about?: Link<unknown>) =>
 const textSchema = schema("Text", { text: string(), note: link() });
 type Text = DataOf<typeof textSchema>;
 
-type TextRows = Rows<Text, readonly ["text"]>;
+type TextRows = Rows<Text>;
 
 const texts = indexOfRows(textSchema, {
   text: heldObject(noteSchema).field("text"),
   note: heldObject(noteSchema).link,
 });
-const heldTexts = texts.orderedBy("text");
 
 const recordedTextIndexes = () => [
   indexOfRows(textSchema, {
     text: recordedStatement(noteSchema).field("text"),
     note: recordedStatement(noteSchema).link,
-  }).orderedBy("text"),
+  }),
   indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
     { text: data.text, note: new LinkValue(link) },
-  ]).orderedBy("text"),
+  ]),
 ];
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -71,7 +70,7 @@ async function collectionIn(store: Store, members: readonly Link<unknown>[]) {
 
 async function rowDataOf(rows: TextRows): Promise<Text[]> {
   const data: Text[] = [];
-  for await (const row of rows.range([])) data.push(row.data);
+  for await (const row of rows.orderedBy("text").range([])) data.push(row.data);
   return data;
 }
 
@@ -101,7 +100,7 @@ describe("a collection that a store holds", () => {
 
     const listed = (await readObject(store, outer.link, collectionSchema)).data.members;
     const collections = await Promise.all(listed.map(({ link }) => store.heldCollection(link)));
-    const textsByCollection = collections.map(async (collection) => textsOf(await collection.scan(heldTexts)));
+    const textsByCollection = collections.map(async (collection) => textsOf(await collection.scan(texts)));
     expect(await Promise.all(textsByCollection)).toEqual([["soup"]]);
   });
 
@@ -144,10 +143,8 @@ describe("an index scanned over a collection", () => {
     const members: Link<unknown>[] = [soup.link, stew.link];
     const collection = await collectionIn(store, members);
 
-    const rowsOfMembers = (await rowDataOf(await store.scan(heldTexts))).filter(({ note }) =>
-      members.includes(note.link),
-    );
-    expect(await rowDataOf(await collection.scan(heldTexts))).toEqual(rowsOfMembers);
+    const rowsOfMembers = (await rowDataOf(await store.scan(texts))).filter(({ note }) => members.includes(note.link));
+    expect(await rowDataOf(await collection.scan(texts))).toEqual(rowsOfMembers);
     expect(rowsOfMembers.map(({ text }) => text)).toEqual(["soup", "stew"]);
   });
 
@@ -159,9 +156,9 @@ describe("an index scanned over a collection", () => {
 
     const textsByFunction = indexOver(selectedBlobs(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
       { text: data.text, note: new LinkValue(link) },
-    ]).orderedBy("text");
+    ]);
     expect(await rowDataOf(await collection.scan(textsByFunction))).toEqual(
-      await rowDataOf(await collection.scan(heldTexts)),
+      await rowDataOf(await collection.scan(texts)),
     );
     expect(await textsOf(await collection.scan(textsByFunction))).toEqual(["salad"]);
   });
@@ -172,7 +169,7 @@ describe("an index scanned over a collection", () => {
     await store.record({ statements: [soup.link, stew.link], blobs: [soup.bytes, stew.bytes, ...noteSchema.blobs] });
     await keepIn(store, [salad]);
 
-    const indexes = [heldTexts, ...recordedTextIndexes()];
+    const indexes = [texts, ...recordedTextIndexes()];
     const rowsInStore: Text[][] = [];
     for (const index of indexes) rowsInStore.push(await rowDataOf(await store.scan(index)));
     expect(rowsInStore.map((rows) => rows.map(({ text }) => text))).toEqual([
@@ -199,7 +196,7 @@ describe("an index scanned over a collection", () => {
       expect(await textsOf(await store.scan(index))).toEqual(["salad", "soup"]);
       expect(await textsOf(await collection.scan(index))).toEqual(["soup"]);
     }
-    expect(await textsOf(await collection.scan(heldTexts))).toEqual(["salad"]);
+    expect(await textsOf(await collection.scan(texts))).toEqual(["salad"]);
   });
 
   it("reads the closure of a member from the store, and gives no row of its own to what is only there", async () => {
@@ -213,9 +210,9 @@ describe("an index scanned over a collection", () => {
       if (data.about === undefined) return;
       const subject = await readObject(reader, data.about.link, noteSchema);
       yield { text: subject.data.text, note: data.about };
-    }).orderedBy("text");
+    });
     expect(await textsOf(await collection.scan(subjects))).toEqual(["soup"]);
-    expect(await textsOf(await collection.scan(heldTexts))).toEqual(["a remark"]);
+    expect(await textsOf(await collection.scan(texts))).toEqual(["a remark"]);
   });
 
   it("reads an index that it is over from the members as well", async () => {
@@ -224,9 +221,7 @@ describe("an index scanned over a collection", () => {
     await keepIn(store, [soup, salad]);
     const collection = await collectionIn(store, [soup.link]);
 
-    const shouted = indexOver(texts, textSchema, ({ data }) => [
-      { text: data.text.toUpperCase(), note: data.note },
-    ]).orderedBy("text");
+    const shouted = indexOver(texts, textSchema, ({ data }) => [{ text: data.text.toUpperCase(), note: data.note }]);
     expect(await textsOf(await store.scan(shouted))).toEqual(["SALAD", "SOUP"]);
     expect(await textsOf(await collection.scan(shouted))).toEqual(["SOUP"]);
   });
@@ -240,7 +235,7 @@ describe("an index scanned over a collection", () => {
 
     const sizes = indexOver(heldBlobs, textSchema, ({ link, bytes }) => [
       { text: String(bytes.length), note: new LinkValue(link) },
-    ]).orderedBy("text");
+    ]);
     expect(await rowDataOf(await collection.scan(sizes))).toEqual([
       { text: String(image.length), note: new LinkValue(linkOf(image)) },
     ]);
@@ -251,10 +246,10 @@ describe("an index scanned over a collection", () => {
     const [soup, salad] = [note("soup"), note("salad")];
     await keepIn(store, [soup, salad]);
     const collection = await collectionIn(store, [soup.link, salad.link]);
-    expect((await collection.scan(heldTexts)).blobCount).toBe(2);
+    expect((await collection.scan(texts)).blobCount).toBe(2);
 
     await keepIn(store, [note("stew")]);
-    const rows = await collection.scan(heldTexts);
+    const rows = await collection.scan(texts);
     expect(rows.blobCount).toBe(2);
     expect(await textsOf(rows)).toEqual(["salad", "soup"]);
   });
@@ -268,7 +263,7 @@ describe("an index scanned over a collection", () => {
     const refusal = new Error("no row of soup");
     const refusing = indexOver(selectedBlobs(objectsOf(noteSchema)), textSchema, () => {
       throw refusal;
-    }).orderedBy("text");
+    });
     expect((await collection.scan(refusing)).failures).toEqual([{ item: soup.link, error: refusal }]);
   });
 });

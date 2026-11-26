@@ -572,13 +572,13 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
 
   it("has a location of the Service that the service signed", async () => {
     const { store, service, at } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await store.scan(locations)).range([]));
+    const rows = await dataOf(await store.scan(locations));
     expect(rows).toEqual([{ identifier, at, service: new LinkValue(service.link) }]);
   });
 
   it("has the acknowledgement by the acceptance it answers", async () => {
     const { store, acceptance, acknowledgement } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await store.scan(acknowledgements)).range([]));
+    const rows = await dataOf(await store.scan(acknowledgements));
     expect(rows).toEqual([
       { acceptance: new LinkValue(acceptance.signature.link), acknowledgement: new LinkValue(acknowledgement.link) },
     ]);
@@ -586,7 +586,7 @@ describe("the store of a mailbox service that acknowledged an acceptance", () =>
 
   it("has the identity version that the service was set up with", async () => {
     const { store, signedIdentity } = await setUpAcknowledgedAcceptance();
-    const rows = await dataOf((await store.scan(recordedIdentityVersions)).range([]));
+    const rows = await dataOf(await store.scan(recordedIdentityVersions));
     expect(rows).toEqual([{ identifier, signedIdentity: new LinkValue(signedIdentity.link) }]);
   });
 });

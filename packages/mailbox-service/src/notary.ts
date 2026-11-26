@@ -95,7 +95,6 @@ async function rootSigner(keyring: Pick<Keyring, "signerFor">, root: Link<unknow
 
 const recordedIdentityView: View<
   DataOf<typeof recordedIdentityVersions.rowSchema>,
-  typeof recordedIdentityVersions.order,
   { signedIdentity(): Promise<SignedIdentityObject> }
 > = {
   index: recordedIdentityVersions,
@@ -103,7 +102,7 @@ const recordedIdentityView: View<
     async signedIdentity() {
       const identifiers = new Set<Link<unknown>>();
       let recorded: Link<unknown> | undefined;
-      for await (const { data } of rows.range([])) {
+      for await (const { data } of rows.orderedBy("identifier", "signedIdentity").range([])) {
         identifiers.add(data.identifier.link);
         recorded = data.signedIdentity.link;
       }
@@ -118,14 +117,14 @@ const recordedIdentityView: View<
 
 const recordedSignaturesView: View<
   DataOf<typeof recordedSignatures.rowSchema>,
-  typeof recordedSignatures.order,
   { signaturesOver(object: Link<unknown>): Promise<Link<unknown>[]> }
 > = {
   index: recordedSignatures,
   read: (rows) => ({
     async signaturesOver(object) {
       const links: Link<unknown>[] = [];
-      for await (const { data } of rows.range([new LinkValue(object)])) links.push(data.signature.link);
+      for await (const { data } of rows.orderedBy("object", "signature").range([new LinkValue(object)]))
+        links.push(data.signature.link);
       return links;
     },
   }),

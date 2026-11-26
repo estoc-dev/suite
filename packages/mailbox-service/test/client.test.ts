@@ -397,7 +397,7 @@ describe("an account offer", () => {
     const { store, services } = client();
     const account = await (await accountAt(services, origin)).accept(await actorOf(alice));
     expect((await signatures.read(account.link, store)).signedIdentity.link).toBe(account.service.link);
-    expect(await dataOf((await store.scan(acknowledgements)).range([]))).toEqual([]);
+    expect(await dataOf(await store.scan(acknowledgements))).toEqual([]);
   });
 
   it("accepted by an agent that an identity lists opens the account of whoever it signs for", async () => {

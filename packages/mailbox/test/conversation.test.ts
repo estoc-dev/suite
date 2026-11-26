@@ -15,7 +15,6 @@ import {
   inboundSchema,
   indexOver,
   MemoryBackend,
-  type OrderedIndex,
   type Rows,
   recordSchema,
   Store,
@@ -46,22 +45,17 @@ const delivery = schema("Delivery", {
   bundle: link<never>(),
 });
 type Delivery = DataOf<typeof delivery>;
-type DeliveryOrder = readonly ["direction", "mailbox", "at", "bundle"];
 
 // The application's index of the deliveries its user's store records: a
 // row for each, by which way it went, the mailbox, when, and the bundle. What
 // was handed over out of band came in at no mailbox, and gives no row.
-const deliveries: OrderedIndex<Delivery, DeliveryOrder> = indexOver(
-  selectedRecords(objectsOf(inboundSchema)),
-  delivery,
-  ({ data: { via, at, bundle } }) => (via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }]),
-)
-  .union(
-    indexOver(selectedRecords(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
-      { direction: "outbound", mailbox, at, bundle },
-    ]),
-  )
-  .orderedBy("direction", "mailbox", "at", "bundle");
+const deliveries = indexOver(selectedRecords(objectsOf(inboundSchema)), delivery, ({ data: { via, at, bundle } }) =>
+  via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }],
+).union(
+  indexOver(selectedRecords(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
+    { direction: "outbound", mailbox, at, bundle },
+  ]),
+);
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -72,7 +66,8 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 // What came in at `mine` and went out to `theirs`, in the order of when. A
 // bundle that came in, or went out, more than once is there once, at the
 // first time: a range gives its rows in the order of when.
-async function conversation(rows: Rows<Delivery, DeliveryOrder>, mine: Mailbox, theirs: Mailbox): Promise<Delivery[]> {
+async function conversation(rows: Rows<Delivery>, mine: Mailbox, theirs: Mailbox): Promise<Delivery[]> {
+  const orderedRows = rows.orderedBy("direction", "mailbox", "at", "bundle");
   const first = async (range: AsyncIterable<{ readonly data: Delivery }>) => {
     const seenBundles = new Set<Link<never>>();
     return (await all(range))
@@ -84,8 +79,8 @@ async function conversation(rows: Rows<Delivery, DeliveryOrder>, mine: Mailbox, 
       });
   };
   const ways = await Promise.all([
-    first(rows.range(["inbound", new LinkValue(mine)])),
-    first(rows.range(["outbound", new LinkValue(theirs)])),
+    first(orderedRows.range(["inbound", new LinkValue(mine)])),
+    first(orderedRows.range(["outbound", new LinkValue(theirs)])),
   ]);
   return ways.flat().sort((a, b) => a.at - b.at);
 }
@@ -177,7 +172,7 @@ async function chat(faults: Faults = {}) {
   };
   // What the person's store records as having come in, or gone out, at any mailbox.
   const recorded = async ({ store }: Person, direction: Direction) =>
-    all((await store.scan(deliveries)).range([direction]));
+    all((await store.scan(deliveries)).orderedBy("direction", "mailbox", "at", "bundle").range([direction]));
 
   // Someone who was given no grant, and was passed the mailbox that Alice gave
   // Bob, sends a line of their own there.

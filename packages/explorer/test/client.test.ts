@@ -367,11 +367,11 @@ describe("a client of a runtime", () => {
 
 describe("a client of a runtime that is given the list of an index", () => {
   const notedTextSchema = schema("Noted Text", { text: string(), note: link() });
-  const notesByText = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+  const notedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
     if (data.text === "unreadable") throw new Error("the index does not read this note");
     return [{ text: data.text, note: new LinkValue(link) }];
-  }).orderedBy("text");
-  const notesList = listOfIndex(notesByText, "Notes by text");
+  });
+  const notesList = listOfIndex(notedTexts, "Notes by text", ["text"]);
 
   async function storeRecording(...texts: readonly string[]): Promise<Store> {
     const store = new Store(new MemoryBackend());
@@ -446,9 +446,13 @@ describe("a client of a runtime that is given the list of an index", () => {
     const countedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
       readCount += 1;
       return [{ text: data.text, note: new LinkValue(link) }];
-    }).orderedBy("text");
+    });
     await store.scan(countedTexts);
-    const page = await clientOf(store, [listOfIndex(countedTexts, "Counted texts")]).page("Counted texts", 0, 1);
+    const page = await clientOf(store, [listOfIndex(countedTexts, "Counted texts", ["text"])]).page(
+      "Counted texts",
+      0,
+      1,
+    );
     expect(textsIn(page.rows)).toEqual(["a"]);
     expect(readCount).toBe(1);
   });
@@ -481,9 +485,9 @@ describe("a runtime", () => {
   ])("is not made with a list named as %s is", async (_, names) => {
     const texts = indexOver(selectedRecords(objectsOf(noteSchema)), schema("Text", { text: string() }), ({ data }) => [
       { text: data.text },
-    ]).orderedBy("text");
+    ]);
     const store = await storeOfNote();
-    const lists = names.map((name) => listOfIndex(texts, name));
+    const lists = names.map((name) => listOfIndex(texts, name, ["text"]));
     expect(() => new Runtime(store, lists, [])).toThrow(`two lists are named ${names[0]}`);
   });
 

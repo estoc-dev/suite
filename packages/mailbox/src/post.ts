@@ -77,7 +77,8 @@ export class Post {
    * Key among the records of the store.
    */
   async inbox(key: Link<EncodedObject<MailboxKeyData>>): Promise<Inbox> {
-    for await (const { data } of (await this.#store.scan(heldMailboxKeys)).range([new LinkValue(key)])) {
+    const heldRows = (await this.#store.scan(heldMailboxKeys)).orderedBy("key");
+    for await (const { data } of heldRows.range([new LinkValue(key)])) {
       const mailbox = await readObject(this.#store, data.mailbox.link, mailboxSchema);
       const secret = await readObject(this.#store, data.secret.link, secretSchema);
       const opener = await MailboxKey.fromSecretKey(secret.data.bytes);

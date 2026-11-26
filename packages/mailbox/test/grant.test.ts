@@ -129,7 +129,8 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
 describe("the index of mailbox grants", () => {
   const rowsIn = async (store: Store) => {
     const rows = [];
-    for await (const { data } of (await store.scan(mailboxGrants)).range([])) rows.push(data);
+    const orderedRows = (await store.scan(mailboxGrants)).orderedBy("from", "to", "at", "signature");
+    for await (const { data } of orderedRows.range([])) rows.push(data);
     return rows;
   };
 

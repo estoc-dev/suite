@@ -1,20 +1,17 @@
 import type { Reader, ValueMap } from "@estoc/object";
 import type { Rows } from "./sorted-rows.ts";
-import type { FieldNames, OrderedIndex } from "./source.ts";
+import type { Index } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
 
-export interface View<F extends ValueMap, By extends FieldNames<F>, V> {
-  readonly index: OrderedIndex<F, By>;
-  read(rows: Rows<F, By>, reader: Reader): V;
+export interface View<F extends ValueMap, V> {
+  readonly index: Index<F>;
+  read(rows: Rows<F>, reader: Reader): V;
 }
 
 /**
  * Later writes do not change the rows the value is worked out from; it takes them in when viewed
  * again.
  */
-export async function view<F extends ValueMap, By extends FieldNames<F>, V>(
-  store: Store | StagedStore,
-  view: View<F, By, V>,
-): Promise<Awaited<V>> {
+export async function view<F extends ValueMap, V>(store: Store | StagedStore, view: View<F, V>): Promise<Awaited<V>> {
   return await view.read(await store.scan(view.index), store);
 }

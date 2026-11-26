@@ -1,22 +1,28 @@
 import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
 import type { BlobSet } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
-import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
+import { type Rows, SortedRows } from "./sorted-rows.ts";
+import type { Derivation, FieldNames, ItemFailure, Listing, Origin } from "./source.ts";
 
-export class DerivedObjects<F extends ValueMap> implements Listing {
+export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
+  /** What comes of adding to these starts with them, in this order. */
   readonly objects: readonly EncodedObject<F>[];
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[];
+  readonly blobCount: number;
   readonly #derivation: Derivation<F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>>;
   readonly #listings: ReadonlyMap<Origin, Listing>;
   readonly #ownFailures: readonly ItemFailure[];
+  readonly #sortedRowsByOrder: Map<string, unknown>;
 
   constructor(
     derivation: Derivation<F>,
     objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>> = new Map(),
     listings: ReadonlyMap<Origin, Listing> = new Map(),
     ownFailures: readonly ItemFailure[] = [],
+    blobCount = 0,
+    sortedRowsByOrder: ReadonlyMap<string, unknown> = new Map(),
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
@@ -24,6 +30,9 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
     this.#objectsByLink = objectsByLink;
     this.#listings = listings;
     this.#ownFailures = ownFailures;
+    this.blobCount = blobCount;
+    // A copy, as these come to be sorted with rows that those they were added to do not hold.
+    this.#sortedRowsByOrder = new Map(sortedRowsByOrder);
     // Two of the indexes it reads may read one index, whose failures are then listed once.
     this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
@@ -56,7 +65,27 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
         if (readFailure !== undefined) throw readFailure.error;
       }
     }
-    return new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
+    return new DerivedObjects(
+      this.#derivation,
+      objectsByLink,
+      listings,
+      ownFailures,
+      blobSet.blobCount,
+      this.#sortedRowsByOrder,
+    );
+  }
+
+  orderedBy<const By extends FieldNames<F>>(...by: By): SortedRows<F, By> {
+    const order = JSON.stringify(by);
+    // What is kept under the names of some fields are rows sorted by those fields.
+    const kept = this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined;
+    const sortedRows = (kept ?? new SortedRows(this.#derivation.schema, by)).including(this.objects);
+    this.#sortedRowsByOrder.set(order, sortedRows);
+    return sortedRows;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<EncodedObject<F>> {
+    yield* this.objects;
   }
 
   objectOf(link: Link<unknown>): EncodedObject<F> | undefined {

@@ -1,9 +1,9 @@
 import { encodeObject, type Implementation, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, link, schema, string } from "@estoc/schema";
 import {
+  type Index,
   indexOver,
   MemoryBackend,
-  type OrderedIndex,
   Store,
   selectedRecords,
   writtenObjectsOf,
@@ -22,22 +22,22 @@ const third = encodeObject(note, { text: "third" });
 const other = encodeObject(note, { text: "other" });
 
 const headSchema = schema("Head", { of: link(), head: link<LineageNodeObject>() });
-type HeadIndex = OrderedIndex<DataOf<typeof headSchema>, readonly ["of", "head"]>;
+type HeadIndex = Index<DataOf<typeof headSchema>>;
 
-const bySeries: HeadIndex = indexOver(
+const headsOfSeries: HeadIndex = indexOver(
   selectedRecords(writtenObjectsOver(lineages.selection)),
   headSchema,
   function* ({ first, head }) {
     yield { of: new LinkValue(first.link), head: new LinkValue(head.link) };
   },
-).orderedBy("of", "head");
-const byItem: HeadIndex = indexOver(
+);
+const headsOfItems: HeadIndex = indexOver(
   selectedRecords(writtenObjectsOver(lineages.selection)),
   headSchema,
   function* ({ items, head }) {
     for (const item of items) yield { of: new LinkValue(item), head: new LinkValue(head.link) };
   },
-).orderedBy("of", "head");
+);
 
 const newStore = () => new Store(new MemoryBackend());
 
@@ -50,7 +50,8 @@ async function recordHeads(store: Store, ...chains: readonly Lineage[]) {
 
 async function readHeads(store: Store, index: HeadIndex, key: Link<unknown>): Promise<Link<LineageNodeObject>[]> {
   const heads: Link<LineageNodeObject>[] = [];
-  for await (const { data } of (await store.scan(index)).range([new LinkValue(key)])) heads.push(data.head.link);
+  for await (const { data } of (await store.scan(index)).orderedBy("of", "head").range([new LinkValue(key)]))
+    heads.push(data.head.link);
   return heads;
 }
 
@@ -71,7 +72,7 @@ describe("a lineage written to a store", () => {
     const otherBranch = trunk.appending(third);
     await recordHeads(store, trunk);
     await recordHeads(store, branch, otherBranch, lineages.startingWith(other));
-    const heads = await readHeads(store, bySeries, trunk.first.link);
+    const heads = await readHeads(store, headsOfSeries, trunk.first.link);
     expect(heads.sort()).toEqual([trunk.head.link, branch.head.link, otherBranch.head.link].sort());
   });
 
@@ -79,9 +80,9 @@ describe("a lineage written to a store", () => {
     const store = newStore();
     const lineage = lineages.startingWith(first).appending(second).appending(first);
     await recordHeads(store, lineage, lineages.startingWith(other));
-    expect(await readHeads(store, byItem, second.link)).toEqual([lineage.head.link]);
-    expect(await readHeads(store, byItem, first.link)).toEqual([lineage.head.link]);
-    expect(await readHeads(store, byItem, third.link)).toEqual([]);
+    expect(await readHeads(store, headsOfItems, second.link)).toEqual([lineage.head.link]);
+    expect(await readHeads(store, headsOfItems, first.link)).toEqual([lineage.head.link]);
+    expect(await readHeads(store, headsOfItems, third.link)).toEqual([]);
   });
 });
 
@@ -113,11 +114,15 @@ describe("the selection of a schema lineage over a store", () => {
     });
     await store.record(writtenObjectsOf([untitled.link, titledObject.link], Date.now()));
     const titled = schema("Titled", { text: string(), title: string() });
-    const byText = indexOver(selectedRecords(writtenObjectsOver(notes.selection)), titled, function* ({ text, title }) {
-      yield { text, title: title ?? "" };
-    }).orderedBy("text");
+    const titledNotes = indexOver(
+      selectedRecords(writtenObjectsOver(notes.selection)),
+      titled,
+      function* ({ text, title }) {
+        yield { text, title: title ?? "" };
+      },
+    );
     const rows: DataOf<typeof titled>[] = [];
-    for await (const { data } of (await store.scan(byText)).range([])) rows.push(data);
+    for await (const { data } of (await store.scan(titledNotes)).orderedBy("text").range([])) rows.push(data);
     expect(rows).toEqual([
       { text: "titled", title: "Greeting" },
       { text: "untitled", title: "" },

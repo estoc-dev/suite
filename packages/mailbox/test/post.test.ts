@@ -239,11 +239,13 @@ describe("an inbox", () => {
     const receiver = await openReceiver(network);
     const { store, queue, inbox } = receiver;
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
-    const byMailbox = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
+    const keysOfMailboxes = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
       { mailbox: data.mailbox, key: new LinkValue(link) },
-    ]).orderedBy("mailbox");
+    ]);
     const keys = [];
-    for await (const { data } of (await store.scan(byMailbox)).range([new LinkValue(inbox.mailbox)]))
+    for await (const { data } of (await store.scan(keysOfMailboxes))
+      .orderedBy("mailbox")
+      .range([new LinkValue(inbox.mailbox)]))
       keys.push(data.key.link);
     expect(keys).toEqual([inbox.key]);
 

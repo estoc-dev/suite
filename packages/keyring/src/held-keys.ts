@@ -9,4 +9,4 @@ const secretKey = recordedStatement(secretKeySchema);
 export const heldKeys = indexOfRows(heldKeySchema, {
   key: secretKey.field("key"),
   secretKey: secretKey.link,
-}).orderedBy("key");
+});

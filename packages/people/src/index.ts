@@ -11,14 +11,15 @@ export interface StorePeople extends People {
   personIdentifiedBy(identifier: Link<unknown>): Promise<Person | undefined>;
 }
 
-export const peopleView: View<IdentityVersionData, typeof identityVersions.order, StorePeople> = {
+export const peopleView: View<IdentityVersionData, StorePeople> = {
   index: identityVersions,
   read: (rows, reader) => {
-    const people = peopleSeenIn(rows, reader);
+    const orderedRows = rows.orderedBy("identifier", "at", "signedIdentity");
+    const people = peopleSeenIn(orderedRows, reader);
     return {
       ...people,
       personIdentifiedBy: async (identifier) => {
-        for await (const { data } of rows.range([new LinkValue(identifier)])) {
+        for await (const { data } of orderedRows.range([new LinkValue(identifier)])) {
           return people.personOf(await identityKit.signedIdentities.read(data.signedIdentity.link, reader));
         }
         return undefined;

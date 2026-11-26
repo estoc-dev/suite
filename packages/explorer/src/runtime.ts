@@ -120,14 +120,14 @@ export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), 
 const heldObjects = indexOver(heldBlobs, heldObjectSchema, function* ({ link, bytes }) {
   const schema = namedSchemaOf(bytes);
   if (schema !== undefined) yield { schema: new LinkValue(schema), object: new LinkValue(link) };
-}).orderedBy("schema", "object");
+});
 
 /** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });
 
 const heldLinks = indexOver(heldBlobs, heldLinkSchema, ({ link, bytes }) =>
   Array.from(linksIn(bytes), (target) => ({ target: new LinkValue(target), source: new LinkValue(link) })),
-).orderedBy("target", "source");
+);
 
 async function linkPageOf<F extends ValueMap>(
   rows: AsyncIterable<EncodedObject<F>>,
@@ -178,8 +178,8 @@ export class Runtime {
     for (const list of [
       recordsList,
       blobsList,
-      listOfIndex(heldObjects, "Schemas"),
-      listOfIndex(heldLinks, "Links"),
+      listOfIndex(heldObjects, "Schemas", ["schema", "object"]),
+      listOfIndex(heldLinks, "Links", ["target", "source"]),
       ...lists,
     ]) {
       if (listsByName.has(list.name)) throw new Error(`two lists are named ${list.name}`);
@@ -234,11 +234,13 @@ export class Runtime {
       }),
       answerTo(objectsCall, async ({ schema, start, limit }) => {
         const rows = await store.scan(heldObjects);
-        return linkPageOf(rows.range([schema]), ({ object }) => object, rows.blobCount, start, limit);
+        const objects = rows.orderedBy("schema", "object").range([schema]);
+        return linkPageOf(objects, ({ object }) => object, rows.blobCount, start, limit);
       }),
       answerTo(sourcesCall, async ({ target, start, limit }) => {
         const rows = await store.scan(heldLinks);
-        return linkPageOf(rows.range([target]), ({ source }) => source, rows.blobCount, start, limit);
+        const sources = rows.orderedBy("target", "source").range([target]);
+        return linkPageOf(sources, ({ source }) => source, rows.blobCount, start, limit);
       }),
       answerTo(actionsCall, async () => ({ actions: actionDescriptions })),
       answerTo(performCall, async ({ request }) => {

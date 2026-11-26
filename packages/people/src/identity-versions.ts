@@ -35,7 +35,7 @@ export const identityVersions = indexOver(
   selectedBlobs(verifiedSignedIdentities),
   identityVersionSchema,
   (signedIdentity) => [identityVersionOf(signedIdentity)],
-).orderedBy("identifier", "at", "signedIdentity");
+);
 
 export function identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {
   const { identity, link } = signedIdentity;

@@ -6,9 +6,10 @@ import {
   linkOf,
   ObjectValue,
   objectFormat,
+  rootSchema,
   type ValueMap,
 } from "@estoc/object";
-import { any, array, link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { any, array, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { inspect } from "../src/index.ts";
 import { readerOf } from "./fixtures.ts";

@@ -27,7 +27,7 @@ export interface FieldTable {
 }
 
 /**
- * The validator names a slot as text, and a name that holds `/` or `: ` can spell the slot of
+ * A problem names its slot as text, and a name that holds `/` or `: ` can spell the slot of
  * another value as well as its own, so a problem that reads as that of more than one slot is held
  * at none of them.
  */

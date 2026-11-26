@@ -2,8 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { markdownBodyOf, markdownBodySchema, postSchema } from "@estoc/blog";
 import { encodeBundle } from "@estoc/bundle";
 import { ed25519, loadIdentity, SoftwareSigner } from "@estoc/identity";
-import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
-import { any, array, boolean, bytes, integer, link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat, rootSchema } from "@estoc/object";
+import { any, array, boolean, bytes, integer, link, optional, schema, string } from "@estoc/schema";
 
 // Files to open in the page by hand: one of each thing it shows. They are written beside the
 // package and kept out of git, since this script writes them again.

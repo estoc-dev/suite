@@ -23,12 +23,5 @@ export {
   type Value,
   type ValueMap,
 } from "./object-format.ts";
-export {
-  type Check,
-  decodeSchema,
-  encodeSchema,
-  rootSchemaOf,
-  type Schema,
-  type SchemaValidator,
-} from "./schema.ts";
+export { decodeSchema, encodeSchema, rootSchema, type Schema } from "./schema.ts";
 export { objectsOf, type Selection, SelectionBySchema } from "./selection.ts";

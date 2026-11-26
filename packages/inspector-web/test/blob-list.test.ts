@@ -1,6 +1,6 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type EncodedObject, encodeObject, LinkValue, linkOf } from "@estoc/object";
-import { array, link, rootSchema, schema, string } from "@estoc/schema";
+import { type EncodedObject, encodeObject, LinkValue, linkOf, rootSchema } from "@estoc/object";
+import { array, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { blobListOf } from "../src/blob-list.ts";
 

@@ -1,20 +1,25 @@
 import { inspect } from "node:util";
-import { LinkValue, type Value } from "@estoc/object";
 import { describe, expect, it, test } from "vitest";
-import { any, array, boolean, bytes, integer, link, optional, schema, string } from "../src/index.ts";
+import { encodeSchema, type Field, type Item, LinkValue, type Value } from "../src/index.ts";
+
+const schema = (title: string, fields: { readonly [name: string]: Field }) => encodeSchema({ title, fields });
+const integer: Item = { type: "integer" };
+const string: Item = { type: "string" };
+const boolean: Item = { type: "boolean" };
+const arrayOf = (items: Item): Item => ({ type: "array", items });
 
 const blob = new LinkValue(`sha256:${"0f".repeat(32)}` as const);
 const digest = new Uint8Array(32).fill(0x0f);
 const named = (value: Value) => [inspect(value, { breakLength: Number.POSITIVE_INFINITY }), value] as const;
 
-describe.each<[string, ReturnType<typeof any>, readonly Value[], readonly Value[]]>([
-  ["an integer", integer(), [0, -1, 2 ** 53 - 1, -(2 ** 53 - 1)], [2 ** 53, -(2 ** 53), 1e21, 1.5, "1", true]],
-  ["bytes", bytes(), [new Uint8Array(), Uint8Array.of(0, 255), digest], ["00ff", 0, [0, 255], blob]],
-  ["a link", link(), [blob], [blob.link, digest, { link: blob.link }, {}]],
-  ["a string", string(), ["", "text", "00ff"], [0, true, ["text"], blob, digest]],
-  ["a boolean", boolean(), [true, false], [0, "true"]],
-  ["an array", array(string()), [[], ["a"], ["a", "b"]], ["a", { 0: "a" }, Uint8Array.of(1)]],
-  ["any value", any(), [0, "text", true, digest, blob, [1, "a"], {}, { a: { b: [blob] } }], []],
+describe.each<[string, Item, readonly Value[], readonly Value[]]>([
+  ["an integer", integer, [0, -1, 2 ** 53 - 1, -(2 ** 53 - 1)], [2 ** 53, -(2 ** 53), 1e21, 1.5, "1", true]],
+  ["bytes", { type: "bytes" }, [new Uint8Array(), Uint8Array.of(0, 255), digest], ["00ff", 0, [0, 255], blob]],
+  ["a link", { type: "link" }, [blob], [blob.link, digest, { link: blob.link }, {}]],
+  ["a string", string, ["", "text", "00ff"], [0, true, ["text"], blob, digest]],
+  ["a boolean", boolean, [true, false], [0, "true"]],
+  ["an array", arrayOf(string), [[], ["a"], ["a", "b"]], ["a", { 0: "a" }, Uint8Array.of(1)]],
+  ["any value", { type: "any" }, [0, "text", true, digest, blob, [1, "a"], {}, { a: { b: [blob] } }], []],
 ])("%s", (_, type, taken, refused) => {
   const holder = schema("Holder", { value: type });
 
@@ -29,14 +34,14 @@ describe.each<[string, ReturnType<typeof any>, readonly Value[], readonly Value[
 
 describe("an array", () => {
   it("says which of its items does not fit", () => {
-    const holder = schema("Holder", { rows: array(array(integer())) });
+    const holder = schema("Holder", { rows: arrayOf(arrayOf(integer)) });
     expect(() => holder.validate({ rows: [[1], [2, "3"]] })).toThrow("#/rows/1/1: not an integer");
     expect(() => holder.validate({ rows: [[1], 2] })).toThrow("#/rows/1: not an array");
   });
 });
 
 describe("the data of an object", () => {
-  const note = schema("Note", { text: string(), at: integer(), isDraft: optional(boolean()) });
+  const note = schema("Note", { text: string, at: integer, isDraft: { type: "boolean", optional: true } });
 
   it("fits with every field, and with an optional one left out", () => {
     expect(note.validate({ text: "", at: 0, isDraft: true })).toEqual({ text: "", at: 0, isDraft: true });
@@ -63,8 +68,8 @@ describe("the data of an object", () => {
 });
 
 test("a name every object inherits is a field or a member only where it is written", () => {
-  const note = schema("Note", { text: string() });
+  const note = schema("Note", { text: string });
   expect(() => note.validate({ text: "", constructor: "" })).toThrow("#/constructor: not a field");
-  const named = schema("Named", { constructor: string() });
+  const named = schema("Named", { constructor: string });
   expect(() => named.validate({})).toThrow("#/constructor: left out");
 });

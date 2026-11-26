@@ -86,7 +86,7 @@ describe("the rows of an object", () => {
     ]);
   });
 
-  it("hold each problem of the validator at one slot", async () => {
+  it("hold each problem at one slot", async () => {
     const { rows, unplacedProblems, schema } = await tableOf({
       replies: [photo, "a reply", 7],
       title: "Hello",

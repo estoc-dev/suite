@@ -10,9 +10,10 @@ import {
   ObjectValue,
   objectFormat,
   type Reader,
+  rootSchema,
   type ValueMap,
 } from "@estoc/object";
-import { rootSchema, schema, string } from "@estoc/schema";
+import { schema, string } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import {

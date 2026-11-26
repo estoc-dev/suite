@@ -39,10 +39,9 @@ gives no meaning and no reader an advantage.
 
 - `@estoc/object`: the Estoc Object Format, in deterministic CBOR, and
   over it objects and schemas. A schema is an object of a title and fields
-  of seven types.
-- `@estoc/schema`: the validator of schemas, by which what fits one is the
-  same wherever it is checked, and the functions that the packages below
-  write their schemas with.
+  of seven types, and what fits it is checked here.
+- `@estoc/schema`: the functions that the packages below write their
+  schemas with.
 - `@estoc/bundle`: blobs carried together in one file, with one object as
   the way in, as they travel between programs.
 - `@estoc/store`: the blobs that come to a user and those they write,

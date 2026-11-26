@@ -1,5 +1,14 @@
-import { decodeObject, encodeObject, type Link, LinkValue, linkOf, objectsOf, type ValueMap } from "@estoc/object";
-import { link, rootSchema, schema, string } from "@estoc/schema";
+import {
+  decodeObject,
+  encodeObject,
+  type Link,
+  LinkValue,
+  linkOf,
+  objectsOf,
+  rootSchema,
+  type ValueMap,
+} from "@estoc/object";
+import { link, schema, string } from "@estoc/schema";
 import {
   type Backend,
   indexOver,

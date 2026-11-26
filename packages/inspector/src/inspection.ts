@@ -12,7 +12,6 @@ import {
   type Value,
   type ValueMap,
 } from "@estoc/object";
-import { schemaValidator } from "@estoc/schema";
 
 export interface DataLink {
   readonly path: string;
@@ -69,8 +68,8 @@ export async function inspect(link: Link<unknown>, reader: Reader): Promise<Insp
 function namedSchema(link: Link<unknown>, bytes: Uint8Array | undefined, data: ValueMap): NamedSchema {
   if (bytes === undefined) return { kind: "absent", link };
   try {
-    const { document } = decodeSchema(bytes, schemaValidator);
-    return { kind: "schema", link: link as Link<Schema>, document, problems: schemaValidator.compile(document)(data) };
+    const schema = decodeSchema(bytes);
+    return { kind: "schema", link: link as Link<Schema>, document: schema.document, problems: schema.problemsIn(data) };
   } catch (error) {
     return { kind: "refused", link, error };
   }

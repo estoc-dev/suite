@@ -14,6 +14,18 @@ import { blobSetOf, KeptRows, recordedStatementsIn } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
+export interface Scannable {
+  /**
+   * - What a source of the index or its `rows` throw on gives no rows of that source, and is listed
+   *   in the `failures` of the rows.
+   * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
+   *   that would stop the other rows from being read. What needs every row looks at the `failures`.
+   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
+   *   selection or its rows catch it. That is not listed in the `failures`.
+   */
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
+}
+
 /**
  * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
  *   a stranger's among them. A statement is the store's own where a Record links to it, and only
@@ -29,18 +41,6 @@ import type { FieldNames, OrderedIndex } from "./source.ts";
  *   missing will both write it, so what has to come out as one is written so that every device
  *   writes the same object, with the same link.
  */
-export interface Scannable {
-  /**
-   * - What a source of the index or its `rows` throw on gives no rows of that source, and is listed
-   *   in the `failures` of the rows.
-   * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
-   *   that would stop the other rows from being read. What needs every row looks at the `failures`.
-   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
-   *   selection or its rows catch it. That is not listed in the `failures`.
-   */
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
-}
-
 export interface Store extends Scannable {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   // For links of several kinds at once, as in an array of the links of objects
@@ -68,8 +68,8 @@ export interface Store extends Scannable {
    */
   heldCollection(link: Link<unknown>): Promise<Scannable>;
   /**
-   * A store keeps the rows of each index it is scanned for, so a later scan reads only what was put
-   * since: what the index failed on is not read again, and a link the store failed to read is.
+   * A store keeps the rows of each index it is scanned for, and what the index failed on, so a
+   * later scan reads only what was put since the last scan for it that gave rows.
    */
   scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }

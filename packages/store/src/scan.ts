@@ -20,7 +20,7 @@ export async function recordedStatementsIn(blobSet: BlobSet): Promise<Link<Encod
 
 export interface BlobSet {
   readonly blobCount: number;
-  blobs(): Promise<ListedLinks>;
+  blobs(): Promise<Listing>;
   /**
    * In the order they were first derived: an index that reads them reads only the ones after those
    * it read before.

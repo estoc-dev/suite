@@ -340,14 +340,11 @@ describe("the definition of an index", () => {
   it("holds the schema of the rows and what each part reads and takes", () => {
     const titles = indexOfRows(titled, { title: heldObject(card).field("title") });
     const { definition } = ownedCards.union(ownedCards);
-    const follow = (name: string, followed: Schema) => [
-      { step: "field", name },
-      { step: "object", schema: linkTo(followed) },
-    ];
-    const toCard = follow("object", card);
+    const as = (taken: Schema) => ({ step: "as", schema: linkTo(taken) });
+    const follow = (name: string, followed: Schema) => [{ step: "field", name }, { step: "object" }, as(followed)];
+    const toCard = [as(recordSchema), ...follow("object", card)];
     const toOwner = [...toCard, ...follow("owner", person)];
     const part = {
-      schema: linkTo(recordSchema),
       paths: {
         card: [...toCard, { step: "link" }],
         title: [...toCard, { step: "field", name: "title" }],
@@ -356,12 +353,10 @@ describe("the definition of an index", () => {
       },
     };
     expect(definition?.data).toEqual({ rows: linkTo(ownedCard), parts: [part, part] });
-    expect(titles.definition?.data.parts).toEqual([
-      { schema: linkTo(card), paths: { title: [{ step: "field", name: "title" }] } },
-    ]);
+    expect(titles.definition?.data.parts).toEqual([{ paths: { title: [as(card), { step: "field", name: "title" }] } }]);
   });
 
-  it("holds no schema for a part that reads every object, and the steps that expand", () => {
+  it("holds no step that takes the object read as a schema where the paths say none, and the steps that expand", () => {
     const linked = schema("Linked", { source: link(), target: link() });
     const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
     const closures = indexOfRows(linked, {
@@ -378,7 +373,8 @@ describe("the definition of an index", () => {
           target: [
             { step: "link" },
             { step: "eachInClosure" },
-            { step: "object", schema: linkTo(card) },
+            { step: "object" },
+            { step: "as", schema: linkTo(card) },
             { step: "field", name: "owner" },
           ],
         },
@@ -449,11 +445,42 @@ describe("an index of rows taken along paths", () => {
     );
   });
 
-  it("is refused where its paths start at objects of two schemas", () => {
+  it("is refused where its paths take one object as two schemas", () => {
     const pair = schema("Pair", { title: string(), name: string() });
     expect(() => indexOfRows(pair, { title, name: heldObject(person).field("name") })).toThrow(
-      "the paths of a part start at one schema, and that of name at another",
+      "the path of name in Pair takes as Person an object that another path takes as Record",
     );
+    const followed = recordedCard.field("owner");
+    const [name, city] = [followed.objectOf(person).field("name"), followed.objectOf(place).field("city")];
+    expect(() => indexOfRows(pair, { title: city, name })).toThrow(
+      "the path of name in Pair takes as Person an object that another path takes as Place",
+    );
+  });
+
+  it("reads the objects of a schema alone where every path takes the object read as that schema", async () => {
+    const backend = new MemoryBackend();
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store({
+      get: (link) => {
+        requestedLinks.push(link);
+        return backend.get(link);
+      },
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      blobs: (start) => backend.blobs(start),
+    });
+    const statement = cardOf("a");
+    await store.record({ statements: [statement.link], blobs: [statement.bytes, ...closure] });
+    const linked = schema("Linked", { record: link(), statement: link() });
+    const record = heldObject(recordSchema);
+    const ofRecords = indexOfRows(linked, { record: record.link, statement: record.field("object") });
+    const ofAnyObject = indexOfRows(linked, { record: anyHeldObject.link, statement: record.field("object") });
+    for await (const _ of store.records());
+    requestedLinks.length = 0;
+    const rows = await rowDataOf(await store.scan(ofRecords));
+    expect(requestedLinks).toEqual([]);
+    expect(await rowDataOf(await store.scan(ofAnyObject))).toEqual(rows);
+    expect(requestedLinks).toContain(ada.link);
   });
 
   it("is refused where its paths expand at two places", () => {

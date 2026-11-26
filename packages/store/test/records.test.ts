@@ -45,11 +45,11 @@ const namedSchema = schema("Named", { name: string(), at: integer() });
 const takenNames = () =>
   indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, async function* ({ data }, reader) {
     yield { name: (await readObject(reader, data.card.link, cardSchema)).data.name, at: data.at };
-  }).orderedBy("at");
+  });
 
 async function namesIn(store: Store, index = takenNames()): Promise<string[]> {
   const names: string[] = [];
-  for await (const { data } of (await store.scan(index)).range([])) names.push(data.name);
+  for await (const { data } of (await store.scan(index)).orderedBy("at").range([])) names.push(data.name);
   return names;
 }
 
@@ -361,11 +361,13 @@ describe("an index over records", () => {
     const index = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, ({ data }) => {
       readTimes.push(data.at);
       return [{ name: "", at: data.at }];
-    }).orderedBy("at");
+    });
     await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
     await store.scan(index);
     await store.record(batchOf([taken(alice, 2)]));
-    expect((await listOf((await store.scan(index)).range([]))).map(({ data }) => data.at)).toEqual([1, 2]);
+    expect((await listOf((await store.scan(index)).orderedBy("at").range([]))).map(({ data }) => data.at)).toEqual([
+      1, 2,
+    ]);
     expect(readTimes).toEqual([1, 2]);
   });
 
@@ -377,7 +379,7 @@ describe("an index over records", () => {
     const refusal = new Error("not read");
     const index = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, () => {
       throw refusal;
-    }).orderedBy("at");
+    });
     expect((await store.scan(index)).failures).toEqual([{ item: recordOf(taken(alice, 1)).link, error: refusal }]);
   });
 
@@ -387,9 +389,9 @@ describe("an index over records", () => {
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
     const latest = await view(store, {
-      index: indexOver(selectedRecords(objectsOf(takenSchema)), takenSchema, ({ data }) => [data]).orderedBy("at"),
+      index: indexOver(selectedRecords(objectsOf(takenSchema)), takenSchema, ({ data }) => [data]),
       read: async (rows, reader) => {
-        const [row] = await listOf(rows.range([]));
+        const [row] = await listOf(rows.orderedBy("at").range([]));
         return row && (await readObject(reader, row.data.card.link, cardSchema)).data.name;
       },
     });
@@ -401,9 +403,9 @@ describe("an index over written objects", () => {
   const writtenNames = () =>
     indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => [
       { name: data.name, at: 0 },
-    ]).orderedBy("name");
+    ]);
   const namesByName = async (store: Store, index: ReturnType<typeof writtenNames>) =>
-    (await listOf((await store.scan(index)).range([]))).map(({ data }) => data.name);
+    (await listOf((await store.scan(index)).orderedBy("name").range([]))).map(({ data }) => data.name);
 
   it("reads the objects that the Written Objects among the records link to", async () => {
     const { store } = sides();
@@ -439,7 +441,7 @@ describe("an index over written objects", () => {
     const index = indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => {
       readNames.push(data.name);
       return [{ name: data.name, at: 0 }];
-    }).orderedBy("name");
+    });
     await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
     await store.record(writtenObjectsOf([bob.link], 1));
     expect(await namesByName(store, index)).toEqual(["Bob"]);
@@ -455,7 +457,7 @@ describe("an index over written objects", () => {
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     const index = indexOver(selectedRecords(writtenObjectsOver(objectsOf(cardSchema))), namedSchema, ({ data }) => [
       { name: data.name, at: 0 },
-    ]).orderedBy("name");
+    ]);
     await store.record(writtenObjectsOf([alice.link], 1));
     await store.record(writtenObjectsOf([alice.link], 1));
     expect(await namesByName(store, index)).toEqual(["Alice"]);
@@ -481,8 +483,8 @@ describe("an index over blobs", () => {
     await store.record(batchOf([taken(alice, 1)]));
     const index = indexOver(selectedBlobs(objectsOf(takenSchema)), namedSchema, ({ data }) => [
       { name: "", at: data.at },
-    ]).orderedBy("at");
-    const rows = await listOf((await store.scan(index)).range([]));
+    ]);
+    const rows = await listOf((await store.scan(index)).orderedBy("at").range([]));
     expect(rows.map(({ data }) => data.at)).toEqual([0, 1]);
   });
 });

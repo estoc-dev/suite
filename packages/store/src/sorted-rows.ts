@@ -7,22 +7,25 @@ import {
   type Value,
   type ValueMap,
 } from "@estoc/object";
-import { DerivedObjects } from "./derived-objects.ts";
-import {
-  derivationOf,
-  type FieldNames,
-  type ItemFailure,
-  type KeyOf,
-  type OrderedIndex,
-  orderOf,
-  type Prefix,
-} from "./source.ts";
+import type { FieldNames, ItemFailure, KeyOf, Prefix } from "./source.ts";
 
-export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
-  range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>>;
+/**
+ * Going through them gives each row once. The order they come in is no part of what a scan gives,
+ * and `orderedBy` is how to ask for one.
+ */
+export interface Rows<F extends ValueMap> extends AsyncIterable<EncodedObject<F>> {
+  /**
+   * - Rows keep each order they are asked for, so the same order asked again sorts nothing.
+   * - Those of a later scan of the store take the orders kept by then with the sort keys in them,
+   *   and work out keys for the rows added alone.
+   * - Those of a staged batch have the rows of its store put in the order first, which those keep,
+   *   and work out keys for the rows the batch adds alone.
+   */
+  orderedBy<const By extends FieldNames<F>>(...by: By): OrderedRows<F, By>;
   /**
    * What the index, and each index it reads, failed on. These rows are short of whatever those
-   * would have given, under any prefix: what failed gave no row to tell where it belongs.
+   * would have given, in any order and under any prefix: what failed gave no row to tell where it
+   * belongs.
    */
   readonly failures: readonly ItemFailure[];
   /**
@@ -34,6 +37,10 @@ export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
   readonly blobCount: number;
 }
 
+export interface OrderedRows<F extends ValueMap, By extends FieldNames<F>> {
+  range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>>;
+}
+
 type KeyPart = number | string | Uint8Array | undefined;
 
 interface KeyedRow<F extends ValueMap> {
@@ -42,50 +49,33 @@ interface KeyedRow<F extends ValueMap> {
 }
 
 // biome-ignore-start lint/style/noNonNullAssertion: each index is below the length it is checked against
-export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements Rows<F, By> {
-  readonly blobCount: number;
-  readonly #index: OrderedIndex<F, By>;
-  readonly #derivedObjects: DerivedObjects<F>;
+export class SortedRows<F extends ValueMap, By extends FieldNames<F>> implements OrderedRows<F, By> {
+  readonly #schema: Schema<F>;
+  readonly #by: By;
   readonly #rows: readonly KeyedRow<F>[];
 
-  constructor(
-    index: OrderedIndex<F, By>,
-    derivedObjects: DerivedObjects<F> = new DerivedObjects(derivationOf(orderOf(index).index)),
-    rows: readonly KeyedRow<F>[] = [],
-    blobCount = 0,
-  ) {
-    this.#index = index;
-    this.#derivedObjects = derivedObjects;
+  constructor(schema: Schema<F>, by: By, rows: readonly KeyedRow<F>[] = []) {
+    this.#schema = schema;
+    this.#by = by;
     this.#rows = rows;
-    this.blobCount = blobCount;
   }
 
-  get failures(): readonly ItemFailure[] {
-    return this.#derivedObjects.failures;
-  }
-
-  including(derivedObjects: DerivedObjects<F>, blobCount: number): SortedRows<F, By> {
-    if (derivedObjects === this.#derivedObjects && blobCount === this.blobCount) return this;
-    const newRows = derivedObjects.objects.slice(this.#derivedObjects.objects.length);
-    if (newRows.length === 0) return new SortedRows(this.#index, derivedObjects, this.#rows, blobCount);
-    const { index, by } = orderOf(this.#index);
-    const { schema } = derivationOf(index);
-    const keyedRows = newRows.map((row) => ({
-      key: by.map((name) => keyPartOf(name, memberOf(row.data, name), schema)),
+  /** `rows` start with the rows that these were sorted from, in the same order. */
+  including(rows: readonly EncodedObject<F>[]): SortedRows<F, By> {
+    if (rows.length === this.#rows.length) return this;
+    const keyedRows = rows.slice(this.#rows.length).map((row) => ({
+      key: this.#by.map((name) => keyPartOf(name, memberOf(row.data, name), this.#schema)),
       row,
     }));
     return new SortedRows(
-      this.#index,
-      derivedObjects,
+      this.#schema,
+      this.#by,
       [...this.#rows, ...keyedRows].sort((a, b) => compareKeys(a.key, b.key) || compareParts(a.row.link, b.row.link)),
-      blobCount,
     );
   }
 
   async *range(prefix: Prefix<KeyOf<F, By>>): AsyncIterable<EncodedObject<F>> {
-    const { index, by } = orderOf(this.#index);
-    const { schema } = derivationOf(index);
-    const start = prefix.map((value, at) => keyPartOf(by[at]!, value as Value | undefined, schema));
+    const start = prefix.map((value, at) => keyPartOf(this.#by[at]!, value as Value | undefined, this.#schema));
     const rows = this.#rows;
     let low = 0;
     for (let high = rows.length; low < high; ) {

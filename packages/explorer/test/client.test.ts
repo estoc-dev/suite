@@ -367,11 +367,11 @@ describe("a client of a runtime", () => {
 
 describe("a client of a runtime that is given the list of an index", () => {
   const notedTextSchema = schema("Noted Text", { text: string(), note: link() });
-  const notesByText = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+  const notedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
     if (data.text === "unreadable") throw new Error("the index does not read this note");
     return [{ text: data.text, note: new LinkValue(link) }];
-  }).orderedBy("text");
-  const notesList = listOfIndex(notesByText, "Notes by text");
+  });
+  const notesList = listOfIndex(notedTexts, "Notes by text", ["text"]);
 
   async function storeRecording(...texts: readonly string[]): Promise<Store> {
     const store = new Store(new MemoryBackend());
@@ -395,7 +395,7 @@ describe("a client of a runtime that is given the list of an index", () => {
 
   const textsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, notedTextSchema).data.text);
 
-  it("lists it after the lists of what the store holds, by the name it is given and the schema and the order of the index", async () => {
+  it("lists it after the lists of what the store holds, by the name it is given, the schema of the index and the order of the list", async () => {
     const lists = await clientOf(await storeRecording(), [notesList]).lists();
     expect(lists.map(({ data }) => data.name)).toEqual(["Records", "Blobs", "Schemas", "Links", "Notes by text"]);
     expect(lists.at(-1)?.data).toEqual({
@@ -411,7 +411,7 @@ describe("a client of a runtime that is given the list of an index", () => {
     expect(await clientOf(store, [notesList]).get(notedTextSchema.link)).toEqual(notedTextSchema.bytes);
   });
 
-  it("reads a page of it as the rows of the index, in the order of the index", async () => {
+  it("reads a page of it as the rows of the index, in the order of the list", async () => {
     const store = await storeRecording("b", "c", "a");
     const client = clientOf(store, [notesList]);
     const blobCount = await blobCountOf(store);
@@ -446,9 +446,13 @@ describe("a client of a runtime that is given the list of an index", () => {
     const countedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
       readCount += 1;
       return [{ text: data.text, note: new LinkValue(link) }];
-    }).orderedBy("text");
+    });
     await store.scan(countedTexts);
-    const page = await clientOf(store, [listOfIndex(countedTexts, "Counted texts")]).page("Counted texts", 0, 1);
+    const page = await clientOf(store, [listOfIndex(countedTexts, "Counted texts", ["text"])]).page(
+      "Counted texts",
+      0,
+      1,
+    );
     expect(textsIn(page.rows)).toEqual(["a"]);
     expect(readCount).toBe(1);
   });
@@ -481,9 +485,9 @@ describe("a runtime", () => {
   ])("is not made with a list named as %s is", async (_, names) => {
     const texts = indexOver(selectedRecords(objectsOf(noteSchema)), schema("Text", { text: string() }), ({ data }) => [
       { text: data.text },
-    ]).orderedBy("text");
+    ]);
     const store = await storeOfNote();
-    const lists = names.map((name) => listOfIndex(texts, name));
+    const lists = names.map((name) => listOfIndex(texts, name, ["text"]));
     expect(() => new Runtime(store, lists, [])).toThrow(`two lists are named ${names[0]}`);
   });
 

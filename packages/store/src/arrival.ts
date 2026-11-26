@@ -14,13 +14,11 @@ export const arrivalSchema = schema("Arrival", { object: link(), at: integer() }
 
 export type ArrivalData = DataOf<typeof arrivalSchema>;
 
-export type ArrivalOrder = readonly ["object", "at"];
-
 export interface Arrivals {
   atOf(link: Link<unknown>): Promise<number | undefined>;
 }
 
-export type ArrivalsView = View<ArrivalData, ArrivalOrder, Arrivals>;
+export type ArrivalsView = View<ArrivalData, Arrivals>;
 
 /**
  * - Where a store keeps a blob says nothing here, so the same bytes sent by someone else change no
@@ -43,12 +41,15 @@ export function arrivalsView(schema: { readonly link: Link<unknown> }): Arrivals
     ({ data }, reader) => arrivalsOf(data.object.link, data.at, reader),
   );
   return {
-    index: arrivalsOfBundles.union(arrivalsOfWrittenObjects).orderedBy("object", "at"),
-    read: (rows) => ({
-      async atOf(link) {
-        for await (const { data } of rows.range([new LinkValue(link)])) return data.at;
-        return undefined;
-      },
-    }),
+    index: arrivalsOfBundles.union(arrivalsOfWrittenObjects),
+    read: (rows) => {
+      const orderedRows = rows.orderedBy("object", "at");
+      return {
+        async atOf(link) {
+          for await (const { data } of orderedRows.range([new LinkValue(link)])) return data.at;
+          return undefined;
+        },
+      };
+    },
   };
 }

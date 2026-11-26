@@ -9,8 +9,7 @@ const keySchema = schema("Key", { name: string(), secret: link() });
 const secretOf = (...bytes: number[]) => encodeObject(secretSchema, { bytes: Uint8Array.from(bytes) });
 const keyTo = (secret: { readonly link: Link<unknown> }, name: string) =>
   encodeObject(keySchema, { name, secret: new LinkValue(secret.link) });
-const recordedKeys = () =>
-  indexOver(selectedRecords(objectsOf(keySchema)), keySchema, ({ data }) => [data]).orderedBy("name");
+const recordedKeys = () => indexOver(selectedRecords(objectsOf(keySchema)), keySchema, ({ data }) => [data]);
 
 async function listOf<T>(links: AsyncIterable<T>): Promise<T[]> {
   const listed: T[] = [];
@@ -40,7 +39,7 @@ describe("a store", () => {
       statements: [key.link],
       blobs: [key.bytes, secret.bytes, ...keySchema.blobs, ...secretSchema.blobs],
     });
-    const [row] = await listOf((await store.scan(recordedKeys())).range(["a"]));
+    const [row] = await listOf((await store.scan(recordedKeys())).orderedBy("name").range(["a"]));
     expect(row?.data.secret.link).toBe(secret.link);
     expect(await listOf(store.records())).toEqual([key.link]);
   });
@@ -56,7 +55,7 @@ describe("an intake", () => {
     );
     await new Intake(store).receive(bundle);
     expect(await store.get(secret.link)).toEqual(secret.bytes);
-    expect(await listOf((await store.scan(recordedKeys())).range([]))).toEqual([]);
+    expect(await listOf(await store.scan(recordedKeys()))).toEqual([]);
   });
 });
 

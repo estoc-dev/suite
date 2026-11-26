@@ -13,11 +13,6 @@ const locationSchema = schema("Location", {
   service: link(),
 });
 
-/**
- * The signature comes after `at`, so that of two Services at the same `at`,
- * as services started at once on one store can sign, every store takes the
- * same one for the latest, whatever order it took them in.
- */
 export const locations = indexOver(
   selectedBlobs(signatures.selectionOver(serviceSchema)),
   locationSchema,
@@ -28,7 +23,7 @@ export const locations = indexOver(
       service: new LinkValue(signature.link),
     },
   ],
-).orderedBy("identifier", "at", "service");
+);
 
 /**
  * A Service carries its authority in the signature, so one that came in at a mailbox is honored as
@@ -38,16 +33,22 @@ export interface Locations {
   servicesOf(identifier: Link<unknown>, seenIdentityVersions: SeenIdentityVersions): Promise<Signature[]>;
 }
 
-export const locationsView: View<DataOf<typeof locations.rowSchema>, typeof locations.order, Locations> = {
+export const locationsView: View<DataOf<typeof locations.rowSchema>, Locations> = {
   index: locations,
-  read: (rows, reader) => ({
-    async servicesOf(identifier, seenIdentityVersions) {
-      const services: Signature[] = [];
-      for await (const { data } of rows.range([new LinkValue(identifier)])) {
-        const signature = await signatures.read(data.service.link, reader);
-        if (await seenIdentityVersions.honors(signature)) services.unshift(signature);
-      }
-      return services;
-    },
-  }),
+  read: (rows, reader) => {
+    // The signature comes after `at`, so that of two Services at the same `at`, as services started
+    // at once on one store can sign, every store takes the same one for the latest, whatever order
+    // it took them in.
+    const orderedRows = rows.orderedBy("identifier", "at", "service");
+    return {
+      async servicesOf(identifier, seenIdentityVersions) {
+        const services: Signature[] = [];
+        for await (const { data } of orderedRows.range([new LinkValue(identifier)])) {
+          const signature = await signatures.read(data.service.link, reader);
+          if (await seenIdentityVersions.honors(signature)) services.unshift(signature);
+        }
+        return services;
+      },
+    };
+  },
 };

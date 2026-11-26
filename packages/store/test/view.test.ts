@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   indexOver,
   MemoryBackend,
-  type OrderedIndex,
   Store,
   selectedRecords,
   type View,
@@ -18,24 +17,23 @@ type Note = DataOf<typeof noteSchema>;
 
 const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
 type Tagged = DataOf<typeof taggedSchema>;
-type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: OrderedIndex<Tagged, TaggedOrder> = indexOver(
+const taggedNotes = indexOver(
   selectedRecords(writtenObjectsOver(objectsOf(noteSchema))),
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
-).orderedBy("tag", "at");
+);
 
 interface Latest {
   noteTagged(tag: string): Promise<Note | undefined>;
 }
 
-const latest: View<Tagged, TaggedOrder, Latest> = {
-  index: byTag,
+const latest: View<Tagged, Latest> = {
+  index: taggedNotes,
   read: (rows, reader) => ({
     async noteTagged(tag) {
       let last: Link<unknown> | undefined;
-      for await (const { data } of rows.range([tag])) last = data.note.link;
+      for await (const { data } of rows.orderedBy("tag", "at").range([tag])) last = data.note.link;
       return last === undefined ? undefined : (await readObject(reader, last, noteSchema)).data;
     },
   }),
@@ -75,11 +73,11 @@ describe("the value of a view", () => {
   });
 
   it("is what `read` resolves to, when it gives a promise", async () => {
-    const tags: View<Tagged, TaggedOrder, Promise<Set<string>>> = {
-      index: byTag,
+    const tags: View<Tagged, Promise<Set<string>>> = {
+      index: taggedNotes,
       async read(rows) {
         const tags = new Set<string>();
-        for await (const { data } of rows.range([])) tags.add(data.tag);
+        for await (const { data } of rows.orderedBy("tag", "at").range([])) tags.add(data.tag);
         return tags;
       },
     };

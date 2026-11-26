@@ -20,11 +20,11 @@ const card = (name: string) => encodeObject(cardSchema, { name });
 const writtenAt = (object: { readonly link: Link<unknown> }, at: number) =>
   encodeObject(writtenObjectSchema, { object: new LinkValue(object.link), at });
 
-const cardsByName = indexOver(selectedBlobs(objectsOf(cardSchema)), cardSchema, ({ data }) => [data]).orderedBy("name");
+const heldCards = indexOver(selectedBlobs(objectsOf(cardSchema)), cardSchema, ({ data }) => [data]);
 
 async function cardNamesIn(store: Store | StagedStore): Promise<string[]> {
   const names: string[] = [];
-  for await (const { data } of (await store.scan(cardsByName)).range([])) names.push(data.name);
+  for await (const { data } of (await store.scan(heldCards)).orderedBy("name").range([])) names.push(data.name);
   return names;
 }
 

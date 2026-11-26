@@ -1,7 +1,7 @@
 import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { indexOver, MemoryBackend, type OrderedIndex, Store, selectedBlobs, type View, view } from "../src/index.ts";
+import { indexOver, MemoryBackend, Store, selectedBlobs, type View, view } from "../src/index.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -103,27 +103,24 @@ const note = (data: Note) => encodeObject(noteSchema, data);
 
 const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
 type Tagged = DataOf<typeof taggedSchema>;
-type TaggedOrder = readonly ["tag", "at"];
 
-const byTag: OrderedIndex<Tagged, TaggedOrder> = indexOver(
-  selectedBlobs(objectsOf(noteSchema)),
-  taggedSchema,
-  ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
-).orderedBy("tag", "at");
+const taggedNotes = indexOver(selectedBlobs(objectsOf(noteSchema)), taggedSchema, ({ link, data }) =>
+  data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
+);
 
-const texts: View<Tagged, TaggedOrder, Promise<[tag: string, text: string][]>> = {
-  index: byTag,
+const texts: View<Tagged, Promise<[tag: string, text: string][]>> = {
+  index: taggedNotes,
   async read(rows, reader) {
     const texts: [tag: string, text: string][] = [];
-    for await (const { data } of rows.range([]))
+    for await (const { data } of rows.orderedBy("tag", "at").range([]))
       texts.push([data.tag, (await readObject(reader, data.note.link, noteSchema)).data.text]);
     return texts;
   },
 };
 
 /** Stands for a view that gives an object with methods, whose rows are read after `view` has returned. */
-const textsWhenAsked: View<Tagged, TaggedOrder, () => Promise<[tag: string, text: string][]>> = {
-  index: byTag,
+const textsWhenAsked: View<Tagged, () => Promise<[tag: string, text: string][]>> = {
+  index: taggedNotes,
   read: (rows, reader) => () => texts.read(rows, reader),
 };
 

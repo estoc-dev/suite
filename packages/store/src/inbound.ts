@@ -10,7 +10,7 @@ import {
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
 import type { Rows } from "./sorted-rows.ts";
-import type { FieldNames, OrderedIndex } from "./source.ts";
+import type { Index } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
 
 /**
@@ -93,7 +93,7 @@ class StagedArrival implements StagedStore {
     await this.#store.record(this.#record);
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
+  scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>> {
     return this.#stagedBundle.scan(index);
   }
 }

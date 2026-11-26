@@ -14,7 +14,7 @@ export const acknowledgements = indexOver(
   selectedRecords(writtenObjectsOver(identityKit.signatures.selectionOver(acknowledgementSchema))),
   acknowledgementRowSchema,
   ({ signature, object }) => [{ acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) }],
-).orderedBy("acceptance", "acknowledgement");
+);
 
 export interface Acknowledgements {
   /**
@@ -24,18 +24,17 @@ export interface Acknowledgements {
   acknowledgementOf(acceptance: Link<unknown>): Promise<Link<unknown> | undefined>;
 }
 
-export const acknowledgementsView: View<
-  DataOf<typeof acknowledgements.rowSchema>,
-  typeof acknowledgements.order,
-  Acknowledgements
-> = {
+export const acknowledgementsView: View<DataOf<typeof acknowledgements.rowSchema>, Acknowledgements> = {
   index: acknowledgements,
-  read: (rows) => ({
-    async acknowledgementOf(acceptance) {
-      for await (const { data } of rows.range([new LinkValue(acceptance)])) return data.acknowledgement.link;
-      return undefined;
-    },
-  }),
+  read: (rows) => {
+    const orderedRows = rows.orderedBy("acceptance", "acknowledgement");
+    return {
+      async acknowledgementOf(acceptance) {
+        for await (const { data } of orderedRows.range([new LinkValue(acceptance)])) return data.acknowledgement.link;
+        return undefined;
+      },
+    };
+  },
 };
 
 /**
@@ -48,16 +47,15 @@ export interface OpenedMailboxes {
   acknowledgementOf(transport: Link<EncodedObject>): Promise<Link<unknown> | undefined>;
 }
 
-export const openedMailboxesView: View<
-  DataOf<typeof openedMailboxes.rowSchema>,
-  typeof openedMailboxes.order,
-  OpenedMailboxes
-> = {
+export const openedMailboxesView: View<DataOf<typeof openedMailboxes.rowSchema>, OpenedMailboxes> = {
   index: openedMailboxes,
-  read: (rows) => ({
-    async acknowledgementOf(transport) {
-      for await (const { data } of rows.range([new LinkValue(transport)])) return data.acknowledgement.link;
-      return undefined;
-    },
-  }),
+  read: (rows) => {
+    const orderedRows = rows.orderedBy("transport", "acknowledgement");
+    return {
+      async acknowledgementOf(transport) {
+        for await (const { data } of orderedRows.range([new LinkValue(transport)])) return data.acknowledgement.link;
+        return undefined;
+      },
+    };
+  },
 };

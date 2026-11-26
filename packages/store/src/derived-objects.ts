@@ -1,22 +1,30 @@
 import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
 import type { BlobSet } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
-import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
+import { type Rows, SortedRows } from "./sorted-rows.ts";
+import type { Derivation, FieldNames, ItemFailure, Listing, Origin } from "./source.ts";
 
-export class DerivedObjects<F extends ValueMap> implements Listing {
+export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
+  /** What comes of adding to these starts with them, in this order. */
   readonly objects: readonly EncodedObject<F>[];
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[];
+  readonly blobCount: number;
   readonly #derivation: Derivation<F>;
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>>;
   readonly #listings: ReadonlyMap<Origin, Listing>;
   readonly #ownFailures: readonly ItemFailure[];
+  readonly #base: DerivedObjects<F> | undefined;
+  readonly #sortedRowsByOrder: Map<string, unknown>;
 
   constructor(
     derivation: Derivation<F>,
     objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>> = new Map(),
     listings: ReadonlyMap<Origin, Listing> = new Map(),
     ownFailures: readonly ItemFailure[] = [],
+    blobCount = 0,
+    base?: DerivedObjects<F>,
+    sortedRowsByOrder = new Map<string, unknown>(),
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
@@ -24,11 +32,30 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
     this.#objectsByLink = objectsByLink;
     this.#listings = listings;
     this.#ownFailures = ownFailures;
+    this.blobCount = blobCount;
+    this.#base = base;
+    this.#sortedRowsByOrder = sortedRowsByOrder;
     // Two of the indexes it reads may read one index, whose failures are then listed once.
     this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
 
-  async adding(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+  /**
+   * For whoever keeps the rows it gives in place of these. Those do not hold these, and take a copy
+   * of the orders these keep: they come to be sorted with rows that these do not hold.
+   */
+  adding(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+    return this.#adding(store, blobSet, false);
+  }
+
+  /**
+   * For rows read while these stay held, as those of a staged batch are with those of its store.
+   * They have these put in an order first, so that these keep it for whatever is added to them next.
+   */
+  addingOnTop(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+    return this.#adding(store, blobSet, true);
+  }
+
+  async #adding(store: Reader, blobSet: BlobSet, isOnTop: boolean): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
     const listings = new Map<Origin, Listing>();
     for (const origin of parts.keys()) listings.set(origin, await origin.listingIn(blobSet));
@@ -56,7 +83,29 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
         if (readFailure !== undefined) throw readFailure.error;
       }
     }
-    return new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
+    return new DerivedObjects(
+      this.#derivation,
+      objectsByLink,
+      listings,
+      ownFailures,
+      blobSet.blobCount,
+      isOnTop ? this : this.#base,
+      isOnTop ? undefined : new Map(this.#sortedRowsByOrder),
+    );
+  }
+
+  orderedBy<const By extends FieldNames<F>>(...by: By): SortedRows<F, By> {
+    const order = JSON.stringify(by);
+    // The orders kept are of the rows of one index, each under all the fields it is by, in turn. So
+    // what is kept under these fields is rows of this schema sorted by them.
+    const kept = (this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined) ?? this.#base?.orderedBy(...by);
+    const sortedRows = (kept ?? new SortedRows(this.#derivation.schema, by)).including(this.objects);
+    this.#sortedRowsByOrder.set(order, sortedRows);
+    return sortedRows;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<EncodedObject<F>> {
+    yield* this.objects;
   }
 
   objectOf(link: Link<unknown>): EncodedObject<F> | undefined {

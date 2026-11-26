@@ -1,16 +1,6 @@
 import type { EncodedObject, Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
-import { SortedRows } from "./sorted-rows.ts";
-import {
-  type Derivation,
-  derivationOf,
-  type FieldNames,
-  heldRecords,
-  type ItemFailure,
-  type Listing,
-  type OrderedIndex,
-  orderOf,
-} from "./source.ts";
+import { type Derivation, derivationOf, heldRecords, type ItemFailure, type Listing } from "./source.ts";
 
 /** In the order their Records come among the blobs of `blobSet`. */
 export async function recordedStatementsIn(blobSet: BlobSet): Promise<Link<EncodedObject>[]> {
@@ -26,7 +16,6 @@ export interface BlobSet {
    * it read before.
    */
   rowsOf<F extends ValueMap>(derivation: Derivation<F>): Promise<DerivedObjects<F>>;
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>>;
   /**
    * - `blobs` can list what the set has already, and `reader` gives each of them with its closure.
    * - The rows of the set it gives are not kept with those of this one.
@@ -62,8 +51,7 @@ class ListedLinks implements Listing {
 /**
  * - The rows of what is read depend on it and its closure alone, and a store only grows, so the
  *   rows of what was read before still hold.
- * - The rows are kept for as long as the index is, and their order for as long as the ordered index
- *   is, so a program makes each once and keeps it.
+ * - The rows are kept for as long as the index is, so a program makes each index once and keeps it.
  * - One reading goes at a time and lists the blobs once, so all that it gives comes of the blobs
  *   held at that listing. What an index reads therefore waits without end if it reads the rows of
  *   the same store.
@@ -74,7 +62,6 @@ export class KeptRows {
   #lastRead: Promise<void> = Promise.resolve();
   #blobs = new ListedLinks();
   readonly #objectsByDerivation = new WeakMap<object, unknown>();
-  readonly #sortedRowsByOrder = new WeakMap<object, unknown>();
 
   constructor(reader: Reader, blobsFrom: (start: number) => AsyncIterable<Link<unknown>>) {
     this.#reader = reader;
@@ -104,15 +91,6 @@ export class KeptRows {
         const objects = await (kept ?? new DerivedObjects(derivation)).adding(this.#reader, blobSet);
         this.#objectsByDerivation.set(derivation, objects);
         return objects;
-      },
-      scan: async <F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>) => {
-        // What is kept under the order of an index are rows of it.
-        const order = orderOf(index);
-        const kept = this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined;
-        const derivedObjects = await blobSet.rowsOf(derivationOf(order.index));
-        const sortedRows = (kept ?? new SortedRows(index)).including(derivedObjects, blobSet.blobCount);
-        this.#sortedRowsByOrder.set(order, sortedRows);
-        return sortedRows;
       },
       adding: async (addedBlobs, reader) => new ListedBlobSet(await blobs.adding(addedBlobs), reader, blobSet),
     };
@@ -149,15 +127,10 @@ class ListedBlobSet implements BlobSet {
     let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<F>> | undefined;
     if (objects === undefined) {
       const baseObjects = this.#base?.rowsOf(derivation) ?? Promise.resolve(new DerivedObjects(derivation));
-      objects = baseObjects.then((kept) => kept.adding(this.#reader, this));
+      objects = baseObjects.then((base) => base.addingOnTop(this.#reader, this));
       this.#objectsByDerivation.set(derivation, objects);
     }
     return objects;
-  }
-
-  async scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<SortedRows<F, By>> {
-    const baseRows = (await this.#base?.scan(index)) ?? new SortedRows(index);
-    return baseRows.including(await this.rowsOf(derivationOf(orderOf(index).index)), this.blobCount);
   }
 
   async adding(blobs: readonly Link<unknown>[], reader: Reader): Promise<BlobSet> {

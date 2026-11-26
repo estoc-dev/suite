@@ -11,14 +11,14 @@ import { identityVersions } from "@estoc/people";
 import { listOfIndex } from "./list.ts";
 
 export const suiteLists = [
-  listOfIndex(heldKeys, "Held Keys"),
-  listOfIndex(identityVersions, "Identity Versions"),
-  listOfIndex(heldMailboxKeys, "Held Mailbox Keys"),
-  listOfIndex(mailboxGrants, "Mailbox Grants"),
-  listOfIndex(signedIdentityArrivalsView.index, "Arrivals of Roots and Signed Identities"),
-  listOfIndex(locations, "Locations"),
-  listOfIndex(acknowledgements, "Acknowledgements"),
-  listOfIndex(openedMailboxes, "Opened Mailboxes"),
-  listOfIndex(recordedIdentityVersions, "Recorded Identity Versions"),
-  listOfIndex(recordedSignatures, "Recorded Signatures"),
+  listOfIndex(heldKeys, "Held Keys", ["key"]),
+  listOfIndex(identityVersions, "Identity Versions", ["identifier", "at", "signedIdentity"]),
+  listOfIndex(heldMailboxKeys, "Held Mailbox Keys", ["key"]),
+  listOfIndex(mailboxGrants, "Mailbox Grants", ["from", "to", "at", "signature"]),
+  listOfIndex(signedIdentityArrivalsView.index, "Arrivals of Roots and Signed Identities", ["object", "at"]),
+  listOfIndex(locations, "Locations", ["identifier", "at", "service"]),
+  listOfIndex(acknowledgements, "Acknowledgements", ["acceptance", "acknowledgement"]),
+  listOfIndex(openedMailboxes, "Opened Mailboxes", ["transport", "acknowledgement"]),
+  listOfIndex(recordedIdentityVersions, "Recorded Identity Versions", ["identifier", "signedIdentity"]),
+  listOfIndex(recordedSignatures, "Recorded Signatures", ["object", "signature"]),
 ];

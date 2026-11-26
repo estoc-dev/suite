@@ -10,4 +10,4 @@ const signature = recordedStatement(writtenObjectSchema).field("object").objectO
 export const recordedSignatures = indexOfRows(recordedSignatureSchema, {
   object: signature.field("object"),
   signature: signature.link,
-}).orderedBy("object", "signature");
+});

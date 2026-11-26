@@ -29,7 +29,7 @@ export interface Rows<F extends ValueMap, By extends FieldNames<F>> {
    * How many blobs were held where the rows were read: by the store, or by the staged store with
    * its batch, which is not the count of the store it is staged on. Either only grows and the rows
    * come of the blobs held alone, so the rows of the same index read there while it holds as many
-   * are these.
+   * are these. Of a collection it is how many members it has, which is the same at every scan.
    */
   readonly blobCount: number;
 }

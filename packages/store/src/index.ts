@@ -9,6 +9,7 @@ export {
 } from "./arrival.ts";
 export type { Backend } from "./backend.ts";
 export { type Batch, linksIn, type RecordBatch, RefusedBatch } from "./batch.ts";
+export { type Collection, type CollectionData, collectionOf, collectionSchema } from "./collection.ts";
 export {
   heldObject,
   type IndexDefinition,
@@ -44,7 +45,7 @@ export {
   selectedBlobs,
   selectedRecords,
 } from "./source.ts";
-export { type RecordedStatements, type StagedStore, Store } from "./store.ts";
+export { type HeldCollection, type RecordedStatements, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
 export {
   type WrittenObject,

@@ -10,10 +10,11 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
+import type { Collection } from "./collection.ts";
 import type { ScanOptions } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
-import type { RecordedStatements, StagedStore, Store } from "./store.ts";
+import type { HeldCollection, RecordedStatements, StagedStore, Store } from "./store.ts";
 
 export interface ActionOutcome<R extends ValueMap> {
   readonly result: EncodedObject<R>;
@@ -214,6 +215,10 @@ class NotingStore implements Store {
 
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>> {
     return this.#store.closure(link);
+  }
+
+  heldCollection(link: Link<Collection>): Promise<HeldCollection> {
+    return this.#store.heldCollection(link);
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(

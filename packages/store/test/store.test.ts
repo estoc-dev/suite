@@ -56,16 +56,6 @@ describe("a store", () => {
     await expect(store.get(keptObject.link)).rejects.toThrow(`another blob under ${keptObject.link}`);
   });
 
-  it("fails as on any read, without refusing the batch, when its backend gives other bytes under a link the batch leaves to it", async () => {
-    const backend = new MemoryBackend();
-    const [inner, other] = [object({ text: "inner" }), object({ text: "other" })];
-    await newStore(backend).write(batchOf([inner, other], anything.blobs));
-    const outer = object({ inner: new LinkValue(inner.link) });
-    const written = newStore(backendGiving(backend, inner.link, other.link)).write(batchOf([outer]));
-    await expect(written).rejects.toThrow(`another blob under ${inner.link}`);
-    await expect(written).rejects.not.toBeInstanceOf(RefusedBatch);
-  });
-
   it("keeps of the blobs of a batch only those in the closures of its roots", async () => {
     const store = newStore();
     const image = utf8("an image");

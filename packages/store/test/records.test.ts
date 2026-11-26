@@ -261,21 +261,19 @@ describe("a store given a batch that links to a Record", () => {
   const shown = encodeObject(shownSchema, { card: new LinkValue(record.link) });
   const statementBlobs = [alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs];
 
-  it("refuses to write it once it holds the Record", async () => {
+  it("writes it once it holds the Record", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
-    const written = store.write({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] });
-    await expect(written).rejects.toThrow(RefusedBatch);
-    await expect(written).rejects.toThrow(`${shown.link} links to ${record.link}, which is a Record`);
-    expect(await store.get(shown.link)).toBeUndefined();
+    await store.write({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] });
+    expect(await store.get(shown.link)).toEqual(shown.bytes);
+    expect(await listOf(store.records())).toEqual([statement.link]);
   });
 
-  it("refuses to stage it once it holds the Record", async () => {
+  it("stages it once it holds the Record", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
-    await expect(store.stage({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] })).rejects.toThrow(
-      `${shown.link} links to ${record.link}, which is a Record`,
-    );
+    const stagedStore = await store.stage({ roots: [shown.link], blobs: [shown.bytes, ...shownSchema.blobs] });
+    expect(await stagedStore.get(shown.link)).toEqual(shown.bytes);
   });
 
   it("refuses to write it before it holds the Record, for a blob it does not hold", async () => {
@@ -285,20 +283,19 @@ describe("a store given a batch that links to a Record", () => {
     );
   });
 
-  it("refuses to record the statement together with what links to its Record", async () => {
+  it("records the statement together with one that links to its Record, which it writes first", async () => {
     const { store } = sides();
-    const recorded = store.record(batchOf([statement, shown], [...statementBlobs, ...shownSchema.blobs]));
-    await expect(recorded).rejects.toThrow(`${shown.link} links to ${record.link}, which is a Record`);
-    expect(await listOf(store.blobs())).toEqual([]);
+    await store.record(batchOf([statement, shown], [...statementBlobs, ...shownSchema.blobs]));
+    expect(await listOf(store.records())).toEqual([statement.link, shown.link]);
+    const blobs = await listOf(store.blobs());
+    expect(blobs.indexOf(record.link)).toBeLessThan(blobs.indexOf(shown.link));
   });
 
-  it("refuses to record a statement that links to a Record it holds", async () => {
+  it("records a statement that links to a Record it holds", async () => {
     const { store } = sides();
     await store.record(batchOf([statement], statementBlobs));
-    await expect(store.record(batchOf([shown], [...shownSchema.blobs]))).rejects.toThrow(
-      `${shown.link} links to ${record.link}, which is a Record`,
-    );
-    expect(await listOf(store.records())).toEqual([statement.link]);
+    await store.record(batchOf([shown], [...shownSchema.blobs]));
+    expect(await listOf(store.records())).toEqual([statement.link, shown.link]);
   });
 });
 

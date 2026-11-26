@@ -20,9 +20,11 @@ import {
   MemoryBackend,
   type Rows,
   recordedStatement,
+  recordSchema,
   Store,
   selectedBlobs,
   selectedRecords,
+  sendableBlobs,
 } from "../src/index.ts";
 
 const noteSchema = schema("Note", { text: string(), about: optional(link()) });
@@ -39,6 +41,19 @@ const texts = indexOfRows(textSchema, {
   note: heldObject(noteSchema).link,
 });
 const heldTexts = texts.orderedBy("text");
+
+const recordedTextIndexes = () => [
+  indexOfRows(textSchema, {
+    text: recordedStatement(noteSchema).field("text"),
+    note: recordedStatement(noteSchema).link,
+  }).orderedBy("text"),
+  indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
+    { text: data.text, note: new LinkValue(link) },
+  ]).orderedBy("text"),
+];
+
+const recordOf = (statement: Link<unknown>) =>
+  encodeObject(recordSchema, { object: new LinkValue(statement as Link<EncodedObject>) });
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
@@ -154,24 +169,52 @@ describe("an index scanned over a collection", () => {
     expect(await textsOf(await collection.scan(textsByFunction))).toEqual(["salad"]);
   });
 
-  it("holds no row of what it reads from the records, even of a statement that is a member", async () => {
+  it("holds the rows of the store where it lists every blob the store holds, of what is recorded as well", async () => {
+    const store = newStore();
+    const [soup, salad, stew] = [note("soup"), note("salad"), note("stew")];
+    await store.record({ statements: [soup.link, stew.link], blobs: [soup.bytes, stew.bytes, ...noteSchema.blobs] });
+    await keepIn(store, [salad]);
+
+    const indexes = [heldTexts, ...recordedTextIndexes()];
+    const rowsInStore: Text[][] = [];
+    for (const index of indexes) rowsInStore.push(await rowDataOf(await store.scan(index)));
+    expect(rowsInStore.map((rows) => rows.map(({ text }) => text))).toEqual([
+      ["salad", "soup", "stew"],
+      ["soup", "stew"],
+      ["soup", "stew"],
+    ]);
+
+    const heldLinks: Link<unknown>[] = [];
+    for await (const blob of store.blobs()) heldLinks.push(blob);
+    const collection = await collectionIn(store, heldLinks);
+    const rowsInCollection: Text[][] = [];
+    for (const index of indexes) rowsInCollection.push(await rowDataOf(await collection.scan(index)));
+    expect(rowsInCollection).toEqual(rowsInStore);
+  });
+
+  it("holds a row of a statement whose Record is a member, and none where only the statement is", async () => {
+    const store = newStore();
+    const [soup, salad] = [note("soup"), note("salad")];
+    await store.record({ statements: [soup.link, salad.link], blobs: [soup.bytes, salad.bytes, ...noteSchema.blobs] });
+    const collection = await collectionIn(store, [recordOf(soup.link).link, salad.link]);
+
+    for (const index of recordedTextIndexes()) {
+      expect(await textsOf(await store.scan(index))).toEqual(["salad", "soup"]);
+      expect(await textsOf(await collection.scan(index))).toEqual(["soup"]);
+    }
+    expect(await textsOf(await collection.scan(heldTexts))).toEqual(["salad"]);
+  });
+
+  it("is not sent where it lists a Record, which its closure then holds", async () => {
     const store = newStore();
     const soup = note("soup");
     await store.record({ statements: [soup.link], blobs: [soup.bytes, ...noteSchema.blobs] });
-    const collection = await collectionIn(store, [soup.link]);
+    const record = recordOf(soup.link);
+    const collection = collectionOf([record.link]);
+    await keepIn(store, [collection]);
 
-    const recordedTexts = indexOfRows(textSchema, {
-      text: recordedStatement(noteSchema).field("text"),
-      note: recordedStatement(noteSchema).link,
-    }).orderedBy("text");
-    const selectedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
-      { text: data.text, note: new LinkValue(link) },
-    ]).orderedBy("text");
-    for (const index of [recordedTexts, selectedTexts]) {
-      expect(await textsOf(await store.scan(index))).toEqual(["soup"]);
-      expect(await textsOf(await collection.scan(index))).toEqual([]);
-    }
-    expect(await textsOf(await collection.scan(heldTexts))).toEqual(["soup"]);
+    const closure = await store.closure(collection.link);
+    expect(() => [...sendableBlobs(closure.values())]).toThrow(`${record.link} is a Record, which is not sent`);
   });
 
   it("reads the closure of a member from the store, and gives no row of its own to what is only there", async () => {

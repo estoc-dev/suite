@@ -315,24 +315,6 @@ describe("an inbox", () => {
     expect(await inbox.collect(pickup)).toHaveLength(2);
   });
 
-  it("stops collecting when the store reads another blob under a link that a bundle leaves to it, and leaves the bundle to collect again", async () => {
-    const network = new MemoryNetwork();
-    let misplacedLink: Link<unknown> | undefined;
-    const backend = new (class extends MemoryBackend {
-      override get(link: Link<unknown>): Promise<Uint8Array | undefined> {
-        return super.get(link === hello.link && misplacedLink !== undefined ? misplacedLink : link);
-      }
-    })();
-    const { store, inbox, pickup } = await openReceiver(network, backend);
-    await store.write({ roots: [hello.link], blobs: [hello.bytes, ...note.blobs] });
-    await sendTo(network, store, inbox.mailbox, [...signature.blobs, ...note.blobs]);
-
-    misplacedLink = encodeObject(recordSchema, { object: new LinkValue(inbox.key) }).link;
-    await expect(inbox.collect(pickup)).rejects.toThrow(`another blob under ${hello.link}`);
-    misplacedLink = undefined;
-    expect(await inbox.collect(pickup)).toHaveLength(1);
-  });
-
   it("collects nothing once its signal has aborted, and leaves what waits", async () => {
     const network = new MemoryNetwork();
     const { store, inbox, pickup } = await openReceiver(network);

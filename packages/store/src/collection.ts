@@ -9,6 +9,8 @@ import { array, type DataOf, link, schema } from "@estoc/schema";
  *   and what decodes the object itself is given the members as they are written.
  * - The members are the blobs listed and not their closures. They need not be objects, nor of one
  *   schema.
+ * - A member can be a Record. The closure of the collection then holds the Record, and
+ *   `sendableBlobs` refuses it.
  */
 export const collectionSchema = schema("Collection", { members: array(link()) });
 

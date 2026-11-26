@@ -85,6 +85,12 @@ class LinksRead<T = unknown> {
   }
 }
 
+async function recordedStatementAt(reader: Reader, blob: Link<unknown>): Promise<Link<EncodedObject> | undefined> {
+  const bytes = await reader.get(blob);
+  if (bytes === undefined) throw new Error(`the store lists ${blob} but does not hold it`);
+  return statementRecordedIn(bytes);
+}
+
 /**
  * - The rows of what is read depend on it and its closure alone, and a store only grows, so the
  *   rows of what was read before still hold.
@@ -127,11 +133,9 @@ export class KeptRows {
       blobCount: blobs.links.length,
       heldBlobs: async () => blobs,
       records: async () => {
-        this.#records = await this.#records.adding(blobs.links.slice(this.#records.readCount), async (blob) => {
-          const bytes = await this.#reader.get(blob);
-          if (bytes === undefined) throw new Error(`the store lists ${blob} but does not hold it`);
-          return statementRecordedIn(bytes);
-        });
+        this.#records = await this.#records.adding(blobs.links.slice(this.#records.readCount), (blob) =>
+          recordedStatementAt(this.#reader, blob),
+        );
         return this.#records.links;
       },
       derivedObjectsOf: async <F extends ValueMap>(derivation: Derivation<F>) => {
@@ -178,15 +182,20 @@ export async function rowsWithAdded(
   return new AddedRows(rows, await (await rows.heldBlobs()).adding(addedBlobs), reader);
 }
 
-/** `members` lists each of them once. It is for one scan, as the rows of a batch are. */
+/**
+ * `members` lists each of them once, and what is recorded among them is what the Records that are
+ * members link to. It is for one scan, as the rows of a batch are.
+ */
 export function rowsOfMembers(members: readonly Link<unknown>[], reader: Reader): RowsByIndex {
   return new AddedRows(emptyRows, new ListedLinks(members), reader);
 }
 
+/** `blobs` lists those of `rows` first, so the blobs after them are the ones added. */
 class AddedRows implements RowsByIndex {
   readonly #rows: RowsByIndex;
   readonly #blobs: ListedLinks;
   readonly #reader: Reader;
+  #records: Promise<ListedLinks<EncodedObject>> | undefined;
   readonly #objectsByDerivation = new Map<object, Promise<unknown>>();
 
   constructor(rows: RowsByIndex, blobs: ListedLinks, reader: Reader) {
@@ -200,7 +209,14 @@ class AddedRows implements RowsByIndex {
   }
 
   records(): Promise<ListedLinks<EncodedObject>> {
-    return this.#rows.records();
+    this.#records ??= this.#recordsWithAdded();
+    return this.#records;
+  }
+
+  async #recordsWithAdded(): Promise<ListedLinks<EncodedObject>> {
+    const records = new LinksRead(await this.#rows.records());
+    const addedBlobs = this.#blobs.links.slice(this.#rows.blobCount);
+    return (await records.adding(addedBlobs, (blob) => recordedStatementAt(this.#reader, blob))).links;
   }
 
   async heldBlobs(): Promise<ListedLinks> {

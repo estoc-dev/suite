@@ -8,7 +8,7 @@ import {
   type Reader,
   schemaOf,
 } from "@estoc/object";
-import { type Backend, blobIn } from "./backend.ts";
+import type { Backend } from "./backend.ts";
 import { isRecord, type RecordObject, recordOf, recordSchema } from "./record.ts";
 
 export interface Batch {
@@ -24,9 +24,8 @@ export interface RecordBatch {
 /**
  * A batch that a store refuses for what it is.
  *
- * - A Record among its blobs, one of its `statements` whose blob it does not give or that is not
- *   an object, or a link to a Record from a blob it is to keep: the same batch is refused again
- *   whatever comes to be held.
+ * - A Record among its blobs, or one of its `statements` whose blob it does not give or that is
+ *   not an object: the same batch is refused again whatever comes to be held.
  * - One of its `roots`, or a blob in the closure of one of its `roots` or `statements`, that is
  *   neither in the batch nor held already: the same batch is refused again until what was missing
  *   is held.
@@ -111,21 +110,16 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
 }
 
 /**
- * - A blob that `backend` holds comes with its closure, so its links are not followed, apart from
- *   a root that `blobs` gives as well.
- * - Nothing links to a Record, so that none leaves in the closure of another object. A blob that
- *   `backend` holds is read for that, where asking whether it is held would do otherwise.
+ * `backend` holds the closure of each blob it holds, so a blob that `blobs` leaves out is only
+ * asked for there. One that `blobs` gives is followed whether or not it is held.
  */
 export async function leavesFirst(
   roots: Iterable<Link<unknown>>,
-  { blobs, records }: HashedBatch,
-  backend: Pick<Backend, "get" | "has">,
+  blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
+  backend: Pick<Backend, "has">,
 ): Promise<Map<Link<unknown>, Uint8Array>> {
   const orderedBlobs = new Map<Link<unknown>, Uint8Array>();
   const heldLinks = new Set<Link<unknown>>();
-  const recordLinks = new Set(records);
-  const linkToRecord = (from: Link<unknown>, record: Link<unknown>) =>
-    new RefusedBatch(`${from} links to ${record}, which is a Record`);
   const frame = (link: Link<unknown>, bytes: Uint8Array) => ({
     link,
     bytes,
@@ -148,18 +142,15 @@ export async function leavesFirst(
         continue;
       }
       const targetLink = next.value;
-      if (recordLinks.has(targetLink)) throw linkToRecord(top.link, targetLink);
       if (orderedBlobs.has(targetLink) || heldLinks.has(targetLink)) continue;
       const batchBytes = blobs.get(targetLink);
       if (batchBytes !== undefined) {
         path.push(frame(targetLink, batchBytes));
         continue;
       }
-      const heldBytes = await blobIn(backend, targetLink);
-      if (heldBytes === undefined) {
+      if (!(await backend.has(targetLink))) {
         throw new RefusedBatch(`${top.link} links to ${targetLink}, which neither the batch nor the store holds`);
       }
-      if (isRecord(heldBytes)) throw linkToRecord(top.link, targetLink);
       heldLinks.add(targetLink);
     }
   }

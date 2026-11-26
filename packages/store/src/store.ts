@@ -17,8 +17,8 @@ import type { FieldNames, OrderedIndex } from "./source.ts";
 /**
  * - Holding a blob says that it came in, and not whose it is: what reads the blobs themselves reads
  *   a stranger's among them. A statement is the store's own where a Record links to it, and only
- *   `record` writes a Record: every batch that gives one, or that links to one, is refused, so a
- *   statement of the same schema that came in a bundle records nothing.
+ *   `record` writes a Record: every batch that gives one is refused, so a statement of the same
+ *   schema that came in a bundle records nothing.
  * - A store keeps no rule about who reads what. Packages are given the whole of it, Secrets and
  *   Records as well, and what shows a part of it to an app, or sends a closure to another party,
  *   leaves out or refuses what is not to go there.
@@ -97,8 +97,10 @@ export interface StagedStore {
  * - An index gives here the rows and the failures that it gives of the members in the store, and
  *   none of any other blob held. Each member is read with its closure, which the store holds; a
  *   blob that is in a closure and is not a member is not read for rows of its own.
- * - Nothing is recorded in a collection, so an index gives no row of what it reads from the
- *   records, even where a statement that the store recorded is a member.
+ * - What is recorded in a collection is what the Records among its members link to, which the
+ *   store wrote as it did every Record it holds. A statement that the store recorded gives no row
+ *   of what an index reads from the records unless its Record is a member, whether or not the
+ *   statement is one itself.
  * - The rows are worked out at each scan, and none is kept for the next.
  */
 export interface HeldCollection {
@@ -128,8 +130,7 @@ export class StoreOf implements Store {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    const hashedBatch = { blobs: hashedBlobs(blobs), records: [] };
-    const stagedBlobs = await leavesFirst(roots, hashedBatch, this.#backend);
+    const stagedBlobs = await leavesFirst(roots, hashedBlobs(blobs), this.#backend);
     return new StagedStoreOf(this, this.#keptRows, this.#backend, stagedBlobs);
   }
 
@@ -138,7 +139,7 @@ export class StoreOf implements Store {
     const hashedBatch = hashedBatchWith(recordsOf(statements, givenBlobs), givenBlobs);
     // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
     // a statement the store does not hold whole.
-    await this.#backend.put(await leavesFirst(hashedBatch.records, hashedBatch, this.#backend));
+    await this.#backend.put(await leavesFirst(hashedBatch.records, hashedBatch.blobs, this.#backend));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {

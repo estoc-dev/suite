@@ -1,5 +1,5 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { type EncodedObject, encodeObject, LinkValue } from "@estoc/object";
+import { type EncodedObject, encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { link, optional, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { arrivalsView, Intake, MemoryBackend, Store, view, writtenObjectsOf } from "../src/index.ts";
@@ -109,6 +109,23 @@ describe("when something came to a user's devices, by the records of a store", (
     const arrivalTimes = await arrivals();
     expect(await arrivalTimes.atOf(enclosedNote.link)).toBeUndefined();
     expect(await arrivalTimes.atOf(letterSchema.link)).toBeUndefined();
+  });
+
+  it("is that of the root alone, for a record whose closure holds a blob that names the schema and does not fit it", async () => {
+    const { store, arrivals } = sides();
+    const ada = card("Ada");
+    const nameless = objectFormat.encode(new ObjectValue(cardSchema.link, {}));
+    const hello = encodeObject(letterSchema, {
+      text: "hello",
+      from: new LinkValue(ada.link),
+      enclosedNote: new LinkValue(linkOf(nameless)),
+    });
+    await store.write({ roots: [hello.link], blobs: [nameless, ...blobsWith(hello, ada)] });
+    await store.record(writtenObjectsOf([hello.link], 7));
+
+    const arrivalTimes = await arrivals();
+    expect(await arrivalTimes.atOf(hello.link)).toBe(7);
+    expect(await arrivalTimes.atOf(ada.link)).toBeUndefined();
   });
 
   it("is nothing for what the store holds with no record of it", async () => {

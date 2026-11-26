@@ -202,26 +202,28 @@ export function indexOver<F extends ValueMap, T>(
 }
 
 /**
- * Each row holds under every field the value that the path of the field reaches, from one object
- * that the paths start at. The paths say all of it, so the index has a definition.
+ * Each row holds under every field a value that the path of the field reaches, from one blob that
+ * the paths start at. The paths say all of it, so the index has a definition.
  */
 export function indexOfRows<F extends ValueMap>(
   schema: Schema<F>,
   paths: { readonly [N in keyof F]-?: ValuePath<F[N]> },
 ): Index<F> {
   const definition = partAlong(paths);
-  const startsAtRecords = definition.schema.link === recordSchema.link;
+  const startsAtRecords = definition.schema?.link === recordSchema.link;
   return indexAlong(startsAtRecords ? derivationOf(heldRecords) : blobOrigin, schema, definition);
 }
 
 function indexAlong<F extends ValueMap>(origin: Origin, schema: Schema<F>, definition: PartDefinition): Index<F> {
-  const rowFrom = rowReaderOf(schema, definition);
+  const rowsFrom = rowReaderOf(schema, definition);
   const part: Part<F> = {
     definition,
     async *rowsOf(blob) {
-      const start = await blob.objectOf(definition.schema);
-      const row = start && (await rowFrom(start, blob.reader));
-      if (row !== undefined) yield row as F;
+      const start =
+        definition.schema === undefined
+          ? { link: blob.link, bytes: await blob.reader.get(blob.link) }
+          : await blob.objectOf(definition.schema);
+      if (start !== undefined) yield* (await rowsFrom(start, blob.reader)) as F[];
     },
   };
   return new Index(new Derivation(schema, new Map([[origin, [part]]])));

@@ -7,9 +7,11 @@ export {
   arrivalsView,
 } from "./arrival.ts";
 export type { Backend } from "./backend.ts";
-export { type Batch, linksIn, type RecordBatch, RefusedBatch } from "./batch.ts";
+export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
 export { type Collection, type CollectionData, collectionOf, collectionSchema } from "./collection.ts";
 export {
+  type BlobPath,
+  heldBlob,
   heldObject,
   type IndexDefinition,
   type ObjectPath,

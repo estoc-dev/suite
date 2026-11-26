@@ -33,7 +33,7 @@ const sessionOf = (action: GivenAction) => sessionOver(sourceWithActions(sourceO
 describe("the sessions of the actions", () => {
   it("hold a session with the form of each action, in the order of the runtime", async () => {
     const sessions = await new ActionSessions(sourceWithActions(sourceOf(), greet, tick)).all();
-    expect(sessions.map(({ form }) => form.title)).toEqual(["Greet", "Tick"]);
+    expect(sessions.map(({ form }) => form.request.document.title)).toEqual(["Greet", "Tick"]);
   });
 
   it("read the forms once, and give the same sessions each time", async () => {
@@ -50,7 +50,7 @@ describe("the sessions of the actions", () => {
     const sessions = new ActionSessions(source);
     await expect(sessions.all()).rejects.toThrow("database is locked");
     const read = await sessions.all();
-    expect(read.map(({ form }) => form.title)).toEqual(["Greet", "Tick"]);
+    expect(read.map(({ form }) => form.request.document.title)).toEqual(["Greet", "Tick"]);
     expect(await sessions.all()).toBe(read);
     expect(actions).toHaveBeenCalledTimes(2);
   });

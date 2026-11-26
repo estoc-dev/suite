@@ -68,7 +68,7 @@ function TakingActionsView(props: { sessions: ActionSessions; object: Link<unkno
                         filledField: { name: field.name, link: props.object },
                       })}
                     >
-                      {form.title}
+                      {form.request.document.title}
                     </a>
                   </td>
                   <td>

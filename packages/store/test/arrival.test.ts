@@ -111,7 +111,7 @@ describe("when something came to a user's devices, by the records of a store", (
     expect(await arrivalTimes.atOf(letterSchema.link)).toBeUndefined();
   });
 
-  it("is that of the root alone, for a record whose closure holds a blob that names the schema and does not fit it", async () => {
+  it("is that of the root, for an object in a closure that holds a blob that names the schema and does not fit it", async () => {
     const { store, arrivals } = sides();
     const ada = card("Ada");
     const nameless = objectFormat.encode(new ObjectValue(cardSchema.link, {}));
@@ -124,8 +124,8 @@ describe("when something came to a user's devices, by the records of a store", (
     await store.record(writtenObjectsOf([hello.link], 7));
 
     const arrivalTimes = await arrivals();
-    expect(await arrivalTimes.atOf(hello.link)).toBe(7);
-    expect(await arrivalTimes.atOf(ada.link)).toBeUndefined();
+    expect(await arrivalTimes.atOf(ada.link)).toBe(7);
+    expect(await arrivalTimes.atOf(linkOf(nameless))).toBeUndefined();
   });
 
   it("is nothing for what the store holds with no record of it", async () => {

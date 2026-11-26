@@ -285,13 +285,34 @@ describe("an index of rows taken along paths through the closure of a link", () 
     expect(await rowDataOf(await store.scan(homes))).toEqual([{ owner: "Ada", city: "Lisbon" }]);
   });
 
-  it("fails on a statement whose closure holds a blob that names the schema and does not fit it", async () => {
-    const broken = tripTo("broken", lisbon.link, linkOf(cityless));
-    const store = await storeRecordingTrips(broken, tripTo("south", porto.link));
-    const { failures } = await store.scan(stops);
-    expect(failures.map(({ item }) => item)).toEqual([recordOf(broken.link).link]);
-    expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/city: left out")]);
-    expect(await stopsIn(store)).toEqual([{ trip: "south", city: "Porto" }]);
+  it("holds no row of a blob in the closure that names the schema and does not fit it, and the rows of the others", async () => {
+    const store = await storeRecordingTrips(tripTo("south", lisbon.link, linkOf(cityless), porto.link));
+    expect((await store.scan(stops)).failures).toEqual([]);
+    expect(await stopsIn(store)).toEqual([
+      { trip: "south", city: "Lisbon" },
+      { trip: "south", city: "Porto" },
+    ]);
+  });
+
+  it("is not filled where the store fails to give a blob of the closure", async () => {
+    const backend = new MemoryBackend();
+    const diskError = new Error("the disk is gone");
+    let isFailing = false;
+    const store = new Store({
+      get: (link) => (isFailing && link === porto.link ? Promise.reject(diskError) : backend.get(link)),
+      has: (link) => backend.has(link),
+      put: (blobs) => backend.put(blobs),
+      blobs: (start) => backend.blobs(start),
+    });
+    const south = tripTo("south", lisbon.link, porto.link);
+    await store.record({ statements: [south.link], blobs: [south.bytes, porto.bytes, ...trip.blobs, ...closure] });
+    isFailing = true;
+    await expect(store.scan(stops)).rejects.toBe(diskError);
+    isFailing = false;
+    expect(await stopsIn(store)).toEqual([
+      { trip: "south", city: "Lisbon" },
+      { trip: "south", city: "Porto" },
+    ]);
   });
 });
 

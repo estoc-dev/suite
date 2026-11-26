@@ -278,6 +278,7 @@ function walkOf(rows: Schema, { schema, paths }: PartDefinition): BlobWalk {
 }
 
 interface BlobReader {
+  /** What it throws fails whatever reads through it, even where that is caught on the way. */
   get(link: Link<unknown>): Promise<Uint8Array>;
 }
 
@@ -339,7 +340,15 @@ async function rowsFromEach(
   reader: BlobReader,
 ): Promise<readonly PartialRow[]> {
   const rows: PartialRow[] = [];
-  for (const link of links) rows.push(...(await rowsFromValue(walk, new LinkValue(link), reader)));
+  for (const link of links) {
+    try {
+      rows.push(...(await rowsFromValue(walk, new LinkValue(link), reader)));
+    } catch {
+      // What an expansion goes over is not all of one making: a closure holds what anyone sent in
+      // it. So a blob that does not fit its schema gives no row, and the others keep theirs. What
+      // `reader` threw is not lost here: whoever gave the reader fails with that.
+    }
+  }
   return rows;
 }
 
@@ -372,10 +381,11 @@ export function rowReaderOf(
  *   no value.
  * - A path reaches no value where a link that it follows leads to a blob of another schema, and
  *   where it takes the schema of a blob that is not an object. Such a blob holds no link.
- * - Where any path comes to a blob that names its schema and does not fit it, the blob read fails,
- *   even where another path leads to a blob of another schema. So where every blob that the paths
- *   come to can be read, whether a blob read gives rows, none or a failure does not depend on the
- *   order the paths are taken in.
+ * - Where a path comes to a blob that names its schema and does not fit it, the value of an
+ *   expansion that it came from gives no row. Where it came from none, the blob read fails, even
+ *   where another path leads to a blob of another schema. So where every blob that the paths come
+ *   to can be read, whether a blob read gives rows, none or a failure does not depend on the order
+ *   the paths are taken in.
  */
 const indexDefinitionSchema = schema("Index Definition", { rows: link<Schema>(), parts: array(any()) });
 

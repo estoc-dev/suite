@@ -12,7 +12,7 @@ import {
   objectFormat,
   type Schema,
 } from "../src/index.ts";
-import { documentHolding, schemaTaking } from "./documents.ts";
+import { schemaTaking } from "./documents.ts";
 
 interface Text {
   readonly link: Link<unknown>;
@@ -22,8 +22,8 @@ interface Text {
 type PlainData = { readonly text: string };
 type QuoteData = { readonly quotes: LinkValue<unknown> };
 
-const plain: Schema<PlainData> = encodeSchema(documentHolding("Plain", "text"));
-const quote: Schema<QuoteData> = encodeSchema(documentHolding("Quote", "quotes"));
+const plain: Schema<PlainData> = encodeSchema({ title: "Plain", fields: { text: { type: "string" } } });
+const quote: Schema<QuoteData> = encodeSchema({ title: "Quote", fields: { quotes: { type: "link" } } });
 const other = schemaTaking("text");
 
 const plainText: Implementation<Text, PlainData> = {

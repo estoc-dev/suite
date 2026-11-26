@@ -38,6 +38,13 @@ describe("an array", () => {
     expect(() => holder.validate({ rows: [[1], [2, "3"]] })).toThrow("#/rows/1/1: not an integer");
     expect(() => holder.validate({ rows: [[1], 2] })).toThrow("#/rows/1: not an array");
   });
+
+  it("says every item that does not fit, however many they are", () => {
+    const holder = schema("Holder", { rows: arrayOf(string) });
+    const problems = holder.problemsIn({ rows: new Array<number>(200_000).fill(0) });
+    expect(problems).toHaveLength(200_000);
+    expect([problems[0], problems.at(-1)]).toEqual(["#/rows/0: not a string", "#/rows/199999: not a string"]);
+  });
 });
 
 describe("the data of an object", () => {

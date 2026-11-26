@@ -105,8 +105,11 @@ export function problemsOf(data: ValueMap, { fields }: SchemaDocument): string[]
     .map((name) => `#/${name}: not a field of the schema`);
   for (const [name, field] of Object.entries(fields)) {
     const value = memberOf(data, name);
-    if (value !== undefined) problems.push(...problemsAt(value, field, `#/${name}`));
-    else if (field.optional !== true) problems.push(`#/${name}: left out`);
+    if (value === undefined) {
+      if (field.optional !== true) problems.push(`#/${name}: left out`);
+    } else {
+      for (const problem of problemsAt(value, field, `#/${name}`)) problems.push(problem);
+    }
   }
   return problems;
 }

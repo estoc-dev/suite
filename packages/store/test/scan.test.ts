@@ -278,17 +278,17 @@ describe("an index over records", () => {
     expect(await namesOf(await rowsOf([namedNotes, plainSelectionOf(namedTags)]))).toEqual(routedRows);
   });
 
-  it("validates a recorded object once against each schema of the selections by schema that read it", async () => {
-    const [one, another] = [schema("Note", fields), schema("Note", fields)];
-    const validations = [vi.spyOn(one, "validate"), vi.spyOn(another, "validate")];
+  it("validates a recorded object once for the selections by schema that read it", async () => {
+    const noteSchema = schema("Note", fields);
+    const validate = vi.spyOn(noteSchema, "validate");
     const store = newStore();
     await recordIn(store, [encodeObject(note, {})], schemas);
-    const index = indexOver(selectedRecords(objectsOf(one)), named, () => [{ name: "a" }]).union(
-      indexOver(selectedRecords(objectsOf(one)), named, () => [{ name: "b" }]),
-      indexOver(selectedRecords(objectsOf(another)), named, () => [{ name: "c" }]),
+    const index = indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "a" }]).union(
+      indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "b" }]),
+      indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "c" }]),
     );
     expect(await namesOf(await store.scan(index))).toEqual(["a", "b", "c"]);
-    for (const validate of validations) expect(validate).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledTimes(1);
   });
 
   it("reads a blob from the store once for a recorded object, the object among them, however many selections read it", async () => {

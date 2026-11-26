@@ -5,7 +5,6 @@ export const documentHolding = (title: string, ...names: string[]): SchemaDocume
   fields: Object.fromEntries(names.map((name) => [name, { type: "any" }])),
 });
 
-/** A schema that takes any value under each of `names`, and data that leaves any of them out. */
 export const schemaTaking = (...names: string[]): Schema =>
   encodeSchema({
     title: "Anything",

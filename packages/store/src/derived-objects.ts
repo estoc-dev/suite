@@ -1,5 +1,5 @@
 import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
-import type { RowsByIndex } from "./scan.ts";
+import type { BlobSet } from "./scan.ts";
 import { ScannedBlob } from "./scanned-blob.ts";
 import type { Derivation, ItemFailure, Listing, Origin } from "./source.ts";
 
@@ -28,10 +28,10 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
     this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
 
-  async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<F>> {
+  async adding(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
     const listings = new Map<Origin, Listing>();
-    for (const origin of parts.keys()) listings.set(origin, await origin.listingIn(rows));
+    for (const origin of parts.keys()) listings.set(origin, await origin.listingIn(blobSet));
     if ([...listings].every(([origin, listing]) => this.#listings.get(origin) === listing)) return this;
     const objectsByLink = new Map(this.#objectsByLink);
     const ownFailures = [...this.#ownFailures];

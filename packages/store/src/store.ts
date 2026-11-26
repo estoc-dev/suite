@@ -10,7 +10,7 @@ import {
   recordsOf,
 } from "./batch.ts";
 import { collectionSchema, membersOf } from "./collection.ts";
-import { KeptRows, recordedStatementsIn, rowsOfMembers, rowsWithAdded } from "./scan.ts";
+import { blobSetOf, KeptRows, recordedStatementsIn } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -29,7 +29,19 @@ import type { FieldNames, OrderedIndex } from "./source.ts";
  *   missing will both write it, so what has to come out as one is written so that every device
  *   writes the same object, with the same link.
  */
-export interface Store {
+export interface Scannable {
+  /**
+   * - What a source of the index or its `rows` throw on gives no rows of that source, and is listed
+   *   in the `failures` of the rows.
+   * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
+   *   that would stop the other rows from being read. What needs every row looks at the `failures`.
+   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
+   *   selection or its rows catch it. That is not listed in the `failures`.
+   */
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
+}
+
+export interface Store extends Scannable {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   // For links of several kinds at once, as in an array of the links of objects
   // and signatures: TypeScript infers `T` from one kind and refuses the others.
@@ -43,17 +55,21 @@ export interface Store {
   records(): AsyncIterable<Link<EncodedObject>>;
   recordedStatements(): Promise<RecordedStatements>;
   closure(link: Link<unknown>): Promise<ReadonlyMap<Link<unknown>, Uint8Array>>;
-  heldCollection(link: Link<unknown>): Promise<HeldCollection>;
   /**
-   * - A store keeps the rows of each index it is scanned for, so a later scan reads only what was
-   *   put since.
-   * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
-   *   the `failures` of the rows, and is not read again.
-   * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
-   *   that would stop the other rows from being read. What needs every row looks at the `failures`.
-   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
-   *   selection or its rows catch it. That is not listed in the `failures`, and a later scan reads
-   *   the link again.
+   * - An index scanned over the collection gives the rows and the failures that it gives of the
+   *   members in the store, and none of any other blob held. Each member is read with its closure,
+   *   which the store holds; a blob that is in a closure and is not a member is not read for rows of
+   *   its own.
+   * - What is recorded in a collection is what the Records among its members link to, which the
+   *   store wrote as it did every Record it holds. A statement that the store recorded gives no row
+   *   of what an index reads from the records unless its Record is a member, whether or not the
+   *   statement is one itself.
+   * - The rows are worked out at each scan, and none is kept for the next.
+   */
+  heldCollection(link: Link<unknown>): Promise<Scannable>;
+  /**
+   * A store keeps the rows of each index it is scanned for, so a later scan reads only what was put
+   * since: what the index failed on is not read again, and a link the store failed to read is.
    */
   scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }
@@ -75,7 +91,7 @@ export interface RecordedStatements {
  * - A store only grows, so the batch can still be committed after other writes, and what it found
  *   held is still held.
  */
-export interface StagedStore {
+export interface StagedStore extends Scannable {
   get<T>(link: Link<T>): Promise<Bytes<T> | undefined>;
   get(link: Link<unknown>): Promise<Bytes<unknown> | undefined>;
   commit(): Promise<void>;
@@ -84,20 +100,6 @@ export interface StagedStore {
    * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
    * recorded.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
-}
-
-/**
- * - An index gives here the rows and the failures that it gives of the members in the store, and
- *   none of any other blob held. Each member is read with its closure, which the store holds; a
- *   blob that is in a closure and is not a member is not read for rows of its own.
- * - What is recorded in a collection is what the Records among its members link to, which the
- *   store wrote as it did every Record it holds. A statement that the store recorded gives no row
- *   of what an index reads from the records unless its Record is a member, whether or not the
- *   statement is one itself.
- * - The rows are worked out at each scan, and none is kept for the next.
- */
-export interface HeldCollection {
   scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }
 
@@ -142,9 +144,9 @@ export class StoreOf implements Store {
   }
 
   recordedStatements(): Promise<RecordedStatements> {
-    return this.#keptRows.read(async (rows) => ({
-      statements: await recordedStatementsIn(rows),
-      blobCount: rows.blobCount,
+    return this.#keptRows.read(async (blobSet) => ({
+      statements: await recordedStatementsIn(blobSet),
+      blobCount: blobSet.blobCount,
     }));
   }
 
@@ -152,13 +154,15 @@ export class StoreOf implements Store {
     return closureIn(this, link);
   }
 
-  async heldCollection(link: Link<unknown>): Promise<HeldCollection> {
+  async heldCollection(link: Link<unknown>): Promise<Scannable> {
     const members = membersOf(await readObject(this, link, collectionSchema));
-    return { scan: (index) => rowsOfMembers(members, this).sortedRowsOf(index) };
+    // A blob set keeps what it has worked out, a failure of the store to read as well, so each scan
+    // is given a new one.
+    return { scan: (index) => blobSetOf(members, this).scan(index) };
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
-    return this.#keptRows.read((rows) => rows.sortedRowsOf(index));
+    return this.#keptRows.read((blobSet) => blobSet.scan(index));
   }
 }
 
@@ -186,9 +190,7 @@ class StagedStoreOf implements StagedStore {
   }
 
   scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
-    return this.#keptRows.read(async (rows) =>
-      (await rowsWithAdded(rows, [...this.#blobs.keys()], this)).sortedRowsOf(index),
-    );
+    return this.#keptRows.read(async (blobSet) => (await blobSet.adding([...this.#blobs.keys()], this)).scan(index));
   }
 }
 

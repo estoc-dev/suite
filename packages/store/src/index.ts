@@ -44,7 +44,7 @@ export {
   selectedBlobs,
   selectedRecords,
 } from "./source.ts";
-export { type HeldCollection, type RecordedStatements, type StagedStore, Store } from "./store.ts";
+export { type RecordedStatements, type Scannable, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
 export {
   type WrittenObject,

@@ -212,8 +212,8 @@ interface BlobReader {
 
 type Row = Map<string, Value>;
 
-// Every path is taken as far as it goes even where another has stopped, so a blob that does not fit
-// its schema fails the object read whichever path comes to it first.
+// A path that comes to a blob of another schema does not stop the others, as one of them may come
+// to a blob that does not fit its schema, which fails the object read.
 async function fillFromObject(row: Row, walk: ObjectWalk, object: EncodedObject, reader: BlobReader): Promise<boolean> {
   let reachesAll = true;
   for (const [name, next] of walk.fields) {
@@ -259,8 +259,9 @@ export function rowReaderOf(
  *   the link it is at leads to, where that is written to `schema`.
  * - A blob read gives a row where every path reaches a value, and none where a link that a path
  *   follows leads to a blob of another schema. Where any path comes to a blob that names its schema
- *   and does not fit it, the blob read fails, whatever the other paths reach. So whether a blob
- *   read gives a row, none or a failure does not depend on the order the paths are taken in.
+ *   and does not fit it, the blob read fails, even where another path leads to a blob of another
+ *   schema. So where every blob that the paths come to can be read, whether a blob read gives a
+ *   row, none or a failure does not depend on the order the paths are taken in.
  */
 const indexDefinitionSchema = schema("Index Definition", {
   title: string(),

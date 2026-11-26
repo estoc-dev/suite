@@ -110,12 +110,11 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const statement = encodeObject(pair, { left: new LinkValue(lisbon.link), right: new LinkValue(linkOf(nameless)) });
     const store = new Store(new MemoryBackend());
     await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...pair.blobs, ...closure] });
-    const [leftFirst, rightFirst] = [indexOfRows(names, { left, right }), indexOfRows(names, { right, left })].map(
-      (index) => index.orderedBy("left").named("Names"),
-    );
-    expect(rightFirst?.definition?.link).toBe(leftFirst?.definition?.link);
-    for (const index of [leftFirst, rightFirst] as const) {
-      if (index === undefined) throw new Error("an index is left out");
+    const leftFirst = indexOfRows(names, { left, right }).orderedBy("left").named("Names");
+    const rightFirst = indexOfRows(names, { right, left }).orderedBy("left").named("Names");
+    expect(leftFirst.definition).toBeDefined();
+    expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
+    for (const index of [leftFirst, rightFirst]) {
       await expect(store.scan(index)).rejects.toThrow("#/name: left out");
       const { failures } = await store.scan(index, { throwsOnFailure: false });
       expect(failures.map(({ item }) => item)).toEqual([statement.link]);

@@ -29,12 +29,15 @@ interface DecodedBlob {
 /**
  * What the blob that a link names decodes to. A link names one blob, which does not change, so
  * nothing kept here goes stale, and a blob is kept only once its bytes were hashed to the link.
+ *
+ * A blob counts for the length of its bytes, as what it decodes to may hold most of them, and one
+ * that is longer than all that is kept together is not kept.
  */
-const decodedBlobs = new LRUCache<Link<unknown>, DecodedBlob>({ max: 10_000 });
+const decodedBlobs = new LRUCache<Link<unknown>, DecodedBlob>({ max: 10_000, maxSize: 32 * 1024 * 1024 });
 
-function keep(link: Link<unknown>, object: ObjectValue): DecodedBlob {
+function keep(link: Link<unknown>, object: ObjectValue, hashedBytes: Uint8Array): DecodedBlob {
   const blob = { object, hasValidData: false };
-  decodedBlobs.set(link, blob);
+  decodedBlobs.set(link, blob, { size: hashedBytes.byteLength });
   return blob;
 }
 
@@ -51,7 +54,7 @@ export function objectValueAt(link: Link<unknown>, bytes: Uint8Array): ObjectVal
   if (kept !== undefined) return kept.object;
   const object = objectFormat.decode(bytes);
   if (linkOf(bytes) !== link) throw new Error(`the blob given for ${link} is another blob`);
-  return keep(link, object).object;
+  return keep(link, object, bytes).object;
 }
 
 function encodedObjectAt<F extends ValueMap>(
@@ -59,7 +62,7 @@ function encodedObjectAt<F extends ValueMap>(
   hashedBytes: Bytes<EncodedObject<F>>,
   schema: Schema<F>,
 ): EncodedObject<F> {
-  const blob = decodedBlobs.get(link) ?? keep(link, objectFormat.decode(hashedBytes));
+  const blob = decodedBlobs.get(link) ?? keep(link, objectFormat.decode(hashedBytes), hashedBytes);
   const schemaLink = schemaLinkOf(blob.object, link);
   if (schemaLink !== schema.link) throw new Error(`the object is written to ${schemaLink}, not to ${schema.link}`);
   if (!blob.hasValidData) {

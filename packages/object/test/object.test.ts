@@ -109,7 +109,7 @@ describe("what a blob decodes to", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("is kept under its link, so that the blob is decoded and validated once however it is read", async () => {
+  it("is kept under its link, so that while it is kept the blob is decoded and validated once however it is read", async () => {
     const bytes = written("read four ways");
     const link = linkOf(bytes);
     const decode = vi.spyOn(objectFormat, "decode");
@@ -135,10 +135,42 @@ describe("what a blob decodes to", () => {
     expect(objectValueAt(linkOf(bytes), other).data).toMatchObject({ nonce: "kept" });
   });
 
-  it("is not kept where the data does not fit the schema, which is said each time", () => {
+  test("a blob whose data does not fit its schema is refused each time it is read", () => {
     const bytes = objectFormat.encode(new ObjectValue(login.link, { audience: 1 }));
     expect(() => decodeObject(bytes, login)).toThrow(/does not fit its schema/);
     expect(() => decodeObject(bytes, login)).toThrow(/does not fit its schema/);
+  });
+
+  describe("of a blob with many bytes in it", () => {
+    const attachment = encodeSchema({
+      title: "Attachment",
+      fields: { name: { type: "string" }, bytes: { type: "bytes" } },
+    });
+    const MiB = 1024 * 1024;
+    const writtenWith = (name: string, length: number) =>
+      objectFormat.encode(new ObjectValue(attachment.link, { name, bytes: new Uint8Array(length) }));
+
+    it("is kept until the blobs read after it are longer together than what is kept", () => {
+      const [first, second, third] = [
+        writtenWith("first", 12 * MiB),
+        writtenWith("second", 12 * MiB),
+        writtenWith("third", 12 * MiB),
+      ];
+      for (const bytes of [first, second, third]) decodeObject(bytes, attachment);
+      const decode = vi.spyOn(objectFormat, "decode");
+      expect(decodeObject(third, attachment).data.name).toBe("third");
+      expect(decode).not.toHaveBeenCalled();
+      expect(decodeObject(first, attachment).data.name).toBe("first");
+      expect(decode).toHaveBeenCalledTimes(1);
+    });
+
+    it("is not kept where the blob alone is longer than that, and is read as any other", () => {
+      const bytes = writtenWith("alone", 33 * MiB);
+      const decode = vi.spyOn(objectFormat, "decode");
+      expect(decodeObject(bytes, attachment).data.name).toBe("alone");
+      expect(decodeObject(bytes, attachment).data.name).toBe("alone");
+      expect(decode).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

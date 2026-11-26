@@ -265,11 +265,9 @@ const rowsJoining = (rowsOfEach: readonly (readonly PartialRow[])[]): readonly P
     [new Map()],
   );
 
-// - Every blob that the paths come to is taken of `start`, the blob that the scan reads, so the parts
-//   that read it share what each blob was decoded and validated to.
-// - Every path is taken before any of them is found to reach nothing: one that comes to an object of
-//   another schema does not stop the others, as one of them may come to a blob that does not fit its
-//   schema, which fails the object read.
+// Every path is taken before any of them is found to reach nothing: one that comes to an object of
+// another schema does not stop the others, as one of them may come to a blob that does not fit its
+// schema, which fails the object read.
 async function rowsFromObject(
   walk: ObjectWalk,
   blob: ScannedBlob,

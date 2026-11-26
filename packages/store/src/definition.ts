@@ -2,26 +2,18 @@ import {
   decodeObject,
   type EncodedObject,
   encodeObject,
+  type Field,
+  type Item,
   type Link,
   LinkValue,
   memberOf,
   namedSchemaOf,
   type Schema,
+  type SchemaDocument,
   type Value,
   type ValueMap,
 } from "@estoc/object";
-import {
-  any,
-  array,
-  type DataOf,
-  type Field,
-  type Item,
-  link,
-  rootSchema,
-  type SchemaDocument,
-  schema,
-  schemaLanguage,
-} from "@estoc/schema";
+import { any, array, type DataOf, link, schema } from "@estoc/schema";
 import { recordSchema } from "./record.ts";
 
 type Step =
@@ -117,18 +109,13 @@ export function partAlong(paths: { readonly [rowField: string]: ValuePath<unknow
   return { schema: start, paths: Object.fromEntries(routes.map(([rowField, { steps }]) => [rowField, steps])) };
 }
 
-function documentOf(schema: Schema): SchemaDocument {
-  const bytes: Uint8Array = schema.bytes;
-  return schemaLanguage.document(decodeObject(bytes, rootSchema).data);
-}
-
 class ObjectWalk {
   readonly document: SchemaDocument;
   readonly fields = new Map<string, ValueWalk>();
   link: ValueWalk | undefined;
 
   constructor(schema: Schema) {
-    this.document = documentOf(schema);
+    this.document = schema.document;
   }
 }
 
@@ -159,7 +146,7 @@ const typeOf = ({ optional: _, ...type }: Field): Item => type;
  * read. A step that does not fit where it is taken from is refused here, before any blob is read.
  */
 function walkOf(rows: Schema, { schema, paths }: PartDefinition): ObjectWalk {
-  const rowDocument = documentOf(rows);
+  const rowDocument = rows.document;
   for (const name of Object.keys(rowDocument.fields))
     if (!Object.hasOwn(paths, name)) throw new Error(`no path is given for the field ${name} of ${rowDocument.title}`);
   const start = new ObjectWalk(schema);

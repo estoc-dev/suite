@@ -1,3 +1,4 @@
+export type { Field, Item, SchemaDocument } from "./document.ts";
 export { type Implementation, Implementations } from "./implementation.ts";
 export { type Bytes, digestOf, isLink, type Link, linkOf } from "./link.ts";
 export {
@@ -28,7 +29,6 @@ export {
   encodeSchema,
   rootSchemaOf,
   type Schema,
-  type SchemaLanguage,
   type SchemaValidator,
 } from "./schema.ts";
 export { objectsOf, type Selection, SelectionBySchema } from "./selection.ts";

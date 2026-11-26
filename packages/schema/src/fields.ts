@@ -1,5 +1,4 @@
-import { encodeSchema, type LinkValue, type Schema, type Value } from "@estoc/object";
-import type { Field, Item } from "./document.ts";
+import { encodeSchema, type Field, type Item, type LinkValue, type Schema, type Value } from "@estoc/object";
 import { schemaValidator } from "./validator.ts";
 
 declare const value: unique symbol;

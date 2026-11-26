@@ -1,5 +1,4 @@
-import { isValueMap, type Value } from "@estoc/object";
-import type { Field } from "@estoc/schema";
+import { type Field, isValueMap, type Value } from "@estoc/object";
 import type { Inspection } from "./inspection.ts";
 
 export type InspectedObject = Extract<Inspection, { readonly kind: "object" }>;

@@ -1,4 +1,4 @@
-import { isValueMap, type SchemaLanguage, type Value, type ValueMap } from "@estoc/object";
+import { isValueMap, type Value, type ValueMap } from "./object-format.ts";
 
 const types = ["array", "link", "bytes", "integer", "string", "boolean", "any"] as const;
 
@@ -17,23 +17,26 @@ export type SchemaDocument = {
   readonly fields: { readonly [name: string]: Field };
 };
 
+export const rootDocument: SchemaDocument = {
+  title: "Schema",
+  fields: { title: { type: "string" }, fields: { type: "any" } },
+};
+
 /**
- * - What `fields` may hold is more than a schema of the language can say, so it is checked here.
+ * - What `fields` may hold is more than the root schema can say, so it is checked here.
  * - A field says its type and whether it is optional, and nothing more: bounds, lengths and fixed
  *   values are for the program that reads the object to check.
+ * - No place in a document takes a link, so the closure of a schema is the schema and its root
+ *   schema.
  */
-export const schemaLanguage: SchemaLanguage<SchemaDocument> = {
-  root: { title: "Schema", fields: { title: { type: "string" }, fields: { type: "any" } } },
-  data: (document) => document,
-  document(data) {
-    const { title, fields, ...rest } = data;
-    refuseMembers(rest, "a schema holds a title and fields alone");
-    if (typeof title !== "string") throw new Error("a schema holds a title, a string");
-    if (fields === undefined || !isValueMap(fields)) throw new Error("a schema holds fields, each by name");
-    for (const [name, field] of Object.entries(fields)) validateField(field, `the field ${name}`);
-    return data as SchemaDocument;
-  },
-};
+export function documentOf(data: ValueMap): SchemaDocument {
+  const { title, fields, ...rest } = data;
+  refuseMembers(rest, "a schema holds a title and fields alone");
+  if (typeof title !== "string") throw new Error("a schema holds a title, a string");
+  if (fields === undefined || !isValueMap(fields)) throw new Error("a schema holds fields, each by name");
+  for (const [name, field] of Object.entries(fields)) validateField(field, `the field ${name}`);
+  return data as SchemaDocument;
+}
 
 function validateField(field: Value, place: string): void {
   const { optional, ...type } = membersOf(field, place);

@@ -19,7 +19,6 @@ import {
   link,
   optional,
   rootSchema,
-  type SchemaDocument,
   schema,
   schemaValidator,
   string,
@@ -290,8 +289,7 @@ describe("an index over records", () => {
 
   it("validates a recorded object once against each schema of the selections by schema that read it", async () => {
     const validationNames: string[] = [];
-    const validatorNoting = (name: string): SchemaValidator<SchemaDocument> => ({
-      language: schemaValidator.language,
+    const validatorNoting = (name: string): SchemaValidator => ({
       compile(document) {
         const check = schemaValidator.compile(document);
         return (data) => {
@@ -804,9 +802,8 @@ describe("an index over blobs", () => {
 
   it("fails on a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
     const document = { title: "Named", fields: { name: string(), names: array(string()) } };
-    const strict = encodeSchema<SchemaDocument, Entry>(document, schemaValidator);
-    const lax = encodeSchema<SchemaDocument, Entry>(document, {
-      language: schemaValidator.language,
+    const strict = encodeSchema<Entry>(document, schemaValidator);
+    const lax = encodeSchema<Entry>(document, {
       compile: () => () => [],
     });
     const misfit = encodeObject(lax, { names: ["misfit"] });
@@ -1243,7 +1240,6 @@ describe("an index over another index", () => {
     const namedCounting = encodeSchema(
       { title: "Named", fields: { name: string() } },
       {
-        language: schemaValidator.language,
         compile(document) {
           const check = schemaValidator.compile(document);
           return (data) => {

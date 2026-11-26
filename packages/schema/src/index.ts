@@ -1,4 +1,3 @@
-export { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
 export {
   any,
   array,

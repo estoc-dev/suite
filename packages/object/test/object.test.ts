@@ -17,10 +17,9 @@ import {
   schemaOf,
   type ValueMap,
 } from "../src/index.ts";
-import { fieldNames } from "./field-names.ts";
+import { anything, documentHolding, fieldNames } from "./field-names.ts";
 
-const anything = encodeSchema({ fields: "any" }, fieldNames);
-const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
+const login = encodeSchema(documentHolding("Login", "audience", "nonce"), fieldNames);
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, Uint8Array][] = [
   ["of no bytes", new Uint8Array()],

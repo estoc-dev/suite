@@ -17,9 +17,8 @@ import {
   schemaOf,
   type Value,
 } from "../src/index.ts";
-import { fieldNames } from "./field-names.ts";
+import { anything, documentHolding, fieldNames } from "./field-names.ts";
 
-const anything = encodeSchema({ fields: "any" }, fieldNames);
 const a = linkOf(new TextEncoder().encode("a"));
 const b = linkOf(new TextEncoder().encode("b"));
 
@@ -80,13 +79,13 @@ describe("an object", () => {
   });
 
   it("is refused when its data does not fit its schema", () => {
-    const titledSchema = encodeSchema({ fields: ["title"] }, fieldNames);
+    const titledSchema = encodeSchema(documentHolding("Titled", "title"), fieldNames);
     expect(encodeObject(titledSchema, { title: "hello" }).data).toEqual({ title: "hello" });
     expect(() => encodeObject(titledSchema, { text: "hello" })).toThrow(/does not fit/);
   });
 
   it("is refused when read with a schema other than its own", () => {
-    const other = encodeSchema({ fields: ["text"] }, fieldNames);
+    const other = encodeSchema(documentHolding("Other", "text"), fieldNames);
     expect(() => decodeObject(encodeObject(anything, { text: "hello" }).bytes, other)).toThrow(/is written to/);
   });
 });
@@ -195,7 +194,7 @@ describe("an object written to itself", () => {
     const bytes: Uint8Array = root.bytes;
     const object = decodeObject(bytes, root);
     expect(object.schema.link).toBe(object.link);
-    expect(object.data).toEqual({ fields: ["fields"] });
+    expect(object.data).toEqual(root.document);
   });
 
   it("is refused as an object of another schema", () => {

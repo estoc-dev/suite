@@ -1,6 +1,7 @@
 import type { Client } from "@estoc/explorer";
 import {
   encodeObject,
+  type Field,
   isLink,
   isValueMap,
   type Link,
@@ -10,7 +11,6 @@ import {
   type Schema,
   type Value,
 } from "@estoc/object";
-import type { Field } from "@estoc/schema";
 import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { readSchema } from "./schema.ts";
 import { typeNameOf } from "./text.ts";
@@ -39,12 +39,13 @@ export interface ActionForm {
 
 export async function readActionForms(source: ActionSource): Promise<ActionForm[]> {
   const readTitledSchema = async (link: Link<Schema>): Promise<TitledSchema> => {
-    const { schema, document } = await readSchema(source, link);
-    return { schema, title: document.title };
+    const schema = await readSchema(source, link);
+    return { schema, title: schema.document.title };
   };
   return Promise.all(
     (await source.actions()).map(async ({ data }) => {
-      const { schema, document } = await readSchema(source, data.request.link);
+      const schema = await readSchema(source, data.request.link);
+      const { document } = schema;
       const targetOf = (name: string) =>
         isValueMap(data.targetSchemas) ? memberOf(data.targetSchemas, name) : undefined;
       return {

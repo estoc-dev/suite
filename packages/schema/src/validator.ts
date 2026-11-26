@@ -1,5 +1,12 @@
-import { LinkValue, memberOf, rootSchemaOf, type SchemaValidator, type Value } from "@estoc/object";
-import { type Field, type Item, type SchemaDocument, schemaLanguage } from "./document.ts";
+import {
+  type Field,
+  type Item,
+  LinkValue,
+  memberOf,
+  rootSchemaOf,
+  type SchemaValidator,
+  type Value,
+} from "@estoc/object";
 
 const fits: { readonly [T in Item["type"]]: (value: Value) => boolean } = {
   array: Array.isArray,
@@ -32,8 +39,7 @@ function* problemsIn(value: Value, field: Field | Item, path: string): Generator
  * The language says what fits a schema, with nothing left to a validator, so another would give the
  * same answers.
  */
-export const schemaValidator: SchemaValidator<SchemaDocument> = {
-  language: schemaLanguage,
+export const schemaValidator: SchemaValidator = {
   compile({ fields }) {
     return (data) => {
       const problems = Object.keys(data)

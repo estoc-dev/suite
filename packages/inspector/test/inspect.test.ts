@@ -8,7 +8,7 @@ import {
   objectFormat,
   type ValueMap,
 } from "@estoc/object";
-import { any, array, link, optional, rootSchema, schema, schemaLanguage, string } from "@estoc/schema";
+import { any, array, link, optional, rootSchema, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { inspect } from "../src/index.ts";
 import { readerOf } from "./fixtures.ts";
@@ -147,7 +147,7 @@ describe("a schema", () => {
     const { data, links, schema } = await inspectedObject(noteSchema.bytes, rootSchema.bytes);
     expect(data).toEqual(noteDocument);
     expect(links).toEqual([]);
-    expect(schema).toEqual({ kind: "schema", link: rootSchema.link, document: schemaLanguage.root, problems: [] });
+    expect(schema).toEqual({ kind: "schema", link: rootSchema.link, document: rootSchema.document, problems: [] });
   });
 });
 
@@ -155,7 +155,7 @@ describe("the root schema", () => {
   it("names itself, and is read with its own bytes", async () => {
     const { link, data, schema } = await inspectedObject(rootSchema.bytes);
     expect(link).toBe(rootSchema.link);
-    expect(data).toEqual(schemaLanguage.root);
-    expect(schema).toEqual({ kind: "schema", link: rootSchema.link, document: schemaLanguage.root, problems: [] });
+    expect(data).toEqual(rootSchema.document);
+    expect(schema).toEqual({ kind: "schema", link: rootSchema.link, document: rootSchema.document, problems: [] });
   });
 });

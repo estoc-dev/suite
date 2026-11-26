@@ -43,21 +43,20 @@ describe("the forms of the actions", () => {
   it("hold, for each action in the order of the runtime, the titles of its schemas and the fields of its request schema", async () => {
     expect(await formsOf(greet, count)).toMatchObject([
       {
-        title: "Greet",
-        request: { link: greet.requestSchema.link },
-        result: { schema: { link: greetingSchema.link }, title: "Greeting" },
+        request: { link: greet.requestSchema.link, document: { title: "Greet" } },
+        result: { link: greetingSchema.link, document: { title: "Greeting" } },
         fields: [
-          { name: "to", field: { type: "link" }, target: { schema: { link: entrySchema.link }, title: "Entry" } },
+          { name: "to", field: { type: "link" }, target: { link: entrySchema.link, document: { title: "Entry" } } },
           { name: "note", field: { type: "string", optional: true } },
           { name: "words", field: { type: "string" } },
           {
             name: "others",
             field: { type: "array", items: { type: "link" }, optional: true },
-            target: { schema: { link: entrySchema.link }, title: "Entry" },
+            target: { link: entrySchema.link, document: { title: "Entry" } },
           },
         ],
       },
-      { title: "Count", result: { title: "Counted" } },
+      { request: { document: { title: "Count" } }, result: { document: { title: "Counted" } } },
     ]);
   });
 
@@ -75,7 +74,9 @@ describe("the fields that take objects written to a schema", () => {
       targetSchemas: { to: entrySchema },
     };
     const forms = await formsOf(count, greet, farewell);
-    expect(fieldsTaking(forms, entrySchema.link).map(({ form, field }) => [form.title, field.name])).toEqual([
+    expect(
+      fieldsTaking(forms, entrySchema.link).map(({ form, field }) => [form.request.document.title, field.name]),
+    ).toEqual([
       ["Greet", "to"],
       ["Greet", "others"],
       ["Farewell", "to"],

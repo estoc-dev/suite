@@ -1,6 +1,4 @@
-import { encodeSchema, type LinkValue, type Schema, type Value } from "@estoc/object";
-import type { Field, Item } from "./document.ts";
-import { schemaValidator } from "./validator.ts";
+import { encodeSchema, type Field, type Item, type LinkValue, type Schema, type Value } from "@estoc/object";
 
 declare const value: unique symbol;
 
@@ -30,7 +28,7 @@ type DataOfFields<F extends FieldsOf> = { readonly [N in Exclude<keyof F, Option
   : never;
 
 export function schema<F extends FieldsOf>(title: string, fields: F): Schema<DataOfFields<F>> {
-  return encodeSchema({ title, fields }, schemaValidator);
+  return encodeSchema({ title, fields });
 }
 
 export type DataOf<S extends Schema> = S extends Schema<infer F> ? F : never;

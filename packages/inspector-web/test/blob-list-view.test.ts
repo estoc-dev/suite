@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
-import { link, rootSchema, schema } from "@estoc/schema";
+import { encodeObject, LinkValue, linkOf, ObjectValue, objectFormat, rootSchema } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { blobListOf } from "../src/blob-list.ts";
 import { blobListView } from "../src/blob-list-view.ts";

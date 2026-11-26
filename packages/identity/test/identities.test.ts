@@ -8,10 +8,11 @@ import {
   linkOf,
   ObjectValue,
   objectFormat,
+  rootSchema,
   type Schema,
   type ValueMap,
 } from "@estoc/object";
-import { bytes, link, rootSchema, schema } from "@estoc/schema";
+import { bytes, link, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {

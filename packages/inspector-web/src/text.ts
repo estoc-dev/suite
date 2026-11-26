@@ -1,4 +1,4 @@
-import type { Field, Item } from "@estoc/schema";
+import type { Field, Item } from "@estoc/object";
 
 export function typeNameOf(type: Field | Item): string {
   return type.type === "array" ? `array of ${typeNameOf(type.items)}` : type.type;

@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeObject, LinkValue, linkOf } from "@estoc/object";
-import { link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { encodeObject, LinkValue, linkOf, rootSchema } from "@estoc/object";
+import { link, optional, schema, string } from "@estoc/schema";
 import { type Backend, MemoryBackend, Store } from "@estoc/store";
 import { onTestFinished } from "vitest";
 import type { ListedAction } from "../src/action.ts";

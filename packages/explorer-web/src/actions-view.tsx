@@ -26,11 +26,11 @@ export function ActionsView(props: { sessions: ActionSessions }) {
                   <tr>
                     <td>
                       <a class="link" href={fragmentOf({ action: form.request.link })}>
-                        {form.title}
+                        {form.request.document.title}
                       </a>
                     </td>
                     <td class="mono">{form.fields.map(({ name }) => name).join(", ")}</td>
-                    <td>{form.result.title}</td>
+                    <td>{form.result.document.title}</td>
                   </tr>
                 )}
               </For>

@@ -8,9 +8,10 @@ import {
   ObjectValue,
   objectFormat,
   objectsOf,
+  rootSchema,
   type Schema,
 } from "@estoc/object";
-import { array, integer, link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { array, integer, link, optional, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   anyHeldObject,

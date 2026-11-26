@@ -17,10 +17,10 @@ import {
   schemaOf,
   type ValueMap,
 } from "../src/index.ts";
-import { fieldNames } from "./field-names.ts";
+import { documentHolding, schemaTaking } from "./documents.ts";
 
-const anything = encodeSchema({ fields: "any" }, fieldNames);
-const login = encodeSchema({ fields: ["audience", "nonce"] }, fieldNames);
+const login = encodeSchema(documentHolding("Login", "audience", "nonce"));
+const anything = schemaTaking("audience", "nonce", "array", "string", "link", "bytes", "$schema", "schema");
 const greeting = { audience: "https://app.estoc.dev", nonce: "6f1c" };
 const malformed: [string, Uint8Array][] = [
   ["of no bytes", new Uint8Array()],
@@ -127,6 +127,6 @@ describe("a selection by schema", () => {
 
 test("an object read with a schema decoded from the same bytes keeps its link", () => {
   const object = encodeObject(login, greeting);
-  const schema = decodeSchema(login.bytes, fieldNames);
+  const schema = decodeSchema(login.bytes);
   expect(decodeObject(object.bytes, schema).link).toBe(object.link);
 });

@@ -14,11 +14,11 @@
     "@estoc/identity": "workspace:*",
     "@estoc/inspector": "workspace:*",
     "@estoc/object": "workspace:*",
-    "@estoc/schema": "workspace:*",
     "@solidjs/web": "2.0.3",
     "solid-js": "2.0.3"
   },
   "devDependencies": {
+    "@estoc/schema": "workspace:*",
     "@solidjs/vite-plugin": "3.0.1",
     "@types/node": "^26.6.2",
     "happy-dom": "^21.0.4",

@@ -7,10 +7,11 @@ import {
   linkOf,
   ObjectValue,
   objectFormat,
+  rootSchema,
   type Schema,
   type ValueMap,
 } from "@estoc/object";
-import { any, array, link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { any, array, link, optional, schema, string } from "@estoc/schema";
 import { render } from "@solidjs/web";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActionSource } from "../src/action-page.ts";

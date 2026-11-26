@@ -1,6 +1,5 @@
 import type { Client, ListData } from "@estoc/explorer";
-import { decodeObject, type Link, memberOf, type Schema, type Value } from "@estoc/object";
-import type { Field } from "@estoc/schema";
+import { decodeObject, type Field, type Link, memberOf, type Schema, type Value } from "@estoc/object";
 import { readSchema } from "./schema.ts";
 
 export type Source = Pick<Client, "get" | "lists" | "page">;
@@ -18,8 +17,8 @@ export interface RowSchema {
 }
 
 export async function readRowSchema(source: Source, link: Link<Schema>): Promise<RowSchema> {
-  const { schema, document } = await readSchema(source, link);
-  return { schema, columns: Object.entries(document.fields).map(([name, field]) => ({ name, field })) };
+  const schema = await readSchema(source, link);
+  return { schema, columns: Object.entries(schema.document.fields).map(([name, field]) => ({ name, field })) };
 }
 
 /**

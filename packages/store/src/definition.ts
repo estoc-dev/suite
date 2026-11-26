@@ -2,26 +2,18 @@ import {
   decodeObject,
   type EncodedObject,
   encodeObject,
+  type Field,
+  type Item,
   type Link,
   LinkValue,
   memberOf,
   namedSchemaOf,
   type Schema,
+  type SchemaDocument,
   type Value,
   type ValueMap,
 } from "@estoc/object";
-import {
-  any,
-  array,
-  type DataOf,
-  type Field,
-  type Item,
-  link,
-  rootSchema,
-  type SchemaDocument,
-  schema,
-  schemaLanguage,
-} from "@estoc/schema";
+import { any, array, type DataOf, link, schema } from "@estoc/schema";
 import { closureIn, linksIn } from "./batch.ts";
 import { recordSchema } from "./record.ts";
 
@@ -141,11 +133,6 @@ export function startSchemaOf({ paths }: PartDefinition): Schema | undefined {
   return isSharedByAll ? first.schema : undefined;
 }
 
-function documentOf(schema: Schema): SchemaDocument {
-  const bytes: Uint8Array = schema.bytes;
-  return schemaLanguage.document(decodeObject(bytes, rootSchema).data);
-}
-
 interface TakenSchema {
   readonly schema: Schema;
   readonly walk: ObjectWalk;
@@ -161,7 +148,7 @@ class ObjectWalk {
   takenAs: TakenSchema | undefined;
 
   constructor(schema?: Schema) {
-    this.document = schema && documentOf(schema);
+    this.document = schema?.document;
   }
 }
 
@@ -191,7 +178,7 @@ const typeOf = ({ optional: _, ...type }: Field): Item => type;
  * - A part expands at one place, so that its rows are not every pairing of what two places give.
  */
 function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
-  const rowDocument = documentOf(rows);
+  const rowDocument = rows.document;
   for (const name of Object.keys(rowDocument.fields))
     if (!Object.hasOwn(paths, name)) throw new Error(`no path is given for the field ${name} of ${rowDocument.title}`);
   const start = new ObjectWalk();
@@ -227,7 +214,7 @@ function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
           place = place.object;
         }
       } else if (step.step === "as") {
-        const { title } = documentOf(step.schema);
+        const { title } = step.schema.document;
         if (place.document !== undefined)
           return refuse(`takes as ${title} an object that it took as ${place.document.title}`);
         place.takenAs ??= { schema: step.schema, walk: new ObjectWalk(step.schema) };

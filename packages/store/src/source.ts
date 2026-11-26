@@ -53,7 +53,6 @@ export interface ItemFailure {
 export interface Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[];
-  objectOf(link: Link<unknown>): { readonly schema: Schema } | undefined;
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 

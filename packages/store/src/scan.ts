@@ -39,10 +39,6 @@ class ListedLinks implements Listing {
     return listedLinks.size === this.links.length ? this : new ListedLinks([...listedLinks]);
   }
 
-  objectOf(): undefined {
-    return undefined;
-  }
-
   bytesOf(): undefined {
     return undefined;
   }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, it, test } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
 import {
   AbsentBlob,
   blobsOf,
@@ -10,9 +10,11 @@ import {
   encodeSchema,
   LinkValue,
   linkOf,
+  namedSchemaAt,
   ObjectValue,
   objectFormat,
   objectsOf,
+  objectValueAt,
   readObject,
   schemaOf,
   type ValueMap,
@@ -98,6 +100,77 @@ describe("an object read by its link", () => {
     await expect(readObject(new Map([[object.link, other.bytes]]), object.link, login)).rejects.toThrow(
       /is another blob/,
     );
+  });
+});
+
+describe("what a blob decodes to", () => {
+  // Written out by hand, so that nothing has decoded them before the test does.
+  const written = (nonce: string) => objectFormat.encode(new ObjectValue(login.link, { ...greeting, nonce }));
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("is kept under its link, so that while it is kept the blob is decoded and validated once however it is read", async () => {
+    const bytes = written("read four ways");
+    const link = linkOf(bytes);
+    const decode = vi.spyOn(objectFormat, "decode");
+    const validate = vi.spyOn(login, "validate");
+    expect(namedSchemaAt(link, bytes)).toBe(login.link);
+    expect(objectValueAt(link, bytes).data).toEqual({ ...greeting, nonce: "read four ways" });
+    expect(decodeObject(bytes, login).link).toBe(link);
+    expect((await readObject(new Map([[link, bytes]]), link, login)).link).toBe(link);
+    expect(decode).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not kept under the link of another blob", () => {
+    const [bytes, other] = [written("given for another"), written("asked for")];
+    expect(() => objectValueAt(linkOf(other), bytes)).toThrow(/is another blob/);
+    expect(namedSchemaAt(linkOf(other), bytes)).toBeUndefined();
+    expect(objectValueAt(linkOf(other), other).data).toMatchObject({ nonce: "asked for" });
+  });
+
+  it("is what its link names once it is kept, whatever bytes are given with the link", () => {
+    const [bytes, other] = [written("kept"), written("given later")];
+    objectValueAt(linkOf(bytes), bytes);
+    expect(objectValueAt(linkOf(bytes), other).data).toMatchObject({ nonce: "kept" });
+  });
+
+  test("a blob whose data does not fit its schema is refused each time it is read", () => {
+    const bytes = objectFormat.encode(new ObjectValue(login.link, { audience: 1 }));
+    expect(() => decodeObject(bytes, login)).toThrow(/does not fit its schema/);
+    expect(() => decodeObject(bytes, login)).toThrow(/does not fit its schema/);
+  });
+
+  describe("of a blob with many bytes in it", () => {
+    const attachment = encodeSchema({
+      title: "Attachment",
+      fields: { name: { type: "string" }, bytes: { type: "bytes" } },
+    });
+    const MiB = 1024 * 1024;
+    const writtenWith = (name: string, length: number) =>
+      objectFormat.encode(new ObjectValue(attachment.link, { name, bytes: new Uint8Array(length) }));
+
+    it("is kept until the blobs read after it are longer together than what is kept", () => {
+      const [first, second, third] = [
+        writtenWith("first", 12 * MiB),
+        writtenWith("second", 12 * MiB),
+        writtenWith("third", 12 * MiB),
+      ];
+      for (const bytes of [first, second, third]) decodeObject(bytes, attachment);
+      const decode = vi.spyOn(objectFormat, "decode");
+      expect(decodeObject(third, attachment).data.name).toBe("third");
+      expect(decode).not.toHaveBeenCalled();
+      expect(decodeObject(first, attachment).data.name).toBe("first");
+      expect(decode).toHaveBeenCalledTimes(1);
+    });
+
+    it("is not kept where the blob alone is longer than that, and is read as any other", () => {
+      const bytes = writtenWith("alone", 33 * MiB);
+      const decode = vi.spyOn(objectFormat, "decode");
+      expect(decodeObject(bytes, attachment).data.name).toBe("alone");
+      expect(decodeObject(bytes, attachment).data.name).toBe("alone");
+      expect(decode).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

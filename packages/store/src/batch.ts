@@ -5,8 +5,8 @@ import {
   linkOf,
   type ObjectValue,
   objectFormat,
+  objectValueAt,
   type Reader,
-  schemaOf,
 } from "@estoc/object";
 import type { Backend } from "./backend.ts";
 import { isRecord, type RecordObject, recordOf, recordSchema } from "./record.ts";
@@ -41,7 +41,7 @@ export function hashedBlobs(blobs: Iterable<Bytes<unknown>>): Map<Link<unknown>,
   const batchBlobs = new Map<Link<unknown>, Uint8Array>();
   for (const blob of blobs) {
     const link = linkOf(blob);
-    if (isRecord(blob)) throw new RefusedBatch(`${link} is a Record, which a batch does not give`);
+    if (isRecord(link, blob)) throw new RefusedBatch(`${link} is a Record, which a batch does not give`);
     batchBlobs.set(link, blob);
   }
   return batchBlobs;
@@ -64,7 +64,7 @@ export function recordsOf(
       throw new RefusedBatch(`${statement} is recorded but is not among the blobs of the batch`);
     }
     try {
-      schemaOf(bytes);
+      objectValueAt(statement, bytes);
     } catch (cause) {
       throw new RefusedBatch(`${statement} is recorded but is not an object`, { cause });
     }
@@ -82,10 +82,10 @@ export function hashedBatchWith(
   return { blobs, records: records.map(({ link }) => link) };
 }
 
-export function linksIn(bytes: Uint8Array): Iterable<Link<unknown>> {
+export function linksIn(link: Link<unknown>, bytes: Uint8Array): Iterable<Link<unknown>> {
   let object: ObjectValue;
   try {
-    object = objectFormat.decode(bytes);
+    object = objectValueAt(link, bytes);
   } catch {
     return [];
   }
@@ -100,7 +100,7 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
     const bytes = await reader.get(next);
     if (bytes === undefined) throw new Error(`the store does not hold ${next}`);
     closureBlobs.set(next, bytes);
-    for (const targetLink of linksIn(bytes)) {
+    for (const targetLink of linksIn(next, bytes)) {
       if (seenLinks.has(targetLink)) continue;
       seenLinks.add(targetLink);
       pendingLinks.push(targetLink);
@@ -123,7 +123,7 @@ export async function leavesFirst(
   const frame = (link: Link<unknown>, bytes: Uint8Array) => ({
     link,
     bytes,
-    links: linksIn(bytes)[Symbol.iterator](),
+    links: linksIn(link, bytes)[Symbol.iterator](),
   });
   for (const root of roots) {
     if (orderedBlobs.has(root)) continue;

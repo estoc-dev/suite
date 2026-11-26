@@ -1,4 +1,4 @@
-import { type EncodedObject, encodeObject, type Link, LinkValue, namedSchemaOf } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, namedSchemaAt } from "@estoc/object";
 import { type DataOf, link, schema } from "@estoc/schema";
 
 /**
@@ -18,6 +18,6 @@ export function recordOf(statement: Link<EncodedObject>): RecordObject {
   return encodeObject(recordSchema, { object: new LinkValue(statement) });
 }
 
-export function isRecord(bytes: Uint8Array): boolean {
-  return namedSchemaOf(bytes) === recordSchema.link;
+export function isRecord(link: Link<unknown>, bytes: Uint8Array): boolean {
+  return namedSchemaAt(link, bytes) === recordSchema.link;
 }

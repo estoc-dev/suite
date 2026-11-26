@@ -1,6 +1,6 @@
 import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
 import type { BlobSet } from "./scan.ts";
-import { ScannedBlob } from "./scanned-blob.ts";
+import { ClosureReader, ScannedBlob } from "./scanned-blob.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
 import type { Derivation, FieldNames, ItemFailure, Listing, Origin } from "./source.ts";
 
@@ -67,7 +67,8 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
       const readCount = this.#listings.get(origin)?.links.length ?? 0;
       const reader: Reader = { get: (link) => listing.bytesOf(link) ?? store.get(link) };
       for (const link of listing.links.slice(readCount)) {
-        const blob = new ScannedBlob(link, reader, listing.objectOf(link));
+        const closureReader = new ClosureReader(link, reader);
+        const blob = new ScannedBlob(link, closureReader);
         for (const part of originParts) {
           const partObjects: EncodedObject<F>[] = [];
           try {
@@ -79,8 +80,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
           for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);
         }
         // What a part threw because the store failed is not a failure of the part.
-        const readFailure = blob.readFailure;
-        if (readFailure !== undefined) throw readFailure.error;
+        if (closureReader.failure !== undefined) throw closureReader.failure.error;
       }
     }
     return new DerivedObjects(
@@ -106,10 +106,6 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
 
   async *[Symbol.asyncIterator](): AsyncIterator<EncodedObject<F>> {
     yield* this.objects;
-  }
-
-  objectOf(link: Link<unknown>): EncodedObject<F> | undefined {
-    return this.#objectsByLink.get(link);
   }
 
   bytesOf(link: Link<unknown>): Uint8Array | undefined {

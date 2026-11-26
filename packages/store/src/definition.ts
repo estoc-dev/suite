@@ -92,8 +92,8 @@ export class ValuePath<T> {
 /**
  * - Anyone can send a bundle with an object of any schema in it, so an object read this way may be
  *   a stranger's, unless `schema` is that of a Record, which the store alone writes.
- * - A scan reads every blob the store holds once for each index that reads this way. The Records
- *   are read once for all of them.
+ * - A scan reads every blob it is over once for each index that reads this way. The Records are
+ *   read once for all of them.
  */
 export function heldObject<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
   return new ObjectPath({ start: schema, steps: [] });
@@ -249,8 +249,8 @@ export function rowReaderOf(
 }
 
 /**
- * - Its link stands for which rows an index holds, so it holds nothing of what they are called or
- *   ordered by.
+ * - It says how rows come of the blobs that a scan is over. Which blobs those are, what the rows are
+ *   called and what they are ordered by are no part of it, so none of them changes its link.
  * - `rows` is the schema of the rows, and the rows are those that any part gives. A part holds
  *   `schema`, the link of the schema of the blobs it reads, and `paths`, which holds under each
  *   field of a row the steps from a blob read to the value of the field.

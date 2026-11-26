@@ -11,11 +11,12 @@ import {
   type Schema,
 } from "@estoc/object";
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   type Backend,
   type FieldNames,
   heldObject,
+  type IndexDefinition,
   indexOfRows,
   indexOver,
   MemoryBackend,
@@ -250,14 +251,17 @@ describe("the definition of an index", () => {
       title: recordedStatement(card).field("title"),
       card: recordedStatement(card).link,
     });
-    expect(again.definition?.link).toBe(ownedCards.definition?.link);
-    expect(ownedCards.union(ownedCards).definition?.link).not.toBe(ownedCards.definition?.link);
+    const definitionLinkOf = ({ definition }: { readonly definition: IndexDefinition | undefined }) => {
+      assert.exists(definition);
+      return definition.link;
+    };
+    expect(definitionLinkOf(again)).toBe(definitionLinkOf(ownedCards));
+    expect(definitionLinkOf(ownedCards.union(ownedCards))).not.toBe(definitionLinkOf(ownedCards));
     const title = heldObject(card).field("title");
-    const [titles, retitled] = [titled, schema("Retitled", { title: string() })].map(
-      (rows) => indexOfRows(rows, { title }).definition,
+    const retitled = schema("Retitled", { title: string() });
+    expect(definitionLinkOf(indexOfRows(retitled, { title }))).not.toBe(
+      definitionLinkOf(indexOfRows(titled, { title })),
     );
-    expect(titles).toBeDefined();
-    expect(retitled?.link).not.toBe(titles?.link);
   });
 
   it("is absent where a function gives the rows of a part", () => {

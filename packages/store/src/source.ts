@@ -127,7 +127,7 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
  * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
  *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
  *   be a stranger's.
- * - A scan reads every blob the store holds, attachments as well, once for each index.
+ * - A scan reads every blob it is over, attachments as well, once for each index.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
   return new Source({ origin: blobOrigin, itemOf: (blob) => itemOf(selection, blob) });
@@ -139,7 +139,7 @@ export interface HeldBlob {
 }
 
 /**
- * Every blob the store holds, whatever its bytes are: an attachment and what a stranger sent as
+ * Every blob that a scan is over, whatever its bytes are: an attachment and what a stranger sent as
  * well as an object of the store's own. A scan reads each of them once for each index.
  */
 export const heldBlobs: Source<HeldBlob> = new Source({

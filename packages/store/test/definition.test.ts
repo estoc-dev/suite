@@ -26,6 +26,7 @@ import {
   selectedRecords,
   type ValuePath,
 } from "../src/index.ts";
+import { recordOf } from "../src/record.ts";
 
 const place = schema("Place", { city: string() });
 const person = schema("Person", { name: string(), home: link(), nickname: optional(string()) });
@@ -84,7 +85,6 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const held = cardOf("held");
     await store.write({ roots: [held.link], blobs: [held.bytes, ...closure] });
     expect(await titlesIn(store, byTitle)).toEqual(["recorded"]);
-    expect(byTitle.readsBlobs).toBe(false);
   });
 
   it("holds no row of a statement where a link that a path follows leads to an object of another schema", async () => {
@@ -97,7 +97,7 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const store = new Store(new MemoryBackend());
     const statement = cardOf("of no one", linkOf(nameless));
     await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...closure] });
-    await expect(store.scan(byTitle)).rejects.toThrow("#/name: left out");
+    await expect(store.scan(byTitle, { throwsOnFailure: true })).rejects.toThrow("#/name: left out");
   });
 
   it("fails on such a statement whichever path is given first, where another follows a link to another schema", async () => {
@@ -115,9 +115,9 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(leftFirst.definition).toBeDefined();
     expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
     for (const index of [leftFirst, rightFirst]) {
-      await expect(store.scan(index)).rejects.toThrow("#/name: left out");
-      const { failures } = await store.scan(index, { throwsOnFailure: false });
-      expect(failures.map(({ item }) => item)).toEqual([statement.link]);
+      await expect(store.scan(index, { throwsOnFailure: true })).rejects.toThrow("#/name: left out");
+      const { failures } = await store.scan(index);
+      expect(failures.map(({ item }) => item)).toEqual([recordOf(statement.link).link]);
     }
   });
 
@@ -195,7 +195,6 @@ describe("an index of rows taken along paths from the objects held of a schema",
       blobs: [held.bytes, carrying.bytes, deep.bytes, ...closure],
     });
     expect(await titlesIn(store, byHeldTitle)).toEqual(["deep", "held", "recorded"]);
-    expect(byHeldTitle.readsBlobs).toBe(true);
   });
 });
 

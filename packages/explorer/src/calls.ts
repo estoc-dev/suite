@@ -1,5 +1,5 @@
 import type { Schema, ValueMap } from "@estoc/object";
-import { any, array, boolean, bytes, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
+import { any, array, bytes, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 
 /** `id` is one that no call still waiting on the same channel has. */
 export const callSchema = schema("Call", { id: integer(), name: string(), parameters: any() });
@@ -30,14 +30,11 @@ export const listsCall = {
 /**
  * - `rows` names the schema that every row of the list is written to.
  * - `order` names the fields the rows are sorted by, and is empty for a list sorted by none.
- * - A list that reads blobs reads every blob the store holds, so a row of it may come of an object
- *   that a stranger sent.
  */
 export const listSchema = schema("List", {
   name: string(),
   rows: link<Schema>(),
   order: array(string()),
-  readsBlobs: boolean(),
 });
 
 export type ListData = DataOf<typeof listSchema>;

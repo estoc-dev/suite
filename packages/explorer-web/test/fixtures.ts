@@ -36,7 +36,7 @@ export function listOf(
   order: readonly string[] = [],
   rowSchema: Schema = entrySchema,
 ): GivenList {
-  return { description: { name, rows: new LinkValue(rowSchema.link), order, readsBlobs: false }, rowSchema, rows };
+  return { description: { name, rows: new LinkValue(rowSchema.link), order }, rowSchema, rows };
 }
 
 function pageIn<T>(items: readonly T[], start: number, limit: number): { start: number; items: T[] } {

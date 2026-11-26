@@ -41,13 +41,11 @@ interface LinksRead<T = unknown> {
 }
 
 interface Origin<T = unknown> {
-  readonly readsBlobs: boolean;
   /** The order of the links only grows at the end. */
   read(store: Store): Promise<LinksRead<T>>;
 }
 
 const recordedStatements: Origin<EncodedObject> = {
-  readsBlobs: false,
   async read(store) {
     const { statements, blobCount } = await store.recordedStatements();
     return { links: statements, blobCount };
@@ -55,7 +53,6 @@ const recordedStatements: Origin<EncodedObject> = {
 };
 
 const blobLinks: Origin = {
-  readsBlobs: true,
   async read(store) {
     const links: Link<unknown>[] = [];
     for await (const blob of store.blobs()) links.push(blob);
@@ -84,7 +81,6 @@ function listInWrittenOrder<F extends ValueMap, T>(
     name,
     rowSchema,
     order: [],
-    readsBlobs: origin.readsBlobs,
     async page(store, start, limit) {
       const { links, blobCount } = await origin.read(store);
       const page = pageIn(links, start, limit);
@@ -189,8 +185,8 @@ export class Runtime {
     }
     const listDescriptions = Array.from(
       listsByName.values(),
-      ({ name, rowSchema, order, readsBlobs }) =>
-        encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order: [...order], readsBlobs }).bytes,
+      ({ name, rowSchema, order }) =>
+        encodeObject(listSchema, { name, rows: new LinkValue(rowSchema.link), order: [...order] }).bytes,
     );
     const actionsByRequestSchema = new Map<Link<unknown>, ListedAction>();
     for (const action of actions) {

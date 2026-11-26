@@ -13,6 +13,7 @@ export class ScannedBlob {
   readonly reader: { get(link: Link<unknown>): Promise<Uint8Array> };
   #namedSchema: { readonly link: Link<unknown> | undefined } | undefined;
   readonly #objects = new Map<object, unknown>();
+  readonly #blobsByLink = new Map<Link<unknown>, ScannedBlob>();
   #readFailure: { readonly error: unknown } | undefined;
 
   /** `object` is what `link` names where an index derived it, so that it is not read and validated again. */
@@ -33,6 +34,13 @@ export class ScannedBlob {
 
   get readFailure(): { readonly error: unknown } | undefined {
     return this.#readFailure;
+  }
+
+  /** A blob of the closure of this one, the same one for a link however often it is asked for. */
+  blobAt(link: Link<unknown>): ScannedBlob {
+    const blob = this.#blobsByLink.get(link) ?? new ScannedBlob(link, this.reader);
+    this.#blobsByLink.set(link, blob);
+    return blob;
   }
 
   async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {

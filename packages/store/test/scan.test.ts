@@ -38,6 +38,7 @@ import {
   selectedBlobs,
   selectedRecords,
 } from "../src/index.ts";
+import { recordOf } from "../src/record.ts";
 
 // Every field these tests write, each optional, so that a note or a tag holds any of them.
 const fields = {
@@ -405,7 +406,9 @@ describe("an index whose rows give none of what does not read as they expect", (
 
   it("is not filled when the store does not hold a blob of a recorded object's closure", async () => {
     const store = await storeGiving({ get: async () => undefined });
-    await expect(store.scan(byAbout)).rejects.toThrow(`the store lists ${about.link} but does not hold it`);
+    await expect(store.scan(byAbout)).rejects.toThrow(
+      `the store lists ${about.link} but does not hold ${about.link} of its closure`,
+    );
   });
 });
 
@@ -437,19 +440,22 @@ describe("an index that fails on something it reads", () => {
   }
 
   it("gives the rows of what else it reads, and lists what it failed on with the error", async () => {
-    const rows = await (await storeRecording(unreadable, readable)).scan(byReadableName, {
-      throwsOnFailure: false,
-    });
+    const rows = await (await storeRecording(unreadable, readable)).scan(byReadableName);
     expect(await namesOf(rows)).toEqual(["a"]);
-    expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+    expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
   });
 
-  it("makes a scan throw the error of its first failure when it reads only recorded objects, unless the scan is told not to", async () => {
-    const store = await storeRecording(unreadable, readable);
-    await expect(store.scan(byReadableName)).rejects.toBe(readError);
-    await expect(store.scan(byReadableName, { throwsOnFailure: true })).rejects.toBe(readError);
-    expect((await store.scan(byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
-  });
+  it.each([
+    ["recorded objects", byReadableName],
+    ["blobs", byReadableBlobName],
+  ])(
+    "makes a scan throw the error of its first failure only when the scan is told to, where it reads %s",
+    async (_, index) => {
+      const store = await storeRecording(unreadable, readable);
+      expect((await store.scan(index)).failures).toHaveLength(1);
+      await expect(store.scan(index, { throwsOnFailure: true })).rejects.toBe(readError);
+    },
+  );
 
   it.each<[string, NameIndex, string]>([
     [
@@ -466,10 +472,10 @@ describe("an index that fails on something it reads", () => {
     ],
   ])("fails on a recorded object when %s", async (_, index, message) => {
     const store = await storeRecording(unreadable, readable);
-    await expect(store.scan(index.orderedBy("name"))).rejects.toThrow(message);
-    const rows = await store.scan(index.orderedBy("name"), { throwsOnFailure: false });
+    await expect(store.scan(index.orderedBy("name"), { throwsOnFailure: true })).rejects.toThrow(message);
+    const rows = await store.scan(index.orderedBy("name"));
     expect(await namesOf(rows)).toEqual(["a"]);
-    expect(rows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([recordOf(unreadable.link).link]);
   });
 
   it("keeps no row that its rows gave of something before they threw on it", async () => {
@@ -477,9 +483,7 @@ describe("an index that fails on something it reads", () => {
       yield* namedOf(object);
       readableNamedOf(object);
     });
-    const rows = await (await storeRecording(unreadable, readable)).scan(index.orderedBy("name"), {
-      throwsOnFailure: false,
-    });
+    const rows = await (await storeRecording(unreadable, readable)).scan(index.orderedBy("name"));
     expect(await namesOf(rows)).toEqual(["a"]);
   });
 
@@ -489,11 +493,10 @@ describe("an index that fails on something it reads", () => {
     await recordIn(store, [readable], schemas);
     expect((await store.scan(byReadableName)).failures).toEqual([]);
     await recordIn(store, [unreadable]);
-    expect((await store.scan(byReadableName, { throwsOnFailure: false })).failures).toHaveLength(1);
+    expect((await store.scan(byReadableName)).failures).toHaveLength(1);
     requestedLinks.length = 0;
     await recordIn(store, [encodeObject(note, { names: ["b"] })]);
-    await expect(store.scan(byReadableName)).rejects.toBe(readError);
-    const rows = await store.scan(byReadableName, { throwsOnFailure: false });
+    const rows = await store.scan(byReadableName);
     expect(await namesOf(rows)).toEqual(["a", "b"]);
     expect(rows.failures).toHaveLength(1);
     expect(requestedLinks).not.toContain(unreadable.link);
@@ -514,7 +517,7 @@ describe("an index that fails on something it reads", () => {
     });
     await recordIn(store, [record], [about.bytes, ...schemas]);
     isGone = true;
-    await expect(store.scan(byAbout, { throwsOnFailure: false })).rejects.toBe(diskError);
+    await expect(store.scan(byAbout)).rejects.toBe(diskError);
     isGone = false;
     const rows = await store.scan(byAbout);
     expect(await namesOf(rows)).toEqual(["a"]);
@@ -535,19 +538,16 @@ describe("an index that fails on something it reads", () => {
     it("is among the failures of that index, which is scanned as it is", async () => {
       const store = await storeRecording(unreadable, readable);
       const byUpperName = upperNamesOf(readableNames).orderedBy("name");
-      await expect(store.scan(byUpperName)).rejects.toBe(readError);
-      const rows = await store.scan(byUpperName, { throwsOnFailure: false });
+      const rows = await store.scan(byUpperName);
       expect(await namesOf(rows)).toEqual(["A"]);
-      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+      expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
     });
 
     it("is listed once among the failures of an index that reads it by two indexes", async () => {
       const byEitherName = byEitherNameOf(readableNames);
-      const rows = await (await storeRecording(unreadable, readable)).scan(byEitherName, {
-        throwsOnFailure: false,
-      });
+      const rows = await (await storeRecording(unreadable, readable)).scan(byEitherName);
       expect(await namesOf(rows)).toEqual(["A", "a!"]);
-      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+      expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
     });
 
     it("is read once on a staged batch for an index that reads it by two indexes, with each failure listed once", async () => {
@@ -570,14 +570,13 @@ describe("an index that fails on something it reads", () => {
         if (data.name === "unreadable") throw readError;
         return [data];
       });
-      await expect(store.scan(index.orderedBy("name"))).rejects.toBe(readError);
-      const rows = await store.scan(index.orderedBy("name"), { throwsOnFailure: false });
+      const rows = await store.scan(index.orderedBy("name"));
       expect(await namesOf(rows)).toEqual(["a"]);
       expect(rows.failures).toEqual([{ item: encodeObject(named, { name: "unreadable" }).link, error: readError }]);
       expect(await namesOf(await store.scan(byName))).toEqual(["a", "unreadable"]);
     });
 
-    it("leaves a scan of that index to give its rows when this one reads blobs, unless the scan is told to throw", async () => {
+    it("makes a scan of that index throw as well when the scan is told to", async () => {
       const store = await storeRecording(
         encodeObject(tag, { names: ["unreadable"] }),
         encodeObject(tag, { names: ["a"] }),
@@ -727,27 +726,15 @@ describe("an index scanned in two orders", () => {
 });
 
 describe("an ordered index", () => {
-  const tagNames: NameIndex = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
-
   it("says the schema of its rows and the fields they are sorted by", () => {
     expect(byName.rowSchema).toBe(named);
     expect(byName.order).toEqual(["name"]);
   });
 
-  it("says that it reads blobs when any index that it is a union of does", () => {
-    expect(byName.readsBlobs).toBe(false);
-    expect(tagNames.orderedBy("name").readsBlobs).toBe(true);
-    expect(noteNames.union(tagNames).orderedBy("name").readsBlobs).toBe(true);
-  });
-
   it("says the same of itself under a name", () => {
     const names = byName.named("Names");
     expect(names.name).toBe("Names");
-    expect([names.rowSchema, names.order, names.readsBlobs]).toEqual([
-      byName.rowSchema,
-      byName.order,
-      byName.readsBlobs,
-    ]);
+    expect([names.rowSchema, names.order]).toEqual([byName.rowSchema, byName.order]);
   });
 
   it("has, under a name, the rows that the store keeps of it without one", async () => {
@@ -1092,10 +1079,6 @@ describe("an index over every blob held", () => {
     await store.write(batchOf([first, second], [text, ...schemas]));
     expect(await sizesIn(store)).toEqual(sizesOf(first.bytes, second.bytes, text, ...schemas));
     expect((await store.scan(byBlob)).failures).toEqual([]);
-  });
-
-  it("says that it reads blobs", () => {
-    expect(byBlob.readsBlobs).toBe(true);
   });
 
   it("reads only the blobs put since the last scan", async () => {

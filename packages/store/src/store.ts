@@ -10,7 +10,7 @@ import {
   recordsOf,
 } from "./batch.ts";
 import { collectionSchema, membersOf } from "./collection.ts";
-import { KeptRows, rowsOfMembers, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import { KeptRows, recordedStatementsIn, rowsOfMembers, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -49,8 +49,8 @@ export interface Store {
    *   put since.
    * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
    *   the `failures` of the rows, and is not read again.
-   * - Where the index reads blobs, failures do not throw unless asked to: anyone can send a blob that
-   *   it fails on, and that would otherwise stop the other rows from being read.
+   * - A failure does not make the scan throw unless it is asked to: anyone can send a blob that an
+   *   index fails on, and that would otherwise stop the other rows from being read.
    * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
    *   selection or its rows catch it. That is not listed in the `failures`, and a later scan reads
    *   the link again.
@@ -152,7 +152,7 @@ export class StoreOf implements Store {
 
   recordedStatements(): Promise<RecordedStatements> {
     return this.#keptRows.read(async (rows) => ({
-      statements: (await rows.records()).links,
+      statements: await recordedStatementsIn(rows),
       blobCount: rows.blobCount,
     }));
   }

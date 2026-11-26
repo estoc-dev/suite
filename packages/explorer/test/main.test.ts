@@ -96,7 +96,7 @@ describe("main.ts", { timeout: 20_000 }, () => {
     expect(await runtime.stop()).toBe(0);
   });
 
-  it("shows the indexes of the suite, with the rows of what the sample recorded", async () => {
+  it("shows the indexes of the suite, each under its name and in its order, with the rows of what the sample recorded", async () => {
     const { database, pages } = await makePaths();
     expect(await run(sample, [database])).toEqual({ code: 0, stderr: "" });
     const runtime = await start([database, pages]);
@@ -104,17 +104,17 @@ describe("main.ts", { timeout: 20_000 }, () => {
     onTestFinished(() => socket.terminate());
     await once(socket, "open");
     const client = new Client(socketChannel(socket));
-    expect((await client.lists()).map(({ data }) => data.name).slice(4)).toEqual([
-      "Held Keys",
-      "Identity Versions",
-      "Held Mailbox Keys",
-      "Mailbox Grants",
-      "Arrivals of Roots and Signed Identities",
-      "Locations",
-      "Acknowledgements",
-      "Opened Mailboxes",
-      "Recorded Identity Versions",
-      "Recorded Signatures",
+    expect((await client.lists()).slice(4).map(({ data }) => [data.name, data.order])).toEqual([
+      ["Held Keys", ["key"]],
+      ["Identity Versions", ["identifier", "at", "signedIdentity"]],
+      ["Held Mailbox Keys", ["key"]],
+      ["Mailbox Grants", ["from", "to", "at", "signature"]],
+      ["Arrivals of Roots and Signed Identities", ["object", "at"]],
+      ["Locations", ["identifier", "at", "service"]],
+      ["Acknowledgements", ["acceptance", "acknowledgement"]],
+      ["Opened Mailboxes", ["transport", "acknowledgement"]],
+      ["Recorded Identity Versions", ["identifier", "signedIdentity"]],
+      ["Recorded Signatures", ["object", "signature"]],
     ]);
     const sampleKey = identityKit.secretKeys.encode(ed25519, new Uint8Array(32).fill(2));
     const { rows } = await client.page("Held Keys", 0, 10);

@@ -709,6 +709,28 @@ describe("the rows of an index", () => {
     expect(requestedLinks).not.toContain(first.link);
     expect(await sortedCountsOf(await store.scan(countedBlobs))).toEqual([3]);
   });
+
+  it("take an order first asked on a staged batch from the rows of its store, which keep it for the next batch", async () => {
+    const countedBlobs = indexOver(selectedBlobs(objectsOf(note)), counted, countedOf);
+    const store = new Store(new MemoryBackend());
+    await store.write(batchOf([first], schemas));
+    const rowsWith = async (object: KeptObject) => (await store.stage(batchOf([object], tag.blobs))).scan(countedBlobs);
+
+    const stagedRows = await rowsWith(encodeObject(tag, { name: "x" }));
+    expect(stagedRows).not.toBe(await store.scan(countedBlobs));
+    const sortedRows = stagedRows.orderedBy("n");
+    expect((await store.scan(countedBlobs)).orderedBy("n")).toBe(sortedRows);
+    expect((await rowsWith(encodeObject(tag, { name: "y" }))).orderedBy("n")).toBe(sortedRows);
+  });
+
+  it("are, in an order first asked on staged batches, those of each batch with its store and those of the store", async () => {
+    const countedBlobs = indexOver(selectedBlobs(objectsOf(note)), counted, countedOf);
+    const store = new Store(new MemoryBackend());
+    await store.write(batchOf([first], schemas));
+    expect(await sortedCountsOf(await (await store.stage(batchOf([second]))).scan(countedBlobs))).toEqual([1, 3]);
+    expect(await sortedCountsOf(await (await store.stage(batchOf([third]))).scan(countedBlobs))).toEqual([2, 3]);
+    expect(await sortedCountsOf(await store.scan(countedBlobs))).toEqual([3]);
+  });
 });
 
 describe("an index", () => {

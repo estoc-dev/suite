@@ -14,6 +14,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
   readonly #objectsByLink: ReadonlyMap<Link<unknown>, EncodedObject<F>>;
   readonly #listings: ReadonlyMap<Origin, Listing>;
   readonly #ownFailures: readonly ItemFailure[];
+  readonly #base: DerivedObjects<F> | undefined;
   readonly #sortedRowsByOrder: Map<string, unknown>;
 
   constructor(
@@ -22,7 +23,8 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
     listings: ReadonlyMap<Origin, Listing> = new Map(),
     ownFailures: readonly ItemFailure[] = [],
     blobCount = 0,
-    sortedRowsByOrder: ReadonlyMap<string, unknown> = new Map(),
+    base?: DerivedObjects<F>,
+    sortedRowsByOrder = new Map<string, unknown>(),
   ) {
     this.#derivation = derivation;
     this.objects = [...objectsByLink.values()];
@@ -31,13 +33,29 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
     this.#listings = listings;
     this.#ownFailures = ownFailures;
     this.blobCount = blobCount;
-    // A copy, as these come to be sorted with rows that those they were added to do not hold.
-    this.#sortedRowsByOrder = new Map(sortedRowsByOrder);
+    this.#base = base;
+    this.#sortedRowsByOrder = sortedRowsByOrder;
     // Two of the indexes it reads may read one index, whose failures are then listed once.
     this.failures = [...new Set([...[...listings.values()].flatMap((listing) => listing.failures), ...ownFailures])];
   }
 
-  async adding(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+  /**
+   * For whoever keeps the rows it gives in place of these. Those do not hold these, and take a copy
+   * of the orders these keep: they come to be sorted with rows that these do not hold.
+   */
+  adding(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+    return this.#adding(store, blobSet, false);
+  }
+
+  /**
+   * For rows read while these stay held, as those of a staged batch are with those of its store.
+   * They have these put in an order first, so that these keep it for whatever is added to them next.
+   */
+  addingOnTop(store: Reader, blobSet: BlobSet): Promise<DerivedObjects<F>> {
+    return this.#adding(store, blobSet, true);
+  }
+
+  async #adding(store: Reader, blobSet: BlobSet, isOnTop: boolean): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
     const listings = new Map<Origin, Listing>();
     for (const origin of parts.keys()) listings.set(origin, await origin.listingIn(blobSet));
@@ -71,14 +89,16 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
       listings,
       ownFailures,
       blobSet.blobCount,
-      this.#sortedRowsByOrder,
+      isOnTop ? this : this.#base,
+      isOnTop ? undefined : new Map(this.#sortedRowsByOrder),
     );
   }
 
   orderedBy<const By extends FieldNames<F>>(...by: By): SortedRows<F, By> {
     const order = JSON.stringify(by);
-    // What is kept under the names of some fields are rows sorted by those fields.
-    const kept = this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined;
+    // The orders kept are of the rows of one index, each under all the fields it is by, in turn. So
+    // what is kept under these fields is rows of this schema sorted by them.
+    const kept = (this.#sortedRowsByOrder.get(order) as SortedRows<F, By> | undefined) ?? this.#base?.orderedBy(...by);
     const sortedRows = (kept ?? new SortedRows(this.#derivation.schema, by)).including(this.objects);
     this.#sortedRowsByOrder.set(order, sortedRows);
     return sortedRows;

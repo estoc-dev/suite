@@ -127,7 +127,7 @@ class ListedBlobSet implements BlobSet {
     let objects = this.#objectsByDerivation.get(derivation) as Promise<DerivedObjects<F>> | undefined;
     if (objects === undefined) {
       const baseObjects = this.#base?.rowsOf(derivation) ?? Promise.resolve(new DerivedObjects(derivation));
-      objects = baseObjects.then((kept) => kept.adding(this.#reader, this));
+      objects = baseObjects.then((base) => base.addingOnTop(this.#reader, this));
       this.#objectsByDerivation.set(derivation, objects);
     }
     return objects;

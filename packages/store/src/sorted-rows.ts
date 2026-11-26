@@ -15,8 +15,11 @@ import type { FieldNames, ItemFailure, KeyOf, Prefix } from "./source.ts";
  */
 export interface Rows<F extends ValueMap> extends AsyncIterable<EncodedObject<F>> {
   /**
-   * Rows keep each order they are asked for, so the same order asked again sorts nothing. Those of
-   * a later scan of the store start from the orders kept by then and sort only the rows added.
+   * - Rows keep each order they are asked for, so the same order asked again sorts nothing.
+   * - Those of a later scan of the store take the orders kept by then with the sort keys in them,
+   *   and work out keys for the rows added alone.
+   * - Those of a staged batch have the rows of its store put in the order first, which those keep,
+   *   and work out keys for the rows the batch adds alone.
    */
   orderedBy<const By extends FieldNames<F>>(...by: By): OrderedRows<F, By>;
   /**

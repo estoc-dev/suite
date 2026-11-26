@@ -395,7 +395,7 @@ describe("a client of a runtime that is given the list of an index", () => {
 
   const textsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, notedTextSchema).data.text);
 
-  it("lists it after the lists of what the store holds, by the name it is given and the schema and the order of the index", async () => {
+  it("lists it after the lists of what the store holds, by the name it is given, the schema of the index and the order of the list", async () => {
     const lists = await clientOf(await storeRecording(), [notesList]).lists();
     expect(lists.map(({ data }) => data.name)).toEqual(["Records", "Blobs", "Schemas", "Links", "Notes by text"]);
     expect(lists.at(-1)?.data).toEqual({
@@ -411,7 +411,7 @@ describe("a client of a runtime that is given the list of an index", () => {
     expect(await clientOf(store, [notesList]).get(notedTextSchema.link)).toEqual(notedTextSchema.bytes);
   });
 
-  it("reads a page of it as the rows of the index, in the order of the index", async () => {
+  it("reads a page of it as the rows of the index, in the order of the list", async () => {
     const store = await storeRecording("b", "c", "a");
     const client = clientOf(store, [notesList]);
     const blobCount = await blobCountOf(store);

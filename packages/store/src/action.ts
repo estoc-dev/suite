@@ -12,7 +12,7 @@ import {
 import type { Batch, RecordBatch } from "./batch.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
-import type { HeldCollection, RecordedStatements, StagedStore, Store } from "./store.ts";
+import type { RecordedStatements, Scannable, StagedStore, Store } from "./store.ts";
 
 export interface ActionOutcome<R extends ValueMap> {
   readonly result: EncodedObject<R>;
@@ -215,7 +215,7 @@ class NotingStore implements Store {
     return this.#store.closure(link);
   }
 
-  heldCollection(link: Link<unknown>): Promise<HeldCollection> {
+  heldCollection(link: Link<unknown>): Promise<Scannable> {
     return this.#store.heldCollection(link);
   }
 

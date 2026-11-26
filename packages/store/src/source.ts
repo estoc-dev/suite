@@ -17,7 +17,7 @@ import {
   type ValuePath,
 } from "./definition.ts";
 import { type RecordData, recordSchema } from "./record.ts";
-import type { RowsByIndex } from "./scan.ts";
+import type { BlobSet } from "./scan.ts";
 import type { ScannedBlob } from "./scanned-blob.ts";
 
 export type FieldNames<F> = readonly (keyof F & string)[];
@@ -41,7 +41,7 @@ interface Part<F> {
 }
 
 export interface Origin {
-  listingIn(rows: RowsByIndex): Promise<Listing>;
+  listingIn(blobSet: BlobSet): Promise<Listing>;
 }
 
 export interface ItemFailure {
@@ -56,7 +56,7 @@ export interface Listing {
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 
-const blobOrigin: Origin = { listingIn: (rows) => rows.heldBlobs() };
+const blobOrigin: Origin = { listingIn: (blobSet) => blobSet.blobs() };
 
 interface Reading<T> {
   readonly origin: Origin;
@@ -75,8 +75,8 @@ export class Derivation<F extends ValueMap> implements Origin {
     this.partDefinitions = definitions.every((definition) => definition !== undefined) ? definitions : undefined;
   }
 
-  listingIn(rows: RowsByIndex): Promise<Listing> {
-    return rows.derivedObjectsOf(this);
+  listingIn(blobSet: BlobSet): Promise<Listing> {
+    return blobSet.rowsOf(this);
   }
 }
 

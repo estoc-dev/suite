@@ -12,7 +12,7 @@ import {
   type Schema,
 } from "@estoc/object";
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
-import { assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
   anyHeldObject,
   type Backend,
@@ -70,6 +70,10 @@ async function rowDataOf<F>(range: AsyncIterable<{ readonly data: F }>): Promise
 
 const titlesIn = async (store: Store, index: Index<{ readonly title: string }>) =>
   (await rowDataOf((await store.scan(index)).orderedBy("title").range([]))).map(({ title }) => title);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("an index of rows taken along paths from the statements recorded", () => {
   it("holds a row of each statement of the schema, with the value that each path reaches", async () => {
@@ -156,6 +160,22 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(new Set(requestedLinks)).toEqual(new Set([statement.link, ada.link, lisbon.link]));
   });
 
+  it("decodes a statement once for all the parts of a union that follow its Record to it", async () => {
+    const titleOf = (path: ValuePath<string>) => indexOfRows(titled, { title: path });
+    const titles = titleOf(recordedCard.field("title")).union(
+      titleOf(recordedStatement(place).field("city")),
+      titleOf(recordedStatement(schema("Trip", { name: string() })).field("name")),
+    );
+    const people = ["Ada", "Grace", "Edsger"].map((name) =>
+      encodeObject(person, { name, home: new LinkValue(lisbon.link) }),
+    );
+    const store = await storeRecording(...people);
+    for await (const _ of store.records());
+    const decode = vi.spyOn(objectFormat, "decode");
+    expect(await titlesIn(store, titles)).toEqual([]);
+    expect(decode).toHaveBeenCalledTimes(people.length);
+  });
+
   it("holds the rows of an index that a function gives the rows of as well, in a union with it", async () => {
     const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [
       { title: data.title.toUpperCase() },
@@ -230,11 +250,25 @@ describe("an index of rows taken along paths from every object held", () => {
     expect(rows.failures).toEqual([]);
   });
 
-  it("holds a row of each link in a blob, the one to its schema among them", async () => {
+  it("holds a row of each link written in an object, that of its schema among them unless it is written to itself", async () => {
     const links = indexOfRows(linked, { source: anyHeldObject.link, target: anyHeldObject.eachLink() });
     const rows = (await (await storeHoldingAnImage()).scan(links)).orderedBy("source", "target");
-    const targets = (await rowDataOf(rows.range([new LinkValue(statement.link)]))).map(({ target }) => target.link);
-    expect(targets.sort()).toEqual([card.link, ada.link].sort());
+    const targetsOf = async (source: Link<unknown>) =>
+      (await rowDataOf(rows.range([new LinkValue(source)]))).map(({ target }) => target.link);
+    expect((await targetsOf(statement.link)).sort()).toEqual([card.link, ada.link].sort());
+    expect(await targetsOf(rootSchema.link)).toEqual([]);
+  });
+
+  it("decodes each blob once for its schema and the links it holds", async () => {
+    const links = indexOfRows(linked, { source: anyHeldObject.schema, target: anyHeldObject.eachLink() });
+    const store = await storeHoldingAnImage();
+    const heldLinks: Link<unknown>[] = [];
+    for await (const held of store.blobs()) heldLinks.push(held);
+    const decode = vi.spyOn(objectFormat, "decode");
+    await store.scan(links);
+    // Each row is decoded as well, once it is encoded.
+    const decodedLinks = decode.mock.calls.map(([bytes]) => linkOf(bytes));
+    expect(decodedLinks.filter((decoded) => heldLinks.includes(decoded)).sort()).toEqual(heldLinks.sort());
   });
 
   it("holds one value under the fields of a row whose paths expand at the same place", async () => {
@@ -296,7 +330,16 @@ describe("an index of rows taken along paths through the closure of a link", () 
     ]);
   });
 
-  it("is not filled where the store fails to give a blob of the closure", async () => {
+  it.each([
+    ["of the closure", stops],
+    [
+      "that a path follows from a link it expanded to",
+      indexOfRows(stop, {
+        trip: recordedTrip.field("name"),
+        city: recordedTrip.eachLink().objectOf(place).field("city"),
+      }),
+    ],
+  ])("is not filled where the store fails to give a blob %s", async (_, index) => {
     const backend = new MemoryBackend();
     const diskError = new Error("the disk is gone");
     let isFailing = false;
@@ -308,10 +351,12 @@ describe("an index of rows taken along paths through the closure of a link", () 
     });
     const south = tripTo("south", lisbon.link, porto.link);
     await store.record({ statements: [south.link], blobs: [south.bytes, porto.bytes, ...trip.blobs, ...closure] });
+    // The Records are listed while every blob can be read, so the scan fails where the paths read.
+    for await (const _ of store.records());
     isFailing = true;
-    await expect(store.scan(stops)).rejects.toBe(diskError);
+    await expect(store.scan(index)).rejects.toBe(diskError);
     isFailing = false;
-    expect(await stopsIn(store)).toEqual([
+    expect(await rowDataOf((await store.scan(index)).orderedBy("trip", "city").range([]))).toEqual([
       { trip: "south", city: "Lisbon" },
       { trip: "south", city: "Porto" },
     ]);

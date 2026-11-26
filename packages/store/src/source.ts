@@ -1,7 +1,6 @@
 import {
   type EncodedObject,
   type Link,
-  namedSchemaOf,
   type Reader,
   type Schema,
   type Selection,
@@ -14,7 +13,6 @@ import {
   indexDefinitionOf,
   type PartDefinition,
   partAlong,
-  type ReadObject,
   rowReaderOf,
   startSchemaOf,
   type ValuePath,
@@ -55,7 +53,7 @@ export interface ItemFailure {
 export interface Listing {
   readonly links: readonly Link<unknown>[];
   readonly failures: readonly ItemFailure[];
-  objectOf(link: Link<unknown>): { readonly schema: object } | undefined;
+  objectOf(link: Link<unknown>): { readonly schema: Schema } | undefined;
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
 
@@ -219,27 +217,13 @@ export function indexOfRows<F extends ValueMap>(
 
 function indexAlong<F extends ValueMap>(origin: Origin, schema: Schema<F>, definition: PartDefinition): Index<F> {
   const rowsFrom = rowReaderOf(schema, definition);
-  const startSchema = startSchemaOf(definition);
   const part: Part<F> = {
     definition,
     async *rowsOf(blob) {
-      const start = startSchema === undefined ? await heldObjectAt(blob) : await objectAt(blob, startSchema);
-      if (start !== undefined) yield* (await rowsFrom(start, blob.reader)) as F[];
+      yield* (await rowsFrom(blob)) as F[];
     },
   };
   return new Index(new Derivation(schema, new Map([[origin, [part]]])));
-}
-
-async function heldObjectAt({ link, reader }: ScannedBlob): Promise<ReadObject | undefined> {
-  const bytes = await reader.get(link);
-  const schema = namedSchemaOf(bytes);
-  return schema && { link, bytes, schema };
-}
-
-// What an index derived of the blob is taken as it is, so that it is not validated again.
-async function objectAt(blob: ScannedBlob, schema: Schema): Promise<ReadObject | undefined> {
-  const object = await blob.objectOf(schema);
-  return object && { link: object.link, bytes: object.bytes, schema: schema.link, data: object.data };
 }
 
 /**

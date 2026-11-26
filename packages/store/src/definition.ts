@@ -1,5 +1,4 @@
 import {
-  decodeObject,
   type EncodedObject,
   encodeObject,
   type Field,
@@ -7,15 +6,14 @@ import {
   type Link,
   LinkValue,
   memberOf,
-  namedSchemaOf,
   type Schema,
   type SchemaDocument,
   type Value,
   type ValueMap,
 } from "@estoc/object";
 import { any, array, type DataOf, link, schema } from "@estoc/schema";
-import { closureIn, linksIn } from "./batch.ts";
 import { recordSchema } from "./record.ts";
+import type { ScannedBlob } from "./scanned-blob.ts";
 
 type Step =
   | { readonly step: "as"; readonly schema: Schema }
@@ -63,7 +61,10 @@ export class ObjectPath<F extends ValueMap> {
     return new ValuePath([...this.#route, { step: "schema" }]);
   }
 
-  /** A row of each link that the object holds, the one to its schema among them. */
+  /**
+   * A row of each link written in the object. That of its schema is among them unless the object is
+   * written to itself.
+   */
   eachLink(): ValuePath<LinkValue<unknown>> {
     return new ValuePath([...this.#route, { step: "eachLink" }]);
   }
@@ -174,7 +175,8 @@ const typeOf = ({ optional: _, ...type }: Field): Item => type;
  * - Paths that begin with the same steps share them in the walk, so each is taken once for an
  *   object read. A step that does not fit where it is taken from is refused here, before any blob
  *   is read.
- * - An object is taken as one schema: paths that take it as two give no row of any object.
+ * - Paths that take one object as two schemas are refused as well: an object is written to one, so
+ *   they would give no row of any object.
  * - A part expands at one place, so that its rows are not every pairing of what two places give.
  */
 function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
@@ -255,19 +257,6 @@ function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
   return start;
 }
 
-interface BlobReader {
-  /** What it throws fails whatever reads through it, even where that is caught on the way. */
-  get(link: Link<unknown>): Promise<Uint8Array>;
-}
-
-/** `data` is held once the object is read to the schema that `schema` names. */
-export interface ReadObject {
-  readonly link: Link<unknown>;
-  readonly bytes: Uint8Array;
-  readonly schema: Link<Schema>;
-  readonly data?: ValueMap;
-}
-
 type PartialRow = ReadonlyMap<string, Value>;
 
 const rowsJoining = (rowsOfEach: readonly (readonly PartialRow[])[]): readonly PartialRow[] =>
@@ -276,75 +265,83 @@ const rowsJoining = (rowsOfEach: readonly (readonly PartialRow[])[]): readonly P
     [new Map()],
   );
 
-// Every path is taken before any of them is found to reach nothing: one that comes to an object of
-// another schema does not stop the others, as one of them may come to a blob that does not fit its
-// schema, which fails the object read.
+// - Every blob that the paths come to is taken of `start`, the blob that the scan reads, so the parts
+//   that read it share what each blob was decoded and validated to.
+// - Every path is taken before any of them is found to reach nothing: one that comes to an object of
+//   another schema does not stop the others, as one of them may come to a blob that does not fit its
+//   schema, which fails the object read.
 async function rowsFromObject(
   walk: ObjectWalk,
-  object: ReadObject,
-  reader: BlobReader,
+  blob: ScannedBlob,
+  data: ValueMap | undefined,
+  start: ScannedBlob,
 ): Promise<readonly PartialRow[]> {
+  const schema = await blob.namedSchema();
+  if (schema === undefined) return [];
   const rowsOfEach: (readonly PartialRow[])[] = [];
   for (const [name, next] of walk.fields) {
-    const value = memberOf(object.data ?? {}, name);
-    rowsOfEach.push(value === undefined ? [] : await rowsFromValue(next, value, reader));
+    const value = memberOf(data ?? {}, name);
+    rowsOfEach.push(value === undefined ? [] : await rowsFromValue(next, value, start));
   }
-  if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(object.link), reader));
-  if (walk.schema !== undefined)
-    rowsOfEach.push(await rowsFromValue(walk.schema, new LinkValue(object.schema), reader));
-  if (walk.eachLink !== undefined) rowsOfEach.push(await rowsFromEach(walk.eachLink, linksIn(object.bytes), reader));
+  if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(blob.link), start));
+  if (walk.schema !== undefined) rowsOfEach.push(await rowsFromValue(walk.schema, new LinkValue(schema), start));
+  if (walk.eachLink !== undefined) rowsOfEach.push(await rowsFromEach(walk.eachLink, await blob.links(), start));
   if (walk.takenAs !== undefined) {
-    const { schema, walk: next } = walk.takenAs;
-    const isOfSchema = object.schema === schema.link;
-    const data = isOfSchema ? (object.data ?? decodeObject(object.bytes, schema).data) : undefined;
-    rowsOfEach.push(data === undefined ? [] : await rowsFromObject(next, { ...object, data }, reader));
+    const object = await blob.objectOf(walk.takenAs.schema);
+    rowsOfEach.push(object === undefined ? [] : await rowsFromObject(walk.takenAs.walk, blob, object.data, start));
   }
   return rowsJoining(rowsOfEach);
 }
 
-async function rowsFromValue(walk: ValueWalk, value: Value, reader: BlobReader): Promise<readonly PartialRow[]> {
+async function rowsFromValue(walk: ValueWalk, value: Value, start: ScannedBlob): Promise<readonly PartialRow[]> {
   const rowsOfEach: (readonly PartialRow[])[] = [[new Map(walk.rowFields.map((field) => [field, value]))]];
   if (walk.object !== undefined || walk.eachInClosure !== undefined) {
     if (!(value instanceof LinkValue)) return [];
-    if (walk.object !== undefined) {
-      const bytes = await reader.get(value.link);
-      const schema = namedSchemaOf(bytes);
-      const object = schema && { link: value.link, bytes, schema };
-      rowsOfEach.push(object === undefined ? [] : await rowsFromObject(walk.object, object, reader));
-    }
-    if (walk.eachInClosure !== undefined) {
-      const closure = await closureIn(reader, value.link);
-      rowsOfEach.push(await rowsFromEach(walk.eachInClosure, closure.keys(), reader));
-    }
+    if (walk.object !== undefined)
+      rowsOfEach.push(await rowsFromObject(walk.object, start.blobAt(value.link), undefined, start));
+    if (walk.eachInClosure !== undefined)
+      rowsOfEach.push(await rowsFromEach(walk.eachInClosure, await closureLinksAt(value.link, start), start));
   }
   return rowsJoining(rowsOfEach);
+}
+
+async function closureLinksAt(link: Link<unknown>, start: ScannedBlob): Promise<Link<unknown>[]> {
+  const closureLinks: Link<unknown>[] = [];
+  const seenLinks = new Set([link]);
+  const pendingLinks = [link];
+  for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
+    closureLinks.push(next);
+    for (const targetLink of await start.blobAt(next).links()) {
+      if (seenLinks.has(targetLink)) continue;
+      seenLinks.add(targetLink);
+      pendingLinks.push(targetLink);
+    }
+  }
+  return closureLinks;
 }
 
 async function rowsFromEach(
   walk: ValueWalk,
   links: Iterable<Link<unknown>>,
-  reader: BlobReader,
+  start: ScannedBlob,
 ): Promise<readonly PartialRow[]> {
   const rows: PartialRow[] = [];
   for (const link of links) {
     try {
-      rows.push(...(await rowsFromValue(walk, new LinkValue(link), reader)));
+      rows.push(...(await rowsFromValue(walk, new LinkValue(link), start)));
     } catch {
       // What an expansion goes over is not all of one making: a closure holds what anyone sent in
-      // it. So a blob that does not fit its schema gives no row, and the others keep theirs. What
-      // `reader` threw is not lost here: whoever gave the reader fails with that.
+      // it. So a blob that does not fit its schema gives no row, and the others keep theirs. A blob
+      // that the store failed to give is not lost here: `start` keeps the failure of the read.
     }
   }
   return rows;
 }
 
-export function rowReaderOf(
-  rows: Schema,
-  definition: PartDefinition,
-): (start: ReadObject, reader: BlobReader) => Promise<ValueMap[]> {
+export function rowReaderOf(rows: Schema, definition: PartDefinition): (start: ScannedBlob) => Promise<ValueMap[]> {
   const walk = walkOf(rows, definition);
   // A row may hold a field named `__proto__`, which assigning to an object would leave out.
-  return async (start, reader) => (await rowsFromObject(walk, start, reader)).map((row) => Object.fromEntries(row));
+  return async (start) => (await rowsFromObject(walk, start, undefined, start)).map((row) => Object.fromEntries(row));
 }
 
 /**

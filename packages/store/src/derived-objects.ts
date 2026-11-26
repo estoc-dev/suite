@@ -30,12 +30,13 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
 
   async adding(store: Reader, rows: RowsByIndex): Promise<DerivedObjects<F>> {
     const { schema, parts } = this.#derivation;
+    const listings = new Map<Origin, Listing>();
+    for (const origin of parts.keys()) listings.set(origin, await origin.listingIn(rows));
+    if ([...listings].every(([origin, listing]) => this.#listings.get(origin) === listing)) return this;
     const objectsByLink = new Map(this.#objectsByLink);
     const ownFailures = [...this.#ownFailures];
-    const listings = new Map<Origin, Listing>();
-    for (const [origin, originParts] of parts) {
-      const listing = await origin.listingIn(rows);
-      listings.set(origin, listing);
+    for (const [origin, listing] of listings) {
+      const originParts = parts.get(origin) ?? [];
       const readCount = this.#listings.get(origin)?.links.length ?? 0;
       const reader: Reader = { get: (link) => listing.bytesOf(link) ?? store.get(link) };
       for (const link of listing.links.slice(readCount)) {
@@ -55,8 +56,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing {
         if (readFailure !== undefined) throw readFailure.error;
       }
     }
-    const isSame = [...listings].every(([origin, listing]) => this.#listings.get(origin) === listing);
-    return isSame ? this : new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
+    return new DerivedObjects(this.#derivation, objectsByLink, listings, ownFailures);
   }
 
   objectOf(link: Link<unknown>): EncodedObject<F> | undefined {

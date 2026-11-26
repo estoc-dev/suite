@@ -16,10 +16,7 @@ export function ListView(props: { source: Source; list: ListData; from: number |
       <p class="note">
         {isShownLastFirst(props.list)
           ? "Sorted by no field. The last rows are shown first."
-          : `Sorted by ${props.list.order.join(", ")}.`}{" "}
-        {props.list.readsBlobs
-          ? "Read from every blob the store holds, so a row may come of an object that a stranger sent."
-          : "Read from the records of the store."}
+          : `Sorted by ${props.list.order.join(", ")}.`}
       </p>
       <section class="card">
         <Show when={page().rows.length > 0} fallback={<p class="note">The page has no rows.</p>}>

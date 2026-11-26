@@ -369,15 +369,16 @@ describe("an index over records", () => {
     expect(readTimes).toEqual([1, 2]);
   });
 
-  it("fails the scan on a statement that its rows throw on", async () => {
+  it("lists the Record of a statement that its rows throw on", async () => {
     const { store } = sides();
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
     await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
+    const refusal = new Error("not read");
     const index = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, () => {
-      throw new Error("not read");
+      throw refusal;
     }).orderedBy("at");
-    await expect(store.scan(index)).rejects.toThrow("not read");
+    expect((await store.scan(index)).failures).toEqual([{ item: recordOf(taken(alice, 1)).link, error: refusal }]);
   });
 
   it("gives a view its rows, with the store to read what they name", async () => {

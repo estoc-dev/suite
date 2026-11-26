@@ -197,16 +197,12 @@ describe("the page", () => {
     expect(textsOf(root, "header [aria-current]")).toEqual(["Others"]);
   });
 
-  it("says how a list is ordered and what it reads", async () => {
-    const sorted = { ...listOf("Sorted", entriesOf(2), ["name", "count"]) };
-    const read = listOf("Read", []);
-    const root = show(sourceOf(sorted, { ...read, description: { ...read.description, readsBlobs: true } }));
+  it("says how a list is ordered", async () => {
+    const root = show(sourceOf(listOf("Sorted", entriesOf(2), ["name", "count"]), listOf("Unsorted", [])));
     await vi.waitFor(() => expect(cellsOf(root)[0]).toEqual(["entry 0", "0", ""]));
-    expect(textsOf(root, "main > .note")).toEqual(["Sorted by name, count. Read from the records of the store."]);
-    await open("#list=Read");
-    expect(textsOf(root, "main > .note")).toEqual([
-      "Sorted by no field. The last rows are shown first. Read from every blob the store holds, so a row may come of an object that a stranger sent.",
-    ]);
+    expect(textsOf(root, "main > .note")).toEqual(["Sorted by name, count."]);
+    await open("#list=Unsorted");
+    expect(textsOf(root, "main > .note")).toEqual(["Sorted by no field. The last rows are shown first."]);
     expect(textsOf(root, ".card")).toEqual(["The page has no rows."]);
     expect(textsOf(root, ".turns")).toEqual(["0 rows"]);
   });

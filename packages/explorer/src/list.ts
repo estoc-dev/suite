@@ -7,7 +7,6 @@ export interface List {
   readonly name: string;
   readonly rowSchema: Schema;
   readonly order: readonly string[];
-  readonly readsBlobs: boolean;
   page(store: Store, start: number, limit: number): Promise<Page>;
 }
 
@@ -21,10 +20,8 @@ export function listOfIndex<F extends ValueMap, By extends FieldNames<F>>(index:
     name: index.name,
     rowSchema: index.rowSchema,
     order: index.order,
-    readsBlobs: index.readsBlobs,
     async page(store, start, limit) {
-      // What the index fails on gives no row, and the rows of the rest are shown without it.
-      const sortedRows = await store.scan(index, { throwsOnFailure: false });
+      const sortedRows = await store.scan(index);
       const rows: Uint8Array[] = [];
       for await (const { bytes } of sortedRows.range([])) rows.push(bytes);
       const page = pageIn(rows, start, limit);

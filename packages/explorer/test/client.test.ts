@@ -59,13 +59,13 @@ describe("a client of a runtime", () => {
     expect(await client.get(linkOf(new Uint8Array([1])))).toBeUndefined();
   });
 
-  it("lists Records, Blobs, Schemas and Links, each by its order and by what it reads", async () => {
+  it("lists Records, Blobs, Schemas and Links, each by its rows and its order", async () => {
     const client = clientOf(await storeOfNote());
     expect((await client.lists()).map(({ data }) => data)).toEqual([
-      { name: "Records", rows: new LinkValue(recordedStatementSchema.link), order: [], readsBlobs: false },
-      { name: "Blobs", rows: new LinkValue(heldBlobSchema.link), order: [], readsBlobs: true },
-      { name: "Schemas", rows: new LinkValue(heldObjectSchema.link), order: ["schema", "object"], readsBlobs: true },
-      { name: "Links", rows: new LinkValue(heldLinkSchema.link), order: ["target", "source"], readsBlobs: true },
+      { name: "Records", rows: new LinkValue(recordedStatementSchema.link), order: [] },
+      { name: "Blobs", rows: new LinkValue(heldBlobSchema.link), order: [] },
+      { name: "Schemas", rows: new LinkValue(heldObjectSchema.link), order: ["schema", "object"] },
+      { name: "Links", rows: new LinkValue(heldLinkSchema.link), order: ["target", "source"] },
     ]);
   });
 
@@ -404,7 +404,6 @@ describe("a client of a runtime that is given the list of an index", () => {
       name: "Notes by text",
       rows: new LinkValue(notedTextSchema.link),
       order: ["text"],
-      readsBlobs: false,
     });
   });
 

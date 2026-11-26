@@ -10,7 +10,6 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
-import type { ScanOptions } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 import type { HeldCollection, RecordedStatements, StagedStore, Store } from "./store.ts";
@@ -220,11 +219,8 @@ class NotingStore implements Store {
     return this.#store.heldCollection(link);
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>> {
-    return this.#store.scan(index, options);
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
+    return this.#store.scan(index);
   }
 }
 
@@ -249,10 +245,7 @@ class NotingStagedStore implements StagedStore {
     await this.#commitNotes.note(this.#roots, () => this.#stagedStore.commit());
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>> {
-    return this.#stagedStore.scan(index, options);
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
+    return this.#stagedStore.scan(index);
   }
 }

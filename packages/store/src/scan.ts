@@ -1,6 +1,6 @@
 import type { EncodedObject, Link, Reader, ValueMap } from "@estoc/object";
 import { DerivedObjects } from "./derived-objects.ts";
-import { type Rows, SortedRows } from "./sorted-rows.ts";
+import { SortedRows } from "./sorted-rows.ts";
 import {
   type Derivation,
   derivationOf,
@@ -11,21 +11,6 @@ import {
   type OrderedIndex,
   orderOf,
 } from "./source.ts";
-
-export interface ScanOptions {
-  readonly throwsOnFailure?: boolean;
-}
-
-export async function scannedRows<F extends ValueMap, By extends FieldNames<F>>(
-  rows: RowsByIndex,
-  index: OrderedIndex<F, By>,
-  { throwsOnFailure = false }: ScanOptions = {},
-): Promise<Rows<F, By>> {
-  const sortedRows = await rows.sortedRowsOf(index);
-  const [failure] = sortedRows.failures;
-  if (failure !== undefined && throwsOnFailure) throw failure.error;
-  return sortedRows;
-}
 
 /** In the order their Records come among the blobs of `rows`. */
 export async function recordedStatementsIn(rows: RowsByIndex): Promise<Link<EncodedObject>[]> {

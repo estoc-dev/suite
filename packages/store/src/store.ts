@@ -10,7 +10,7 @@ import {
   recordsOf,
 } from "./batch.ts";
 import { collectionSchema, membersOf } from "./collection.ts";
-import { KeptRows, recordedStatementsIn, rowsOfMembers, rowsWithAdded, type ScanOptions, scannedRows } from "./scan.ts";
+import { KeptRows, recordedStatementsIn, rowsOfMembers, rowsWithAdded } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
 import type { FieldNames, OrderedIndex } from "./source.ts";
 
@@ -49,16 +49,13 @@ export interface Store {
    *   put since.
    * - What a source of the index or its `rows` throw on gives no rows of that source, is listed in
    *   the `failures` of the rows, and is not read again.
-   * - A failure does not make the scan throw unless it is asked to: anyone can send a blob that an
-   *   index fails on, and that would otherwise stop the other rows from being read.
+   * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
+   *   that would stop the other rows from being read. What needs every row looks at the `failures`.
    * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
    *   selection or its rows catch it. That is not listed in the `failures`, and a later scan reads
    *   the link again.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>>;
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }
 
 export interface RecordedStatements {
@@ -87,10 +84,7 @@ export interface StagedStore {
    * closures of the roots of the batch. No Record is staged, so the batch adds nothing to what is
    * recorded.
    */
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>>;
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }
 
 /**
@@ -104,10 +98,7 @@ export interface StagedStore {
  * - The rows are worked out at each scan, and none is kept for the next.
  */
 export interface HeldCollection {
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>>;
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>>;
 }
 
 export class StoreOf implements Store {
@@ -163,14 +154,11 @@ export class StoreOf implements Store {
 
   async heldCollection(link: Link<unknown>): Promise<HeldCollection> {
     const members = membersOf(await readObject(this, link, collectionSchema));
-    return { scan: (index, options) => scannedRows(rowsOfMembers(members, this), index, options) };
+    return { scan: (index) => rowsOfMembers(members, this).sortedRowsOf(index) };
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>> {
-    return this.#keptRows.read((rows) => scannedRows(rows, index, options));
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
+    return this.#keptRows.read((rows) => rows.sortedRowsOf(index));
   }
 }
 
@@ -197,12 +185,9 @@ class StagedStoreOf implements StagedStore {
     return this.#backend.put(this.#blobs);
   }
 
-  scan<F extends ValueMap, By extends FieldNames<F>>(
-    index: OrderedIndex<F, By>,
-    options?: ScanOptions,
-  ): Promise<Rows<F, By>> {
+  scan<F extends ValueMap, By extends FieldNames<F>>(index: OrderedIndex<F, By>): Promise<Rows<F, By>> {
     return this.#keptRows.read(async (rows) =>
-      scannedRows(await rowsWithAdded(rows, [...this.#blobs.keys()], this), index, options),
+      (await rowsWithAdded(rows, [...this.#blobs.keys()], this)).sortedRowsOf(index),
     );
   }
 }

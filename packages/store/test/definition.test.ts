@@ -97,7 +97,8 @@ describe("an index of rows taken along paths from the statements recorded", () =
     const store = new Store(new MemoryBackend());
     const statement = cardOf("of no one", linkOf(nameless));
     await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...closure] });
-    await expect(store.scan(byTitle, { throwsOnFailure: true })).rejects.toThrow("#/name: left out");
+    const { failures } = await store.scan(byTitle);
+    expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
   });
 
   it("fails on such a statement whichever path is given first, where another follows a link to another schema", async () => {
@@ -115,9 +116,9 @@ describe("an index of rows taken along paths from the statements recorded", () =
     expect(leftFirst.definition).toBeDefined();
     expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
     for (const index of [leftFirst, rightFirst]) {
-      await expect(store.scan(index, { throwsOnFailure: true })).rejects.toThrow("#/name: left out");
       const { failures } = await store.scan(index);
       expect(failures.map(({ item }) => item)).toEqual([recordOf(statement.link).link]);
+      expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
     }
   });
 

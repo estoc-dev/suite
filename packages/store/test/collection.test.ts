@@ -259,7 +259,7 @@ describe("an index scanned over a collection", () => {
     expect(await textsOf(rows)).toEqual(["salad", "soup"]);
   });
 
-  it("lists the member that it fails on, and throws for it when asked to", async () => {
+  it("lists the member that it fails on", async () => {
     const store = newStore();
     const soup = note("soup");
     await keepIn(store, [soup]);
@@ -270,7 +270,6 @@ describe("an index scanned over a collection", () => {
       throw refusal;
     }).orderedBy("text");
     expect((await collection.scan(refusing)).failures).toEqual([{ item: soup.link, error: refusal }]);
-    await expect(collection.scan(refusing, { throwsOnFailure: true })).rejects.toBe(refusal);
   });
 });
 

@@ -26,7 +26,6 @@ export {
 } from "./inbound.ts";
 export { MemoryBackend } from "./memory.ts";
 export { type RecordData, type RecordObject, recordSchema } from "./record.ts";
-export type { ScanOptions } from "./scan.ts";
 export { sendableBlobs } from "./sendable-blobs.ts";
 export type { Rows } from "./sorted-rows.ts";
 export {

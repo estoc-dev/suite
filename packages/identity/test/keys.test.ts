@@ -1,5 +1,5 @@
-import { decodeObject, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
-import { bytes, rootSchema, schema } from "@estoc/schema";
+import { decodeObject, linkOf, ObjectValue, objectFormat, rootSchema, type ValueMap } from "@estoc/object";
+import { bytes, schema } from "@estoc/schema";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import {

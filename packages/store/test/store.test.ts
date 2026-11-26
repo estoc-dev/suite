@@ -1,5 +1,5 @@
-import { digestOf, encodeObject, type Link, LinkValue, linkOf } from "@estoc/object";
-import { array, type DataOf, link, optional, rootSchema, schema, string } from "@estoc/schema";
+import { digestOf, encodeObject, type Link, LinkValue, linkOf, rootSchema } from "@estoc/object";
+import { array, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
 import { type Backend, type Batch, MemoryBackend, RefusedBatch, Store } from "../src/index.ts";
 

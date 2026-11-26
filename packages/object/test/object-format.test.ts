@@ -13,13 +13,14 @@ import {
   memberOf,
   ObjectValue,
   objectFormat,
-  rootSchemaOf,
+  rootSchema,
   schemaOf,
   type Value,
 } from "../src/index.ts";
-import { fieldNames } from "./field-names.ts";
+import { documentHolding, schemaTaking } from "./documents.ts";
 
-const anything = encodeSchema({ fields: "any" }, fieldNames);
+const anything = schemaTaking("v", "text", "a", "b", "list", "again", "__proto__");
+
 const a = linkOf(new TextEncoder().encode("a"));
 const b = linkOf(new TextEncoder().encode("b"));
 
@@ -80,13 +81,13 @@ describe("an object", () => {
   });
 
   it("is refused when its data does not fit its schema", () => {
-    const titledSchema = encodeSchema({ fields: ["title"] }, fieldNames);
+    const titledSchema = encodeSchema(documentHolding("Titled", "title"));
     expect(encodeObject(titledSchema, { title: "hello" }).data).toEqual({ title: "hello" });
     expect(() => encodeObject(titledSchema, { text: "hello" })).toThrow(/does not fit/);
   });
 
   it("is refused when read with a schema other than its own", () => {
-    const other = encodeSchema({ fields: ["text"] }, fieldNames);
+    const other = encodeSchema(documentHolding("Other", "text"));
     expect(() => decodeObject(encodeObject(anything, { text: "hello" }).bytes, other)).toThrow(/is written to/);
   });
 });
@@ -191,11 +192,10 @@ describe("an object written to itself", () => {
 
   it("reads back with its own link as its schema", () => {
     expect(schemaOf(selfWritten)).toBe(linkOf(selfWritten));
-    const root = rootSchemaOf(fieldNames);
-    const bytes: Uint8Array = root.bytes;
-    const object = decodeObject(bytes, root);
+    const bytes: Uint8Array = rootSchema.bytes;
+    const object = decodeObject(bytes, rootSchema);
     expect(object.schema.link).toBe(object.link);
-    expect(object.data).toEqual({ fields: ["fields"] });
+    expect(object.data).toEqual(rootSchema.document);
   });
 
   it("is refused as an object of another schema", () => {

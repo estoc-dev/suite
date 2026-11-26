@@ -1,6 +1,7 @@
 import type { Client } from "@estoc/explorer";
 import {
   encodeObject,
+  type Field,
   isLink,
   isValueMap,
   type Link,
@@ -10,52 +11,40 @@ import {
   type Schema,
   type Value,
 } from "@estoc/object";
-import type { Field } from "@estoc/schema";
 import { type BlobPage, readBlobPage } from "./blob-page.ts";
 import { readSchema } from "./schema.ts";
 import { typeNameOf } from "./text.ts";
 
 export type ActionSource = Pick<Client, "get" | "objectsOf" | "actions" | "perform">;
 
-export interface TitledSchema {
-  readonly schema: Schema;
-  readonly title: string;
-}
-
 /** `target` is the schema that each link of the field is to an object of, where the action says one. */
 export interface FormField {
   readonly name: string;
   readonly field: Field;
-  readonly target?: TitledSchema;
+  readonly target?: Schema;
 }
 
-/** `title` is the one the request schema gave itself, and an action has no other name. */
+/** An action has no name but the title that its request schema gave itself. */
 export interface ActionForm {
-  readonly title: string;
   readonly request: Schema;
-  readonly result: TitledSchema;
+  readonly result: Schema;
   readonly fields: readonly FormField[];
 }
 
 export async function readActionForms(source: ActionSource): Promise<ActionForm[]> {
-  const readTitledSchema = async (link: Link<Schema>): Promise<TitledSchema> => {
-    const { schema, document } = await readSchema(source, link);
-    return { schema, title: document.title };
-  };
   return Promise.all(
     (await source.actions()).map(async ({ data }) => {
-      const { schema, document } = await readSchema(source, data.request.link);
+      const request = await readSchema(source, data.request.link);
       const targetOf = (name: string) =>
         isValueMap(data.targetSchemas) ? memberOf(data.targetSchemas, name) : undefined;
       return {
-        title: document.title,
-        request: schema,
-        result: await readTitledSchema(data.result.link),
+        request,
+        result: await readSchema(source, data.result.link),
         fields: await Promise.all(
-          Object.entries(document.fields).map(async ([name, field]) => {
+          Object.entries(request.document.fields).map(async ([name, field]) => {
             const target = targetOf(name);
             return target instanceof LinkValue
-              ? { name, field, target: await readTitledSchema(target.link as Link<Schema>) }
+              ? { name, field, target: await readSchema(source, target.link as Link<Schema>) }
               : { name, field };
           }),
         ),
@@ -72,7 +61,7 @@ export interface TakingField {
 /** The fields that take links to objects written to `schema`, in the order of the forms. */
 export function fieldsTaking(forms: readonly ActionForm[], schema: Link<unknown>): TakingField[] {
   return forms.flatMap((form) =>
-    form.fields.filter(({ target }) => target?.schema.link === schema).map((field) => ({ form, field })),
+    form.fields.filter(({ target }) => target?.link === schema).map((field) => ({ form, field })),
   );
 }
 
@@ -132,7 +121,7 @@ export function readResultPage(
   result: Uint8Array,
 ): Promise<BlobPage> {
   const held = new Map<Link<unknown>, Uint8Array>(
-    [result, ...form.result.schema.blobs].map((bytes) => [linkOf(bytes), bytes]),
+    [result, ...form.result.blobs].map((bytes) => [linkOf(bytes), bytes]),
   );
   return readBlobPage({ get: async (link) => held.get(link) ?? source.get(link) }, linkOf(result));
 }

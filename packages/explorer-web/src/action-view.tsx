@@ -1,7 +1,7 @@
-import type { Link } from "@estoc/object";
+import type { Link, Schema } from "@estoc/object";
 import type { JSX } from "@solidjs/web";
 import { createMemo, Errored, For, Loading, Match, Show, Switch } from "solid-js";
-import { entryOf, type FormField, type TitledSchema } from "./action-page.ts";
+import { entryOf, type FormField } from "./action-page.ts";
 import type { ActionSession, ActionSessions } from "./action-sessions.ts";
 import { blobPageView } from "./blob-view.tsx";
 import { remainingLinksView } from "./links-view.tsx";
@@ -9,14 +9,14 @@ import type { ActionPlace } from "./place.ts";
 import { messageOf, typeNameOf } from "./text.ts";
 import { linkView } from "./value-view.tsx";
 
-const titledSchemaView = ({ schema, title }: TitledSchema): JSX.Element => (
+const schemaView = ({ document, link }: Schema): JSX.Element => (
   <>
-    <span class="title">{title}</span> {linkView(schema.link)}
+    <span class="title">{document.title}</span> {linkView(link)}
   </>
 );
 
-function CandidatesView(props: { session: ActionSession; name: string; target: TitledSchema; isAdded: boolean }) {
-  const target = () => props.target.schema.link;
+function CandidatesView(props: { session: ActionSession; name: string; target: Schema; isAdded: boolean }) {
+  const target = () => props.target.link;
   const objects = createMemo(() => props.session.readObjectsOf(target()));
   const take = (object: Link<unknown>) => {
     const fieldText = props.session.textOf(props.name).trim();
@@ -27,7 +27,7 @@ function CandidatesView(props: { session: ActionSession; name: string; target: T
       <Loading fallback={<span class="muted">Reading the objects held.</span>}>
         <Show
           when={objects().links.length > 0}
-          fallback={<span class="muted">The store holds no object written to {props.target.title}.</span>}
+          fallback={<span class="muted">The store holds no object written to {props.target.document.title}.</span>}
         >
           <ul class="items candidates">
             <For each={objects().links}>
@@ -102,7 +102,7 @@ function FormView(props: { session: ActionSession }) {
   };
   return (
     <>
-      <h1>{form().title}</h1>
+      <h1>{form().request.document.title}</h1>
       <form
         class="card"
         onSubmit={(event) => {
@@ -112,9 +112,9 @@ function FormView(props: { session: ActionSession }) {
       >
         <dl class="head">
           <dt>Request</dt>
-          <dd>{titledSchemaView({ schema: form().request, title: form().title })}</dd>
+          <dd>{schemaView(form().request)}</dd>
           <dt>Result</dt>
-          <dd>{titledSchemaView(form().result)}</dd>
+          <dd>{schemaView(form().result)}</dd>
         </dl>
         <Show when={form().fields.length > 0}>
           <table class="fields">
@@ -139,8 +139,8 @@ function FormView(props: { session: ActionSession }) {
                       {field.target !== undefined && (
                         <>
                           <span class="muted"> · to </span>
-                          <a class="link" href={`#${field.target.schema.link}`} title={field.target.schema.link}>
-                            {field.target.title}
+                          <a class="link" href={`#${field.target.link}`} title={field.target.link}>
+                            {field.target.document.title}
                           </a>
                         </>
                       )}

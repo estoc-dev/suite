@@ -5,25 +5,15 @@ import {
   type Link,
   LinkValue,
   linkOf,
+  ObjectValue,
   objectFormat,
   objectsOf,
   readObject,
-  type SchemaValidator,
+  rootSchema,
   type Selection,
   SelectionBySchema,
 } from "@estoc/object";
-import {
-  array,
-  type DataOf,
-  integer,
-  link,
-  optional,
-  rootSchema,
-  type SchemaDocument,
-  schema,
-  schemaValidator,
-  string,
-} from "@estoc/schema";
+import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, vi } from "vitest";
 import {
   type Backend,
@@ -288,31 +278,17 @@ describe("an index over records", () => {
     expect(await namesOf(await rowsOf([namedNotes, plainSelectionOf(namedTags)]))).toEqual(routedRows);
   });
 
-  it("validates a recorded object once against each schema of the selections by schema that read it", async () => {
-    const validationNames: string[] = [];
-    const validatorNoting = (name: string): SchemaValidator<SchemaDocument> => ({
-      language: schemaValidator.language,
-      compile(document) {
-        const check = schemaValidator.compile(document);
-        return (data) => {
-          validationNames.push(name);
-          return check(data);
-        };
-      },
-    });
-    const noteSchemaNoting = (name: string) => encodeSchema({ title: "Note", fields }, validatorNoting(name));
-    const strict = noteSchemaNoting("strict");
-    const lax = noteSchemaNoting("lax");
-    // Reading a schema validates it against its root schema, which is not what is counted here.
-    validationNames.length = 0;
+  it("validates a recorded object once for the selections by schema that read it", async () => {
+    const noteSchema = schema("Note", fields);
+    const validate = vi.spyOn(noteSchema, "validate");
     const store = newStore();
     await recordIn(store, [encodeObject(note, {})], schemas);
-    const index = indexOver(selectedRecords(objectsOf(strict)), named, () => [{ name: "a" }]).union(
-      indexOver(selectedRecords(objectsOf(strict)), named, () => [{ name: "b" }]),
-      indexOver(selectedRecords(objectsOf(lax)), named, () => [{ name: "c" }]),
+    const index = indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "a" }]).union(
+      indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "b" }]),
+      indexOver(selectedRecords(objectsOf(noteSchema)), named, () => [{ name: "c" }]),
     );
     expect(await namesOf(await store.scan(index))).toEqual(["a", "b", "c"]);
-    expect(validationNames).toEqual(["strict", "lax"]);
+    expect(validate).toHaveBeenCalledTimes(1);
   });
 
   it("reads a blob from the store once for a recorded object, the object among them, however many selections read it", async () => {
@@ -803,22 +779,14 @@ describe("an index over blobs", () => {
   });
 
   it("fails on a blob that names its schema and does not fit it, and still gives the rows of the other blobs", async () => {
-    const document = { title: "Named", fields: { name: string(), names: array(string()) } };
-    const strict = encodeSchema<SchemaDocument, Entry>(document, schemaValidator);
-    const lax = encodeSchema<SchemaDocument, Entry>(document, {
-      language: schemaValidator.language,
-      compile: () => () => [],
-    });
-    const misfit = encodeObject(lax, { names: ["misfit"] });
+    const strict = encodeSchema<Entry>({ title: "Named", fields: { name: string(), names: array(string()) } });
+    const misfit = objectFormat.encode(new ObjectValue(strict.link, { names: ["misfit"] }));
     const fitting = encodeObject(strict, { name: "a", names: ["fitting"] });
-    expect(misfit.schema.link).toBe(strict.link);
     const store = new Store(new MemoryBackend());
-    await store.write(
-      batchOf([carrying(misfit.bytes, fitting.bytes)], [misfit.bytes, fitting.bytes, strict.bytes, ...schemas]),
-    );
+    await store.write(batchOf([carrying(misfit, fitting.bytes)], [misfit, fitting.bytes, strict.bytes, ...schemas]));
     const rows = await store.scan(indexOver(selectedBlobs(objectsOf(strict)), named, namedOf));
     expect(await namesOf(rows)).toEqual(["fitting"]);
-    expect(rows.failures.map(({ item }) => item)).toEqual([misfit.link]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(misfit)]);
   });
 
   describe("whose selection or rows throw on a blob", () => {
@@ -1239,28 +1207,14 @@ describe("an index over another index", () => {
   });
 
   it("hands on a row of the other index as that index wrote it, validated once", async () => {
-    let validationCount = 0;
-    const namedCounting = encodeSchema(
-      { title: "Named", fields: { name: string() } },
-      {
-        language: schemaValidator.language,
-        compile(document) {
-          const check = schemaValidator.compile(document);
-          return (data) => {
-            validationCount += 1;
-            return check(data);
-          };
-        },
-      },
-    );
-    // Reading a schema validates it against its root schema, which is not what is counted here.
-    validationCount = 0;
+    const namedCounting = schema("Named", { name: string() });
+    const validate = vi.spyOn(namedCounting, "validate");
     const names = indexOver(selectedRecords(objectsOf(note)), namedCounting, namedOf);
     const upper: NameIndex = indexOver(names, named, ({ data }) => [{ name: `${data.name}`.toUpperCase() }]);
     const store = newStore();
     await recordIn(store, [first], schemas);
     expect(await namesOf(await store.scan(upper))).toEqual(["A"]);
-    expect(validationCount).toBe(1);
+    expect(validate).toHaveBeenCalledTimes(1);
   });
 
   it("holds its rows with those of an index of records, in a union", async () => {

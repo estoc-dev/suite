@@ -131,9 +131,6 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
-      '@estoc/schema':
-        specifier: workspace:*
-        version: link:../schema
       '@solidjs/web':
         specifier: 2.0.3
         version: 2.0.3(solid-js@2.0.3)
@@ -141,6 +138,9 @@ importers:
         specifier: 2.0.3
         version: 2.0.3
     devDependencies:
+      '@estoc/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@solidjs/vite-plugin':
         specifier: 3.0.1
         version: 3.0.1(@solidjs/web@2.0.3(solid-js@2.0.3))(solid-js@2.0.3)(vite@8.3.8(@types/node@26.6.5))
@@ -193,10 +193,10 @@ importers:
       '@estoc/object':
         specifier: workspace:*
         version: link:../object
+    devDependencies:
       '@estoc/schema':
         specifier: workspace:*
         version: link:../schema
-    devDependencies:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.5

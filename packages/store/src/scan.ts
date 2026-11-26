@@ -182,10 +182,7 @@ export async function rowsWithAdded(
   return new AddedRows(rows, await (await rows.heldBlobs()).adding(addedBlobs), reader);
 }
 
-/**
- * `members` lists each of them once, and what is recorded among them is what the Records that are
- * members link to. It is for one scan, as the rows of a batch are.
- */
+/** `members` lists each of them once. */
 export function rowsOfMembers(members: readonly Link<unknown>[], reader: Reader): RowsByIndex {
   return new AddedRows(emptyRows, new ListedLinks(members), reader);
 }

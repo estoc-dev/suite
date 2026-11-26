@@ -9,7 +9,7 @@ import {
   readObject,
 } from "@estoc/object";
 import { array, type DataOf, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   collectionOf,
   collectionSchema,
@@ -20,12 +20,12 @@ import {
   MemoryBackend,
   type Rows,
   recordedStatement,
-  recordSchema,
   Store,
   selectedBlobs,
   selectedRecords,
   sendableBlobs,
 } from "../src/index.ts";
+import { recordOf } from "../src/record.ts";
 
 const noteSchema = schema("Note", { text: string(), about: optional(link()) });
 const note = (text: string, about?: Link<unknown>) =>
@@ -51,9 +51,6 @@ const recordedTextIndexes = () => [
     { text: data.text, note: new LinkValue(link) },
   ]).orderedBy("text"),
 ];
-
-const recordOf = (statement: Link<unknown>) =>
-  encodeObject(recordSchema, { object: new LinkValue(statement as Link<EncodedObject>) });
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
@@ -205,18 +202,6 @@ describe("an index scanned over a collection", () => {
     expect(await textsOf(await collection.scan(heldTexts))).toEqual(["salad"]);
   });
 
-  it("is not sent where it lists a Record, which its closure then holds", async () => {
-    const store = newStore();
-    const soup = note("soup");
-    await store.record({ statements: [soup.link], blobs: [soup.bytes, ...noteSchema.blobs] });
-    const record = recordOf(soup.link);
-    const collection = collectionOf([record.link]);
-    await keepIn(store, [collection]);
-
-    const closure = await store.closure(collection.link);
-    expect(() => [...sendableBlobs(closure.values())]).toThrow(`${record.link} is a Record, which is not sent`);
-  });
-
   it("reads the closure of a member from the store, and gives no row of its own to what is only there", async () => {
     const store = newStore();
     const soup = note("soup");
@@ -287,4 +272,16 @@ describe("an index scanned over a collection", () => {
     expect((await collection.scan(refusing)).failures).toEqual([{ item: soup.link, error: refusal }]);
     await expect(collection.scan(refusing, { throwsOnFailure: true })).rejects.toBe(refusal);
   });
+});
+
+test("sendableBlobs refuses the closure of a collection that lists a Record", async () => {
+  const store = newStore();
+  const soup = note("soup");
+  await store.record({ statements: [soup.link], blobs: [soup.bytes, ...noteSchema.blobs] });
+  const record = recordOf(soup.link);
+  const collection = collectionOf([record.link]);
+  await keepIn(store, [collection]);
+
+  const closure = await store.closure(collection.link);
+  expect(() => [...sendableBlobs(closure.values())]).toThrow(`${record.link} is a Record, which is not sent`);
 });

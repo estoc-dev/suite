@@ -130,8 +130,7 @@ export class StoreOf implements Store {
   }
 
   async stage({ roots, blobs }: Batch): Promise<StagedStore> {
-    const hashedBatch = { blobs: hashedBlobs(blobs), records: [] };
-    const stagedBlobs = await leavesFirst(roots, hashedBatch, this.#backend);
+    const stagedBlobs = await leavesFirst(roots, hashedBlobs(blobs), this.#backend);
     return new StagedStoreOf(this, this.#keptRows, this.#backend, stagedBlobs);
   }
 
@@ -140,7 +139,7 @@ export class StoreOf implements Store {
     const hashedBatch = hashedBatchWith(recordsOf(statements, givenBlobs), givenBlobs);
     // Each Record goes after the closure of its statement, so a write cut short keeps no Record of
     // a statement the store does not hold whole.
-    await this.#backend.put(await leavesFirst(hashedBatch.records, hashedBatch, this.#backend));
+    await this.#backend.put(await leavesFirst(hashedBatch.records, hashedBatch.blobs, this.#backend));
   }
 
   blobs(): AsyncIterable<Link<unknown>> {

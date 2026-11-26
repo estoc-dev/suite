@@ -110,12 +110,12 @@ export async function closureIn(reader: Reader, link: Link<unknown>): Promise<Ma
 }
 
 /**
- * A blob that `backend` holds comes with its closure, so its links are not followed, apart from a
- * root that `blobs` gives as well.
+ * `backend` holds the closure of each blob it holds, so a blob that `blobs` leaves out is only
+ * asked for there. One that `blobs` gives is followed whether or not it is held.
  */
 export async function leavesFirst(
   roots: Iterable<Link<unknown>>,
-  { blobs }: HashedBatch,
+  blobs: ReadonlyMap<Link<unknown>, Uint8Array>,
   backend: Pick<Backend, "has">,
 ): Promise<Map<Link<unknown>, Uint8Array>> {
   const orderedBlobs = new Map<Link<unknown>, Uint8Array>();

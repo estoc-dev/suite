@@ -1,6 +1,6 @@
-import { type EncodedObject, objectsOf } from "@estoc/object";
+import type { EncodedObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { indexOver, selectedRecords } from "@estoc/store";
+import { indexOfRows, recordedStatement } from "@estoc/store";
 import { openedMailboxSchema } from "./schemas.ts";
 
 const openedMailboxRowSchema = schema("Opened mailbox row", {
@@ -8,10 +8,11 @@ const openedMailboxRowSchema = schema("Opened mailbox row", {
   acknowledgement: link(),
 });
 
-export const openedMailboxes = indexOver(
-  selectedRecords(objectsOf(openedMailboxSchema)),
-  openedMailboxRowSchema,
-  ({ data }) => [{ transport: data.transport, acknowledgement: data.acknowledgement }],
-)
+const openedMailbox = recordedStatement(openedMailboxSchema);
+
+export const openedMailboxes = indexOfRows(openedMailboxRowSchema, {
+  transport: openedMailbox.field("transport"),
+  acknowledgement: openedMailbox.field("acknowledgement"),
+})
   .orderedBy("transport", "acknowledgement")
   .named("Opened Mailboxes");

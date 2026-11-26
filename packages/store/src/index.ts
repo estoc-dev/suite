@@ -10,6 +10,13 @@ export {
 export type { Backend } from "./backend.ts";
 export { type Batch, linksIn, type RecordBatch, RefusedBatch } from "./batch.ts";
 export {
+  heldObject,
+  type IndexDefinition,
+  type ObjectPath,
+  recordedStatement,
+  type ValuePath,
+} from "./definition.ts";
+export {
   type InboundData,
   type InboundObject,
   Intake,
@@ -27,6 +34,7 @@ export {
   heldBlobs,
   type Index,
   type ItemFailure,
+  indexOfRows,
   indexOver,
   type KeyOf,
   type NamedIndex,

@@ -15,14 +15,14 @@ import {
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
-  anyMember,
+  anyMemberObject,
   type Backend,
   type Index,
   type IndexDefinition,
   indexOfRows,
   indexOver,
   MemoryBackend,
-  memberOf,
+  memberObjectOf,
   recordedStatements,
   recordSchema,
   Store,
@@ -38,7 +38,7 @@ const schemas = [place, person, card].flatMap(({ blobs }) => blobs);
 const ownedCard = schema("Owned Card", { card: link(), title: string(), owner: string(), city: string() });
 const titled = schema("Titled", { title: string() });
 
-const memberCard = memberOf(card);
+const memberCard = memberObjectOf(card);
 const owner = memberCard.field("owner").objectOf(person);
 const ownedCardsOfAll = indexOfRows(ownedCard, {
   card: memberCard.link,
@@ -110,7 +110,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
   it("fails on such a statement whichever path is given first, where another follows a link to another schema", async () => {
     const pair = schema("Pair", { left: link(), right: link() });
     const names = schema("Names", { left: string(), right: string() });
-    const memberPair = memberOf(pair);
+    const memberPair = memberObjectOf(pair);
     const left = memberPair.field("left").objectOf(person).field("name");
     const right = memberPair.field("right").objectOf(person).field("name");
     const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
@@ -164,8 +164,8 @@ describe("an index of rows taken along paths, reading the statements recorded", 
   it("decodes a statement once, to write it and for all the parts of a union that read it", async () => {
     const titleOf = (path: ValuePath<string>) => indexOfRows(titled, { title: path }).reading(recordedStatements);
     const titles = titleOf(memberCard.field("title")).union(
-      titleOf(memberOf(place).field("city")),
-      titleOf(memberOf(schema("Trip", { name: string() })).field("name")),
+      titleOf(memberObjectOf(place).field("city")),
+      titleOf(memberObjectOf(schema("Trip", { name: string() })).field("name")),
     );
     // Written out by hand, so that nothing has decoded them before the store does.
     const people = ["Grace", "Edsger", "Barbara"].map((name) =>
@@ -191,7 +191,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
 });
 
 describe("an index of rows taken along paths from the Records", () => {
-  const record = memberOf(recordSchema);
+  const record = memberObjectOf(recordSchema);
   const recorded = schema("Recorded", { record: link(), statement: link() });
   const statementsOfRecords = indexOfRows(recorded, { record: record.link, statement: record.field("object") });
 
@@ -222,7 +222,7 @@ describe("an index of rows taken along paths that is given nothing to read", () 
 });
 
 describe("an index of rows taken along paths, reading the rows of another index", () => {
-  const owners = indexOfRows(titled, { title: memberOf(ownedCard).field("owner") });
+  const owners = indexOfRows(titled, { title: memberObjectOf(ownedCard).field("owner") });
   const ownersOfRecordedCards = owners.reading(ownedCards);
 
   it("holds a row of each row of that index, and none of an object of their schema that the store holds", async () => {
@@ -263,7 +263,7 @@ describe("an index of rows taken along paths, reading the rows of another index"
 
 describe("an index of rows taken along paths from every object held", () => {
   const written = schema("Written", { object: link(), schema: link<Schema>() });
-  const schemasOfObjects = indexOfRows(written, { object: anyMember.link, schema: anyMember.schema });
+  const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
   const linked = schema("Linked", { source: link(), target: link() });
   const image = new TextEncoder().encode("an image");
   const statement = cardOf("a");
@@ -285,7 +285,7 @@ describe("an index of rows taken along paths from every object held", () => {
 
   it("holds no row of a blob that is not an object", async () => {
     const held = schema("Held", { object: link() });
-    const objects = indexOfRows(held, { object: anyMember.link });
+    const objects = indexOfRows(held, { object: anyMemberObject.link });
     const rows = await (await storeHoldingAnImage()).scan(objects);
     const links = (await rowDataOf(rows)).map(({ object }) => object.link);
     expect(links).toContain(statement.link);
@@ -294,7 +294,7 @@ describe("an index of rows taken along paths from every object held", () => {
   });
 
   it("holds a row of each link written in an object, that of its schema among them unless it is written to itself", async () => {
-    const links = indexOfRows(linked, { source: anyMember.link, target: anyMember.eachLink() });
+    const links = indexOfRows(linked, { source: anyMemberObject.link, target: anyMemberObject.eachLink() });
     const rows = (await (await storeHoldingAnImage()).scan(links)).orderedBy("source", "target");
     const targetsOf = async (source: Link<unknown>) =>
       (await rowDataOf(rows.range([new LinkValue(source)]))).map(({ target }) => target.link);
@@ -303,7 +303,7 @@ describe("an index of rows taken along paths from every object held", () => {
   });
 
   it("decodes an object once, to write it and for its schema and the links it holds", async () => {
-    const links = indexOfRows(linked, { source: anyMember.schema, target: anyMember.eachLink() });
+    const links = indexOfRows(linked, { source: anyMemberObject.schema, target: anyMemberObject.eachLink() });
     // Written out by hand, so that nothing has decoded it before the store does.
     const braga = objectFormat.encode(new ObjectValue(place.link, { city: "Braga" }));
     const decode = vi.spyOn(objectFormat, "decode");
@@ -314,7 +314,7 @@ describe("an index of rows taken along paths from every object held", () => {
   });
 
   it("holds one value under the fields of a row whose paths expand at the same place", async () => {
-    const links = indexOfRows(linked, { source: anyMember.eachLink(), target: anyMember.eachLink() });
+    const links = indexOfRows(linked, { source: anyMemberObject.eachLink(), target: anyMemberObject.eachLink() });
     const rows = await rowDataOf(await (await storeHoldingAnImage()).scan(links));
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.filter(({ source, target }) => source.link !== target.link)).toEqual([]);
@@ -324,7 +324,7 @@ describe("an index of rows taken along paths from every object held", () => {
 describe("an index of rows taken along paths through the closure of a link", () => {
   const trip = schema("Trip", { name: string(), stops: array(link()) });
   const stop = schema("Stop", { trip: string(), city: string() });
-  const memberTrip = memberOf(trip);
+  const memberTrip = memberObjectOf(trip);
   const stops = indexOfRows(stop, {
     trip: memberTrip.field("name"),
     city: memberTrip.link.eachInClosure().objectOf(place).field("city"),
@@ -446,10 +446,10 @@ describe("the definition of an index", () => {
 
   it("holds no step that takes the object read as a schema where the paths say none, and the steps that expand", () => {
     const linked = schema("Linked", { source: link(), target: link() });
-    const links = indexOfRows(linked, { source: anyMember.link, target: anyMember.eachLink() });
+    const links = indexOfRows(linked, { source: anyMemberObject.link, target: anyMemberObject.eachLink() });
     const closures = indexOfRows(linked, {
-      source: anyMember.link,
-      target: anyMember.link.eachInClosure().objectOf(card).field("owner"),
+      source: anyMemberObject.link,
+      target: anyMemberObject.link.eachInClosure().objectOf(card).field("owner"),
     });
     expect(links.definition?.data.parts).toEqual([
       { paths: { source: [{ step: "link" }], target: [{ step: "eachLink" }] } },
@@ -469,7 +469,7 @@ describe("the definition of an index", () => {
       },
     ]);
     const written = schema("Written", { object: link(), schema: link<Schema>() });
-    const schemasOfObjects = indexOfRows(written, { object: anyMember.link, schema: anyMember.schema });
+    const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
     expect(schemasOfObjects.definition?.data.parts).toEqual([
       { paths: { object: [{ step: "link" }], schema: [{ step: "schema" }] } },
     ]);
@@ -477,10 +477,10 @@ describe("the definition of an index", () => {
 
   it("has the same link for the same rows and parts, and another for other parts or rows of another schema", () => {
     const again = indexOfRows(ownedCard, {
-      city: memberOf(card).field("owner").objectOf(person).field("home").objectOf(place).field("city"),
-      owner: memberOf(card).field("owner").objectOf(person).field("name"),
-      title: memberOf(card).field("title"),
-      card: memberOf(card).link,
+      city: memberObjectOf(card).field("owner").objectOf(person).field("home").objectOf(place).field("city"),
+      owner: memberObjectOf(card).field("owner").objectOf(person).field("name"),
+      title: memberObjectOf(card).field("title"),
+      card: memberObjectOf(card).link,
     });
     const definitionLinkOf = ({ definition }: { readonly definition: IndexDefinition | undefined }) => {
       assert.exists(definition);
@@ -522,10 +522,10 @@ describe("an index of rows taken along paths", () => {
 
   it("is refused where a path takes a field that the schema has not, or that an object may leave out", () => {
     const untypedPerson: Schema = person;
-    expect(() => indexOfRows(untyped, { title: memberOf(untypedPerson).field("title") })).toThrow(
+    expect(() => indexOfRows(untyped, { title: memberObjectOf(untypedPerson).field("title") })).toThrow(
       "the path of title in Titled takes the field title, which Person has not",
     );
-    expect(() => indexOfRows(untyped, { title: memberOf(untypedPerson).field("nickname") })).toThrow(
+    expect(() => indexOfRows(untyped, { title: memberObjectOf(untypedPerson).field("nickname") })).toThrow(
       "the path of title in Titled takes the field nickname, which an object of Person may leave out",
     );
   });
@@ -541,7 +541,7 @@ describe("an index of rows taken along paths", () => {
 
   it("is refused where its paths take one object as two schemas", () => {
     const pair = schema("Pair", { title: string(), name: string() });
-    expect(() => indexOfRows(pair, { title, name: memberOf(person).field("name") })).toThrow(
+    expect(() => indexOfRows(pair, { title, name: memberObjectOf(person).field("name") })).toThrow(
       "the path of name in Pair takes as Person an object that another path takes as Card",
     );
     const followed = memberCard.field("owner");
@@ -554,8 +554,8 @@ describe("an index of rows taken along paths", () => {
   it("is refused where its paths expand at two places", () => {
     const pair = schema("Pair", { left: link(), right: link() });
     const refusal = "the path of right in Pair expands at a second place, and a part expands at one";
-    const closure = anyMember.link.eachInClosure();
-    expect(() => indexOfRows(pair, { left: anyMember.eachLink(), right: closure })).toThrow(refusal);
+    const closure = anyMemberObject.link.eachInClosure();
+    expect(() => indexOfRows(pair, { left: anyMemberObject.eachLink(), right: closure })).toThrow(refusal);
     expect(() => indexOfRows(pair, { left: closure, right: closure.eachInClosure() })).toThrow(refusal);
   });
 
@@ -565,7 +565,7 @@ describe("an index of rows taken along paths", () => {
     const count: ValuePath<number> = title;
     expect(() => indexOfRows(counted, { count })).toThrow("gives string, and the row takes integer");
     // @ts-expect-error A field that an object may leave out is not one that a path takes.
-    const nickname: ValuePath<string> = memberOf(person).field("nickname");
+    const nickname: ValuePath<string> = memberObjectOf(person).field("nickname");
     expect(() => indexOfRows(titled, { title: nickname })).toThrow("may leave out");
     // @ts-expect-error A string leads to no object.
     const followed = title.objectOf(card);
@@ -573,7 +573,7 @@ describe("an index of rows taken along paths", () => {
       "follows string, and only a link leads to an object",
     );
     // @ts-expect-error A path that does not say the schema of an object takes no field of it.
-    const unsaid: ValuePath<string> = anyMember.field("title");
+    const unsaid: ValuePath<string> = anyMemberObject.field("title");
     expect(() => indexOfRows(titled, { title: unsaid })).toThrow(
       "takes the field title of an object whose schema it does not say",
     );

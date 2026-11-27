@@ -12,7 +12,7 @@ import {
   fieldOf,
   type IndexDefinition,
   indexDefinitionOf,
-  memberOf,
+  memberObjectOf,
   type PartDefinition,
   partAlong,
   rowReaderOf,
@@ -275,7 +275,7 @@ export function indexOfRows<F extends ValueMap>(
  * so the rows are those Records, and what reads the records of a store reads this index.
  */
 export const heldRecords: Index<RecordData> = indexOfRows(recordSchema, {
-  object: memberOf(recordSchema).field("object"),
+  object: memberObjectOf(recordSchema).field("object"),
 });
 
 /**

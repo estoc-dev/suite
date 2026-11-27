@@ -10,9 +10,9 @@ export type { Backend } from "./backend.ts";
 export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
 export { type Collection, type CollectionData, collectionOf, collectionSchema } from "./collection.ts";
 export {
-  anyMember,
+  anyMemberObject,
   type IndexDefinition,
-  memberOf,
+  memberObjectOf,
   type ObjectPath,
   type ValuePath,
 } from "./definition.ts";

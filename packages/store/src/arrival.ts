@@ -1,6 +1,6 @@
 import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { memberOf, type ValuePath } from "./definition.ts";
+import { memberObjectOf, type ValuePath } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
 import { indexOfRows, recordedStatements } from "./source.ts";
 import type { View } from "./view.ts";
@@ -32,8 +32,8 @@ export function arrivalsView(schema: Schema): ArrivalsView {
     indexOfRows(arrivalSchema, { object, at }).reading(recordedStatements);
   const arrivalsOf = (root: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
     arrivalsAt(root, at).union(arrivalsAt(root.eachInClosure().objectOf(schema).link, at));
-  const inbound = memberOf(inboundSchema);
-  const writtenObject = memberOf(writtenObjectSchema);
+  const inbound = memberObjectOf(inboundSchema);
+  const writtenObject = memberObjectOf(writtenObjectSchema);
   return {
     index: arrivalsOf(inbound.field("bundle"), inbound.field("at")).union(
       arrivalsOf(writtenObject.field("object"), writtenObject.field("at")),

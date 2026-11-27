@@ -17,7 +17,7 @@ import {
   indexOfRows,
   indexOver,
   MemoryBackend,
-  memberOf,
+  memberObjectOf,
   type Rows,
   recordedStatements,
   Store,
@@ -37,8 +37,8 @@ type Text = DataOf<typeof textSchema>;
 type TextRows = Rows<Text>;
 
 const texts = indexOfRows(textSchema, {
-  text: memberOf(noteSchema).field("text"),
-  note: memberOf(noteSchema).link,
+  text: memberObjectOf(noteSchema).field("text"),
+  note: memberObjectOf(noteSchema).link,
 });
 
 const recordedTextIndexes = () => [

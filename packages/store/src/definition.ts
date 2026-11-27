@@ -2,10 +2,10 @@ import {
   type EncodedObject,
   encodeObject,
   type Field,
-  memberOf as fieldValueOf,
   type Item,
   type Link,
   LinkValue,
+  memberOf,
   type Schema,
   type SchemaDocument,
   type Value,
@@ -93,10 +93,10 @@ export class ValuePath<T> {
 }
 
 /** Each blob that the index reads, where it is an object. */
-export const anyMember: ObjectPath<Record<never, never>> = new ObjectPath([]);
+export const anyMemberObject: ObjectPath<Record<never, never>> = new ObjectPath([]);
 
 /** Each blob that the index reads, where it is an object written to `schema`. */
-export function memberOf<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
+export function memberObjectOf<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
   return new ObjectPath([{ step: "as", schema }]);
 }
 
@@ -250,7 +250,7 @@ async function rowsFromObject(
   if (schema === undefined) return [];
   const rowsOfEach: (readonly PartialRow[])[] = [];
   for (const [name, next] of walk.fields) {
-    const value = fieldValueOf(data ?? {}, name);
+    const value = memberOf(data ?? {}, name);
     rowsOfEach.push(value === undefined ? [] : await rowsFromValue(next, value, start));
   }
   if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(blob.link), start));

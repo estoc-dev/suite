@@ -1,6 +1,6 @@
 import type { EncodedObject } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { indexOfRows, memberOf, recordedStatements } from "@estoc/store";
+import { indexOfRows, memberObjectOf, recordedStatements } from "@estoc/store";
 import { type MailboxData, type MailboxKeyData, mailboxKeySchema } from "./schema.ts";
 
 const heldMailboxKeySchema = schema("Held Mailbox Key", {
@@ -9,7 +9,7 @@ const heldMailboxKeySchema = schema("Held Mailbox Key", {
   secret: link(),
 });
 
-const mailboxKey = memberOf(mailboxKeySchema);
+const mailboxKey = memberObjectOf(mailboxKeySchema);
 
 export const heldMailboxKeys = indexOfRows(heldMailboxKeySchema, {
   key: mailboxKey.link,

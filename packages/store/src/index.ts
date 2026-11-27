@@ -10,11 +10,10 @@ export type { Backend } from "./backend.ts";
 export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
 export { type Collection, type CollectionData, collectionOf, collectionSchema } from "./collection.ts";
 export {
-  anyHeldObject,
-  heldObject,
+  anyMember,
   type IndexDefinition,
+  memberOf,
   type ObjectPath,
-  recordedStatement,
   type ValuePath,
 } from "./definition.ts";
 export {
@@ -33,11 +32,13 @@ export {
   type HeldBlob,
   heldBlobs,
   type Index,
+  type IndexOfRows,
   type ItemFailure,
   indexOfRows,
   indexOver,
   type KeyOf,
   type Prefix,
+  recordedStatements,
   type Source,
   selectedBlobs,
   selectedRecords,

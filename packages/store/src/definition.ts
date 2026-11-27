@@ -2,17 +2,16 @@ import {
   type EncodedObject,
   encodeObject,
   type Field,
+  memberOf as fieldValueOf,
   type Item,
   type Link,
   LinkValue,
-  memberOf,
   type Schema,
   type SchemaDocument,
   type Value,
   type ValueMap,
 } from "@estoc/object";
 import { any, array, type DataOf, link, schema } from "@estoc/schema";
-import { recordSchema } from "./record.ts";
 import type { ScannedBlob } from "./scanned-blob.ts";
 
 type Step =
@@ -24,7 +23,7 @@ type Step =
   | { readonly step: "object" }
   | { readonly step: "eachInClosure" };
 
-/** A part reads the objects held. Each path starts at the object read, of whatever schema it is. */
+/** Each path starts at a blob that the index the part is in reads, whatever the blob is. */
 export interface PartDefinition {
   readonly paths: { readonly [rowField: string]: readonly Step[] };
 }
@@ -93,45 +92,18 @@ export class ValuePath<T> {
   }
 }
 
-/**
- * An object held of any schema, what a stranger sent as well as the store's own. A scan reads
- * every blob it is over once for each index that reads this way.
- */
-export const anyHeldObject: ObjectPath<Record<never, never>> = new ObjectPath([]);
+/** Each blob that the index reads, where it is an object. */
+export const anyMember: ObjectPath<Record<never, never>> = new ObjectPath([]);
 
-/**
- * - Anyone can send a bundle with an object of any schema in it, so an object read this way may be
- *   a stranger's, unless `schema` is that of a Record, which the store alone writes.
- * - A scan reads every blob it is over once for each index that reads this way. The Records are
- *   read once for all of them.
- */
-export function heldObject<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
+/** Each blob that the index reads, where it is an object written to `schema`. */
+export function memberOf<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
   return new ObjectPath([{ step: "as", schema }]);
-}
-
-/**
- * A statement of `schema` that the store recorded. One of the same schema that only came to the
- * store, as in a bundle, is not one of these.
- */
-export function recordedStatement<F extends ValueMap>(schema: Schema<F>): ObjectPath<F> {
-  return heldObject(recordSchema).field("object").objectOf(schema);
 }
 
 export function partAlong(paths: { readonly [rowField: string]: ValuePath<unknown> }): PartDefinition {
   const routes = Object.entries(paths).map(([rowField, path]) => [rowField, routeOf(path)] as const);
   if (routes.length === 0) throw new Error("a part with no path reads nothing");
   return { paths: Object.fromEntries(routes) };
-}
-
-/**
- * The schema that every path of the part takes the object read as, where there is one: the part
- * gives no row of an object of another, so whoever reads for it can pass those by.
- */
-export function startSchemaOf({ paths }: PartDefinition): Schema | undefined {
-  const [first, ...others] = Object.values(paths).map(([firstStep]) => firstStep);
-  if (first?.step !== "as") return undefined;
-  const isSharedByAll = others.every((step) => step?.step === "as" && step.schema.link === first.schema.link);
-  return isSharedByAll ? first.schema : undefined;
 }
 
 interface TakenSchema {
@@ -278,7 +250,7 @@ async function rowsFromObject(
   if (schema === undefined) return [];
   const rowsOfEach: (readonly PartialRow[])[] = [];
   for (const [name, next] of walk.fields) {
-    const value = memberOf(data ?? {}, name);
+    const value = fieldValueOf(data ?? {}, name);
     rowsOfEach.push(value === undefined ? [] : await rowsFromValue(next, value, start));
   }
   if (walk.link !== undefined) rowsOfEach.push(await rowsFromValue(walk.link, new LinkValue(blob.link), start));
@@ -343,7 +315,7 @@ export function rowReaderOf(rows: Schema, definition: PartDefinition): (start: S
 }
 
 /**
- * - It says how rows come of the blobs that a scan is over. Which blobs those are, what the rows are
+ * - It says how rows come of the blobs that an index reads. Which blobs those are, what the rows are
  *   called and what they are ordered by are no part of it, so none of them changes its link.
  * - `rows` is the schema of the rows, and the rows are those that any part gives. A part reads
  *   every object among the blobs, and its `paths` hold under each field of a row the steps from an

@@ -1,12 +1,12 @@
 import { secretKeySchema } from "@estoc/identity";
 import { link, schema } from "@estoc/schema";
-import { indexOfRows, recordedStatement } from "@estoc/store";
+import { indexOfRows, memberOf, recordedStatements } from "@estoc/store";
 
 const heldKeySchema = schema("Held Key", { key: link(), secretKey: link() });
 
-const secretKey = recordedStatement(secretKeySchema);
+const secretKey = memberOf(secretKeySchema);
 
 export const heldKeys = indexOfRows(heldKeySchema, {
   key: secretKey.field("key"),
   secretKey: secretKey.link,
-});
+}).reading(recordedStatements);

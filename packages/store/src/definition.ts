@@ -270,24 +270,9 @@ async function rowsFromValue(walk: ValueWalk, value: Value, start: ScannedBlob):
     if (walk.object !== undefined)
       rowsOfEach.push(await rowsFromObject(walk.object, start.blobAt(value.link), undefined, start));
     if (walk.eachInClosure !== undefined)
-      rowsOfEach.push(await rowsFromEach(walk.eachInClosure, await closureLinksAt(value.link, start), start));
+      rowsOfEach.push(await rowsFromEach(walk.eachInClosure, await start.blobAt(value.link).closureLinks(), start));
   }
   return rowsJoining(rowsOfEach);
-}
-
-async function closureLinksAt(link: Link<unknown>, start: ScannedBlob): Promise<Link<unknown>[]> {
-  const closureLinks: Link<unknown>[] = [];
-  const seenLinks = new Set([link]);
-  const pendingLinks = [link];
-  for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
-    closureLinks.push(next);
-    for (const targetLink of await start.blobAt(next).links()) {
-      if (seenLinks.has(targetLink)) continue;
-      seenLinks.add(targetLink);
-      pendingLinks.push(targetLink);
-    }
-  }
-  return closureLinks;
 }
 
 async function rowsFromEach(

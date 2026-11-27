@@ -371,7 +371,7 @@ describe("an index over records", () => {
     expect(readTimes).toEqual([1, 2]);
   });
 
-  it("lists the Record of a statement that its rows throw on", async () => {
+  it("lists the statement that its rows throw on, and not its Record", async () => {
     const { store } = sides();
     const alice = card("Alice");
     await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
@@ -380,7 +380,7 @@ describe("an index over records", () => {
     const index = indexOver(selectedRecords(objectsOf(takenSchema)), namedSchema, () => {
       throw refusal;
     });
-    expect((await store.scan(index)).failures).toEqual([{ item: recordOf(taken(alice, 1)).link, error: refusal }]);
+    expect((await store.scan(index)).failures).toEqual([{ item: taken(alice, 1).link, error: refusal }]);
   });
 
   it("gives a view its rows, with the store to read what they name", async () => {

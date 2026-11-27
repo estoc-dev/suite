@@ -1,6 +1,7 @@
 import {
   type EncodedObject,
   type Link,
+  type LinkValue,
   type Reader,
   type Schema,
   type Selection,
@@ -8,6 +9,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import {
+  fieldOf,
   heldObject,
   type IndexDefinition,
   indexDefinitionOf,
@@ -50,8 +52,8 @@ export interface ItemFailure {
   readonly error: unknown;
 }
 
-export interface Listing {
-  readonly links: readonly Link<unknown>[];
+export interface Listing<T = unknown> {
+  readonly links: readonly Link<T>[];
   readonly failures: readonly ItemFailure[];
   bytesOf(link: Link<unknown>): Uint8Array | undefined;
 }
@@ -108,13 +110,7 @@ export class Source<T> {
  * bundle, is not one of these.
  */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
-  return new Source({
-    origin: derivationOf(heldRecords),
-    async itemOf(blob) {
-      const record = await blob.objectOf(recordSchema);
-      return record && itemOf(selection, blob.blobAt(record.data.object.link));
-    },
-  });
+  return new Source({ origin: readingOf(recordedStatements).origin, itemOf: (blob) => itemOf(selection, blob) });
 }
 
 /**
@@ -136,10 +132,11 @@ export interface HeldBlob {
  * Every blob that a scan is over, whatever its bytes are: an attachment and what a stranger sent as
  * well as an object of the store's own. A scan reads each of them once for each index.
  */
-export const heldBlobs: Source<HeldBlob> = new Source({
-  origin: blobOrigin,
-  itemOf: async ({ link, reader }) => ({ link, bytes: await reader.get(link) }),
-});
+export const heldBlobs: Source<HeldBlob> = new Source({ origin: blobOrigin, itemOf: heldBlobOf });
+
+async function heldBlobOf({ link, reader }: ScannedBlob): Promise<HeldBlob> {
+  return { link, bytes: await reader.get(link) };
+}
 
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each
@@ -147,6 +144,7 @@ export const heldBlobs: Source<HeldBlob> = new Source({
  */
 export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   readonly #derivation: Derivation<F>;
+  readonly #linkedBlobsByField = new Map<string, Source<HeldBlob>>();
 
   static {
     derivationOf = (index) => index.#derivation;
@@ -164,6 +162,34 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /** An index has none where a function gives the rows of any of its parts. */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;
+  }
+
+  /**
+   * - The blobs that the rows link to under `field`, each once however many rows link to it, and
+   *   whatever its bytes are. Only the link is taken from a row: what reads these is given each
+   *   blob as `heldBlobs` gives one, and what it fails on is the blob, and not the row.
+   * - They are the store's own as far as the rows are: what a row that comes of a stranger's object
+   *   links to is whatever the stranger named.
+   * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
+   *   A staged batch that holds the blob does not change that for a row the store already has: the
+   *   rows of the store are worked out before those of the batch.
+   */
+  linksAt<N extends string>(this: Index<Readonly<Record<N, LinkValue<unknown>>>>, field: N): Source<HeldBlob> {
+    // What reads the same links of the same rows reads one source, so that in a union each blob is
+    // read once for all of them.
+    const kept = this.#linkedBlobsByField.get(field);
+    if (kept !== undefined) return kept;
+    const derivation = this.#derivation;
+    const { document } = derivation.schema;
+    const rowField = fieldOf(document, field);
+    if (rowField?.type !== "link" || rowField.optional === true)
+      throw new Error(`a row of ${document.title} may hold no link under ${field}`);
+    const linkedBlobs = new Source({
+      origin: { listingIn: async (blobSet) => (await blobSet.rowsOf(derivation)).linksAt(field) },
+      itemOf: heldBlobOf,
+    });
+    this.#linkedBlobsByField.set(field, linkedBlobs);
+    return linkedBlobs;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {
@@ -234,6 +260,8 @@ export const heldRecords: Index<RecordData> = indexAlong(
   recordSchema,
   partAlong({ object: heldObject(recordSchema).field("object") }),
 );
+
+const recordedStatements = heldRecords.linksAt("object");
 
 async function itemOf<T>(selection: Selection<T>, blob: ScannedBlob): Promise<T | undefined> {
   if (!(selection instanceof SelectionBySchema)) return selection.read(blob.link, blob.reader);

@@ -313,8 +313,8 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * - A row of each row that `linked` gives of the blob that a row of this index links to under
    *   `field`: it holds what both hold. So a row gives none where `linked` gives none of that blob.
-   * - `linked` is an index that `reading` has not told what to read: here the member that its paths
-   *   start from is that blob.
+   * - `linked` is an index that `reading` has not told what to read: here its paths take values
+   *   of that blob.
    * - The rows are of a schema with the fields of both and an empty title. A field that both have
    *   is refused.
    * - Where `linked` fails on the blob, the index given fails on that blob, once for each row that
@@ -404,8 +404,9 @@ export class IndexOfRows<F extends ValueMap> extends Index<F> {
   }
 
   /**
-   * - Each path starts at a blob that `source` gives an item of. Where a path fails, the index fails
-   *   on that blob, and not on the row that links to it.
+   * - The paths take values of each blob that `source` gives an item of. Where a blob names the
+   *   schema that a path takes it as and does not fit it, the index fails on that blob, and not on
+   *   the row that links to it.
    * - Where `source` fails on a blob before it gives an item, the index fails on that blob too. The
    *   failures of an index that `source` takes links of stay failures of this one, each on the item
    *   it was on.
@@ -426,20 +427,21 @@ export class IndexOfRows<F extends ValueMap> extends Index<F> {
 }
 
 /**
- * Each row holds under every field a value that the path of the field reaches, from one blob read
- * that the paths start at. The paths say all of it, so the index has a definition.
+ * A row of each object read that every path takes a value of: it holds under each field what the
+ * path of the field takes. The paths say all of it, so the index has a definition.
  */
 export function indexOfRows<F extends ValueMap>(
   schema: Schema<F>,
   paths: { readonly [N in keyof F]-?: ValuePath<F[N]> },
 ): IndexOfRows<F> {
   const definition = partAlong(paths);
-  const rowsFrom = rowReaderOf(schema, definition);
+  const rowOf = rowReaderOf(schema, definition);
   return new IndexOfRows(schema, {
     origin: blobOrigin,
     definition,
     async *rowsOf(blob) {
-      yield* (await rowsFrom(blob)) as F[];
+      const row = await rowOf(blob);
+      if (row !== undefined) yield row as F;
     },
   });
 }

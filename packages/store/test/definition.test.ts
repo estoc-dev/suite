@@ -36,18 +36,16 @@ const person = schema("Person", { name: string(), home: link(), nickname: option
 const card = schema("Card", { title: string(), owner: link(), tags: array(string()) });
 const schemas = [place, person, card].flatMap(({ blobs }) => blobs);
 
-const ownedCard = schema("Owned Card", { card: link(), title: string(), owner: string(), city: string() });
+const cardRow = schema("Card Row", { card: link(), title: string(), owner: link() });
 const titled = schema("Titled", { title: string() });
 
 const memberCard = memberObjectOf(card);
-const owner = memberCard.field("owner").objectOf(person);
-const ownedCardsOfAll = indexOfRows(ownedCard, {
+const cardRowsOfAll = indexOfRows(cardRow, {
   card: memberCard.link,
   title: memberCard.field("title"),
-  owner: owner.field("name"),
-  city: owner.field("home").objectOf(place).field("city"),
+  owner: memberCard.field("owner"),
 });
-const ownedCards = ownedCardsOfAll.reading(recordedStatements);
+const cardRows = cardRowsOfAll.reading(recordedStatements);
 
 const lisbon = encodeObject(place, { city: "Lisbon" });
 const ada = encodeObject(person, { name: "Ada", home: new LinkValue(lisbon.link) });
@@ -78,12 +76,12 @@ afterEach(() => {
 });
 
 describe("an index of rows taken along paths, reading the statements recorded", () => {
-  it("holds a row of each statement of the schema, with the value that each path reaches", async () => {
+  it("holds a row of each statement of the schema, with what each path takes of it", async () => {
     const [first, second] = [cardOf("b"), cardOf("a")];
     const store = await storeRecording(first, second, lisbon);
-    expect(await rowDataOf((await store.scan(ownedCards)).orderedBy("title").range([]))).toEqual([
-      { card: new LinkValue(second.link), title: "a", owner: "Ada", city: "Lisbon" },
-      { card: new LinkValue(first.link), title: "b", owner: "Ada", city: "Lisbon" },
+    expect(await rowDataOf((await store.scan(cardRows)).orderedBy("title").range([]))).toEqual([
+      { card: new LinkValue(second.link), title: "a", owner: new LinkValue(ada.link) },
+      { card: new LinkValue(first.link), title: "b", owner: new LinkValue(ada.link) },
     ]);
   });
 
@@ -91,42 +89,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
     const store = await storeRecording(cardOf("recorded"));
     const held = cardOf("held");
     await store.write({ roots: [held.link], blobs: [held.bytes, ...closure] });
-    expect(await titlesIn(store, ownedCards)).toEqual(["recorded"]);
-  });
-
-  it("holds no row of a statement where a link that a path follows leads to an object of another schema", async () => {
-    const store = await storeRecording(cardOf("of a person"), cardOf("of a place", lisbon.link));
-    expect(await titlesIn(store, ownedCards)).toEqual(["of a person"]);
-  });
-
-  it("fails on a statement where a link that a path follows leads to an object that does not fit its schema", async () => {
-    const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
-    const store = new Store(new MemoryBackend());
-    const statement = cardOf("of no one", linkOf(nameless));
-    await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...closure] });
-    const { failures } = await store.scan(ownedCards);
-    expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
-  });
-
-  it("fails on such a statement whichever path is given first, where another follows a link to another schema", async () => {
-    const pair = schema("Pair", { left: link(), right: link() });
-    const names = schema("Names", { left: string(), right: string() });
-    const memberPair = memberObjectOf(pair);
-    const left = memberPair.field("left").objectOf(person).field("name");
-    const right = memberPair.field("right").objectOf(person).field("name");
-    const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
-    const statement = encodeObject(pair, { left: new LinkValue(lisbon.link), right: new LinkValue(linkOf(nameless)) });
-    const store = new Store(new MemoryBackend());
-    await store.record({ statements: [statement.link], blobs: [statement.bytes, nameless, ...pair.blobs, ...closure] });
-    const leftFirst = indexOfRows(names, { left, right }).reading(recordedStatements);
-    const rightFirst = indexOfRows(names, { right, left }).reading(recordedStatements);
-    expect(leftFirst.definition).toBeDefined();
-    expect(rightFirst.definition?.link).toBe(leftFirst.definition?.link);
-    for (const index of [leftFirst, rightFirst]) {
-      const { failures } = await store.scan(index);
-      expect(failures.map(({ item }) => item)).toEqual([statement.link]);
-      expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/name: left out")]);
-    }
+    expect(await titlesIn(store, cardRows)).toEqual(["recorded"]);
   });
 
   it.each([
@@ -140,7 +103,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
     expect(rows.map((row) => Object.entries(row))).toEqual([[["__proto__", "a"]]]);
   });
 
-  it("reads the statements and what its paths follow, and no other blob held", async () => {
+  it("reads the statements, and no other blob held", async () => {
     const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
     const noting: Backend = {
@@ -158,8 +121,8 @@ describe("an index of rows taken along paths, reading the statements recorded", 
     await store.write({ roots: [other.link], blobs: [other.bytes, ...closure] });
     for await (const _ of store.records());
     requestedLinks.length = 0;
-    expect(await titlesIn(store, ownedCards)).toEqual(["a"]);
-    expect(new Set(requestedLinks)).toEqual(new Set([statement.link, ada.link, lisbon.link]));
+    expect(await titlesIn(store, cardRows)).toEqual(["a"]);
+    expect(new Set(requestedLinks)).toEqual(new Set([statement.link]));
   });
 
   it("decodes a statement once, to write it and for all the parts of a union that read it", async () => {
@@ -220,18 +183,53 @@ describe("an index of rows taken along paths that is given nothing to read", () 
     });
     expect(await titlesIn(store, heldTitles)).toEqual(["deep", "held", "recorded"]);
   });
+
+  it("fails on an object that names the schema and does not fit it, and holds the rows of the others", async () => {
+    const untitled = objectFormat.encode(new ObjectValue(card.link, { owner: new LinkValue(ada.link), tags: [] }));
+    const store = await storeRecording(cardOf("a"));
+    await store.write({ roots: [linkOf(untitled)], blobs: [untitled] });
+    const { failures } = await store.scan(heldTitles);
+    expect(await titlesIn(store, heldTitles)).toEqual(["a"]);
+    expect(failures.map(({ item }) => item)).toEqual([linkOf(untitled)]);
+    expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/title: left out")]);
+  });
+
+  it("holds no row where its paths take an object as two schemas, and fails on one that names either and does not fit it, whichever path is given first", async () => {
+    const names = schema("Names", { name: string(), city: string() });
+    const [name, city] = [memberObjectOf(person).field("name"), memberObjectOf(place).field("city")];
+    const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
+    const store = await storeRecording(cardOf("a"));
+    await store.write({ roots: [linkOf(nameless)], blobs: [nameless] });
+    for (const index of [indexOfRows(names, { name, city }), indexOfRows(names, { city, name })]) {
+      const rows = await store.scan(index);
+      expect(await rowDataOf(rows)).toEqual([]);
+      expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(nameless)]);
+    }
+  });
 });
 
 describe("an index of rows taken along paths, reading the rows of another index", () => {
-  const owners = indexOfRows(titled, { title: memberObjectOf(ownedCard).field("owner") });
-  const ownersOfRecordedCards = owners.reading(ownedCards);
+  const titlesOfRows = indexOfRows(titled, { title: memberObjectOf(cardRow).field("title") });
+  const titlesOfRecordedCards = titlesOfRows.reading(cardRows);
 
   it("holds a row of each row of that index, and none of an object of their schema that the store holds", async () => {
     const store = await storeRecording(cardOf("recorded"));
-    const held = encodeObject(ownedCard, { card: new LinkValue(lisbon.link), title: "held", owner: "Bo", city: "" });
-    await store.write({ roots: [held.link], blobs: [held.bytes, ...ownedCard.blobs, ...closure] });
-    expect(await titlesIn(store, ownersOfRecordedCards)).toEqual(["Ada"]);
-    expect(await titlesIn(store, owners)).toEqual(["Bo"]);
+    const [card, owner] = [new LinkValue(lisbon.link), new LinkValue(ada.link)];
+    const held = encodeObject(cardRow, { card, title: "held", owner });
+    await store.write({ roots: [held.link], blobs: [held.bytes, ...cardRow.blobs, ...closure] });
+    expect(await titlesIn(store, titlesOfRecordedCards)).toEqual(["recorded"]);
+    expect(await titlesIn(store, titlesOfRows)).toEqual(["held"]);
+  });
+
+  it("takes the link of a row, which the store does not hold, and is joined at it to what the row holds", async () => {
+    const pointers = indexOfRows(schema("Pointer", { row: link() }), { row: anyMemberObject.link }).reading(cardRows);
+    const store = await storeRecording(cardOf("recorded"));
+    const [pointer] = await rowDataOf(await store.scan(pointers));
+    assert(pointer !== undefined);
+    expect(await store.get(pointer.row.link)).toBeUndefined();
+    expect(await rowDataOf(await store.scan(pointers.rowsJoinedAt("row", titlesOfRows)))).toEqual([
+      { row: pointer.row, title: "recorded" },
+    ]);
   });
 
   it("holds no row of a blob that what it is given to read gives no item of", async () => {
@@ -255,9 +253,9 @@ describe("an index of rows taken along paths, reading the rows of another index"
     });
     const statement = cardOf("a");
     await store.record({ statements: [statement.link], blobs: [statement.bytes, ...closure] });
-    await store.scan(ownedCards);
+    await store.scan(cardRows);
     requestedLinks.length = 0;
-    expect(await titlesIn(store, ownersOfRecordedCards)).toEqual(["Ada"]);
+    expect(await titlesIn(store, titlesOfRecordedCards)).toEqual(["a"]);
     expect(requestedLinks).toEqual([]);
   });
 });
@@ -265,7 +263,6 @@ describe("an index of rows taken along paths, reading the rows of another index"
 describe("an index of rows taken along paths from every object held", () => {
   const written = schema("Written", { object: link(), schema: link<Schema>() });
   const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
-  const linked = schema("Linked", { source: link(), target: link() });
   const image = new TextEncoder().encode("an image");
   const statement = cardOf("a");
 
@@ -294,115 +291,14 @@ describe("an index of rows taken along paths from every object held", () => {
     expect(rows.failures).toEqual([]);
   });
 
-  it("holds a row of each link written in an object, that of its schema among them unless it is written to itself", async () => {
-    const links = indexOfRows(linked, { source: anyMemberObject.link, target: anyMemberObject.eachLink() });
-    const rows = (await (await storeHoldingAnImage()).scan(links)).orderedBy("source", "target");
-    const targetsOf = async (source: Link<unknown>) =>
-      (await rowDataOf(rows.range([new LinkValue(source)]))).map(({ target }) => target.link);
-    expect((await targetsOf(statement.link)).sort()).toEqual([card.link, ada.link].sort());
-    expect(await targetsOf(rootSchema.link)).toEqual([]);
-  });
-
-  it("decodes an object once, to write it and for its schema and the links it holds", async () => {
-    const links = indexOfRows(linked, { source: anyMemberObject.schema, target: anyMemberObject.eachLink() });
+  it("decodes an object once, to write it and for its link and its schema", async () => {
     // Written out by hand, so that nothing has decoded it before the store does.
     const braga = objectFormat.encode(new ObjectValue(place.link, { city: "Braga" }));
     const decode = vi.spyOn(objectFormat, "decode");
     const store = await storeHoldingAnImage();
     await store.write({ roots: [linkOf(braga)], blobs: [braga] });
-    await store.scan(links);
+    await store.scan(schemasOfObjects);
     expect(decode.mock.calls.filter(([bytes]) => linkOf(bytes) === linkOf(braga))).toHaveLength(1);
-  });
-
-  it("holds one value under the fields of a row whose paths expand at the same place", async () => {
-    const links = indexOfRows(linked, { source: anyMemberObject.eachLink(), target: anyMemberObject.eachLink() });
-    const rows = await rowDataOf(await (await storeHoldingAnImage()).scan(links));
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.filter(({ source, target }) => source.link !== target.link)).toEqual([]);
-  });
-});
-
-describe("an index of rows taken along paths through the closure of a link", () => {
-  const trip = schema("Trip", { name: string(), stops: array(link()) });
-  const stop = schema("Stop", { trip: string(), city: string() });
-  const memberTrip = memberObjectOf(trip);
-  const stops = indexOfRows(stop, {
-    trip: memberTrip.field("name"),
-    city: memberTrip.link.eachInClosure().objectOf(place).field("city"),
-  }).reading(recordedStatements);
-  const porto = encodeObject(place, { city: "Porto" });
-  const cityless = objectFormat.encode(new ObjectValue(place.link, {}));
-  const tripTo = (name: string, ...stopLinks: readonly Link<unknown>[]) =>
-    encodeObject(trip, { name, stops: stopLinks.map((stopLink) => new LinkValue(stopLink)) });
-
-  async function storeRecordingTrips(...trips: readonly EncodedObject[]): Promise<Store> {
-    const store = new Store(new MemoryBackend());
-    await store.record({
-      statements: trips.map(({ link }) => link),
-      blobs: [...trips.map(({ bytes }) => bytes), porto.bytes, cityless, ...trip.blobs, ...closure],
-    });
-    return store;
-  }
-
-  const stopsIn = async (store: Store) => rowDataOf((await store.scan(stops)).orderedBy("trip", "city").range([]));
-
-  it("holds a row of each object of the schema in the closure, with what the other paths reach", async () => {
-    const store = await storeRecordingTrips(tripTo("south", lisbon.link, porto.link, ada.link), tripTo("home"));
-    expect(await stopsIn(store)).toEqual([
-      { trip: "south", city: "Lisbon" },
-      { trip: "south", city: "Porto" },
-    ]);
-  });
-
-  it("holds no row of a statement where a path that does not expand reaches no value", async () => {
-    const home = schema("Home", { owner: string(), city: string() });
-    const homes = indexOfRows(home, {
-      owner: owner.field("name"),
-      city: memberCard.link.eachInClosure().objectOf(place).field("city"),
-    }).reading(recordedStatements);
-    const store = await storeRecording(cardOf("of a person"), cardOf("of a place", lisbon.link));
-    expect(await rowDataOf(await store.scan(homes))).toEqual([{ owner: "Ada", city: "Lisbon" }]);
-  });
-
-  it("holds no row of a blob in the closure that names the schema and does not fit it, and the rows of the others", async () => {
-    const store = await storeRecordingTrips(tripTo("south", lisbon.link, linkOf(cityless), porto.link));
-    expect((await store.scan(stops)).failures).toEqual([]);
-    expect(await stopsIn(store)).toEqual([
-      { trip: "south", city: "Lisbon" },
-      { trip: "south", city: "Porto" },
-    ]);
-  });
-
-  it.each([
-    ["of the closure", stops],
-    [
-      "that a path follows from a link it expanded to",
-      indexOfRows(stop, {
-        trip: memberTrip.field("name"),
-        city: memberTrip.eachLink().objectOf(place).field("city"),
-      }).reading(recordedStatements),
-    ],
-  ])("is not filled where the store fails to give a blob %s", async (_, index) => {
-    const backend = new MemoryBackend();
-    const diskError = new Error("the disk is gone");
-    let isFailing = false;
-    const store = new Store({
-      get: (link) => (isFailing && link === porto.link ? Promise.reject(diskError) : backend.get(link)),
-      has: (link) => backend.has(link),
-      put: (blobs) => backend.put(blobs),
-      blobs: (start) => backend.blobs(start),
-    });
-    const south = tripTo("south", lisbon.link, porto.link);
-    await store.record({ statements: [south.link], blobs: [south.bytes, porto.bytes, ...trip.blobs, ...closure] });
-    // The Records are listed while every blob can be read, so the scan fails where the paths read.
-    for await (const _ of store.records());
-    isFailing = true;
-    await expect(store.scan(index)).rejects.toBe(diskError);
-    isFailing = false;
-    expect(await rowDataOf((await store.scan(index)).orderedBy("trip", "city").range([]))).toEqual([
-      { trip: "south", city: "Lisbon" },
-      { trip: "south", city: "Porto" },
-    ]);
   });
 });
 
@@ -426,60 +322,29 @@ describe("a union of indexes", () => {
 describe("the definition of an index", () => {
   const linkTo = ({ link }: Schema) => new LinkValue(link);
 
-  it("holds the schema of the rows and the steps of each part", () => {
+  it("holds the schema of the rows and the paths of each part", () => {
     const titles = indexOfRows(titled, { title: memberCard.field("title") });
-    const { definition } = ownedCards.union(ownedCards);
-    const as = (taken: Schema) => ({ step: "as", schema: linkTo(taken) });
-    const follow = (name: string, followed: Schema) => [{ step: "field", name }, { step: "object" }, as(followed)];
-    const toCard = [as(card)];
-    const toOwner = [...toCard, ...follow("owner", person)];
+    const { definition } = cardRows.union(cardRows);
+    const memberSchema = linkTo(card);
+    const title = { take: "field", name: "title", memberSchema };
     const part = {
-      paths: {
-        card: [...toCard, { step: "link" }],
-        title: [...toCard, { step: "field", name: "title" }],
-        owner: [...toOwner, { step: "field", name: "name" }],
-        city: [...toOwner, ...follow("home", place), { step: "field", name: "city" }],
-      },
+      paths: { card: { take: "link", memberSchema }, title, owner: { take: "field", name: "owner", memberSchema } },
     };
-    expect(definition?.data).toEqual({ rows: linkTo(ownedCard), parts: [part, part] });
-    expect(titles.definition?.data.parts).toEqual([{ paths: { title: [as(card), { step: "field", name: "title" }] } }]);
+    expect(definition?.data).toEqual({ rows: linkTo(cardRow), parts: [part, part] });
+    expect(titles.definition?.data.parts).toEqual([{ paths: { title } }]);
   });
 
-  it("holds no step that takes the object read as a schema where the paths say none, and the steps that expand", () => {
-    const linked = schema("Linked", { source: link(), target: link() });
-    const links = indexOfRows(linked, { source: anyMemberObject.link, target: anyMemberObject.eachLink() });
-    const closures = indexOfRows(linked, {
-      source: anyMemberObject.link,
-      target: anyMemberObject.link.eachInClosure().objectOf(card).field("owner"),
-    });
-    expect(links.definition?.data.parts).toEqual([
-      { paths: { source: [{ step: "link" }], target: [{ step: "eachLink" }] } },
-    ]);
-    expect(closures.definition?.data.parts).toEqual([
-      {
-        paths: {
-          source: [{ step: "link" }],
-          target: [
-            { step: "link" },
-            { step: "eachInClosure" },
-            { step: "object" },
-            { step: "as", schema: linkTo(card) },
-            { step: "field", name: "owner" },
-          ],
-        },
-      },
-    ]);
+  it("holds no schema in a path that says none of the object read", () => {
     const written = schema("Written", { object: link(), schema: link<Schema>() });
     const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
     expect(schemasOfObjects.definition?.data.parts).toEqual([
-      { paths: { object: [{ step: "link" }], schema: [{ step: "schema" }] } },
+      { paths: { object: { take: "link" }, schema: { take: "schema" } } },
     ]);
   });
 
   it("has the same link for the same rows and parts, and another for other parts or rows of another schema", () => {
-    const again = indexOfRows(ownedCard, {
-      city: memberObjectOf(card).field("owner").objectOf(person).field("home").objectOf(place).field("city"),
-      owner: memberObjectOf(card).field("owner").objectOf(person).field("name"),
+    const again = indexOfRows(cardRow, {
+      owner: memberObjectOf(card).field("owner"),
       title: memberObjectOf(card).field("title"),
       card: memberObjectOf(card).link,
     });
@@ -487,8 +352,8 @@ describe("the definition of an index", () => {
       assert.exists(definition);
       return definition.link;
     };
-    expect(definitionLinkOf(again)).toBe(definitionLinkOf(ownedCards));
-    expect(definitionLinkOf(ownedCards.union(ownedCards))).not.toBe(definitionLinkOf(ownedCards));
+    expect(definitionLinkOf(again)).toBe(definitionLinkOf(cardRows));
+    expect(definitionLinkOf(cardRows.union(cardRows))).not.toBe(definitionLinkOf(cardRows));
     const title = memberCard.field("title");
     const retitled = schema("Retitled", { title: string() });
     expect(definitionLinkOf(indexOfRows(retitled, { title }))).not.toBe(
@@ -497,25 +362,25 @@ describe("the definition of an index", () => {
   });
 
   it("has the same link whatever the index is given to read", () => {
-    expect(ownedCardsOfAll.definition).toBeDefined();
-    expect(ownedCards.definition?.link).toBe(ownedCardsOfAll.definition?.link);
-    expect(ownedCardsOfAll.reading(ownedCards).definition?.link).toBe(ownedCardsOfAll.definition?.link);
+    expect(cardRowsOfAll.definition).toBeDefined();
+    expect(cardRows.definition?.link).toBe(cardRowsOfAll.definition?.link);
+    expect(cardRowsOfAll.reading(cardRows).definition?.link).toBe(cardRowsOfAll.definition?.link);
   });
 
   it("holds the parts of a union in the order they were given in, whatever each of them reads", () => {
     const statementsAgain = indexOfRows(recordSchema, {
       object: memberObjectOf(recordSchema).field("object"),
     }).linksAt("object");
-    const [titles, owners, cities] = [
+    const [titles, names, cities] = [
       memberCard.field("title"),
-      owner.field("name"),
-      owner.field("home").objectOf(place).field("city"),
+      memberObjectOf(person).field("name"),
+      memberObjectOf(place).field("city"),
     ].map((title) => indexOfRows(titled, { title }));
-    assert(titles !== undefined && owners !== undefined && cities !== undefined);
+    assert(titles !== undefined && names !== undefined && cities !== undefined);
     const namesReading = (source: Source<unknown>) =>
-      titles.reading(recordedStatements).union(owners.reading(source), cities.reading(recordedStatements));
+      titles.reading(recordedStatements).union(names.reading(source), cities.reading(recordedStatements));
     const { definition } = namesReading(statementsAgain);
-    expect(definition?.data.parts).toEqual([titles, owners, cities].flatMap((index) => index.definition?.data.parts));
+    expect(definition?.data.parts).toEqual([titles, names, cities].flatMap((index) => index.definition?.data.parts));
     expect(definition?.link).toBe(namesReading(recordedStatements).definition?.link);
   });
 
@@ -557,27 +422,7 @@ describe("an index of rows taken along paths", () => {
     );
   });
 
-  it("is refused where its paths take one object as two schemas", () => {
-    const pair = schema("Pair", { title: string(), name: string() });
-    expect(() => indexOfRows(pair, { title, name: memberObjectOf(person).field("name") })).toThrow(
-      "the path of name in Pair takes as Person an object that another path takes as Card",
-    );
-    const followed = memberCard.field("owner");
-    const [name, city] = [followed.objectOf(person).field("name"), followed.objectOf(place).field("city")];
-    expect(() => indexOfRows(pair, { title: city, name })).toThrow(
-      "the path of name in Pair takes as Person an object that another path takes as Place",
-    );
-  });
-
-  it("is refused where its paths expand at two places", () => {
-    const pair = schema("Pair", { left: link(), right: link() });
-    const refusal = "the path of right in Pair expands at a second place, and a part expands at one";
-    const closure = anyMemberObject.link.eachInClosure();
-    expect(() => indexOfRows(pair, { left: anyMemberObject.eachLink(), right: closure })).toThrow(refusal);
-    expect(() => indexOfRows(pair, { left: closure, right: closure.eachInClosure() })).toThrow(refusal);
-  });
-
-  it("takes the paths that the compiler finds to fit the rows and the schemas they pass", () => {
+  it("takes the paths that the compiler finds to fit the rows and the schema they take the object as", () => {
     const counted = schema("Counted", { count: integer() });
     // @ts-expect-error A string is not the integer that the field of the rows takes.
     const count: ValuePath<number> = title;
@@ -585,21 +430,9 @@ describe("an index of rows taken along paths", () => {
     // @ts-expect-error A field that an object may leave out is not one that a path takes.
     const nickname: ValuePath<string> = memberObjectOf(person).field("nickname");
     expect(() => indexOfRows(titled, { title: nickname })).toThrow("may leave out");
-    // @ts-expect-error A string leads to no object.
-    const followed = title.objectOf(card);
-    expect(() => indexOfRows(titled, { title: followed.field("title") })).toThrow(
-      "follows string, and only a link leads to an object",
-    );
     // @ts-expect-error A path that does not say the schema of an object takes no field of it.
-    const unsaid: ValuePath<string> = anyMemberObject.field("title");
-    expect(() => indexOfRows(titled, { title: unsaid })).toThrow(
-      "takes the field title of an object whose schema it does not say",
-    );
-    const linked = schema("Linked", { title: link() });
-    // @ts-expect-error A string has no closure.
-    const expanded = title.eachInClosure();
-    expect(() => indexOfRows(linked, { title: expanded })).toThrow(
-      "expands the closure of string, which is taken of a link",
+    expect(() => anyMemberObject.field("title")).toThrow(
+      "a path takes the field title of an object whose schema it does not say",
     );
   });
 });

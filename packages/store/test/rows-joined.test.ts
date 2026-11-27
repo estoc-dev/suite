@@ -85,15 +85,6 @@ describe("the rows of an index joined to those of the blob that a field links to
     expect((await store.scan(tripEnds)).failures).toEqual([]);
   });
 
-  it("are one of each row that the blob linked to gives", async () => {
-    const linked = schema("Linked", { target: link() });
-    const targets = indexOfRows(linked, { target: memberRoute.eachLink() });
-    const store = await storeHolding(north);
-    const rows = await rowsOf(await store.scan(trips.rowsJoinedAt("route", targets)));
-    expect(rows.map(({ target }) => target.link).sort()).toEqual([route.link, lisbon.link, porto.link].sort());
-    expect(new Set(rows.map(({ route }) => route.link))).toEqual(new Set([northward.link]));
-  });
-
   it("are of a schema that has the fields of both and an empty title", () => {
     expect(tripEnds.rowSchema.document).toEqual({
       title: "",

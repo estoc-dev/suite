@@ -170,6 +170,10 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    * - They are the store's own as far as the rows are: what a row that comes of a stranger's object
    *   links to is whatever the stranger named.
    * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
+   *   So does the scan of a staged batch that holds the blob: the rows of the store are worked out
+   *   before those of the batch.
+   * - The compiler rejects a name written out under which a row may hold no link. A name passed as a
+   *   `string` is not checked, and a scan throws on a row that holds no link under it.
    */
   linksAt<N extends string>(this: Index<Readonly<Record<N, LinkValue<unknown>>>>, field: N): Source<HeldBlob> {
     const derivation = this.#derivation;

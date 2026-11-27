@@ -16,7 +16,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import {
   type Backend,
   type Batch,
@@ -1280,7 +1280,6 @@ describe("an index over another index", () => {
 
 describe("an index over the blobs that the rows of another index link to", () => {
   const cardSchema = schema("Card Link", { card: link(), by: string() });
-  /** A row of each recorded note with a card, under the first of its names. */
   const noteCards = indexOver(selectedRecords(objectsOf(note)), cardSchema, ({ data }) =>
     data.card === undefined ? [] : [{ card: data.card, by: data.names?.[0] ?? "" }],
   );
@@ -1411,22 +1410,45 @@ describe("an index over the blobs that the rows of another index link to", () =>
     expect(await store.get(row.link)).toBeUndefined();
   });
 
-  it("is not filled when a row links to a blob that the store does not hold", async () => {
-    const absentCards = indexOver(selectedRecords(objectsOf(note)), cardSchema, () => [
-      { card: new LinkValue(linkOf(image)), by: "" },
-    ]);
-    const store = newStore();
-    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
-    await expect(store.scan(sizesOver(absentCards))).rejects.toThrow(
-      `a scan reads ${linkOf(image)}, and the store does not hold ${linkOf(image)} of its closure`,
+  describe("where a row links to a blob that the store does not hold", () => {
+    const absentCardSizes = sizesOver(
+      indexOver(selectedRecords(objectsOf(note)), cardSchema, () => [{ card: new LinkValue(linkOf(image)), by: "" }]),
     );
+    const refusal = `a scan reads ${linkOf(image)}, and the store does not hold ${linkOf(image)} of its closure`;
+
+    it("is not filled", async () => {
+      const store = newStore();
+      await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+      await expect(store.scan(absentCardSizes)).rejects.toThrow(refusal);
+    });
+
+    it("is not filled over a staged batch that holds the blob, and is once the batch is committed", async () => {
+      const store = newStore();
+      await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+      const stagedStore = await store.stage({ roots: [linkOf(image)], blobs: [image] });
+      await expect(stagedStore.scan(absentCardSizes)).rejects.toThrow(refusal);
+      await stagedStore.commit();
+      expect(await sizesIn(store, absentCardSizes)).toEqual(sizesOf(image));
+    });
   });
 
-  it("takes the name of a field that every row holds a link under, and no other", () => {
+  test("the compiler rejects a field name written out under which a row may hold no link", () => {
     const optionalCards = indexOver(selectedRecords(objectsOf(note)), note, ({ data }) => [data]);
     // @ts-expect-error: a row holds text under `by`
-    expect(() => noteCards.linksAt("by")).not.toThrow();
+    noteCards.linksAt("by");
     // @ts-expect-error: a row may leave `card` out
-    expect(() => optionalCards.linksAt("card")).not.toThrow();
+    optionalCards.linksAt("card");
+  });
+
+  test("a field name passed as a string is not checked, and a scan throws on a row that holds no link under it", async () => {
+    const cardLinks = indexOver(selectedRecords(objectsOf(note)), schema("Card Only", { card: link() }), () => [
+      { card: new LinkValue(linkOf(image)) },
+    ]);
+    const misspelled: string = "crad";
+    const store = newStore();
+    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+    await expect(store.scan(indexOver(cardLinks.linksAt(misspelled), blobSizeSchema, () => []))).rejects.toThrow(
+      TypeError,
+    );
   });
 });

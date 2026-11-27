@@ -1,7 +1,7 @@
 import { hasSigner, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
-import { type Link, LinkValue, type Reader, SelectionBySchema } from "@estoc/object";
+import { type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { type Arrivals, indexOver, selectedBlobs } from "@estoc/store";
+import { type Arrivals, type HeldBlob, heldBlobs, type Index, indexOver, type Source } from "@estoc/store";
 import type { People, Person } from "./person.ts";
 
 const { signedIdentities } = identityKit;
@@ -23,19 +23,25 @@ export interface IdentityVersionRows {
   range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
-export const verifiedSignedIdentities = new SelectionBySchema(signedIdentities.schema, (object, reader) =>
-  signedIdentities.implementation.read(object, reader),
-);
+const signedIdentityObjects = objectsOf(signedIdentities.schema);
+
+/**
+ * A row of each Signed Identity among the blobs that `source` gives, where it and each identity
+ * version it follows verify. One that does not verify fails, and so does one that does not fit its
+ * schema.
+ */
+export function identityVersionsOver(source: Source<HeldBlob>): Index<IdentityVersionData> {
+  return indexOver(source, identityVersionSchema, async function* ({ link }, reader) {
+    const object = await signedIdentityObjects.read(link, reader);
+    if (object !== undefined) yield identityVersionOf(await signedIdentities.verify(object, reader));
+  });
+}
 
 /**
  * A store takes in identity versions from anyone it corresponds with. One that its root signed
  * gives a row whether or not a signature that carries it is honored.
  */
-export const identityVersions = indexOver(
-  selectedBlobs(verifiedSignedIdentities),
-  identityVersionSchema,
-  (signedIdentity) => [identityVersionOf(signedIdentity)],
-);
+export const identityVersions = identityVersionsOver(heldBlobs);
 
 export function identityVersionOf(signedIdentity: SignedIdentityObject): IdentityVersionData {
   const { identity, link } = signedIdentity;

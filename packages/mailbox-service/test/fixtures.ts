@@ -12,7 +12,7 @@ import {
   solanaOffchain,
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
-import { encodeObject, type Link, linkOf, objectsOf } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, objectsOf } from "@estoc/object";
 import { type Backend, MemoryBackend, Store, writtenObjectSchema } from "@estoc/store";
 import { assert, onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
@@ -75,6 +75,19 @@ export const actorSigningBy = (by: Signer, signedIdentity: SignedIdentityObject)
   signedIdentity,
 });
 export const actorOf = async (by: Signer) => actorSigningBy(by, await publish(by, { at: 0 }));
+
+/** A Signature by `by` that signs `object` with the bytes of one over something else, which does not verify. */
+export async function unverifiedSignatureOver(object: Link<unknown>, by: Signer) {
+  const { signedIdentity, signature } = await (await actorOf(by)).sign({
+    link: linkOf(new TextEncoder().encode("what the bytes sign")),
+  });
+  const retargetedSignature = encodeObject(signatures.schema, {
+    signedIdentity: new LinkValue(signedIdentity.link),
+    object: new LinkValue(object as Link<never>),
+    signature,
+  });
+  return { link: retargetedSignature.link, blobs: [retargetedSignature.bytes, ...signedIdentity.blobs] };
+}
 export const terms: MailboxTerms = { retention: 60_000, quota: 4096, size: 1024 };
 
 export const serviceSigner = signer(ed25519, 9);

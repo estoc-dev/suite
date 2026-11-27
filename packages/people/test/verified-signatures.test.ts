@@ -1,7 +1,7 @@
 import { ed25519, type Signature } from "@estoc/identity";
 import { encodeObject, type Link, LinkValue, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { schema, string } from "@estoc/schema";
-import { type Index, MemoryBackend, recordedWrittenObjects, Store, writtenObjectsOf } from "@estoc/store";
+import { heldBlobs, type Index, MemoryBackend, recordedWrittenObjects, Store, writtenObjectsOf } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { type VerifiedSignatureData, verifiedSignaturesOf, verifiedSignaturesOver } from "../src/index.ts";
 import { identityVersionInHand, publish, signatures, signer } from "./fixtures.ts";
@@ -93,7 +93,7 @@ describe("the verified signatures over a source", () => {
 });
 
 describe("the verified signatures of a schema", () => {
-  const noteSignatures = verifiedSignaturesOf(noteSchema);
+  const noteSignatures = verifiedSignaturesOf(noteSchema, heldBlobs);
 
   it("hold the row of each Signature held that signs an object that names the schema", async () => {
     const noteSignature = await signatureBy(37, note);
@@ -104,6 +104,18 @@ describe("the verified signatures of a schema", () => {
       [...noteSignature.blobs, ...cardSignature.blobs, ...imageSignature.blobs],
     );
     expect(await scanOf(store, noteSignatures)).toEqual({ data: [rowOf(noteSignature)], failedItems: [] });
+  });
+
+  it("hold none of a Signature over such an object that is held and that the source does not give", async () => {
+    const recordedSignature = await signatureBy(40, note);
+    const unrecordedSignature = await signatureBy(41, note);
+    const store = await storeHolding(
+      [recordedSignature.link, unrecordedSignature.link],
+      [...recordedSignature.blobs, ...unrecordedSignature.blobs],
+    );
+    await store.record(writtenObjectsOf([recordedSignature.link], 1));
+    const recordedNoteSignatures = verifiedSignaturesOf(noteSchema, recordedWrittenObjects.linksAt("object"));
+    expect(await scanOf(store, recordedNoteSignatures)).toEqual({ data: [rowOf(recordedSignature)], failedItems: [] });
   });
 
   it("fail on a Signature over such an object that does not verify", async () => {

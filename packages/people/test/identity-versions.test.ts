@@ -1,19 +1,14 @@
-import { ed25519, eip191, loadIdentity, SoftwareSigner } from "@estoc/identity";
-import {
-  AbsentBlob,
-  decodeObject,
-  digestOf,
-  type Link,
-  LinkValue,
-  linkOf,
-  ObjectValue,
-  objectFormat,
-  type ValueMap,
-} from "@estoc/object";
-import { MemoryBackend, Store } from "@estoc/store";
+import { ed25519, eip191, loadIdentity, type Signer, SoftwareSigner } from "@estoc/identity";
+import { digestOf, type Link, LinkValue, linkOf, ObjectValue, objectFormat, type ValueMap } from "@estoc/object";
+import { type Index, MemoryBackend, recordedWrittenObjects, Store, writtenObjectsOf } from "@estoc/store";
 import { describe, expect, it } from "vitest";
-import { identityVersionOf, identityVersions, verifiedSignedIdentities } from "../src/identity-versions.ts";
-import { byLink, bytesOf, key, keys, peopleHavingSeen, publish, signedIdentities, signer } from "./fixtures.ts";
+import {
+  type IdentityVersionData,
+  identityVersionOf,
+  identityVersions,
+  identityVersionsOver,
+} from "../src/identity-versions.ts";
+import { key, keys, peopleHavingSeen, publish, signedIdentities, signer } from "./fixtures.ts";
 
 const writtenSigned = (data: ValueMap) => objectFormat.encode(new ObjectValue(signedIdentities.schema.link, data));
 const unsignedOf = (identity: Link<unknown>) =>
@@ -57,102 +52,99 @@ describe("the identity version of a signed identity", () => {
   });
 });
 
+async function scanOf(store: Store, index: Index<IdentityVersionData>) {
+  const rows = await store.scan(index);
+  const data: IdentityVersionData[] = [];
+  for await (const row of rows) data.push(row.data);
+  return { data, failedItems: rows.failures.map(({ item }) => item) };
+}
+
+async function storeHolding(roots: readonly Link<unknown>[], blobs: readonly Uint8Array[]): Promise<Store> {
+  const store = new Store(new MemoryBackend());
+  await store.write({ roots, blobs: [...blobs, ...signedIdentities.schema.blobs] });
+  return store;
+}
+
 describe("the index of identity versions", () => {
-  it("gives the row of each identity version the store holds", async () => {
-    const first = await publish(signer(ed25519, 5), { at: 2_000 });
-    const second = await publish(signer(ed25519, 5), { prior: first, at: 3_000 });
-    const ofAnother = await publish(signer(ed25519, 6), { at: 1_000 });
-    const store = new Store(new MemoryBackend());
-    await store.write({ roots: [ofAnother.link, second.link], blobs: [...ofAnother.blobs, ...second.blobs] });
-
-    const rows = [];
-    for await (const { data } of await store.scan(identityVersions)) rows.push(data);
-    expect(rows).toHaveLength(3);
-    expect(rows).toEqual(
-      expect.arrayContaining([identityVersionOf(first), identityVersionOf(second), identityVersionOf(ofAnother)]),
-    );
-  });
-});
-
-describe("the selection of identity versions", () => {
-  const selection = verifiedSignedIdentities;
-  // The kit that the selection reads by keeps what it has signed or verified, so what the selection
-  // is to read from a reader is published by another kit, as a root that signs nothing else.
+  // The kit that the index reads by keeps what it has signed or verified, so what the index is to
+  // verify is published by another kit, as a root that signs nothing else.
   const elsewhere = loadIdentity([ed25519]);
   const freshRoot = () => SoftwareSigner.fromSecretKey(ed25519, crypto.getRandomValues(new Uint8Array(32)));
   const root = signer(ed25519, 4);
 
-  it.each([
-    ["with no agents", () => elsewhere.publish(freshRoot(), { at: 1_000 })],
-    ["with agents", () => elsewhere.publish(freshRoot(), { agents: [key(ed25519, 2)], at: 1_000 })],
-    [
-      "that follows another",
-      async () => {
-        const root = freshRoot();
-        return elsewhere.publish(root, { prior: await elsewhere.publish(root, { at: 500 }), at: 1_000 });
-      },
-    ],
-  ])("reads the signed identity of an identity %s as the implementation does", async (_, signIdentity) => {
-    const signedIdentity = await signIdentity();
-    const reader = byLink(signedIdentity.blobs);
-    const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
-    expect(await selection.read(signedIdentity.link, reader)).toEqual(
-      await loadIdentity([ed25519]).signedIdentities.implementation.read(object, reader),
+  it("gives the row of each identity version the store holds", async () => {
+    const first = await publish(signer(ed25519, 5), { at: 2_000 });
+    const second = await publish(signer(ed25519, 5), { prior: first, at: 3_000 });
+    const ofAnother = await publish(signer(ed25519, 6), { at: 1_000 });
+    const store = await storeHolding([ofAnother.link, second.link], [...ofAnother.blobs, ...second.blobs]);
+
+    const { data, failedItems } = await scanOf(store, identityVersions);
+    expect(data).toHaveLength(3);
+    expect(data).toEqual(
+      expect.arrayContaining([identityVersionOf(first), identityVersionOf(second), identityVersionOf(ofAnother)]),
     );
+    expect(failedItems).toEqual([]);
   });
 
-  it("reads an object already read with its schema from the blobs it links to alone", async () => {
-    const signedIdentity = await elsewhere.publish(freshRoot(), { at: 1_000 });
-    const object = decodeObject(bytesOf(signedIdentity), signedIdentities.schema);
-    const linkedBlobs = byLink(signedIdentity.blobs.filter((bytes) => linkOf(bytes) !== signedIdentity.link));
-    expect((await selection.itemOf(object, linkedBlobs))?.link).toBe(signedIdentity.link);
+  it.each([
+    ["with no agents", (root: Signer) => elsewhere.publish(root, { at: 1_000 })],
+    ["with agents", (root: Signer) => elsewhere.publish(root, { agents: [key(ed25519, 2)], at: 1_000 })],
+  ])("gives the row of an identity version %s that it has not read before", async (_, signIdentity) => {
+    const signedIdentity = await signIdentity(freshRoot());
+    const store = await storeHolding([signedIdentity.link], signedIdentity.blobs);
+    expect(await scanOf(store, identityVersions)).toEqual({
+      data: [identityVersionOf(signedIdentity)],
+      failedItems: [],
+    });
   });
 
-  it("refuses a signed identity that another key signed", async () => {
+  it("fails on a Signed Identity that another key signed", async () => {
     const { identity, blobs } = await publish(root, { at: 1_000 });
     const forgedBytes = writtenSigned({
       identity: new LinkValue(identity.link),
       signature: await signer(ed25519, 9).sign(digestOf(identity.link)),
     });
-    const reader = byLink([forgedBytes, ...blobs]);
-    await expect(selection.read(linkOf(forgedBytes), reader)).rejects.toThrow(/did not sign/);
-    await expect(
-      Promise.resolve(selection.itemOf(decodeObject(forgedBytes, signedIdentities.schema), reader)),
-    ).rejects.toThrow(/did not sign/);
+    const store = await storeHolding([linkOf(forgedBytes)], [forgedBytes, ...blobs]);
+    expect(await scanOf(store, identityVersions)).toEqual({ data: [], failedItems: [linkOf(forgedBytes)] });
   });
 
-  it("refuses a signed identity that names what is not an identity", async () => {
+  it("fails on a Signed Identity that names what is not an identity", async () => {
     const rootKey = keys.encode(root.key);
     const signedIdentityBytes = unsignedOf(rootKey.link);
-    const reader = byLink([signedIdentityBytes, ...rootKey.blobs]);
-    await expect(selection.read(linkOf(signedIdentityBytes), reader)).rejects.toThrow(/is written to/);
+    const store = await storeHolding([linkOf(signedIdentityBytes)], [signedIdentityBytes, ...rootKey.blobs]);
+    expect(await scanOf(store, identityVersions)).toEqual({ data: [], failedItems: [linkOf(signedIdentityBytes)] });
   });
 
-  it("throws on reading a record that names the signed identity schema and does not fit it", async () => {
-    const { identity } = await publish(root, { at: 1_000 });
-    const unfitBytes = writtenSigned({ identity: new LinkValue(identity.link) });
-    await expect(selection.read(linkOf(unfitBytes), byLink([unfitBytes]))).rejects.toThrow(/does not fit/);
+  it("fails on an object that names the schema of a Signed Identity and does not fit it", async () => {
+    const { identity, blobs } = await publish(root, { at: 1_000 });
+    const misfit = writtenSigned({ identity: new LinkValue(identity.link) });
+    const store = await storeHolding([linkOf(misfit)], [misfit, ...blobs]);
+    expect(await scanOf(store, identityVersions)).toEqual({ data: [], failedItems: [linkOf(misfit)] });
   });
 
-  it("refuses a signed identity whose identity the reader does not give, by the reader's error", async () => {
-    const signedIdentity = await elsewhere.publish(freshRoot(), { at: 1_000 });
-    const failingReader = {
-      get: async (link: Link<unknown>) => {
-        if (link === signedIdentity.link) return bytesOf(signedIdentity);
-        throw new Error("the disk failed");
-      },
-    };
-    const error = await selection
-      .read(signedIdentity.link, byLink([bytesOf(signedIdentity)]))
-      .catch((error: unknown) => error);
-    expect(error).toBeInstanceOf(AbsentBlob);
-    expect(error).toHaveProperty("link", signedIdentity.identity.link);
-    await expect(selection.read(signedIdentity.link, failingReader)).rejects.toThrow("the disk failed");
-  });
-
-  it("leaves out an object of another schema", async () => {
+  it("gives no row of an object of another schema, and that is no failure", async () => {
     const rootKey = keys.encode(root.key);
-    expect(await selection.read(rootKey.link, byLink(rootKey.blobs))).toBeUndefined();
+    const store = await storeHolding([rootKey.link], rootKey.blobs);
+    expect(await scanOf(store, identityVersions)).toEqual({ data: [], failedItems: [] });
+  });
+});
+
+describe("the identity versions over a source", () => {
+  const recordedVersions = identityVersionsOver(recordedWrittenObjects.linksAt("object"));
+
+  it("hold the row of a Signed Identity given, and none of one that is held and not given", async () => {
+    const recorded = await publish(signer(ed25519, 7), { at: 1_000 });
+    const unrecorded = await publish(signer(ed25519, 8), { at: 1_000 });
+    const store = await storeHolding([recorded.link, unrecorded.link], [...recorded.blobs, ...unrecorded.blobs]);
+    await store.record(writtenObjectsOf([recorded.link], 1));
+    expect(await scanOf(store, recordedVersions)).toEqual({ data: [identityVersionOf(recorded)], failedItems: [] });
+  });
+
+  it("hold none of what the source gives that is not a Signed Identity, and that is no failure", async () => {
+    const rootKey = keys.encode(signer(ed25519, 4).key);
+    const store = await storeHolding([rootKey.link], rootKey.blobs);
+    await store.record(writtenObjectsOf([rootKey.link], 1));
+    expect(await scanOf(store, recordedVersions)).toEqual({ data: [], failedItems: [] });
   });
 });
 

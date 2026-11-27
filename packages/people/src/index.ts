@@ -4,7 +4,7 @@ import type { View } from "@estoc/store";
 import { type IdentityVersionData, identityVersions, peopleSeenIn } from "./identity-versions.ts";
 import type { People, Person, SeenIdentityVersions } from "./person.ts";
 
-export { type IdentityVersionData, identityVersions } from "./identity-versions.ts";
+export { type IdentityVersionData, identityVersions, identityVersionsOver } from "./identity-versions.ts";
 export type { People, Person, SeenIdentityVersions } from "./person.ts";
 export { type VerifiedSignatureData, verifiedSignaturesOf, verifiedSignaturesOver } from "./verified-signatures.ts";
 

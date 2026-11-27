@@ -4,7 +4,7 @@ import { schema, string } from "@estoc/schema";
 import type { Store } from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import { locations, serviceSchema } from "../src/index.ts";
-import { actorOf, dataOf, memoryStore, signatures, signer } from "./fixtures.ts";
+import { actorOf, dataOf, memoryStore, signatures, signer, unverifiedSignatureOver } from "./fixtures.ts";
 
 const noteSchema = schema("Note", { text: string() });
 const note = encodeObject(noteSchema, { text: "signed" });
@@ -21,19 +21,6 @@ async function storeHolding(roots: readonly Link<unknown>[], blobs: readonly Uin
 async function scanOf(store: Store) {
   const rows = await store.scan(locations);
   return { data: await dataOf(rows), failedItems: rows.failures.map(({ item }) => item) };
-}
-
-/** A Signature that signs `object` with the bytes of one over something else, which does not verify. */
-async function unverifiedSignatureOver(object: Link<unknown>, fill: number) {
-  const { signedIdentity, signature } = await (await actorOf(signer(ed25519, fill))).sign(
-    encodeObject(noteSchema, { text: "other" }),
-  );
-  const retargetedSignature = encodeObject(signatures.schema, {
-    signedIdentity: new LinkValue(signedIdentity.link),
-    object: new LinkValue(object as Link<never>),
-    signature,
-  });
-  return { link: retargetedSignature.link, blobs: [retargetedSignature.bytes, ...signedIdentity.blobs] };
 }
 
 describe("the locations", () => {
@@ -57,13 +44,13 @@ describe("the locations", () => {
   });
 
   it("fail on a Signature over a Service that does not verify", async () => {
-    const unverifiedSignature = await unverifiedSignatureOver(service.link, 43);
+    const unverifiedSignature = await unverifiedSignatureOver(service.link, signer(ed25519, 43));
     const store = await storeHolding([unverifiedSignature.link], unverifiedSignature.blobs);
     expect(await scanOf(store)).toEqual({ data: [], failedItems: [unverifiedSignature.link] });
   });
 
   it("do not fail on a Signature over what is not a Service that would not verify", async () => {
-    const unverifiedSignature = await unverifiedSignatureOver(note.link, 44);
+    const unverifiedSignature = await unverifiedSignatureOver(note.link, signer(ed25519, 44));
     const store = await storeHolding([unverifiedSignature.link], unverifiedSignature.blobs);
     expect(await scanOf(store)).toEqual({ data: [], failedItems: [] });
   });

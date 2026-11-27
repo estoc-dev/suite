@@ -4,7 +4,6 @@ import { type DataOf, link, schema } from "@estoc/schema";
 import {
   anyMemberObject,
   type HeldBlob,
-  heldObjectsOf,
   type Index,
   indexOver,
   linkedBlob,
@@ -48,17 +47,18 @@ const signature = memberObjectOf(signatures.schema);
 const signedObjectSchema = schema("Signed Object", { signature: link(), object: link() });
 const namedSchemaSchema = schema("Named Schema", { schema: link<Schema>() });
 
-const signedObjects = heldObjectsOf(signatures.schema)
-  .rowsTaking(signedObjectSchema, { signature: signature.link, object: signature.field("object") })
-  .rowsJoinedAt("object", linkedBlob.rowsTaking(namedSchemaSchema, { schema: anyMemberObject.schema }));
-
 /**
- * - The verified signatures over the Signatures among the blobs read that sign an object that
- *   names `schema`, whether the object fits it or not, and wherever they came from: a signature
- *   carries its authority itself.
+ * - The verified signatures over the Signatures among the blobs that `source` gives that sign an
+ *   object that names `schema`, whether the object fits it or not.
  * - A Signature that signs anything else is not verified, so the index does not fail on one that
  *   would not verify.
  */
-export function verifiedSignaturesOf(schema: Schema): Index<VerifiedSignatureData> {
-  return verifiedSignaturesOver(signedObjects.rowsWhere("schema", new LinkValue(schema.link)).linksAt("signature"));
+export function verifiedSignaturesOf(schema: Schema, source: Source<HeldBlob>): Index<VerifiedSignatureData> {
+  return verifiedSignaturesOver(
+    source
+      .rowsTaking(signedObjectSchema, { signature: signature.link, object: signature.field("object") })
+      .rowsJoinedAt("object", linkedBlob.rowsTaking(namedSchemaSchema, { schema: anyMemberObject.schema }))
+      .rowsWhere("schema", new LinkValue(schema.link))
+      .linksAt("signature"),
+  );
 }

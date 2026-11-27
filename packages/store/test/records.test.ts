@@ -5,6 +5,7 @@ import {
   indexOver,
   MemoryBackend,
   RefusedBatch,
+  recordedWrittenObjects,
   recordSchema,
   Store,
   selectedBlobs,
@@ -469,6 +470,45 @@ describe("an index over written objects", () => {
     for await (const statement of store.records())
       times.push((await writtenObjects.read(statement, store))?.data.at ?? -1);
     expect(times).toEqual([1, 2]);
+  });
+});
+
+describe("the Written Objects among the records", () => {
+  const writtenLinksIn = async (store: Store) =>
+    (await listOf(await store.scan(recordedWrittenObjects))).map(({ link }) => link);
+
+  it("are rows with the links of the Written Objects, and none of a statement of another schema", async () => {
+    const { store } = sides();
+    const alice = card("Alice");
+    await store.write({ roots: [alice.link], blobs: [alice.bytes, ...cardSchema.blobs] });
+    await store.record(batchOf([taken(alice, 1)], [...takenSchema.blobs]));
+    const first = writtenObjectsOf([alice.link], 1);
+    const second = writtenObjectsOf([alice.link], 2);
+    await store.record(first);
+    await store.record(second);
+    expect((await writtenLinksIn(store)).sort()).toEqual([...first.statements, ...second.statements].sort());
+  });
+
+  it("are none of a Written Object that only came to the store", async () => {
+    const { store } = sides();
+    const mallory = card("Mallory");
+    const { statements, blobs } = writtenObjectsOf([mallory.link], 1);
+    await store.write({ roots: statements, blobs: [mallory.bytes, ...cardSchema.blobs, ...blobs] });
+    expect(await writtenLinksIn(store)).toEqual([]);
+  });
+
+  it("link under `object` to what an index is given to read, whatever the blob is", async () => {
+    const { store } = sides();
+    const alice = card("Alice");
+    const image = utf8("not an object");
+    await store.write({ roots: [alice.link, linkOf(image)], blobs: [alice.bytes, ...cardSchema.blobs, image] });
+    await store.record(writtenObjectsOf([alice.link, linkOf(image)], 1));
+    await store.record(writtenObjectsOf([alice.link], 2));
+    const readLinks = indexOver(recordedWrittenObjects.linksAt("object"), shownSchema, ({ link }) => [
+      { card: new LinkValue(link) },
+    ]);
+    const links = (await listOf(await store.scan(readLinks))).map(({ data }) => data.card.link);
+    expect(links.sort()).toEqual([alice.link, linkOf(image)].sort());
   });
 });
 

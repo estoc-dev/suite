@@ -15,7 +15,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { anyMemberObject, indexOfRows, type Store } from "@estoc/store";
+import { anyMemberObject, heldObjects, indexOfRows, type Store } from "@estoc/store";
 import type { ListedAction } from "./action.ts";
 import {
   actionSchema,
@@ -114,10 +114,6 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, blobLinks, (blob, 
     ...(schema === undefined ? {} : { schema: new LinkValue(schema) }),
   };
 });
-
-export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
-
-const heldObjects = indexOfRows(heldObjectSchema, { schema: anyMemberObject.schema, object: anyMemberObject.link });
 
 /** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });

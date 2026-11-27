@@ -1424,9 +1424,9 @@ describe("an index over the blobs that the rows of another index link to", () =>
 
   it("takes the name of a field that every row holds a link under, and no other", () => {
     const optionalCards = indexOver(selectedRecords(objectsOf(note)), note, ({ data }) => [data]);
-    // @ts-expect-error A row holds text under `by`.
+    // @ts-expect-error: a row holds text under `by`
     expect(() => noteCards.linksAt("by")).not.toThrow();
-    // @ts-expect-error A row may leave `card` out.
+    // @ts-expect-error: a row may leave `card` out
     expect(() => optionalCards.linksAt("card")).not.toThrow();
   });
 });

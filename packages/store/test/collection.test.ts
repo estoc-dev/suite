@@ -14,12 +14,12 @@ import {
   collectionOf,
   collectionSchema,
   heldBlobs,
-  heldObject,
   indexOfRows,
   indexOver,
   MemoryBackend,
+  memberObjectOf,
   type Rows,
-  recordedStatement,
+  recordedStatements,
   Store,
   selectedBlobs,
   selectedRecords,
@@ -37,15 +37,12 @@ type Text = DataOf<typeof textSchema>;
 type TextRows = Rows<Text>;
 
 const texts = indexOfRows(textSchema, {
-  text: heldObject(noteSchema).field("text"),
-  note: heldObject(noteSchema).link,
+  text: memberObjectOf(noteSchema).field("text"),
+  note: memberObjectOf(noteSchema).link,
 });
 
 const recordedTextIndexes = () => [
-  indexOfRows(textSchema, {
-    text: recordedStatement(noteSchema).field("text"),
-    note: recordedStatement(noteSchema).link,
-  }),
+  texts.reading(recordedStatements),
   indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
     { text: data.text, note: new LinkValue(link) },
   ]),

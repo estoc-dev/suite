@@ -10,13 +10,12 @@ import {
 } from "@estoc/object";
 import {
   fieldOf,
-  heldObject,
   type IndexDefinition,
   indexDefinitionOf,
+  memberObjectOf,
   type PartDefinition,
   partAlong,
   rowReaderOf,
-  startSchemaOf,
   type ValuePath,
 } from "./definition.ts";
 import { type RecordData, recordSchema } from "./record.ts";
@@ -38,6 +37,7 @@ export type Prefix<K extends readonly unknown[]> =
   | (K extends readonly [infer First, ...infer Rest] ? readonly [First, ...Prefix<Rest>] : K);
 
 interface Part<F> {
+  readonly origin: Origin;
   /** Left out where a function gives the rows. */
   readonly definition?: PartDefinition;
   rowsOf(blob: ScannedBlob): AsyncIterable<F>;
@@ -67,13 +67,18 @@ interface Reading<T> {
 
 export class Derivation<F extends ValueMap> implements Origin {
   readonly schema: Schema<F>;
-  readonly parts: ReadonlyMap<Origin, readonly Part<F>[]>;
+  /** In the order they were given in, which the definition keeps whatever each of them reads. */
+  readonly parts: readonly Part<F>[];
+  readonly partsByOrigin: ReadonlyMap<Origin, readonly Part<F>[]>;
   readonly definition: IndexDefinition | undefined;
 
-  constructor(schema: Schema<F>, parts: ReadonlyMap<Origin, readonly Part<F>[]>) {
+  constructor(schema: Schema<F>, parts: readonly Part<F>[]) {
     this.schema = schema;
     this.parts = parts;
-    const definitions = [...parts.values()].flat().map(({ definition }) => definition);
+    const partsByOrigin = new Map<Origin, Part<F>[]>();
+    for (const part of parts) partsByOrigin.set(part.origin, [...(partsByOrigin.get(part.origin) ?? []), part]);
+    this.partsByOrigin = partsByOrigin;
+    const definitions = parts.map(({ definition }) => definition);
     this.definition = definitions.every((definition) => definition !== undefined)
       ? indexDefinitionOf(schema, definitions)
       : undefined;
@@ -105,10 +110,6 @@ export class Source<T> {
   }
 }
 
-/**
- * The statements the store recorded. One of the same schema that only came to the store, as in a
- * bundle, is not one of these.
- */
 export function selectedRecords<T>(selection: Selection<T>): Source<T> {
   return new Source({ origin: readingOf(recordedStatements).origin, itemOf: (blob) => itemOf(selection, blob) });
 }
@@ -197,10 +198,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     // are encoded to the schema of this index.
     if (others.some((other) => other.#derivation.schema.link !== this.#derivation.schema.link))
       throw new Error("the indexes in a union hold rows of one schema, and one of these holds rows of another");
-    const parts = new Map<Origin, readonly Part<F>[]>();
-    for (const index of [this, ...others])
-      for (const [origin, originParts] of index.#derivation.parts)
-        parts.set(origin, [...(parts.get(origin) ?? []), ...originParts]);
+    const parts = [this, ...others].flatMap((index) => index.#derivation.parts);
     return new Index(new Derivation(this.#derivation.schema, parts));
   }
 }
@@ -219,49 +217,82 @@ export function indexOver<F extends ValueMap, T>(
 ): Index<F> {
   const reading = readingOf(source);
   const part: Part<F> = {
+    origin: reading.origin,
     async *rowsOf(blob) {
       const item = await reading.itemOf(blob);
       if (item !== undefined) yield* rows(item, blob.reader);
     },
   };
-  return new Index(new Derivation(schema, new Map([[reading.origin, [part]]])));
+  return new Index(new Derivation(schema, [part]));
 }
 
 /**
- * Each row holds under every field a value that the path of the field reaches, from one object
+ * It reads every blob that a scan is over: an attachment and what a stranger sent as well as an
+ * object of the store's own, each once for each index that reads this way. `reading` gives the
+ * index of the same definition over something else.
+ */
+export class IndexOfRows<F extends ValueMap> extends Index<F> {
+  readonly #part: Required<Part<F>>;
+
+  constructor(schema: Schema<F>, part: Required<Part<F>>) {
+    super(new Derivation(schema, [part]));
+    this.#part = part;
+  }
+
+  /**
+   * - Each path starts at a blob that `source` gives an item of. Where a path fails, the index fails
+   *   on that blob, and not on the row that links to it.
+   * - Where `source` fails on a blob before it gives an item, the index fails on that blob too. The
+   *   failures of an index that `source` takes links of stay failures of this one, each on the item
+   *   it was on.
+   * - Its rows are the store's own as far as those blobs are.
+   */
+  reading(source: Source<unknown>): Index<F> {
+    const reading = readingOf(source);
+    const part = this.#part;
+    const partOfItems: Part<F> = {
+      origin: reading.origin,
+      definition: part.definition,
+      async *rowsOf(blob) {
+        if ((await reading.itemOf(blob)) !== undefined) yield* part.rowsOf(blob);
+      },
+    };
+    return new Index(new Derivation(this.rowSchema, [partOfItems]));
+  }
+}
+
+/**
+ * Each row holds under every field a value that the path of the field reaches, from one blob read
  * that the paths start at. The paths say all of it, so the index has a definition.
  */
 export function indexOfRows<F extends ValueMap>(
   schema: Schema<F>,
   paths: { readonly [N in keyof F]-?: ValuePath<F[N]> },
-): Index<F> {
+): IndexOfRows<F> {
   const definition = partAlong(paths);
-  const startsAtRecords = startSchemaOf(definition)?.link === recordSchema.link;
-  return indexAlong(startsAtRecords ? derivationOf(heldRecords) : blobOrigin, schema, definition);
-}
-
-function indexAlong<F extends ValueMap>(origin: Origin, schema: Schema<F>, definition: PartDefinition): Index<F> {
   const rowsFrom = rowReaderOf(schema, definition);
-  const part: Part<F> = {
+  return new IndexOfRows(schema, {
+    origin: blobOrigin,
     definition,
     async *rowsOf(blob) {
       yield* (await rowsFrom(blob)) as F[];
     },
-  };
-  return new Index(new Derivation(schema, new Map([[origin, [part]]])));
+  });
 }
 
 /**
  * The Records among the blobs read. A row is encoded to the same bytes as the Record it comes of,
  * so the rows are those Records, and what reads the records of a store reads this index.
  */
-export const heldRecords: Index<RecordData> = indexAlong(
-  blobOrigin,
-  recordSchema,
-  partAlong({ object: heldObject(recordSchema).field("object") }),
-);
+export const heldRecords: Index<RecordData> = indexOfRows(recordSchema, {
+  object: memberObjectOf(recordSchema).field("object"),
+});
 
-const recordedStatements = heldRecords.linksAt("object");
+/**
+ * The statements the store recorded. One of the same schema that only came to the store, as in a
+ * bundle, is not one of these.
+ */
+export const recordedStatements: Source<HeldBlob> = heldRecords.linksAt("object");
 
 async function itemOf<T>(selection: Selection<T>, blob: ScannedBlob): Promise<T | undefined> {
   if (!(selection instanceof SelectionBySchema)) return selection.read(blob.link, blob.reader);

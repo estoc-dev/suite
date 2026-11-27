@@ -1,8 +1,8 @@
 import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { recordedStatement, type ValuePath } from "./definition.ts";
+import { memberObjectOf, type ValuePath } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
-import { indexOfRows } from "./source.ts";
+import { indexOfRows, recordedStatements } from "./source.ts";
 import type { View } from "./view.ts";
 import { writtenObjectSchema } from "./written-object.ts";
 
@@ -27,13 +27,13 @@ export type ArrivalsView = View<ArrivalData, Arrivals>;
  *   read once for each.
  */
 export function arrivalsView(schema: Schema): ArrivalsView {
+  const arrivalsAt = (object: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
+    indexOfRows(arrivalSchema, { object, at }).reading(recordedStatements);
   // The root has a row whatever it is, and a root of `schema` has the same row of both parts.
   const arrivalsOf = (root: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
-    indexOfRows(arrivalSchema, { object: root, at }).union(
-      indexOfRows(arrivalSchema, { object: root.eachInClosure().objectOf(schema).link, at }),
-    );
-  const inbound = recordedStatement(inboundSchema);
-  const writtenObject = recordedStatement(writtenObjectSchema);
+    arrivalsAt(root, at).union(arrivalsAt(root.eachInClosure().objectOf(schema).link, at));
+  const inbound = memberObjectOf(inboundSchema);
+  const writtenObject = memberObjectOf(writtenObjectSchema);
   return {
     index: arrivalsOf(inbound.field("bundle"), inbound.field("at")).union(
       arrivalsOf(writtenObject.field("object"), writtenObject.field("at")),

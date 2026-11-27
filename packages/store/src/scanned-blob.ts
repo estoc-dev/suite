@@ -36,7 +36,7 @@ export class ClosureReader {
     try {
       const bytes = await this.#store.get(link);
       if (bytes === undefined)
-        throw new Error(`the store lists ${this.#start} but does not hold ${link} of its closure`);
+        throw new Error(`a scan reads ${this.#start}, and the store does not hold ${link} of its closure`);
       return bytes;
     } catch (error) {
       this.#failure ??= { error };

@@ -3,9 +3,8 @@ import { DerivedObjects } from "./derived-objects.ts";
 import { type Derivation, derivationOf, heldRecords, type ItemFailure, type Listing } from "./source.ts";
 
 /** In the order their Records come among the blobs of `blobSet`. */
-export async function recordedStatementsIn(blobSet: BlobSet): Promise<Link<EncodedObject>[]> {
-  const records = await blobSet.rowsOf(derivationOf(heldRecords));
-  return records.objects.map(({ data }) => data.object.link);
+export async function recordedStatementsIn(blobSet: BlobSet): Promise<readonly Link<EncodedObject>[]> {
+  return (await blobSet.rowsOf(derivationOf(heldRecords))).linksAt("object").links;
 }
 
 export interface BlobSet {

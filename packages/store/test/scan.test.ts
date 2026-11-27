@@ -30,7 +30,6 @@ import {
   selectedBlobs,
   selectedRecords,
 } from "../src/index.ts";
-import { recordOf } from "../src/record.ts";
 
 // Every field these tests write, each optional, so that a note or a tag holds any of them.
 const fields = {
@@ -391,7 +390,7 @@ describe("an index whose rows give none of what does not read as they expect", (
     const { store } = await storeFailingToRead(async () => undefined);
     const caughtErrors: unknown[] = [];
     await expect(store.scan(aboutNamesCatching(caughtErrors))).rejects.toThrow(
-      `the store lists ${recordOf(record.link).link} but does not hold ${about.link} of its closure`,
+      `a scan reads ${record.link}, and the store does not hold ${about.link} of its closure`,
     );
     expect(caughtErrors).toHaveLength(1);
   });
@@ -426,7 +425,7 @@ describe("an index that fails on something it reads", () => {
   it("gives the rows of what else it reads, and lists what it failed on with the error", async () => {
     const rows = await (await storeRecording(unreadable, readable)).scan(readableNames);
     expect(await namesOf(rows)).toEqual(["a"]);
-    expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
+    expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
   });
 
   it.each<[string, NameIndex, string]>([
@@ -446,7 +445,7 @@ describe("an index that fails on something it reads", () => {
     const store = await storeRecording(unreadable, readable);
     const rows = await store.scan(index);
     expect(await namesOf(rows)).toEqual(["a"]);
-    expect(rows.failures.map(({ item }) => item)).toEqual([recordOf(unreadable.link).link]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([unreadable.link]);
     expect(rows.failures.map(({ error }) => String(error))).toEqual([expect.stringContaining(message)]);
   });
 
@@ -512,14 +511,14 @@ describe("an index that fails on something it reads", () => {
       const upperNames = upperNamesOf(readableNames);
       const rows = await store.scan(upperNames);
       expect(await namesOf(rows)).toEqual(["A"]);
-      expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
+      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
     });
 
     it("is listed once among the failures of an index that reads it by two indexes", async () => {
       const eitherNames = eitherNamesOf(readableNames);
       const rows = await (await storeRecording(unreadable, readable)).scan(eitherNames);
       expect(await namesOf(rows)).toEqual(["A", "a!"]);
-      expect(rows.failures).toEqual([{ item: recordOf(unreadable.link).link, error: readError }]);
+      expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
     });
 
     it("is read once on a staged batch for an index that reads it by two indexes, with each failure listed once", async () => {
@@ -935,7 +934,7 @@ describe("an index over blobs", () => {
     it("is not filled when the store does not hold a blob that it lists", async () => {
       const { store } = await storeGiving(other.link, async () => undefined);
       await expect(store.scan(tagNames)).rejects.toThrow(
-        `the store lists ${other.link} but does not hold ${other.link} of its closure`,
+        `a scan reads ${other.link}, and the store does not hold ${other.link} of its closure`,
       );
     });
 
@@ -1276,5 +1275,158 @@ describe("an index over another index", () => {
       await stagedStore.commit();
       expect(await namesOf(await store.scan(index))).toEqual(["A", "B"]);
     });
+  });
+});
+
+describe("an index over the blobs that the rows of another index link to", () => {
+  const cardSchema = schema("Card Link", { card: link(), by: string() });
+  /** A row of each recorded note with a card, under the first of its names. */
+  const noteCards = indexOver(selectedRecords(objectsOf(note)), cardSchema, ({ data }) =>
+    data.card === undefined ? [] : [{ card: data.card, by: data.names?.[0] ?? "" }],
+  );
+  const blobSizeSchema = schema("Sized", { blob: link(), size: integer() });
+  const sizesOver = (index: typeof noteCards) =>
+    indexOver(index.linksAt("card"), blobSizeSchema, ({ link, bytes }) => [
+      { blob: new LinkValue(link), size: bytes.length },
+    ]);
+  const cardSizes = sizesOver(noteCards);
+  const sizesIn = async (store: Pick<Store, "scan">, index = cardSizes) =>
+    (await rowDataOf(await store.scan(index))).map(({ blob, size }) => [blob.link, size]).sort();
+  const sizesOf = (...blobs: readonly Uint8Array[]) => blobs.map((blob) => [linkOf(blob), blob.length]).sort();
+  const image = new TextEncoder().encode("an image");
+  const card = encodeObject(tag, { name: "Alice" });
+  const noteOf = (target: Link<unknown>, by: string) =>
+    encodeObject(note, { card: new LinkValue(target), names: [by] });
+
+  it("holds the rows of each blob linked to, an object of any schema and what is not an object", async () => {
+    const store = newStore();
+    await recordIn(store, [noteOf(card.link, "a"), noteOf(linkOf(image), "b")], [card.bytes, image, ...schemas]);
+    expect(await sizesIn(store)).toEqual(sizesOf(card.bytes, image));
+    expect((await store.scan(cardSizes)).failures).toEqual([]);
+  });
+
+  it("holds no rows of a blob that the store holds and no row links to", async () => {
+    const store = newStore();
+    const unrecorded = noteOf(linkOf(image), "sent");
+    await store.write(batchOf([unrecorded, card], [image, ...schemas]));
+    await recordIn(store, [encodeObject(note, { about: new LinkValue(card.link) })]);
+    expect(await sizesIn(store)).toEqual([]);
+  });
+
+  it("reads a blob once, however many rows link to it", async () => {
+    const readLinks: Link<unknown>[] = [];
+    const index = indexOver(noteCards.linksAt("card"), blobSizeSchema, ({ link, bytes }) => {
+      readLinks.push(link);
+      return [{ blob: new LinkValue(link), size: bytes.length }];
+    });
+    const store = newStore();
+    await recordIn(store, [noteOf(card.link, "a"), noteOf(card.link, "b")], [card.bytes, ...schemas]);
+    expect(await sizesIn(store, index)).toEqual(sizesOf(card.bytes));
+    expect(readLinks).toEqual([card.link]);
+  });
+
+  it("reads each blob once for the indexes of a union that read the same links of the same index", async () => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = newStore(backendNoting(requestedLinks, new MemoryBackend()));
+    await recordIn(store, [noteOf(card.link, "a")], [card.bytes, ...schemas]);
+    await listRecordsOf(store);
+    requestedLinks.length = 0;
+    const lengths = indexOver(noteCards.linksAt("card"), blobSizeSchema, ({ link }) => [
+      { blob: new LinkValue(link), size: link.length },
+    ]);
+    expect(await sizesIn(store, cardSizes.union(lengths))).toHaveLength(2);
+    expect(requestedLinks.filter((link) => link === card.link)).toHaveLength(1);
+  });
+
+  it("reads on a later scan only the blobs that rows have linked to since", async () => {
+    const requestedLinks: Link<unknown>[] = [];
+    const store = newStore(backendNoting(requestedLinks, new MemoryBackend()));
+    await recordIn(store, [noteOf(card.link, "a")], [card.bytes, ...schemas]);
+    expect(await sizesIn(store)).toEqual(sizesOf(card.bytes));
+    await recordIn(store, [noteOf(linkOf(image), "b"), noteOf(card.link, "c")], [image]);
+    requestedLinks.length = 0;
+    expect(await sizesIn(store)).toEqual(sizesOf(card.bytes, image));
+    expect(requestedLinks).not.toContain(card.link);
+    expect(requestedLinks).toContain(linkOf(image));
+  });
+
+  it("gives the rows of its last scan again where nothing was put since", async () => {
+    const store = newStore();
+    await recordIn(store, [noteOf(card.link, "a")], [card.bytes, ...schemas]);
+    const rows = await store.scan(cardSizes);
+    expect(await store.scan(cardSizes)).toBe(rows);
+  });
+
+  it("holds, on a staged batch, the rows of what the rows of the batch link to on top of those its store keeps", async () => {
+    const blobCards = indexOver(selectedBlobs(objectsOf(note)), cardSchema, ({ data }) =>
+      data.card === undefined ? [] : [{ card: data.card, by: "" }],
+    );
+    const index = sizesOver(blobCards);
+    const store = newStore();
+    await store.write(batchOf([noteOf(card.link, "a")], [card.bytes, ...schemas]));
+    expect(await sizesIn(store, index)).toEqual(sizesOf(card.bytes));
+    const stagedStore = await store.stage(batchOf([noteOf(linkOf(image), "b")], [image]));
+    expect(await sizesIn(stagedStore, index)).toEqual(sizesOf(card.bytes, image));
+    expect(await sizesIn(store, index)).toEqual(sizesOf(card.bytes));
+  });
+
+  it("lists the blob that its rows throw on, and not the row that links to it", async () => {
+    const readError = new Error("does not read");
+    const index = indexOver(noteCards.linksAt("card"), blobSizeSchema, ({ link, bytes }) => {
+      if (link === card.link) throw readError;
+      return [{ blob: new LinkValue(link), size: bytes.length }];
+    });
+    const store = newStore();
+    await recordIn(store, [noteOf(card.link, "a"), noteOf(linkOf(image), "b")], [card.bytes, image, ...schemas]);
+    const rows = await store.scan(index);
+    expect(await sizesIn(store, index)).toEqual(sizesOf(image));
+    expect(rows.failures).toEqual([{ item: card.link, error: readError }]);
+  });
+
+  it("has among its failures what the index that gives the rows failed on", async () => {
+    const readError = new Error("does not read");
+    const readableCards = indexOver(selectedRecords(objectsOf(note)), cardSchema, ({ data }) => {
+      if (data.card === undefined) throw readError;
+      return [{ card: data.card, by: "" }];
+    });
+    const unreadable = encodeObject(note, { names: ["unreadable"] });
+    const store = newStore();
+    await recordIn(store, [unreadable, noteOf(card.link, "a")], [card.bytes, ...schemas]);
+    const rows = await store.scan(sizesOver(readableCards));
+    expect(rows.failures).toEqual([{ item: unreadable.link, error: readError }]);
+  });
+
+  it("reads a row of an index that the rows link to, which the store does not hold", async () => {
+    const tracedSchema = schema("Traced Name", { name: string(), row: link() });
+    const tracedNames = indexOver(noteNames, tracedSchema, ({ link, data }) => [
+      { name: data.name, row: new LinkValue(link) },
+    ]);
+    const index = indexOver(tracedNames.linksAt("row"), blobSizeSchema, ({ link, bytes }) => [
+      { blob: new LinkValue(link), size: bytes.length },
+    ]);
+    const store = newStore();
+    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+    const row = encodeObject(named, { name: "a" });
+    expect(await sizesIn(store, index)).toEqual(sizesOf(row.bytes));
+    expect(await store.get(row.link)).toBeUndefined();
+  });
+
+  it("is not filled when a row links to a blob that the store does not hold", async () => {
+    const absentCards = indexOver(selectedRecords(objectsOf(note)), cardSchema, () => [
+      { card: new LinkValue(linkOf(image)), by: "" },
+    ]);
+    const store = newStore();
+    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
+    await expect(store.scan(sizesOver(absentCards))).rejects.toThrow(
+      `a scan reads ${linkOf(image)}, and the store does not hold ${linkOf(image)} of its closure`,
+    );
+  });
+
+  it("takes the name of a field that every row holds a link under, and no other", () => {
+    const optionalCards = indexOver(selectedRecords(objectsOf(note)), note, ({ data }) => [data]);
+    // @ts-expect-error A row holds text under `by`.
+    expect(() => noteCards.linksAt("by")).not.toThrow();
+    // @ts-expect-error A row may leave `card` out.
+    expect(() => optionalCards.linksAt("card")).not.toThrow();
   });
 });

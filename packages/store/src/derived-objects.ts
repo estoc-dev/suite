@@ -1,4 +1,12 @@
-import { type EncodedObject, encodeObject, type Link, linkOf, type Reader, type ValueMap } from "@estoc/object";
+import {
+  type EncodedObject,
+  encodeObject,
+  type Link,
+  type LinkValue,
+  linkOf,
+  type Reader,
+  type ValueMap,
+} from "@estoc/object";
 import type { BlobSet } from "./scan.ts";
 import { ClosureReader, ScannedBlob } from "./scanned-blob.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
@@ -16,6 +24,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
   readonly #ownFailures: readonly ItemFailure[];
   readonly #base: DerivedObjects<F> | undefined;
   readonly #sortedRowsByOrder: Map<string, unknown>;
+  readonly #linksByField = new Map<string, Listing>();
 
   constructor(
     derivation: Derivation<F>,
@@ -102,6 +111,25 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
     const sortedRows = (kept ?? new SortedRows(this.#derivation.schema, by)).including(this.objects);
     this.#sortedRowsByOrder.set(order, sortedRows);
     return sortedRows;
+  }
+
+  /**
+   * In the order the rows first link to them, so what comes of adding to these rows lists these
+   * links first. The same listing is given for these rows each time, by which what reads it sees
+   * that nothing was added.
+   */
+  linksAt<N extends string, T>(this: DerivedObjects<Readonly<Record<N, LinkValue<T>>>>, field: N): Listing<T> {
+    // The listings kept are of these rows, each under the field its links are at.
+    const kept = this.#linksByField.get(field) as Listing<T> | undefined;
+    if (kept !== undefined) return kept;
+    const links = new Set(this.objects.map(({ data }) => data[field].link));
+    const listing = {
+      links: [...links],
+      failures: this.failures,
+      bytesOf: (link: Link<unknown>) => this.bytesOf(link),
+    };
+    this.#linksByField.set(field, listing);
+    return listing;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<EncodedObject<F>> {

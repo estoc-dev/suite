@@ -8,6 +8,7 @@ import {
   ObjectValue,
   objectFormat,
   objectsOf,
+  type Reader,
   readObject,
   rootSchema,
   type Schema,
@@ -753,7 +754,7 @@ describe("an index over blobs", () => {
     expect(await namesOf(await store.scan(tagNames))).toEqual([]);
   });
 
-  it("has the store asked once for a blob of another schema or of none, however many indexes read this way", async () => {
+  it("has the store asked once for a blob of another schema or of none to find the objects of its schema, however many indexes read them", async () => {
     const image = new TextEncoder().encode("an image");
     const held = carrying(image);
     const requestedLinks: Link<unknown>[] = [];
@@ -904,45 +905,61 @@ describe("an index over blobs", () => {
     });
 
     const linkedFrom = (data: Entry) => data.of?.link;
+    type Follow = (reader: Reader, of: Link<unknown>) => Promise<Named[]>;
 
-    it.each<[string, NameIndex]>([
+    it.each<[string, (follow: Follow) => NameIndex]>([
       [
         "its selection reads and catches",
-        indexOver(
-          selectedBlobs(
-            new SelectionBySchema(tag, async ({ data }, reader) => {
-              const of = linkedFrom(data);
-              if (of === undefined) return undefined;
-              try {
-                return namedOf(await readObject(reader, of, tag));
-              } catch {
-                return undefined;
-              }
-            }),
+        (follow) =>
+          indexOver(
+            selectedBlobs(
+              new SelectionBySchema(tag, async ({ data }, reader) => {
+                const of = linkedFrom(data);
+                if (of === undefined) return undefined;
+                try {
+                  return await follow(reader, of);
+                } catch {
+                  return undefined;
+                }
+              }),
+            ),
+            named,
+            (rows) => rows,
           ),
-          named,
-          (rows) => rows,
-        ),
       ],
       [
         "its rows read",
-        indexOver(selectedBlobs(objectsOf(tag)), named, async function* ({ data }, reader) {
-          const of = linkedFrom(data);
-          if (of !== undefined) yield* namedOf(await readObject(reader, of, tag));
-        }),
+        (follow) =>
+          indexOver(selectedBlobs(objectsOf(tag)), named, async function* ({ data }, reader) {
+            const of = linkedFrom(data);
+            if (of !== undefined) yield* await follow(reader, of);
+          }),
       ],
-    ])("is not filled when the store throws for what %s", async (_, index) => {
-      const diskError = new Error("the disk is gone");
-      // The blob is listed too and goes in first, so it is the read through the object that links to it that fails.
-      let readCount = 0;
-      const { store } = await storeGiving(nested.link, async () => {
-        readCount += 1;
-        if (readCount === 1) return nested.bytes;
-        throw diskError;
-      });
-      await expect(store.scan(index)).rejects.toBe(diskError);
-      expect(readCount).toBe(2);
-    });
+    ])(
+      "is not filled when the store throws for what %s, and a later scan reads the blob",
+      async (_, indexFollowing) => {
+        const diskError = new Error("the disk is gone");
+        const { store, failing } = await storeGiving(nested.link, () => Promise.reject(diskError));
+        // The store gives the blob to what lists it, and throws from the read through the object that links to it.
+        failing.isOn = false;
+        let isDiskGone = true;
+        const errorsFollowing: unknown[] = [];
+        const index = indexFollowing(async (reader, of) => {
+          failing.isOn = isDiskGone;
+          try {
+            return namedOf(await readObject(reader, of, tag));
+          } catch (error) {
+            errorsFollowing.push(error);
+            throw error;
+          }
+        });
+        await expect(store.scan(index)).rejects.toBe(diskError);
+        expect(errorsFollowing).toEqual([diskError]);
+        isDiskGone = false;
+        failing.isOn = false;
+        expect(await namesOf(await store.scan(index))).toEqual(["nested"]);
+      },
+    );
 
     it("is not filled when the store does not hold a blob that it lists", async () => {
       const { store } = await storeGiving(other.link, async () => undefined);

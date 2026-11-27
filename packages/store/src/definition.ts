@@ -138,7 +138,7 @@ class ValueWalk {
   readonly rowFields: string[] = [];
   object: ObjectWalk | undefined;
   eachInClosure: ValueWalk | undefined;
-  equalTo: { readonly value: ComparedValue; readonly walk: ValueWalk } | undefined;
+  readonly equalTo: ComparedValue[] = [];
 
   constructor(type: Item) {
     this.type = type;
@@ -169,7 +169,7 @@ const comparedTypes: readonly string[] = ["link", "string", "integer", "boolean"
  *   object read. A step that does not fit where it is taken from is refused here, before any blob
  *   is read.
  * - Paths that take one object as two schemas are refused as well: an object is written to one, so
- *   they would give no row of any object. So are paths that take one value as equal to two.
+ *   they would give no row of any object.
  * - A part expands at one place, so that its rows are not every pairing of what two places give.
  */
 function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
@@ -199,10 +199,7 @@ function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
             return refuse(`compares ${type}, and what is compared is a link, a string, an integer or a boolean`);
           if (comparedTypeOf(step.value) !== place.type.type)
             return refuse(`compares ${type} with a value that is not ${type}`);
-          place.equalTo ??= { value: step.value, walk: new ValueWalk(place.type) };
-          if (!isSameValue(place.equalTo.value, step.value))
-            return refuse("takes as equal to one value what another path takes as equal to another");
-          place = place.equalTo.walk;
+          place.equalTo.push(step.value);
           continue;
         }
         if (step.step !== "object" && step.step !== "eachInClosure")
@@ -299,9 +296,8 @@ async function rowsFromObject(
 }
 
 async function rowsFromValue(walk: ValueWalk, value: Value, start: ScannedBlob): Promise<readonly PartialRow[]> {
+  if (!walk.equalTo.every((compared) => isSameValue(value, compared))) return [];
   const rowsOfEach: (readonly PartialRow[])[] = [[new Map(walk.rowFields.map((field) => [field, value]))]];
-  if (walk.equalTo !== undefined)
-    rowsOfEach.push(isSameValue(value, walk.equalTo.value) ? await rowsFromValue(walk.equalTo.walk, value, start) : []);
   if (walk.object !== undefined || walk.eachInClosure !== undefined) {
     if (!(value instanceof LinkValue)) return [];
     if (walk.object !== undefined)
@@ -373,6 +369,8 @@ export function rowReaderOf(rows: Schema, definition: PartDefinition): (start: S
  * - A path reaches no value where it takes an object as a schema that it is not written to, where
  *   it follows a link to a blob that is not an object, and where it takes a value as equal to
  *   another.
+ * - Where one path takes a value as equal to another, every path that comes to that value by the
+ *   same steps stops at it. Nothing past it is read, so nothing past it fails the object read.
  * - Where a path takes as a schema an object that names the schema and does not fit it, the value
  *   of an expansion that it came from gives no row. Where it came from none, the object read fails,
  *   even where another path takes an object as a schema that it is not written to. So where every

@@ -309,6 +309,34 @@ describe("an index of rows taken along paths, one of which takes a value as equa
     const names = indexOfRows(pair, { title: paths.name, name: paths.name.equalTo("shut") });
     expect(await titlesIn(await storeHoldingBoth(), names)).toEqual(["shut"]);
   });
+
+  it.each([
+    ["two paths take", { title: paths.name.equalTo("open"), name: paths.name.equalTo("shut") }],
+    ["one path takes", { title: paths.name, name: paths.name.equalTo("open").equalTo("shut") }],
+  ])("holds no row where %s one value as equal to two", async (_, contrary) => {
+    const pair = schema("Pair", { title: string(), name: string() });
+    const rows = await (await storeHoldingBoth()).scan(indexOfRows(pair, contrary));
+    expect(await rowDataOf(rows)).toEqual([]);
+    expect(rows.failures).toEqual([]);
+  });
+
+  it("reads nothing past a value that another path takes as equal to another", async () => {
+    const housed = schema("Housed", { city: string(), home: link() });
+    const misfit = objectFormat.encode(new ObjectValue(place.link, { city: 1 }));
+    const astray = encodeObject(measured, {
+      name: "astray",
+      count: 1,
+      isOpen: true,
+      home: new LinkValue(linkOf(misfit)),
+    });
+    const store = await storeHoldingBoth();
+    await store.write({ roots: [astray.link], blobs: [astray.bytes, misfit] });
+    const city = paths.home.objectOf(place).field("city");
+    expect((await store.scan(indexOfRows(housed, { city, home: paths.home }))).failures).toHaveLength(1);
+    const rows = await store.scan(indexOfRows(housed, { city, home: paths.home.equalTo(new LinkValue(lisbon.link)) }));
+    expect((await rowDataOf(rows)).map(({ city }) => city)).toEqual(["Lisbon"]);
+    expect(rows.failures).toEqual([]);
+  });
 });
 
 describe("the objects of a schema among the blobs held", () => {
@@ -322,7 +350,9 @@ describe("the objects of a schema among the blobs held", () => {
     const store = await storeRecording(recorded);
     await store.write({ roots: [written.link, linkOf(image)], blobs: [written.bytes, image, ...closure] });
     const rows = await store.scan(heldCards);
-    expect((await rowDataOf(rows)).map(({ object }) => object.link)).toEqual([recorded.link, written.link]);
+    expect((await rowDataOf(rows)).map(({ object }) => object.link).sort()).toEqual(
+      [recorded.link, written.link].sort(),
+    );
     expect(await titlesIn(store, titles)).toEqual(["held", "recorded"]);
   });
 
@@ -660,14 +690,6 @@ describe("an index of rows taken along paths", () => {
     expect(() => indexOfRows(pair, { title: city, name })).toThrow(
       "the path of name in Pair takes as Person an object that another path takes as Place",
     );
-  });
-
-  it("is refused where its paths take one value as equal to two", () => {
-    const pair = schema("Pair", { title: string(), name: string() });
-    expect(() => indexOfRows(pair, { title: title.equalTo("a"), name: title.equalTo("b") })).toThrow(
-      "the path of name in Pair takes as equal to one value what another path takes as equal to another",
-    );
-    expect(() => indexOfRows(pair, { title: title.equalTo("a"), name: title.equalTo("a") })).not.toThrow();
   });
 
   it("is refused where a path takes an integer as equal to a number that is not one", () => {

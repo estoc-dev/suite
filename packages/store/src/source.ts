@@ -298,8 +298,8 @@ const heldObjectsBySchema = new Map<Link<Schema>, Source<HeldBlob>>();
 /**
  * - The objects that name `schema` among the blobs read, whether they fit it or not, and wherever
  *   they came from: anyone can send a bundle with an object of any schema in it.
- * - They are the rows of `heldObjects` whose schema is this one, so what reads them is given no
- *   blob of another schema, and no attachment.
+ * - Each is the blob that a row of `heldObjects` whose schema is this one links to under `object`,
+ *   so what reads them is given no blob of another schema, and no attachment.
  */
 export function heldObjectsOf(schema: Schema): Source<HeldBlob> {
   // What reads the objects of one schema reads one source: in a union each of them is read once, and

@@ -189,18 +189,28 @@ describe("the index of mailbox grants", () => {
   it("fails on the Signed Identity that a grant is to where another key signed it", async () => {
     const [alice, bob] = await Promise.all([person(1), person(2)]);
     const { identity } = bob.signedIdentity;
-    const forged = objectFormat.encode(
+    const forgedBytes = objectFormat.encode(
       new ObjectValue(signedIdentities.schema.link, {
         identity: new LinkValue(identity.link),
         signature: await signerOf(9).sign(digestOf(identity.link)),
       }),
     );
-    const grant = encodeObject(mailboxGrantSchema, { to: new LinkValue(linkOf(forged)), mailboxes: [], at: 1_000 });
+    const grant = encodeObject(mailboxGrantSchema, {
+      to: new LinkValue(linkOf(forgedBytes)),
+      mailboxes: [],
+      at: 1_000,
+    });
     const signature = await alice.actor.sign(grant);
-    const blobs = [...signature.blobs, grant.bytes, ...mailboxGrantSchema.blobs, forged, ...bob.signedIdentity.blobs];
+    const blobs = [
+      ...signature.blobs,
+      grant.bytes,
+      ...mailboxGrantSchema.blobs,
+      forgedBytes,
+      ...bob.signedIdentity.blobs,
+    ];
     await alice.store.write({ roots: [signature.link], blobs });
 
-    expect(await scanIn(alice.store)).toEqual({ data: [], failedItems: [linkOf(forged)] });
+    expect(await scanIn(alice.store)).toEqual({ data: [], failedItems: [linkOf(forgedBytes)] });
   });
 });
 

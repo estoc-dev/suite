@@ -24,20 +24,19 @@ interface HeldSignature {
   readonly blobs: readonly Uint8Array[];
 }
 
-/** A store that holds every Signature given, and records a Written Object of each of `recorded`. */
 async function storeRecording(
-  recorded: readonly HeldSignature[],
-  unrecorded: readonly HeldSignature[] = [],
+  recordedSignatures: readonly HeldSignature[],
+  unrecordedSignatures: readonly HeldSignature[] = [],
 ): Promise<Store> {
   const store = memoryStore();
-  const all = [...recorded, ...unrecorded];
+  const all = [...recordedSignatures, ...unrecordedSignatures];
   await store.write({
     roots: all.map(({ link }) => link),
     blobs: [...all.flatMap(({ blobs }) => blobs), ...signedBlobs],
   });
   await store.record(
     writtenObjectsOf(
-      recorded.map(({ link }) => link),
+      recordedSignatures.map(({ link }) => link),
       1,
     ),
   );

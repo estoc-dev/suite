@@ -133,11 +133,17 @@ describe("the identity versions over a source", () => {
   const recordedVersions = identityVersionsOver(recordedWrittenObjects.linksAt("object"));
 
   it("hold the row of a Signed Identity given, and none of one that is held and not given", async () => {
-    const recorded = await publish(signer(ed25519, 7), { at: 1_000 });
-    const unrecorded = await publish(signer(ed25519, 8), { at: 1_000 });
-    const store = await storeHolding([recorded.link, unrecorded.link], [...recorded.blobs, ...unrecorded.blobs]);
-    await store.record(writtenObjectsOf([recorded.link], 1));
-    expect(await scanOf(store, recordedVersions)).toEqual({ data: [identityVersionOf(recorded)], failedItems: [] });
+    const recordedVersion = await publish(signer(ed25519, 7), { at: 1_000 });
+    const unrecordedVersion = await publish(signer(ed25519, 8), { at: 1_000 });
+    const store = await storeHolding(
+      [recordedVersion.link, unrecordedVersion.link],
+      [...recordedVersion.blobs, ...unrecordedVersion.blobs],
+    );
+    await store.record(writtenObjectsOf([recordedVersion.link], 1));
+    expect(await scanOf(store, recordedVersions)).toEqual({
+      data: [identityVersionOf(recordedVersion)],
+      failedItems: [],
+    });
   });
 
   it("hold none of what the source gives that is not a Signed Identity, and that is no failure", async () => {

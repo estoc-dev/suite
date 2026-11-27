@@ -27,9 +27,9 @@ export type ArrivalsView = View<ArrivalData, Arrivals>;
  *   read once for each.
  */
 export function arrivalsView(schema: Schema): ArrivalsView {
-  // The root has a row whatever it is, and a root of `schema` has the same row of both parts.
   const arrivalsAt = (object: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
     indexOfRows(arrivalSchema, { object, at }).reading(recordedStatements);
+  // The root has a row whatever it is, and a root of `schema` has the same row of both parts.
   const arrivalsOf = (root: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
     arrivalsAt(root, at).union(arrivalsAt(root.eachInClosure().objectOf(schema).link, at));
   const inbound = memberObjectOf(inboundSchema);

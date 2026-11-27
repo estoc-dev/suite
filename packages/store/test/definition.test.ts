@@ -25,6 +25,7 @@ import {
   memberObjectOf,
   recordedStatements,
   recordSchema,
+  type Source,
   Store,
   selectedRecords,
   type ValuePath,
@@ -499,6 +500,23 @@ describe("the definition of an index", () => {
     expect(ownedCardsOfAll.definition).toBeDefined();
     expect(ownedCards.definition?.link).toBe(ownedCardsOfAll.definition?.link);
     expect(ownedCardsOfAll.reading(ownedCards).definition?.link).toBe(ownedCardsOfAll.definition?.link);
+  });
+
+  it("holds the parts of a union in the order they were given in, whatever each of them reads", () => {
+    const statementsAgain = indexOfRows(recordSchema, {
+      object: memberObjectOf(recordSchema).field("object"),
+    }).linksAt("object");
+    const [titles, owners, cities] = [
+      memberCard.field("title"),
+      owner.field("name"),
+      owner.field("home").objectOf(place).field("city"),
+    ].map((title) => indexOfRows(titled, { title }));
+    assert(titles !== undefined && owners !== undefined && cities !== undefined);
+    const namesReading = (source: Source<unknown>) =>
+      titles.reading(recordedStatements).union(owners.reading(source), cities.reading(recordedStatements));
+    const { definition } = namesReading(statementsAgain);
+    expect(definition?.data.parts).toEqual([titles, owners, cities].flatMap((index) => index.definition?.data.parts));
+    expect(definition?.link).toBe(namesReading(recordedStatements).definition?.link);
   });
 
   it("is absent where a function gives the rows of a part", () => {

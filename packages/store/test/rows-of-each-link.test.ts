@@ -237,3 +237,83 @@ describe("the rows of an index of each link from what a field links to", () => {
     expect(() => notedTrips.rowsOfEachLinkFrom("stop")).toThrow("a row of Noted may hold no link under stop");
   });
 });
+
+const closureStops = trips.rowsOfEachInClosureAt("stop");
+
+describe("the rows of an index of each blob in the closure of what a field links to", () => {
+  it("are one of each blob in the closure, the blob linked to and the schemas among them, with the other fields as they are", async () => {
+    const store = await storeHolding(north, south);
+    const rows = await store.scan(closureStops);
+    const shared = [route.link, ...linksWrittenIn(route.bytes), lisbon.link, place.link];
+    expect(await stopsIn(store, closureStops, "north")).toEqual(
+      [...new Set([northward.link, porto.link, ...shared])].sort(),
+    );
+    expect(await stopsIn(store, closureStops, "south")).toEqual(
+      [...new Set([southward.link, faro.link, ...shared])].sort(),
+    );
+    expect(rows.failures).toEqual([]);
+  });
+
+  it("are one, of the blob itself, where the field links to a blob that is not an object", async () => {
+    const image = new TextEncoder().encode("an image");
+    const pictured = encodeObject(trip, { name: "pictured", route: new LinkValue(linkOf(image)) });
+    const store = await storeHolding(north);
+    await store.write({ roots: [pictured.link], blobs: [pictured.bytes, image] });
+    expect(await stopsIn(store, closureStops, "pictured")).toEqual([linkOf(image)]);
+  });
+
+  it("are the closure of an object where the field holds its own link", async () => {
+    const own = schema("Own", { root: link(), member: link() });
+    const members = indexOfRows(own, { root: memberTrip.link, member: memberTrip.link }).rowsOfEachInClosureAt(
+      "member",
+    );
+    const store = await storeHolding(north);
+    const rows = await rowsOf(await store.scan(members));
+    expect(new Set(rows.map(({ root }) => root.link))).toEqual(new Set([north.link]));
+    expect(rows.map(({ member }) => member.link)).toContain(north.link);
+    expect(rows.map(({ member }) => member.link)).toContain(porto.link);
+  });
+
+  it("fail the scan where the store does not hold a blob that a row links to", async () => {
+    const absent = linkOf(new TextEncoder().encode("held by no store"));
+    const astray = indexOver(trips, tripRow, ({ data: { name } }) => [{ name, stop: new LinkValue(absent) }]);
+    const store = await storeHolding(north);
+    await expect(store.scan(astray.rowsOfEachInClosureAt("stop"))).rejects.toThrow(`the store does not hold ${absent}`);
+  });
+
+  it("are rows of the schema of the index read, with a link to anything under every field that holds a link", () => {
+    const named = schema("Named", { name: string(), schema: link<Schema>() });
+    const schemaNames = indexOfRows(named, { name: memberTrip.field("name"), schema: memberTrip.schema });
+    const linked = schemaNames.rowsOfEachInClosureAt("schema");
+    expect(linked.rowSchema).toBe(schemaNames.rowSchema);
+    expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{
+      readonly name: string;
+      readonly schema: LinkValue<unknown>;
+    }>();
+  });
+
+  it("have among their failures what the index read failed on", async () => {
+    const misfit = objectFormat.encode(new ObjectValue(trip.link, { name: 1 }));
+    const store = await storeHolding(north);
+    await store.write({ roots: [linkOf(misfit)], blobs: [misfit] });
+    const rows = await store.scan(closureStops);
+    expect(rows.failures).toEqual((await store.scan(trips)).failures);
+    expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(misfit)]);
+  });
+
+  it("hold on a later scan those of what was written since", async () => {
+    const store = await storeHolding(north);
+    expect(await stopsIn(store, closureStops, "south")).toEqual([]);
+    await store.write(batchOf(south));
+    expect(await stopsIn(store, closureStops, "south")).toContain(faro.link);
+  });
+
+  it("are of an index with no definition, where the index read has one", () => {
+    expect(closureStops.definition).toBeUndefined();
+  });
+
+  it("are refused where the field is not a link", () => {
+    // @ts-expect-error A string links to nothing.
+    expect(() => trips.rowsOfEachInClosureAt("name")).toThrow("a row of Trip Row may hold no link under name");
+  });
+});

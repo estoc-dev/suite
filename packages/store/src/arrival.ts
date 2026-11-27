@@ -1,6 +1,6 @@
 import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { memberObjectOf, type ValuePath } from "./definition.ts";
+import { anyMemberObject, memberObjectOf } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
 import { indexOfRows, recordedStatements } from "./source.ts";
 import type { View } from "./view.ts";
@@ -20,23 +20,38 @@ export interface Arrivals {
 
 export type ArrivalsView = View<ArrivalData, Arrivals>;
 
+const inbound = memberObjectOf(inboundSchema);
+const writtenObject = memberObjectOf(writtenObjectSchema);
+
+// A root has a row whatever it is.
+const rootArrivals = indexOfRows(arrivalSchema, { object: inbound.field("bundle"), at: inbound.field("at") })
+  .reading(recordedStatements)
+  .union(
+    indexOfRows(arrivalSchema, { object: writtenObject.field("object"), at: writtenObject.field("at") }).reading(
+      recordedStatements,
+    ),
+  );
+
+const namedSchemaRow = schema("Named Schema", { schema: link<Schema>() });
+
+const closureArrivals = rootArrivals
+  .rowsOfEachInClosureAt("object")
+  .rowsJoinedAt("object", indexOfRows(namedSchemaRow, { schema: anyMemberObject.schema }));
+
 /**
  * - Where a store keeps a blob says nothing here, so the same bytes sent by someone else change no
  *   time unless they are recorded as coming in.
- * - The closure of each root is read once for its record, so blobs that many closures share are
- *   read once for each.
+ * - What a closure holds is told by the schema it names, so an object that names `schema` and does
+ *   not fit it has a time as well, as a root has whatever it is.
  */
 export function arrivalsView(schema: Schema): ArrivalsView {
-  const arrivalsAt = (object: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
-    indexOfRows(arrivalSchema, { object, at }).reading(recordedStatements);
-  // The root has a row whatever it is, and a root of `schema` has the same row of both parts.
-  const arrivalsOf = (root: ValuePath<LinkValue<unknown>>, at: ValuePath<number>) =>
-    arrivalsAt(root, at).union(arrivalsAt(root.eachInClosure().objectOf(schema).link, at));
-  const inbound = memberObjectOf(inboundSchema);
-  const writtenObject = memberObjectOf(writtenObjectSchema);
+  const arrivalsOfSchema = closureArrivals.rowsWhere("schema", new LinkValue(schema.link));
+  const arrival = memberObjectOf(arrivalsOfSchema.rowSchema);
   return {
-    index: arrivalsOf(inbound.field("bundle"), inbound.field("at")).union(
-      arrivalsOf(writtenObject.field("object"), writtenObject.field("at")),
+    index: rootArrivals.union(
+      indexOfRows(arrivalSchema, { object: arrival.field("object"), at: arrival.field("at") }).reading(
+        arrivalsOfSchema,
+      ),
     ),
     read: (rows) => {
       const orderedRows = rows.orderedBy("object", "at");

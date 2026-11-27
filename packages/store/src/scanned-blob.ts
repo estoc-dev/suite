@@ -68,6 +68,22 @@ export class ScannedBlob {
     return linksIn(this.link, await this.reader.get(this.link));
   }
 
+  /** The link of each blob in the closure of this one, its own among them. */
+  async closureLinks(): Promise<Link<unknown>[]> {
+    const closureLinks: Link<unknown>[] = [];
+    const seenLinks = new Set([this.link]);
+    const pendingLinks = [this.link];
+    for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
+      closureLinks.push(next);
+      for (const targetLink of await this.blobAt(next).links()) {
+        if (seenLinks.has(targetLink)) continue;
+        seenLinks.add(targetLink);
+        pendingLinks.push(targetLink);
+      }
+    }
+    return closureLinks;
+  }
+
   async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {
     const bytes = await this.reader.get(this.link);
     return namedSchemaAt(this.link, bytes) === schema.link ? decodeObject(bytes, schema) : undefined;

@@ -1,5 +1,6 @@
 import {
   type EncodedObject,
+  encodeSchema,
   type Link,
   LinkValue,
   memberOf,
@@ -56,6 +57,16 @@ export interface ItemFailure {
   readonly error: unknown;
 }
 
+/** What a part throws where it failed on a blob that the one it was given links to. */
+export class LinkedBlobError extends Error {
+  readonly failure: ItemFailure;
+
+  constructor(failure: ItemFailure) {
+    super(`a part failed on ${failure.item}`, { cause: failure.error });
+    this.failure = failure;
+  }
+}
+
 export interface Listing<T = unknown> {
   readonly links: readonly Link<T>[];
   readonly failures: readonly ItemFailure[];
@@ -97,6 +108,7 @@ export class Derivation<F extends ValueMap> implements Origin {
 // package can.
 let readingOf: <T>(source: Source<T>) => Reading<T>;
 export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
+let partOf: <F extends ValueMap>(index: IndexOfRows<F>) => Part<F>;
 
 /**
  * A reading that trusts what an index derived holds only over the rows of that index, so it is
@@ -170,6 +182,28 @@ type WithLinksToAnything<F> = {
   readonly [K in keyof F]: F[K] extends LinkValue<unknown> ? LinkValue<unknown> : F[K];
 };
 
+function rowsOfEachLinked<N extends string>(
+  index: Index<LinkedRow<N>>,
+  field: N,
+  linksOf: (linkedBlob: ScannedBlob) => Promise<Iterable<Link<unknown>>>,
+): Index<ValueMap> {
+  const { schema } = derivationOf(index);
+  requireLinkAt(schema, field);
+  const { origin, itemOf } = readingOf(index);
+  const part: Part<ValueMap> = {
+    origin,
+    async *rowsOf(blob) {
+      const row = await itemOf(blob);
+      if (row === undefined) return;
+      for (const link of await linksOf(blob.blobAt(row.data[field].link)))
+        yield { ...row.data, [field]: new LinkValue(link) };
+    },
+  };
+  // A schema says that a field holds a link, and not what the link leads to, so the rows given are
+  // of the schema of the index read.
+  return new Index<ValueMap>(new Derivation(schema, [part]));
+}
+
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each
  * as it is written come to the same rows, whatever the order and however often one is added.
@@ -193,7 +227,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
 
   /**
    * It says the paths that give the rows, so an index has one only where paths give the rows of
-   * each of its parts. What `rowsWhere` and `rowsOfEachLinkFrom` give has none.
+   * each of its parts. What the rows of this index are filtered, expanded or joined into has none.
    */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;
@@ -261,21 +295,62 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
    */
   rowsOfEachLinkFrom<N extends string>(this: Index<LinkedRow<N>>, field: N): Index<WithLinksToAnything<F>> {
-    const { schema } = this.#derivation;
-    requireLinkAt(schema, field);
+    return rowsOfEachLinked(this, field, (linkedBlob) => linkedBlob.links()) as Index<WithLinksToAnything<F>>;
+  }
+
+  /**
+   * - A row of each blob in the closure of the blob that a row of this index links to under `field`,
+   *   that blob among them and whatever the bytes of each are: it holds the link of that blob under
+   *   `field`, and what the row holds under every other field.
+   * - What this index failed on is among the failures of the one given.
+   * - A scan throws where neither the store nor what the rows are read from holds a blob of the
+   *   closure.
+   */
+  rowsOfEachInClosureAt<N extends string>(this: Index<LinkedRow<N>>, field: N): Index<WithLinksToAnything<F>> {
+    return rowsOfEachLinked(this, field, (linkedBlob) => linkedBlob.closureLinks()) as Index<WithLinksToAnything<F>>;
+  }
+
+  /**
+   * - A row of each row that `linked` gives of the blob that a row of this index links to under
+   *   `field`: it holds what both hold. So a row gives none where `linked` gives none of that blob.
+   * - `linked` is an index that `reading` has not told what to read: here it reads that blob, and
+   *   no other.
+   * - The rows are of a schema with the fields of both and an empty title. A field that both have
+   *   is refused.
+   * - Where `linked` fails on the blob, the index given fails on that blob, once for each row that
+   *   links to it. What this index failed on is among its failures as well.
+   * - A scan throws where neither the store nor what the rows are read from holds a blob that
+   *   `linked` reads.
+   */
+  rowsJoinedAt<N extends string, G extends ValueMap>(
+    this: Index<LinkedRow<N>>,
+    field: N,
+    linked: IndexOfRows<G>,
+  ): Index<F & G> {
+    const { document } = this.#derivation.schema;
+    requireLinkAt(this.#derivation.schema, field);
+    const linkedFields = linked.rowSchema.document.fields;
+    const sharedName = Object.keys(linkedFields).find((name) => fieldOf(document, name) !== undefined);
+    if (sharedName !== undefined) throw new Error(`the rows joined both have a field ${sharedName}`);
     const { origin, itemOf } = readingOf(this);
+    const linkedPart = partOf(linked);
     const part: Part<ValueMap> = {
       origin,
       async *rowsOf(blob) {
         const row = await itemOf(blob);
         if (row === undefined) return;
-        for (const link of await blob.blobAt(row.data[field].link).links())
-          yield { ...row.data, [field]: new LinkValue(link) };
+        const linkedBlob = blob.blobAt(row.data[field].link);
+        const linkedRows: ValueMap[] = [];
+        try {
+          for await (const linkedRow of linkedPart.rowsOf(linkedBlob)) linkedRows.push(linkedRow);
+        } catch (error) {
+          throw new LinkedBlobError({ item: linkedBlob.link, error });
+        }
+        for (const linkedRow of linkedRows) yield { ...row.data, ...linkedRow };
       },
     };
-    // A schema says that a field holds a link, and not what the link leads to, so the rows given
-    // are of the schema of this index.
-    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<WithLinksToAnything<F>>;
+    const schema = encodeSchema({ title: "", fields: { ...document.fields, ...linkedFields } });
+    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<F & G>;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {
@@ -318,6 +393,10 @@ export function indexOver<F extends ValueMap, T>(
  */
 export class IndexOfRows<F extends ValueMap> extends Index<F> {
   readonly #part: Required<Part<F>>;
+
+  static {
+    partOf = (index) => index.#part;
+  }
 
   constructor(schema: Schema<F>, part: Required<Part<F>>) {
     super(new Derivation(schema, [part]));

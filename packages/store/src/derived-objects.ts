@@ -10,7 +10,14 @@ import {
 import type { BlobSet } from "./scan.ts";
 import { ClosureReader, ScannedBlob } from "./scanned-blob.ts";
 import { type Rows, SortedRows } from "./sorted-rows.ts";
-import type { Derivation, FieldNames, ItemFailure, Listing, Origin } from "./source.ts";
+import {
+  type Derivation,
+  type FieldNames,
+  type ItemFailure,
+  LinkedBlobError,
+  type Listing,
+  type Origin,
+} from "./source.ts";
 
 export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
   /** What comes of adding to these starts with them, in this order. */
@@ -83,7 +90,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
           try {
             for await (const data of part.rowsOf(blob)) partObjects.push(encodeObject(schema, data));
           } catch (error) {
-            ownFailures.push({ item: link, error });
+            ownFailures.push(error instanceof LinkedBlobError ? error.failure : { item: link, error });
             continue;
           }
           for (const object of partObjects) if (!objectsByLink.has(object.link)) objectsByLink.set(object.link, object);

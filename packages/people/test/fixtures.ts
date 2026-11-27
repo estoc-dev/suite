@@ -11,12 +11,6 @@ export const key = (scheme: CurveScheme, fill = 1) => signer(scheme, fill).key;
 export const byLink = (blobs: readonly Uint8Array[]) => new Map(blobs.map((bytes) => [linkOf(bytes), bytes]));
 export const identityVersionInHand = async <T>(inHand: T) => inHand;
 
-export function bytesOf({ link, blobs }: SignedIdentityObject): Uint8Array {
-  const bytes = blobs.find((each) => linkOf(each) === link);
-  if (bytes === undefined) throw new Error(`the blobs of ${link} do not hold it`);
-  return bytes;
-}
-
 function rowsOf(...signedIdentities: readonly SignedIdentityObject[]): IdentityVersionRows {
   const signedIdentitiesByLink = new Map<Link<unknown>, SignedIdentityObject>();
   for (const signedIdentity of signedIdentities) {

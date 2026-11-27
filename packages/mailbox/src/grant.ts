@@ -1,8 +1,8 @@
 import { identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
 import { type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
-import type { SeenIdentityVersions } from "@estoc/people";
+import { identityVersionsOver, type SeenIdentityVersions, verifiedSignaturesOf } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { indexOver, selectedBlobs, type View } from "@estoc/store";
+import { heldBlobs, linkedBlob, memberObjectOf, type View } from "@estoc/store";
 import { type MailboxData, type MailboxGrantData, mailboxGrantSchema } from "./schema.ts";
 
 const { signatures, signedIdentities } = identityKit;
@@ -18,19 +18,34 @@ const mailboxGrantRowSchema = schema("Mailbox Grant Row", {
   signature: link(),
 });
 
-export const mailboxGrants = indexOver(
-  selectedBlobs(signatures.selectionOver(mailboxGrantSchema)),
-  mailboxGrantRowSchema,
-  async function* ({ signature, object }, reader) {
-    const to = await signedIdentities.read(object.data.to.link, reader);
-    yield {
-      from: new LinkValue(signature.signedIdentity.identity.identifier),
-      to: new LinkValue(to.identity.identifier),
-      at: object.data.at,
-      signature: new LinkValue(signature.link),
-    };
-  },
-);
+const grantSignatures = verifiedSignaturesOf(mailboxGrantSchema, heldBlobs);
+const grantSignature = memberObjectOf(grantSignatures.rowSchema);
+const grant = memberObjectOf(mailboxGrantSchema);
+
+const signedGrantSchema = schema("Signed Mailbox Grant", { from: link(), signature: link(), grant: link() });
+const grantRecipientSchema = schema("Mailbox Grant Recipient", { grantedAt: integer(), grantee: link() });
+
+// The fields are named apart from those of an identity version, which the rows are joined to.
+const grantsToIdentityVersions = grantSignatures
+  .rowsTaking(signedGrantSchema, {
+    from: grantSignature.field("identifier"),
+    signature: grantSignature.field("signature"),
+    grant: grantSignature.field("object"),
+  })
+  .rowsJoinedAt(
+    "grant",
+    linkedBlob.rowsTaking(grantRecipientSchema, { grantedAt: grant.field("at"), grantee: grant.field("to") }),
+  )
+  .rowsJoinedAt("grantee", identityVersionsOver(linkedBlob));
+
+const grantToIdentityVersion = memberObjectOf(grantsToIdentityVersions.rowSchema);
+
+export const mailboxGrants = grantsToIdentityVersions.rowsTaking(mailboxGrantRowSchema, {
+  from: grantToIdentityVersion.field("from"),
+  to: grantToIdentityVersion.field("identifier"),
+  at: grantToIdentityVersion.field("grantedAt"),
+  signature: grantToIdentityVersion.field("signature"),
+});
 
 export interface MailboxGrant {
   readonly object: EncodedObject<MailboxGrantData>;

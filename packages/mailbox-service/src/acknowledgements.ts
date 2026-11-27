@@ -1,7 +1,7 @@
-import { identityKit } from "@estoc/identity";
 import { type EncodedObject, type Link, LinkValue } from "@estoc/object";
+import { verifiedSignaturesOf } from "@estoc/people";
 import { type DataOf, link, schema } from "@estoc/schema";
-import { indexOver, selectedRecords, type View, writtenObjectsOver } from "@estoc/store";
+import { linkedBlob, memberObjectOf, recordedWrittenObjects, type View } from "@estoc/store";
 import { openedMailboxes } from "./opened-mailboxes.ts";
 import { acknowledgementSchema } from "./schemas.ts";
 
@@ -10,11 +10,24 @@ const acknowledgementRowSchema = schema("Acknowledgement row", {
   acknowledgement: link(),
 });
 
-export const acknowledgements = indexOver(
-  selectedRecords(writtenObjectsOver(identityKit.signatures.selectionOver(acknowledgementSchema))),
-  acknowledgementRowSchema,
-  ({ signature, object }) => [{ acceptance: object.data.acceptance, acknowledgement: new LinkValue(signature.link) }],
+const acknowledgedAcceptanceSchema = schema("Acknowledged Acceptance", { acceptance: link() });
+
+const signedAcknowledgements = verifiedSignaturesOf(
+  acknowledgementSchema,
+  recordedWrittenObjects.linksAt("object"),
+).rowsJoinedAt(
+  "object",
+  linkedBlob.rowsTaking(acknowledgedAcceptanceSchema, {
+    acceptance: memberObjectOf(acknowledgementSchema).field("acceptance"),
+  }),
 );
+
+const signedAcknowledgement = memberObjectOf(signedAcknowledgements.rowSchema);
+
+export const acknowledgements = signedAcknowledgements.rowsTaking(acknowledgementRowSchema, {
+  acceptance: signedAcknowledgement.field("acceptance"),
+  acknowledgement: signedAcknowledgement.field("signature"),
+});
 
 export interface Acknowledgements {
   /**

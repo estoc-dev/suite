@@ -9,6 +9,7 @@ import {
   SoftwareSigner,
 } from "@estoc/identity";
 import {
+  digestOf,
   type EncodedObject,
   encodeObject,
   type Link,
@@ -127,10 +128,11 @@ const grantFrom = async ({ store }: Person, from: Person, to: Person) =>
   );
 
 describe("the index of mailbox grants", () => {
-  const rowsIn = async (store: Store) => {
-    const rows = [];
-    for await (const { data } of await store.scan(mailboxGrants)) rows.push(data);
-    return rows;
+  const scanIn = async (store: Store) => {
+    const rows = await store.scan(mailboxGrants);
+    const data = [];
+    for await (const row of rows) data.push(row.data);
+    return { data, failedItems: rows.failures.map(({ item }) => item) };
   };
 
   it("gives the row of each grant of one person, with whom it is to and its at", async () => {
@@ -145,14 +147,15 @@ describe("the index of mailbox grants", () => {
       at,
       signature: new LinkValue(signature.link),
     });
-    const rows = await rowsIn(alice.store);
-    expect(rows).toHaveLength(3);
-    expect(rows).toEqual(
+    const { data, failedItems } = await scanIn(alice.store);
+    expect(data).toHaveLength(3);
+    expect(data).toEqual(
       expect.arrayContaining([rowOf(bob, 2_000, first), rowOf(bob, 3_000, second), rowOf(carol, 1_000, toCarol)]),
     );
+    expect(failedItems).toEqual([]);
   });
 
-  it("leaves out an object that names the schema of a grant and does not fit it", async () => {
+  it("fails on an object signed that names the schema of a grant and does not fit it, and not on the Signature over it", async () => {
     const [alice, bob, mallory] = await Promise.all([person(1), person(2), person(4)]);
     const signature = await give(alice, bob, [alice.inbox.mailbox], 1_000);
     await send(alice, bob, signature.link);
@@ -164,7 +167,50 @@ describe("the index of mailbox grants", () => {
     const blobs = [...misfitSignature.blobs, misfit, ...mailboxGrantSchema.blobs, ...bob.signedIdentity.blobs];
     await bob.intake.receive(decodeBundle(encodeBundle(misfitSignature.link, blobs)));
 
-    expect((await rowsIn(bob.store)).map((row) => row.signature.link)).toEqual([signature.link]);
+    const { data, failedItems } = await scanIn(bob.store);
+    expect(data.map((row) => row.signature.link)).toEqual([signature.link]);
+    expect(failedItems).toEqual([linkOf(misfit)]);
+  });
+
+  it("gives no row of a grant to what is not a Signed Identity, and that is no failure", async () => {
+    const alice = await person(1);
+    const grant = encodeObject(mailboxGrantSchema, {
+      to: new LinkValue(alice.inbox.mailbox),
+      mailboxes: [],
+      at: 1_000,
+    });
+    const signature = await alice.actor.sign(grant);
+    const blobs = [...signature.blobs, grant.bytes, ...mailboxGrantSchema.blobs];
+    await alice.store.write({ roots: [signature.link], blobs });
+
+    expect(await scanIn(alice.store)).toEqual({ data: [], failedItems: [] });
+  });
+
+  it("fails on the Signed Identity that a grant is to where another key signed it", async () => {
+    const [alice, bob] = await Promise.all([person(1), person(2)]);
+    const { identity } = bob.signedIdentity;
+    const forgedBytes = objectFormat.encode(
+      new ObjectValue(signedIdentities.schema.link, {
+        identity: new LinkValue(identity.link),
+        signature: await signerOf(9).sign(digestOf(identity.link)),
+      }),
+    );
+    const grant = encodeObject(mailboxGrantSchema, {
+      to: new LinkValue(linkOf(forgedBytes)),
+      mailboxes: [],
+      at: 1_000,
+    });
+    const signature = await alice.actor.sign(grant);
+    const blobs = [
+      ...signature.blobs,
+      grant.bytes,
+      ...mailboxGrantSchema.blobs,
+      forgedBytes,
+      ...bob.signedIdentity.blobs,
+    ];
+    await alice.store.write({ roots: [signature.link], blobs });
+
+    expect(await scanIn(alice.store)).toEqual({ data: [], failedItems: [linkOf(forgedBytes)] });
   });
 });
 

@@ -163,10 +163,11 @@ function requireLinkAt({ document }: Schema, field: string): void {
 
 type LinkedRow<N extends string> = Readonly<Record<N, LinkValue<unknown>>>;
 
-// The name of a field is a string in the object format, and a key such as `10` is a number to the
-// compiler, so the names are compared as strings.
-type WithLinkAt<F, N extends string> = {
-  readonly [K in keyof F]: `${K & (string | number)}` extends N ? LinkValue<unknown> : F[K];
+// The field that the links are put under is told by its name, and a name is not always one key to the
+// compiler: a field named `10`, or one of a schema made with names that are worked out. So the type
+// says of no link in the rows what it leads to.
+type WithLinksToAnything<F> = {
+  readonly [K in keyof F]: F[K] extends LinkValue<unknown> ? LinkValue<unknown> : F[K];
 };
 
 /**
@@ -259,7 +260,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    * - What this index failed on is among the failures of the one given.
    * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
    */
-  rowsOfEachLinkFrom<N extends string>(this: Index<LinkedRow<N>>, field: N): Index<WithLinkAt<F, N>> {
+  rowsOfEachLinkFrom<N extends string>(this: Index<LinkedRow<N>>, field: N): Index<WithLinksToAnything<F>> {
     const { schema } = this.#derivation;
     requireLinkAt(schema, field);
     const { origin, itemOf } = readingOf(this);
@@ -274,7 +275,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     };
     // A schema says that a field holds a link, and not what the link leads to, so the rows given
     // are of the schema of this index.
-    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<WithLinkAt<F, N>>;
+    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<WithLinksToAnything<F>>;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {

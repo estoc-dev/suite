@@ -162,24 +162,29 @@ describe("the rows of an index of each link from what a field links to", () => {
     }>();
   });
 
-  it("hold a link to anything under a field named by a number, and what the rows read hold under the others", () => {
-    const numbered = schema("Numbered", { 10: link<Schema>(), named: link<Schema>() });
-    const linked = indexOfRows(numbered, { 10: memberTrip.schema, named: memberTrip.schema }).rowsOfEachLinkFrom("10");
+  it("hold a link to anything under every field that holds a link, and what the rows read hold under the others", () => {
+    const numbered = schema("Numbered", { 10: link<Schema>(), named: link<Schema>(), title: string() });
+    const linked = indexOfRows(numbered, {
+      10: memberTrip.schema,
+      named: memberTrip.schema,
+      title: memberTrip.field("name"),
+    }).rowsOfEachLinkFrom("10");
     expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{
       readonly 10: LinkValue<unknown>;
-      readonly named: LinkValue<Schema>;
+      readonly named: LinkValue<unknown>;
+      readonly title: string;
     }>();
   });
 
-  it("hold a link to anything under every field where the name is given as any string", () => {
-    const rowsWithField = (other: string) => {
-      const fields = schema("Named Fields", { named: link<Schema>(), [other]: link<Schema>() });
-      return indexOfRows(fields, { named: memberTrip.schema, [other]: memberTrip.schema });
+  it("hold a link to anything under a field whose name is put together where the index is made", () => {
+    const rowsWithField = (field: string) => {
+      const fields = schema("Named Fields", { [field]: link<Schema>() });
+      return indexOfRows(fields, { [field]: memberTrip.schema });
     };
-    const name: string = "10";
-    const linked = rowsWithField(name).rowsOfEachLinkFrom(name);
-    expectTypeOf<RowOf<typeof linked>[string]>().toEqualTypeOf<LinkValue<unknown>>();
-    expectTypeOf<RowOf<typeof linked>[number]>().toEqualTypeOf<LinkValue<unknown>>();
+    const linkedAt = (slot: number) => rowsWithField(`stop${slot}`).rowsOfEachLinkFrom(`stop${slot}`);
+    type Linked = RowOf<ReturnType<typeof linkedAt>>;
+    expectTypeOf<Linked[string]>().toEqualTypeOf<LinkValue<unknown>>();
+    expectTypeOf<Linked[number]>().toEqualTypeOf<LinkValue<unknown>>();
   });
 
   it("have among their failures what the index read failed on", async () => {

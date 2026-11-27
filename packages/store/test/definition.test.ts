@@ -383,21 +383,16 @@ describe("the definition of an index", () => {
         object: memberObjectOf(recordSchema).field("object"),
       })
       .linksAt("object");
-    const paths = [
-      memberCard.field("title"),
-      memberObjectOf(person).field("name"),
-      memberObjectOf(place).field("city"),
-    ];
-    const namesReading = (source: Source<unknown>) => {
-      const [titles, names, cities] = [recordedStatements, source, recordedStatements].map((read, at) =>
-        read.rowsTaking(titled, { title: paths[at] as ValuePath<string> }),
-      );
-      assert(titles !== undefined && names !== undefined && cities !== undefined);
-      return titles.union(names, cities);
-    };
+    const title = memberCard.field("title");
+    const name = memberObjectOf(person).field("name");
+    const city = memberObjectOf(place).field("city");
+    const namesReading = (source: Source<unknown>) =>
+      recordedStatements
+        .rowsTaking(titled, { title })
+        .union(source.rowsTaking(titled, { title: name }), recordedStatements.rowsTaking(titled, { title: city }));
     const { definition } = namesReading(statementsAgain);
     expect(definition?.data.parts).toEqual(
-      paths.flatMap((title) => heldBlobs.rowsTaking(titled, { title }).definition?.data.parts),
+      [title, name, city].flatMap((path) => heldBlobs.rowsTaking(titled, { title: path }).definition?.data.parts),
     );
     expect(definition?.link).toBe(namesReading(recordedStatements).definition?.link);
   });

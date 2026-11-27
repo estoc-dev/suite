@@ -1,5 +1,6 @@
 import {
   type EncodedObject,
+  encodeObject,
   encodeSchema,
   type Link,
   LinkValue,
@@ -350,12 +351,16 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * - A row of each row that `linked` gives of the blob that a row of this index links to under
    *   `field`: it holds what both hold. So a row gives none where `linked` gives none of that blob.
-   * - Each part of `linked` reads `linkedBlob`, which here is that blob. One that reads anything
-   *   else, an index that reads `linkedBlob` among them, is refused.
+   * - Each part of `linked` reads `linkedBlob` itself, which here is that blob. One that reads
+   *   anything else is refused, as `linkedBlob.rowsTaking(...).rowsWhere(...)` is: its part reads
+   *   the rows that were taken.
    * - The rows are of a schema with the fields of both and an empty title. A field that both have
    *   is refused.
-   * - Where `linked` fails on the blob, the index given fails on that blob, once for each row that
-   *   links to it. What this index failed on is among its failures as well.
+   * - The index given has a part for each part of `linked`, so its rows and failures are those of a
+   *   union of the joins to each.
+   * - Where a part of `linked` fails on the blob, or gives a row that does not fit the schema of
+   *   `linked`, the index given fails on that blob, once for each row that links to it. What this
+   *   index failed on is among its failures as well.
    * - A scan throws where neither the store nor what the rows are read from holds a blob that
    *   `linked` reads.
    */
@@ -375,24 +380,29 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
         "the rows of an index are joined to those of one that reads linkedBlob, and this one reads something else",
       );
     const { origin, itemOf } = readingOf(this);
-    const part: Part<ValueMap> = {
-      origin,
-      async *rowsOf(blob) {
-        const row = await itemOf(blob);
-        if (row === undefined) return;
-        const linkedBlob = blob.blobAt(row.data[field].link);
-        const linkedRows: ValueMap[] = [];
-        try {
-          for (const linkedPart of linkedParts)
-            for await (const linkedRow of linkedPart.rowsOf(linkedBlob)) linkedRows.push(linkedRow);
-        } catch (error) {
-          throw new LinkedBlobError({ item: linkedBlob.link, error });
-        }
-        for (const linkedRow of linkedRows) yield { ...row.data, ...linkedRow };
-      },
-    };
+    const linkedSchema = linked.rowSchema;
+    const parts = linkedParts.map(
+      (linkedPart): Part<ValueMap> => ({
+        origin,
+        async *rowsOf(blob) {
+          const row = await itemOf(blob);
+          if (row === undefined) return;
+          const linkedBlob = blob.blobAt(row.data[field].link);
+          const linkedRows: ValueMap[] = [];
+          try {
+            // A row that does not fit the schema of `linked` is a failure on the blob linked to, so
+            // it is found before it is put with the row that links to it.
+            for await (const linkedRow of linkedPart.rowsOf(linkedBlob))
+              linkedRows.push(encodeObject(linkedSchema, linkedRow).data);
+          } catch (error) {
+            throw new LinkedBlobError({ item: linkedBlob.link, error });
+          }
+          for (const linkedRow of linkedRows) yield { ...row.data, ...linkedRow };
+        },
+      }),
+    );
     const schema = encodeSchema({ title: "", fields: { ...document.fields, ...linkedFields } });
-    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<F & G>;
+    return new Index<ValueMap>(new Derivation(schema, parts)) as Index<F & G>;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {

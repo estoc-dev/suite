@@ -163,7 +163,11 @@ function requireLinkAt({ document }: Schema, field: string): void {
 
 type LinkedRow<N extends string> = Readonly<Record<N, LinkValue<unknown>>>;
 
-type WithLinkAt<F, N extends string> = { readonly [K in keyof F]: K extends N ? LinkValue<unknown> : F[K] };
+// The name of a field is a string in the object format, and a key such as `10` is a number to the
+// compiler, so the names are compared as strings.
+type WithLinkAt<F, N extends string> = {
+  readonly [K in keyof F]: `${K & (string | number)}` extends N ? LinkValue<unknown> : F[K];
+};
 
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each
@@ -248,7 +252,8 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * - A row of each link written in the blob that a row of this index links to under `field`: it
    *   holds that link under `field`, and what the row holds under every other field. So a row that
-   *   links to a blob that is not an object gives none, and two that come to the same give one.
+   *   links to a blob that is not an object gives none, and rows that hold the same under every
+   *   field are one row.
    * - The link of the schema that the object is written to is among them, unless the object is
    *   written to itself.
    * - What this index failed on is among the failures of the one given.

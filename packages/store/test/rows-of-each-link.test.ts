@@ -162,6 +162,26 @@ describe("the rows of an index of each link from what a field links to", () => {
     }>();
   });
 
+  it("hold a link to anything under a field named by a number, and what the rows read hold under the others", () => {
+    const numbered = schema("Numbered", { 10: link<Schema>(), named: link<Schema>() });
+    const linked = indexOfRows(numbered, { 10: memberTrip.schema, named: memberTrip.schema }).rowsOfEachLinkFrom("10");
+    expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{
+      readonly 10: LinkValue<unknown>;
+      readonly named: LinkValue<Schema>;
+    }>();
+  });
+
+  it("hold a link to anything under every field where the name is given as any string", () => {
+    const rowsWithField = (other: string) => {
+      const fields = schema("Named Fields", { named: link<Schema>(), [other]: link<Schema>() });
+      return indexOfRows(fields, { named: memberTrip.schema, [other]: memberTrip.schema });
+    };
+    const name: string = "10";
+    const linked = rowsWithField(name).rowsOfEachLinkFrom(name);
+    expectTypeOf<RowOf<typeof linked>[string]>().toEqualTypeOf<LinkValue<unknown>>();
+    expectTypeOf<RowOf<typeof linked>[number]>().toEqualTypeOf<LinkValue<unknown>>();
+  });
+
   it("have among their failures what the index read failed on", async () => {
     const misfit = objectFormat.encode(new ObjectValue(trip.link, { name: 1 }));
     const store = await storeHolding(north);

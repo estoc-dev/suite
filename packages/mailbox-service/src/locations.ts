@@ -1,8 +1,8 @@
 import { identityKit, type Signature } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
-import type { SeenIdentityVersions } from "@estoc/people";
+import { type SeenIdentityVersions, verifiedSignaturesOf } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
-import { indexOver, selectedBlobs, type View } from "@estoc/store";
+import { linkedBlob, memberObjectOf, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
 
 const { signatures } = identityKit;
@@ -13,17 +13,20 @@ const locationSchema = schema("Location", {
   service: link(),
 });
 
-export const locations = indexOver(
-  selectedBlobs(signatures.selectionOver(serviceSchema)),
-  locationSchema,
-  ({ signature, object }) => [
-    {
-      identifier: new LinkValue(signature.signedIdentity.identity.identifier),
-      at: object.data.at,
-      service: new LinkValue(signature.link),
-    },
-  ],
+const serviceTimeSchema = schema("Service Time", { at: integer() });
+
+const signedServices = verifiedSignaturesOf(serviceSchema).rowsJoinedAt(
+  "object",
+  linkedBlob.rowsTaking(serviceTimeSchema, { at: memberObjectOf(serviceSchema).field("at") }),
 );
+
+const signedService = memberObjectOf(signedServices.rowSchema);
+
+export const locations = signedServices.rowsTaking(locationSchema, {
+  identifier: signedService.field("identifier"),
+  at: signedService.field("at"),
+  service: signedService.field("signature"),
+});
 
 /**
  * A Service carries its authority in the signature, so one that came in at a mailbox is honored as

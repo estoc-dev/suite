@@ -118,7 +118,10 @@ const blobsList = listInWrittenOrder("Blobs", heldBlobSchema, blobLinks, (blob, 
 /** A `source` that gives its schema by a link to `target` is a row here as well as in Schemas. */
 export const heldLinkSchema = schema("Held Link", { target: link(), source: link() });
 
-const heldLinks = indexOfRows(heldLinkSchema, { target: anyMemberObject.eachLink(), source: anyMemberObject.link });
+const heldLinks = indexOfRows(heldLinkSchema, {
+  target: anyMemberObject.link,
+  source: anyMemberObject.link,
+}).rowsOfEachLinkFrom("target");
 
 async function linkPageOf<F extends ValueMap>(
   rows: AsyncIterable<EncodedObject<F>>,

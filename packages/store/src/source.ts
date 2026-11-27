@@ -155,6 +155,16 @@ const comparedTypeOf = (value: ComparedValue): string =>
 const isSameValue = (value: Value | undefined, compared: ComparedValue): boolean =>
   value instanceof LinkValue && compared instanceof LinkValue ? value.link === compared.link : value === compared;
 
+function requireLinkAt({ document }: Schema, field: string): void {
+  const rowField = fieldOf(document, field);
+  if (rowField?.type !== "link" || rowField.optional === true)
+    throw new Error(`a row of ${document.title} may hold no link under ${field}`);
+}
+
+type LinkedRow<N extends string> = Readonly<Record<N, LinkValue<unknown>>>;
+
+type WithLinkAt<F, N extends string> = { readonly [K in keyof F]: K extends N ? LinkValue<unknown> : F[K] };
+
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each
  * as it is written come to the same rows, whatever the order and however often one is added.
@@ -178,7 +188,7 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
 
   /**
    * It says the paths that give the rows, so an index has one only where paths give the rows of
-   * each of its parts. What `rowsWhere` gives has none.
+   * each of its parts. What `rowsWhere` and `rowsOfEachLinkFrom` give has none.
    */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;
@@ -194,16 +204,13 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    *   A staged batch that holds the blob does not change that for a row the store already has: the
    *   rows of the store are worked out before those of the batch.
    */
-  linksAt<N extends string>(this: Index<Readonly<Record<N, LinkValue<unknown>>>>, field: N): Source<HeldBlob> {
+  linksAt<N extends string>(this: Index<LinkedRow<N>>, field: N): Source<HeldBlob> {
     // What reads the same links of the same rows reads one source, so that in a union each blob is
     // read once for all of them.
     const kept = this.#linkedBlobsByField.get(field);
     if (kept !== undefined) return kept;
     const derivation = this.#derivation;
-    const { document } = derivation.schema;
-    const rowField = fieldOf(document, field);
-    if (rowField?.type !== "link" || rowField.optional === true)
-      throw new Error(`a row of ${document.title} may hold no link under ${field}`);
+    requireLinkAt(derivation.schema, field);
     const linkedBlobs = new Source({
       origin: { listingIn: async (blobSet) => (await blobSet.rowsOf(derivation)).linksAt(field) },
       itemOf: heldBlobOf,
@@ -236,6 +243,33 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
       },
     };
     return new Index(new Derivation(schema, [part]));
+  }
+
+  /**
+   * - A row of each link written in the blob that a row of this index links to under `field`: it
+   *   holds that link under `field`, and what the row holds under every other field. So a row that
+   *   links to a blob that is not an object gives none, and two that come to the same give one.
+   * - The link of the schema that the object is written to is among them, unless the object is
+   *   written to itself.
+   * - What this index failed on is among the failures of the one given.
+   * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
+   */
+  rowsOfEachLinkFrom<N extends string>(this: Index<LinkedRow<N>>, field: N): Index<WithLinkAt<F, N>> {
+    const { schema } = this.#derivation;
+    requireLinkAt(schema, field);
+    const { origin, itemOf } = readingOf(this);
+    const part: Part<ValueMap> = {
+      origin,
+      async *rowsOf(blob) {
+        const row = await itemOf(blob);
+        if (row === undefined) return;
+        for (const link of await blob.blobAt(row.data[field].link).links())
+          yield { ...row.data, [field]: new LinkValue(link) };
+      },
+    };
+    // A schema says that a field holds a link, and not what the link leads to, so the rows given
+    // are of the schema of this index.
+    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<WithLinkAt<F, N>>;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {

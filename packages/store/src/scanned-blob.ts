@@ -7,7 +7,7 @@ import {
   type Schema,
   type ValueMap,
 } from "@estoc/object";
-import { linksIn } from "./batch.ts";
+import { closureIn, linksIn } from "./batch.ts";
 
 /** The store is asked for a blob once, however often the blob is read here. */
 export class ClosureReader {
@@ -70,18 +70,7 @@ export class ScannedBlob {
 
   /** The link of each blob in the closure of this one, its own among them. */
   async closureLinks(): Promise<Link<unknown>[]> {
-    const closureLinks: Link<unknown>[] = [];
-    const seenLinks = new Set([this.link]);
-    const pendingLinks = [this.link];
-    for (let next = pendingLinks.pop(); next !== undefined; next = pendingLinks.pop()) {
-      closureLinks.push(next);
-      for (const targetLink of await this.blobAt(next).links()) {
-        if (seenLinks.has(targetLink)) continue;
-        seenLinks.add(targetLink);
-        pendingLinks.push(targetLink);
-      }
-    }
-    return closureLinks;
+    return [...(await closureIn(this.reader, this.link)).keys()];
   }
 
   async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {

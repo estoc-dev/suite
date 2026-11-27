@@ -111,7 +111,7 @@ describe("when something came to a user's devices, by the records of a store", (
     expect(await arrivalTimes.atOf(letterSchema.link)).toBeUndefined();
   });
 
-  it("is that of the root, for a blob in its closure that names the schema and does not fit it, and for the others", async () => {
+  it("is that of the root for a blob in its closure that names the schema, whether or not it fits it", async () => {
     const { store, arrivals } = sides();
     const ada = card("Ada");
     const nameless = objectFormat.encode(new ObjectValue(cardSchema.link, {}));

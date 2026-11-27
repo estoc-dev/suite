@@ -313,8 +313,8 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * - A row of each row that `linked` gives of the blob that a row of this index links to under
    *   `field`: it holds what both hold. So a row gives none where `linked` gives none of that blob.
-   * - `linked` is an index that `reading` has not told what to read: here it reads that blob, and
-   *   no other.
+   * - `linked` is an index that `reading` has not told what to read: here the member that its paths
+   *   start from is that blob.
    * - The rows are of a schema with the fields of both and an empty title. A field that both have
    *   is refused.
    * - Where `linked` fails on the blob, the index given fails on that blob, once for each row that

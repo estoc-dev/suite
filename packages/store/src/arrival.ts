@@ -2,7 +2,7 @@ import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { anyMemberObject, memberObjectOf } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
-import { indexOfRows, recordedStatements } from "./source.ts";
+import { linkedBlob, recordedStatements } from "./source.ts";
 import type { View } from "./view.ts";
 import { writtenObjectSchema } from "./written-object.ts";
 
@@ -24,19 +24,20 @@ const inbound = memberObjectOf(inboundSchema);
 const writtenObject = memberObjectOf(writtenObjectSchema);
 
 // A root has a row whatever it is.
-const rootArrivals = indexOfRows(arrivalSchema, { object: inbound.field("bundle"), at: inbound.field("at") })
-  .reading(recordedStatements)
+const rootArrivals = recordedStatements
+  .rowsTaking(arrivalSchema, { object: inbound.field("bundle"), at: inbound.field("at") })
   .union(
-    indexOfRows(arrivalSchema, { object: writtenObject.field("object"), at: writtenObject.field("at") }).reading(
-      recordedStatements,
-    ),
+    recordedStatements.rowsTaking(arrivalSchema, {
+      object: writtenObject.field("object"),
+      at: writtenObject.field("at"),
+    }),
   );
 
 const namedSchemaRow = schema("Named Schema", { schema: link<Schema>() });
 
 const closureArrivals = rootArrivals
   .rowsOfEachInClosureAt("object")
-  .rowsJoinedAt("object", indexOfRows(namedSchemaRow, { schema: anyMemberObject.schema }));
+  .rowsJoinedAt("object", linkedBlob.rowsTaking(namedSchemaRow, { schema: anyMemberObject.schema }));
 
 /**
  * - Where a store keeps a blob says nothing here, so the same bytes sent by someone else change no
@@ -49,9 +50,7 @@ export function arrivalsView(schema: Schema): ArrivalsView {
   const arrival = memberObjectOf(arrivalsOfSchema.rowSchema);
   return {
     index: rootArrivals.union(
-      indexOfRows(arrivalSchema, { object: arrival.field("object"), at: arrival.field("at") }).reading(
-        arrivalsOfSchema,
-      ),
+      arrivalsOfSchema.rowsTaking(arrivalSchema, { object: arrival.field("object"), at: arrival.field("at") }),
     ),
     read: (rows) => {
       const orderedRows = rows.orderedBy("object", "at");

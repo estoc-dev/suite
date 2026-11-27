@@ -14,7 +14,6 @@ import {
   collectionOf,
   collectionSchema,
   heldBlobs,
-  indexOfRows,
   indexOver,
   MemoryBackend,
   memberObjectOf,
@@ -36,13 +35,11 @@ type Text = DataOf<typeof textSchema>;
 
 type TextRows = Rows<Text>;
 
-const texts = indexOfRows(textSchema, {
-  text: memberObjectOf(noteSchema).field("text"),
-  note: memberObjectOf(noteSchema).link,
-});
+const textPaths = { text: memberObjectOf(noteSchema).field("text"), note: memberObjectOf(noteSchema).link };
+const texts = heldBlobs.rowsTaking(textSchema, textPaths);
 
 const recordedTextIndexes = () => [
-  texts.reading(recordedStatements),
+  recordedStatements.rowsTaking(textSchema, textPaths),
   indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
     { text: data.text, note: new LinkValue(link) },
   ]),

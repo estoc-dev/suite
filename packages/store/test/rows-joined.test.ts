@@ -8,9 +8,20 @@ import {
   objectFormat,
   type ValueMap,
 } from "@estoc/object";
-import { link, schema, string } from "@estoc/schema";
+import { integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { heldBlobs, type Index, indexOfRows, indexOver, MemoryBackend, memberObjectOf, Store } from "../src/index.ts";
+import {
+  anyMemberObject,
+  type HeldBlob,
+  heldBlobs,
+  type Index,
+  indexOver,
+  linkedBlob,
+  MemoryBackend,
+  memberObjectOf,
+  type Source,
+  Store,
+} from "../src/index.ts";
 
 const place = schema("Place", { city: string() });
 const route = schema("Route", { from: link(), to: link() });
@@ -21,8 +32,9 @@ const tripRow = schema("Trip Row", { name: string(), route: link() });
 const ends = schema("Ends", { from: link(), to: link() });
 const memberTrip = memberObjectOf(trip);
 const memberRoute = memberObjectOf(route);
-const trips = indexOfRows(tripRow, { name: memberTrip.field("name"), route: memberTrip.field("route") });
-const routeEnds = indexOfRows(ends, { from: memberRoute.field("from"), to: memberRoute.field("to") });
+const trips = heldBlobs.rowsTaking(tripRow, { name: memberTrip.field("name"), route: memberTrip.field("route") });
+const endPaths = { from: memberRoute.field("from"), to: memberRoute.field("to") };
+const routeEnds = linkedBlob.rowsTaking(ends, endPaths);
 const tripEnds = trips.rowsJoinedAt("route", routeEnds);
 
 const lisbon = encodeObject(place, { city: "Lisbon" });
@@ -96,10 +108,9 @@ describe("the rows of an index joined to those of the blob that a field links to
   it("are of one schema where two joins come to the same fields", () => {
     const named = schema("Named", { name: string(), from: link() });
     const tos = schema("To", { to: link(), route: link() });
-    const joined = indexOfRows(named, { name: memberTrip.field("name"), from: memberTrip.field("route") }).rowsJoinedAt(
-      "from",
-      indexOfRows(tos, { to: memberRoute.field("to"), route: memberRoute.link }),
-    );
+    const joined = heldBlobs
+      .rowsTaking(named, { name: memberTrip.field("name"), from: memberTrip.field("route") })
+      .rowsJoinedAt("from", linkedBlob.rowsTaking(tos, { to: memberRoute.field("to"), route: memberRoute.link }));
     expect(joined.rowSchema.link).toBe(tripEnds.rowSchema.link);
   });
 
@@ -135,7 +146,7 @@ describe("the rows of an index joined to those of the blob that a field links to
 
   it("are joined again at a field that the join brought", async () => {
     const origin = schema("Origin", { city: string() });
-    const origins = indexOfRows(origin, { city: memberObjectOf(place).field("city") });
+    const origins = linkedBlob.rowsTaking(origin, { city: memberObjectOf(place).field("city") });
     const store = await storeHolding(north, south);
     const rows = await rowsOf(
       await store.scan(
@@ -143,7 +154,7 @@ describe("the rows of an index joined to those of the blob that a field links to
           .rowsJoinedAt("from", origins)
           .rowsJoinedAt(
             "to",
-            indexOfRows(schema("End", { end: string() }), { end: memberObjectOf(place).field("city") }),
+            linkedBlob.rowsTaking(schema("End", { end: string() }), { end: memberObjectOf(place).field("city") }),
           ),
       ),
     );
@@ -157,9 +168,7 @@ describe("the rows of an index joined to those of the blob that a field links to
     const store = await storeHolding(north, south);
     const toFaro = tripEnds.rowsWhere("to", new LinkValue(faro.link));
     const joinedRow = memberObjectOf(toFaro.rowSchema);
-    const names = indexOfRows(schema("Trip Name", { name: string() }), { name: joinedRow.field("name") }).reading(
-      toFaro,
-    );
+    const names = toFaro.rowsTaking(schema("Trip Name", { name: string() }), { name: joinedRow.field("name") });
     expect(await rowsOf(await store.scan(names))).toEqual([{ name: "south" }]);
   });
 
@@ -185,7 +194,7 @@ describe("the rows of an index joined to those of the blob that a field links to
 
   it("are refused where both have a field of one name", () => {
     const routed = schema("Routed", { route: link(), to: link() });
-    const routes = indexOfRows(routed, { route: memberRoute.link, to: memberRoute.field("to") });
+    const routes = linkedBlob.rowsTaking(routed, { route: memberRoute.link, to: memberRoute.field("to") });
     expect(() => trips.rowsJoinedAt("route", routes)).toThrow("the rows joined both have a field route");
   });
 
@@ -194,8 +203,79 @@ describe("the rows of an index joined to those of the blob that a field links to
     expect(() => trips.rowsJoinedAt("name", routeEnds)).toThrow("a row of Trip Row may hold no link under name");
   });
 
-  it("are refused where what they are joined to was told what to read", () => {
-    // @ts-expect-error What is joined to reads the blob linked to, and this one reads the blobs held.
-    expect(() => trips.rowsJoinedAt("route", routeEnds.reading(heldBlobs))).toThrow();
+  it("are refused where what they are joined to reads anything but linkedBlob, an index that reads it among them", () => {
+    const refusal = "this one reads something else";
+    expect(() => trips.rowsJoinedAt("route", heldBlobs.rowsTaking(ends, endPaths))).toThrow(refusal);
+    expect(() => trips.rowsJoinedAt("route", routeEnds.rowsWhere("to", new LinkValue(faro.link)))).toThrow(refusal);
+    expect(() => trips.rowsJoinedAt("route", routeEnds.union(heldBlobs.rowsTaking(ends, endPaths)))).toThrow(refusal);
+  });
+
+  it("hold the rows of every part where what they are joined to is a union", async () => {
+    const turned = linkedBlob.rowsTaking(ends, { from: memberRoute.field("to"), to: memberRoute.field("from") });
+    const store = await storeHolding(north);
+    const rows = await rowsOf(await store.scan(trips.rowsJoinedAt("route", routeEnds.union(turned))));
+    expect(rows.map(({ from, to }) => [from.link, to.link]).sort()).toEqual(
+      [
+        [lisbon.link, porto.link],
+        [porto.link, lisbon.link],
+      ].sort(),
+    );
+  });
+
+  it("hold, where one part of the union fails on the blob linked to, the rows and failures of a union of the joins to each part", async () => {
+    const reference = schema("Reference", { reference: link() });
+    const ofAnyObject = linkedBlob.rowsTaking(reference, { reference: anyMemberObject.link });
+    const ofRoute = linkedBlob.rowsTaking(reference, { reference: memberRoute.link });
+    const misfit = objectFormat.encode(new ObjectValue(route.link, { from: 1 }));
+    const astray = tripTo("astray", linkOf(misfit));
+    const store = await storeHolding(north);
+    await store.write({ roots: [astray.link], blobs: [astray.bytes, misfit] });
+    const scanned = async (index: Index<RowOf<typeof trips> & RowOf<typeof ofRoute>>) => {
+      const rows = await store.scan(index);
+      return {
+        names: (await rowsOf(rows)).map(({ name }) => name).sort(),
+        failedItems: rows.failures.map(({ item }) => item),
+      };
+    };
+    const joinTo = (linked: typeof ofRoute) => trips.rowsJoinedAt("route", linked);
+    const ofEachJoin = await scanned(joinTo(ofAnyObject).union(joinTo(ofRoute)));
+    expect(ofEachJoin).toEqual({ names: ["astray", "north"], failedItems: [linkOf(misfit)] });
+    expect(await scanned(joinTo(ofAnyObject.union(ofRoute)))).toEqual(ofEachJoin);
+    expect(await scanned(joinTo(ofRoute.union(ofAnyObject)))).toEqual(ofEachJoin);
+  });
+
+  it("hold what a function gives of the blob linked to", async () => {
+    const sized = schema("Sized", { size: integer() });
+    const sizes = indexOver(linkedBlob, sized, ({ bytes }) => [{ size: bytes.length }]);
+    const store = await storeHolding(north);
+    expect(await rowsOf(await store.scan(trips.rowsJoinedAt("route", sizes)))).toEqual([
+      { name: "north", route: new LinkValue(northward.link), size: northward.bytes.length },
+    ]);
+  });
+
+  it("fail on the blob linked to where a function gives a row of it that does not fit, as the function fails over the blobs held", async () => {
+    const counted = schema("Counted", { count: integer() });
+    const countsOver = (source: Source<HeldBlob>) =>
+      indexOver(source, counted, ({ bytes }) => {
+        const count = Number(new TextDecoder().decode(bytes));
+        return Number.isFinite(count) ? [{ count }] : [];
+      });
+    const whole = new TextEncoder().encode("2");
+    const fraction = new TextEncoder().encode("1.5");
+    const [toWhole, toFraction] = [tripTo("whole", linkOf(whole)), tripTo("fraction", linkOf(fraction))];
+    const store = await storeHolding(north);
+    await store.write({
+      roots: [toWhole.link, toFraction.link],
+      blobs: [toWhole.bytes, toFraction.bytes, whole, fraction],
+    });
+    const rows = await store.scan(trips.rowsJoinedAt("route", countsOver(linkedBlob)));
+    expect(await rowsOf(rows)).toEqual([{ name: "whole", route: new LinkValue(linkOf(whole)), count: 2 }]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(fraction)]);
+    expect((await store.scan(countsOver(heldBlobs))).failures).toEqual(rows.failures);
+  });
+
+  it("fail the scan of what they are joined to, which a scan gives no blob", async () => {
+    const store = await storeHolding(north);
+    await expect(store.scan(routeEnds)).rejects.toThrow("a scan gives it no blob");
   });
 });

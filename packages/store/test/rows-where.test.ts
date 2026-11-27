@@ -13,9 +13,9 @@ import { array, boolean, integer, link, optional, schema, string } from "@estoc/
 import { describe, expect, it } from "vitest";
 import {
   type Backend,
+  heldBlobs,
   heldObjectsOf,
   type Index,
-  indexOfRows,
   indexOver,
   MemoryBackend,
   memberObjectOf,
@@ -29,7 +29,7 @@ const shopRow = schema("Shop Row", fields);
 const schemas = [place, shop].flatMap(({ blobs }) => blobs);
 
 const member = memberObjectOf(shop);
-const shopRows = indexOfRows(shopRow, {
+const shopRows = heldBlobs.rowsTaking(shopRow, {
   name: member.field("name"),
   count: member.field("count"),
   isOpen: member.field("isOpen"),
@@ -184,7 +184,7 @@ describe("the rows of an index where a field holds a value given", () => {
 
 describe("the objects of a schema among the blobs held", () => {
   const named = schema("Named", { name: string() });
-  const shopNames = indexOfRows(named, { name: member.field("name") }).reading(heldObjectsOf(shop));
+  const shopNames = heldObjectsOf(shop).rowsTaking(named, { name: member.field("name") });
   const held = schema("Held", { object: link() });
   const heldShops = indexOver(heldObjectsOf(shop), held, ({ link }) => [{ object: new LinkValue(link) }]);
   const heldShopLinksIn = async (store: Store) =>

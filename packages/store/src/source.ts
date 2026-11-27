@@ -1,5 +1,6 @@
 import {
   type EncodedObject,
+  encodeObject,
   encodeSchema,
   type Link,
   LinkValue,
@@ -108,7 +109,6 @@ export class Derivation<F extends ValueMap> implements Origin {
 // package can.
 let readingOf: <T>(source: Source<T>) => Reading<T>;
 export let derivationOf: <F extends ValueMap>(index: Index<F>) => Derivation<F>;
-let partOf: <F extends ValueMap>(index: IndexOfRows<F>) => Part<F>;
 
 /**
  * A reading that trusts what an index derived holds only over the rows of that index, so it is
@@ -123,6 +123,33 @@ export class Source<T> {
 
   constructor(reading: Reading<T>) {
     this.#reading = reading;
+  }
+
+  /**
+   * - A row of each blob that this gives an item of, where the blob is an object that every path
+   *   takes a value of: it holds under each field what the path of the field takes. The paths say
+   *   all of it, so the index has a definition, which is the same whatever this is.
+   * - Where a blob names the schema that a path takes it as and does not fit it, the index fails on
+   *   that blob, and not on the row that links to it.
+   * - Where this fails on a blob before it gives an item, the index fails on that blob too. The
+   *   failures of an index that this takes links of stay failures of the one given, each on the
+   *   item it was on.
+   * - Its rows are the store's own as far as those blobs are.
+   */
+  rowsTaking<F extends ValueMap>(schema: Schema<F>, paths: { readonly [N in keyof F]-?: ValuePath<F[N]> }): Index<F> {
+    const definition = partAlong(paths);
+    const rowOf = rowReaderOf(schema, definition);
+    const { origin, itemOf } = this.#reading;
+    const part: Part<F> = {
+      origin,
+      definition,
+      async *rowsOf(blob) {
+        if ((await itemOf(blob)) === undefined) return;
+        const row = await rowOf(blob);
+        if (row !== undefined) yield row as F;
+      },
+    };
+    return new Index(new Derivation(schema, [part]));
   }
 }
 
@@ -156,6 +183,17 @@ export const heldBlobs: Source<HeldBlob> = new Source({ origin: blobOrigin, item
 async function heldBlobOf({ link, reader }: ScannedBlob): Promise<HeldBlob> {
   return { link, bytes: await reader.get(link) };
 }
+
+const linkedBlobOrigin: Origin = {
+  listingIn: () =>
+    Promise.reject(new Error("an index that reads linkedBlob is what rows are joined to, and a scan gives it no blob")),
+};
+
+/**
+ * The blob that a row links to under the field it is joined at, whatever its bytes are.
+ * `rowsJoinedAt` gives it to an index that reads it, and a scan of such an index throws.
+ */
+export const linkedBlob: Source<HeldBlob> = new Source({ origin: linkedBlobOrigin, itemOf: heldBlobOf });
 
 type ComparedValue = LinkValue<unknown> | string | number | boolean;
 
@@ -313,44 +351,58 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   /**
    * - A row of each row that `linked` gives of the blob that a row of this index links to under
    *   `field`: it holds what both hold. So a row gives none where `linked` gives none of that blob.
-   * - `linked` is an index that `reading` has not told what to read: here its paths take values
-   *   of that blob.
+   * - Each part of `linked` reads `linkedBlob` itself, which here is that blob. One that reads
+   *   anything else is refused, as `linkedBlob.rowsTaking(...).rowsWhere(...)` is: its part reads
+   *   the rows that were taken.
    * - The rows are of a schema with the fields of both and an empty title. A field that both have
    *   is refused.
-   * - Where `linked` fails on the blob, the index given fails on that blob, once for each row that
-   *   links to it. What this index failed on is among its failures as well.
+   * - The index given has a part for each part of `linked`, so its rows and failures are those of a
+   *   union of the joins to each.
+   * - Where a part of `linked` fails on the blob, or gives a row that does not fit the schema of
+   *   `linked`, the index given fails on that blob, once for each row that links to it. What this
+   *   index failed on is among its failures as well.
    * - A scan throws where neither the store nor what the rows are read from holds a blob that
    *   `linked` reads.
    */
   rowsJoinedAt<N extends string, G extends ValueMap>(
     this: Index<LinkedRow<N>>,
     field: N,
-    linked: IndexOfRows<G>,
+    linked: Index<G>,
   ): Index<F & G> {
     const { document } = this.#derivation.schema;
     requireLinkAt(this.#derivation.schema, field);
     const linkedFields = linked.rowSchema.document.fields;
     const sharedName = Object.keys(linkedFields).find((name) => fieldOf(document, name) !== undefined);
     if (sharedName !== undefined) throw new Error(`the rows joined both have a field ${sharedName}`);
+    const linkedParts = linked.#derivation.parts;
+    if (linkedParts.some((linkedPart) => linkedPart.origin !== linkedBlobOrigin))
+      throw new Error(
+        "the rows of an index are joined to those of one that reads linkedBlob, and this one reads something else",
+      );
     const { origin, itemOf } = readingOf(this);
-    const linkedPart = partOf(linked);
-    const part: Part<ValueMap> = {
-      origin,
-      async *rowsOf(blob) {
-        const row = await itemOf(blob);
-        if (row === undefined) return;
-        const linkedBlob = blob.blobAt(row.data[field].link);
-        const linkedRows: ValueMap[] = [];
-        try {
-          for await (const linkedRow of linkedPart.rowsOf(linkedBlob)) linkedRows.push(linkedRow);
-        } catch (error) {
-          throw new LinkedBlobError({ item: linkedBlob.link, error });
-        }
-        for (const linkedRow of linkedRows) yield { ...row.data, ...linkedRow };
-      },
-    };
+    const linkedSchema = linked.rowSchema;
+    const parts = linkedParts.map(
+      (linkedPart): Part<ValueMap> => ({
+        origin,
+        async *rowsOf(blob) {
+          const row = await itemOf(blob);
+          if (row === undefined) return;
+          const linkedBlob = blob.blobAt(row.data[field].link);
+          const linkedRows: ValueMap[] = [];
+          try {
+            // A row that does not fit the schema of `linked` is a failure on the blob linked to, so
+            // it is found before it is put with the row that links to it.
+            for await (const linkedRow of linkedPart.rowsOf(linkedBlob))
+              linkedRows.push(encodeObject(linkedSchema, linkedRow).data);
+          } catch (error) {
+            throw new LinkedBlobError({ item: linkedBlob.link, error });
+          }
+          for (const linkedRow of linkedRows) yield { ...row.data, ...linkedRow };
+        },
+      }),
+    );
     const schema = encodeSchema({ title: "", fields: { ...document.fields, ...linkedFields } });
-    return new Index<ValueMap>(new Derivation(schema, [part])) as Index<F & G>;
+    return new Index<ValueMap>(new Derivation(schema, parts)) as Index<F & G>;
   }
 
   union(...others: readonly Index<F>[]): Index<F> {
@@ -386,70 +438,10 @@ export function indexOver<F extends ValueMap, T>(
   return new Index(new Derivation(schema, [part]));
 }
 
-/**
- * It reads every blob that a scan is over: an attachment and what a stranger sent as well as an
- * object of the store's own, each once for each index that reads this way. `reading` gives the
- * index of the same definition over something else.
- */
-export class IndexOfRows<F extends ValueMap> extends Index<F> {
-  readonly #part: Required<Part<F>>;
-
-  static {
-    partOf = (index) => index.#part;
-  }
-
-  constructor(schema: Schema<F>, part: Required<Part<F>>) {
-    super(new Derivation(schema, [part]));
-    this.#part = part;
-  }
-
-  /**
-   * - The paths take values of each blob that `source` gives an item of. Where a blob names the
-   *   schema that a path takes it as and does not fit it, the index fails on that blob, and not on
-   *   the row that links to it.
-   * - Where `source` fails on a blob before it gives an item, the index fails on that blob too. The
-   *   failures of an index that `source` takes links of stay failures of this one, each on the item
-   *   it was on.
-   * - Its rows are the store's own as far as those blobs are.
-   */
-  reading(source: Source<unknown>): Index<F> {
-    const reading = readingOf(source);
-    const part = this.#part;
-    const partOfItems: Part<F> = {
-      origin: reading.origin,
-      definition: part.definition,
-      async *rowsOf(blob) {
-        if ((await reading.itemOf(blob)) !== undefined) yield* part.rowsOf(blob);
-      },
-    };
-    return new Index(new Derivation(this.rowSchema, [partOfItems]));
-  }
-}
-
-/**
- * A row of each object read that every path takes a value of: it holds under each field what the
- * path of the field takes. The paths say all of it, so the index has a definition.
- */
-export function indexOfRows<F extends ValueMap>(
-  schema: Schema<F>,
-  paths: { readonly [N in keyof F]-?: ValuePath<F[N]> },
-): IndexOfRows<F> {
-  const definition = partAlong(paths);
-  const rowOf = rowReaderOf(schema, definition);
-  return new IndexOfRows(schema, {
-    origin: blobOrigin,
-    definition,
-    async *rowsOf(blob) {
-      const row = await rowOf(blob);
-      if (row !== undefined) yield row as F;
-    },
-  });
-}
-
 export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
 
 /** An object written to itself has its own link as that of its schema. */
-export const heldObjects = indexOfRows(heldObjectSchema, {
+export const heldObjects = heldBlobs.rowsTaking(heldObjectSchema, {
   schema: anyMemberObject.schema,
   object: anyMemberObject.link,
 });
@@ -476,9 +468,9 @@ export function heldObjectsOf(schema: Schema): Source<HeldBlob> {
  * The Records among the blobs read. A row is encoded to the same bytes as the Record it comes of,
  * so the rows are those Records, and what reads the records of a store reads this index.
  */
-export const heldRecords: Index<RecordData> = indexOfRows(recordSchema, {
+export const heldRecords: Index<RecordData> = heldObjectsOf(recordSchema).rowsTaking(recordSchema, {
   object: memberObjectOf(recordSchema).field("object"),
-}).reading(heldObjectsOf(recordSchema));
+});
 
 /**
  * The statements the store recorded. One of the same schema that only came to the store, as in a

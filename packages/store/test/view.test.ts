@@ -1,16 +1,8 @@
-import { encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import {
-  indexOver,
-  MemoryBackend,
-  Store,
-  selectedRecords,
-  type View,
-  view,
-  writtenObjectsOf,
-  writtenObjectsOver,
-} from "../src/index.ts";
+import { MemoryBackend, recordedWrittenObjects, Store, type View, view, writtenObjectsOf } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 const noteSchema = schema("Note", { text: string(), tags: array(string()), at: integer() });
 type Note = DataOf<typeof noteSchema>;
@@ -18,8 +10,9 @@ type Note = DataOf<typeof noteSchema>;
 const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
 type Tagged = DataOf<typeof taggedSchema>;
 
-const taggedNotes = indexOver(
-  selectedRecords(writtenObjectsOver(objectsOf(noteSchema))),
+const taggedNotes = indexOverObjects(
+  recordedWrittenObjects.linksAt("object"),
+  noteSchema,
   taggedSchema,
   ({ link, data }) => data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 );

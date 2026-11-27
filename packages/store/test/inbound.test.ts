@@ -5,7 +5,6 @@ import {
   type Link,
   LinkValue,
   linkOf,
-  objectsOf,
   readObject,
   type ValueMap,
 } from "@estoc/object";
@@ -13,17 +12,17 @@ import { type DataOf, integer, link, optional, schema, string } from "@estoc/sch
 import { describe, expect, it } from "vitest";
 import {
   arrivalsView,
+  heldObjectsOf,
   type InboundObject,
   Intake,
   inboundSchema,
-  indexOver,
   MemoryBackend,
   RefusedBatch,
+  recordedStatements,
   Store,
-  selectedBlobs,
-  selectedRecords,
   view,
 } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -187,7 +186,7 @@ describe("an intake", () => {
   it("gives an index over blobs, on a staged bundle, the blobs of the bundle", async () => {
     const { intake } = sides();
     const textSchema = schema("Text", { text: string() });
-    const texts = indexOver(selectedBlobs(objectsOf(anything)), textSchema, ({ data }) =>
+    const texts = indexOverObjects(heldObjectsOf(anything), anything, textSchema, ({ data }) =>
       data.text === undefined ? [] : [{ text: data.text }],
     );
     const stagedStore = await intake.stage(bundleOf(object({ text: "hello" })));
@@ -214,7 +213,7 @@ describe("an intake", () => {
 
 describe("what an intake records", () => {
   const arrivalSchema = schema("Arrival", { bundle: link<never>(), at: integer() });
-  const cameIn = indexOver(selectedRecords(objectsOf(inboundSchema)), arrivalSchema, ({ data }) => [
+  const cameIn = indexOverObjects(recordedStatements, inboundSchema, arrivalSchema, ({ data }) => [
     { bundle: data.bundle, at: data.at },
   ]);
 

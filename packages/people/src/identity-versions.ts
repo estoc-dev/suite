@@ -1,7 +1,7 @@
 import { hasSigner, identityKit, type Signature, type SignedIdentityObject } from "@estoc/identity";
-import { type Link, LinkValue, objectsOf, type Reader } from "@estoc/object";
+import { type Link, LinkValue, type Reader, readObjectNaming } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
-import { type Arrivals, type HeldBlob, heldBlobs, type Index, indexOver, type Source } from "@estoc/store";
+import { type Arrivals, heldBlobs, type Index, indexOver, type Source } from "@estoc/store";
 import type { People, Person } from "./person.ts";
 
 const { signedIdentities } = identityKit;
@@ -23,16 +23,14 @@ export interface IdentityVersionRows {
   range(prefix: readonly [identifier: LinkValue<unknown>]): AsyncIterable<{ readonly data: IdentityVersionData }>;
 }
 
-const signedIdentityObjects = objectsOf(signedIdentities.schema);
-
 /**
  * A row of each Signed Identity among the blobs that `source` gives, where it and each identity
  * version it follows verify. One that does not verify fails, and so does one that does not fit its
  * schema.
  */
-export function identityVersionsOver(source: Source<HeldBlob>): Index<IdentityVersionData> {
+export function identityVersionsOver(source: Source): Index<IdentityVersionData> {
   return indexOver(source, identityVersionSchema, async function* ({ link }, reader) {
-    const object = await signedIdentityObjects.read(link, reader);
+    const object = await readObjectNaming(reader, link, signedIdentities.schema);
     if (object !== undefined) yield identityVersionOf(await signedIdentities.verify(object, reader));
   });
 }

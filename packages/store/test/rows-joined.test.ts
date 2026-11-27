@@ -12,7 +12,6 @@ import { integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   anyMemberObject,
-  type HeldBlob,
   heldBlobs,
   type Index,
   indexOver,
@@ -22,6 +21,7 @@ import {
   type Source,
   Store,
 } from "../src/index.ts";
+import { indexOverRows } from "./objects.ts";
 
 const place = schema("Place", { city: string() });
 const route = schema("Route", { from: link(), to: link() });
@@ -137,7 +137,7 @@ describe("the rows of an index joined to those of the blob that a field links to
 
   it("fail the scan where the store does not hold a blob that a row links to", async () => {
     const absent = linkOf(new TextEncoder().encode("held by no store"));
-    const astray = indexOver(trips, tripRow, ({ data: { name } }) => [{ name, route: new LinkValue(absent) }]);
+    const astray = indexOverRows(trips, tripRow, ({ data: { name } }) => [{ name, route: new LinkValue(absent) }]);
     const store = await storeHolding(north);
     await expect(store.scan(astray.rowsJoinedAt("route", routeEnds))).rejects.toThrow(
       `the store does not hold ${absent}`,
@@ -255,7 +255,7 @@ describe("the rows of an index joined to those of the blob that a field links to
 
   it("fail on the blob linked to where a function gives a row of it that does not fit, as the function fails over the blobs held", async () => {
     const counted = schema("Counted", { count: integer() });
-    const countsOver = (source: Source<HeldBlob>) =>
+    const countsOver = (source: Source) =>
       indexOver(source, counted, ({ bytes }) => {
         const count = Number(new TextDecoder().decode(bytes));
         return Number.isFinite(count) ? [{ count }] : [];

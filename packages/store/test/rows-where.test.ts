@@ -21,6 +21,7 @@ import {
   memberObjectOf,
   Store,
 } from "../src/index.ts";
+import { indexOverRows } from "./objects.ts";
 
 const place = schema("Place", { city: string() });
 const fields = { name: string(), count: integer(), isOpen: boolean(), home: link(), tags: array(string()) };
@@ -101,7 +102,7 @@ describe("the rows of an index where a field holds a value given", () => {
 
   it("are none of a row that leaves the field out", async () => {
     const noted = schema("Noted", { name: string(), note: optional(string()) });
-    const notedShops = indexOver(shopRows, noted, ({ data: { name, isOpen } }) => [
+    const notedShops = indexOverRows(shopRows, noted, ({ data: { name, isOpen } }) => [
       isOpen ? { name } : { name, note: "back soon" },
     ]);
     const store = await storeHolding([open, shut]);

@@ -15,8 +15,8 @@ import {
   encodeObject,
   type Link,
   LinkValue,
-  objectsOf,
   readObject,
+  readObjectNaming,
   type Schema,
   type ValueMap,
 } from "@estoc/object";
@@ -236,8 +236,6 @@ describe("a sale sent to a registry", () => {
 // so a grant that came in reads as a message, and the application shows the
 // lines among those.
 describe("two people who meet", () => {
-  const lines = objectsOf(chat);
-
   const twoPeople = async () => {
     const network = new MemoryNetwork();
     // One clock for both, so that what one does reads as before what the other does next.
@@ -276,7 +274,7 @@ describe("two people who meet", () => {
         for (const { mailbox, bundle } of deliveries) {
           const message = await correspondence.messageAt(mailbox, bundle);
           if (message === undefined) continue;
-          const line = await lines.read(message.object, store);
+          const line = await readObjectNaming(store, message.object, chat);
           if (line !== undefined) shownLines.push([message.signedIdentity.identity.identifier, line.data.text]);
         }
         return shownLines;

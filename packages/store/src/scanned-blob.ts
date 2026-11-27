@@ -1,9 +1,9 @@
 import {
-  decodeObject,
   type EncodedObject,
   type Link,
   namedSchemaAt,
   type Reader,
+  readObjectNaming,
   type Schema,
   type ValueMap,
 } from "@estoc/object";
@@ -73,8 +73,7 @@ export class ScannedBlob {
     return [...(await closureIn(this.reader, this.link)).keys()];
   }
 
-  async objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {
-    const bytes = await this.reader.get(this.link);
-    return namedSchemaAt(this.link, bytes) === schema.link ? decodeObject(bytes, schema) : undefined;
+  objectOf<F extends ValueMap>(schema: Schema<F>): Promise<EncodedObject<F> | undefined> {
+    return readObjectNaming(this.reader, this.link, schema);
   }
 }

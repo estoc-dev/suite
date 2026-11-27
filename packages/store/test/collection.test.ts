@@ -1,30 +1,21 @@
-import {
-  blobsOf,
-  type EncodedObject,
-  encodeObject,
-  type Link,
-  LinkValue,
-  linkOf,
-  objectsOf,
-  readObject,
-} from "@estoc/object";
+import { blobsOf, type EncodedObject, encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { array, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, test } from "vitest";
 import {
   collectionOf,
   collectionSchema,
   heldBlobs,
+  heldObjectsOf,
   indexOver,
   MemoryBackend,
   memberObjectOf,
   type Rows,
   recordedStatements,
   Store,
-  selectedBlobs,
-  selectedRecords,
   sendableBlobs,
 } from "../src/index.ts";
 import { recordOf } from "../src/record.ts";
+import { indexOverObjects, indexOverRows } from "./objects.ts";
 
 const noteSchema = schema("Note", { text: string(), about: optional(link()) });
 const note = (text: string, about?: Link<unknown>) =>
@@ -40,7 +31,7 @@ const texts = heldBlobs.rowsTaking(textSchema, textPaths);
 
 const recordedTextIndexes = () => [
   recordedStatements.rowsTaking(textSchema, textPaths),
-  indexOver(selectedRecords(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
+  indexOverObjects(recordedStatements, noteSchema, textSchema, ({ link, data }) => [
     { text: data.text, note: new LinkValue(link) },
   ]),
 ];
@@ -148,7 +139,7 @@ describe("an index scanned over a collection", () => {
     await keepIn(store, [soup, salad]);
     const collection = await collectionIn(store, [salad.link]);
 
-    const textsByFunction = indexOver(selectedBlobs(objectsOf(noteSchema)), textSchema, ({ link, data }) => [
+    const textsByFunction = indexOverObjects(heldObjectsOf(noteSchema), noteSchema, textSchema, ({ link, data }) => [
       { text: data.text, note: new LinkValue(link) },
     ]);
     expect(await rowDataOf(await collection.scan(textsByFunction))).toEqual(
@@ -200,11 +191,16 @@ describe("an index scanned over a collection", () => {
     await keepIn(store, [remark, soup]);
     const collection = await collectionIn(store, [remark.link]);
 
-    const subjects = indexOver(selectedBlobs(objectsOf(noteSchema)), textSchema, async function* ({ data }, reader) {
-      if (data.about === undefined) return;
-      const subject = await readObject(reader, data.about.link, noteSchema);
-      yield { text: subject.data.text, note: data.about };
-    });
+    const subjects = indexOverObjects(
+      heldObjectsOf(noteSchema),
+      noteSchema,
+      textSchema,
+      async function* ({ data }, reader) {
+        if (data.about === undefined) return;
+        const subject = await readObject(reader, data.about.link, noteSchema);
+        yield { text: subject.data.text, note: data.about };
+      },
+    );
     expect(await textsOf(await collection.scan(subjects))).toEqual(["soup"]);
     expect(await textsOf(await collection.scan(texts))).toEqual(["a remark"]);
   });
@@ -215,7 +211,9 @@ describe("an index scanned over a collection", () => {
     await keepIn(store, [soup, salad]);
     const collection = await collectionIn(store, [soup.link]);
 
-    const shouted = indexOver(texts, textSchema, ({ data }) => [{ text: data.text.toUpperCase(), note: data.note }]);
+    const shouted = indexOverRows(texts, textSchema, ({ data }) => [
+      { text: data.text.toUpperCase(), note: data.note },
+    ]);
     expect(await textsOf(await store.scan(shouted))).toEqual(["SALAD", "SOUP"]);
     expect(await textsOf(await collection.scan(shouted))).toEqual(["SOUP"]);
   });
@@ -255,7 +253,7 @@ describe("an index scanned over a collection", () => {
     const collection = await collectionIn(store, [soup.link]);
 
     const refusal = new Error("no row of soup");
-    const refusing = indexOver(selectedBlobs(objectsOf(noteSchema)), textSchema, () => {
+    const refusing = indexOverObjects(heldObjectsOf(noteSchema), noteSchema, textSchema, () => {
       throw refusal;
     });
     expect((await collection.scan(refusing)).failures).toEqual([{ item: soup.link, error: refusal }]);

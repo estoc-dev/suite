@@ -4,21 +4,15 @@ import {
   encodeObject,
   type Link,
   LinkValue,
-  objectsOf,
   readObject,
+  readObjectNaming,
   type Schema,
   type ValueMap,
 } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  indexOver,
-  MemoryBackend,
-  Store,
-  selectedRecords,
-  writtenObjectsOf,
-  writtenObjectsOver,
-} from "../src/index.ts";
+import { MemoryBackend, recordedWrittenObjects, Store, writtenObjectsOf } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 // Two people, each with a store, handing each other bundles. What one writes is in their store,
 // with a record that it was written; what comes from the other is kept in the store, with a record
@@ -37,7 +31,7 @@ const newStore = () => new Store(new MemoryBackend());
 async function recordsOf<F extends ValueMap>(store: Store, schema: Schema<F>): Promise<EncodedObject<F>[]> {
   const statements: EncodedObject<F>[] = [];
   for await (const link of store.records()) {
-    const statement = await objectsOf(schema).read(link, store);
+    const statement = await readObjectNaming(store, link, schema);
     if (statement !== undefined) statements.push(statement);
   }
   return statements;
@@ -109,8 +103,9 @@ describe("an object slipped into a bundle", () => {
     await receive(bob, encodeBundle(reply.link, [reply.bytes, slippedContact.bytes]));
 
     expect((await readObject(bob, slippedContact.link, contactSchema)).data.name).toBe("Mallory, a friend of Bob's");
-    const writtenContacts = indexOver(
-      selectedRecords(writtenObjectsOver(objectsOf(contactSchema))),
+    const writtenContacts = indexOverObjects(
+      recordedWrittenObjects.linksAt("object"),
+      contactSchema,
       contactSchema,
       ({ data }) => [data],
     );

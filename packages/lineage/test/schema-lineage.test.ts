@@ -1,7 +1,7 @@
 import { encodeObject, type Implementation, type Link, linkOf, ObjectValue, objectFormat } from "@estoc/object";
 import { type DataOf, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { lineages, SelectionBySchemaLineage } from "../src/index.ts";
+import { lineages } from "../src/index.ts";
 
 interface Note {
   readonly title?: string;
@@ -75,38 +75,13 @@ describe("reading with a schema lineage", () => {
       `${other.link} is not a schema read here`,
     );
   });
-});
 
-describe("the selection of a schema lineage", () => {
-  it("takes an object of each version, read as that version reads it", async () => {
-    const reader = byLink([untitledNote.bytes, titledNote.bytes]);
-    await expect(notes.selection.read(untitledNote.link, reader)).resolves.toEqual({ text: "hello" });
-    await expect(notes.selection.read(titledNote.link, reader)).resolves.toEqual({ title: "Greeting", text: "hello" });
-  });
-});
-
-describe("a selection by schema lineage", () => {
-  const titles = new SelectionBySchemaLineage(notes, ({ title }) => title);
-
-  it("takes a record of a version as what itemOf gives of it", async () => {
-    await expect(titles.read(titledNote.link, byLink([titledNote.bytes]))).resolves.toBe("Greeting");
-  });
-
-  it("leaves out a record that itemOf leaves out", async () => {
-    await expect(titles.read(untitledNote.link, byLink([untitledNote.bytes]))).resolves.toBeUndefined();
-  });
-
-  it("leaves out a record of the schema of no version", async () => {
-    const object = encodeObject(other, { text: "hello" });
-    await expect(titles.read(object.link, byLink([object.bytes]))).resolves.toBeUndefined();
-  });
-
-  it("refuses a record of a version whose data does not fit its schema", async () => {
+  it("refuses an object of a version whose data does not fit its schema", async () => {
     const bytes = objectFormat.encode(new ObjectValue(noteV1.link, { body: "hello" }));
-    await expect(titles.read(linkOf(bytes), byLink([bytes]))).rejects.toThrow("the data does not fit its schema");
+    await expect(notes.read(linkOf(bytes), byLink([bytes]))).rejects.toThrow("the data does not fit its schema");
   });
 
-  it("refuses a record the reader does not give", async () => {
-    await expect(titles.read(titledNote.link, byLink([]))).rejects.toThrow(`no blob is given for ${titledNote.link}`);
+  it("refuses an object the reader does not give", async () => {
+    await expect(notes.read(titledNote.link, byLink([]))).rejects.toThrow(`no blob is given for ${titledNote.link}`);
   });
 });

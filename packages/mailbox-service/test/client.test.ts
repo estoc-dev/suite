@@ -2,7 +2,7 @@ import { type Bundle, decodeBundle, encodeBundle } from "@estoc/bundle";
 import { type Actor, ed25519, eip191, type Signer, solanaOffchain } from "@estoc/identity";
 import { mailboxAt, mailboxSchema, type Pickup, Post } from "@estoc/mailbox";
 import { httpTransport as http } from "@estoc/mailbox/http";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, readObject, readObjectNaming } from "@estoc/object";
 import { link, schema, string } from "@estoc/schema";
 import { Intake, inboundSchema, type Store } from "@estoc/store";
 import { hex } from "@scure/base";
@@ -61,7 +61,7 @@ const agentOf = async (agent: Signer, root: Signer) =>
 async function inboundRowsOf(store: Store) {
   const rows: (readonly [Link<never>, string])[] = [];
   for await (const statement of store.records()) {
-    const inbound = await objectsOf(inboundSchema).read(statement, store);
+    const inbound = await readObjectNaming(store, statement, inboundSchema);
     if (inbound === undefined) continue;
     const { bundle, via } = inbound.data;
     assert.exists(via);
@@ -530,7 +530,7 @@ describe("a service's offer of mailboxes", () => {
     expect(await store.get(transport.link)).toEqual(transport.bytes);
     const openedMailboxes = [];
     for await (const statement of store.records()) {
-      const openedMailbox = await objectsOf(openedMailboxSchema).read(statement, store);
+      const openedMailbox = await readObjectNaming(store, statement, openedMailboxSchema);
       if (openedMailbox !== undefined) openedMailboxes.push(openedMailbox);
     }
     expect(openedMailboxes.map(({ data }) => data.transport.link)).toEqual([transport.link]);

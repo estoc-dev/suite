@@ -7,10 +7,8 @@ import {
   linkOf,
   ObjectValue,
   objectFormat,
-  objectsOf,
   rootSchema,
   type Schema,
-  SelectionBySchema,
 } from "@estoc/object";
 import { array, integer, link, optional, schema, string } from "@estoc/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
@@ -20,7 +18,6 @@ import {
   heldBlobs,
   type Index,
   type IndexDefinition,
-  indexOver,
   linkedBlob,
   MemoryBackend,
   memberObjectOf,
@@ -28,9 +25,9 @@ import {
   recordSchema,
   type Source,
   Store,
-  selectedRecords,
   type ValuePath,
 } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 const place = schema("Place", { city: string() });
 const person = schema("Person", { name: string(), home: link(), nickname: optional(string()) });
@@ -142,7 +139,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
   });
 
   it("holds the rows of an index that a function gives the rows of as well, in a union with it", async () => {
-    const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [
+    const shouted = indexOverObjects(recordedStatements, card, titled, ({ data }) => [
       { title: data.title.toUpperCase() },
     ]);
     const titles = recordedStatements.rowsTaking(titled, { title: memberCard.field("title") });
@@ -232,13 +229,6 @@ describe("an index of rows taken along paths, reading the rows of another index"
     ).toEqual([{ row: pointer.row, title: "recorded" }]);
   });
 
-  it("holds no row of a blob that what it reads gives no item of", async () => {
-    const shortTitle = new SelectionBySchema(card, (object) => (object.data.title.length < 2 ? object : undefined));
-    const store = await storeRecording(cardOf("a"), cardOf("long"));
-    const titles = selectedRecords(shortTitle).rowsTaking(titled, { title: memberCard.field("title") });
-    expect(await titlesIn(store, titles)).toEqual(["a"]);
-  });
-
   it("asks the store for no blob where its paths take what a row holds", async () => {
     const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
@@ -320,7 +310,7 @@ describe("a union of indexes", () => {
   });
 
   it("is refused where a function gives the rows of one of another schema", () => {
-    const shouted = indexOver(selectedRecords(objectsOf(card)), aliased, ({ data }) => [{ title: data.title }]);
+    const shouted = indexOverObjects(recordedStatements, card, aliased, ({ data }) => [{ title: data.title }]);
     expect(() => heldBlobs.rowsTaking(titled, { title }).union(shouted)).toThrow(refusal);
   });
 });
@@ -371,7 +361,7 @@ describe("the definition of an index", () => {
   });
 
   it("has the same link whatever the index reads", () => {
-    const definitionLinkReading = (source: Source<unknown>) => source.rowsTaking(cardRow, cardPaths).definition?.link;
+    const definitionLinkReading = (source: Source) => source.rowsTaking(cardRow, cardPaths).definition?.link;
     expect(cardRows.definition).toBeDefined();
     for (const source of [heldBlobs, linkedBlob, cardRows])
       expect(definitionLinkReading(source)).toBe(cardRows.definition?.link);
@@ -386,7 +376,7 @@ describe("the definition of an index", () => {
     const title = memberCard.field("title");
     const name = memberObjectOf(person).field("name");
     const city = memberObjectOf(place).field("city");
-    const namesReading = (source: Source<unknown>) =>
+    const namesReading = (source: Source) =>
       recordedStatements
         .rowsTaking(titled, { title })
         .union(source.rowsTaking(titled, { title: name }), recordedStatements.rowsTaking(titled, { title: city }));
@@ -398,7 +388,7 @@ describe("the definition of an index", () => {
   });
 
   it("is absent where a function gives the rows of a part", () => {
-    const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [{ title: data.title }]);
+    const shouted = indexOverObjects(recordedStatements, card, titled, ({ data }) => [{ title: data.title }]);
     const titles = heldBlobs.rowsTaking(titled, { title: memberCard.field("title") });
     expect(titles.union(shouted).definition).toBeUndefined();
     expect(shouted.definition).toBeUndefined();

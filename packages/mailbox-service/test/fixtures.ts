@@ -12,7 +12,7 @@ import {
   solanaOffchain,
 } from "@estoc/identity";
 import type { Keyring } from "@estoc/keyring";
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, readObjectNaming } from "@estoc/object";
 import { type Backend, MemoryBackend, Store, writtenObjectSchema } from "@estoc/store";
 import { assert, onTestFinished } from "vitest";
 import { type Accounts, MemoryAccounts } from "../src/accounts.ts";
@@ -39,7 +39,7 @@ export function bytesOf({ link, blobs }: { readonly link: Link<unknown>; readonl
 export async function writtenObjectsIn(store: Store): Promise<Link<never>[]> {
   const links: Link<never>[] = [];
   for await (const statement of store.records()) {
-    const writtenObject = await objectsOf(writtenObjectSchema).read(statement, store);
+    const writtenObject = await readObjectNaming(store, statement, writtenObjectSchema);
     if (writtenObject !== undefined) links.push(writtenObject.data.object.link as Link<never>);
   }
   return links;
@@ -112,7 +112,7 @@ export async function setUpService({
 
 async function recordsIdentityVersion(store: Store): Promise<boolean> {
   for (const link of await writtenObjectsIn(store))
-    if ((await objectsOf(signedIdentities.schema).read(link, store)) !== undefined) return true;
+    if ((await readObjectNaming(store, link, signedIdentities.schema)) !== undefined) return true;
   return false;
 }
 

@@ -1,21 +1,24 @@
 import {
   decodeObject,
+  type EncodedObject,
   encodeObject,
   type Link,
   LinkValue,
   linkOf,
-  objectsOf,
+  readObjectNaming,
   rootSchema,
+  type Schema,
   type ValueMap,
 } from "@estoc/object";
-import { link, schema, string } from "@estoc/schema";
+import { type DataOf, link, schema, string } from "@estoc/schema";
 import {
   type Backend,
   heldObjectSchema,
   indexOver,
   MemoryBackend,
+  memberObjectOf,
+  recordedStatements,
   Store,
-  selectedRecords,
   writtenObjectSchema,
   writtenObjectsOf,
 } from "@estoc/store";
@@ -376,9 +379,19 @@ describe("a client of a runtime", () => {
   });
 });
 
+/** The rows that `rows` gives of each Note among the statements that the store recorded. */
+const indexOverRecordedNotes = <F extends ValueMap>(
+  rowSchema: Schema<F>,
+  rows: (note: EncodedObject<DataOf<typeof noteSchema>>) => Iterable<NoInfer<F>>,
+) =>
+  indexOver(recordedStatements, rowSchema, async function* ({ link }, reader) {
+    const note = await readObjectNaming(reader, link, noteSchema);
+    if (note !== undefined) yield* rows(note);
+  });
+
 describe("a client of a runtime that is given the list of an index", () => {
   const notedTextSchema = schema("Noted Text", { text: string(), note: link() });
-  const notedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+  const notedTexts = indexOverRecordedNotes(notedTextSchema, ({ link, data }) => {
     if (data.text === "unreadable") throw new Error("the index does not read this note");
     return [{ text: data.text, note: new LinkValue(link) }];
   });
@@ -454,7 +467,7 @@ describe("a client of a runtime that is given the list of an index", () => {
   it("reads a page of it from the rows that whatever else scans the index in that store reads", async () => {
     const store = await storeRecording("a");
     let readCount = 0;
-    const countedTexts = indexOver(selectedRecords(objectsOf(noteSchema)), notedTextSchema, ({ link, data }) => {
+    const countedTexts = indexOverRecordedNotes(notedTextSchema, ({ link, data }) => {
       readCount += 1;
       return [{ text: data.text, note: new LinkValue(link) }];
     });
@@ -494,9 +507,9 @@ describe("a runtime", () => {
     ["another list it is given", ["Notes", "Notes"]],
     ["a list of what the store holds", ["Blobs"]],
   ])("is not made with a list named as %s is", async (_, names) => {
-    const texts = indexOver(selectedRecords(objectsOf(noteSchema)), schema("Text", { text: string() }), ({ data }) => [
-      { text: data.text },
-    ]);
+    const texts = recordedStatements.rowsTaking(schema("Text", { text: string() }), {
+      text: memberObjectOf(noteSchema).field("text"),
+    });
     const store = await storeOfNote();
     const lists = names.map((name) => listOfIndex(texts, name, ["text"]));
     expect(() => new Runtime(store, lists, [])).toThrow(`two lists are named ${names[0]}`);

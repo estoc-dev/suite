@@ -20,6 +20,7 @@ import {
   memberObjectOf,
   Store,
 } from "../src/index.ts";
+import { indexOverRows } from "./objects.ts";
 
 const place = schema("Place", { city: string() });
 const route = schema("Route", { from: link(), to: link() });
@@ -117,7 +118,7 @@ describe("the rows of an index of each link from what a field links to", () => {
 
   it("fail the scan where the store does not hold a blob that a row links to", async () => {
     const absent = linkOf(new TextEncoder().encode("held by no store"));
-    const astray = indexOver(trips, tripRow, ({ data: { name } }) => [{ name, stop: new LinkValue(absent) }]);
+    const astray = indexOverRows(trips, tripRow, ({ data: { name } }) => [{ name, stop: new LinkValue(absent) }]);
     const store = await storeHolding(north);
     await expect(store.scan(astray.rowsOfEachLinkFrom("stop"))).rejects.toThrow(`the store does not hold ${absent}`);
   });
@@ -237,7 +238,7 @@ describe("the rows of an index of each link from what a field links to", () => {
 
   it("are refused where a row may leave the field out", () => {
     const noted = schema("Noted", { name: string(), stop: optional(link()) });
-    const notedTrips = indexOver(trips, noted, ({ data: { name } }) => [{ name }]);
+    const notedTrips = indexOverRows(trips, noted, ({ data: { name } }) => [{ name }]);
     // @ts-expect-error A row that leaves the field out links to nothing.
     expect(() => notedTrips.rowsOfEachLinkFrom("stop")).toThrow("a row of Noted may hold no link under stop");
   });
@@ -281,7 +282,7 @@ describe("the rows of an index of each blob in the closure of what a field links
 
   it("fail the scan where the store does not hold a blob that a row links to", async () => {
     const absent = linkOf(new TextEncoder().encode("held by no store"));
-    const astray = indexOver(trips, tripRow, ({ data: { name } }) => [{ name, stop: new LinkValue(absent) }]);
+    const astray = indexOverRows(trips, tripRow, ({ data: { name } }) => [{ name, stop: new LinkValue(absent) }]);
     const store = await storeHolding(north);
     await expect(store.scan(astray.rowsOfEachInClosureAt("stop"))).rejects.toThrow(`the store does not hold ${absent}`);
   });

@@ -13,9 +13,9 @@ import {
   namedSchemaAt,
   ObjectValue,
   objectFormat,
-  objectsOf,
   objectValueAt,
   readObject,
+  readObjectNaming,
   schemaOf,
   type ValueMap,
 } from "../src/index.ts";
@@ -185,16 +185,28 @@ describe("the schema an object names", () => {
   });
 });
 
-describe("a selection by schema", () => {
-  it("takes the objects of its schema, and none of another", async () => {
+describe("the object read that names a schema", () => {
+  it("is the object where the blob names the schema, and none where it names another", async () => {
     const object = encodeObject(login, greeting);
     const reader = { get: async () => object.bytes };
-    expect(await objectsOf(login).read(object.link, reader)).toEqual(object);
-    expect(await objectsOf(anything).read(object.link, reader)).toBeUndefined();
+    expect(await readObjectNaming(reader, object.link, login)).toEqual(object);
+    expect(await readObjectNaming(reader, object.link, anything)).toBeUndefined();
   });
 
-  it.each(malformed)("takes no blob %s", async (_, bytes) => {
-    expect(await objectsOf(login).read(linkOf(bytes), { get: async () => bytes })).toBeUndefined();
+  it.each(malformed)("is none of a blob %s", async (_, bytes) => {
+    expect(await readObjectNaming({ get: async () => bytes }, linkOf(bytes), login)).toBeUndefined();
+  });
+
+  it("is refused where the blob names the schema and its data does not fit it", async () => {
+    const bytes = objectFormat.encode(new ObjectValue(login.link, { v: 1 }));
+    await expect(readObjectNaming({ get: async () => bytes }, linkOf(bytes), login)).rejects.toThrow(
+      "does not fit its schema",
+    );
+  });
+
+  it("is refused where the reader gives no blob", async () => {
+    const { link } = encodeObject(login, greeting);
+    await expect(readObjectNaming({ get: async () => undefined }, link, login)).rejects.toThrow(AbsentBlob);
   });
 });
 

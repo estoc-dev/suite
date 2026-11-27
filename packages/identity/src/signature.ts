@@ -5,12 +5,8 @@ import {
   type Implementation,
   type Link,
   LinkValue,
-  objectsOf,
   type Reader,
   readObject,
-  type Schema,
-  SelectionBySchema,
-  type ValueMap,
 } from "@estoc/object";
 import { bytes, type DataOf, link, schema } from "@estoc/schema";
 import { LRUCache } from "lru-cache";
@@ -44,11 +40,6 @@ export interface Signature {
   readonly object: Link<never>;
   readonly signature: Uint8Array;
   readonly blobs: readonly Uint8Array[];
-}
-
-export interface SignatureOver<F extends ValueMap> {
-  readonly signature: Signature;
-  readonly object: EncodedObject<F>;
 }
 
 export interface Actor {
@@ -90,15 +81,6 @@ export class Signatures {
 
   async read(link: Link<unknown>, reader: Reader): Promise<Signature> {
     return this.#cache.get(link) ?? this.verify(await readObject(reader, link, this.schema), reader);
-  }
-
-  selectionOver<F extends ValueMap>(schema: Schema<F>): SelectionBySchema<SignatureOver<F>, SignatureData> {
-    const objects = objectsOf(schema);
-    return new SelectionBySchema(this.schema, async (signature, reader) => {
-      const object = await objects.read(signature.data.object.link, reader);
-      if (object === undefined) return undefined;
-      return { signature: await this.implementation.read(signature, reader), object };
-    });
   }
 
   /**

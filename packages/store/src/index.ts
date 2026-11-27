@@ -42,8 +42,6 @@ export {
   type Prefix,
   recordedStatements,
   type Source,
-  selectedBlobs,
-  selectedRecords,
 } from "./source.ts";
 export { type RecordedStatements, type Scannable, type StagedStore, Store } from "./store.ts";
 export { type View, view } from "./view.ts";
@@ -53,5 +51,4 @@ export {
   type WrittenObjectData,
   writtenObjectSchema,
   writtenObjectsOf,
-  writtenObjectsOver,
 } from "./written-object.ts";

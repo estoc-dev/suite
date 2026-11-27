@@ -25,7 +25,6 @@ export {
   type Actor,
   type Signature,
   type SignatureData,
-  type SignatureOver,
   type Signatures,
   signatureSchema,
 } from "./signature.ts";

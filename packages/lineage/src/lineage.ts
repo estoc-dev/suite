@@ -7,7 +7,6 @@ import {
   LinkValue,
   type Reader,
   readObject,
-  SelectionBySchema,
 } from "@estoc/object";
 import { type DataOf, link, optional, schema } from "@estoc/schema";
 import { SchemaLineage } from "./schema-lineage.ts";
@@ -36,10 +35,6 @@ export interface Lineage {
  */
 export class Lineages {
   readonly schema = lineageNodeSchema;
-  readonly selection: SelectionBySchema<Lineage, LineageNodeData> = new SelectionBySchema(
-    lineageNodeSchema,
-    (head, reader) => this.#readLineageEndingIn(head, reader),
-  );
 
   startingWith(item: { readonly link: Link<unknown> }): Lineage {
     return lineageOf([], encodeObject(lineageNodeSchema, { item: new LinkValue(item.link) }));

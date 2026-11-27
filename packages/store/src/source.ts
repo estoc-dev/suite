@@ -1,14 +1,16 @@
 import {
   type EncodedObject,
   type Link,
-  type LinkValue,
+  LinkValue,
   type Reader,
   type Schema,
   type Selection,
   SelectionBySchema,
   type ValueMap,
 } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import {
+  anyMemberObject,
   fieldOf,
   type IndexDefinition,
   indexDefinitionOf,
@@ -115,13 +117,15 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
 }
 
 /**
- * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
- *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
- *   be a stranger's.
- * - A scan reads every blob it is over, attachments as well, once for each index.
+ * It is for objects that carry their authority in a signature, such as a signed identity. Anyone
+ * can send a bundle with an object of any schema in it, so an unsigned object read this way may be
+ * a stranger's.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
-  return new Source({ origin: blobOrigin, itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({
+    origin: readingOf(heldObjectsOf(selection.schema)).origin,
+    itemOf: (blob) => itemOf(selection, blob),
+  });
 }
 
 export interface HeldBlob {
@@ -280,13 +284,45 @@ export function indexOfRows<F extends ValueMap>(
   });
 }
 
+export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
+
+/** An object written to itself has its own link as that of its schema. */
+export const heldObjects = indexOfRows(heldObjectSchema, {
+  schema: anyMemberObject.schema,
+  object: anyMemberObject.link,
+});
+
+const heldObject = memberObjectOf(heldObjectSchema);
+const heldObjectsBySchema = new Map<Link<Schema>, Source<HeldBlob>>();
+
+/**
+ * - The objects that name `schema` among the blobs read, whether they fit it or not, and wherever
+ *   they came from: anyone can send a bundle with an object of any schema in it.
+ * - They are the rows of `heldObjects` whose schema is this one, so what reads them is given no
+ *   blob of another schema, and no attachment.
+ */
+export function heldObjectsOf(schema: Schema): Source<HeldBlob> {
+  // What reads the objects of one schema reads one source: in a union each of them is read once, and
+  // which they are is worked out once for all that read them.
+  const kept = heldObjectsBySchema.get(schema.link);
+  if (kept !== undefined) return kept;
+  const objects = indexOfRows(heldObjectSchema, {
+    schema: heldObject.field("schema").equalTo(new LinkValue(schema.link)),
+    object: heldObject.field("object"),
+  })
+    .reading(heldObjects)
+    .linksAt("object");
+  heldObjectsBySchema.set(schema.link, objects);
+  return objects;
+}
+
 /**
  * The Records among the blobs read. A row is encoded to the same bytes as the Record it comes of,
  * so the rows are those Records, and what reads the records of a store reads this index.
  */
 export const heldRecords: Index<RecordData> = indexOfRows(recordSchema, {
   object: memberObjectOf(recordSchema).field("object"),
-});
+}).reading(heldObjectsOf(recordSchema));
 
 /**
  * The statements the store recorded. One of the same schema that only came to the store, as in a

@@ -753,6 +753,19 @@ describe("an index over blobs", () => {
     expect(await namesOf(await store.scan(tagNames))).toEqual([]);
   });
 
+  it("has the store asked once for a blob of another schema or of none, however many indexes read this way", async () => {
+    const image = new TextEncoder().encode("an image");
+    const held = carrying(image);
+    const requestedLinks: Link<unknown>[] = [];
+    const store = new Store(backendNoting(requestedLinks, new MemoryBackend()));
+    await store.write(batchOf([held, encodeObject(tag, { names: ["tag"] })], [image, ...schemas]));
+    const otherTagNames = indexOver(selectedBlobs(objectsOf(tag)), named, namedOf);
+    expect(await namesOf(await store.scan(tagNames))).toEqual(["tag"]);
+    expect(await namesOf(await store.scan(otherTagNames))).toEqual(["tag"]);
+    const requestCountOf = (link: Link<unknown>) => requestedLinks.filter((requested) => requested === link).length;
+    expect([linkOf(image), held.link].map(requestCountOf)).toEqual([1, 1]);
+  });
+
   it("validates a blob of its schema once", async () => {
     const store = new Store(new MemoryBackend());
     await store.write(batchOf([writtenByHand(tag, { names: ["validated once"] })], schemas));
@@ -951,7 +964,7 @@ describe("an index over blobs", () => {
       encodeObject(note, { names: ["b"], of: new LinkValue(secondTag.link) }),
     ];
 
-    it("reads only the blobs put since the last scan", async () => {
+    it("reads only the blobs put since the last scan, each once and those of its schema once more", async () => {
       const requestedLinks: Link<unknown>[] = [];
       const store = new Store(backendNoting(requestedLinks, new MemoryBackend()));
       await store.write(batchOf([first], [firstTag.bytes, ...schemas]));
@@ -959,7 +972,7 @@ describe("an index over blobs", () => {
       await store.write(batchOf([second], [secondTag.bytes]));
       requestedLinks.length = 0;
       expect(await namesOf(await store.scan(tagNames))).toEqual(["x", "y"]);
-      expect(requestedLinks.sort()).toEqual([second.link, secondTag.link].sort());
+      expect(requestedLinks.sort()).toEqual([second.link, secondTag.link, secondTag.link].sort());
     });
 
     it("goes on from the last scan that went through, after one that fails", async () => {

@@ -21,7 +21,10 @@ type Step =
   | { readonly step: "schema" }
   | { readonly step: "eachLink" }
   | { readonly step: "object" }
-  | { readonly step: "eachInClosure" };
+  | { readonly step: "eachInClosure" }
+  | { readonly step: "equalTo"; readonly value: ComparedValue };
+
+type ComparedValue = LinkValue<unknown> | string | number | boolean;
 
 /** Each path starts at a blob that the index the part is in reads, whatever the blob is. */
 export interface PartDefinition {
@@ -90,6 +93,11 @@ export class ValuePath<T> {
   eachInClosure(this: ValuePath<LinkValue<unknown>>): ValuePath<LinkValue<unknown>> {
     return new ValuePath([...this.#route, { step: "eachInClosure" }]);
   }
+
+  /** Where the value is another than `value`, no row comes of it. */
+  equalTo<V extends ComparedValue>(this: ValuePath<V>, value: NoInfer<V>): ValuePath<V> {
+    return new ValuePath([...this.#route, { step: "equalTo", value }]);
+  }
 }
 
 /** Each blob that the index reads, where it is an object. */
@@ -130,6 +138,7 @@ class ValueWalk {
   readonly rowFields: string[] = [];
   object: ObjectWalk | undefined;
   eachInClosure: ValueWalk | undefined;
+  equalTo: { readonly value: ComparedValue; readonly walk: ValueWalk } | undefined;
 
   constructor(type: Item) {
     this.type = type;
@@ -143,12 +152,24 @@ export const fieldOf = ({ fields }: SchemaDocument, name: string): Field | undef
 
 const typeOf = ({ optional: _, ...type }: Field): Item => type;
 
+const isSameValue = (value: Value, compared: ComparedValue): boolean =>
+  value instanceof LinkValue && compared instanceof LinkValue ? value.link === compared.link : value === compared;
+
+/**
+ * The name of its type in a schema, for a value that is compared. Any other value has a name that
+ * no type has.
+ */
+const comparedTypeOf = (value: Value): string =>
+  value instanceof LinkValue ? "link" : Number.isSafeInteger(value) ? "integer" : typeof value;
+
+const comparedTypes: readonly string[] = ["link", "string", "integer", "boolean"];
+
 /**
  * - Paths that begin with the same steps share them in the walk, so each is taken once for an
  *   object read. A step that does not fit where it is taken from is refused here, before any blob
  *   is read.
  * - Paths that take one object as two schemas are refused as well: an object is written to one, so
- *   they would give no row of any object.
+ *   they would give no row of any object. So are paths that take one value as equal to two.
  * - A part expands at one place, so that its rows are not every pairing of what two places give.
  */
 function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
@@ -172,6 +193,18 @@ function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
     let place: ObjectWalk | ValueWalk = start;
     for (const step of steps) {
       if (place instanceof ValueWalk) {
+        if (step.step === "equalTo") {
+          const type = nameOf(place.type);
+          if (!comparedTypes.includes(place.type.type))
+            return refuse(`compares ${type}, and what is compared is a link, a string, an integer or a boolean`);
+          if (comparedTypeOf(step.value) !== place.type.type)
+            return refuse(`compares ${type} with a value that is not ${type}`);
+          place.equalTo ??= { value: step.value, walk: new ValueWalk(place.type) };
+          if (!isSameValue(place.equalTo.value, step.value))
+            return refuse("takes as equal to one value what another path takes as equal to another");
+          place = place.equalTo.walk;
+          continue;
+        }
         if (step.step !== "object" && step.step !== "eachInClosure")
           return refuse(`takes the ${step.step} of a value, which has none`);
         if (place.type.type !== "link")
@@ -217,6 +250,8 @@ function walkOf(rows: Schema, { paths }: PartDefinition): ObjectWalk {
         place = place.eachLink;
       } else if (step.step === "object") {
         return refuse("follows an object, and only a link leads to one");
+      } else if (step.step === "equalTo") {
+        return refuse("compares an object, and what is compared is a value");
       } else {
         return refuse("expands the closure of an object, which is taken of its link");
       }
@@ -265,6 +300,8 @@ async function rowsFromObject(
 
 async function rowsFromValue(walk: ValueWalk, value: Value, start: ScannedBlob): Promise<readonly PartialRow[]> {
   const rowsOfEach: (readonly PartialRow[])[] = [[new Map(walk.rowFields.map((field) => [field, value]))]];
+  if (walk.equalTo !== undefined)
+    rowsOfEach.push(isSameValue(value, walk.equalTo.value) ? await rowsFromValue(walk.equalTo.walk, value, start) : []);
   if (walk.object !== undefined || walk.eachInClosure !== undefined) {
     if (!(value instanceof LinkValue)) return [];
     if (walk.object !== undefined)
@@ -320,20 +357,22 @@ export function rowReaderOf(rows: Schema, definition: PartDefinition): (start: S
  * - `rows` is the schema of the rows, and the rows are those that any part gives. A part reads
  *   every object among the blobs, and its `paths` hold under each field of a row the steps from an
  *   object read to the value of the field.
- * - A step is taken at an object or at a link. At an object, `{ step: "as", schema }` takes it as
+ * - A step is taken at an object or at a value. At an object, `{ step: "as", schema }` takes it as
  *   an object of `schema`, the link of a schema, `{ step: "field", name }` a field of it, once a
  *   step took it as a schema, `{ step: "link" }` its link, `{ step: "schema" }` the link of the
  *   schema it is written to, and `{ step: "eachLink" }` each link that it holds. At a link,
  *   `{ step: "object" }` takes the object that it leads to, and `{ step: "eachInClosure" }` the
- *   link of each blob in its closure, its own among them.
+ *   link of each blob in its closure, its own among them. At a link, a string, an integer or a
+ *   boolean, `{ step: "equalTo", value }` takes it where it is `value`.
  * - The steps named `each` expand: the steps after one are taken from each value that it gives. The
  *   paths of a part expand at one place, which those that expand share the steps up to.
  * - Where no path expands, an object read gives a row where every path reaches a value. Where some
  *   do, it gives a row of each value of the expansion that every one of them reaches a value from,
  *   and each row holds what the other paths reach as well. It gives none where any other path
  *   reaches no value.
- * - A path reaches no value where it takes an object as a schema that it is not written to, and
- *   where it follows a link to a blob that is not an object.
+ * - A path reaches no value where it takes an object as a schema that it is not written to, where
+ *   it follows a link to a blob that is not an object, and where it takes a value as equal to
+ *   another.
  * - Where a path takes as a schema an object that names the schema and does not fit it, the value
  *   of an expansion that it came from gives no row. Where it came from none, the object read fails,
  *   even where another path takes an object as a schema that it is not written to. So where every

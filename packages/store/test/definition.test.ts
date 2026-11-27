@@ -1,5 +1,6 @@
 import {
   decodeObject,
+  decodeSchema,
   type EncodedObject,
   encodeObject,
   type Link,
@@ -12,11 +13,12 @@ import {
   type Schema,
   SelectionBySchema,
 } from "@estoc/object";
-import { array, integer, link, optional, schema, string } from "@estoc/schema";
+import { array, boolean, integer, link, optional, schema, string } from "@estoc/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
   anyMemberObject,
   type Backend,
+  heldObjectsOf,
   type Index,
   type IndexDefinition,
   indexOfRows,
@@ -262,6 +264,84 @@ describe("an index of rows taken along paths, reading the rows of another index"
   });
 });
 
+describe("an index of rows taken along paths, one of which takes a value as equal to one given", () => {
+  const measured = schema("Measured", { name: string(), count: integer(), isOpen: boolean(), home: link() });
+  const member = memberObjectOf(measured);
+  const paths = {
+    name: member.field("name"),
+    count: member.field("count"),
+    isOpen: member.field("isOpen"),
+    home: member.field("home"),
+  };
+  const porto = encodeObject(place, { city: "Porto" });
+  const open = encodeObject(measured, { name: "open", count: 2, isOpen: true, home: new LinkValue(lisbon.link) });
+  const shut = encodeObject(measured, { name: "shut", count: 3, isOpen: false, home: new LinkValue(porto.link) });
+
+  async function storeHoldingBoth(): Promise<Store> {
+    const store = new Store(new MemoryBackend());
+    await store.write({
+      roots: [open.link, shut.link],
+      blobs: [open.bytes, shut.bytes, porto.bytes, ...measured.blobs, ...closure],
+    });
+    return store;
+  }
+
+  it.each([
+    ["a string", { name: paths.name.equalTo("open") }],
+    ["an integer", { count: paths.count.equalTo(2) }],
+    ["a boolean", { isOpen: paths.isOpen.equalTo(true) }],
+    ["a link, whichever value holds it", { home: paths.home.equalTo(new LinkValue(lisbon.link)) }],
+  ])("holds the row of an object where %s is that value, and none where it is another", async (_, compared) => {
+    const rows = await (await storeHoldingBoth()).scan(indexOfRows(measured, { ...paths, ...compared }));
+    expect(await rowDataOf(rows)).toEqual([open.data]);
+    expect(rows.failures).toEqual([]);
+  });
+
+  it("holds what the steps after that one reach", async () => {
+    const cities = indexOfRows(titled, {
+      title: paths.home.equalTo(new LinkValue(porto.link)).objectOf(place).field("city"),
+    });
+    expect(await titlesIn(await storeHoldingBoth(), cities)).toEqual(["Porto"]);
+  });
+
+  it("holds no row of an object where another path takes the same value as it is", async () => {
+    const pair = schema("Pair", { title: string(), name: string() });
+    const names = indexOfRows(pair, { title: paths.name, name: paths.name.equalTo("shut") });
+    expect(await titlesIn(await storeHoldingBoth(), names)).toEqual(["shut"]);
+  });
+});
+
+describe("the objects of a schema among the blobs held", () => {
+  const titles = indexOfRows(titled, { title: memberCard.field("title") }).reading(heldObjectsOf(card));
+  const held = schema("Held", { object: link() });
+  const heldCards = indexOver(heldObjectsOf(card), held, ({ link }) => [{ object: new LinkValue(link) }]);
+  const image = new TextEncoder().encode("an image");
+
+  it("are those that name the schema, recorded or not, and no other blob", async () => {
+    const [recorded, written] = [cardOf("recorded"), cardOf("held")];
+    const store = await storeRecording(recorded);
+    await store.write({ roots: [written.link, linkOf(image)], blobs: [written.bytes, image, ...closure] });
+    const rows = await store.scan(heldCards);
+    expect((await rowDataOf(rows)).map(({ object }) => object.link)).toEqual([recorded.link, written.link]);
+    expect(await titlesIn(store, titles)).toEqual(["held", "recorded"]);
+  });
+
+  it("hold one that names the schema and does not fit it, which an index that takes it as the schema fails on", async () => {
+    const misfit = objectFormat.encode(new ObjectValue(card.link, { title: 1 }));
+    const store = await storeRecording(cardOf("a"));
+    await store.write({ roots: [linkOf(misfit)], blobs: [misfit, ...closure] });
+    const rows = await store.scan(titles);
+    expect(await titlesIn(store, titles)).toEqual(["a"]);
+    expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(misfit)]);
+    expect((await rowDataOf(await store.scan(heldCards))).map(({ object }) => object.link)).toContain(linkOf(misfit));
+  });
+
+  it("are one source for one schema, whichever object holds the schema", () => {
+    expect(heldObjectsOf(decodeSchema(card.bytes))).toBe(heldObjectsOf(card));
+    expect(heldObjectsOf(person)).not.toBe(heldObjectsOf(card));
+  });
+});
+
 describe("an index of rows taken along paths from every object held", () => {
   const written = schema("Written", { object: link(), schema: link<Schema>() });
   const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
@@ -476,6 +556,19 @@ describe("the definition of an index", () => {
     ]);
   });
 
+  it("holds the value that a path takes a value as equal to, and has another link for another value", () => {
+    const titlesEqualTo = (compared: string) =>
+      indexOfRows(titled, { title: memberCard.field("title").equalTo(compared) }).definition;
+    const steps = [
+      { step: "as", schema: linkTo(card) },
+      { step: "field", name: "title" },
+      { step: "equalTo", value: "a" },
+    ];
+    expect(titlesEqualTo("a")?.data.parts).toEqual([{ paths: { title: steps } }]);
+    expect(titlesEqualTo("a")?.link).toBe(titlesEqualTo("a")?.link);
+    expect(titlesEqualTo("b")?.link).not.toBe(titlesEqualTo("a")?.link);
+  });
+
   it("has the same link for the same rows and parts, and another for other parts or rows of another schema", () => {
     const again = indexOfRows(ownedCard, {
       city: memberObjectOf(card).field("owner").objectOf(person).field("home").objectOf(place).field("city"),
@@ -569,6 +662,22 @@ describe("an index of rows taken along paths", () => {
     );
   });
 
+  it("is refused where its paths take one value as equal to two", () => {
+    const pair = schema("Pair", { title: string(), name: string() });
+    expect(() => indexOfRows(pair, { title: title.equalTo("a"), name: title.equalTo("b") })).toThrow(
+      "the path of name in Pair takes as equal to one value what another path takes as equal to another",
+    );
+    expect(() => indexOfRows(pair, { title: title.equalTo("a"), name: title.equalTo("a") })).not.toThrow();
+  });
+
+  it("is refused where a path takes an integer as equal to a number that is not one", () => {
+    const counted = schema("Counted", { count: integer() });
+    const count = memberObjectOf(counted).field("count");
+    expect(() => indexOfRows(counted, { count: count.equalTo(1.5) })).toThrow(
+      "the path of count in Counted compares integer with a value that is not integer",
+    );
+  });
+
   it("is refused where its paths expand at two places", () => {
     const pair = schema("Pair", { left: link(), right: link() });
     const refusal = "the path of right in Pair expands at a second place, and a part expands at one";
@@ -594,6 +703,16 @@ describe("an index of rows taken along paths", () => {
     const unsaid: ValuePath<string> = anyMemberObject.field("title");
     expect(() => indexOfRows(titled, { title: unsaid })).toThrow(
       "takes the field title of an object whose schema it does not say",
+    );
+    // @ts-expect-error An integer is not the string that the path gives.
+    const titleEqualToCount = title.equalTo(1);
+    expect(() => indexOfRows(titled, { title: titleEqualToCount })).toThrow(
+      "compares string with a value that is not string",
+    );
+    // @ts-expect-error An array is not compared.
+    const tagsEqualTo = memberCard.field("tags").equalTo(["a"]);
+    expect(() => indexOfRows(untyped, { title: tagsEqualTo })).toThrow(
+      "compares array of string, and what is compared is a link, a string, an integer or a boolean",
     );
     const linked = schema("Linked", { title: link() });
     // @ts-expect-error A string has no closure.

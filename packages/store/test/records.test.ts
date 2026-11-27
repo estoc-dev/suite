@@ -84,7 +84,7 @@ describe("records", () => {
     expect(await listOf(new Store(backend).records())).toEqual([statement.link]);
   });
 
-  it("are found by reading each blob the store holds once, however often they are listed", async () => {
+  it("are found by reading each blob the store holds once and each Record once more, however often they are listed", async () => {
     const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
     const store = new Store({
@@ -97,11 +97,12 @@ describe("records", () => {
       blobs: (start) => backend.blobs(start),
     });
     const alice = card("Alice");
-    await store.record(batchOf([taken(alice, 1)], [alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs]));
+    const first = taken(alice, 1);
+    await store.record(batchOf([first], [alice.bytes, ...cardSchema.blobs, ...takenSchema.blobs]));
     const blobs = await listOf(store.blobs());
     await listOf(store.records());
     await listOf(store.records());
-    expect(requestedLinks.sort()).toEqual(blobs.sort());
+    expect(requestedLinks.sort()).toEqual([...blobs, recordOf(first).link].sort());
     const second = taken(alice, 2);
     await store.record(batchOf([second]));
     requestedLinks.length = 0;

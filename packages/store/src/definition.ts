@@ -123,11 +123,10 @@ async function valueTakenBy(path: Path, blob: ScannedBlob, namedSchema: Link<Sch
   return new LinkValue(path.take === "link" ? blob.link : namedSchema);
 }
 
-type Taken = readonly [rowField: string, value: Value | undefined];
+type RowEntry = readonly [rowField: string, value: Value | undefined];
 
-const hasValue = (taken: Taken): taken is readonly [string, Value] => taken[1] !== undefined;
+const hasValue = (entry: RowEntry): entry is readonly [string, Value] => entry[1] !== undefined;
 
-/** A path that does not fit the rows, or the schema it takes the object as, is refused before any blob is read. */
 export function rowReaderOf(
   rows: Schema,
   definition: PartDefinition,
@@ -140,10 +139,10 @@ export function rowReaderOf(
     // Every path is taken before any of them is found to take nothing: where two paths take the
     // object as two schemas, one that names either and does not fit it fails whichever is given
     // first.
-    const taken: Taken[] = [];
-    for (const [rowField, path] of paths) taken.push([rowField, await valueTakenBy(path, blob, namedSchema)]);
+    const entries: RowEntry[] = [];
+    for (const [rowField, path] of paths) entries.push([rowField, await valueTakenBy(path, blob, namedSchema)]);
     // A row may hold a field named `__proto__`, which assigning to an object would leave out.
-    return taken.every(hasValue) ? Object.fromEntries(taken) : undefined;
+    return entries.every(hasValue) ? Object.fromEntries(entries) : undefined;
   };
 }
 

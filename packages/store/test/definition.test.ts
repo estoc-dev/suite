@@ -194,7 +194,7 @@ describe("an index of rows taken along paths that is given nothing to read", () 
     expect(failures.map(({ error }) => String(error))).toEqual([expect.stringContaining("#/title: left out")]);
   });
 
-  it("holds no row where its paths take an object as two schemas, and fails on one that does not fit either, whichever path is given first", async () => {
+  it("holds no row where its paths take an object as two schemas, and fails on one that names either and does not fit it, whichever path is given first", async () => {
     const names = schema("Names", { name: string(), city: string() });
     const [name, city] = [memberObjectOf(person).field("name"), memberObjectOf(place).field("city")];
     const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
@@ -219,6 +219,17 @@ describe("an index of rows taken along paths, reading the rows of another index"
     await store.write({ roots: [held.link], blobs: [held.bytes, ...cardRow.blobs, ...closure] });
     expect(await titlesIn(store, titlesOfRecordedCards)).toEqual(["recorded"]);
     expect(await titlesIn(store, titlesOfRows)).toEqual(["held"]);
+  });
+
+  it("takes the link of a row, which the store does not hold, and is joined at it to what the row holds", async () => {
+    const pointers = indexOfRows(schema("Pointer", { row: link() }), { row: anyMemberObject.link }).reading(cardRows);
+    const store = await storeRecording(cardOf("recorded"));
+    const [pointer] = await rowDataOf(await store.scan(pointers));
+    assert(pointer !== undefined);
+    expect(await store.get(pointer.row.link)).toBeUndefined();
+    expect(await rowDataOf(await store.scan(pointers.rowsJoinedAt("row", titlesOfRows)))).toEqual([
+      { row: pointer.row, title: "recorded" },
+    ]);
   });
 
   it("holds no row of a blob that what it is given to read gives no item of", async () => {

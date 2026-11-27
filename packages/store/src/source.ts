@@ -404,9 +404,9 @@ export class IndexOfRows<F extends ValueMap> extends Index<F> {
   }
 
   /**
-   * - The paths take values of each blob that `source` gives an item of. Where a blob does not fit
-   *   the schema that a path takes it as, the index fails on that blob, and not on the row that
-   *   links to it.
+   * - The paths take values of each blob that `source` gives an item of. Where a blob names the
+   *   schema that a path takes it as and does not fit it, the index fails on that blob, and not on
+   *   the row that links to it.
    * - Where `source` fails on a blob before it gives an item, the index fails on that blob too. The
    *   failures of an index that `source` takes links of stay failures of this one, each on the item
    *   it was on.

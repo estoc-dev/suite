@@ -14,9 +14,9 @@ import {
   type Link,
   LinkValue,
   linkOf,
-  objectsOf,
   type Reader,
   readObject,
+  readObjectNaming,
   schemaOf,
 } from "@estoc/object";
 import { peopleView } from "@estoc/people";
@@ -84,7 +84,7 @@ const recordedObjectsOf = async (store: Store) => (await writtenObjectsIn(store)
 async function recordedSignaturesOf(store: Store) {
   const links: Link<never>[] = [];
   for (const link of await recordedObjectsOf(store))
-    if ((await objectsOf(signatures.schema).read(link, store)) !== undefined) links.push(link);
+    if ((await readObjectNaming(store, link, signatures.schema)) !== undefined) links.push(link);
   return links;
 }
 /** Read by a kit of its own, as a client reads a response, so that what the test signed is read from the bundle. */

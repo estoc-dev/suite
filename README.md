@@ -79,7 +79,7 @@ semantics written elsewhere could not.
   of nodes that each carry the link of one version and name the node
   before, with no authority over what comes next. The schemas of a
   format's versions are strung the same way, and an object of any version
-  is read, and selected for an index, as the same shape.
+  is read as the same shape.
 - `@estoc/blog`: a post, with its title and date, that links to its body,
   and bodies written to a schema for each format, such as Markdown, which a
   program reads as HTML by the schema a body names.

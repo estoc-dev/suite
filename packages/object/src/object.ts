@@ -106,6 +106,16 @@ export async function readObject<F extends ValueMap>(
   return decodeObjectAt(link, await readBlob(reader, link), schema);
 }
 
+/** Nothing where the blob is not an object, and where it is an object that names another schema. */
+export async function readObjectNaming<F extends ValueMap>(
+  reader: Reader,
+  link: Link<unknown>,
+  schema: Schema<F>,
+): Promise<EncodedObject<F> | undefined> {
+  const bytes = await readBlob(reader, link);
+  return namedSchemaAt(link, bytes) === schema.link ? decodeObjectAt(link, bytes, schema) : undefined;
+}
+
 export async function readBlob(reader: Reader, link: Link<unknown>): Promise<Uint8Array> {
   const bytes = await reader.get(link);
   if (bytes === undefined) throw new AbsentBlob(link);

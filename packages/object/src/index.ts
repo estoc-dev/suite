@@ -12,6 +12,7 @@ export {
   objectValueAt,
   type Reader,
   readObject,
+  readObjectNaming,
   schemaOf,
 } from "./object.ts";
 export {
@@ -26,4 +27,3 @@ export {
   type ValueMap,
 } from "./object-format.ts";
 export { decodeSchema, encodeSchema, rootSchema, type Schema } from "./schema.ts";
-export { objectsOf, type Selection, SelectionBySchema } from "./selection.ts";

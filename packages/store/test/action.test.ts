@@ -1,26 +1,26 @@
 import { runInNewContext } from "node:vm";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { array, boolean, type DataOf, integer, link, schema, string } from "@estoc/schema";
 import { assert, describe, expect, it, test } from "vitest";
 import {
   actionOver,
-  indexOver,
+  heldObjectsOf,
   MemoryBackend,
   perform,
   RefusedBatch,
   type StagedStore,
   Store,
-  selectedBlobs,
   writtenObjectSchema,
   writtenObjectsOf,
 } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 const cardSchema = schema("Card", { name: string() });
 const card = (name: string) => encodeObject(cardSchema, { name });
 const writtenAt = (object: { readonly link: Link<unknown> }, at: number) =>
   encodeObject(writtenObjectSchema, { object: new LinkValue(object.link), at });
 
-const heldCards = indexOver(selectedBlobs(objectsOf(cardSchema)), cardSchema, ({ data }) => [data]);
+const heldCards = indexOverObjects(heldObjectsOf(cardSchema), cardSchema, cardSchema, ({ data }) => [data]);
 
 async function cardNamesIn(store: Store | StagedStore): Promise<string[]> {
   const names: string[] = [];

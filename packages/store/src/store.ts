@@ -16,12 +16,12 @@ import { derivationOf, type Index } from "./source.ts";
 
 export interface Scannable {
   /**
-   * - What a source of the index or its `rows` throw on gives no rows of that source, and is listed
-   *   in the `failures` of the rows.
+   * - A blob that a part of the index throws on gives no rows of that part, and is listed in the
+   *   `failures` of the rows.
    * - A failure does not make the scan throw: anyone can send a blob that an index fails on, and
    *   that would stop the other rows from being read. What needs every row looks at the `failures`.
-   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where a
-   *   selection or its rows catch it. That is not listed in the `failures`.
+   * - When the store throws, or gives no blob, for a link that is read, the scan throws even where
+   *   the `rows` of the index catch it. That is not listed in the `failures`.
    */
   scan<F extends ValueMap>(index: Index<F>): Promise<Rows<F>>;
 }

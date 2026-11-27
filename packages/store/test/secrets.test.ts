@@ -1,15 +1,16 @@
 import { decodeBundle, encodeBundle } from "@estoc/bundle";
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { Intake, indexOver, MemoryBackend, Store, selectedRecords, sendableBlobs } from "../src/index.ts";
+import { Intake, MemoryBackend, recordedStatements, Store, sendableBlobs } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 // What names a Secret without being one, as a key that links to its secret bytes.
 const keySchema = schema("Key", { name: string(), secret: link() });
 const secretOf = (...bytes: number[]) => encodeObject(secretSchema, { bytes: Uint8Array.from(bytes) });
 const keyTo = (secret: { readonly link: Link<unknown> }, name: string) =>
   encodeObject(keySchema, { name, secret: new LinkValue(secret.link) });
-const recordedKeys = () => indexOver(selectedRecords(objectsOf(keySchema)), keySchema, ({ data }) => [data]);
+const recordedKeys = () => indexOverObjects(recordedStatements, keySchema, keySchema, ({ data }) => [data]);
 
 async function listOf<T>(links: AsyncIterable<T>): Promise<T[]> {
   const listed: T[] = [];

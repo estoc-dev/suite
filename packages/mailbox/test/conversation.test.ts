@@ -7,7 +7,7 @@ import {
   type SignedIdentityObject,
   SoftwareSigner,
 } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, readObject, readObjectNaming } from "@estoc/object";
 import { peopleView } from "@estoc/people";
 import { type DataOf, integer, link, schema, string } from "@estoc/schema";
 import {
@@ -16,9 +16,9 @@ import {
   indexOver,
   MemoryBackend,
   type Rows,
+  recordedStatements,
   recordSchema,
   Store,
-  selectedRecords,
   view,
 } from "@estoc/store";
 import { assert, describe, expect, it } from "vitest";
@@ -49,13 +49,18 @@ type Delivery = DataOf<typeof delivery>;
 // The application's index of the deliveries its user's store records: a
 // row for each, by which way it went, the mailbox, when, and the bundle. What
 // was handed over out of band came in at no mailbox, and gives no row.
-const deliveries = indexOver(selectedRecords(objectsOf(inboundSchema)), delivery, ({ data: { via, at, bundle } }) =>
-  via === undefined ? [] : [{ direction: "inbound", mailbox: via, at, bundle }],
-).union(
-  indexOver(selectedRecords(objectsOf(outboundSchema)), delivery, ({ data: { mailbox, at, bundle } }) => [
-    { direction: "outbound", mailbox, at, bundle },
-  ]),
-);
+const deliveries = indexOver(recordedStatements, delivery, async function* ({ link }, reader) {
+  const inbound = await readObjectNaming(reader, link, inboundSchema);
+  if (inbound?.data.via !== undefined) {
+    const { via, at, bundle } = inbound.data;
+    yield { direction: "inbound", mailbox: via, at, bundle };
+  }
+  const outbound = await readObjectNaming(reader, link, outboundSchema);
+  if (outbound !== undefined) {
+    const { mailbox, at, bundle } = outbound.data;
+    yield { direction: "outbound", mailbox, at, bundle };
+  }
+});
 
 async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];

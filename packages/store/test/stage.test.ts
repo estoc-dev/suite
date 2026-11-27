@@ -1,7 +1,8 @@
-import { encodeObject, type Link, LinkValue, linkOf, objectsOf, readObject } from "@estoc/object";
+import { encodeObject, type Link, LinkValue, linkOf, readObject } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it } from "vitest";
-import { indexOver, MemoryBackend, Store, selectedBlobs, type View, view } from "../src/index.ts";
+import { heldObjectsOf, MemoryBackend, Store, type View, view } from "../src/index.ts";
+import { indexOverObjects } from "./objects.ts";
 
 // Every field these tests write, each optional, so that one schema takes all their objects.
 const anything = schema("Anything", {
@@ -104,7 +105,7 @@ const note = (data: Note) => encodeObject(noteSchema, data);
 const taggedSchema = schema("Tagged", { tag: string(), at: integer(), note: link() });
 type Tagged = DataOf<typeof taggedSchema>;
 
-const taggedNotes = indexOver(selectedBlobs(objectsOf(noteSchema)), taggedSchema, ({ link, data }) =>
+const taggedNotes = indexOverObjects(heldObjectsOf(noteSchema), noteSchema, taggedSchema, ({ link, data }) =>
   data.tags.map((tag) => ({ tag, at: data.at, note: new LinkValue(link) })),
 );
 

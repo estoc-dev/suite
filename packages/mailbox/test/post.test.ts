@@ -1,8 +1,16 @@
 import type { Bundle } from "@estoc/bundle";
 import { ed25519, identityKit, loadIdentity, SoftwareSigner } from "@estoc/identity";
-import { type EncodedObject, encodeObject, type Link, LinkValue, objectsOf, readObject } from "@estoc/object";
+import { type EncodedObject, encodeObject, type Link, LinkValue, readObject } from "@estoc/object";
 import { link, schema, secretSchema, string } from "@estoc/schema";
-import { Intake, inboundSchema, indexOver, MemoryBackend, recordSchema, Store, selectedRecords } from "@estoc/store";
+import {
+  Intake,
+  inboundSchema,
+  MemoryBackend,
+  memberObjectOf,
+  recordedStatements,
+  recordSchema,
+  Store,
+} from "@estoc/store";
 import { describe, expect, it } from "vitest";
 import {
   type MailboxData,
@@ -239,9 +247,11 @@ describe("an inbox", () => {
     const receiver = await openReceiver(network);
     const { store, queue, inbox } = receiver;
     const keyOfMailbox = schema("Key of mailbox", { mailbox: link(), key: link() });
-    const keysOfMailboxes = indexOver(selectedRecords(objectsOf(mailboxKeySchema)), keyOfMailbox, ({ link, data }) => [
-      { mailbox: data.mailbox, key: new LinkValue(link) },
-    ]);
+    const mailboxKey = memberObjectOf(mailboxKeySchema);
+    const keysOfMailboxes = recordedStatements.rowsTaking(keyOfMailbox, {
+      mailbox: mailboxKey.field("mailbox"),
+      key: mailboxKey.link,
+    });
     const keys = [];
     for await (const { data } of (await store.scan(keysOfMailboxes))
       .orderedBy("mailbox")

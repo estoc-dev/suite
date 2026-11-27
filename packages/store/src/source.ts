@@ -149,7 +149,6 @@ type ComparedValue = LinkValue<unknown> | string | number | boolean;
 
 const comparedTypes: readonly string[] = ["link", "string", "integer", "boolean"];
 
-/** The name of its type in a schema. A number that is not an integer has a name that no type has. */
 const comparedTypeOf = (value: ComparedValue): string =>
   value instanceof LinkValue ? "link" : Number.isSafeInteger(value) ? "integer" : typeof value;
 
@@ -178,8 +177,8 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
   }
 
   /**
-   * It says the paths that give the rows, so an index has none where a function gives the rows of
-   * any of its parts, and none where its rows are those of another index, as what `rowsWhere` gives.
+   * It says the paths that give the rows, so an index has one only where paths give the rows of
+   * each of its parts. What `rowsWhere` gives has none.
    */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;

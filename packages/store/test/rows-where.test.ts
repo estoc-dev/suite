@@ -118,7 +118,7 @@ describe("the rows of an index where a field holds a value given", () => {
     expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(misfit)]);
   });
 
-  it("are read from the rows kept of the index, without the store being asked for a blob", async () => {
+  it("are read from the rows kept of the index once it is scanned, without the store being asked for a blob", async () => {
     const backend = new MemoryBackend();
     const requestedLinks: Link<unknown>[] = [];
     const store = await storeHolding([open, shut], {

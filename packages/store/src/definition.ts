@@ -166,7 +166,7 @@ class ValueWalk {
 
 const nameOf = (type: Item): string => (type.type === "array" ? `array of ${nameOf(type.items)}` : type.type);
 
-const fieldOf = ({ fields }: SchemaDocument, name: string): Field | undefined =>
+export const fieldOf = ({ fields }: SchemaDocument, name: string): Field | undefined =>
   Object.hasOwn(fields, name) ? fields[name] : undefined;
 
 const typeOf = ({ optional: _, ...type }: Field): Item => type;

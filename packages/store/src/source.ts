@@ -9,6 +9,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import {
+  fieldOf,
   heldObject,
   type IndexDefinition,
   indexDefinitionOf,
@@ -170,21 +171,23 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
    * - They are the store's own as far as the rows are: what a row that comes of a stranger's object
    *   links to is whatever the stranger named.
    * - A scan throws where neither the store nor what the rows are read from holds a blob linked to.
-   *   So does the scan of a staged batch that holds the blob: the rows of the store are worked out
-   *   before those of the batch.
-   * - The compiler rejects a name written out under which a row may hold no link. A name passed as a
-   *   `string` is not checked, and a scan throws on a row that holds no link under it.
+   *   A staged batch that holds the blob does not change that for a row the store already has: the
+   *   rows of the store are worked out before those of the batch.
    */
   linksAt<N extends string>(this: Index<Readonly<Record<N, LinkValue<unknown>>>>, field: N): Source<HeldBlob> {
-    const derivation = this.#derivation;
-    const linkedBlobs =
-      this.#linkedBlobsByField.get(field) ??
-      new Source({
-        origin: { listingIn: async (blobSet) => (await blobSet.rowsOf(derivation)).linksAt(field) },
-        itemOf: heldBlobOf,
-      });
     // What reads the same links of the same rows reads one source, so that in a union each blob is
     // read once for all of them.
+    const kept = this.#linkedBlobsByField.get(field);
+    if (kept !== undefined) return kept;
+    const derivation = this.#derivation;
+    const { document } = derivation.schema;
+    const rowField = fieldOf(document, field);
+    if (rowField?.type !== "link" || rowField.optional === true)
+      throw new Error(`a row of ${document.title} may hold no link under ${field}`);
+    const linkedBlobs = new Source({
+      origin: { listingIn: async (blobSet) => (await blobSet.rowsOf(derivation)).linksAt(field) },
+      itemOf: heldBlobOf,
+    });
     this.#linkedBlobsByField.set(field, linkedBlobs);
     return linkedBlobs;
   }

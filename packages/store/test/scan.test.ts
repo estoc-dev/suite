@@ -16,7 +16,7 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import { array, type DataOf, integer, link, optional, schema, string } from "@estoc/schema";
-import { describe, expect, it, test, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type Backend,
   type Batch,
@@ -1432,23 +1432,15 @@ describe("an index over the blobs that the rows of another index link to", () =>
     });
   });
 
-  test("the compiler rejects a field name written out under which a row may hold no link", () => {
+  it("is refused where a row may hold no link under the field", () => {
     const optionalCards = indexOver(selectedRecords(objectsOf(note)), note, ({ data }) => [data]);
     // @ts-expect-error: a row holds text under `by`
-    noteCards.linksAt("by");
+    expect(() => noteCards.linksAt("by")).toThrow("a row of Card Link may hold no link under by");
     // @ts-expect-error: a row may leave `card` out
-    optionalCards.linksAt("card");
-  });
-
-  test("a field name passed as a string is not checked, and a scan throws on a row that holds no link under it", async () => {
-    const cardLinks = indexOver(selectedRecords(objectsOf(note)), schema("Card Only", { card: link() }), () => [
-      { card: new LinkValue(linkOf(image)) },
-    ]);
+    expect(() => optionalCards.linksAt("card")).toThrow("a row of Note may hold no link under card");
+    const cardLinks = indexOver(selectedRecords(objectsOf(note)), schema("Card Only", { card: link() }), () => []);
+    // The compiler takes a name typed as a string where every field of the rows is a link.
     const misspelled: string = "crad";
-    const store = newStore();
-    await recordIn(store, [encodeObject(note, { names: ["a"] })], schemas);
-    await expect(store.scan(indexOver(cardLinks.linksAt(misspelled), blobSizeSchema, () => []))).rejects.toThrow(
-      TypeError,
-    );
+    expect(() => cardLinks.linksAt(misspelled)).toThrow("a row of Card Only may hold no link under crad");
   });
 });

@@ -1,6 +1,6 @@
 import { identityKit, type Signature } from "@estoc/identity";
 import { type Link, LinkValue } from "@estoc/object";
-import { type SeenIdentityVersions, verifiedSignatures } from "@estoc/people";
+import { type SeenIdentityVersions, verifiedSignaturesOf } from "@estoc/people";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import { linkedBlob, memberObjectOf, type View } from "@estoc/store";
 import { serviceSchema } from "./schemas.ts";
@@ -15,7 +15,7 @@ const locationSchema = schema("Location", {
 
 const serviceTimeSchema = schema("Service Time", { at: integer() });
 
-const signedServices = verifiedSignatures.rowsJoinedAt(
+const signedServices = verifiedSignaturesOf(serviceSchema).rowsJoinedAt(
   "object",
   linkedBlob.rowsTaking(serviceTimeSchema, { at: memberObjectOf(serviceSchema).field("at") }),
 );

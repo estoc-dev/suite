@@ -6,7 +6,7 @@ import type { People, Person, SeenIdentityVersions } from "./person.ts";
 
 export { type IdentityVersionData, identityVersions } from "./identity-versions.ts";
 export type { People, Person, SeenIdentityVersions } from "./person.ts";
-export { type VerifiedSignatureData, verifiedSignatures, verifiedSignaturesOver } from "./verified-signatures.ts";
+export { type VerifiedSignatureData, verifiedSignaturesOf, verifiedSignaturesOver } from "./verified-signatures.ts";
 
 export interface StorePeople extends People {
   personIdentifiedBy(identifier: Link<unknown>): Promise<Person | undefined>;

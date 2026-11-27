@@ -11,6 +11,7 @@ import {
 import { link, schema, string } from "@estoc/schema";
 import {
   type Backend,
+  heldObjectSchema,
   indexOver,
   MemoryBackend,
   Store,
@@ -22,7 +23,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { callSchema, replySchema } from "../src/calls.ts";
 import { type Channel, Client } from "../src/index.ts";
 import { listOfIndex } from "../src/list.ts";
-import { heldBlobSchema, heldLinkSchema, heldObjectSchema, Runtime, recordedStatementSchema } from "../src/runtime.ts";
+import { heldBlobSchema, heldLinkSchema, Runtime, recordedStatementSchema } from "../src/runtime.ts";
 import { channelEnds, clientOf, image, note, noteBlobs, noteSchema, storeOfNote } from "./fixtures.ts";
 
 const heldBlobsIn = (rows: readonly Uint8Array[]) => rows.map((bytes) => decodeObject(bytes, heldBlobSchema).data);

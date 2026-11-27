@@ -1,14 +1,18 @@
 import {
   type EncodedObject,
   type Link,
-  type LinkValue,
+  LinkValue,
+  memberOf,
   type Reader,
   type Schema,
   type Selection,
   SelectionBySchema,
+  type Value,
   type ValueMap,
 } from "@estoc/object";
+import { link, schema } from "@estoc/schema";
 import {
+  anyMemberObject,
   fieldOf,
   type IndexDefinition,
   indexDefinitionOf,
@@ -115,13 +119,15 @@ export function selectedRecords<T>(selection: Selection<T>): Source<T> {
 }
 
 /**
- * - It is for objects that carry their authority in a signature, such as a signed identity. Anyone
- *   can send a bundle with an object of any schema in it, so an unsigned object read this way may
- *   be a stranger's.
- * - A scan reads every blob it is over, attachments as well, once for each index.
+ * It is for objects that carry their authority in a signature, such as a signed identity. Anyone
+ * can send a bundle with an object of any schema in it, so an unsigned object read this way may be
+ * a stranger's.
  */
 export function selectedBlobs<T, S extends ValueMap>(selection: SelectionBySchema<T, S>): Source<T> {
-  return new Source({ origin: blobOrigin, itemOf: (blob) => itemOf(selection, blob) });
+  return new Source({
+    origin: readingOf(heldObjectsOf(selection.schema)).origin,
+    itemOf: (blob) => itemOf(selection, blob),
+  });
 }
 
 export interface HeldBlob {
@@ -138,6 +144,17 @@ export const heldBlobs: Source<HeldBlob> = new Source({ origin: blobOrigin, item
 async function heldBlobOf({ link, reader }: ScannedBlob): Promise<HeldBlob> {
   return { link, bytes: await reader.get(link) };
 }
+
+type ComparedValue = LinkValue<unknown> | string | number | boolean;
+
+const comparedTypes: readonly string[] = ["link", "string", "integer", "boolean"];
+
+/** The name of its type in a schema. A number that is not an integer has a name that no type has. */
+const comparedTypeOf = (value: ComparedValue): string =>
+  value instanceof LinkValue ? "link" : Number.isSafeInteger(value) ? "integer" : typeof value;
+
+const isSameValue = (value: Value | undefined, compared: ComparedValue): boolean =>
+  value instanceof LinkValue && compared instanceof LinkValue ? value.link === compared.link : value === compared;
 
 /**
  * An index is the set of rows that what it reads gives, so going through all of it and adding each
@@ -160,7 +177,10 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     return this.#derivation.schema;
   }
 
-  /** An index has none where a function gives the rows of any of its parts. */
+  /**
+   * It says the paths that give the rows, so an index has none where a function gives the rows of
+   * any of its parts, and none where its rows are those of another index, as what `rowsWhere` gives.
+   */
   get definition(): IndexDefinition | undefined {
     return this.#derivation.definition;
   }
@@ -191,6 +211,32 @@ export class Index<F extends ValueMap> extends Source<EncodedObject<F>> {
     });
     this.#linkedBlobsByField.set(field, linkedBlobs);
     return linkedBlobs;
+  }
+
+  /**
+   * The rows of this index that hold `value` under `field`, each with the link it has here. What
+   * this index failed on is among the failures of the one given.
+   */
+  rowsWhere<N extends keyof F & string>(field: N, value: Extract<F[N], ComparedValue>): Index<F> {
+    const { schema } = this.#derivation;
+    const { title } = schema.document;
+    const rowField = fieldOf(schema.document, field);
+    if (rowField === undefined) throw new Error(`a row of ${title} has no field ${field}`);
+    if (!comparedTypes.includes(rowField.type))
+      throw new Error(
+        `a row of ${title} holds ${rowField.type} under ${field}, and what is compared is a link, a string, an integer or a boolean`,
+      );
+    if (comparedTypeOf(value) !== rowField.type)
+      throw new Error(`a row of ${title} holds ${rowField.type} under ${field}, and the value given is not one`);
+    const { origin, itemOf } = readingOf(this);
+    const part: Part<F> = {
+      origin,
+      async *rowsOf(blob) {
+        const row = await itemOf(blob);
+        if (row !== undefined && isSameValue(memberOf(row.data, field), value)) yield row.data;
+      },
+    };
+    return new Index(new Derivation(schema, [part]));
   }
 
   union(...others: readonly Index<F>[]): Index<F> {
@@ -280,13 +326,39 @@ export function indexOfRows<F extends ValueMap>(
   });
 }
 
+export const heldObjectSchema = schema("Held Object", { schema: link<Schema>(), object: link() });
+
+/** An object written to itself has its own link as that of its schema. */
+export const heldObjects = indexOfRows(heldObjectSchema, {
+  schema: anyMemberObject.schema,
+  object: anyMemberObject.link,
+});
+
+const heldObjectsBySchema = new Map<Link<Schema>, Source<HeldBlob>>();
+
+/**
+ * - The objects that name `schema` among the blobs read, whether they fit it or not, and wherever
+ *   they came from: anyone can send a bundle with an object of any schema in it.
+ * - Each is the blob that a row of `heldObjects` whose schema is this one links to under `object`,
+ *   so what reads them is given no blob of another schema, and no attachment.
+ */
+export function heldObjectsOf(schema: Schema): Source<HeldBlob> {
+  // What reads the objects of one schema reads one source: in a union each of them is read once, and
+  // which they are is worked out once for all that read them.
+  const kept = heldObjectsBySchema.get(schema.link);
+  if (kept !== undefined) return kept;
+  const objects = heldObjects.rowsWhere("schema", new LinkValue(schema.link)).linksAt("object");
+  heldObjectsBySchema.set(schema.link, objects);
+  return objects;
+}
+
 /**
  * The Records among the blobs read. A row is encoded to the same bytes as the Record it comes of,
  * so the rows are those Records, and what reads the records of a store reads this index.
  */
 export const heldRecords: Index<RecordData> = indexOfRows(recordSchema, {
   object: memberObjectOf(recordSchema).field("object"),
-});
+}).reading(heldObjectsOf(recordSchema));
 
 /**
  * The statements the store recorded. One of the same schema that only came to the store, as in a

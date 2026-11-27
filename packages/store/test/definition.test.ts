@@ -17,10 +17,11 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
   anyMemberObject,
   type Backend,
+  heldBlobs,
   type Index,
   type IndexDefinition,
-  indexOfRows,
   indexOver,
+  linkedBlob,
   MemoryBackend,
   memberObjectOf,
   recordedStatements,
@@ -40,12 +41,8 @@ const cardRow = schema("Card Row", { card: link(), title: string(), owner: link(
 const titled = schema("Titled", { title: string() });
 
 const memberCard = memberObjectOf(card);
-const cardRowsOfAll = indexOfRows(cardRow, {
-  card: memberCard.link,
-  title: memberCard.field("title"),
-  owner: memberCard.field("owner"),
-});
-const cardRows = cardRowsOfAll.reading(recordedStatements);
+const cardPaths = { card: memberCard.link, title: memberCard.field("title"), owner: memberCard.field("owner") };
+const cardRows = recordedStatements.rowsTaking(cardRow, cardPaths);
 
 const lisbon = encodeObject(place, { city: "Lisbon" });
 const ada = encodeObject(person, { name: "Ada", home: new LinkValue(lisbon.link) });
@@ -97,7 +94,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
     ["a row may leave out", optional(string())],
   ])("holds the value that a path reaches under a field named __proto__ that %s", async (_, field) => {
     const labeled = schema("Labeled", { ["__proto__"]: field });
-    const labels = indexOfRows(labeled, { ["__proto__"]: memberCard.field("title") }).reading(recordedStatements);
+    const labels = recordedStatements.rowsTaking(labeled, { ["__proto__"]: memberCard.field("title") });
     const store = await storeRecording(cardOf("a"), cardOf("b"));
     const rows = await rowDataOf((await store.scan(labels)).orderedBy("__proto__").range(["a"]));
     expect(rows.map((row) => Object.entries(row))).toEqual([[["__proto__", "a"]]]);
@@ -126,7 +123,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
   });
 
   it("decodes a statement once, to write it and for all the parts of a union that read it", async () => {
-    const titleOf = (path: ValuePath<string>) => indexOfRows(titled, { title: path }).reading(recordedStatements);
+    const titleOf = (path: ValuePath<string>) => recordedStatements.rowsTaking(titled, { title: path });
     const titles = titleOf(memberCard.field("title")).union(
       titleOf(memberObjectOf(place).field("city")),
       titleOf(memberObjectOf(schema("Trip", { name: string() })).field("name")),
@@ -148,7 +145,7 @@ describe("an index of rows taken along paths, reading the statements recorded", 
     const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [
       { title: data.title.toUpperCase() },
     ]);
-    const titles = indexOfRows(titled, { title: memberCard.field("title") }).reading(recordedStatements);
+    const titles = recordedStatements.rowsTaking(titled, { title: memberCard.field("title") });
     const store = await storeRecording(cardOf("a"));
     expect(await titlesIn(store, titles.union(shouted))).toEqual(["A", "a"]);
   });
@@ -157,7 +154,10 @@ describe("an index of rows taken along paths, reading the statements recorded", 
 describe("an index of rows taken along paths from the Records", () => {
   const record = memberObjectOf(recordSchema);
   const recorded = schema("Recorded", { record: link(), statement: link() });
-  const statementsOfRecords = indexOfRows(recorded, { record: record.link, statement: record.field("object") });
+  const statementsOfRecords = heldBlobs.rowsTaking(recorded, {
+    record: record.link,
+    statement: record.field("object"),
+  });
 
   it("holds under the link of a Record the link of the blob that records the statement", async () => {
     const statement = cardOf("a");
@@ -170,8 +170,8 @@ describe("an index of rows taken along paths from the Records", () => {
   });
 });
 
-describe("an index of rows taken along paths that is given nothing to read", () => {
-  const heldTitles = indexOfRows(titled, { title: memberCard.field("title") });
+describe("an index of rows taken along paths, reading every blob held", () => {
+  const heldTitles = heldBlobs.rowsTaking(titled, { title: memberCard.field("title") });
 
   it("holds a row of each object of the schema among the blobs held, recorded or not", async () => {
     const store = await storeRecording(cardOf("recorded"));
@@ -200,7 +200,7 @@ describe("an index of rows taken along paths that is given nothing to read", () 
     const nameless = objectFormat.encode(new ObjectValue(person.link, { home: new LinkValue(lisbon.link) }));
     const store = await storeRecording(cardOf("a"));
     await store.write({ roots: [linkOf(nameless)], blobs: [nameless] });
-    for (const index of [indexOfRows(names, { name, city }), indexOfRows(names, { city, name })]) {
+    for (const index of [heldBlobs.rowsTaking(names, { name, city }), heldBlobs.rowsTaking(names, { city, name })]) {
       const rows = await store.scan(index);
       expect(await rowDataOf(rows)).toEqual([]);
       expect(rows.failures.map(({ item }) => item)).toEqual([linkOf(nameless)]);
@@ -209,8 +209,8 @@ describe("an index of rows taken along paths that is given nothing to read", () 
 });
 
 describe("an index of rows taken along paths, reading the rows of another index", () => {
-  const titlesOfRows = indexOfRows(titled, { title: memberObjectOf(cardRow).field("title") });
-  const titlesOfRecordedCards = titlesOfRows.reading(cardRows);
+  const rowTitle = { title: memberObjectOf(cardRow).field("title") };
+  const titlesOfRecordedCards = cardRows.rowsTaking(titled, rowTitle);
 
   it("holds a row of each row of that index, and none of an object of their schema that the store holds", async () => {
     const store = await storeRecording(cardOf("recorded"));
@@ -218,25 +218,25 @@ describe("an index of rows taken along paths, reading the rows of another index"
     const held = encodeObject(cardRow, { card, title: "held", owner });
     await store.write({ roots: [held.link], blobs: [held.bytes, ...cardRow.blobs, ...closure] });
     expect(await titlesIn(store, titlesOfRecordedCards)).toEqual(["recorded"]);
-    expect(await titlesIn(store, titlesOfRows)).toEqual(["held"]);
+    expect(await titlesIn(store, heldBlobs.rowsTaking(titled, rowTitle))).toEqual(["held"]);
   });
 
   it("takes the link of a row, which the store does not hold, and is joined at it to what the row holds", async () => {
-    const pointers = indexOfRows(schema("Pointer", { row: link() }), { row: anyMemberObject.link }).reading(cardRows);
+    const pointers = cardRows.rowsTaking(schema("Pointer", { row: link() }), { row: anyMemberObject.link });
     const store = await storeRecording(cardOf("recorded"));
     const [pointer] = await rowDataOf(await store.scan(pointers));
     assert(pointer !== undefined);
     expect(await store.get(pointer.row.link)).toBeUndefined();
-    expect(await rowDataOf(await store.scan(pointers.rowsJoinedAt("row", titlesOfRows)))).toEqual([
-      { row: pointer.row, title: "recorded" },
-    ]);
+    expect(
+      await rowDataOf(await store.scan(pointers.rowsJoinedAt("row", linkedBlob.rowsTaking(titled, rowTitle)))),
+    ).toEqual([{ row: pointer.row, title: "recorded" }]);
   });
 
-  it("holds no row of a blob that what it is given to read gives no item of", async () => {
-    const titles = indexOfRows(titled, { title: memberCard.field("title") });
+  it("holds no row of a blob that what it reads gives no item of", async () => {
     const shortTitle = new SelectionBySchema(card, (object) => (object.data.title.length < 2 ? object : undefined));
     const store = await storeRecording(cardOf("a"), cardOf("long"));
-    expect(await titlesIn(store, titles.reading(selectedRecords(shortTitle)))).toEqual(["a"]);
+    const titles = selectedRecords(shortTitle).rowsTaking(titled, { title: memberCard.field("title") });
+    expect(await titlesIn(store, titles)).toEqual(["a"]);
   });
 
   it("asks the store for no blob where its paths take what a row holds", async () => {
@@ -262,7 +262,10 @@ describe("an index of rows taken along paths, reading the rows of another index"
 
 describe("an index of rows taken along paths from every object held", () => {
   const written = schema("Written", { object: link(), schema: link<Schema>() });
-  const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
+  const schemasOfObjects = heldBlobs.rowsTaking(written, {
+    object: anyMemberObject.link,
+    schema: anyMemberObject.schema,
+  });
   const image = new TextEncoder().encode("an image");
   const statement = cardOf("a");
 
@@ -283,7 +286,7 @@ describe("an index of rows taken along paths from every object held", () => {
 
   it("holds no row of a blob that is not an object", async () => {
     const held = schema("Held", { object: link() });
-    const objects = indexOfRows(held, { object: anyMemberObject.link });
+    const objects = heldBlobs.rowsTaking(held, { object: anyMemberObject.link });
     const rows = await (await storeHoldingAnImage()).scan(objects);
     const links = (await rowDataOf(rows)).map(({ object }) => object.link);
     expect(links).toContain(statement.link);
@@ -308,14 +311,17 @@ describe("a union of indexes", () => {
   const refusal = "the indexes in a union hold rows of one schema, and one of these holds rows of another";
 
   it("is refused where they hold rows of two schemas, whichever comes first", () => {
-    const [titles, aliases] = [indexOfRows(titled, { title }), indexOfRows(aliased, { title, alias: title })];
+    const [titles, aliases] = [
+      heldBlobs.rowsTaking(titled, { title }),
+      heldBlobs.rowsTaking(aliased, { title, alias: title }),
+    ];
     expect(() => titles.union(aliases)).toThrow(refusal);
     expect(() => aliases.union(titles)).toThrow(refusal);
   });
 
   it("is refused where a function gives the rows of one of another schema", () => {
     const shouted = indexOver(selectedRecords(objectsOf(card)), aliased, ({ data }) => [{ title: data.title }]);
-    expect(() => indexOfRows(titled, { title }).union(shouted)).toThrow(refusal);
+    expect(() => heldBlobs.rowsTaking(titled, { title }).union(shouted)).toThrow(refusal);
   });
 });
 
@@ -323,7 +329,7 @@ describe("the definition of an index", () => {
   const linkTo = ({ link }: Schema) => new LinkValue(link);
 
   it("holds the schema of the rows and the paths of each part", () => {
-    const titles = indexOfRows(titled, { title: memberCard.field("title") });
+    const titles = heldBlobs.rowsTaking(titled, { title: memberCard.field("title") });
     const { definition } = cardRows.union(cardRows);
     const memberSchema = linkTo(card);
     const title = { take: "field", name: "title", memberSchema };
@@ -336,14 +342,17 @@ describe("the definition of an index", () => {
 
   it("holds no schema in a path that says none of the object read", () => {
     const written = schema("Written", { object: link(), schema: link<Schema>() });
-    const schemasOfObjects = indexOfRows(written, { object: anyMemberObject.link, schema: anyMemberObject.schema });
+    const schemasOfObjects = heldBlobs.rowsTaking(written, {
+      object: anyMemberObject.link,
+      schema: anyMemberObject.schema,
+    });
     expect(schemasOfObjects.definition?.data.parts).toEqual([
       { paths: { object: { take: "link" }, schema: { take: "schema" } } },
     ]);
   });
 
   it("has the same link for the same rows and parts, and another for other parts or rows of another schema", () => {
-    const again = indexOfRows(cardRow, {
+    const again = heldBlobs.rowsTaking(cardRow, {
       owner: memberObjectOf(card).field("owner"),
       title: memberObjectOf(card).field("title"),
       card: memberObjectOf(card).link,
@@ -356,37 +365,46 @@ describe("the definition of an index", () => {
     expect(definitionLinkOf(cardRows.union(cardRows))).not.toBe(definitionLinkOf(cardRows));
     const title = memberCard.field("title");
     const retitled = schema("Retitled", { title: string() });
-    expect(definitionLinkOf(indexOfRows(retitled, { title }))).not.toBe(
-      definitionLinkOf(indexOfRows(titled, { title })),
+    expect(definitionLinkOf(heldBlobs.rowsTaking(retitled, { title }))).not.toBe(
+      definitionLinkOf(heldBlobs.rowsTaking(titled, { title })),
     );
   });
 
-  it("has the same link whatever the index is given to read", () => {
-    expect(cardRowsOfAll.definition).toBeDefined();
-    expect(cardRows.definition?.link).toBe(cardRowsOfAll.definition?.link);
-    expect(cardRowsOfAll.reading(cardRows).definition?.link).toBe(cardRowsOfAll.definition?.link);
+  it("has the same link whatever the index reads", () => {
+    const definitionLinkReading = (source: Source<unknown>) => source.rowsTaking(cardRow, cardPaths).definition?.link;
+    expect(cardRows.definition).toBeDefined();
+    for (const source of [heldBlobs, linkedBlob, cardRows])
+      expect(definitionLinkReading(source)).toBe(cardRows.definition?.link);
   });
 
   it("holds the parts of a union in the order they were given in, whatever each of them reads", () => {
-    const statementsAgain = indexOfRows(recordSchema, {
-      object: memberObjectOf(recordSchema).field("object"),
-    }).linksAt("object");
-    const [titles, names, cities] = [
+    const statementsAgain = heldBlobs
+      .rowsTaking(recordSchema, {
+        object: memberObjectOf(recordSchema).field("object"),
+      })
+      .linksAt("object");
+    const paths = [
       memberCard.field("title"),
       memberObjectOf(person).field("name"),
       memberObjectOf(place).field("city"),
-    ].map((title) => indexOfRows(titled, { title }));
-    assert(titles !== undefined && names !== undefined && cities !== undefined);
-    const namesReading = (source: Source<unknown>) =>
-      titles.reading(recordedStatements).union(names.reading(source), cities.reading(recordedStatements));
+    ];
+    const namesReading = (source: Source<unknown>) => {
+      const [titles, names, cities] = [recordedStatements, source, recordedStatements].map((read, at) =>
+        read.rowsTaking(titled, { title: paths[at] as ValuePath<string> }),
+      );
+      assert(titles !== undefined && names !== undefined && cities !== undefined);
+      return titles.union(names, cities);
+    };
     const { definition } = namesReading(statementsAgain);
-    expect(definition?.data.parts).toEqual([titles, names, cities].flatMap((index) => index.definition?.data.parts));
+    expect(definition?.data.parts).toEqual(
+      paths.flatMap((title) => heldBlobs.rowsTaking(titled, { title }).definition?.data.parts),
+    );
     expect(definition?.link).toBe(namesReading(recordedStatements).definition?.link);
   });
 
   it("is absent where a function gives the rows of a part", () => {
     const shouted = indexOver(selectedRecords(objectsOf(card)), titled, ({ data }) => [{ title: data.title }]);
-    const titles = indexOfRows(titled, { title: memberCard.field("title") });
+    const titles = heldBlobs.rowsTaking(titled, { title: memberCard.field("title") });
     expect(titles.union(shouted).definition).toBeUndefined();
     expect(shouted.definition).toBeUndefined();
   });
@@ -397,27 +415,29 @@ describe("an index of rows taken along paths", () => {
   const title = memberCard.field("title");
 
   it("is refused where a field of the rows has no path, or a path is for no field of the rows", () => {
-    expect(() => indexOfRows(untyped, { name: title })).toThrow("no path is given for the field title of Titled");
-    expect(() => indexOfRows(untyped, { title, name: title })).toThrow(
+    expect(() => heldBlobs.rowsTaking(untyped, { name: title })).toThrow(
+      "no path is given for the field title of Titled",
+    );
+    expect(() => heldBlobs.rowsTaking(untyped, { title, name: title })).toThrow(
       "a path is given for name, which Titled has not",
     );
   });
 
   it("is refused where a path takes a field that the schema has not, or that an object may leave out", () => {
     const untypedPerson: Schema = person;
-    expect(() => indexOfRows(untyped, { title: memberObjectOf(untypedPerson).field("title") })).toThrow(
+    expect(() => heldBlobs.rowsTaking(untyped, { title: memberObjectOf(untypedPerson).field("title") })).toThrow(
       "the path of title in Titled takes the field title, which Person has not",
     );
-    expect(() => indexOfRows(untyped, { title: memberObjectOf(untypedPerson).field("nickname") })).toThrow(
+    expect(() => heldBlobs.rowsTaking(untyped, { title: memberObjectOf(untypedPerson).field("nickname") })).toThrow(
       "the path of title in Titled takes the field nickname, which an object of Person may leave out",
     );
   });
 
   it("is refused where a path gives another type than the field of the rows takes", () => {
-    expect(() => indexOfRows(untyped, { title: memberCard.field("tags") })).toThrow(
+    expect(() => heldBlobs.rowsTaking(untyped, { title: memberCard.field("tags") })).toThrow(
       "the path of title in Titled gives array of string, and the row takes string",
     );
-    expect(() => indexOfRows(untyped, { title: memberCard.link })).toThrow(
+    expect(() => heldBlobs.rowsTaking(untyped, { title: memberCard.link })).toThrow(
       "the path of title in Titled gives link, and the row takes string",
     );
   });
@@ -426,10 +446,10 @@ describe("an index of rows taken along paths", () => {
     const counted = schema("Counted", { count: integer() });
     // @ts-expect-error A string is not the integer that the field of the rows takes.
     const count: ValuePath<number> = title;
-    expect(() => indexOfRows(counted, { count })).toThrow("gives string, and the row takes integer");
+    expect(() => heldBlobs.rowsTaking(counted, { count })).toThrow("gives string, and the row takes integer");
     // @ts-expect-error A field that an object may leave out is not one that a path takes.
     const nickname: ValuePath<string> = memberObjectOf(person).field("nickname");
-    expect(() => indexOfRows(titled, { title: nickname })).toThrow("may leave out");
+    expect(() => heldBlobs.rowsTaking(titled, { title: nickname })).toThrow("may leave out");
     // @ts-expect-error A path that does not say the schema of an object takes no field of it.
     expect(() => anyMemberObject.field("title")).toThrow(
       "a path takes the field title of an object whose schema it does not say",

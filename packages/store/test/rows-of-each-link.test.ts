@@ -13,8 +13,8 @@ import { link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   anyMemberObject,
+  heldBlobs,
   type Index,
-  indexOfRows,
   indexOver,
   MemoryBackend,
   memberObjectOf,
@@ -28,7 +28,7 @@ const schemas = [place, route, trip].flatMap(({ blobs }) => blobs);
 
 const tripRow = schema("Trip Row", { name: string(), stop: link() });
 const memberTrip = memberObjectOf(trip);
-const trips = indexOfRows(tripRow, { name: memberTrip.field("name"), stop: memberTrip.field("route") });
+const trips = heldBlobs.rowsTaking(tripRow, { name: memberTrip.field("name"), stop: memberTrip.field("route") });
 const stops = trips.rowsOfEachLinkFrom("stop");
 
 const lisbon = encodeObject(place, { city: "Lisbon" });
@@ -98,10 +98,12 @@ describe("the rows of an index of each link from what a field links to", () => {
 
   it("are the links written in an object where the field holds its own link, and none of a blob that is not an object", async () => {
     const linked = schema("Linked", { source: link(), target: link() });
-    const links = indexOfRows(linked, {
-      source: anyMemberObject.link,
-      target: anyMemberObject.link,
-    }).rowsOfEachLinkFrom("target");
+    const links = heldBlobs
+      .rowsTaking(linked, {
+        source: anyMemberObject.link,
+        target: anyMemberObject.link,
+      })
+      .rowsOfEachLinkFrom("target");
     const image = new TextEncoder().encode("an image");
     const store = await storeHolding(north);
     await store.write({ roots: [linkOf(image)], blobs: [image] });
@@ -129,7 +131,8 @@ describe("the rows of an index of each link from what a field links to", () => {
   it("are every pairing where they are asked of two fields", async () => {
     const pair = schema("Pair", { left: link(), right: link() });
     const memberRoute = memberObjectOf(route);
-    const pairs = indexOfRows(pair, { left: memberRoute.link, right: memberRoute.link })
+    const pairs = heldBlobs
+      .rowsTaking(pair, { left: memberRoute.link, right: memberRoute.link })
       .rowsOfEachLinkFrom("left")
       .rowsOfEachLinkFrom("right");
     const store = await storeHolding(north);
@@ -143,7 +146,7 @@ describe("the rows of an index of each link from what a field links to", () => {
     const store = await storeHolding(north, south);
     const toPorto = stops.rowsWhere("stop", new LinkValue(porto.link));
     expect((await rowsOf(await store.scan(toPorto))).map(({ name }) => name)).toEqual(["north"]);
-    const cities = indexOfRows(place, { city: memberObjectOf(place).field("city") }).reading(stops.linksAt("stop"));
+    const cities = stops.linksAt("stop").rowsTaking(place, { city: memberObjectOf(place).field("city") });
     expect((await rowsOf(await store.scan(cities))).map(({ city }) => city).sort()).toEqual([
       "Faro",
       "Lisbon",
@@ -153,7 +156,7 @@ describe("the rows of an index of each link from what a field links to", () => {
 
   it("are rows of the schema of the index read, with a link to anything under the field", () => {
     const named = schema("Named", { name: string(), schema: link<Schema>() });
-    const schemaNames = indexOfRows(named, { name: memberTrip.field("name"), schema: memberTrip.schema });
+    const schemaNames = heldBlobs.rowsTaking(named, { name: memberTrip.field("name"), schema: memberTrip.schema });
     const linked = schemaNames.rowsOfEachLinkFrom("schema");
     expect(linked.rowSchema).toBe(schemaNames.rowSchema);
     expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{
@@ -164,11 +167,13 @@ describe("the rows of an index of each link from what a field links to", () => {
 
   it("hold a link to anything under every field that holds a link, and what the rows read hold under the others", () => {
     const numbered = schema("Numbered", { 10: link<Schema>(), named: link<Schema>(), title: string() });
-    const linked = indexOfRows(numbered, {
-      10: memberTrip.schema,
-      named: memberTrip.schema,
-      title: memberTrip.field("name"),
-    }).rowsOfEachLinkFrom("10");
+    const linked = heldBlobs
+      .rowsTaking(numbered, {
+        10: memberTrip.schema,
+        named: memberTrip.schema,
+        title: memberTrip.field("name"),
+      })
+      .rowsOfEachLinkFrom("10");
     expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{
       readonly 10: LinkValue<unknown>;
       readonly named: LinkValue<unknown>;
@@ -179,7 +184,7 @@ describe("the rows of an index of each link from what a field links to", () => {
   it("hold a link to anything under a field whose name is put together where the index is made", () => {
     const rowsWithField = (field: string) => {
       const fields = schema("Named Fields", { [field]: link<Schema>() });
-      return indexOfRows(fields, { [field]: memberTrip.schema });
+      return heldBlobs.rowsTaking(fields, { [field]: memberTrip.schema });
     };
     const linkedAt = (slot: number) => rowsWithField(`stop${slot}`).rowsOfEachLinkFrom(`stop${slot}`);
     type Linked = RowOf<ReturnType<typeof linkedAt>>;
@@ -264,9 +269,9 @@ describe("the rows of an index of each blob in the closure of what a field links
 
   it("are the closure of an object where the field holds its own link", async () => {
     const own = schema("Own", { root: link(), member: link() });
-    const members = indexOfRows(own, { root: memberTrip.link, member: memberTrip.link }).rowsOfEachInClosureAt(
-      "member",
-    );
+    const members = heldBlobs
+      .rowsTaking(own, { root: memberTrip.link, member: memberTrip.link })
+      .rowsOfEachInClosureAt("member");
     const store = await storeHolding(north);
     const rows = await rowsOf(await store.scan(members));
     expect(new Set(rows.map(({ root }) => root.link))).toEqual(new Set([north.link]));
@@ -283,7 +288,7 @@ describe("the rows of an index of each blob in the closure of what a field links
 
   it("are rows of the schema of the index read, with a link to anything under every field that holds a link", () => {
     const named = schema("Named", { name: string(), schema: link<Schema>() });
-    const schemaNames = indexOfRows(named, { name: memberTrip.field("name"), schema: memberTrip.schema });
+    const schemaNames = heldBlobs.rowsTaking(named, { name: memberTrip.field("name"), schema: memberTrip.schema });
     const linked = schemaNames.rowsOfEachInClosureAt("schema");
     expect(linked.rowSchema).toBe(schemaNames.rowSchema);
     expectTypeOf<RowOf<typeof linked>>().toEqualTypeOf<{

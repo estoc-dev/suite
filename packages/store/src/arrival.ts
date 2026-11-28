@@ -1,8 +1,8 @@
 import { type Link, LinkValue, type Schema } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
+import { linkedBlob, recordedStatements } from "./collection.ts";
 import { anyMemberObject, memberObjectOf } from "./definition.ts";
 import { inboundSchema } from "./inbound.ts";
-import { linkedBlob, recordedStatements } from "./source.ts";
 import type { View } from "./view.ts";
 import { writtenObjectSchema } from "./written-object.ts";
 

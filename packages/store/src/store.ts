@@ -9,10 +9,10 @@ import {
   type RecordBatch,
   recordsOf,
 } from "./batch.ts";
-import { collectionSchema, membersOf } from "./collection.ts";
+import { derivationOf, type Index } from "./collection.ts";
+import { collectionSchema, membersOf } from "./collection-object.ts";
 import { blobSetOf, KeptRows, recordedStatementsIn } from "./scan.ts";
 import type { Rows } from "./sorted-rows.ts";
-import { derivationOf, type Index } from "./source.ts";
 
 export interface Scannable {
   /**

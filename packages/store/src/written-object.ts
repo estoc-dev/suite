@@ -1,8 +1,8 @@
 import { type EncodedObject, encodeObject, type Link, LinkValue } from "@estoc/object";
 import { type DataOf, integer, link, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
+import { type Index, recordedStatements } from "./collection.ts";
 import { memberObjectOf } from "./definition.ts";
-import { type Index, recordedStatements } from "./source.ts";
 
 /**
  * `at` is when `object` was written, in milliseconds since the Unix epoch, by the clock of the

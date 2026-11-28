@@ -129,7 +129,7 @@ describe("the index of identity versions", () => {
   });
 });
 
-describe("the identity versions over a source", () => {
+describe("the identity versions over a collection", () => {
   const recordedVersions = identityVersionsOver(recordedWrittenObjects.linksAt("object"));
 
   it("hold the row of a Signed Identity given, and none of one that is held and not given", async () => {
@@ -146,7 +146,7 @@ describe("the identity versions over a source", () => {
     });
   });
 
-  it("hold none of what the source gives that is not a Signed Identity, and that is no failure", async () => {
+  it("hold none of what the collection gives that is not a Signed Identity, and that is no failure", async () => {
     const rootKey = keys.encode(signer(ed25519, 4).key);
     const store = await storeHolding([rootKey.link], rootKey.blobs);
     await store.record(writtenObjectsOf([rootKey.link], 1));

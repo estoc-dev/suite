@@ -7,9 +7,6 @@ import {
   type Reader,
   type ValueMap,
 } from "@estoc/object";
-import type { BlobSet } from "./scan.ts";
-import { ClosureReader, ScannedBlob } from "./scanned-blob.ts";
-import { type Rows, SortedRows } from "./sorted-rows.ts";
 import {
   type Derivation,
   type FieldNames,
@@ -17,7 +14,10 @@ import {
   LinkedBlobError,
   type Listing,
   type Origin,
-} from "./source.ts";
+} from "./collection.ts";
+import type { BlobSet } from "./scan.ts";
+import { ClosureReader, ScannedBlob } from "./scanned-blob.ts";
+import { type Rows, SortedRows } from "./sorted-rows.ts";
 
 export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
   /** What comes of adding to these starts with them, in this order. */

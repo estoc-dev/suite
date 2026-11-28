@@ -1,6 +1,6 @@
 import type { EncodedObject, Link, Reader, ValueMap } from "@estoc/object";
+import { type Derivation, derivationOf, heldRecords, type ItemFailure, type Listing } from "./collection.ts";
 import { DerivedObjects } from "./derived-objects.ts";
-import { type Derivation, derivationOf, heldRecords, type ItemFailure, type Listing } from "./source.ts";
 
 /** In the order their Records come among the blobs of `blobSet`. */
 export async function recordedStatementsIn(blobSet: BlobSet): Promise<readonly Link<EncodedObject>[]> {

@@ -12,13 +12,13 @@ import { integer, link, schema, string } from "@estoc/schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   anyMemberObject,
+  type Collection,
   heldBlobs,
   type Index,
   indexOver,
   linkedBlob,
   MemoryBackend,
   memberObjectOf,
-  type Source,
   Store,
 } from "../src/index.ts";
 import { indexOverRows } from "./objects.ts";
@@ -255,8 +255,8 @@ describe("the rows of an index joined to those of the blob that a field links to
 
   it("fail on the blob linked to where a function gives a row of it that does not fit, as the function fails over the blobs held", async () => {
     const counted = schema("Counted", { count: integer() });
-    const countsOver = (source: Source) =>
-      indexOver(source, counted, ({ bytes }) => {
+    const countsOver = (collection: Collection) =>
+      indexOver(collection, counted, ({ bytes }) => {
         const count = Number(new TextDecoder().decode(bytes));
         return Number.isFinite(count) ? [{ count }] : [];
       });

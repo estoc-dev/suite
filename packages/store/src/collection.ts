@@ -5,13 +5,11 @@ import {
   LinkValue,
   memberOf,
   type Reader,
-  readObject,
   type Schema,
   type Value,
   type ValueMap,
 } from "@estoc/object";
 import { link, schema } from "@estoc/schema";
-import { collectionSchema, membersOf } from "./collection-object.ts";
 import {
   anyMemberObject,
   fieldOf,
@@ -49,8 +47,7 @@ interface Part<F> {
 }
 
 export interface Origin {
-  /** `reader` gives the blobs of the store that `blobSet` is of. */
-  listingIn(blobSet: BlobSet, reader: Reader): Promise<Listing>;
+  listingIn(blobSet: BlobSet): Promise<Listing>;
 }
 
 export interface ItemFailure {
@@ -155,23 +152,6 @@ export interface HeldBlob {
  * well as an object of the store's own. A scan reads each of them once for each index.
  */
 export const heldBlobs = new Collection(blobOrigin);
-
-/**
- * - The links that the Collection object at `link` lists. They are the same in every scan and in
- *   every store, where every other collection comes to hold more as its store does.
- * - A scan throws where the store does not hold the object, or the object is not a collection. A
- *   staged batch that holds the object does not change that: the rows of the store are worked out
- *   before those of the batch.
- */
-export function collectionAt(link: Link<unknown>): Collection {
-  return new Collection({
-    listingIn: async (_blobSet, reader) => ({
-      links: membersOf(await readObject(reader, link, collectionSchema)),
-      failures: [],
-      bytesOf: () => undefined,
-    }),
-  });
-}
 
 const linkedBlobOrigin: Origin = {
   listingIn: () =>

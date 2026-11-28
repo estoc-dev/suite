@@ -6,8 +6,8 @@ import { array, type DataOf, link, schema } from "@estoc/schema";
  *   order of the links as strings, so that the same members make the same object, with the same
  *   link.
  * - The schema language cannot say that order, so an object of this schema may list its members
- *   otherwise. That is not a collection: what reads its members as one refuses it, and what decodes
- *   the object itself is given the members as they are written.
+ *   otherwise. That is not a collection: a store refuses it where it is asked for the collection,
+ *   and what decodes the object itself is given the members as they are written.
  * - The members are the blobs listed and not their closures. They need not be objects, nor of one
  *   schema.
  * - A member can be a Record. The closure of the collection then holds the Record, and

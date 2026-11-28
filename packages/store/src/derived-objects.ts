@@ -74,7 +74,7 @@ export class DerivedObjects<F extends ValueMap> implements Listing, Rows<F> {
   async #adding(store: Reader, blobSet: BlobSet, isOnTop: boolean): Promise<DerivedObjects<F>> {
     const { schema, partsByOrigin } = this.#derivation;
     const listings = new Map<Origin, Listing>();
-    for (const origin of partsByOrigin.keys()) listings.set(origin, await origin.listingIn(blobSet, store));
+    for (const origin of partsByOrigin.keys()) listings.set(origin, await origin.listingIn(blobSet));
     if ([...listings].every(([origin, listing]) => this.#listings.get(origin) === listing)) return this;
     const objectsByLink = new Map(this.#objectsByLink);
     const ownFailures = [...this.#ownFailures];

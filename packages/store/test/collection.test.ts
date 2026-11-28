@@ -2,7 +2,6 @@ import { blobsOf, type EncodedObject, encodeObject, type Link, LinkValue, linkOf
 import { array, type DataOf, link, optional, schema, string } from "@estoc/schema";
 import { describe, expect, it, test } from "vitest";
 import {
-  collectionAt,
   collectionOf,
   collectionSchema,
   heldBlobs,
@@ -258,104 +257,6 @@ describe("an index scanned over a collection", () => {
       throw refusal;
     });
     expect((await collection.scan(refusing)).failures).toEqual([{ item: soup.link, error: refusal }]);
-  });
-});
-
-describe("an index that reads the collection at a link", () => {
-  const textsAt = (link: Link<unknown>) => collectionAt(link).rowsTaking(textSchema, textPaths);
-
-  it("holds a row of each member that the object lists, and none of another blob held", async () => {
-    const store = newStore();
-    const [soup, salad, stew] = [note("soup"), note("salad"), note("stew")];
-    const collection = collectionOf([soup.link, stew.link]);
-    await keepIn(store, [soup, salad, stew, collection]);
-
-    expect(await textsOf(await store.scan(textsAt(collection.link)))).toEqual(["soup", "stew"]);
-    const textsByFunction = indexOverObjects(
-      collectionAt(collection.link),
-      noteSchema,
-      textSchema,
-      ({ link, data }) => [{ text: data.text, note: new LinkValue(link) }],
-    );
-    expect(await rowDataOf(await store.scan(textsByFunction))).toEqual(
-      await rowDataOf(await store.scan(textsAt(collection.link))),
-    );
-  });
-
-  it("holds the same rows whatever the store comes to hold", async () => {
-    const store = newStore();
-    const [soup, salad] = [note("soup"), note("salad")];
-    const collection = collectionOf([soup.link]);
-    await keepIn(store, [soup, collection]);
-    const index = textsAt(collection.link);
-    expect(await textsOf(await store.scan(index))).toEqual(["soup"]);
-
-    await keepIn(store, [salad]);
-    expect(await textsOf(await store.scan(index))).toEqual(["soup"]);
-    expect(await textsOf(await store.scan(texts))).toEqual(["salad", "soup"]);
-
-    const stew = note("stew");
-    const stagedStore = await store.stage({ roots: [stew.link], blobs: blobsOf(stew) });
-    expect(await textsOf(await stagedStore.scan(index))).toEqual(["soup"]);
-    expect(await textsOf(await stagedStore.scan(texts))).toEqual(["salad", "soup", "stew"]);
-  });
-
-  it("holds the rows of the same members in each store that holds them", async () => {
-    const [soup, salad] = [note("soup"), note("salad")];
-    const collection = collectionOf([soup.link]);
-    const index = textsAt(collection.link);
-    for (const others of [[], [salad]]) {
-      const store = newStore();
-      await keepIn(store, [soup, collection, ...others]);
-      expect(await textsOf(await store.scan(index))).toEqual(["soup"]);
-    }
-  });
-
-  it("gives its members to what reads the rows further", async () => {
-    const store = newStore();
-    const [soup, salad, stew] = [note("soup"), note("salad"), note("stew")];
-    const collection = collectionOf([soup.link, salad.link]);
-    await keepIn(store, [soup, salad, stew, collection]);
-
-    const soups = textsAt(collection.link).rowsWhere("text", "soup");
-    expect(await textsOf(await store.scan(soups))).toEqual(["soup"]);
-    expect(await textsOf(await store.scan(soups.linksAt("note").rowsTaking(textSchema, textPaths)))).toEqual(["soup"]);
-  });
-
-  it("fails a scan where the store does not hold the object", async () => {
-    const store = newStore();
-    const soup = note("soup");
-    await keepIn(store, [soup]);
-    const collection = collectionOf([soup.link]);
-    await expect(store.scan(textsAt(collection.link))).rejects.toThrow(`no blob is given for ${collection.link}`);
-  });
-
-  it("fails a scan where the object is written to another schema", async () => {
-    const store = newStore();
-    const soup = note("soup");
-    await keepIn(store, [soup]);
-    await expect(store.scan(textsAt(soup.link))).rejects.toThrow(
-      `the object is written to ${noteSchema.link}, not to ${collectionSchema.link}`,
-    );
-  });
-
-  it("fails a scan where the object lists a member twice", async () => {
-    const store = newStore();
-    const soup = note("soup");
-    const doubled = encodeObject(collectionSchema, { members: [new LinkValue(soup.link), new LinkValue(soup.link)] });
-    await keepIn(store, [doubled, soup]);
-    await expect(store.scan(textsAt(doubled.link))).rejects.toThrow(`${doubled.link} lists ${soup.link} twice`);
-  });
-
-  it("fails a scan on a staged batch that holds the object where its store does not", async () => {
-    const store = newStore();
-    const soup = note("soup");
-    const collection = collectionOf([soup.link]);
-    const stagedStore = await store.stage({
-      roots: [collection.link],
-      blobs: [...blobsOf(collection), ...blobsOf(soup)],
-    });
-    await expect(stagedStore.scan(textsAt(collection.link))).rejects.toThrow(`no blob is given for ${collection.link}`);
   });
 });
 

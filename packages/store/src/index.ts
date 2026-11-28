@@ -10,7 +10,6 @@ export type { Backend } from "./backend.ts";
 export { type Batch, type RecordBatch, RefusedBatch } from "./batch.ts";
 export {
   type Collection,
-  collectionAt,
   type FieldNames,
   type HeldBlob,
   heldBlobs,

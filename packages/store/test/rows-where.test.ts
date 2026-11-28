@@ -210,7 +210,7 @@ describe("the objects of a schema among the blobs held", () => {
     expect(await heldShopLinksIn(store)).toContain(linkOf(misfit));
   });
 
-  it("are one source for one schema, whichever object holds the schema", () => {
+  it("are one collection for one schema, whichever object holds the schema", () => {
     expect(heldObjectsOf(decodeSchema(shop.bytes))).toBe(heldObjectsOf(shop));
     expect(heldObjectsOf(place)).not.toBe(heldObjectsOf(shop));
   });

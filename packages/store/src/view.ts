@@ -1,6 +1,6 @@
 import type { Reader, ValueMap } from "@estoc/object";
+import type { Index } from "./collection.ts";
 import type { Rows } from "./sorted-rows.ts";
-import type { Index } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
 
 export interface View<F extends ValueMap, V> {

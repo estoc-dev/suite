@@ -10,8 +10,8 @@ import {
   type ValueMap,
 } from "@estoc/object";
 import type { Batch, RecordBatch } from "./batch.ts";
+import type { Index } from "./collection.ts";
 import type { Rows } from "./sorted-rows.ts";
-import type { Index } from "./source.ts";
 import type { RecordedStatements, Scannable, StagedStore, Store } from "./store.ts";
 
 export interface ActionOutcome<R extends ValueMap> {

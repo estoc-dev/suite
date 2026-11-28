@@ -7,7 +7,7 @@ import {
   type Value,
   type ValueMap,
 } from "@estoc/object";
-import type { FieldNames, ItemFailure, KeyOf, Prefix } from "./source.ts";
+import type { FieldNames, ItemFailure, KeyOf, Prefix } from "./collection.ts";
 
 /**
  * Going through them gives each row once. The order they come in is no part of what a scan gives,

@@ -45,7 +45,7 @@ async function scanOf(store: Store, index: Index<VerifiedSignatureData>) {
   return { data, failedItems: rows.failures.map(({ item }) => item) };
 }
 
-describe("the verified signatures over a source", () => {
+describe("the verified signatures over a collection", () => {
   const recordedSignatures = verifiedSignaturesOver(recordedWrittenObjects.linksAt("object"));
 
   it("hold the identifier that signed, the Signature and what it signs, of each Signature given, whatever it signs", async () => {
@@ -73,7 +73,7 @@ describe("the verified signatures over a source", () => {
     expect(await scanOf(store, recordedSignatures)).toEqual({ data: [rowOf(recordedSignature)], failedItems: [] });
   });
 
-  it("hold none of what the source gives that is not a Signature, and that is no failure", async () => {
+  it("hold none of what the collection gives that is not a Signature, and that is no failure", async () => {
     const recordedSignature = await signatureBy(36, note);
     const store = await storeHolding([recordedSignature.link, linkOf(image)], recordedSignature.blobs);
     await store.record(writtenObjectsOf([note.link, linkOf(image), recordedSignature.link], 1));
@@ -106,7 +106,7 @@ describe("the verified signatures of a schema", () => {
     expect(await scanOf(store, noteSignatures)).toEqual({ data: [rowOf(noteSignature)], failedItems: [] });
   });
 
-  it("hold none of a Signature over such an object that is held and that the source does not give", async () => {
+  it("hold none of a Signature over such an object that is held and that the collection does not give", async () => {
     const recordedSignature = await signatureBy(40, note);
     const unrecordedSignature = await signatureBy(41, note);
     const store = await storeHolding(

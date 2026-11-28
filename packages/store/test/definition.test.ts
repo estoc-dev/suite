@@ -15,6 +15,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
   anyMemberObject,
   type Backend,
+  type Collection,
   heldBlobs,
   type Index,
   type IndexDefinition,
@@ -23,7 +24,6 @@ import {
   memberObjectOf,
   recordedStatements,
   recordSchema,
-  type Source,
   Store,
   type ValuePath,
 } from "../src/index.ts";
@@ -361,10 +361,11 @@ describe("the definition of an index", () => {
   });
 
   it("has the same link whatever the index reads", () => {
-    const definitionLinkReading = (source: Source) => source.rowsTaking(cardRow, cardPaths).definition?.link;
+    const definitionLinkReading = (collection: Collection) =>
+      collection.rowsTaking(cardRow, cardPaths).definition?.link;
     expect(cardRows.definition).toBeDefined();
-    for (const source of [heldBlobs, linkedBlob, cardRows])
-      expect(definitionLinkReading(source)).toBe(cardRows.definition?.link);
+    for (const collection of [heldBlobs, linkedBlob, cardRows])
+      expect(definitionLinkReading(collection)).toBe(cardRows.definition?.link);
   });
 
   it("holds the parts of a union in the order they were given in, whatever each of them reads", () => {
@@ -376,10 +377,10 @@ describe("the definition of an index", () => {
     const title = memberCard.field("title");
     const name = memberObjectOf(person).field("name");
     const city = memberObjectOf(place).field("city");
-    const namesReading = (source: Source) =>
+    const namesReading = (collection: Collection) =>
       recordedStatements
         .rowsTaking(titled, { title })
-        .union(source.rowsTaking(titled, { title: name }), recordedStatements.rowsTaking(titled, { title: city }));
+        .union(collection.rowsTaking(titled, { title: name }), recordedStatements.rowsTaking(titled, { title: city }));
     const { definition } = namesReading(statementsAgain);
     expect(definition?.data.parts).toEqual(
       [title, name, city].flatMap((path) => heldBlobs.rowsTaking(titled, { title: path }).definition?.data.parts),

@@ -9,8 +9,8 @@ import {
 } from "@estoc/object";
 import { type DataOf, integer, link, optional, schema } from "@estoc/schema";
 import type { RecordBatch } from "./batch.ts";
+import type { Index } from "./collection.ts";
 import type { Rows } from "./sorted-rows.ts";
-import type { Index } from "./source.ts";
 import type { StagedStore, Store } from "./store.ts";
 
 /**

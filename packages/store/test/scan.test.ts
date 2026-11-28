@@ -342,7 +342,7 @@ describe("an index that fails on something it reads", () => {
   const readableBlobNames = indexOverObjects(heldObjectsOf(note), note, named, readableNamedOf);
   const upperNamesOf = (index: NameIndex): NameIndex =>
     indexOverRows(index, named, ({ data }) => [{ name: data.name.toUpperCase() }]);
-  /** An index that reads `index` by two indexes over it, each a source of its own. */
+  /** An index that reads `index` by two indexes over it, each a collection of its own. */
   const eitherNamesOf = (index: NameIndex) => {
     const markedNames: NameIndex = indexOverRows(index, named, ({ data }) => [{ name: `${data.name}!` }]);
     return indexOverRows(upperNamesOf(index), named, ({ data }) => [data]).union(
